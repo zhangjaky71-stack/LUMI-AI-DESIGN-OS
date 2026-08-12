@@ -101,7 +101,9 @@ def run_suite(
     for case in cases:
         response = candidate.responses.get(case.id)
         if response is None:
-            raise EvaluationError(f"candidate {candidate.name}@{candidate.version} missing case {case.id}")
+            raise EvaluationError(
+                f"candidate {candidate.name}@{candidate.version} missing case {case.id}"
+            )
         scores = grade_case(case, response.output)
         scores["cost_usd"] = response.cost_usd
         scores["latency_ms"] = response.duration_ms
