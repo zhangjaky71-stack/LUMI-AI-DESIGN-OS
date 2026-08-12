@@ -1,0 +1,18 @@
+title = "LUMI AI Design OS Gitleaks Policy"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "lumi-ci-test-secret"
+description = "Deterministic CI sentinel used only for secret-scan fault injection"
+regex = '''LUMI_CI_TEST_SECRET\s*=\s*[A-Za-z0-9_-]{16,}'''
+keywords = ["LUMI_CI_TEST_SECRET"]
+
+[[allowlists]]
+description = "Local-only example credentials and documented placeholders"
+paths = [
+  '''(^|/)infra/compose/env\.local\.example$''',
+  '''(^|/)\.env\.example$''',
+  '''(^|/).*\.env\.example$'''
+]
