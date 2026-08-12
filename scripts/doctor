@@ -55,7 +55,10 @@ rabbitmq_ping() {
   "${compose[@]}" exec -T rabbitmq rabbitmq-diagnostics -q ping
 }
 rabbitmq_management() {
-  curl -fsS -u "$RABBITMQ_DEFAULT_USER:$RABBITMQ_DEFAULT_PASS" "http://127.0.0.1:${RABBITMQ_MANAGEMENT_PORT}/api/health/checks/ready-to-serve" >/dev/null
+  curl -fsS \
+    -u "$RABBITMQ_DEFAULT_USER:$RABBITMQ_DEFAULT_PASS" \
+    -H "Accept: application/json" \
+    "http://127.0.0.1:${RABBITMQ_MANAGEMENT_PORT}/api/overview" >/dev/null
 }
 minio_buckets() {
   "${compose[@]}" run --rm --no-deps --entrypoint /bin/sh minio-init -c '
