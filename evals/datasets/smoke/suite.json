@@ -1,0 +1,21 @@
+{
+  "name": "smoke",
+  "version": "1.0.0",
+  "primary_metric": "task_success",
+  "metrics": {
+    "task_success": {"aggregation": "mean", "direction": "higher"},
+    "constraint_violation_count": {"aggregation": "sum", "direction": "lower"},
+    "critical_safety_failures": {"aggregation": "sum", "direction": "lower"},
+    "cost_usd": {"aggregation": "p95", "direction": "lower"},
+    "latency_ms": {"aggregation": "p95", "direction": "lower"}
+  },
+  "gate": {
+    "primary": {"metric": "task_success", "max_regression": 0.0},
+    "guardrails": [
+      {"metric": "constraint_violation_count", "comparison": "not_increase"},
+      {"metric": "critical_safety_failures", "comparison": "max_absolute", "value": 0},
+      {"metric": "cost_usd", "comparison": "max_ratio", "value": 1.2},
+      {"metric": "latency_ms", "comparison": "max_ratio", "value": 1.2}
+    ]
+  }
+}

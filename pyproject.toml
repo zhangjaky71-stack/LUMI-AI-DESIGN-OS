@@ -40,6 +40,7 @@ src = [
   "services/knowledge/src",
   "services/visual-critic/src",
   "services/asset-intelligence/src",
+  "evals",
 ]
 
 [tool.ruff.lint]
@@ -57,15 +58,22 @@ known-first-party = [
   "lumi_knowledge",
   "lumi_visual_critic",
   "lumi_asset_intelligence",
+  "evals",
 ]
 known-third-party = ["fastapi"]
 
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
-include = ["apps", "services"]
+include = ["apps", "services", "evals"]
 exclude = ["**/__pycache__", ".venv"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
-testpaths = ["apps/api/tests", "apps/agent-runtime/tests", "apps/worker-media/tests"]
+pythonpath = ["."]
+testpaths = [
+  "apps/api/tests",
+  "apps/agent-runtime/tests",
+  "apps/worker-media/tests",
+  "evals/tests",
+]

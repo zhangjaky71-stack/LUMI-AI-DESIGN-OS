@@ -57,11 +57,11 @@ jobs:
             echo
           } >> "$GITHUB_STEP_SUMMARY"
           classify "TypeScript / frontend" '^(apps/[^/]+/|packages/|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|tsconfig)'
-          classify "Python" '^(apps/(api|agent-runtime|worker-media)/|services/|pyproject.toml|uv.lock)'
+          classify "Python / evals" '^(apps/(api|agent-runtime|worker-media)/|services/|evals/|pyproject.toml|uv.lock)'
           classify "Infrastructure" '^(infra/|scripts/(doctor|infra-)|Makefile)'
           classify "Docs / contracts" '^(docs/|reports/|contracts/)'
           echo >> "$GITHUB_STEP_SUMMARY"
-          echo "Core gates intentionally remain non-path-skipped in NODE-04 so optimization cannot hide contract regressions." >> "$GITHUB_STEP_SUMMARY"
+          echo "Core gates intentionally remain non-path-skipped so optimization cannot hide contract or benchmark regressions." >> "$GITHUB_STEP_SUMMARY"
 
   frontend:
     name: frontend
@@ -139,9 +139,9 @@ jobs:
       - name: Prepare diagnostics
         run: mkdir -p reports/python
       - name: Ruff format
-        run: set -o pipefail; uv run ruff format --check apps services 2>&1 | tee reports/python/ruff-format.log
+        run: set -o pipefail; uv run ruff format --check apps services evals 2>&1 | tee reports/python/ruff-format.log
       - name: Ruff lint
-        run: set -o pipefail; uv run ruff check apps services 2>&1 | tee reports/python/ruff-check.log
+        run: set -o pipefail; uv run ruff check apps services evals 2>&1 | tee reports/python/ruff-check.log
       - name: Pyright
         run: set -o pipefail; uv run pyright 2>&1 | tee reports/python/pyright.log
       - name: Pytest
@@ -154,6 +154,34 @@ jobs:
           path: reports/python
           if-no-files-found: ignore
           retention-days: 7
+
+  eval-smoke:
+    name: eval-smoke
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen install
+        run: uv sync --all-packages --frozen
+      - name: Offline baseline/candidate benchmark gate
+        run: make eval-smoke
+      - name: Upload benchmark reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: eval-smoke-reports-${{ github.run_id }}
+          path: evals/reports
+          if-no-files-found: error
+          retention-days: 14
 
   contracts:
     name: contracts

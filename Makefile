@@ -5,7 +5,7 @@ COMPOSE_ENV := $(COMPOSE_DIR)/.env
 COMPOSE_FILE := $(COMPOSE_DIR)/docker-compose.yml
 COMPOSE := docker compose --env-file $(COMPOSE_ENV) -f $(COMPOSE_FILE)
 
-.PHONY: bootstrap dev dev-web dev-admin dev-api dev-agent dev-worker lint typecheck test format-check check verify-scaffold ci-contracts ci-local infra-env infra-up infra-status infra-down infra-reset infra-logs doctor infra-smoke infra-persistence
+.PHONY: bootstrap dev dev-web dev-admin dev-api dev-agent dev-worker lint typecheck test format-check check verify-scaffold ci-contracts ci-local eval-smoke eval eval-live eval-report infra-env infra-up infra-status infra-down infra-reset infra-logs doctor infra-smoke infra-persistence
 
 bootstrap:
 	corepack enable
@@ -36,11 +36,11 @@ dev-worker:
 
 format-check:
 	pnpm format:check
-	uv run ruff format --check apps services
+	uv run ruff format --check apps services evals
 
 lint:
 	pnpm lint
-	uv run ruff check apps services
+	uv run ruff check apps services evals
 
 typecheck:
 	pnpm typecheck
@@ -55,7 +55,23 @@ check: verify-scaffold format-check lint typecheck test
 ci-contracts:
 	bash scripts/ci-contracts
 
-ci-local: check ci-contracts
+eval-smoke:
+	rm -f evals/reports/*.json evals/reports/*.md
+	uv run python -m evals.cli compare --suite smoke --out evals/reports
+
+eval:
+	@test -n "$(SUITE)" || (echo "SUITE is required, e.g. make eval SUITE=smoke" >&2; exit 2)
+	uv run python -m evals.cli run --suite "$(SUITE)" --out evals/reports
+
+eval-live:
+	@test -n "$(SUITE)" || (echo "SUITE is required, e.g. make eval-live SUITE=image" >&2; exit 2)
+	uv run python -m evals.cli live --suite "$(SUITE)"
+
+eval-report:
+	@test -n "$(RUN_ID)" || (echo "RUN_ID must be a JSON report path" >&2; exit 2)
+	uv run python -m evals.cli report --run "$(RUN_ID)"
+
+ci-local: check ci-contracts eval-smoke
 	pnpm build
 
 infra-env:
