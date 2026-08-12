@@ -59,15 +59,11 @@ def _matches(actual: Any, op: str, expected: Any) -> bool:
             raise GraderError("set_equal only supports hashable array values") from exc
     if op == "lte":
         return (
-            isinstance(actual, (int, float))
-            and not isinstance(actual, bool)
-            and actual <= expected
+            isinstance(actual, (int, float)) and not isinstance(actual, bool) and actual <= expected
         )
     if op == "gte":
         return (
-            isinstance(actual, (int, float))
-            and not isinstance(actual, bool)
-            and actual >= expected
+            isinstance(actual, (int, float)) and not isinstance(actual, bool) and actual >= expected
         )
     if op == "within":
         if not isinstance(expected, Mapping):
