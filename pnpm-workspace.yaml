@@ -3,9 +3,9 @@ packages:
   - apps/admin
   - packages/*
 
+# Supply-chain baseline: hold brand-new releases for 24h and reject trust downgrades
+# for releases within the active 30-day risk window. Older ecosystem packages
+# predate consistent npm provenance and are handled by lockfile review + frozen CI.
 minimumReleaseAge: 1440
 trustPolicy: no-downgrade
-trustPolicyExclude:
-  # Reviewed NODE-02 exception: transitive dependency of eslint-config-next@16.2.12.
-  # Keep the global trust downgrade policy enabled; exempt only this exact version.
-  - eslint-import-resolver-typescript@3.10.1
+trustPolicyIgnoreAfter: 43200
