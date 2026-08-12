@@ -56,21 +56,10 @@ jobs:
             git commit -m "chore: lock NODE-02 dependencies"
             git push
           fi
-      - name: Scaffold verification
-        run: python3 scripts/verify_scaffold.py
-      - name: Python quality and tests
-        run: |
-          uv run ruff format --check apps services
-          uv run ruff check apps services
-          uv run pyright
-          uv run pytest
-      - name: TypeScript quality, tests and build
-        run: |
-          pnpm format:check
-          pnpm lint
-          pnpm typecheck
-          pnpm test
-          pnpm build
+      - name: Repository quality gate
+        run: make check
+      - name: Production build
+        run: pnpm build
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
       - name: Browser smoke
