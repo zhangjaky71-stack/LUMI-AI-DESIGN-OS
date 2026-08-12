@@ -1,0 +1,15 @@
+[project]
+name = "lumi-worker-media"
+version = "0.0.0"
+requires-python = "==3.12.*"
+dependencies = [
+  "celery==5.6.3",
+  "pydantic-settings==2.14.2",
+]
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+lumi-worker-smoke = "lumi_worker_media.smoke:main"

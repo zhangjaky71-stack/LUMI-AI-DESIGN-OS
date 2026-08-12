@@ -1,0 +1,73 @@
+name: NODE-02 Bootstrap
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "apps/**"
+      - "packages/**"
+      - "pyproject.toml"
+      - "services/**"
+      - ".github/workflows/node-02-bootstrap.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.4.0 --activate
+          pnpm --version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.28"
+      - name: Resolve reproducible lockfiles
+        run: |
+          pnpm install --lockfile-only
+          uv lock
+      - name: Install from generated locks
+        run: |
+          pnpm install --frozen-lockfile
+          uv sync --all-packages --frozen
+      - name: Commit lockfiles
+        run: |
+          if [ -z "$(git status --porcelain -- pnpm-lock.yaml uv.lock)" ]; then
+            echo "Lockfiles already up to date"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add pnpm-lock.yaml uv.lock
+            git commit -m "chore: lock NODE-02 dependencies"
+            git push
+          fi
+      - name: Scaffold verification
+        run: python3 scripts/verify_scaffold.py
+      - name: Python quality and tests
+        run: |
+          uv run ruff format --check apps services
+          uv run ruff check apps services
+          uv run pyright
+          uv run pytest
+      - name: TypeScript quality and tests
+        run: |
+          pnpm format:check
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build

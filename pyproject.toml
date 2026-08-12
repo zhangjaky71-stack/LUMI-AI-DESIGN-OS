@@ -1,0 +1,44 @@
+[project]
+name = "lumi-ai-design-os"
+version = "0.0.0"
+description = "LUMI AI Design OS Python workspace"
+requires-python = "==3.12.*"
+
+[dependency-groups]
+dev = [
+  "httpx>=0.28,<1",
+  "pytest==9.1.1",
+  "pyright==1.1.411",
+  "ruff==0.15.22",
+]
+
+[tool.uv.workspace]
+members = [
+  "apps/api",
+  "apps/agent-runtime",
+  "apps/worker-media",
+  "services/model-gateway",
+  "services/tool-gateway",
+  "services/sandbox-runtime",
+  "services/memory",
+  "services/knowledge",
+  "services/visual-critic",
+  "services/asset-intelligence",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+include = ["apps", "services"]
+exclude = ["**/__pycache__", ".venv"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["apps/api/tests", "apps/agent-runtime/tests", "apps/worker-media/tests"]

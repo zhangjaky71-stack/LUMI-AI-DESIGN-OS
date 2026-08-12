@@ -1,0 +1,27 @@
+{
+  "name": "lumi-ai-design-os",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.4.0",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=11 <12"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "pnpm --filter @lumi/web lint && pnpm --filter @lumi/admin lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format:check": "prettier --check \"apps/**/*.{json,js,mjs,ts,tsx,css}\" \"packages/**/*.{json,ts}\" package.json pnpm-workspace.yaml turbo.json tsconfig.base.json playwright.config.ts",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "prettier": "3.6.2",
+    "turbo": "2.10.6",
+    "typescript": "6.0.3",
+    "vitest": "4.1.10"
+  }
+}

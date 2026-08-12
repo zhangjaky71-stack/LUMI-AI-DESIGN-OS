@@ -1,0 +1,9 @@
+{
+  "name": "@lumi/event-schema",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./*": "./src/*.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run --passWithNoTests" },
+  "devDependencies": { "typescript": "6.0.3", "vitest": "4.1.10" }
+}

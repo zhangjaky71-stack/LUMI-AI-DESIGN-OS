@@ -1,0 +1,24 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+.next/
+.turbo/
+playwright-report/
+test-results/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.pyright/
+
+# Local data
+.data/
+coverage/
+.DS_Store

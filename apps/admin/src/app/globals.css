@@ -1,0 +1,10 @@
+html,
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  background: #111;
+  color: #fff;
+}
+main {
+  padding: 48px;
+}
