@@ -12,7 +12,6 @@ from evals.models import EvalCase, SchemaError
 from evals.reporting import canonical_json, render_markdown
 from evals.runner import aggregate, load_suite, run_suite
 
-
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "fixtures" / "candidates" / "baseline.json"
 CANDIDATE = ROOT / "fixtures" / "candidates" / "candidate.json"
