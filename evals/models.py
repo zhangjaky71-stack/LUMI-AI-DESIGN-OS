@@ -31,7 +31,7 @@ class EvalCase:
     grader: dict[str, Any]
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "EvalCase":
+    def from_dict(cls, raw: dict[str, Any]) -> EvalCase:
         data = _require_mapping(raw, "case")
         case_id = _require_string(data.get("id"), "case.id")
         suite = _require_string(data.get("suite"), "case.suite")
@@ -70,7 +70,7 @@ class MetricDefinition:
     direction: str
 
     @classmethod
-    def from_dict(cls, name: str, raw: Any) -> "MetricDefinition":
+    def from_dict(cls, name: str, raw: Any) -> MetricDefinition:
         data = _require_mapping(raw, f"metrics.{name}")
         aggregation = _require_string(data.get("aggregation"), f"metrics.{name}.aggregation")
         direction = _require_string(data.get("direction"), f"metrics.{name}.direction")
@@ -90,7 +90,7 @@ class SuiteDefinition:
     gate: dict[str, Any]
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "SuiteDefinition":
+    def from_dict(cls, raw: dict[str, Any]) -> SuiteDefinition:
         data = _require_mapping(raw, "suite")
         name = _require_string(data.get("name"), "suite.name")
         version = _require_string(data.get("version"), "suite.version")
@@ -120,7 +120,7 @@ class CandidateResponse:
     trace_ids: tuple[str, ...]
 
     @classmethod
-    def from_dict(cls, case_id: str, raw: Any) -> "CandidateResponse":
+    def from_dict(cls, case_id: str, raw: Any) -> CandidateResponse:
         data = _require_mapping(raw, f"responses.{case_id}")
         cost = data.get("cost_usd", 0.0)
         duration = data.get("duration_ms", 0.0)
@@ -148,7 +148,7 @@ class CandidateProfile:
     responses: dict[str, CandidateResponse]
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "CandidateProfile":
+    def from_dict(cls, raw: dict[str, Any]) -> CandidateProfile:
         data = _require_mapping(raw, "candidate")
         name = _require_string(data.get("name"), "candidate.name")
         version = _require_string(data.get("version"), "candidate.version")
