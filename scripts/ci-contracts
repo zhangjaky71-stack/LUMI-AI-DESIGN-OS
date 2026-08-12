@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+required=(
+  package.json
+  pnpm-lock.yaml
+  pnpm-workspace.yaml
+  pyproject.toml
+  uv.lock
+  turbo.json
+  tsconfig.base.json
+  infra/compose/docker-compose.yml
+)
+
+for path in "${required[@]}"; do
+  if [ ! -f "$path" ]; then
+    echo "FAIL  required contract foundation file missing: $path" >&2
+    exit 1
+  fi
+done
+
+echo "PASS  required contract foundation files exist"
+python3 scripts/verify_scaffold.py
+echo "PASS  repository scaffold contract"
+
+python3 - <<'PY'
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+roots = [Path("package.json"), *Path("apps").glob("*/package.json"), *Path("packages").glob("*/package.json")]
+for path in sorted(set(roots)):
+    with path.open("r", encoding="utf-8") as handle:
+        json.load(handle)
+    print(f"PASS  valid JSON: {path}")
+PY
+
+schema_roots=(contracts schemas)
+found=0
+for root in "${schema_roots[@]}"; do
+  if [ -d "$root" ]; then
+    found=1
+    while IFS= read -r -d '' file; do
+      python3 -m json.tool "$file" >/dev/null
+      echo "PASS  valid schema JSON: $file"
+    done < <(find "$root" -type f -name '*.json' -print0)
+  fi
+done
+
+if [ "$found" -eq 0 ]; then
+  echo "INFO  JSON/OpenAPI/Event/Design-IR schema gates are reserved for NODE-11..15 and will auto-enter this required contracts job when their files land."
+fi
+
+echo "Contract foundation: PASS"
