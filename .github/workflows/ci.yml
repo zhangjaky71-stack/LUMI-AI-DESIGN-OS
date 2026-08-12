@@ -1,0 +1,223 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24"
+  PNPM_VERSION: "11.4.0"
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Classify changed files
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+
+          if [ -z "$base" ] || [[ "$base" =~ ^0+$ ]] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            base="$(git rev-list --max-parents=0 HEAD | tail -n 1)"
+          fi
+
+          git diff --name-only "$base" "$GITHUB_SHA" | tee changed-files.txt
+
+          classify() {
+            local label="$1"
+            local pattern="$2"
+            local count
+            count="$(grep -Ec "$pattern" changed-files.txt || true)"
+            printf '%s: %s\n' "$label" "$count" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          {
+            echo "## Change classification"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          classify "TypeScript / frontend" '^(apps/[^/]+/|packages/|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|tsconfig)'
+          classify "Python" '^(apps/(api|agent-runtime|worker-media)/|services/|pyproject.toml|uv.lock)'
+          classify "Infrastructure" '^(infra/|scripts/(doctor|infra-)|Makefile)'
+          classify "Docs / contracts" '^(docs/|reports/|contracts/)'
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "Core gates intentionally remain non-path-skipped in NODE-04 so optimization cannot hide contract regressions." >> "$GITHUB_STEP_SUMMARY"
+
+  frontend:
+    name: frontend
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+          pnpm --version
+      - name: Locate pnpm store
+        id: pnpm-store
+        run: echo "dir=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.pnpm-store.outputs.dir }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+      - name: Cache Turborepo
+        uses: actions/cache@v5
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+      - name: Prepare diagnostics
+        run: mkdir -p reports/frontend
+      - name: Format
+        run: set -o pipefail; pnpm format:check 2>&1 | tee reports/frontend/format.log
+      - name: Lint
+        run: set -o pipefail; pnpm lint 2>&1 | tee reports/frontend/lint.log
+      - name: Typecheck
+        run: set -o pipefail; pnpm typecheck 2>&1 | tee reports/frontend/typecheck.log
+      - name: Unit tests
+        run: set -o pipefail; pnpm test 2>&1 | tee reports/frontend/test.log
+      - name: Production build
+        run: set -o pipefail; pnpm build 2>&1 | tee reports/frontend/build.log
+      - name: Upload frontend diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-ci-logs-${{ github.run_id }}
+          path: reports/frontend
+          if-no-files-found: ignore
+          retention-days: 7
+
+  python:
+    name: python
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen install
+        run: uv sync --all-packages --frozen
+      - name: Prepare diagnostics
+        run: mkdir -p reports/python
+      - name: Ruff format
+        run: set -o pipefail; uv run ruff format --check apps services 2>&1 | tee reports/python/ruff-format.log
+      - name: Ruff lint
+        run: set -o pipefail; uv run ruff check apps services 2>&1 | tee reports/python/ruff-check.log
+      - name: Pyright
+        run: set -o pipefail; uv run pyright 2>&1 | tee reports/python/pyright.log
+      - name: Pytest
+        run: set -o pipefail; uv run pytest --junitxml=reports/python/junit.xml 2>&1 | tee reports/python/pytest.log
+      - name: Upload Python diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-ci-logs-${{ github.run_id }}
+          path: reports/python
+          if-no-files-found: ignore
+          retention-days: 7
+
+  contracts:
+    name: contracts
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Verify pnpm lock is reproducible
+        run: pnpm install --lockfile-only --frozen-lockfile
+      - name: Verify uv lock is reproducible
+        run: uv lock --check
+      - name: Contract foundation checks
+        run: bash scripts/ci-contracts
+
+  integration:
+    name: integration
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Docker versions
+        run: |
+          docker version
+          docker compose version
+      - name: Prepare local-only environment
+        run: make infra-env
+      - name: Validate Compose model
+        run: docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml config --quiet
+      - name: Start infrastructure
+        run: make infra-up
+      - name: Infrastructure smoke
+        run: make infra-smoke
+      - name: Capture integration logs on failure
+        if: failure()
+        run: |
+          mkdir -p reports/integration
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml ps > reports/integration/compose-ps.txt 2>&1 || true
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml logs --no-color --tail=300 > reports/integration/compose.log 2>&1 || true
+      - name: Upload integration diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-ci-logs-${{ github.run_id }}
+          path: reports/integration
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Cleanup
+        if: always()
+        run: CONFIRM=1 make infra-reset || true

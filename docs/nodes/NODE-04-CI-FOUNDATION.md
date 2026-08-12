@@ -1,7 +1,10 @@
 # NODE-04 — CI Foundation
 
 > Phase: -1 Engineering Foundation  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **VALIDATING**  
+> Implementation Status: **VALIDATING**  
+> Implementation Branch: `node-04-ci-foundation`  
+> Acceptance Report: `reports/nodes/NODE-04/acceptance.md`  
 > Priority: P0  
 > Depends on: NODE-02, NODE-03  
 > Produces: GitHub Actions 质量门禁、依赖缓存、基础安全扫描和可复现 CI
@@ -251,3 +254,17 @@ CI workflows committed
 ```
 
 完成后 Engineering Foundation 结束，进入 Phase 0：NODE-05 Benchmark Harness。
+
+## 18. NODE-04 implementation notes
+
+Implemented on `node-04-ci-foundation` for validation:
+
+- Core `CI` workflow with stable `frontend`, `python`, `contracts`, and `integration` branch-gate jobs plus informational `changes` classification.
+- Separate blocking `secret-scan` workflow using Gitleaks and repository policy.
+- Advisory native dependency review with scheduled pnpm/pip ecosystem audit reporting.
+- CodeQL v4 scaffold that is automatically active for public repositories and can be enabled for this private repository with `LUMI_ENABLE_CODEQL=1` once repository security capability is available.
+- pnpm store, Turborepo, and uv caches tied to lockfile/config hashes.
+- Failure diagnostics retained as GitHub Actions artifacts.
+- `scripts/ci-contracts` and `make ci-contracts` / `make ci-local` for local parity.
+- Completed NODE-02 and NODE-03 acceptance workflows retained as manual regression workflows rather than duplicate push gates.
+- Required-check repository-setting action documented at `docs/ci/BRANCH-PROTECTION.md`.

@@ -1,17 +1,6 @@
 name: NODE-03 Local Infrastructure
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "infra/compose/**"
-      - "infra/docker/**"
-      - "scripts/doctor"
-      - "scripts/infra-smoke"
-      - "scripts/infra-persistence"
-      - "Makefile"
-      - ".env.example"
-      - ".github/workflows/node-03-infrastructure.yml"
   workflow_dispatch:
 
 permissions:
@@ -19,10 +8,10 @@ permissions:
 
 jobs:
   infrastructure:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Docker versions
         run: |
           docker version

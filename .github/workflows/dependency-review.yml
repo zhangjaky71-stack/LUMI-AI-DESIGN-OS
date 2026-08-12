@@ -1,0 +1,91 @@
+name: Dependency Review
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: dependency-review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Native dependency review
+        id: dependency-review
+        continue-on-error: true
+        uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
+      - name: Record repository capability fallback
+        if: steps.dependency-review.outcome == 'failure'
+        run: |
+          echo "::warning::GitHub native dependency review is unavailable or reported an error for this repository. NODE-04 keeps this non-blocking and relies on scheduled lockfile audits until repository capability is enabled."
+          echo "Native dependency review outcome: ${{ steps.dependency-review.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+
+  periodic-audit:
+    name: periodic-audit
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.4.0 --activate
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Run non-blocking ecosystem audits
+        shell: bash
+        run: |
+          set +e
+          mkdir -p reports/dependency
+
+          pnpm audit --audit-level high --json > reports/dependency/pnpm-audit.json 2> reports/dependency/pnpm-audit.stderr
+          pnpm_status=$?
+
+          uv export --frozen --format requirements-txt --no-hashes > reports/dependency/python-requirements.txt 2> reports/dependency/uv-export.stderr
+          export_status=$?
+          if [ "$export_status" -eq 0 ]; then
+            uvx pip-audit -r reports/dependency/python-requirements.txt --format json -o reports/dependency/pip-audit.json 2> reports/dependency/pip-audit.stderr
+            pip_status=$?
+          else
+            pip_status=99
+          fi
+
+          {
+            echo "## Periodic dependency audit"
+            echo
+            echo "- pnpm audit exit: $pnpm_status"
+            echo "- uv export exit: $export_status"
+            echo "- pip-audit exit: $pip_status"
+            echo
+            echo "NODE-04 records audit findings without making noisy ecosystem audits a PR blocking gate. Dependency review remains the preferred PR diff gate when repository capability is available."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit 0
+      - name: Upload dependency audit reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dependency-audit-${{ github.run_id }}
+          path: reports/dependency
+          if-no-files-found: ignore
+          retention-days: 14
