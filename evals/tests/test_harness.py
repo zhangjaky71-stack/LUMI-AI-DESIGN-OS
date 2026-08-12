@@ -40,9 +40,7 @@ def test_grader_exception_is_not_silently_converted_to_zero() -> None:
             "expected": {},
             "metrics": ["task_success"],
             "grader": {
-                "checks": [
-                    {"path": "value", "op": "not-a-real-op", "metric": "task_success"}
-                ]
+                "checks": [{"path": "value", "op": "not-a-real-op", "metric": "task_success"}]
             },
         }
     )
