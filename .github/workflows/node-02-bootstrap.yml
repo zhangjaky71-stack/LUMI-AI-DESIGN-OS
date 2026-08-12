@@ -20,7 +20,7 @@ jobs:
   bootstrap:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -64,10 +64,14 @@ jobs:
           uv run ruff check apps services
           uv run pyright
           uv run pytest
-      - name: TypeScript quality and tests
+      - name: TypeScript quality, tests and build
         run: |
           pnpm format:check
           pnpm lint
           pnpm typecheck
           pnpm test
           pnpm build
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Browser smoke
+        run: pnpm e2e
