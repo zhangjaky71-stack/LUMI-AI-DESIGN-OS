@@ -1,0 +1,5 @@
+[project]
+name = "lumi-benchmark-harness-spec"
+version = "0.0.0"
+description = "NODE-05 benchmark harness metadata; runtime uses the repository root environment"
+requires-python = "==3.12.*"
