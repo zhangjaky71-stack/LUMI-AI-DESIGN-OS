@@ -1,7 +1,10 @@
 # NODE-05 — Benchmark Harness
 
 > Phase: 0 Benchmark Before Build  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **VALIDATING**  
+> Implementation Status: **VALIDATING**  
+> Implementation Branch: `node-05-benchmark-harness`  
+> Acceptance Report: `reports/nodes/NODE-05/acceptance.md`  
 > Priority: P0  
 > Depends on: NODE-02, NODE-04  
 > Produces: LUMI 统一离线/在线评测框架、数据集规范、Release Gate 接口
@@ -53,6 +56,8 @@ evals/
 ├─ reports/
 └─ schemas/
 ```
+
+P0 实现允许先将 runner/grader modules 扁平化到 `evals/`，但 dataset / fixture / schema / report 边界必须保持，后续 grader 类型增加时再物理拆分子包。
 
 ## 3. Case Schema
 
@@ -157,6 +162,8 @@ LangSmith 用于：
 
 LUMI 自己的 `eval_run_id` 必须可以关联 LangSmith trace/run id，但 LangSmith 不是唯一成绩数据库。核心 benchmark summary 仍需存可导出的 JSON/Parquet/DB 记录。
 
+NODE-05 的 Result/Candidate contract 已预留 `trace_ids`；离线 smoke 不要求 LangSmith credentials，后续 live/agent eval 可附加真实 trace ID。
+
 ## 8. Result Schema
 
 ```json
@@ -246,3 +253,18 @@ eval framework committed
 ```
 
 下一节点：NODE-06 Lovart Capability Matrix。
+
+## 15. NODE-05 implementation notes
+
+Implemented on `node-05-benchmark-harness` for validation:
+
+- Repository-owned standard-library case/suite/candidate validation and deterministic grader protocol.
+- Versioned `smoke@1.0.0` dataset containing 20 cases with task, constraint, and critical-safety scoring.
+- Recorded offline baseline and candidate fixtures with per-case cost, latency, and optional trace IDs.
+- Stable aggregation including mean/sum/min/max/P95 and deterministic run IDs derived from run content + git SHA.
+- Baseline-versus-candidate release gate covering primary success, constraint regression, critical safety, P95 cost, and P95 latency.
+- JSON + Markdown report generation under `evals/reports`.
+- Explicit live-eval preflight requiring enable flag + API key + positive budget; missing configuration returns `SKIPPED`.
+- `make eval-smoke`, `make eval`, `make eval-live`, and `make eval-report` CLI surface.
+- Harness self-tests cover invalid schema, grader exceptions, pairing, cost aggregation, reproducible reports, live skip semantics, clean gate PASS, and deliberate metric regression FAIL.
+- New blocking CI check `eval-smoke` uploads benchmark reports as a 14-day Actions artifact.
