@@ -1,10 +1,14 @@
 # NODE-05 — Benchmark Harness
 
 > Phase: 0 Benchmark Before Build  
-> Status: **VALIDATING**  
-> Implementation Status: **VALIDATING**  
-> Implementation Branch: `node-05-benchmark-harness`  
+> Status: **COMPLETE**  
+> Implementation Status: **COMPLETE**  
+> Implemented Commit: `573a0d82e4f9deaed5252be1e943a5954b71355a`  
+> Implementation PR: `#3`  
 > Acceptance Report: `reports/nodes/NODE-05/acceptance.md`  
+> Clean Acceptance CI: `31591585790`  
+> Benchmark Artifact: `9139339839`  
+> Implemented At: `2026-08-12`  
 > Priority: P0  
 > Depends on: NODE-02, NODE-04  
 > Produces: LUMI 统一离线/在线评测框架、数据集规范、Release Gate 接口
@@ -233,30 +237,30 @@ Benchmark Harness 自身必须测试：
 
 ## 13. 验收标准
 
-- [ ] dataset schema、runner、grader protocol 可运行。
-- [ ] 至少 20 个 smoke fixtures。
-- [ ] offline suite 无付费 Key 可执行。
-- [ ] report 输出 JSON + Markdown summary。
-- [ ] candidate 可与 baseline 比较。
-- [ ] LangSmith trace 可选关联。
-- [ ] CI 可运行 `eval-smoke`。
-- [ ] live eval 有明确预算和 skip 机制。
+- [x] dataset schema、runner、grader protocol 可运行。
+- [x] 至少 20 个 smoke fixtures。
+- [x] offline suite 无付费 Key 可执行。
+- [x] report 输出 JSON + Markdown summary。
+- [x] candidate 可与 baseline 比较。
+- [x] LangSmith trace 可选关联。
+- [x] CI 可运行 `eval-smoke`。
+- [x] live eval 有明确预算和 skip 机制。
 
 ## 14. Definition of Done
 
 ```text
-eval framework committed
-+ smoke dataset versioned
-+ runner/grader tests green
-+ baseline comparison works
-+ CI smoke gate enabled
+eval framework committed                PASS
+smoke dataset versioned                 PASS
+runner/grader tests green               PASS
+baseline comparison works               PASS
+CI smoke gate enabled                   PASS
 ```
 
 下一节点：NODE-06 Lovart Capability Matrix。
 
 ## 15. NODE-05 implementation notes
 
-Implemented on `node-05-benchmark-harness` for validation:
+Implemented and accepted through PR `#3`:
 
 - Repository-owned standard-library case/suite/candidate validation and deterministic grader protocol.
 - Versioned `smoke@1.0.0` dataset containing 20 cases with task, constraint, and critical-safety scoring.
@@ -266,5 +270,8 @@ Implemented on `node-05-benchmark-harness` for validation:
 - JSON + Markdown report generation under `evals/reports`.
 - Explicit live-eval preflight requiring enable flag + API key + positive budget; missing configuration returns `SKIPPED`.
 - `make eval-smoke`, `make eval`, `make eval-live`, and `make eval-report` CLI surface.
-- Harness self-tests cover invalid schema, grader exceptions, pairing, cost aggregation, reproducible reports, live skip semantics, clean gate PASS, and deliberate metric regression FAIL.
+- 10 harness self-tests cover invalid schema, grader exceptions, pairing, cost aggregation, reproducible reports, live skip semantics, clean gate PASS, and deliberate metric regression FAIL.
 - New blocking CI check `eval-smoke` uploads benchmark reports as a 14-day Actions artifact.
+- Clean acceptance run `31591585790` passed `frontend`, `python`, `contracts`, `integration`, and `eval-smoke`; Secret Scan `31591585757` also passed.
+- Final smoke release gate: task success `1.0 → 1.0`, constraint violations `0 → 0`, critical safety failures `0 → 0`, P95 cost `0.00119 → 0.00109`, P95 latency `119 → 114`.
+- Final benchmark artifact: `eval-smoke-reports-31591585790` / `9139339839`.
