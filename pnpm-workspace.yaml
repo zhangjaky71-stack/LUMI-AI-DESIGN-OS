@@ -5,3 +5,7 @@ packages:
 
 minimumReleaseAge: 1440
 trustPolicy: no-downgrade
+trustPolicyExclude:
+  # Reviewed NODE-02 exception: transitive dependency of eslint-config-next@16.2.12.
+  # Keep the global trust downgrade policy enabled; exempt only this exact version.
+  - eslint-import-resolver-typescript@3.10.1
