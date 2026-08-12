@@ -9,3 +9,10 @@ packages:
 minimumReleaseAge: 1440
 trustPolicy: no-downgrade
 trustPolicyIgnoreAfter: 43200
+
+# pnpm 11 blocks dependency lifecycle scripts by default. These two transitive
+# native dependencies are reviewed and explicitly allowed because Next.js image
+# tooling and the TypeScript import resolver require their platform bindings.
+allowBuilds:
+  sharp: true
+  unrs-resolver: true
