@@ -1,0 +1,10 @@
+{
+  "name": "product-parity",
+  "version": "1.0.0",
+  "observed_at": "2026-08-12",
+  "kind": "capability_acceptance_spec",
+  "execution_status": "SPECIFIED_NOT_RUN",
+  "description": "Future product-level acceptance cases derived from public Lovart behavior. NODE-06 specifies mappings; owning implementation Nodes activate executable graders later.",
+  "categories": ["Agent / Workflow","Canvas / Editing","Generation","Brand","Production / Export","Project / Collaboration","Platform / SaaS"],
+  "rule": "Every LUMI PARITY capability must map to exactly one acceptance case. SUPERSET/DEFER items use owning Node-specific acceptance instead."
+}
