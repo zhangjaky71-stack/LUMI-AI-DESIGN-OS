@@ -2,7 +2,7 @@
 
 > Architecture Baseline: **LUMI AI Design OS — Architecture V2**  
 > Documentation Status: **NODE-00～NODE-73 ALL SPECIFIED**  
-> Implementation Status: **NODE-03 engineering COMPLETE; next engineering node is NODE-04**  
+> Implementation Status: **NODE-04 engineering COMPLETE; next engineering node is NODE-05**  
 > Rule: **SPECIFIED ≠ IMPLEMENTED**. 每个工程 Node 必须完成代码、测试、验收和 GitHub 提交后才能改为 `COMPLETE`。
 
 ---
@@ -40,7 +40,7 @@ BLOCKED_TECHNICAL  # 技术故障
 | NODE-01 | [Architecture V2 Freeze](01-ARCHITECTURE-V2-FREEZE.md) | COMPLETE / FROZEN | 系统边界、技术基线、ADR |
 | NODE-02 | [Repository Bootstrap](nodes/NODE-02-REPOSITORY-BOOTSTRAP.md) | **COMPLETE** | Monorepo、lockfiles、Web/API/Agent/Worker scaffold；CI Run `31584394850` PASS |
 | NODE-03 | [Local Infrastructure](nodes/NODE-03-LOCAL-INFRASTRUCTURE.md) | **COMPLETE** | PostgreSQL/Redis/RabbitMQ/MinIO/Mailpit；CI Run `31585919646` PASS |
-| NODE-04 | [CI Foundation](nodes/NODE-04-CI-FOUNDATION.md) | SPECIFIED | GitHub Actions、质量/安全基础门禁 |
+| NODE-04 | [CI Foundation](nodes/NODE-04-CI-FOUNDATION.md) | **COMPLETE** | GitHub Actions质量/安全门禁；Clean CI `31587555221` PASS；failure proof PR `#2` CLOSED / NOT MERGED |
 
 # Phase 0 — Benchmark Before Build
 
