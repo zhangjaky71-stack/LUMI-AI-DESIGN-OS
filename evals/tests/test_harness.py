@@ -73,7 +73,9 @@ def test_report_rendering_is_reproducible() -> None:
     assert render_markdown(run) == render_markdown(run)
 
 
-def test_live_eval_without_enable_flag_is_explicitly_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_live_eval_without_enable_flag_is_explicitly_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("LUMI_LIVE_EVAL_ENABLED", raising=False)
     monkeypatch.delenv("LUMI_LIVE_EVAL_API_KEY", raising=False)
     result = live_preflight("image")
