@@ -29,6 +29,18 @@ members = [
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+src = [
+  "apps/api/src",
+  "apps/agent-runtime/src",
+  "apps/worker-media/src",
+  "services/model-gateway/src",
+  "services/tool-gateway/src",
+  "services/sandbox-runtime/src",
+  "services/memory/src",
+  "services/knowledge/src",
+  "services/visual-critic/src",
+  "services/asset-intelligence/src",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -46,6 +58,7 @@ known-first-party = [
   "lumi_visual_critic",
   "lumi_asset_intelligence",
 ]
+known-third-party = ["fastapi"]
 
 [tool.pyright]
 pythonVersion = "3.12"
