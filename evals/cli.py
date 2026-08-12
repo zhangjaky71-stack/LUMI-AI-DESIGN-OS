@@ -8,7 +8,6 @@ from .live import live_preflight
 from .reporting import canonical_json, render_markdown, write_run_report
 from .runner import load_json, load_suite, run_suite
 
-
 EVAL_ROOT = Path(__file__).resolve().parent
 DEFAULT_BASELINE = EVAL_ROOT / "fixtures" / "candidates" / "baseline.json"
 DEFAULT_CANDIDATE = EVAL_ROOT / "fixtures" / "candidates" / "candidate.json"
