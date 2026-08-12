@@ -33,6 +33,20 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[tool.ruff.lint.isort]
+known-first-party = [
+  "lumi_api",
+  "lumi_agent_runtime",
+  "lumi_worker_media",
+  "lumi_model_gateway",
+  "lumi_tool_gateway",
+  "lumi_sandbox_runtime",
+  "lumi_memory",
+  "lumi_knowledge",
+  "lumi_visual_critic",
+  "lumi_asset_intelligence",
+]
+
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
