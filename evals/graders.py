@@ -70,10 +70,11 @@ def _matches(actual: Any, op: str, expected: Any) -> bool:
             raise GraderError("within expects an object with value and tolerance")
         target = expected.get("value")
         tolerance = expected.get("tolerance")
-        if not all(
-            isinstance(item, (int, float)) and not isinstance(item, bool)
-            for item in (actual, target, tolerance)
-        ):
+        if not isinstance(actual, (int, float)) or isinstance(actual, bool):
+            return False
+        if not isinstance(target, (int, float)) or isinstance(target, bool):
+            return False
+        if not isinstance(tolerance, (int, float)) or isinstance(tolerance, bool):
             return False
         return abs(float(actual) - float(target)) <= float(tolerance)
     raise GraderError(f"unsupported grader operation: {op}")
