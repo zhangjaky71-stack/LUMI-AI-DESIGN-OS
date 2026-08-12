@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "infra/compose/**"
+      - "infra/docker/**"
       - "scripts/doctor"
       - "scripts/infra-smoke"
       - "scripts/infra-persistence"

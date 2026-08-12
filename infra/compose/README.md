@@ -28,6 +28,8 @@ make doctor
 
 `make infra-up` automatically copies `env.local.example` to the gitignored `.env` on first use. The example credentials are explicitly LOCAL_ONLY.
 
+MinIO Community Edition is source-only in the current upstream distribution model. LUMI therefore builds a local container from the fixed `MINIO_RELEASE` using `infra/docker/minio/Dockerfile`; it does not depend on a disappearing pre-built MinIO registry tag.
+
 ## Daily commands
 
 ```bash

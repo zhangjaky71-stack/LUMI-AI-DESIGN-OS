@@ -59,7 +59,7 @@ infra-env:
 	fi
 
 infra-up: infra-env
-	$(COMPOSE) up -d --wait --wait-timeout 180 postgres redis rabbitmq minio mailpit
+	$(COMPOSE) up -d --build --wait --wait-timeout 180 postgres redis rabbitmq minio mailpit
 	$(COMPOSE) run --rm minio-init
 
 infra-status: infra-env

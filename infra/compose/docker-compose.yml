@@ -62,7 +62,12 @@ services:
     networks: [lumi_local]
 
   minio:
-    image: ${MINIO_IMAGE}
+    build:
+      context: ../docker/minio
+      dockerfile: Dockerfile
+      args:
+        MINIO_RELEASE: ${MINIO_RELEASE}
+    image: lumi/minio:${MINIO_RELEASE}
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -74,7 +79,7 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9000/minio/health/ready"]
       interval: 5s
       timeout: 5s
       retries: 20
