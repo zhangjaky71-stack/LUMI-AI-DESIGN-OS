@@ -1,10 +1,21 @@
 # NODE-02 — Repository Bootstrap
 
 > Phase: -1 Engineering Foundation  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **COMPLETE**  
+> Implementation Status: **COMPLETE**  
 > Priority: P0  
 > Depends on: NODE-00, NODE-01  
-> Produces: 可编译、可测试、可扩展的 LUMI monorepo 工程骨架
+> Produces: 可编译、可测试、可扩展的 LUMI monorepo 工程骨架  
+> Implemented Commit: `cb78eedbafcbdc0952254a1db13a70c8052c1d44`  
+> Acceptance Report: `reports/nodes/NODE-02/acceptance.md`  
+> Validated Workflow: `NODE-02 Bootstrap` / Run `31584394850`  
+> Implemented At: `2026-08-12`
+
+---
+
+## Implementation Result
+
+NODE-02 已按本规格完成真实工程实现。最终 CI 直接执行 `make check`，随后执行 Web/Admin production build 与 Chromium Playwright `/health` smoke，全部通过。两份 lockfile 已提交并在最终验证中保持一致；不需要任何商业模型 API Key 即可完成本节点验收。
 
 ---
 
@@ -271,14 +282,14 @@ uv sync --frozen
 
 ## 10. 验收标准
 
-- [ ] 目录结构符合 Architecture V2。
-- [ ] Node 24 LTS 与 Python 3.12 被固定。
-- [ ] `pnpm-lock.yaml`、`uv.lock` 均存在。
-- [ ] Web/API/Agent/Worker 均有真实入口。
-- [ ] `make check` 一次通过。
-- [ ] 不需要任何真实商业 API Key 即可验收。
-- [ ] `.env.example` 完整且无 Secret。
-- [ ] README 可让全新开发机完成 bootstrap。
+- [x] 目录结构符合 Architecture V2。
+- [x] Node 24 LTS 与 Python 3.12 被固定。
+- [x] `pnpm-lock.yaml`、`uv.lock` 均存在。
+- [x] Web/API/Agent/Worker 均有真实入口。
+- [x] `make check` 一次通过。
+- [x] 不需要任何真实商业 API Key 即可验收。
+- [x] `.env.example` 完整且无 Secret。
+- [x] README 可让全新开发机完成 bootstrap。
 
 ## 11. 禁止项
 
@@ -294,7 +305,7 @@ uv sync --frozen
 
 ## 13. Definition of Done
 
-只有以下全部完成才可标记 NODE-02 COMPLETE：
+以下全部已完成：
 
 ```text
 repository scaffold committed
@@ -302,6 +313,11 @@ repository scaffold committed
 + all health/smoke tests pass
 + README onboarding verified
 + no secret in git
++ make check pass
++ production build pass
++ browser smoke pass
 ```
+
+**NODE-02 = COMPLETE**
 
 下一节点：NODE-03 Local Infrastructure。
