@@ -1,7 +1,12 @@
 # NODE-03 — Local Infrastructure
 
 > Phase: -1 Engineering Foundation  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **COMPLETE**  
+> Implementation Status: **COMPLETE**  
+> Implemented Commit: `4f25b590a1bc643e2925551ce48c6d840c15842d`  
+> Acceptance Report: `reports/nodes/NODE-03/acceptance.md`  
+> Acceptance Run: `31585919646`  
+> Implemented At: `2026-08-12`  
 > Priority: P0  
 > Depends on: NODE-02  
 > Produces: 一套无需云账号即可运行的本地生产近似基础设施
@@ -57,6 +62,8 @@ Observability 完整栈到 NODE-67 再正式启用。
 ### MinIO
 
 模拟 S3 object storage。业务代码必须只依赖 S3-compatible adapter，开发环境 MinIO、生产环境 AWS S3/R2 等可以替换。
+
+NODE-03 实现阶段确认当前 MinIO Community Edition 的稳定社区分发已经转向源码构建，因此本仓库通过 `infra/docker/minio/Dockerfile` 从固定 release 构建本地容器，避免依赖不可用的预编译 registry tag。
 
 ### Mailpit
 
@@ -182,7 +189,7 @@ make infra-reset
 2. PostgreSQL TCP + SELECT 1。
 3. vector extension。
 4. Redis PING。
-5. RabbitMQ connectivity。
+5. RabbitMQ broker + management API。
 6. MinIO bucket existence。
 7. Mailpit endpoint。
 
@@ -216,13 +223,13 @@ lumi_minio_data
 - PostgreSQL `SELECT 1`。
 - `CREATE EXTENSION vector` 已完成。
 - Redis ping。
-- RabbitMQ management health。
+- RabbitMQ management API。
 - MinIO PUT/GET round trip。
-- Mailpit 接收一封测试邮件。
+- Mailpit 接收一封测试邮件并可由 HTTP API 查询。
 
 ### Restart resilience
 
-停止并重启 compose，PostgreSQL 和 MinIO 数据必须保留。
+停止并重启服务，PostgreSQL 和 MinIO 数据必须保留。
 
 ### Network boundary
 
@@ -230,15 +237,17 @@ lumi_minio_data
 
 ## 14. 验收标准
 
-- [ ] `make infra-up` 从空 Docker 环境启动所有服务。
-- [ ] 所有 healthchecks 绿色。
-- [ ] `make doctor` 返回 PASS。
-- [ ] pgvector 可用。
-- [ ] MinIO buckets 自动创建。
-- [ ] RabbitMQ queues 后续可由 worker 声明。
-- [ ] local environment 不需要 AWS/云账号。
-- [ ] `make infra-down` 安全停止。
-- [ ] 数据默认可跨 restart 保留。
+- [x] `make infra-up` 从空 Docker 环境启动所有服务。
+- [x] 所有 healthchecks 绿色。
+- [x] `make doctor` 返回 PASS。
+- [x] pgvector 可用。
+- [x] MinIO buckets 自动创建。
+- [x] RabbitMQ broker 与 management API 可用，queues 留给 NODE-19 声明。
+- [x] local environment 不需要 AWS/云账号。
+- [x] `make infra-down` 安全停止且默认保留 volumes。
+- [x] 数据默认可跨 restart 保留。
+- [x] destructive reset 必须显式 `CONFIRM=1`。
+- [x] GitHub Actions 在全新 hosted Docker runner 完成完整验收。
 
 ## 15. 风险与控制
 
@@ -254,14 +263,25 @@ lumi_minio_data
 
 代码评审禁止把只有 Redis 的状态作为余额、Artifact 或 Project 的唯一来源。
 
+### MinIO cold build
+
+CI 冷环境需要从固定源码 release 编译 MinIO，耗时明显高于镜像 pull；缓存与 CI 加速由 NODE-04 处理，不通过退回旧不安全 release 换取速度。
+
 ## 16. Definition of Done
 
 ```text
-compose infrastructure committed
-+ doctor passes
-+ persistence verified
-+ MinIO round-trip test passes
-+ README local runbook complete
+compose infrastructure committed                  PASS
++ doctor passes                                   PASS
++ persistence verified                            PASS
++ MinIO round-trip test passes                    PASS
++ Mailpit SMTP/API smoke passes                   PASS
++ destructive reset guard verified                PASS
++ README local runbook complete                   PASS
 ```
+
+**NODE-03 Definition of Done: SATISFIED.**
+
+验收证据：`reports/nodes/NODE-03/acceptance.md`  
+GitHub Actions：Run `31585919646` / Job `94079599321`
 
 下一节点：NODE-04 CI Foundation。
