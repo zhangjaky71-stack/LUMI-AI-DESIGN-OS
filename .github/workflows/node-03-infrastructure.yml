@@ -1,0 +1,58 @@
+name: NODE-03 Local Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/compose/**"
+      - "scripts/doctor"
+      - "scripts/infra-smoke"
+      - "scripts/infra-persistence"
+      - "Makefile"
+      - ".env.example"
+      - ".github/workflows/node-03-infrastructure.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  infrastructure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Docker versions
+        run: |
+          docker version
+          docker compose version
+      - name: Prepare local-only env
+        run: make infra-env
+      - name: Validate Compose model
+        run: docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml config --quiet
+      - name: Start infrastructure
+        run: make infra-up
+      - name: Service status
+        run: make infra-status
+      - name: Doctor
+        run: make doctor
+      - name: Infrastructure smoke
+        run: make infra-smoke
+      - name: Restart persistence
+        run: make infra-persistence
+      - name: Destructive reset guard
+        run: |
+          if make infra-reset; then
+            echo "infra-reset unexpectedly succeeded without CONFIRM=1" >&2
+            exit 1
+          fi
+          echo "destructive reset correctly refused"
+      - name: Capture logs on failure
+        if: failure()
+        run: docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml logs --no-color --tail=200
+      - name: Safe stop preserves volumes
+        if: always()
+        run: make infra-down
+      - name: Confirmed destructive reset
+        if: success()
+        run: CONFIRM=1 make infra-reset

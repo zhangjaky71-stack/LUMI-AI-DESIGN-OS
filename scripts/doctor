@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+COMPOSE_DIR="$ROOT_DIR/infra/compose"
+ENV_FILE="${LUMI_INFRA_ENV_FILE:-$COMPOSE_DIR/.env}"
+COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
+FAILURES=0
+TMP_FILE="$(mktemp)"
+trap 'rm -f "$TMP_FILE"' EXIT
+
+pass() { printf 'PASS  %s\n' "$1"; }
+fail() {
+  printf 'FAIL  %s\n' "$1" >&2
+  if [ -s "$TMP_FILE" ]; then sed 's/^/      /' "$TMP_FILE" >&2; fi
+  FAILURES=$((FAILURES + 1))
+}
+
+check() {
+  local label="$1"
+  shift
+  : >"$TMP_FILE"
+  if "$@" >"$TMP_FILE" 2>&1; then pass "$label"; else fail "$label"; fi
+}
+
+if [ ! -f "$ENV_FILE" ]; then
+  echo "FAIL  local env file missing: $ENV_FILE" >&2
+  echo "      run: make infra-env" >&2
+  exit 1
+fi
+
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
+compose=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+
+check "Docker daemon" docker info
+check "Compose configuration" "${compose[@]}" config --quiet
+
+postgres_select() {
+  "${compose[@]}" exec -T postgres psql -U "$POSTGRES_SUPERUSER" -d "$POSTGRES_DB" -Atqc 'SELECT 1' | grep -qx '1'
+}
+postgres_vector() {
+  "${compose[@]}" exec -T postgres psql -U "$POSTGRES_SUPERUSER" -d "$POSTGRES_DB" -Atqc "SELECT 1 FROM pg_extension WHERE extname='vector'" | grep -qx '1'
+}
+postgres_roles() {
+  "${compose[@]}" exec -T postgres psql -U "$POSTGRES_SUPERUSER" -d "$POSTGRES_DB" -Atqc "SELECT count(*) FROM pg_roles WHERE rolname IN ('lumi_app','lumi_migration')" | grep -qx '2'
+}
+redis_ping() {
+  "${compose[@]}" exec -T redis redis-cli -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -qx 'PONG'
+}
+rabbitmq_ping() {
+  "${compose[@]}" exec -T rabbitmq rabbitmq-diagnostics -q ping
+}
+rabbitmq_management() {
+  curl -fsS -u "$RABBITMQ_DEFAULT_USER:$RABBITMQ_DEFAULT_PASS" "http://127.0.0.1:${RABBITMQ_MANAGEMENT_PORT}/api/health/checks/ready-to-serve" >/dev/null
+}
+minio_buckets() {
+  "${compose[@]}" run --rm --no-deps --entrypoint /bin/sh minio-init -c '
+    set -eu
+    mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
+    mc stat "local/$MINIO_BUCKET_ASSETS" >/dev/null
+    mc stat "local/$MINIO_BUCKET_EXPORTS" >/dev/null
+    mc stat "local/$MINIO_BUCKET_SANDBOX" >/dev/null
+  '
+}
+mailpit_ready() {
+  curl -fsS "http://127.0.0.1:${MAILPIT_HTTP_PORT}/readyz" >/dev/null
+}
+
+check "PostgreSQL SELECT 1" postgres_select
+check "PostgreSQL pgvector extension" postgres_vector
+check "PostgreSQL local roles" postgres_roles
+check "Redis PING" redis_ping
+check "RabbitMQ broker" rabbitmq_ping
+check "RabbitMQ management API" rabbitmq_management
+check "MinIO buckets" minio_buckets
+check "Mailpit ready endpoint" mailpit_ready
+
+if [ "$FAILURES" -ne 0 ]; then
+  printf '\nDoctor result: FAIL (%d check(s) failed)\n' "$FAILURES" >&2
+  exit 1
+fi
+
+printf '\nDoctor result: PASS\n'

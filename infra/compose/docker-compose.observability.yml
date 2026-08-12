@@ -1,0 +1,4 @@
+# NODE-03 reserves this Compose overlay for the optional local observability profile.
+# Prometheus/Grafana/Tempo are intentionally enabled in NODE-67, where their
+# production-facing configuration, retention, dashboards, and security are specified.
+services: {}

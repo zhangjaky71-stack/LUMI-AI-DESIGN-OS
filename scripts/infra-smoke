@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+COMPOSE_DIR="$ROOT_DIR/infra/compose"
+ENV_FILE="${LUMI_INFRA_ENV_FILE:-$COMPOSE_DIR/.env}"
+COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
+
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
+compose=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+TOKEN="node03-$(date +%s)-$$"
+
+bash "$ROOT_DIR/scripts/doctor"
+
+"${compose[@]}" run --rm --no-deps -e SMOKE_TOKEN="$TOKEN" --entrypoint /bin/sh minio-init -c '
+  set -eu
+  mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
+  key="local/$MINIO_BUCKET_SANDBOX/node03-smoke/$SMOKE_TOKEN.txt"
+  printf "%s" "$SMOKE_TOKEN" | mc pipe "$key" >/dev/null
+  test "$(mc cat "$key")" = "$SMOKE_TOKEN"
+  mc rm "$key" >/dev/null
+'
+printf 'PASS  MinIO PUT/GET round trip\n'
+
+export SMOKE_SUBJECT="LUMI NODE-03 $TOKEN"
+python3 - <<'PY'
+import os
+import smtplib
+from email.message import EmailMessage
+
+message = EmailMessage()
+message["From"] = "node03@lumi.local"
+message["To"] = "doctor@lumi.local"
+message["Subject"] = os.environ["SMOKE_SUBJECT"]
+message.set_content("NODE-03 Mailpit smoke")
+with smtplib.SMTP("127.0.0.1", int(os.environ["MAILPIT_SMTP_PORT"]), timeout=10) as smtp:
+    smtp.send_message(message)
+PY
+
+mail_seen=0
+for _ in $(seq 1 20); do
+  if curl -fsS "http://127.0.0.1:${MAILPIT_HTTP_PORT}/api/v1/messages" | grep -Fq "$SMOKE_SUBJECT"; then
+    mail_seen=1
+    break
+  fi
+  sleep 0.5
+done
+
+if [ "$mail_seen" -ne 1 ]; then
+  echo "FAIL  Mailpit did not expose the SMTP smoke message" >&2
+  exit 1
+fi
+printf 'PASS  Mailpit SMTP receive + API lookup\n'
+printf '\nInfrastructure smoke: PASS\n'

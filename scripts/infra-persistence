@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+COMPOSE_DIR="$ROOT_DIR/infra/compose"
+ENV_FILE="${LUMI_INFRA_ENV_FILE:-$COMPOSE_DIR/.env}"
+COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
+
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
+compose=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+TOKEN="node03-persist-$(date +%s)-$$"
+
+"${compose[@]}" exec -T postgres psql -U "$POSTGRES_SUPERUSER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<SQL >/dev/null
+CREATE TABLE IF NOT EXISTS node03_persistence_probe (marker text PRIMARY KEY);
+INSERT INTO node03_persistence_probe(marker) VALUES ('$TOKEN') ON CONFLICT DO NOTHING;
+SQL
+
+"${compose[@]}" run --rm --no-deps -e PERSIST_TOKEN="$TOKEN" --entrypoint /bin/sh minio-init -c '
+  set -eu
+  mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
+  printf "%s" "$PERSIST_TOKEN" | mc pipe "local/$MINIO_BUCKET_SANDBOX/node03-persistence/$PERSIST_TOKEN.txt" >/dev/null
+'
+
+"${compose[@]}" restart postgres minio >/dev/null
+"${compose[@]}" up -d --wait --wait-timeout 180 postgres minio >/dev/null
+
+"${compose[@]}" exec -T postgres psql -U "$POSTGRES_SUPERUSER" -d "$POSTGRES_DB" -Atqc "SELECT marker FROM node03_persistence_probe WHERE marker='$TOKEN'" | grep -qx "$TOKEN"
+printf 'PASS  PostgreSQL data survived restart\n'
+
+"${compose[@]}" run --rm --no-deps -e PERSIST_TOKEN="$TOKEN" --entrypoint /bin/sh minio-init -c '
+  set -eu
+  mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
+  key="local/$MINIO_BUCKET_SANDBOX/node03-persistence/$PERSIST_TOKEN.txt"
+  test "$(mc cat "$key")" = "$PERSIST_TOKEN"
+  mc rm "$key" >/dev/null
+'
+printf 'PASS  MinIO object survived restart\n'
+
+"${compose[@]}" exec -T postgres psql -U "$POSTGRES_SUPERUSER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "DELETE FROM node03_persistence_probe WHERE marker='$TOKEN';" >/dev/null
+printf '\nPersistence smoke: PASS\n'
