@@ -1,10 +1,13 @@
 # NODE-04 — CI Foundation
 
 > Phase: -1 Engineering Foundation  
-> Status: **VALIDATING**  
-> Implementation Status: **VALIDATING**  
-> Implementation Branch: `node-04-ci-foundation`  
+> Status: **COMPLETE**  
+> Implementation Status: **COMPLETE**  
+> Implemented Commit: `bfa746b68e20d4f8c7bdeb0d423f4a322a790d69`  
 > Acceptance Report: `reports/nodes/NODE-04/acceptance.md`  
+> Clean Acceptance PR: `#1` / CI Run `31587555221` / Secret Scan `31587555264`  
+> Failure Proof PR: `#2` / CI Run `31588072018` / Secret Scan `31588072036` / CLOSED NOT MERGED  
+> Implemented At: `2026-08-12`  
 > Priority: P0  
 > Depends on: NODE-02, NODE-03  
 > Produces: GitHub Actions 质量门禁、依赖缓存、基础安全扫描和可复现 CI
@@ -118,6 +121,8 @@ secret-scan
 
 如果 GitHub 仓库策略当前无法自动由 connector 配置，文档记录为 repository setting action，在实施时通过 API/人工一次性设置。
 
+NODE-04 实施时，当前 GitHub connector 未暴露 branch-protection/ruleset 管理写接口，因此已在 `docs/ci/BRANCH-PROTECTION.md` 记录一次性仓库设置动作。本节点不虚假声明该 GitHub 仓库设置已经自动生效。
+
 ## 7. Secret Safety
 
 CI 禁止输出：
@@ -136,6 +141,8 @@ presigned URL query strings
 - gitleaks 或等价 OSS scanner 作为 repo-level fallback。
 - `.env.example` allowlist。
 
+NODE-04 已实现 Gitleaks blocking gate，并通过 clean PR + deliberate test-secret PR 双向验证。
+
 ## 8. Dependency Security
 
 P0：
@@ -145,6 +152,8 @@ P0：
 - lockfile 必须提交。
 
 P1：生成 SBOM（CycloneDX/SPDX）。
+
+当前实现：PR 使用 native dependency review；周期任务记录 pnpm 与 Python ecosystem audits。CodeQL v4 已 scaffold，私有仓库在具备对应 security-events 能力并设置 `LUMI_ENABLE_CODEQL=1` 后启用。
 
 ## 9. Test Artifacts
 
@@ -159,6 +168,8 @@ contract diff
 ```
 
 禁止上传包含 user content 或 secrets 的实际生产数据。
+
+NODE-04 clean PR 已生成前端与 Python 诊断 artifacts；failure proof 中 Python job 失败后仍成功上传 diagnostics。
 
 ## 10. Coverage 策略
 
@@ -201,6 +212,8 @@ API client、schema snapshot 等 generated artifact 必须有明确策略：
 - 如果前端构建依赖且生成稳定，则提交 snapshot。
 - CI 重新生成并检查 `git diff --exit-code`，防止 stale generated files。
 
+`contracts` required job 已从 NODE-04 起承担 lockfile/当前 scaffold contract 验证；NODE-11～15 的 JSON Schema/OpenAPI/Event/Design IR 文件进入仓库后继续扩展此稳定 gate，而不更改 required-check 名称。
+
 ## 13. CI 时间目标
 
 P0 PR 快速门：
@@ -211,6 +224,8 @@ P95 < 12 min
 ```
 
 耗时 AI benchmark、真实 provider integration、长视频渲染不得放普通 PR blocking path；进入 nightly/release gate。
+
+NODE-04 integration 冷启动的主要成本来自固定 MinIO release 的源码构建；该构建路径已在 NODE-03 和 NODE-04 clean PR 中真实通过。
 
 ## 14. 测试本身的测试
 
@@ -223,17 +238,21 @@ P95 < 12 min
 
 这是验证 CI 真的阻止坏代码，而不是“总是绿色”。
 
+NODE-04 实际执行了独立 failure proof PR `#2`：故意的 Python test 在 Ruff、Pyright 均通过后于 Pytest 失败；独立 secret sentinel 同时让 Gitleaks 失败。该 PR 已 CLOSED / NOT MERGED。
+
 ## 15. 验收标准
 
-- [ ] Push/PR 会自动运行 CI。
-- [ ] TS lint/typecheck/test/build 通过。
-- [ ] Python lint/typecheck/test 通过。
-- [ ] integration services 可启动并测试。
-- [ ] frozen lockfile install。
-- [ ] secret scanner 生效。
-- [ ] CI 不依赖任何付费模型 key。
-- [ ] 失败测试能阻断 workflow。
-- [ ] artifacts 可用于定位失败。
+- [x] Push/PR 会自动运行 CI。
+- [x] TS lint/typecheck/test/build 通过。
+- [x] Python lint/typecheck/test 通过。
+- [x] integration services 可启动并测试。
+- [x] frozen lockfile install。
+- [x] secret scanner 生效。
+- [x] CI 不依赖任何付费模型 key。
+- [x] 失败测试能阻断 workflow。
+- [x] artifacts 可用于定位失败。
+
+详细证据见 `reports/nodes/NODE-04/acceptance.md`。
 
 ## 16. 回滚
 
@@ -246,25 +265,58 @@ P95 < 12 min
 ## 17. Definition of Done
 
 ```text
-CI workflows committed
-+ clean PR simulation green
-+ deliberate failure simulation red
-+ lockfile reproducibility proven
-+ secrets not exposed
+CI workflows committed                 PASS
+clean PR simulation green              PASS
+deliberate failure simulation red      PASS
+lockfile reproducibility proven        PASS
+secrets not exposed                    PASS
 ```
 
-完成后 Engineering Foundation 结束，进入 Phase 0：NODE-05 Benchmark Harness。
+Engineering Foundation 已完成，下一节点进入 Phase 0：NODE-05 Benchmark Harness。
 
-## 18. NODE-04 implementation notes
+## 18. NODE-04 implementation summary
 
-Implemented on `node-04-ci-foundation` for validation:
+已合并到 `main` 的 CI 基座：
 
 - Core `CI` workflow with stable `frontend`, `python`, `contracts`, and `integration` branch-gate jobs plus informational `changes` classification.
 - Separate blocking `secret-scan` workflow using Gitleaks and repository policy.
 - Advisory native dependency review with scheduled pnpm/pip ecosystem audit reporting.
-- CodeQL v4 scaffold that is automatically active for public repositories and can be enabled for this private repository with `LUMI_ENABLE_CODEQL=1` once repository security capability is available.
+- CodeQL v4 scaffold that can be enabled for this private repository with `LUMI_ENABLE_CODEQL=1` once repository security capability is available.
 - pnpm store, Turborepo, and uv caches tied to lockfile/config hashes.
 - Failure diagnostics retained as GitHub Actions artifacts.
 - `scripts/ci-contracts` and `make ci-contracts` / `make ci-local` for local parity.
 - Completed NODE-02 and NODE-03 acceptance workflows retained as manual regression workflows rather than duplicate push gates.
 - Required-check repository-setting action documented at `docs/ci/BRANCH-PROTECTION.md`.
+
+## 19. Acceptance evidence
+
+### Clean implementation PR
+
+```text
+PR #1
+Merge commit: bfa746b68e20d4f8c7bdeb0d423f4a322a790d69
+CI Run: 31587555221
+frontend:    PASS (job 94084954410)
+python:      PASS (job 94084954510)
+contracts:   PASS (job 94084954463)
+integration: PASS (job 94084954515)
+Secret Scan Run: 31587555264 / job 94084806599 PASS
+Dependency Review Run: 31587555278 / job 94084806255 PASS
+```
+
+### Deliberate failure proof
+
+```text
+PR #2 — CLOSED / NOT MERGED
+CI Run: 31588072018
+python job 94086534959:
+  Ruff format PASS
+  Ruff lint   PASS
+  Pyright     PASS
+  Pytest      FAIL (expected)
+
+Secret Scan Run: 31588072036
+secret-scan job 94086422367: FAIL (expected)
+```
+
+**NODE-04 — COMPLETE**
