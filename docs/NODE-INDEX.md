@@ -2,7 +2,7 @@
 
 > Architecture Baseline: **LUMI AI Design OS — Architecture V2**  
 > Documentation Status: **NODE-00～NODE-73 ALL SPECIFIED**  
-> Implementation Status: **NODE-04 engineering COMPLETE; next engineering node is NODE-05**  
+> Implementation Status: **NODE-05 engineering COMPLETE; next engineering node is NODE-06**  
 > Rule: **SPECIFIED ≠ IMPLEMENTED**. 每个工程 Node 必须完成代码、测试、验收和 GitHub 提交后才能改为 `COMPLETE`。
 
 ---
@@ -46,7 +46,7 @@ BLOCKED_TECHNICAL  # 技术故障
 
 | Node | 文档 | 状态 | 主要产物 |
 |---|---|---|---|
-| NODE-05 | [Benchmark Harness](nodes/NODE-05-BENCHMARK-HARNESS.md) | SPECIFIED | Eval runner/dataset/grader/release gate |
+| NODE-05 | [Benchmark Harness](nodes/NODE-05-BENCHMARK-HARNESS.md) | **COMPLETE** | 20-case `smoke@1.0.0`、runner/grader、baseline/candidate release gate；CI `31591585790` PASS；artifact `9139339839` |
 | NODE-06 | [Lovart Capability Matrix](nodes/NODE-06-LOVART-CAPABILITY-MATRIX.md) | SPECIFIED | 竞品公开能力与LUMI验收映射 |
 | NODE-07 | [Model Provider Matrix](nodes/NODE-07-MODEL-PROVIDER-MATRIX.md) | SPECIFIED | 模型能力/成本/延迟/质量矩阵 |
 | NODE-08 | [Canvas Technology Spike](nodes/NODE-08-CANVAS-TECHNOLOGY-SPIKE.md) | SPECIFIED | PixiJS Canvas性能与可行性验证 |
