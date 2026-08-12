@@ -1,0 +1,31 @@
+{
+  "matrix_version": "1.0.0",
+  "observed_at": "2026-08-12",
+  "policy": {
+    "fact_boundary": "Only public Lovart behavior from official docs/pages/statements/changelog/blog is recorded. No proprietary implementation is inferred.",
+    "evidence_tiers": {
+      "1": "official docs/statement/changelog",
+      "2": "official feature/tool page",
+      "3": "official blog/product update"
+    }
+  },
+  "sources": [
+    {"source_id":"SRC-GETTING-STARTED","title":"Design Your First Project","type":"official_docs","tier":1,"url":"https://www.lovart.ai/docs/getting-started/design-your-first-project","supports":"Projects, natural-language generation/editing, image-to-video, export/publish, quickstart presets.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-CANVAS","title":"Customize Your Canvas","type":"official_docs","tier":1,"url":"https://www.lovart.ai/docs/edit-your-design/customize-your-canvas","supports":"Infinite Canvas select/move/resize, multi-select, group/lock/layer order, pan/zoom, layers/history, generated files, minimap, quick edit actions.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-REFERENCES","title":"Adding References","type":"official_docs","tier":1,"url":"https://www.lovart.ai/docs/how-to-prompt/adding-references","supports":"File upload, reusable asset library, Brand Kit storage/reuse, brand book parsing, per-generation/project application.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-MODELS","title":"Selecting AI Models","type":"official_docs","tier":1,"url":"https://www.lovart.ai/docs/how-to-prompt/selecting-ai-models","supports":"Auto/manual model selection, model preference/lock, direct image/video generator, image/video/3D model preferences and parameters.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-CHAT","title":"Chat Tools","type":"official_docs","tier":1,"url":"https://www.lovart.ai/docs/how-to-prompt/chat-tools","supports":"Mentions, web search, Thinking/Fast modes, voice mode, OpenClaw, chat history.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-SKILLS","title":"Agent Skills","type":"official_docs","tier":1,"url":"https://www.lovart.ai/docs/how-to-prompt/agent-skills","supports":"Built-in multi-step creative skills and reusable Custom Skills distilled from conversations.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-EXPORT","title":"Export Formats","type":"official_docs","tier":1,"url":"https://www.lovart.ai/docs/export-formats","supports":"PNG/JPEG, MP4, PDF/PPTX/PPTX editable text, HTML, SVG, PSD batch export, community publish.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-TOUCH","title":"Touch Edit","type":"official_feature_page","tier":2,"url":"https://www.lovart.ai/features/touch-edit-ai","supports":"Semantic object selection, text-directed local edit, multi-object edit, quick edit, non-destructive variations, revert/compare.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-MCOT","title":"MCoT Engine","type":"official_feature_page","tier":2,"url":"https://www.lovart.ai/features/mcot-engine","supports":"Goal decomposition, audience/asset planning, model orchestration, persistent brand/project state claims.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-BRAND","title":"AI Brand Kit","type":"official_tool_page","tier":2,"url":"https://www.lovart.ai/tools/ai-brand-kit","supports":"Brand identity generation, ChatCanvas exploration, Touch Edit refinement, auto-apply, mockups, brand package exports.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-BATCH","title":"AI Design Canvas","type":"official_tool_page","tier":2,"url":"https://www.lovart.ai/tools/ai-design-canvas","supports":"Precision edit, brand lock, batch variants, ChatCanvas infinite canvas, high-res export.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-VIDEO","title":"AI Video Generator","type":"official_tool_page","tier":2,"url":"https://www.lovart.ai/tools/video-generator","supports":"Text/image-to-video, product/social video, text/effects/brand elements, platform aspect adaptations.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-VERSION","title":"AI Design Version Control","type":"official_tool_page","tier":2,"url":"https://www.lovart.ai/tools/version-control-design","supports":"Marketing claim of iteration save, compare, restore, branch.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-PRICING","title":"Lovart Subscribe FAQ","type":"official_statement","tier":1,"url":"https://www.lovart.ai/statement/lovart-subscribe-faq","supports":"Credits, plans, top-ups/expiry, commercial licensing conditions.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-CHANGELOG","title":"Lovart Changelog","type":"official_changelog","tier":1,"url":"https://www.lovart.ai/changelog","supports":"Current model integrations and product release evidence.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-TEAM","title":"Lovart Team Plan","type":"official_blog","tier":3,"url":"https://www.lovart.ai/blog/02-enterprise-team-plan-guide","supports":"Team-plan marketing/blog evidence for shared review/comment patterns; lower confidence than core docs.","observed_at":"2026-08-12"},
+    {"source_id":"SRC-PRODUCT-UPDATE","title":"Lovart Product Update May 2026","type":"official_blog","tier":3,"url":"https://www.lovart.ai/ja/blog/lovart-product-update-may-2026","supports":"Batch export/shared library, prompt-history search, zoom, share-link expiration claims.","observed_at":"2026-08-12"}
+  ]
+}
