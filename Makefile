@@ -5,7 +5,7 @@ COMPOSE_ENV := $(COMPOSE_DIR)/.env
 COMPOSE_FILE := $(COMPOSE_DIR)/docker-compose.yml
 COMPOSE := docker compose --env-file $(COMPOSE_ENV) -f $(COMPOSE_FILE)
 
-.PHONY: bootstrap dev dev-web dev-admin dev-api dev-agent dev-worker lint typecheck test format-check check verify-scaffold ci-contracts ci-local eval-smoke eval eval-live eval-report product-parity-validate model-provider-validate sandbox-contract sandbox-e2e infra-env infra-up infra-status infra-down infra-reset infra-logs doctor infra-smoke infra-persistence db-upgrade db-downgrade-one db-current db-seed
+.PHONY: bootstrap dev dev-web dev-admin dev-api dev-agent dev-worker lint typecheck test format-check check verify-scaffold ci-contracts ci-local eval-smoke eval eval-live eval-report product-parity-validate model-provider-validate model-gateway-contract sandbox-contract sandbox-e2e infra-env infra-up infra-status infra-down infra-reset infra-logs doctor infra-smoke infra-persistence db-upgrade db-downgrade-one db-current db-seed
 
 bootstrap:
 	corepack enable
@@ -57,6 +57,11 @@ product-parity-validate:
 
 model-provider-validate:
 	python3 scripts/validate_model_provider_matrix.py
+
+model-gateway-contract:
+	PYTHONPATH=services/model-gateway/src python3 scripts/validate_model_gateway_contract.py
+	PYTHONPATH=services/model-gateway/src python3 -m unittest discover -s services/model-gateway/tests -p 'test_*.py'
+	PYTHONPATH=services/model-gateway/src python3 scripts/integration_model_gateway.py
 
 sandbox-contract:
 	PYTHONPATH=services/sandbox-runtime/src python3 scripts/validate_sandbox_runtime_contract.py
