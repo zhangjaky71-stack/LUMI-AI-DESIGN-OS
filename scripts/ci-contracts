@@ -52,7 +52,7 @@ for root in "${schema_roots[@]}"; do
 done
 
 if [ "$found" -eq 0 ]; then
-  echo "INFO  JSON/OpenAPI/Event/Design-IR schema gates are reserved for NODE-11..15 and will auto-enter this required contracts job when their files land."
+  echo "INFO  no contract/schema roots are present yet"
 fi
 
 if [ -f docs/product/capability-matrix-manifest.json ]; then
@@ -65,6 +65,11 @@ if [ -f docs/models/provider-matrix-manifest.json ]; then
   python3 scripts/validate_model_provider_matrix.py
 else
   echo "INFO  model provider matrix contract is reserved for NODE-07"
+fi
+
+if [ -d contracts/projects/v1 ]; then
+  python3 scripts/validate_project_contracts.py
+  echo "PASS  Project Core V1 contract"
 fi
 
 echo "Contract foundation: PASS"
