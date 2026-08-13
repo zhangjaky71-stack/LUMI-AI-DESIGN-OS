@@ -1,6 +1,8 @@
+from .contexts import BoundedContext
 from .entities import (
     AgentRun,
     Artifact,
+    ArtifactBranch,
     ArtifactVersion,
     Asset,
     Brand,
@@ -42,9 +44,11 @@ __all__ = [
     "AgentRun",
     "AgentRunStatus",
     "Artifact",
+    "ArtifactBranch",
     "ArtifactVersion",
     "ArtifactVersionStatus",
     "Asset",
+    "BoundedContext",
     "Brand",
     "Budget",
     "Color",
