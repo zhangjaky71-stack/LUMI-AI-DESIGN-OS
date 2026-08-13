@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lumi:event:project.created:1",
+  "title": "project.created payload v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["project_id", "workspace_id", "name"],
+  "properties": {
+    "project_id": {"type": "string", "format": "uuid"},
+    "workspace_id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string", "minLength": 1},
+    "brand_id": {"type": ["string", "null"], "format": "uuid"},
+    "status": {"type": "string"}
+  }
+}
