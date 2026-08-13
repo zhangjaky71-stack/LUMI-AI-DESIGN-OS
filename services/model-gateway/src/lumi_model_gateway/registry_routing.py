@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, replace
 from typing import Any
 
 from .capability_registry import CapabilityRegistry, RegistrySnapshot, SupportLevel
-from .errors import NoRouteError
-from .models import ModelRequest, ProviderModel, RouteCandidate, RoutingDecision
+from .errors import NoRouteError, ProviderInvocationError
+from .models import (
+    CostEstimate,
+    ModelRequest,
+    ModelResult,
+    ProviderModel,
+    RoutingDecision,
+    StreamChunk,
+)
 from .ports import ProviderAdapter, ProviderHealthRegistry, ProviderRegistry
 from .routing import (
-    DefaultModelPolicyResolver,
     ModelPolicyResolver,
     ModelRouter,
     OrganizationModelPolicy,
@@ -24,22 +31,22 @@ class _RegistryAdapter:
     def validate(self, request: ModelRequest) -> None:
         self.delegate.validate(request)
 
-    async def estimate_cost(self, request: ModelRequest):
+    async def estimate_cost(self, request: ModelRequest) -> CostEstimate:
         return await self.delegate.estimate_cost(request)
 
-    async def invoke(self, request: ModelRequest):
+    async def invoke(self, request: ModelRequest) -> ModelResult:
         return await self.delegate.invoke(request)
 
-    def stream(self, request: ModelRequest):
+    def stream(self, request: ModelRequest) -> AsyncIterator[StreamChunk]:
         return self.delegate.stream(request)
 
-    async def get_async_status(self, provider_request_id: str):
+    async def get_async_status(self, provider_request_id: str) -> ModelResult:
         return await self.delegate.get_async_status(provider_request_id)
 
-    async def cancel(self, provider_request_id: str):
+    async def cancel(self, provider_request_id: str) -> ModelResult:
         return await self.delegate.cancel(provider_request_id)
 
-    def normalize_error(self, error: Exception):
+    def normalize_error(self, error: Exception) -> ProviderInvocationError:
         return self.delegate.normalize_error(error)
 
 
@@ -88,7 +95,9 @@ class RegistryAwareModelRouter(ModelRouter):
             health=self.health,
             policy_resolver=StaticModelPolicyResolver((policy,)),
         )
-        decision = await router.route(self._apply_registry_preference(request, snapshot))
+        decision = await router.route(
+            self._apply_registry_preference(request, snapshot)
+        )
         marker = (
             f"REGISTRY_SNAPSHOT:{snapshot.snapshot_id}",
             f"REGISTRY_VERSION:{snapshot.registry_version}",
@@ -135,9 +144,15 @@ class RegistryAwareModelRouter(ModelRouter):
                 provider=model.provider,
                 model=model.model,
                 capabilities=frozenset({request.capability}),
-                quality_score=quality if quality is not None else descriptor.quality_score,
+                quality_score=(
+                    quality if quality is not None else descriptor.quality_score
+                ),
                 latency_class=descriptor.latency_class,
-                regions=(frozenset(model.regions) if model.regions else descriptor.regions),
+                regions=(
+                    frozenset(model.regions)
+                    if model.regions
+                    else descriptor.regions
+                ),
                 supports_streaming=descriptor.supports_streaming,
                 supports_async=descriptor.supports_async,
             )
@@ -183,7 +198,10 @@ class RegistryAwareModelRouter(ModelRouter):
         return replace(request, routing_hints=hints)
 
 
-def _intersect_or_other(left: frozenset[str], right: frozenset[str]) -> frozenset[str]:
+def _intersect_or_other(
+    left: frozenset[str],
+    right: frozenset[str],
+) -> frozenset[str]:
     if left and right:
         return left.intersection(right)
     return left or right
