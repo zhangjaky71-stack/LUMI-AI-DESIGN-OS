@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lumi:event:artifact.version_created:1",
+  "title": "artifact.version_created payload v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["artifact_id", "artifact_version_id", "project_id", "version_number"],
+  "properties": {
+    "artifact_id": {"type": "string", "format": "uuid"},
+    "artifact_version_id": {"type": "string", "format": "uuid"},
+    "project_id": {"type": "string", "format": "uuid"},
+    "branch_id": {"type": ["string", "null"], "format": "uuid"},
+    "parent_version_id": {"type": ["string", "null"], "format": "uuid"},
+    "version_number": {"type": "integer", "minimum": 1},
+    "content_hash": {"type": ["string", "null"]}
+  }
+}
