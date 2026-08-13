@@ -1,0 +1,26 @@
+{
+  "name": "model-provider-selection",
+  "version": "1.0.0",
+  "observed_at": "2026-08-13",
+  "kind": "live_provider_benchmark_spec",
+  "execution_status": "SPECIFIED_NOT_RUN",
+  "live_policy": "SKIPPED_WITHOUT_PROVIDER_KEY_AND_POSITIVE_BUDGET",
+  "dimensions": ["task_success","constraint_success","quality","latency_ms","cost_usd","failure_rate"],
+  "benchmark_groups": [
+    {"group":"reasoning-director-v1","routes":["reasoning.director"],"cases":["brief-decomposition","project-planning","constraint-extraction","tool-selection","repair-decision"]},
+    {"group":"reasoning-default-v1","routes":["reasoning.default"],"cases":["brief-decomposition","tool-selection","structured-output"]},
+    {"group":"reasoning-fast-v1","routes":["reasoning.fast"],"cases":["classification","short-subtask","routing-decision"]},
+    {"group":"vision-ocr-v1","routes":["vision.ocr"],"cases":["poster-text-extraction","layout-geometry-read","multilingual-label-read"]},
+    {"group":"rerank-v1","routes":["retrieval.rerank"],"cases":["asset-search-rerank","brand-doc-rerank"]},
+    {"group":"image-general-v1","routes":["image.general"],"cases":["prompt-adherence","product-identity","brand-color","general-quality"]},
+    {"group":"image-hero-v1","routes":["image.hero"],"cases":["premium-product-hero","photorealism","brand-color","reference-adherence"]},
+    {"group":"image-text-heavy-v1","routes":["image.text_heavy"],"cases":["multilingual-poster-text","typography-layout","small-text-preservation"]},
+    {"group":"image-local-edit-v1","routes":["image.local_edit"],"cases":["background-only-edit","logo-protection","qr-protection","product-identity-protection"]},
+    {"group":"image-fast-v1","routes":["image.fast_variants"],"cases":["batch-variants","prompt-adherence","cost-throughput"]},
+    {"group":"video-general-v1","routes":["video.general"],"cases":["storyboard-adherence","identity-consistency","motion-quality","audio-presence","duration-aspect"]},
+    {"group":"video-fast-v1","routes":["video.fast"],"cases":["image-to-video","cost-throughput","identity-consistency"]},
+    {"group":"video-edit-v1","routes":["video.edit"],"cases":["element-replacement","perspective-edit","input-video-preservation"]},
+    {"group":"embedding-text-v1","routes":["embedding.text"],"cases":["brand-doc-retrieval","asset-caption-retrieval","cost-throughput"]},
+    {"group":"embedding-multimodal-v1","routes":["embedding.multimodal"],"cases":["image-to-text-search","text-to-image-search","cross-modal-brand-asset-search"]}
+  ]
+}

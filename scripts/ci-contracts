@@ -61,4 +61,10 @@ else
   echo "INFO  product parity matrix contract is reserved for NODE-06"
 fi
 
+if [ -f docs/models/provider-matrix-manifest.json ]; then
+  python3 scripts/validate_model_provider_matrix.py
+else
+  echo "INFO  model provider matrix contract is reserved for NODE-07"
+fi
+
 echo "Contract foundation: PASS"

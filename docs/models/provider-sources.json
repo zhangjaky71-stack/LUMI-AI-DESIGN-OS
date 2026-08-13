@@ -1,0 +1,42 @@
+{
+  "registry_version": "1.0.0",
+  "observed_at": "2026-08-13",
+  "pricing_expires_at": "2026-09-12",
+  "policy": "Only first-party provider documentation is accepted for model capability, lifecycle and price records. Live quality/latency numbers remain NOT_MEASURED until executed through LUMI Benchmark Harness.",
+  "sources": [
+    {"source_id":"OPENAI-MODELS","provider":"openai","type":"official_docs","url":"https://developers.openai.com/api/docs/models","supports":"GPT-5.6 Sol/Terra/Luna IDs, capability positioning, prices, context and tool support","observed_at":"2026-08-13"},
+    {"source_id":"OPENAI-SOL","provider":"openai","type":"official_model_card","url":"https://developers.openai.com/api/docs/models/gpt-5.6-sol","supports":"GPT-5.6 Sol context, pricing, modalities, tools and rate-limit structure","observed_at":"2026-08-13"},
+    {"source_id":"OPENAI-IMAGE2","provider":"openai","type":"official_model_card","url":"https://developers.openai.com/api/docs/models/gpt-image-2","supports":"GPT Image 2 generation/editing, image input/output, snapshot, flexible sizes","observed_at":"2026-08-13"},
+    {"source_id":"OPENAI-EMBED-SMALL","provider":"openai","type":"official_model_card","url":"https://developers.openai.com/api/docs/models/text-embedding-3-small","supports":"text-embedding-3-small pricing and text embedding capability","observed_at":"2026-08-13"},
+    {"source_id":"OPENAI-EMBED-LARGE","provider":"openai","type":"official_model_card","url":"https://developers.openai.com/api/docs/models/text-embedding-3-large","supports":"text-embedding-3-large pricing and text embedding capability","observed_at":"2026-08-13"},
+    {"source_id":"OPENAI-DATA","provider":"openai","type":"official_docs","url":"https://platform.openai.com/docs/models/default-usage-policies-by-endpoint","supports":"data controls and regional data-residency capabilities","observed_at":"2026-08-13"},
+
+    {"source_id":"GOOGLE-MODELS","provider":"google","type":"official_docs","url":"https://ai.google.dev/gemini-api/docs/models","supports":"current stable/preview Gemini, Nano Banana, Veo and Omni families and lifecycle conventions","observed_at":"2026-08-13"},
+    {"source_id":"GOOGLE-PRICING","provider":"google","type":"official_pricing","url":"https://ai.google.dev/gemini-api/docs/pricing","supports":"Gemini reasoning/image/video/embedding pricing","observed_at":"2026-08-13"},
+    {"source_id":"GOOGLE-36-FLASH","provider":"google","type":"official_model_card","url":"https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash","supports":"Gemini 3.6 Flash model ID, 1M context, tools, stable lifecycle","observed_at":"2026-08-13"},
+    {"source_id":"GOOGLE-31-PRO","provider":"google","type":"official_docs","url":"https://ai.google.dev/gemini-api/docs/gemini-3","supports":"Gemini 3.1 Pro model ID, context, multimodal inputs and preview lifecycle","observed_at":"2026-08-13"},
+    {"source_id":"GOOGLE-IMAGE","provider":"google","type":"official_docs","url":"https://ai.google.dev/gemini-api/docs/image-generation","supports":"Nano Banana 2/Lite/Pro selection and image generation/editing roles","observed_at":"2026-08-13"},
+    {"source_id":"GOOGLE-31-FLASH-IMAGE","provider":"google","type":"official_model_card","url":"https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-image","supports":"Gemini 3.1 Flash Image model ID, 0.5K-4K outputs, search grounding and limits","observed_at":"2026-08-13"},
+    {"source_id":"GOOGLE-VIDEO","provider":"google","type":"official_docs","url":"https://ai.google.dev/gemini-api/docs/video","supports":"Veo 3.1 Standard/Fast/Lite IDs, text/image inputs, first/last frame and reference-image capabilities","observed_at":"2026-08-13"},
+    {"source_id":"GOOGLE-OMNI","provider":"google","type":"official_model_card","url":"https://ai.google.dev/gemini-api/docs/models/gemini-omni-flash","supports":"Gemini Omni Flash preview conversational video generation/editing, 3-10s 720p output","observed_at":"2026-08-13"},
+    {"source_id":"GOOGLE-DEPRECATIONS","provider":"google","type":"official_docs","url":"https://ai.google.dev/gemini-api/docs/deprecations","supports":"Veo/Imagen lifecycle and shutdown dates","observed_at":"2026-08-13"},
+    {"source_id":"GOOGLE-EMBED","provider":"google","type":"official_docs","url":"https://ai.google.dev/gemini-api/docs/embeddings","supports":"Gemini embedding family capability documentation","observed_at":"2026-08-13"},
+
+    {"source_id":"ANTHROPIC-MODELS","provider":"anthropic","type":"official_docs","url":"https://platform.claude.com/docs/en/about-claude/models/overview","supports":"Fable 5, Opus 5, Sonnet 5, Haiku 4.5 IDs, context, latency labels and prices","observed_at":"2026-08-13"},
+    {"source_id":"ANTHROPIC-FABLE","provider":"anthropic","type":"official_docs","url":"https://platform.claude.com/docs/en/about-claude/models/introducing-claude-fable-5-and-claude-mythos-5","supports":"Fable 5 availability, pricing, safety-classifier refusals, fallback and 30-day retention","observed_at":"2026-08-13"},
+    {"source_id":"ANTHROPIC-OPUS","provider":"anthropic","type":"official_docs","url":"https://platform.claude.com/docs/en/about-claude/models/whats-new-opus-5","supports":"Opus 5 model ID, 1M context, pricing and availability","observed_at":"2026-08-13"},
+    {"source_id":"ANTHROPIC-SONNET","provider":"anthropic","type":"official_docs","url":"https://platform.claude.com/docs/en/about-claude/models/whats-new-sonnet-5","supports":"Sonnet 5 model ID, 1M context, standard price and temporary introductory price through 2026-08-31","observed_at":"2026-08-13"},
+    {"source_id":"ANTHROPIC-FALLBACK","provider":"anthropic","type":"official_docs","url":"https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback","supports":"HTTP-200 refusal stop reason and provider fallback behavior","observed_at":"2026-08-13"},
+
+    {"source_id":"BFL-FLUX2","provider":"black-forest-labs","type":"official_docs","url":"https://docs.bfl.ai/flux_2/flux2_overview","supports":"FLUX.2 max/pro/flex/klein roles, multi-reference limits, resolution, lifecycle endpoints","observed_at":"2026-08-13"},
+    {"source_id":"BFL-PRICING","provider":"black-forest-labs","type":"official_pricing","url":"https://docs.bfl.ai/quick_start/pricing","supports":"FLUX.2 per-image/megapixel starting prices","observed_at":"2026-08-13"},
+    {"source_id":"BFL-EDIT","provider":"black-forest-labs","type":"official_docs","url":"https://docs.bfl.ai/flux_2/flux2_image_editing","supports":"FLUX.2 text edit, multi-reference inputs, async polling and signed URL expiry","observed_at":"2026-08-13"},
+    {"source_id":"BFL-ENDPOINTS","provider":"black-forest-labs","type":"official_docs","url":"https://docs.bfl.ai/quick_start/generating_images","supports":"current FLUX endpoints and regional API endpoints","observed_at":"2026-08-13"},
+
+    {"source_id":"RUNWAY-MODELS","provider":"runway","type":"official_docs","url":"https://docs.dev.runwayml.com/guides/models/","supports":"Gen-4.5, Gen-4 Turbo, Aleph2 and other current API model IDs/modalities","observed_at":"2026-08-13"},
+    {"source_id":"RUNWAY-PRICING","provider":"runway","type":"official_pricing","url":"https://docs.dev.runwayml.com/guides/pricing/","supports":"current video/image pricing in credits with USD conversion","observed_at":"2026-08-13"},
+    {"source_id":"RUNWAY-API","provider":"runway","type":"official_api_reference","url":"https://docs.dev.runwayml.com/api/","supports":"2024-11-06 API version, generation endpoints and accepted model IDs","observed_at":"2026-08-13"},
+    {"source_id":"RUNWAY-INPUTS","provider":"runway","type":"official_docs","url":"https://docs.dev.runwayml.com/assets/inputs/","supports":"asset size/aspect constraints and model output ratios","observed_at":"2026-08-13"},
+    {"source_id":"RUNWAY-TIERS","provider":"runway","type":"official_docs","url":"https://docs.dev.runwayml.com/usage/tiers/","supports":"concurrency/daily generation throttling semantics","observed_at":"2026-08-13"}
+  ]
+}
