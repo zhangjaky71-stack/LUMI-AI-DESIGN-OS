@@ -13,6 +13,7 @@ on:
       - "scripts/validate_idempotency_contract.py"
       - "scripts/validate_cost_ledger_contract.py"
       - "scripts/integration_cost_ledger.py"
+      - "scripts/integration_cost_privileges.py"
       - "docs/runtime/COST-LEDGER-BUDGET-QUOTA-V1.md"
       - "reports/nodes/NODE-27/**"
       - "Makefile"
@@ -43,6 +44,7 @@ jobs:
           services/model-gateway/tests/test_cost_accounting.py
           scripts/validate_cost_ledger_contract.py
           scripts/integration_cost_ledger.py
+          scripts/integration_cost_privileges.py
       - name: Revalidate NODE-20 idempotency boundary
         run: >-
           PYTHONPATH=apps/api/src:services/model-gateway/src
@@ -113,6 +115,7 @@ jobs:
           services/model-gateway/tests/test_cost_accounting.py
           scripts/validate_cost_ledger_contract.py
           scripts/integration_cost_ledger.py
+          scripts/integration_cost_privileges.py
       - name: NODE-27 Pyright gate
         run: >-
           uv run pyright
@@ -159,6 +162,10 @@ jobs:
         run: >-
           PYTHONPATH=apps/api/src:services/model-gateway/src
           uv run python scripts/integration_cost_ledger.py
+      - name: Runtime financial privilege acceptance
+        run: >-
+          PYTHONPATH=apps/api/src:services/model-gateway/src
+          uv run python scripts/integration_cost_privileges.py
       - name: Migration downgrade/upgrade smoke
         run: bash scripts/db-local downgrade-smoke
       - name: Cleanup
