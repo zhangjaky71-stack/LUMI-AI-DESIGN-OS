@@ -5,7 +5,7 @@ COMPOSE_ENV := $(COMPOSE_DIR)/.env
 COMPOSE_FILE := $(COMPOSE_DIR)/docker-compose.yml
 COMPOSE := docker compose --env-file $(COMPOSE_ENV) -f $(COMPOSE_FILE)
 
-.PHONY: bootstrap dev dev-web dev-admin dev-api dev-agent dev-worker lint typecheck test format-check check verify-scaffold ci-contracts ci-local eval-smoke eval eval-live eval-report product-parity-validate model-provider-validate infra-env infra-up infra-status infra-down infra-reset infra-logs doctor infra-smoke infra-persistence
+.PHONY: bootstrap dev dev-web dev-admin dev-api dev-agent dev-worker lint typecheck test format-check check verify-scaffold ci-contracts ci-local eval-smoke eval eval-live eval-report product-parity-validate model-provider-validate infra-env infra-up infra-status infra-down infra-reset infra-logs doctor infra-smoke infra-persistence db-upgrade db-downgrade-one db-current db-seed
 
 bootstrap:
 	corepack enable
@@ -98,7 +98,7 @@ infra-down: infra-env
 
 infra-reset: infra-env
 	@if [ "$(CONFIRM)" != "1" ]; then \
-		echo "Refusing destructive reset. Re-run with: CONFIRM=1 make infra-reset"; \
+		echo "Refusing destructive reset. Re-run with: CONFIRM=1 make infra-reset" >&2; \
 		exit 2; \
 	fi
 	$(COMPOSE) down --volumes --remove-orphans
@@ -114,3 +114,15 @@ infra-persistence: infra-env
 
 infra-logs: infra-env
 	$(COMPOSE) logs --tail=200 -f
+
+db-upgrade: infra-env
+	bash scripts/db-local upgrade
+
+db-downgrade-one: infra-env
+	bash scripts/db-local downgrade-one
+
+db-current: infra-env
+	bash scripts/db-local current
+
+db-seed: infra-env
+	bash scripts/db-local seed
