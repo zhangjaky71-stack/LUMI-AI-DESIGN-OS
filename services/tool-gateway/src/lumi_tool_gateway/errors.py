@@ -41,6 +41,14 @@ class ToolTimeoutError(ToolGatewayError):
     code = "TOOL_TIMEOUT"
 
 
+class ToolAdapterExecutionError(ToolGatewayError):
+    code = "TOOL_ADAPTER_EXECUTION_ERROR"
+
+
+class ToolInternalError(ToolGatewayError):
+    code = "TOOL_INTERNAL_ERROR"
+
+
 class ToolIdempotencyRequiredError(ToolGatewayError):
     code = "TOOL_IDEMPOTENCY_KEY_REQUIRED"
 
