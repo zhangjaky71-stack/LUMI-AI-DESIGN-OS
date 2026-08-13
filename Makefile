@@ -5,7 +5,7 @@ COMPOSE_ENV := $(COMPOSE_DIR)/.env
 COMPOSE_FILE := $(COMPOSE_DIR)/docker-compose.yml
 COMPOSE := docker compose --env-file $(COMPOSE_ENV) -f $(COMPOSE_FILE)
 
-.PHONY: bootstrap dev dev-web dev-admin dev-api dev-agent dev-worker lint typecheck test format-check check verify-scaffold ci-contracts ci-local eval-smoke eval eval-live eval-report infra-env infra-up infra-status infra-down infra-reset infra-logs doctor infra-smoke infra-persistence
+.PHONY: bootstrap dev dev-web dev-admin dev-api dev-agent dev-worker lint typecheck test format-check check verify-scaffold ci-contracts ci-local eval-smoke eval eval-live eval-report product-parity-validate infra-env infra-up infra-status infra-down infra-reset infra-logs doctor infra-smoke infra-persistence
 
 bootstrap:
 	corepack enable
@@ -51,6 +51,9 @@ test:
 	uv run pytest
 
 check: verify-scaffold format-check lint typecheck test
+
+product-parity-validate:
+	python3 scripts/validate_product_parity.py
 
 ci-contracts:
 	bash scripts/ci-contracts

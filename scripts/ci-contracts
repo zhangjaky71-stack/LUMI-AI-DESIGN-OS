@@ -55,4 +55,10 @@ if [ "$found" -eq 0 ]; then
   echo "INFO  JSON/OpenAPI/Event/Design-IR schema gates are reserved for NODE-11..15 and will auto-enter this required contracts job when their files land."
 fi
 
+if [ -f docs/product/capability-matrix-manifest.json ]; then
+  python3 scripts/validate_product_parity.py
+else
+  echo "INFO  product parity matrix contract is reserved for NODE-06"
+fi
+
 echo "Contract foundation: PASS"
