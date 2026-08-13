@@ -1,0 +1,17 @@
+{
+  "id":"poster-campaign",
+  "version":"1.0.0",
+  "inputs":["brief"],
+  "budget_limit_usd":"12",
+  "steps":[
+    {"id":"research","type":"agent","agent":"researcher@^1","skills":["web-research@^1"],"input":{"brief":"$inputs.brief"},"output_schema":"ResearchOutput","budget_limit_usd":"2"},
+    {"id":"direction","type":"agent","agent":"creative-director@^1","skills":["creative-direction@^1"],"depends_on":["research"],"input":{"brief":"$inputs.brief","research":"$steps.research.output"},"output_schema":"CreativeDirectionOutput","budget_limit_usd":"1"},
+    {"id":"concepts","type":"foreach","count":3,"depends_on":["direction"],"budget_limit_usd":"6","template":{"id":"concept","type":"agent","agent":"creative-director@^1","skills":["creative-direction@^1"],"input":{"direction":"$steps.direction.output"},"output_schema":"DesignOutput"},"output_schema":"DesignOutput"},
+    {"id":"approve","type":"approval","depends_on":["concepts"],"approval":{"prompt_summary":"Choose the poster direction to continue.","allowed_actions":["approve","reject"],"option_refs":["$steps.concepts.output"],"expiry_seconds":86400,"resume_mapping":{"approve":"approved","reject":"rejected"}},"output_schema":"ApprovalResult"},
+    {"id":"polish","type":"agent","agent":"creative-director@^1","skills":["creative-direction@^1"],"depends_on":["approve"],"input":{"concepts":"$steps.concepts.output","approval":"$steps.approve.output"},"output_schema":"DesignOutput","budget_limit_usd":"1"},
+    {"id":"critic","type":"agent","agent":"critic@^1","skills":["visual-critique@^1"],"depends_on":["polish"],"input":{"artifact":"$steps.polish.output"},"output_schema":"CritiqueOutput","budget_limit_usd":"1"},
+    {"id":"finalize","type":"finalize","service":"campaign.finalize","depends_on":["critic"],"input":{"artifact":"$steps.polish.output","critique":"$steps.critic.output"},"output_schema":"DesignOutput","budget_limit_usd":"1"}
+  ],
+  "outputs":{"campaign":"$steps.finalize.output"},
+  "metadata":{"eval_profile":"poster-campaign-v1"}
+}
