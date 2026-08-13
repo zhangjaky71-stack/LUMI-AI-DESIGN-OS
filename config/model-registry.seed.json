@@ -1,0 +1,16 @@
+{
+  "registry_version": "1.0.0",
+  "observed_at": "2026-08-13",
+  "source_of_truth": "docs/models/providers/*.json",
+  "runtime_rule": "NODE-22/23 will ingest normalized records into Model Gateway/Capability Registry; application code must route by capability route name, never by hard-coded provider/model ID.",
+  "provider_files": [
+    "docs/models/providers/openai.json",
+    "docs/models/providers/google.json",
+    "docs/models/providers/anthropic.json",
+    "docs/models/providers/black-forest-labs.json",
+    "docs/models/providers/runway.json"
+  ],
+  "route_policy": "docs/models/route-candidates.json",
+  "staleness_days": 30,
+  "benchmark_required_before_primary_selection": true
+}
