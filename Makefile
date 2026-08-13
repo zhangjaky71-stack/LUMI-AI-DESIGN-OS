@@ -83,8 +83,9 @@ mcp-integration-contract:
 cost-ledger-contract:
 	PYTHONPATH=apps/api/src:services/model-gateway/src python3 scripts/validate_idempotency_contract.py
 	PYTHONPATH=apps/api/src:services/model-gateway/src python3 scripts/validate_cost_ledger_contract.py
-	PYTHONPATH=apps/api/src:services/model-gateway/src python3 -m unittest apps.api.tests.test_cost_contracts
-	PYTHONPATH=apps/api/src:services/model-gateway/src python3 -m unittest services.model-gateway.tests.test_cost_accounting
+	PYTHONPATH=apps/api/src:services/model-gateway/src python3 -m unittest discover -s apps/api/tests -p 'test_cost_contracts.py'
+	PYTHONPATH=apps/api/src:services/model-gateway/src python3 -m unittest discover -s apps/api/tests -p 'test_cost_api_contract.py'
+	PYTHONPATH=apps/api/src:services/model-gateway/src python3 -m unittest discover -s services/model-gateway/tests -p 'test_cost_accounting.py'
 
 sandbox-contract:
 	PYTHONPATH=services/sandbox-runtime/src python3 scripts/validate_sandbox_runtime_contract.py
