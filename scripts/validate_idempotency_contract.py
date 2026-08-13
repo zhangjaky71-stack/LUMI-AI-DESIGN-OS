@@ -30,6 +30,11 @@ def main() -> int:
         "uq_cost_ledger_operation_entry",
     )
     require(
+        "apps/api/alembic/versions/0011_cost_ledger_budget_quota.py",
+        "ALTER TABLE cost_ledger DROP CONSTRAINT uq_cost_ledger_operation_entry",
+        "uq_cost_ledger_operation_entry_key",
+    )
+    require(
         "apps/api/src/lumi_api/idempotency/contracts.py",
         "canonical_request_hash",
         "deterministic_operation_key",
@@ -47,8 +52,9 @@ def main() -> int:
     )
     require(
         "apps/api/src/lumi_api/idempotency/ledger.py",
-        "ON CONFLICT ON CONSTRAINT uq_cost_ledger_operation_entry DO NOTHING",
+        "ON CONFLICT ON CONSTRAINT uq_cost_ledger_operation_entry_key DO NOTHING",
         "LedgerConflictError",
+        'entry_key: str = "primary"',
     )
     require(
         "apps/api/src/lumi_api/idempotency/policy.py",
