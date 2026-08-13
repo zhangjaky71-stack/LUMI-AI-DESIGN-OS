@@ -8,6 +8,7 @@ import subprocess
 import time
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from .local_backend import (
@@ -24,6 +25,7 @@ from .security import (
     normalize_workspace_path,
     redact_text,
     safe_filename,
+    sha256_file,
     workspace_absolute,
 )
 
@@ -75,6 +77,10 @@ class DockerSandboxBackend(_LocalDockerSandboxBackend):
             zone, _ = normalize_workspace_path(path, writable=True)
             target = workspace_absolute(path, writable=True)
             resolved = self._prepare_write_path(record, zone=zone, target=target)
+            remaining_seconds = max(
+                1,
+                math.ceil(record.expires_monotonic - time.monotonic()),
+            )
             try:
                 result = subprocess.run(
                     [
@@ -91,7 +97,7 @@ class DockerSandboxBackend(_LocalDockerSandboxBackend):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     shell=False,
-                    timeout=60,
+                    timeout=min(60, remaining_seconds),
                     check=False,
                 )
             except subprocess.TimeoutExpired as exc:
@@ -127,7 +133,7 @@ class DockerSandboxBackend(_LocalDockerSandboxBackend):
             if target.exists():
                 if not target.is_file() or target.is_symlink():
                     raise SandboxPolicyError("SANDBOX_INPUT_ASSET_TARGET_INVALID")
-                if hashlib.sha256(target.read_bytes()).hexdigest() != digest:
+                if sha256_file(target) != digest:
                     raise SandboxPolicyError("SANDBOX_INPUT_ASSET_TARGET_MISMATCH")
                 return f"input/{target_name}"
             used_bytes = _regular_file_bytes(input_root)
@@ -169,14 +175,13 @@ class DockerSandboxBackend(_LocalDockerSandboxBackend):
 
     def _persist_logs(
         self,
-        record: object,
+        record: Any,
         exec_id: str,
         stdout_path: Path,
         stderr_path: Path,
     ) -> str:
-        sandbox_record = record
-        sandbox_id = sandbox_record.sandbox_id
-        spec = sandbox_record.spec
+        sandbox_id = record.sandbox_id
+        spec = record.spec
         destination_dir = self.log_root / str(sandbox_id)
         destination_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
         destination = destination_dir / f"{exec_id}.log"
@@ -203,7 +208,6 @@ class DockerSandboxBackend(_LocalDockerSandboxBackend):
                 shutil.rmtree(candidate, ignore_errors=True)
 
 
-# local_backend keeps its record internal; these helpers intentionally use structural fields.
 def _regular_file_bytes(root: Path) -> int:
     total = 0
     for path in root.iterdir():
@@ -218,7 +222,11 @@ def _read_prefix(path: Path, limit: int) -> str:
 
 
 def _prune_oldest_files(directory: Path, budget_bytes: int, *, keep: Path) -> None:
-    files = [path for path in directory.glob("*.log") if path.is_file() and not path.is_symlink()]
+    files = [
+        path
+        for path in directory.glob("*.log")
+        if path.is_file() and not path.is_symlink()
+    ]
     total = sum(path.stat().st_size for path in files)
     if total <= budget_bytes:
         return
