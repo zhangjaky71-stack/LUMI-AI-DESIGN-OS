@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID, uuid4
 
-from .auth import MCPCredentialProvider, NoAuthCredentialProvider
+from .auth import (
+    MCPCredentialProvider,
+    NoAuthCredentialProvider,
+    validate_request_auth,
+)
 from .cache import MCPDiscoveryCache
 from .contracts import (
     MCP_PROTOCOL_2025_11_25,
@@ -260,8 +264,11 @@ class MCPClient:
             server,
             organization_id=organization_id,
         )
-        if auth.organization_id != organization_id:
-            raise MCPAuthFailedError("MCP credential tenant mismatch")
+        validate_request_auth(
+            server,
+            organization_id=organization_id,
+            auth=auth,
+        )
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
