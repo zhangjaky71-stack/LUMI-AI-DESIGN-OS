@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "severities": ["HARD", "SOFT", "ADVISORY"],
+  "sources": [
+    "SAFETY_SYSTEM",
+    "USER_EXPLICIT",
+    "APPROVED_BRAND_RULE",
+    "PROJECT_RULE",
+    "RECIPE_RULE",
+    "AGENT_INFERRED",
+    "STYLE_PREFERENCE"
+  ],
+  "source_precedence": {
+    "SAFETY_SYSTEM": 700,
+    "USER_EXPLICIT": 600,
+    "APPROVED_BRAND_RULE": 500,
+    "PROJECT_RULE": 400,
+    "RECIPE_RULE": 300,
+    "AGENT_INFERRED": 200,
+    "STYLE_PREFERENCE": 100
+  },
+  "preflight_decisions": ["ALLOW", "ALLOW_WITH_WARNINGS", "DENY"],
+  "postflight_outcomes": ["PASS", "FAIL_REPAIRABLE", "FAIL_HARD"],
+  "constraint_types": [
+    "LOCK_POSITION",
+    "LOCK_SIZE",
+    "LOCK_ROTATION",
+    "LOCK_TRANSFORM",
+    "LOCK_ASPECT_RATIO",
+    "LOCK_LAYER_ORDER",
+    "LOCK_PARENT",
+    "LOCK_CONTENT",
+    "LOCK_TEXT",
+    "LOCK_ASSET",
+    "LOCK_IDENTITY",
+    "LOCK_STYLE",
+    "LOCK_BRAND",
+    "PROTECT_REGION",
+    "MUST_STAY_INSIDE",
+    "MUST_NOT_OVERLAP",
+    "MIN_MARGIN",
+    "SAFE_AREA",
+    "REQUIRE_CONTRAST",
+    "REQUIRE_SCANNABILITY",
+    "REQUIRE_TEXT_READABILITY",
+    "REQUIRE_BRAND_COMPLIANCE",
+    "REQUIRE_RESOLUTION",
+    "REQUIRE_IDENTITY_SCORE"
+  ]
+}
