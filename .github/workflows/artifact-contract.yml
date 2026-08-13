@@ -1,0 +1,43 @@
+name: Artifact Contract
+
+on:
+  pull_request:
+    paths:
+      - "contracts/design-ir/**"
+      - "services/design-ir/**"
+      - "contracts/constraints/**"
+      - "services/constraint-engine/**"
+      - "contracts/artifacts/**"
+      - "services/artifact-history/**"
+      - "scripts/validate_design_ir_contracts.py"
+      - "scripts/validate_constraint_contracts.py"
+      - "scripts/validate_artifact_contracts.py"
+      - "docs/artifacts/**"
+      - ".github/workflows/artifact-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  artifact-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile Phase 1 reference runtimes
+        run: |
+          python -m compileall -q services/design-ir/src services/constraint-engine/src services/artifact-history/src
+      - name: Revalidate Design IR V1
+        run: python scripts/validate_design_ir_contracts.py
+      - name: Revalidate Constraint V1
+        run: python scripts/validate_constraint_contracts.py
+      - name: Validate Artifact / Provenance V1
+        run: python scripts/validate_artifact_contracts.py
+      - name: Artifact history reference tests
+        env:
+          PYTHONPATH: services/artifact-history/src
+        run: python -m unittest discover -s services/artifact-history/tests -p 'test_*.py' -v
