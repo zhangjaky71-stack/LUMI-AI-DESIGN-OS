@@ -25,8 +25,8 @@ from lumi_sandbox_runtime import (
 
 RUNTIME_ROOT = Path(os.getenv("LUMI_SANDBOX_RUNTIME_ROOT", "/tmp/lumi-node21-e2e"))
 IMAGE = os.getenv("LUMI_SANDBOX_IMAGE", "lumi-sandbox:node21-v1")
-HOST_SECRET_NAME = "LUMI_NODE21_HOST_SECRET"
-HOST_SECRET_VALUE = "node21-host-only-sentinel"
+HOST_PRIVATE_MARKER_NAME = "LUMI_NODE21_HOST_PRIVATE_MARKER"
+HOST_PRIVATE_MARKER_VALUE = "node21-" + "host-only-marker"
 
 
 class AssetResolver:
@@ -59,25 +59,32 @@ class ArtifactSink:
         del organization_id, agent_run_id, detected_mime
         target = self.root / f"{sandbox_id}-{filename}"
         shutil.copy2(source, target)
-        assert hashlib.sha256(target.read_bytes()).hexdigest() == checksum_sha256
+        actual = hashlib.sha256(target.read_bytes()).hexdigest()
+        assert actual == checksum_sha256
         return f"asset://node21/{target.name}"
 
 
-def spec(**overrides: object) -> SandboxSpec:
-    values: dict[str, object] = {
-        "organization_id": uuid4(),
-        "agent_run_id": uuid4(),
-        "image": IMAGE,
-        "cpu_limit": 1.0,
-        "memory_limit_mb": 256,
-        "disk_limit_mb": 128,
-        "pids_limit": 64,
-        "timeout_seconds": 10,
-        "max_output_bytes": 4096,
-        "ttl_seconds": 120,
-    }
-    values.update(overrides)
-    return SandboxSpec(**values)
+def sandbox_spec(
+    *,
+    memory_limit_mb: int = 256,
+    disk_limit_mb: int = 128,
+    pids_limit: int = 64,
+    timeout_seconds: int = 10,
+    max_output_bytes: int = 4096,
+    ttl_seconds: int = 120,
+) -> SandboxSpec:
+    return SandboxSpec(
+        organization_id=uuid4(),
+        agent_run_id=uuid4(),
+        image=IMAGE,
+        cpu_limit=1.0,
+        memory_limit_mb=memory_limit_mb,
+        disk_limit_mb=disk_limit_mb,
+        pids_limit=pids_limit,
+        timeout_seconds=timeout_seconds,
+        max_output_bytes=max_output_bytes,
+        ttl_seconds=ttl_seconds,
+    )
 
 
 def make_backend() -> DockerSandboxBackend:
@@ -90,17 +97,19 @@ def make_backend() -> DockerSandboxBackend:
 
 
 def functional_and_boundary_test(backend: DockerSandboxBackend) -> None:
-    os.environ[HOST_SECRET_NAME] = HOST_SECRET_VALUE
-    sandbox_id = backend.create(spec())
+    os.environ[HOST_PRIVATE_MARKER_NAME] = HOST_PRIVATE_MARKER_VALUE
+    sandbox_id = backend.create(sandbox_spec())
     try:
         tools = DeepAgentSandboxTools(backend, sandbox_id)
-        result = tools.execute(["python", "-c", "print('python-ok')"])
-        assert result["exit_code"] == 0 and result["stdout"].strip() == "python-ok"
+        python_result = tools.execute(["python", "-c", "print('python-ok')"])
+        assert python_result["exit_code"] == 0
+        assert python_result["stdout"].strip() == "python-ok"
 
-        node = tools.execute(["node", "-e", "console.log('node-ok')"])
-        assert node["exit_code"] == 0 and node["stdout"].strip() == "node-ok"
+        node_result = tools.execute(["node", "-e", "console.log('node-ok')"])
+        assert node_result["exit_code"] == 0
+        assert node_result["stdout"].strip() == "node-ok"
 
-        ffmpeg = tools.execute(
+        ffmpeg_result = tools.execute(
             [
                 "ffmpeg",
                 "-hide_banner",
@@ -117,8 +126,8 @@ def functional_and_boundary_test(backend: DockerSandboxBackend) -> None:
             ],
             timeout=10,
         )
-        assert ffmpeg["exit_code"] == 0, ffmpeg
-        probe = tools.execute(
+        assert ffmpeg_result["exit_code"] == 0, ffmpeg_result
+        probe_result = tools.execute(
             [
                 "ffprobe",
                 "-v",
@@ -130,9 +139,10 @@ def functional_and_boundary_test(backend: DockerSandboxBackend) -> None:
                 "/workspace/output/sample.mp4",
             ]
         )
-        assert probe["exit_code"] == 0 and float(probe["stdout"].strip()) > 0
+        assert probe_result["exit_code"] == 0
+        assert float(probe_result["stdout"].strip()) > 0
 
-        image = tools.execute(
+        image_result = tools.execute(
             [
                 "convert",
                 "-size",
@@ -141,7 +151,7 @@ def functional_and_boundary_test(backend: DockerSandboxBackend) -> None:
                 "/workspace/output/pixel.png",
             ]
         )
-        assert image["exit_code"] == 0, image
+        assert image_result["exit_code"] == 0, image_result
 
         input_path = tools.upload_asset("asset:node21-input")
         assert input_path.startswith("input/")
@@ -152,14 +162,16 @@ def functional_and_boundary_test(backend: DockerSandboxBackend) -> None:
         entries = tools.list_files("work/nested")
         assert any(entry["path"].endswith("note.txt") for entry in entries)
 
-        symlink = tools.execute(["ln", "-s", "/etc/passwd", "/workspace/work/escape"])
+        symlink = tools.execute(
+            ["ln", "-s", "/etc/passwd", "/workspace/work/escape"]
+        )
         assert symlink["exit_code"] == 0
         try:
             tools.read_file("work/escape")
         except SandboxPolicyError:
             pass
         else:
-            raise AssertionError("symlink escape must be rejected by file tool boundary")
+            raise AssertionError("symlink escape must be rejected")
 
         try:
             tools.read_file("../../etc/passwd")
@@ -168,14 +180,14 @@ def functional_and_boundary_test(backend: DockerSandboxBackend) -> None:
         else:
             raise AssertionError("path traversal must be rejected")
 
-        secret = tools.execute(
+        private_marker = tools.execute(
             [
                 "python",
                 "-c",
-                f"import os; print({HOST_SECRET_NAME!r} in os.environ)",
+                f"import os; print({HOST_PRIVATE_MARKER_NAME!r} in os.environ)",
             ]
         )
-        assert secret["stdout"].strip() == "False"
+        assert private_marker["stdout"].strip() == "False"
 
         socket_check = tools.execute(
             [
@@ -206,8 +218,9 @@ def functional_and_boundary_test(backend: DockerSandboxBackend) -> None:
         assert artifact["storage_ref"].startswith("asset://node21/")
         assert len(artifact["checksum_sha256"]) == 64
 
-        audit_text = (RUNTIME_ROOT / "audit" / "sandbox.jsonl").read_text(encoding="utf-8")
-        assert HOST_SECRET_VALUE not in audit_text
+        audit_path = RUNTIME_ROOT / "audit" / "sandbox.jsonl"
+        audit_text = audit_path.read_text(encoding="utf-8")
+        assert HOST_PRIVATE_MARKER_VALUE not in audit_text
         assert "sandbox.exec.completed" in audit_text
         assert "sandbox.artifact.collected" in audit_text
     finally:
@@ -230,21 +243,44 @@ def functional_and_boundary_test(backend: DockerSandboxBackend) -> None:
 
 
 def timeout_test(backend: DockerSandboxBackend) -> None:
-    sandbox_id = backend.create(spec(timeout_seconds=2))
+    sandbox_id = backend.create(sandbox_spec(timeout_seconds=2))
     try:
         try:
-            backend.exec(sandbox_id, ExecRequest(("sleep", "30"), timeout_seconds=1))
+            backend.exec(
+                sandbox_id,
+                ExecRequest(("sleep", "30"), timeout_seconds=1),
+            )
         except SandboxTimeoutError:
             pass
         else:
-            raise AssertionError("infinite/long command must time out")
+            raise AssertionError("long command must time out")
         assert backend.state(sandbox_id) == SandboxState.FAILED
     finally:
         backend.terminate(sandbox_id)
 
 
+def active_ttl_test(backend: DockerSandboxBackend) -> None:
+    sandbox_id = backend.create(
+        sandbox_spec(timeout_seconds=30, ttl_seconds=5)
+    )
+    started = time.monotonic()
+    try:
+        try:
+            backend.exec(
+                sandbox_id,
+                ExecRequest(("sleep", "30"), timeout_seconds=30),
+            )
+        except SandboxTimeoutError:
+            pass
+        else:
+            raise AssertionError("running command must not cross sandbox TTL")
+        assert time.monotonic() - started < 10
+    finally:
+        backend.terminate(sandbox_id)
+
+
 def pid_limit_test(backend: DockerSandboxBackend) -> None:
-    sandbox_id = backend.create(spec(pids_limit=16))
+    sandbox_id = backend.create(sandbox_spec(pids_limit=16))
     code = """
 import subprocess
 procs = []
@@ -265,7 +301,10 @@ finally:
             proc.kill()
 """.strip()
     try:
-        result = backend.exec(sandbox_id, ExecRequest(("python", "-c", code), timeout_seconds=8))
+        result = backend.exec(
+            sandbox_id,
+            ExecRequest(("python", "-c", code), timeout_seconds=8),
+        )
         assert result.exit_code == 0, result
         assert int(result.stdout.strip()) < 100
     finally:
@@ -273,13 +312,17 @@ finally:
 
 
 def memory_limit_test(backend: DockerSandboxBackend) -> None:
-    sandbox_id = backend.create(spec(memory_limit_mb=96))
+    sandbox_id = backend.create(sandbox_spec(memory_limit_mb=96))
     try:
         try:
             result = backend.exec(
                 sandbox_id,
                 ExecRequest(
-                    ("python", "-c", "x=bytearray(512*1024*1024); print(len(x))"),
+                    (
+                        "python",
+                        "-c",
+                        "x=bytearray(512*1024*1024); print(len(x))",
+                    ),
                     timeout_seconds=8,
                 ),
             )
@@ -291,9 +334,8 @@ def memory_limit_test(backend: DockerSandboxBackend) -> None:
 
 
 def disk_limit_test(backend: DockerSandboxBackend) -> None:
-    sandbox_id = backend.create(spec(disk_limit_mb=32))
+    sandbox_id = backend.create(sandbox_spec(disk_limit_mb=32))
     code = """
-import sys
 try:
     with open("/workspace/work/fill.bin", "wb") as handle:
         for _ in range(64):
@@ -304,14 +346,17 @@ except OSError as exc:
 raise SystemExit(0)
 """.strip()
     try:
-        result = backend.exec(sandbox_id, ExecRequest(("python", "-c", code), timeout_seconds=8))
+        result = backend.exec(
+            sandbox_id,
+            ExecRequest(("python", "-c", code), timeout_seconds=8),
+        )
         assert result.exit_code == 23, result
     finally:
         backend.terminate(sandbox_id)
 
 
 def ttl_reaper_test(backend: DockerSandboxBackend) -> None:
-    sandbox_id = backend.create(spec(ttl_seconds=5))
+    sandbox_id = backend.create(sandbox_spec(ttl_seconds=5))
     with SandboxReaper(backend, interval_seconds=0.25):
         deadline = time.monotonic() + 8
         while time.monotonic() < deadline:
@@ -331,6 +376,7 @@ def main() -> int:
     backend.reap_orphaned_containers()
     functional_and_boundary_test(backend)
     timeout_test(backend)
+    active_ttl_test(backend)
     pid_limit_test(backend)
     memory_limit_test(backend)
     disk_limit_test(backend)
