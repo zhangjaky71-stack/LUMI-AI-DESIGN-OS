@@ -56,6 +56,22 @@ class CapabilityRegistryTests(unittest.IsolatedAsyncioTestCase):
             ),
             SupportLevel.FULL,
         )
+        self.assertEqual(
+            self.snapshot.support(
+                "runway:aleph2",
+                Capability.VIDEO_EDIT,
+            ),
+            SupportLevel.FULL,
+        )
+        video_edit_profile = next(
+            item
+            for item in self.snapshot.routing_profiles
+            if item.profile == "video.edit"
+        )
+        self.assertEqual(
+            video_edit_profile.required_capabilities,
+            (Capability.VIDEO_EDIT,),
+        )
 
     def test_unknown_and_partial_are_not_treated_as_full(self) -> None:
         key = "openai:gpt-image-2"
@@ -130,6 +146,20 @@ class CapabilityRegistryTests(unittest.IsolatedAsyncioTestCase):
                 for item in self.snapshot.list_models(Capability.LLM_REASONING)
             },
         )
+
+    def test_hard_region_policy_rejects_unknown_region_facts(self) -> None:
+        organization_id = uuid4()
+        policy = RegistryOrganizationPolicy(
+            organization_id=organization_id,
+            policy_version=1,
+            allowed_regions=frozenset({"jp"}),
+        )
+        scoped = replace(self.snapshot, organization_policies=(policy,))
+        models = scoped.list_models(
+            Capability.LLM_REASONING,
+            organization_id=organization_id,
+        )
+        self.assertEqual(models, ())
 
     def test_benchmark_history_selects_latest_profile_run(self) -> None:
         first = BenchmarkScore(
@@ -222,6 +252,26 @@ class CapabilityRegistryTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(NoRouteError):
             await router.route(request)
         self.assertIn("REGISTRY_VERSION:1", reasons)
+
+    async def test_router_rejects_requested_region_when_registry_region_unknown(self) -> None:
+        adapter = MockProvider(
+            provider="openai",
+            model="gpt-5.6-sol",
+        )
+        router = RegistryAwareModelRouter(
+            registry=InMemoryProviderRegistry((adapter,)),
+            health=InMemoryProviderHealthRegistry(),
+            capability_registry=InMemoryCapabilityRegistry(self.snapshot),
+        )
+        request = ModelRequest(
+            organization_id=uuid4(),
+            operation_id=uuid4(),
+            capability=Capability.LLM_REASONING,
+            inputs={"prompt": "regional"},
+            constraints={"region": "jp"},
+        )
+        with self.assertRaisesRegex(NoRouteError, "REGISTRY_REGION_UNKNOWN"):
+            await router.route(request)
 
 
 if __name__ == "__main__":
