@@ -90,7 +90,7 @@ class MCPClient:
                 name=None,
                 protocol_version=MCP_PROTOCOL_2026_07_28,
             )
-        except MCPProtocolMismatchError:
+        except (MCPProtocolMismatchError, MCPToolNotFoundError):
             if MCP_PROTOCOL_2025_11_25 not in server.protocol_versions:
                 raise
             result = await self.legacy.discover_tools(
