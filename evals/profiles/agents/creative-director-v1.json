@@ -1,0 +1,1 @@
+{"schema":"lumi.agent-eval-profile.v1","profile":"creative-director-v1","required_suites":["reasoning-director-v1"],"release_gate":"all_required_pass"}

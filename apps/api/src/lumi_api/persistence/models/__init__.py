@@ -1,3 +1,4 @@
+from .agent_registry import AgentRunProvenance
 from .asset import (
     Asset,
     AssetEmbedding,
@@ -80,6 +81,7 @@ from .workflow import (
 
 __all__ = [
     "AgentRun",
+    "AgentRunProvenance",
     "AgentRunStep",
     "ApiToken",
     "Approval",

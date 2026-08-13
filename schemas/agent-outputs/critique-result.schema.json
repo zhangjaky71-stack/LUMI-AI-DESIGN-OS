@@ -1,0 +1,1 @@
+{"title":"CritiqueResult","type":"object","required":["summary","issues","recommendations"],"properties":{"summary":{"type":"string"},"issues":{"type":"array","items":{"type":"string"}},"recommendations":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}
