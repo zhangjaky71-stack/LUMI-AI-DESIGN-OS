@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import UUID, NAMESPACE_URL, uuid5
 
-from .models import Capability, QualityProfile
+from .models import Capability
 
 
 class SupportLevel(StrEnum):
@@ -128,7 +128,11 @@ class RegistrySnapshot:
     def model(self, model_key: str) -> RegistryModelSnapshot | None:
         return next((item for item in self.models if item.model_key == model_key), None)
 
-    def claim(self, model_key: str, capability: Capability) -> CapabilityClaim | None:
+    def claim(
+        self,
+        model_key: str,
+        capability: Capability,
+    ) -> CapabilityClaim | None:
         return next(
             (
                 item
@@ -141,6 +145,16 @@ class RegistrySnapshot:
     def support(self, model_key: str, capability: Capability) -> SupportLevel:
         claim = self.claim(model_key, capability)
         return claim.support if claim is not None else SupportLevel.UNKNOWN
+
+    def price_snapshot(self, price_snapshot_id: str) -> PricingSnapshot | None:
+        return next(
+            (
+                item
+                for item in self.pricing
+                if item.price_snapshot_id == price_snapshot_id
+            ),
+            None,
+        )
 
     def pricing_at(
         self,
@@ -158,7 +172,10 @@ class RegistrySnapshot:
             and item.effective_from <= at_time
             and (item.valid_until is None or at_time < item.valid_until)
         ]
-        rows.sort(key=lambda item: (item.effective_from, item.price_snapshot_id), reverse=True)
+        rows.sort(
+            key=lambda item: (item.effective_from, item.price_snapshot_id),
+            reverse=True,
+        )
         return tuple(rows)
 
     def benchmark(self, model_key: str, profile: str) -> BenchmarkScore | None:
@@ -172,9 +189,14 @@ class RegistrySnapshot:
         rows.sort(key=lambda item: (item.observed_at, item.run_id), reverse=True)
         return rows[0]
 
-    def organization_policy(self, organization_id: UUID) -> RegistryOrganizationPolicy | None:
+    def organization_policy(
+        self,
+        organization_id: UUID,
+    ) -> RegistryOrganizationPolicy | None:
         rows = [
-            item for item in self.organization_policies if item.organization_id == organization_id
+            item
+            for item in self.organization_policies
+            if item.organization_id == organization_id
         ]
         if not rows:
             return None
@@ -223,7 +245,11 @@ class RegistrySnapshot:
         organization_id: UUID | None = None,
     ) -> tuple[str, ...]:
         profile = next(
-            (item for item in self.routing_profiles if item.profile == profile_name),
+            (
+                item
+                for item in self.routing_profiles
+                if item.profile == profile_name
+            ),
             None,
         )
         if profile is None:
@@ -238,15 +264,26 @@ class RegistrySnapshot:
                 continue
             if policy and model_key in policy.denied_models:
                 continue
-            if any(self.support(model_key, cap) != SupportLevel.FULL for cap in profile.required_capabilities):
+            if any(
+                self.support(model_key, capability) != SupportLevel.FULL
+                for capability in profile.required_capabilities
+            ):
                 continue
             scores = [
                 self.benchmark(model_key, name)
                 for name in _quality_profiles_for_route(profile_name)
             ]
             measured = [item.score for item in scores if item is not None]
-            quality = sum(measured, Decimal("0")) / len(measured) if measured else Decimal("0")
-            preferred = Decimal("1000") if policy and model_key in policy.preferred_models else Decimal("0")
+            quality = (
+                sum(measured, Decimal("0")) / len(measured)
+                if measured
+                else Decimal("0")
+            )
+            preferred = (
+                Decimal("1000")
+                if policy and model_key in policy.preferred_models
+                else Decimal("0")
+            )
             ranked.append((preferred + quality, -index, model_key))
         ranked.sort(reverse=True)
         return tuple(item[2] for item in ranked)
@@ -282,7 +319,11 @@ class InMemoryCapabilityRegistry:
             return self._snapshot.content_hash != expected_content_hash
 
 
-def compile_registry_seed(seed_path: Path, *, repository_root: Path) -> RegistrySnapshot:
+def compile_registry_seed(
+    seed_path: Path,
+    *,
+    repository_root: Path,
+) -> RegistrySnapshot:
     seed = _read_json_yaml(seed_path)
     manifest_path = repository_root / str(seed["source_manifest"])
     manifest = _read_json(manifest_path)
@@ -295,17 +336,22 @@ def compile_registry_seed(seed_path: Path, *, repository_root: Path) -> Registry
     pricing: list[PricingSnapshot] = []
     observed_values: list[datetime] = []
     source_bytes: list[bytes] = [seed_path.read_bytes(), manifest_path.read_bytes()]
+    providers_seen: set[str] = set()
     for relative in provider_files:
         path = repository_root / relative
         source_bytes.append(path.read_bytes())
         provider_payload = _read_json(path)
         provider = str(provider_payload["provider"])
+        if provider in providers_seen:
+            raise ValueError(f"MODEL_REGISTRY_PROVIDER_DUPLICATE:{provider}")
+        providers_seen.add(provider)
         observed_at = _date_time(str(provider_payload["observed_at"]))
         observed_values.append(observed_at)
         valid_until = _date_time(str(provider_payload["pricing_expires_at"]))
         for raw in provider_payload["models"]:
             model_key = str(raw["registry_id"])
             model_id = str(raw["model_id"])
+            source_ref = f"{relative}#{model_key}"
             models.append(
                 RegistryModelSnapshot(
                     model_key=model_key,
@@ -314,12 +360,13 @@ def compile_registry_seed(seed_path: Path, *, repository_root: Path) -> Registry
                     lifecycle=str(raw["lifecycle"]),
                     route_eligible=bool(raw["route_eligible"]),
                     observed_at=observed_at,
-                    source_ref=f"{relative}#{model_key}",
-                    benchmark_status=str(raw.get("benchmark_status", "NOT_MEASURED")),
+                    source_ref=source_ref,
+                    benchmark_status=str(
+                        raw.get("benchmark_status", "NOT_MEASURED")
+                    ),
                 )
             )
-            capabilities = _capability_map(raw)
-            for capability, limits in capabilities:
+            for capability, limits in _capability_map(raw):
                 claims.append(
                     CapabilityClaim(
                         model_key=model_key,
@@ -328,12 +375,14 @@ def compile_registry_seed(seed_path: Path, *, repository_root: Path) -> Registry
                         limits_json=_canonical_json(limits),
                         confidence=EvidenceConfidence.VERIFIED_DOCS,
                         observed_at=observed_at,
-                        source_ref=f"{relative}#{model_key}",
+                        source_ref=source_ref,
                     )
                 )
             for raw_price in raw.get("pricing", []):
                 unit, price = _price(raw_price)
-                key_payload = f"{source_registry_version}|{model_key}|{unit}|{price}"
+                key_payload = (
+                    f"{source_registry_version}|{model_key}|{unit}|{price}"
+                )
                 price_id = hashlib.sha256(key_payload.encode()).hexdigest()[:32]
                 pricing.append(
                     PricingSnapshot(
@@ -342,17 +391,30 @@ def compile_registry_seed(seed_path: Path, *, repository_root: Path) -> Registry
                         currency="USD",
                         unit=unit,
                         price=price,
-                        minimum_charge=None,
+                        minimum_charge=(
+                            price if "minimum" in str(raw_price["metric"]) else None
+                        ),
                         effective_from=observed_at,
                         valid_until=valid_until,
                         observed_at=observed_at,
-                        source_ref=f"{relative}#{model_key}",
+                        source_ref=source_ref,
                     )
                 )
+    required_providers = set(str(item) for item in manifest["required_providers"])
+    if providers_seen != required_providers:
+        raise ValueError("MODEL_REGISTRY_PROVIDER_SET_MISMATCH")
     route_path = repository_root / str(seed["route_policy"])
-    source_bytes.append(route_path.read_bytes())
+    benchmark_path = repository_root / str(seed["benchmark_suite"])
+    source_bytes.extend((route_path.read_bytes(), benchmark_path.read_bytes()))
     routes = _read_json(route_path)
-    routing_profiles = tuple(_compile_route(item, routes["observed_at"], str(seed["route_policy"])) for item in routes["routes"])
+    routing_profiles = tuple(
+        _compile_route(
+            item,
+            str(routes["observed_at"]),
+            str(seed["route_policy"]),
+        )
+        for item in routes["routes"]
+    )
     canonical = _snapshot_payload(models, claims, pricing, routing_profiles, seed)
     content_hash = hashlib.sha256(
         b"\n".join(source_bytes) + _canonical_json(canonical).encode("utf-8")
@@ -366,31 +428,51 @@ def compile_registry_seed(seed_path: Path, *, repository_root: Path) -> Registry
         observed_at=max(observed_values),
         source_ref=str(seed["source_ref"]),
         models=tuple(sorted(models, key=lambda item: item.model_key)),
-        capability_claims=tuple(sorted(claims, key=lambda item: (item.model_key, item.capability.value))),
+        capability_claims=tuple(
+            sorted(
+                claims,
+                key=lambda item: (item.model_key, item.capability.value),
+            )
+        ),
         pricing=tuple(sorted(pricing, key=lambda item: (item.model_key, item.unit))),
         benchmarks=(),
-        routing_profiles=tuple(sorted(routing_profiles, key=lambda item: item.profile)),
+        routing_profiles=tuple(
+            sorted(routing_profiles, key=lambda item: item.profile)
+        ),
     )
 
 
-def _capability_map(raw: dict[str, Any]) -> tuple[tuple[Capability, dict[str, Any]], ...]:
+def _capability_map(
+    raw: dict[str, Any],
+) -> tuple[tuple[Capability, dict[str, Any]], ...]:
     documented = raw.get("documented_capabilities", {})
     limits = dict(documented) if isinstance(documented, dict) else {}
+    inputs = {str(item) for item in limits.get("input", [])}
     mapped: set[Capability] = set()
-    for modality in raw.get("modalities", []):
-        value = {
+    modalities = {str(item) for item in raw.get("modalities", [])}
+    for modality in modalities:
+        capability = {
             "reasoning": Capability.LLM_REASONING,
             "vision": Capability.LLM_VISION,
             "image_generation": Capability.IMAGE_GENERATE,
             "image_edit": Capability.IMAGE_EDIT,
             "video_generation": Capability.VIDEO_TEXT_TO_VIDEO,
             "embedding": Capability.EMBEDDING_TEXT,
-        }.get(str(modality))
-        if value is not None:
-            mapped.add(value)
+        }.get(modality)
+        if capability is not None:
+            mapped.add(capability)
     if bool(limits.get("structured_output")):
         mapped.add(Capability.LLM_STRUCTURED_OUTPUT)
-    return tuple((capability, limits) for capability in sorted(mapped, key=lambda item: item.value))
+    if "video_generation" in modalities and "image" in inputs:
+        mapped.add(Capability.VIDEO_IMAGE_TO_VIDEO)
+    if "embedding" in modalities and inputs.intersection(
+        {"image", "video", "audio", "pdf"}
+    ):
+        mapped.add(Capability.EMBEDDING_MULTIMODAL)
+    return tuple(
+        (capability, limits)
+        for capability in sorted(mapped, key=lambda item: item.value)
+    )
 
 
 def _price(raw: dict[str, Any]) -> tuple[str, Decimal]:
@@ -401,16 +483,27 @@ def _price(raw: dict[str, Any]) -> tuple[str, Decimal]:
         return f"{metric}:per_second", Decimal(str(raw["usd_per_second"]))
     if "usd_per_image" in raw:
         return f"{metric}:per_image", Decimal(str(raw["usd_per_image"]))
+    if "usd" in raw:
+        return f"{metric}:native", Decimal(str(raw["usd"]))
     raise ValueError(f"MODEL_REGISTRY_PRICE_UNIT_UNKNOWN:{metric}")
 
 
-def _compile_route(raw: dict[str, Any], observed_at: str, source_ref: str) -> RoutingProfile:
+def _compile_route(
+    raw: dict[str, Any],
+    observed_at: str,
+    source_ref: str,
+) -> RoutingProfile:
     name = str(raw["route"])
-    required = _route_capabilities(name)
-    weights = {"quality": "0.45", "constraint": "0.30", "cost": "0.10", "latency": "0.10", "availability": "0.05"}
+    weights = {
+        "quality": "0.45",
+        "constraint": "0.30",
+        "cost": "0.10",
+        "latency": "0.10",
+        "availability": "0.05",
+    }
     return RoutingProfile(
         profile=name,
-        required_capabilities=required,
+        required_capabilities=_route_capabilities(name),
         candidate_models=tuple(str(item) for item in raw["candidates"]),
         weights_json=_canonical_json(weights),
         minimum_json=_canonical_json({}),
@@ -421,11 +514,15 @@ def _compile_route(raw: dict[str, Any], observed_at: str, source_ref: str) -> Ro
 
 def _route_capabilities(name: str) -> tuple[Capability, ...]:
     if name.startswith("image."):
-        return (Capability.IMAGE_EDIT,) if name == "image.local_edit" else (Capability.IMAGE_GENERATE,)
+        if name == "image.local_edit":
+            return (Capability.IMAGE_EDIT,)
+        return (Capability.IMAGE_GENERATE,)
+    if name == "video.edit":
+        return ()
     if name.startswith("video."):
         return (Capability.VIDEO_TEXT_TO_VIDEO,)
     if name == "embedding.multimodal":
-        return (Capability.EMBEDDING_MULTIMODAL,)
+        return (Capability.EMEDDING_MULTIMODAL,)  # type: ignore[attr-defined]
     if name.startswith("embedding."):
         return (Capability.EMBEDDING_TEXT,)
     if name == "vision.ocr":
@@ -463,14 +560,32 @@ def _snapshot_payload(
     return {
         "registry_version": seed["registry_version"],
         "models": [item.model_key for item in models],
-        "claims": [(item.model_key, item.capability.value, item.support.value) for item in claims],
-        "pricing": [(item.price_snapshot_id, item.model_key, item.unit, str(item.price)) for item in pricing],
-        "profiles": [(item.profile, list(item.candidate_models)) for item in profiles],
+        "claims": [
+            (item.model_key, item.capability.value, item.support.value)
+            for item in claims
+        ],
+        "pricing": [
+            (
+                item.price_snapshot_id,
+                item.model_key,
+                item.unit,
+                str(item.price),
+            )
+            for item in pricing
+        ],
+        "profiles": [
+            (item.profile, list(item.candidate_models)) for item in profiles
+        ],
     }
 
 
 def _canonical_json(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(
+        value,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -493,7 +608,3 @@ def _utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         raise ValueError("MODEL_REGISTRY_NAIVE_DATETIME")
     return value.astimezone(UTC)
-
-
-def quality_threshold_for_registry(profile: QualityProfile) -> int:
-    return {QualityProfile.DRAFT: 35, QualityProfile.BALANCED: 55, QualityProfile.HIGH: 75, QualityProfile.MAX: 90}[profile]
