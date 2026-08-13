@@ -4,12 +4,12 @@ import asyncio
 import os
 from collections.abc import Coroutine
 from datetime import UTC, datetime, timedelta
-from typing import Any, TypeVar
+from typing import Annotated, Any, TypeVar
 
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-from lumi_auth import hash_token, issue_opaque_token
+from lumi_auth import issue_opaque_token
 from lumi_domain import new_uuid7
 from sqlalchemy import delete
 
@@ -23,6 +23,7 @@ if os.environ.get("LUMI_DB_INTEGRATION") != "1":
     pytest.skip("set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests", allow_module_level=True)
 
 T = TypeVar("T")
+ContextDep = Annotated[RequestContext, Depends(get_secure_project_context)]
 
 
 def run(coroutine: Coroutine[Any, Any, T]) -> T:
@@ -120,7 +121,9 @@ async def _cleanup_security_fixtures(
 ) -> None:
     async with factory() as session:
         async with session.begin():
-            await session.execute(delete(Session).where(Session.id.in_([owner_session_id, viewer_session_id])))
+            await session.execute(
+                delete(Session).where(Session.id.in_([owner_session_id, viewer_session_id]))
+            )
             await session.execute(
                 delete(OrganizationMember).where(OrganizationMember.user_id == viewer_id)
             )
@@ -147,11 +150,14 @@ def test_project_security_requires_real_principal_tenant_membership_and_csrf() -
     app.state.project_allowed_origins = frozenset({"http://localhost:3000"})
 
     @app.get("/probe")
-    async def read_probe(context: RequestContext = Depends(get_secure_project_context)):
-        return {"actor_id": str(context.actor_id), "organization_id": str(context.organization_id)}
+    async def read_probe(context: ContextDep):
+        return {
+            "actor_id": str(context.actor_id),
+            "organization_id": str(context.organization_id),
+        }
 
     @app.post("/probe")
-    async def write_probe(context: RequestContext = Depends(get_secure_project_context)):
+    async def write_probe(context: ContextDep):
         return {"actor_id": str(context.actor_id)}
 
     client = TestClient(app)
