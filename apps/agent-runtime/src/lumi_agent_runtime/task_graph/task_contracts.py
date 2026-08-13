@@ -16,6 +16,7 @@ class TaskSnapshot:
     organization_id: UUID
     project_id: UUID
     agent_run_id: UUID
+    parent_task_id: UUID | None
     task_key: str
     recipe_step_id: str
     step_type: str
