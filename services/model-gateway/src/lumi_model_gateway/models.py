@@ -21,6 +21,7 @@ class Capability(StrEnum):
     IMAGE_TRANSPARENT_BACKGROUND = "image.transparent_background"
     VIDEO_TEXT_TO_VIDEO = "video.text_to_video"
     VIDEO_IMAGE_TO_VIDEO = "video.image_to_video"
+    VIDEO_EDIT = "video.edit"
     EMBEDDING_TEXT = "embedding.text"
     EMBEDDING_MULTIMODAL = "embedding.multimodal"
     OCR_DOCUMENT = "ocr.document"
