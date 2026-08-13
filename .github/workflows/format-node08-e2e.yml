@@ -1,0 +1,43 @@
+name: Format NODE-08 E2E
+
+on:
+  push:
+    branches: [node-08-canvas-technology-spike]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: node-08-canvas-technology-spike
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.4.0 --activate
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+      - name: Format NODE-08 E2E files
+        run: pnpm exec prettier --write apps/web/e2e/canvas-renderer-fallback.spec.ts apps/web/e2e/canvas-sync-submit.spec.ts
+      - name: Commit formatter output
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'No formatting changes required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/web/e2e/canvas-renderer-fallback.spec.ts apps/web/e2e/canvas-sync-submit.spec.ts
+          git commit -m 'style(canvas): format NODE-08 renderer benchmarks'
+          git push origin HEAD:node-08-canvas-technology-spike
