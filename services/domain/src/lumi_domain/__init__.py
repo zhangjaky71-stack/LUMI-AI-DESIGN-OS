@@ -35,6 +35,7 @@ from .value_objects import (
     Transform,
     Usage,
     VersionRef,
+    normalize_provider_error,
 )
 
 __all__ = [
@@ -78,5 +79,6 @@ __all__ = [
     "VersionRef",
     "Workspace",
     "new_uuid7",
+    "normalize_provider_error",
     "uuid7_timestamp_ms",
 ]
