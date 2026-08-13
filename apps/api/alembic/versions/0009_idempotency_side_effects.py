@@ -34,6 +34,7 @@ def upgrade() -> None:
         """
     )
     op.execute("UPDATE idempotency_operations SET status = 'new' WHERE status = 'pending'")
+    op.execute("ALTER TABLE idempotency_operations ALTER COLUMN status SET DEFAULT 'new'")
     op.execute(
         """
         ALTER TABLE idempotency_operations
@@ -82,6 +83,7 @@ def downgrade() -> None:
         "DROP CONSTRAINT ck_idempotency_operations_status, "
         "DROP CONSTRAINT uq_idempotency_operations_identity"
     )
+    op.execute("ALTER TABLE idempotency_operations ALTER COLUMN status SET DEFAULT 'pending'")
     op.execute("UPDATE idempotency_operations SET status = 'pending'")
     op.execute(
         """

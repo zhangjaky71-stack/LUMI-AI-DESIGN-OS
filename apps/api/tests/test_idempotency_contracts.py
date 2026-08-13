@@ -12,6 +12,7 @@ from lumi_api.idempotency.contracts import (
     canonical_request_hash,
     deterministic_operation_key,
 )
+from lumi_api.idempotency.gateway import GatewayResponse
 from lumi_api.idempotency.http import extract_idempotency_key, replay_headers
 from lumi_api.idempotency.policy import DEFAULT_COMPENSATION, GATEWAY_REQUIRED_SIDE_EFFECTS
 
@@ -30,7 +31,8 @@ def test_canonical_request_hash_ignores_transport_trace_fields() -> None:
         "trace_id": "trace-b",
     }
     assert canonical_request_hash(left) == canonical_request_hash(right)
-    assert canonical_request_hash(left) != canonical_request_hash({**right, "prompt": "different"})
+    changed = {**right, "prompt": "different"}
+    assert canonical_request_hash(left) != canonical_request_hash(changed)
 
 
 def test_deterministic_operation_key_does_not_include_retry_attempt() -> None:
@@ -60,10 +62,14 @@ def test_http_idempotency_header_and_replay_header() -> None:
     with pytest.raises(ValueError, match="IDEMPOTENCY_KEY_REQUIRED"):
         extract_idempotency_key({})
 
-    class Response:
-        replayed = True
-
-    assert replay_headers(Response()) == {"Idempotent-Replayed": "true"}
+    response = GatewayResponse(
+        operation_id=uuid4(),
+        replayed=True,
+        result_ref=None,
+        result_json={},
+        response_status=200,
+    )
+    assert replay_headers(response) == {"Idempotent-Replayed": "true"}
 
 
 def test_paid_side_effect_policy_is_explicit() -> None:

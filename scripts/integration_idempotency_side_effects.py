@@ -48,7 +48,9 @@ def dsn() -> str:
 async def organization_id() -> UUID:
     connection = await asyncpg.connect(dsn())
     try:
-        value = await connection.fetchval("SELECT id FROM organizations ORDER BY created_at LIMIT 1")
+        value = await connection.fetchval(
+            "SELECT id FROM organizations ORDER BY created_at LIMIT 1"
+        )
         if value is None:
             raise RuntimeError("seeded organization required")
         return value
@@ -86,7 +88,9 @@ async def concurrent_claim_test(gateway: SideEffectGateway, org_id: UUID) -> UUI
     decisions = Counter(claim.decision for claim in claims)
     assert decisions[ClaimDecision.EXECUTE] == 1, decisions
     assert decisions[ClaimDecision.WAIT] == 11, decisions
-    execute_claim = next(claim for claim in claims if claim.decision == ClaimDecision.EXECUTE)
+    execute_claim = next(
+        claim for claim in claims if claim.decision == ClaimDecision.EXECUTE
+    )
     await gateway.succeed(
         execute_claim.snapshot.id,
         lease_owner=execute_claim.snapshot.lease_owner or "",
@@ -102,7 +106,10 @@ async def concurrent_claim_test(gateway: SideEffectGateway, org_id: UUID) -> UUI
     return replay.snapshot.id
 
 
-async def different_request_conflict_test(gateway: SideEffectGateway, org_id: UUID) -> None:
+async def different_request_conflict_test(
+    gateway: SideEffectGateway,
+    org_id: UUID,
+) -> None:
     key = f"conflict-{uuid4()}"
     original = IdempotencyContext(org_id, "export.create", key, {"format": "pdf"})
     await gateway.claim(original, lease_owner="owner-a")
@@ -115,7 +122,10 @@ async def different_request_conflict_test(gateway: SideEffectGateway, org_id: UU
         raise AssertionError("same key with different request must conflict")
 
 
-async def provider_crash_window_test(gateway: SideEffectGateway, org_id: UUID) -> None:
+async def provider_crash_window_test(
+    gateway: SideEffectGateway,
+    org_id: UUID,
+) -> None:
     context = IdempotencyContext(
         org_id,
         "video.generate",
@@ -175,7 +185,10 @@ async def provider_confirmed_failure_allows_retry(
     assert retry.snapshot.provider_request_id is None
 
 
-async def ambiguous_provider_state_blocks_retry(gateway: SideEffectGateway, org_id: UUID) -> None:
+async def ambiguous_provider_state_blocks_retry(
+    gateway: SideEffectGateway,
+    org_id: UUID,
+) -> None:
     context = IdempotencyContext(
         org_id,
         "external.publish",
@@ -192,7 +205,10 @@ async def ambiguous_provider_state_blocks_retry(gateway: SideEffectGateway, org_
     await expire_lease(first.snapshot.id)
     recovery = await gateway.claim(context, lease_owner="worker-b")
     reconciler = Reconciler(
-        ProviderReconciliation(state=ProviderState.UNKNOWN, detail="provider has no status API")
+        ProviderReconciliation(
+            state=ProviderState.UNKNOWN,
+            detail="provider has no status API",
+        )
     )
     ambiguous = await gateway.reconcile(recovery, reconciler=reconciler)
     assert ambiguous.decision == ClaimDecision.AMBIGUOUS
@@ -212,7 +228,10 @@ async def cost_ledger_dedupe_test(org_id: UUID, operation_id: UUID) -> None:
         model="test-model",
         metadata_json={"source": "node20-failure-injection"},
     )
-    results = await asyncio.gather(ledger.record_once(entry), ledger.record_once(entry))
+    results = await asyncio.gather(
+        ledger.record_once(entry),
+        ledger.record_once(entry),
+    )
     assert sum(1 for _, created in results if created) == 1
     assert results[0][0] == results[1][0]
     connection = await asyncpg.connect(dsn())
@@ -242,10 +261,22 @@ async def execute_replay_test(gateway: SideEffectGateway, org_id: UUID) -> None:
         nonlocal calls
         del handle
         calls += 1
-        return SideEffectResult(result_ref="message://1", result_json={"sent": True}, response_status=202)
+        return SideEffectResult(
+            result_ref="message://1",
+            result_json={"sent": True},
+            response_status=202,
+        )
 
-    first = await gateway.execute(context, lease_owner="http-request-1", invoke=invoke)
-    second = await gateway.execute(context, lease_owner="http-request-2", invoke=invoke)
+    first = await gateway.execute(
+        context,
+        lease_owner="http-request-1",
+        invoke=invoke,
+    )
+    second = await gateway.execute(
+        context,
+        lease_owner="http-request-2",
+        invoke=invoke,
+    )
     assert first.replayed is False
     assert second.replayed is True
     assert calls == 1
