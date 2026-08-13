@@ -8,7 +8,12 @@ from uuid import uuid4
 
 import asyncpg
 
-from lumi_model_gateway import Capability, compile_registry_seed
+from lumi_model_gateway import (
+    Capability,
+    PostgresRegistryLoader,
+    SupportLevel,
+    compile_registry_seed,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SEED = ROOT / "config/model-registry/registry.seed.v1.yaml"
@@ -89,6 +94,17 @@ async def main_async() -> None:
         )
         assert int(multimodal) == 1
 
+        video_edit = await runtime.fetchval(
+            """
+            SELECT count(*) FROM model_capability_claims
+            WHERE registry_version_id = $1 AND model_key = $2 AND capability = $3
+            """,
+            compiled.snapshot_id,
+            "runway:aleph2",
+            Capability.VIDEO_EDIT.value,
+        )
+        assert int(video_edit) == 1
+
         current_price = await runtime.fetchval(
             """
             SELECT count(*) FROM model_pricing_snapshots
@@ -129,15 +145,27 @@ async def main_async() -> None:
             uuid4(),
             organization_id,
         )
-        disabled = await runtime.fetchval(
-            """
-            SELECT disabled_providers_json FROM organization_model_policies
-            WHERE organization_id = $1 ORDER BY policy_version DESC LIMIT 1
-            """,
-            organization_id,
+
+        loaded = await PostgresRegistryLoader().load_active(
+            runtime,
+            organization_ids=(organization_id,),
+            at_time=datetime.now(UTC),
         )
-        assert disabled is not None
-        assert "openai" in str(disabled)
+        assert loaded.snapshot_id == compiled.snapshot_id
+        assert loaded.content_hash == compiled.content_hash
+        assert len(loaded.models) == 28
+        assert len(loaded.routing_profiles) == 15
+        assert loaded.benchmarks == ()
+        assert (
+            loaded.support(
+                "google:gemini-embedding-2",
+                Capability.EMBEDDING_MULTIMODAL,
+            )
+            == SupportLevel.FULL
+        )
+        policy = loaded.organization_policy(organization_id)
+        assert policy is not None
+        assert "openai" in policy.disabled_providers
 
         try:
             await runtime.execute(
