@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, fields
 from decimal import Decimal
 from pathlib import Path
 
@@ -9,10 +9,15 @@ import pytest
 from lumi_domain import (
     AgentRun,
     AgentRunStatus,
+    Artifact,
+    ArtifactBranch,
     ArtifactVersion,
     ArtifactVersionStatus,
     Asset,
+    BoundedContext,
+    Brand,
     CostEntry,
+    DesignDocument,
     Generation,
     InvalidTransition,
     InvariantViolation,
@@ -26,6 +31,7 @@ from lumi_domain import (
     StorageRef,
     Task,
     TaskStatus,
+    Workspace,
     new_uuid7,
     normalize_provider_error,
     uuid7_timestamp_ms,
@@ -46,6 +52,31 @@ def test_uuid7_is_sortable_and_exposes_timestamp() -> None:
     assert second.version == 7
     assert first.int < second.int
     assert uuid7_timestamp_ms(first) == 1_700_000_000_000
+
+
+def test_bounded_context_vocabulary_is_frozen_to_twelve_contexts() -> None:
+    assert len(BoundedContext) == 12
+    assert BoundedContext.DESIGN.value == "design"
+    assert BoundedContext.AGENT_EXECUTION.value == "agent_execution"
+
+
+def test_tenant_business_entities_all_expose_organization_id() -> None:
+    tenant_entities = (
+        Workspace,
+        Project,
+        Brand,
+        Asset,
+        DesignDocument,
+        Artifact,
+        ArtifactVersion,
+        ArtifactBranch,
+        AgentRun,
+        Task,
+        Generation,
+        CostEntry,
+    )
+    for entity in tenant_entities:
+        assert "organization_id" in {field.name for field in fields(entity)}
 
 
 def test_money_requires_decimal_and_normalizes_currency() -> None:
@@ -94,6 +125,11 @@ def test_approved_artifact_version_cannot_be_mutated_or_revised() -> None:
         version.revised(content_hash="sha256:def")
     with pytest.raises(InvalidTransition):
         version.transition_to(ArtifactVersionStatus.REJECTED)
+
+
+def test_artifact_version_requires_content_hash() -> None:
+    with pytest.raises(ValueError, match="content_hash"):
+        ArtifactVersion(new_uuid7(), new_uuid7(), "")
 
 
 def test_artifact_lineage_cycle_is_rejected() -> None:
@@ -162,10 +198,21 @@ def test_generation_enforces_paid_operation_identity_itself() -> None:
         Generation(new_uuid7(), new_uuid7(), "provider", "model", True, None)
 
 
-def test_cost_entry_is_immutable_and_adjustments_are_new_ledger_entries() -> None:
-    original = CostEntry(new_uuid7(), Money(Decimal("10.00"), "USD"), "provider_cost")
+def test_cost_entry_is_deeply_immutable_and_adjustments_are_new_entries() -> None:
+    original_metadata = {"provider": "example"}
+    original = CostEntry(
+        new_uuid7(),
+        Money(Decimal("10.00"), "USD"),
+        "provider_cost",
+        metadata=original_metadata,
+    )
+    original_metadata["provider"] = "mutated-outside"
+    assert original.metadata["provider"] == "example"
+    with pytest.raises(TypeError):
+        original.metadata["provider"] = "mutated"  # type: ignore[index]
     with pytest.raises(FrozenInstanceError):
         setattr(original, "category", "mutated")
+
     reversal = original.reversal(reason="provider refund")
     assert reversal.id != original.id
     assert reversal.reverses_entry_id == original.id
