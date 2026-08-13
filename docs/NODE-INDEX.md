@@ -2,7 +2,7 @@
 
 > Architecture Baseline: **LUMI AI Design OS — Architecture V2**  
 > Documentation Status: **NODE-00～NODE-73 ALL SPECIFIED**  
-> Implementation Status: **NODE-06 engineering COMPLETE; next engineering node is NODE-07**  
+> Implementation Status: **NODE-07 engineering COMPLETE; next engineering node is NODE-08**  
 > Rule: **SPECIFIED ≠ IMPLEMENTED**. 每个工程 Node 必须完成代码、测试、验收和 GitHub 提交后才能改为 `COMPLETE`。
 
 ---
@@ -48,7 +48,7 @@ BLOCKED_TECHNICAL  # 技术故障
 |---|---|---|---|
 | NODE-05 | [Benchmark Harness](nodes/NODE-05-BENCHMARK-HARNESS.md) | **COMPLETE** | 20-case `smoke@1.0.0`、runner/grader、baseline/candidate release gate；CI `31591585790` PASS；artifact `9139339839` |
 | NODE-06 | [Lovart Capability Matrix](nodes/NODE-06-LOVART-CAPABILITY-MATRIX.md) | **COMPLETE** | 67项公开能力；56 PARITY / 7 SUPERSET / 4 DEFER；56验收规格；CI `31653362402` PASS；PR `#4` MERGED |
-| NODE-07 | [Model Provider Matrix](nodes/NODE-07-MODEL-PROVIDER-MATRIX.md) | SPECIFIED | 模型能力/成本/延迟/质量矩阵 |
+| NODE-07 | [Model Provider Matrix](nodes/NODE-07-MODEL-PROVIDER-MATRIX.md) | **COMPLETE** | 5 Provider / 28模型 / 15任务路由；质量/延迟未实测保持 NOT_MEASURED；CI `31654622745` PASS；PR `#5` MERGED |
 | NODE-08 | [Canvas Technology Spike](nodes/NODE-08-CANVAS-TECHNOLOGY-SPIKE.md) | SPECIFIED | PixiJS Canvas性能与可行性验证 |
 
 # Phase 1 — Domain & Contracts
