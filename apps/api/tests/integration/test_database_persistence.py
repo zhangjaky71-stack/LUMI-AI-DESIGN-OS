@@ -5,14 +5,13 @@ import os
 from collections.abc import Coroutine
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, TypeVar
 
 import pytest
+from lumi_domain import DomainEvent, Project as DomainProject, ProjectStatus, new_uuid7
 from sqlalchemy import select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from lumi_domain import DomainEvent, Project as DomainProject, ProjectStatus, new_uuid7
 
 from lumi_api.persistence.models import CostLedger, Organization, Project, Workspace
 from lumi_api.persistence.repositories import (
@@ -26,8 +25,10 @@ from lumi_api.persistence.session import create_engine
 if os.environ.get("LUMI_DB_INTEGRATION") != "1":
     pytest.skip("set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests", allow_module_level=True)
 
+T = TypeVar("T")
 
-def run[T](coroutine: Coroutine[Any, Any, T]) -> T:
+
+def run(coroutine: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coroutine)
 
 
@@ -36,7 +37,7 @@ async def _head_and_table_count() -> None:
     try:
         async with engine.connect() as connection:
             head = (await connection.execute(text("SELECT version_num FROM alembic_version"))).scalar_one()
-            assert head == "0003_runtime_privilege_hardening"
+            assert head == "0004_auth_security"
             count = (
                 await connection.execute(
                     text(
@@ -50,7 +51,7 @@ async def _head_and_table_count() -> None:
                     )
                 )
             ).scalar_one()
-            assert count == 41
+            assert count == 46
     finally:
         await engine.dispose()
 
@@ -115,10 +116,7 @@ async def _tenant_scope_and_optimistic_lock() -> None:
                 )
                 await tenant_a_repository.save(domain_project)
                 stored = await session.scalar(
-                    select(Project).where(
-                        Project.id == project_a_id,
-                        Project.organization_id == ORG_ID,
-                    )
+                    select(Project).where(Project.id == project_a_id, Project.organization_id == ORG_ID)
                 )
                 assert stored is not None
                 expected = stored.version
