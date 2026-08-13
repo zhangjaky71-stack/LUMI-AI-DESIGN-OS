@@ -164,8 +164,6 @@ class PostgresCostGateway:
                         f"reservation cannot commit from {reservation['status']}"
                     )
 
-                # Preflight budget enforcement happened before provider invocation. Actual
-                # spend is now a sunk financial fact, including a late result after TTL.
                 result = await self._insert_actual(connection, actual)
                 await self._insert_usage_facts(connection, actual, result.entry_id)
                 await connection.execute(
@@ -240,7 +238,7 @@ class PostgresCostGateway:
         try:
             async with connection.transaction():
                 target = await connection.fetchrow(
-                    "SELECT * FROM cost_ledger WHERE id=$1 FOR SHARE",
+                    "SELECT * FROM cost_ledger WHERE id=$1",
                     target_entry_id,
                 )
                 if target is None:
@@ -460,7 +458,6 @@ class PostgresCostGateway:
                     SELECT * FROM quota_limits
                     WHERE organization_id=$1 AND scope_type='organization'
                       AND scope_id IS NULL AND metric=$2 AND period_key=$3 AND enabled
-                    FOR SHARE
                     """,
                     organization_id,
                     metric,
@@ -586,7 +583,7 @@ class PostgresCostGateway:
         try:
             async with connection.transaction():
                 target = await connection.fetchrow(
-                    "SELECT * FROM cost_ledger WHERE id=$1 FOR SHARE",
+                    "SELECT * FROM cost_ledger WHERE id=$1",
                     adjustment.target_entry_id,
                 )
                 if target is None:
@@ -870,7 +867,6 @@ class PostgresCostGateway:
                  OR (scope_type='operation' AND scope_id=$7)
               )
             ORDER BY scope_type, period_key, id
-            FOR UPDATE
             """,
             context.organization_id,
             request.currency,
