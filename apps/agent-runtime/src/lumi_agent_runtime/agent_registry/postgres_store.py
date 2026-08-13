@@ -13,6 +13,8 @@ class AsyncConnectionFactory(Protocol):
 
 
 class PostgresAgentRunProvenanceStore:
+    """Append-only, DB-SDK-neutral AgentRun provenance writer."""
+
     def __init__(self, connection_factory: AsyncConnectionFactory) -> None:
         self.connection_factory = connection_factory
 
@@ -26,7 +28,15 @@ class PostgresAgentRunProvenanceStore:
     ) -> bool:
         connection = await self.connection_factory()
         try:
-            await connection.execute(
+            base = await connection.fetchrow(
+                "SELECT organization_id, project_id FROM agent_runs WHERE id=$1",
+                agent_run_id,
+            )
+            if base is None:
+                raise AgentProvenanceConflictError("AgentRun not found")
+            if base["organization_id"] != organization_id or base["project_id"] != project_id:
+                raise AgentProvenanceConflictError("AgentRun provenance tenant/project mismatch")
+            status = await connection.execute(
                 """
                 INSERT INTO agent_run_provenance (
                     agent_run_id, organization_id, project_id, requested_ref,
@@ -53,15 +63,11 @@ class PostgresAgentRunProvenanceStore:
                 "SELECT provenance_hash FROM agent_run_provenance WHERE agent_run_id=$1",
                 agent_run_id,
             )
-            if row is None:
-                raise AgentProvenanceConflictError("provenance insert disappeared")
-            if row["provenance_hash"] != provenance.freeze_hash:
-                raise AgentProvenanceConflictError("AgentRun already frozen with different provenance")
-            inserted = await connection.fetchval(
-                "SELECT created_at = updated_at FROM agent_runs WHERE id=$1",
-                agent_run_id,
-            )
-            return bool(inserted) if inserted is not None else False
+            if row is None or row["provenance_hash"] != provenance.freeze_hash:
+                raise AgentProvenanceConflictError(
+                    "AgentRun already frozen with different provenance"
+                )
+            return status == "INSERT 0 1"
         finally:
             await connection.close()
 
