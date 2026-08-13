@@ -1,10 +1,13 @@
 # NODE-06 — Lovart Capability Matrix
 
 > Phase: 0 Benchmark Before Build  
-> Status: **VALIDATING**  
-> Implementation Status: **VALIDATING**  
-> Implementation Branch: `node-06-lovart-capability-matrix`  
+> Status: **COMPLETE**  
+> Implementation Status: **COMPLETE**  
+> Implemented Commit: `ac480205962810c06b1f2c9b6fb6f988f71e55c7`  
+> Implementation PR: `#4`  
 > Acceptance Report: `reports/nodes/NODE-06/acceptance.md`  
+> Clean Acceptance CI: `31653362402`  
+> Implemented At: `2026-08-13`  
 > Priority: P0  
 > Depends on: NODE-05  
 > Produces: 合法、可复验的竞品能力基准与 LUMI 验收矩阵
@@ -200,6 +203,18 @@ DEFER=4
 parity_acceptance_cases=56
 ```
 
+Clean acceptance run `31653362402` additionally proved:
+
+```text
+frontend    PASS
+python      PASS (18 tests; Pyright 0 errors / 0 warnings)
+contracts   PASS
+integration PASS
+eval-smoke  PASS
+secret-scan PASS (run 31653362407)
+dependency review PASS (run 31653362412)
+```
+
 ## 12. 验收标准
 
 - [x] 覆盖 A～G 七大类。
@@ -210,7 +225,7 @@ parity_acceptance_cases=56
 - [x] 不复制竞争对手专有实现/内容。
 - [x] 机器可读矩阵版本化。
 - [x] Matrix contract 接入 CI `contracts` job。
-- [ ] Implementation PR 的完整 NODE-04/05 gates 全绿并归档证据。
+- [x] Implementation PR 的完整 NODE-04/05 gates 全绿并归档证据。
 
 ## 13. Definition of Done
 
@@ -222,7 +237,8 @@ parity/superset/defer targets assigned      PASS
 implementation nodes mapped                 PASS
 matrix validator implemented                PASS
 CI contract gate wired                      PASS
-clean implementation PR validation          PENDING
+clean implementation PR validation          PASS
+implementation merged to main               PASS
 ```
 
 下一节点：NODE-07 Model Provider Matrix。
