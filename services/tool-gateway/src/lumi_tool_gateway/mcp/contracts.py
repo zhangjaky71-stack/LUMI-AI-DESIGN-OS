@@ -4,8 +4,8 @@ import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
-from uuid import UUID
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from ..contracts import ToolIdempotency, ToolRisk
 
@@ -162,6 +162,7 @@ class MCPDiscoveryResult:
 @dataclass(frozen=True, slots=True)
 class MCPCallResult:
     structured_content: Any
+    structured_content_present: bool
     content: tuple[dict[str, Any], ...]
     is_error: bool = False
     result_type: str = "complete"
