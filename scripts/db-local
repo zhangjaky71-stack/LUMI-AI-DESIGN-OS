@@ -25,14 +25,22 @@ case "$command" in
   downgrade-one)
     exec uv run --package lumi-api alembic -c apps/api/alembic.ini downgrade -1
     ;;
+  downgrade-smoke)
+    uv run --package lumi-api alembic -c apps/api/alembic.ini downgrade -1
+    exec uv run --package lumi-api alembic -c apps/api/alembic.ini upgrade head
+    ;;
   current)
     exec uv run --package lumi-api alembic -c apps/api/alembic.ini current
     ;;
   seed)
     exec uv run --package lumi-api python -m lumi_api.persistence.seed
     ;;
+  integration-test)
+    export LUMI_DB_INTEGRATION=1
+    exec uv run pytest apps/api/tests/integration/test_database_persistence.py -q
+    ;;
   *)
-    echo "Usage: scripts/db-local {upgrade|downgrade-one|current|seed}" >&2
+    echo "Usage: scripts/db-local {upgrade|downgrade-one|downgrade-smoke|current|seed|integration-test}" >&2
     exit 2
     ;;
 esac
