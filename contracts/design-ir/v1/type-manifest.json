@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "units": ["px"],
+  "node_kinds": [
+    "DOCUMENT_ROOT",
+    "FRAME",
+    "GROUP",
+    "TEXT",
+    "IMAGE",
+    "SHAPE",
+    "VECTOR_PATH",
+    "VIDEO",
+    "MASK",
+    "GUIDE",
+    "COMPONENT",
+    "INSTANCE"
+  ],
+  "semantic_roles": [
+    "BACKGROUND",
+    "HERO_PRODUCT",
+    "LOGO",
+    "HEADLINE",
+    "BODY_COPY",
+    "PRICE",
+    "CTA",
+    "QR_CODE",
+    "DECORATION",
+    "REFERENCE"
+  ],
+  "blend_modes": ["NORMAL", "MULTIPLY", "SCREEN", "OVERLAY", "DARKEN", "LIGHTEN"],
+  "operation_types": [
+    "CREATE_NODE",
+    "DELETE_NODE",
+    "SET_PROPERTY",
+    "MOVE_NODE",
+    "RESIZE_NODE",
+    "ROTATE_NODE",
+    "REORDER_NODE",
+    "REPARENT_NODE",
+    "REPLACE_ASSET",
+    "SET_TEXT",
+    "APPLY_STYLE",
+    "BATCH"
+  ],
+  "shape_types": ["RECT", "ELLIPSE", "LINE", "POLYGON"],
+  "fit_modes": ["FILL", "CONTAIN", "COVER", "NONE"],
+  "text_align": ["LEFT", "CENTER", "RIGHT", "JUSTIFY"],
+  "vertical_align": ["TOP", "MIDDLE", "BOTTOM"],
+  "writing_direction": ["LTR", "RTL", "AUTO"],
+  "range_indexing": "UNICODE_CODE_POINT",
+  "canonicalization": "LUMI_CANONICAL_JSON_V1"
+}
