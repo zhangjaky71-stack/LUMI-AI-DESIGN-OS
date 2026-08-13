@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     lumi_log_level: str = "INFO"
     lumi_version: str = "0.0.0-dev"
     database_url: str | None = None
+    migration_database_url: str | None = None
     redis_url: str | None = None
     rabbitmq_url: str | None = None
     s3_endpoint_url: str | None = None
