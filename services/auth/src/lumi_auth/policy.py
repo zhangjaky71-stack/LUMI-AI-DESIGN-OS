@@ -11,6 +11,7 @@ Permission = Literal[
     "artifact.approve",
     "brand.manage",
     "member.invite",
+    "api_token.manage",
     "billing.read",
     "billing.manage",
     "admin.audit.read",
@@ -19,11 +20,11 @@ Permission = Literal[
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
     "OWNER": frozenset({
         "project.read","project.write","asset.upload","artifact.approve","brand.manage",
-        "member.invite","billing.read","billing.manage","admin.audit.read",
+        "member.invite","api_token.manage","billing.read","billing.manage","admin.audit.read",
     }),
     "ADMIN": frozenset({
         "project.read","project.write","asset.upload","artifact.approve","brand.manage",
-        "member.invite","billing.read","admin.audit.read",
+        "member.invite","api_token.manage","billing.read","admin.audit.read",
     }),
     "EDITOR": frozenset({"project.read","project.write","asset.upload","brand.manage"}),
     "VIEWER": frozenset({"project.read"}),
