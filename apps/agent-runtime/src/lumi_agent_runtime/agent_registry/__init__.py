@@ -9,7 +9,17 @@ from .dependencies import (
     StaticVersionedCatalog,
     load_bootstrap_catalog,
 )
-from .errors import AgentRegistryError
+from .errors import (
+    AgentDefinitionInvalidError,
+    AgentDefinitionNotFoundError,
+    AgentDependencyError,
+    AgentPromptPolicyError,
+    AgentProvenanceConflictError,
+    AgentRegistryError,
+    AgentReleaseError,
+    AgentVersionConflictError,
+    AgentVersionResolutionError,
+)
 from .loader import load_definition, load_definitions, load_release_manifest
 from .postgres_store import PostgresAgentRunProvenanceStore
 from .provenance import AgentProvenance, ResolvedAgent, ResolvedDependency
@@ -22,14 +32,22 @@ from .validator import AgentValidator, StaticSystemPromptLinter
 
 __all__ = [
     "AgentDefinition",
+    "AgentDefinitionInvalidError",
+    "AgentDefinitionNotFoundError",
+    "AgentDependencyError",
+    "AgentPromptPolicyError",
     "AgentProvenance",
+    "AgentProvenanceConflictError",
     "AgentRegistry",
     "AgentRegistryError",
+    "AgentReleaseError",
     "AgentReleaseManager",
     "AgentReleaseManifest",
     "AgentReleaseRecord",
     "AgentReleaseStatus",
     "AgentValidator",
+    "AgentVersionConflictError",
+    "AgentVersionResolutionError",
     "CatalogEntry",
     "DependencyResolver",
     "EvalEvidence",
