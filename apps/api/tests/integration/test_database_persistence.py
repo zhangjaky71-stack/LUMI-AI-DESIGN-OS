@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Coroutine
 from datetime import UTC, datetime
 from decimal import Decimal
-from uuid import UUID
+from typing import Any
 
 import pytest
-from lumi_domain import DomainEvent, Project as DomainProject, ProjectStatus, new_uuid7
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from lumi_api.persistence.models import CostLedger, Organization, Project, User, Workspace
+from lumi_domain import DomainEvent, Project as DomainProject, ProjectStatus, new_uuid7
+
+from lumi_api.persistence.models import CostLedger, Organization, Project, Workspace
 from lumi_api.persistence.repositories import (
     OptimisticLockError,
     ProjectRepositoryAdapter,
@@ -25,8 +27,8 @@ if os.environ.get("LUMI_DB_INTEGRATION") != "1":
     pytest.skip("set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests", allow_module_level=True)
 
 
-def run(coroutine: object) -> object:
-    return asyncio.run(coroutine)  # type: ignore[arg-type]
+def run[T](coroutine: Coroutine[Any, Any, T]) -> T:
+    return asyncio.run(coroutine)
 
 
 async def _head_and_table_count() -> None:
@@ -113,7 +115,10 @@ async def _tenant_scope_and_optimistic_lock() -> None:
                 )
                 await tenant_a_repository.save(domain_project)
                 stored = await session.scalar(
-                    select(Project).where(Project.id == project_a_id, Project.organization_id == ORG_ID)
+                    select(Project).where(
+                        Project.id == project_a_id,
+                        Project.organization_id == ORG_ID,
+                    )
                 )
                 assert stored is not None
                 expected = stored.version
