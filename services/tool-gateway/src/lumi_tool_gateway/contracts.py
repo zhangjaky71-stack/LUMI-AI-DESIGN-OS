@@ -111,19 +111,18 @@ class ToolPermissionContext:
     organization_id: UUID
     actor_id: str
     granted_permissions: frozenset[str]
-    agent_allow_patterns: tuple[str, ...]
-    parent_allow_patterns: tuple[str, ...] = ()
+    agent_allow_patterns: tuple[str, ...] = ()
+    parent_allow_patterns: tuple[str, ...] | None = None
     organization_allow_patterns: tuple[str, ...] = ()
     organization_deny_patterns: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.actor_id or len(self.actor_id) > 255:
             raise ValueError("TOOL_ACTOR_INVALID")
-        if not self.agent_allow_patterns:
-            raise ValueError("TOOL_AGENT_ALLOWLIST_REQUIRED")
+        parent_patterns = self.parent_allow_patterns or ()
         for pattern in (
             *self.agent_allow_patterns,
-            *self.parent_allow_patterns,
+            *parent_patterns,
             *self.organization_allow_patterns,
             *self.organization_deny_patterns,
         ):
