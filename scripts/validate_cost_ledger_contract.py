@@ -55,6 +55,11 @@ def main() -> int:
         "numeric(20,8)",
         "numeric(30,10)",
         "REVOKE UPDATE, DELETE ON cost_ledger FROM lumi_app",
+        "REVOKE UPDATE, DELETE ON usage_ledger FROM lumi_app",
+        "REVOKE DELETE ON cost_reservations FROM lumi_app",
+        "REVOKE INSERT, UPDATE, DELETE ON cost_budget_limits FROM lumi_app",
+        "REVOKE INSERT, UPDATE, DELETE ON quota_limits FROM lumi_app",
+        "REVOKE DELETE ON quota_leases FROM lumi_app",
         "GRANT SELECT, INSERT ON usage_ledger TO lumi_app",
         "GRANT SELECT, INSERT, UPDATE ON cost_reservations TO lumi_app",
         "GRANT SELECT ON cost_budget_limits, quota_limits TO lumi_app",
@@ -166,6 +171,9 @@ def main() -> int:
         "provider invoice reconciliation",
         "concurrent generation quota must reject third lease",
         "runtime mutation must be denied",
+        "UPDATE usage_ledger SET quantity=999",
+        "DELETE FROM cost_reservations",
+        "DELETE FROM quota_leases",
         "mock-price-v1",
     )
 
