@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Mapping
 
 from .errors import InvariantViolation
 from .ids import DomainId, new_uuid7
@@ -44,6 +44,7 @@ class Project:
     name: str
     id: DomainId = field(default_factory=new_uuid7)
     status: ProjectStatus = ProjectStatus.DRAFT
+    brief: Mapping[str, object] = field(default_factory=dict)
     brand_id: DomainId | None = None
     active_branch_id: DomainId | None = None
     settings: Mapping[str, object] = field(default_factory=dict)
@@ -61,6 +62,7 @@ class Brand:
     palettes: tuple[str, ...] = ()
     typography: tuple[str, ...] = ()
     logo_asset_ids: tuple[DomainId, ...] = ()
+    tone: tuple[str, ...] = ()
     visual_rules: tuple[str, ...] = ()
     forbidden_rules: tuple[str, ...] = ()
 
@@ -120,6 +122,19 @@ class ArtifactVersion:
             content_hash=content_hash,
             parent_version_id=self.id,
         )
+
+
+@dataclass(slots=True)
+class ArtifactBranch:
+    organization_id: DomainId
+    project_id: DomainId
+    artifact_id: DomainId
+    name: str
+    id: DomainId = field(default_factory=new_uuid7)
+    head_version_id: DomainId | None = None
+
+    def move_head(self, version_id: DomainId) -> None:
+        self.head_version_id = version_id
 
 
 @dataclass(slots=True)
