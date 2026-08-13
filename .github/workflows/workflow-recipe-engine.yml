@@ -49,10 +49,9 @@ jobs:
       - name: NODE-32 dependency-light unit tests
         run: >-
           PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
-          python -m unittest
-          apps.agent-runtime.tests.test_recipe_expression
-          apps.agent-runtime.tests.test_recipe_dag
-          apps.agent-runtime.tests.test_recipe_release
+          python -m unittest discover
+          -s apps/agent-runtime/tests
+          -p 'test_recipe_*.py'
 
   recipe-quality:
     needs: recipe-contract
