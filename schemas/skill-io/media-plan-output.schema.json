@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"MediaPlanOutput","type":"object","required":["shots"],"properties":{"duration_seconds":{"type":"number","minimum":0},"shots":{"type":"array","maxItems":32,"items":{"type":"object"}},"continuity_rules":{"type":"array","items":{"type":"string"}}},"additionalProperties":true}

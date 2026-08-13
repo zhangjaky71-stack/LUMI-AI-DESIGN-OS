@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"CritiqueOutput","type":"object","required":["issues"],"properties":{"score":{"type":"number","minimum":0,"maximum":100},"issues":{"type":"array","items":{"type":"object"}},"must_fix":{"type":"array","items":{"type":"object"}},"optional":{"type":"array","items":{"type":"object"}}},"additionalProperties":true}
