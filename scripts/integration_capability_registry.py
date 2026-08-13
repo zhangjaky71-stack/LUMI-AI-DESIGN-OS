@@ -4,6 +4,7 @@ import asyncio
 import os
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 import asyncpg
 
@@ -77,6 +78,17 @@ async def main_async() -> None:
         )
         assert int(unknown) == 0
 
+        multimodal = await runtime.fetchval(
+            """
+            SELECT count(*) FROM model_capability_claims
+            WHERE registry_version_id = $1 AND model_key = $2 AND capability = $3
+            """,
+            compiled.snapshot_id,
+            "google:gemini-embedding-2",
+            Capability.EMBEDDING_MULTIMODAL.value,
+        )
+        assert int(multimodal) == 1
+
         current_price = await runtime.fetchval(
             """
             SELECT count(*) FROM model_pricing_snapshots
@@ -109,11 +121,12 @@ async def main_async() -> None:
                 denied_models_json, allowed_regions_json, preferred_models_json,
                 data_handling_restrictions_json, effective_from, created_at
             ) VALUES (
-                gen_random_uuid(), $1, 1, '["openai"]'::jsonb, '[]'::jsonb,
+                $1, $2, 1, '["openai"]'::jsonb, '[]'::jsonb,
                 '[]'::jsonb, '[]'::jsonb, '["no_training"]'::jsonb, now(), now()
             )
             ON CONFLICT (organization_id, policy_version) DO NOTHING
             """,
+            uuid4(),
             organization_id,
         )
         disabled = await runtime.fetchval(
@@ -123,7 +136,8 @@ async def main_async() -> None:
             """,
             organization_id,
         )
-        assert "openai" in disabled
+        assert disabled is not None
+        assert "openai" in str(disabled)
 
         try:
             await runtime.execute(
