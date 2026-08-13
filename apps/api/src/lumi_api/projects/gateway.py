@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from uuid import UUID
 
 from lumi_domain import ProjectStatus
@@ -46,23 +45,21 @@ class ProjectCoreGateway:
         filters: ProjectListFilter,
     ) -> PageResult[ProjectResource]:
         self._require(context, "project.read")
-        async with self.session_factory() as session:
-            async with session.begin():
-                service = ProjectService(session)
-                try:
-                    rows, next_cursor, has_more = await service.list_projects(
-                        organization_id=context.organization_id,
-                        filters=filters,
-                        cursor=page.cursor,
-                        limit=page.limit,
-                    )
-                except ProjectApplicationError as exc:
-                    raise self._problem(exc) from exc
-                return PageResult(
-                    items=[self._project_resource(row) for row in rows],
-                    next_cursor=next_cursor,
-                    has_more=has_more,
+        async with self.session_factory() as session, session.begin():
+            try:
+                rows, next_cursor, has_more = await ProjectService(session).list_projects(
+                    organization_id=context.organization_id,
+                    filters=filters,
+                    cursor=page.cursor,
+                    limit=page.limit,
                 )
+            except ProjectApplicationError as exc:
+                raise self._problem(exc) from exc
+            return PageResult(
+                items=[self._project_resource(row) for row in rows],
+                next_cursor=next_cursor,
+                has_more=has_more,
+            )
 
     async def create_project(
         self,
@@ -71,43 +68,35 @@ class ProjectCoreGateway:
         idempotency_key: str,
     ) -> ProjectResource:
         actor_id = self._require(context, "project.write")
-        async with self.session_factory() as session:
-            async with session.begin():
-                service = ProjectService(session)
-                try:
-                    row = await service.create_project(
-                        organization_id=context.organization_id,
-                        actor_id=actor_id,
-                        request_id=context.request_id,
-                        idempotency_key=idempotency_key,
-                        workspace_id=payload.workspace_id,
-                        name=payload.name,
-                        brief=payload.brief,
-                        brand_id=payload.brand_id,
-                        settings=payload.settings,
-                    )
-                except ProjectApplicationError as exc:
-                    raise self._problem(exc) from exc
-                await session.refresh(row)
-                return self._project_resource(row)
+        async with self.session_factory() as session, session.begin():
+            try:
+                row = await ProjectService(session).create_project(
+                    organization_id=context.organization_id,
+                    actor_id=actor_id,
+                    request_id=context.request_id,
+                    idempotency_key=idempotency_key,
+                    workspace_id=payload.workspace_id,
+                    name=payload.name,
+                    brief=payload.brief,
+                    brand_id=payload.brand_id,
+                    settings=payload.settings,
+                )
+            except ProjectApplicationError as exc:
+                raise self._problem(exc) from exc
+            await session.refresh(row)
+            return self._project_resource(row)
 
-    async def get_project(
-        self,
-        context: RequestContext,
-        project_id: UUID,
-    ) -> ProjectResource:
+    async def get_project(self, context: RequestContext, project_id: UUID) -> ProjectResource:
         self._require(context, "project.read")
-        async with self.session_factory() as session:
-            async with session.begin():
-                service = ProjectService(session)
-                try:
-                    row = await service.get_project(
-                        organization_id=context.organization_id,
-                        project_id=project_id,
-                    )
-                except ProjectApplicationError as exc:
-                    raise self._problem(exc) from exc
-                return self._project_resource(row)
+        async with self.session_factory() as session, session.begin():
+            try:
+                row = await ProjectService(session).get_project(
+                    organization_id=context.organization_id,
+                    project_id=project_id,
+                )
+            except ProjectApplicationError as exc:
+                raise self._problem(exc) from exc
+            return self._project_resource(row)
 
     async def update_project(
         self,
@@ -117,28 +106,26 @@ class ProjectCoreGateway:
         expected_version: int,
     ) -> ProjectResource:
         actor_id = self._require(context, "project.write")
-        async with self.session_factory() as session:
-            async with session.begin():
-                service = ProjectService(session)
-                try:
-                    row = await service.update_project(
-                        organization_id=context.organization_id,
-                        actor_id=actor_id,
-                        request_id=context.request_id,
-                        project_id=project_id,
-                        expected_version=expected_version,
-                        changes=payload.model_dump(exclude_unset=True),
-                    )
-                except (ProjectApplicationError, ValueError) as exc:
-                    if isinstance(exc, ProjectApplicationError):
-                        raise self._problem(exc) from exc
-                    raise ApiProblem(
-                        status=422,
-                        code="INVALID_PROJECT_UPDATE",
-                        title="Invalid project update",
-                        detail=str(exc),
-                    ) from exc
-                return self._project_resource(row)
+        async with self.session_factory() as session, session.begin():
+            try:
+                row = await ProjectService(session).update_project(
+                    organization_id=context.organization_id,
+                    actor_id=actor_id,
+                    request_id=context.request_id,
+                    project_id=project_id,
+                    expected_version=expected_version,
+                    changes=payload.model_dump(exclude_unset=True),
+                )
+            except ProjectApplicationError as exc:
+                raise self._problem(exc) from exc
+            except ValueError as exc:
+                raise ApiProblem(
+                    status=422,
+                    code="INVALID_PROJECT_UPDATE",
+                    title="Invalid project update",
+                    detail=str(exc),
+                ) from exc
+            return self._project_resource(row)
 
     async def archive_project(
         self,
@@ -147,19 +134,17 @@ class ProjectCoreGateway:
         expected_version: int,
     ) -> None:
         actor_id = self._require(context, "project.write")
-        async with self.session_factory() as session:
-            async with session.begin():
-                service = ProjectService(session)
-                try:
-                    await service.archive_project(
-                        organization_id=context.organization_id,
-                        actor_id=actor_id,
-                        request_id=context.request_id,
-                        project_id=project_id,
-                        expected_version=expected_version,
-                    )
-                except ProjectApplicationError as exc:
-                    raise self._problem(exc) from exc
+        async with self.session_factory() as session, session.begin():
+            try:
+                await ProjectService(session).archive_project(
+                    organization_id=context.organization_id,
+                    actor_id=actor_id,
+                    request_id=context.request_id,
+                    project_id=project_id,
+                    expected_version=expected_version,
+                )
+            except ProjectApplicationError as exc:
+                raise self._problem(exc) from exc
 
     async def restore_project(
         self,
@@ -168,20 +153,18 @@ class ProjectCoreGateway:
         expected_version: int,
     ) -> ProjectResource:
         actor_id = self._require(context, "project.write")
-        async with self.session_factory() as session:
-            async with session.begin():
-                service = ProjectService(session)
-                try:
-                    row = await service.restore_project(
-                        organization_id=context.organization_id,
-                        actor_id=actor_id,
-                        request_id=context.request_id,
-                        project_id=project_id,
-                        expected_version=expected_version,
-                    )
-                except ProjectApplicationError as exc:
-                    raise self._problem(exc) from exc
-                return self._project_resource(row)
+        async with self.session_factory() as session, session.begin():
+            try:
+                row = await ProjectService(session).restore_project(
+                    organization_id=context.organization_id,
+                    actor_id=actor_id,
+                    request_id=context.request_id,
+                    project_id=project_id,
+                    expected_version=expected_version,
+                )
+            except ProjectApplicationError as exc:
+                raise self._problem(exc) from exc
+            return self._project_resource(row)
 
     async def list_project_brief_versions(
         self,
@@ -189,17 +172,15 @@ class ProjectCoreGateway:
         project_id: UUID,
     ) -> list[ProjectBriefVersionResource]:
         self._require(context, "project.read")
-        async with self.session_factory() as session:
-            async with session.begin():
-                service = ProjectService(session)
-                try:
-                    rows = await service.list_brief_versions(
-                        organization_id=context.organization_id,
-                        project_id=project_id,
-                    )
-                except ProjectApplicationError as exc:
-                    raise self._problem(exc) from exc
-                return [self._brief_resource(row) for row in rows]
+        async with self.session_factory() as session, session.begin():
+            try:
+                rows = await ProjectService(session).list_brief_versions(
+                    organization_id=context.organization_id,
+                    project_id=project_id,
+                )
+            except ProjectApplicationError as exc:
+                raise self._problem(exc) from exc
+            return [self._brief_resource(row) for row in rows]
 
     async def list_assets(
         self, context: RequestContext, project_id: UUID | None, page: PageRequest
@@ -214,9 +195,7 @@ class ProjectCoreGateway:
     async def get_asset(self, context: RequestContext, asset_id: UUID) -> AssetResource:
         raise self._not_implemented("NODE-18 Asset Storage")
 
-    async def get_artifact(
-        self, context: RequestContext, artifact_id: UUID
-    ) -> ArtifactResource:
+    async def get_artifact(self, context: RequestContext, artifact_id: UUID) -> ArtifactResource:
         raise self._not_implemented("Artifact runtime")
 
     async def list_artifact_versions(
@@ -238,9 +217,7 @@ class ProjectCoreGateway:
     ) -> AgentRunResource:
         raise self._not_implemented("Agent runtime")
 
-    async def get_agent_run(
-        self, context: RequestContext, agent_run_id: UUID
-    ) -> AgentRunResource:
+    async def get_agent_run(self, context: RequestContext, agent_run_id: UUID) -> AgentRunResource:
         raise self._not_implemented("Agent runtime")
 
     async def cancel_agent_run(
@@ -313,11 +290,7 @@ class ProjectCoreGateway:
     @staticmethod
     def _require(context: RequestContext, permission: str) -> UUID:
         if context.actor_id is None or permission not in context.permissions:
-            raise ApiProblem(
-                status=403,
-                code="PERMISSION_DENIED",
-                title="Permission denied",
-            )
+            raise ApiProblem(status=403, code="PERMISSION_DENIED", title="Permission denied")
         return context.actor_id
 
     @staticmethod
