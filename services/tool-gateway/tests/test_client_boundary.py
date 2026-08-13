@@ -4,6 +4,7 @@ import unittest
 from uuid import uuid4
 
 from lumi_tool_gateway.api import ToolGatewayAPI
+from lumi_tool_gateway.catalog import p0_tool_definitions
 from lumi_tool_gateway.client import ToolGatewayClient
 from lumi_tool_gateway.contracts import (
     ToolAdapterOutput,
@@ -13,7 +14,6 @@ from lumi_tool_gateway.contracts import (
 from lumi_tool_gateway.gateway import ToolGateway
 from lumi_tool_gateway.registry import ToolRegistry
 from lumi_tool_gateway.testing import CountingAdapter
-from lumi_tool_gateway.catalog import p0_tool_definitions
 
 
 class ToolClientBoundaryTests(unittest.IsolatedAsyncioTestCase):
