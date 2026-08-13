@@ -56,6 +56,8 @@ These numbers **do not satisfy the workstation-target interpretation of the NODE
 
 Before final acceptance, the spike will improve visible-object virtualization so the benchmark measures the architecture LUMI intends to ship rather than retaining thousands of offscreen Pixi display objects. Final clean-run numbers will be recorded separately and compared with this first pass.
 
+The optimization pass is itself part of acceptance: it must preserve the same observable editor behavior while reducing renderer-resident offscreen work rather than merely lowering the benchmark fixture size.
+
 ## 3. Decision gate
 
 ADR `docs/adr/ADR-0001-CANVAS-RENDERER-SPIKE.md` remains **VALIDATING** until:
