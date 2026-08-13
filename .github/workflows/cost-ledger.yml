@@ -57,18 +57,6 @@ jobs:
         run: >-
           PYTHONPATH=apps/api/src:services/model-gateway/src
           python scripts/validate_cost_ledger_contract.py
-      - name: Decimal and domain unit tests
-        run: >-
-          PYTHONPATH=apps/api/src:services/model-gateway/src
-          python -m unittest discover
-          -s apps/api/tests
-          -p 'test_cost_contracts.py'
-      - name: Model Gateway accounting unit tests
-        run: >-
-          PYTHONPATH=apps/api/src:services/model-gateway/src
-          python -m unittest discover
-          -s services/model-gateway/tests
-          -p 'test_cost_accounting.py'
 
   cost-quality:
     needs: cost-contract
@@ -86,7 +74,7 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Frozen workspace install
         run: uv sync --all-packages --frozen
-      - name: Cost API contract tests
+      - name: Cost domain, API and Model Gateway accounting tests
         run: >-
           uv run pytest
           apps/api/tests/test_cost_contracts.py
