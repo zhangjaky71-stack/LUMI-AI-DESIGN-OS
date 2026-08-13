@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumi.dev/assets/v1/upload-session.schema.json",
+  "title": "LUMI Asset Upload Session V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id","organization_id","project_id","asset_id","file_id","status","upload_mode",
+    "bucket","object_key","declared_mime_type","declared_size","expected_checksum_sha256",
+    "expires_at","completed_at","verified_at","verified_size","verification_error_code"
+  ],
+  "properties": {
+    "id": {"type":"string","minLength":1},
+    "organization_id": {"type":"string","minLength":1},
+    "project_id": {"type":"string","minLength":1},
+    "asset_id": {"type":"string","minLength":1},
+    "file_id": {"type":"string","minLength":1},
+    "status": {"enum":["pending","completed","expired","aborted","rejected"]},
+    "upload_mode": {"enum":["single","multipart"]},
+    "bucket": {"type":"string","minLength":1,"maxLength":255},
+    "object_key": {"type":"string","minLength":1,"maxLength":1024},
+    "declared_mime_type": {"type":"string","minLength":1,"maxLength":255},
+    "declared_size": {"type":"integer","minimum":1},
+    "expected_checksum_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "expires_at": {"type":"string","format":"date-time"},
+    "completed_at": {"type":["string","null"],"format":"date-time"},
+    "verified_at": {"type":["string","null"],"format":"date-time"},
+    "verified_size": {"type":["integer","null"],"minimum":0},
+    "verification_error_code": {"type":["string","null"],"maxLength":100}
+  }
+}
