@@ -27,6 +27,7 @@ RUNTIME_ROOT = Path(os.getenv("LUMI_SANDBOX_RUNTIME_ROOT", "/tmp/lumi-node21-e2e
 IMAGE = os.getenv("LUMI_SANDBOX_IMAGE", "lumi-sandbox:node21-v1")
 HOST_PRIVATE_MARKER_NAME = "LUMI_NODE21_HOST_PRIVATE_MARKER"
 HOST_PRIVATE_MARKER_VALUE = "node21-" + "host-only-marker"
+_MIB = 1024 * 1024
 
 
 class AssetResolver:
@@ -35,6 +36,18 @@ class AssetResolver:
         return ResolvedAsset(
             asset_ref=asset_ref,
             filename="input note.txt",
+            data=payload,
+            checksum_sha256=hashlib.sha256(payload).hexdigest(),
+        )
+
+
+class SizedAssetResolver:
+    def resolve(self, asset_ref: str) -> ResolvedAsset:
+        fill = b"a" if asset_ref.endswith("a") else b"b"
+        payload = fill * (20 * _MIB)
+        return ResolvedAsset(
+            asset_ref=asset_ref,
+            filename=f"{asset_ref.rsplit(':', 1)[-1]}.bin",
             data=payload,
             checksum_sha256=hashlib.sha256(payload).hexdigest(),
         )
@@ -159,6 +172,17 @@ def functional_and_boundary_test(backend: DockerSandboxBackend) -> None:
 
         tools.write_file("work/nested/note.txt", b"sandbox file tool\n")
         assert tools.read_file("work/nested/note.txt") == b"sandbox file tool\n"
+        append_result = tools.execute(
+            [
+                "python",
+                "-c",
+                "p='/workspace/work/nested/note.txt'; "
+                "open(p, 'ab').write(b'container-user-write\\n')",
+            ]
+        )
+        assert append_result["exit_code"] == 0, append_result
+        note = tools.read_file("work/nested/note.txt")
+        assert note.endswith(b"container-user-write\n")
         entries = tools.list_files("work/nested")
         assert any(entry["path"].endswith("note.txt") for entry in entries)
 
@@ -212,6 +236,8 @@ def functional_and_boundary_test(backend: DockerSandboxBackend) -> None:
         flood = tools.execute(["python", "-c", "print('x' * 200000)"])
         assert flood["stdout_truncated"] is True
         assert len(flood["stdout"].encode()) <= 4096
+        staging = RUNTIME_ROOT / str(sandbox_id) / "staging"
+        assert not tuple(staging.glob("exec-*"))
 
         artifact = tools.collect_artifact("output/pixel.png")
         assert artifact["detected_mime"] == "image/png"
@@ -242,6 +268,26 @@ def functional_and_boundary_test(backend: DockerSandboxBackend) -> None:
     assert not containers.stdout.strip()
 
 
+def input_quota_test() -> None:
+    backend = DockerSandboxBackend(
+        runtime_root=RUNTIME_ROOT,
+        audit_sink=JsonlAuditSink(RUNTIME_ROOT / "audit" / "sandbox.jsonl"),
+        asset_resolver=SizedAssetResolver(),
+    )
+    sandbox_id = backend.create(sandbox_spec(disk_limit_mb=32))
+    try:
+        first = backend.upload_asset(sandbox_id, "asset:large-a")
+        assert first.startswith("input/")
+        try:
+            backend.upload_asset(sandbox_id, "asset:large-b")
+        except SandboxPolicyError as exc:
+            assert "INPUT_QUOTA_EXCEEDED" in str(exc)
+        else:
+            raise AssertionError("cumulative input quota must reject the second asset")
+    finally:
+        backend.terminate(sandbox_id)
+
+
 def timeout_test(backend: DockerSandboxBackend) -> None:
     sandbox_id = backend.create(sandbox_spec(timeout_seconds=2))
     try:
@@ -260,9 +306,7 @@ def timeout_test(backend: DockerSandboxBackend) -> None:
 
 
 def active_ttl_test(backend: DockerSandboxBackend) -> None:
-    sandbox_id = backend.create(
-        sandbox_spec(timeout_seconds=30, ttl_seconds=5)
-    )
+    sandbox_id = backend.create(sandbox_spec(timeout_seconds=30, ttl_seconds=5))
     started = time.monotonic()
     try:
         try:
@@ -375,6 +419,7 @@ def main() -> int:
     backend = make_backend()
     backend.reap_orphaned_containers()
     functional_and_boundary_test(backend)
+    input_quota_test()
     timeout_test(backend)
     active_ttl_test(backend)
     pid_limit_test(backend)
