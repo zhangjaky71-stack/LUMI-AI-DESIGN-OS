@@ -45,7 +45,13 @@ class SandboxBackend(Protocol):
 
     def exec(self, sandbox_id: UUID, request: ExecRequest) -> ExecResult: ...
 
-    def read_file(self, sandbox_id: UUID, path: str, *, max_bytes: int | None = None) -> bytes: ...
+    def read_file(
+        self,
+        sandbox_id: UUID,
+        path: str,
+        *,
+        max_bytes: int | None = None,
+    ) -> bytes: ...
 
     def write_file(self, sandbox_id: UUID, path: str, data: bytes) -> None: ...
 

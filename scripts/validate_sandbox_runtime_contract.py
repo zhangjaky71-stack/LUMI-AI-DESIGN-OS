@@ -35,6 +35,7 @@ def assert_agent_adapter_has_no_host_exec() -> None:
 
 
 def main() -> int:
+    backend = "services/sandbox-runtime/src/lumi_sandbox_runtime/local_backend.py"
     require(
         "services/sandbox-runtime/src/lumi_sandbox_runtime/models.py",
         'NONE = "NONE"',
@@ -45,7 +46,7 @@ def main() -> int:
         "pids_limit",
     )
     require(
-        "services/sandbox-runtime/src/lumi_sandbox_runtime/docker_backend.py",
+        backend,
         '"--network",\n            "none"',
         '"--read-only"',
         '"--cap-drop",\n            "ALL"',
@@ -54,12 +55,16 @@ def main() -> int:
         '"--memory"',
         '"--cpus"',
         '"--tmpfs"',
+        "uid={uid},gid={gid},mode=0700",
         "shell=False",
+        "JsonlAuditSink",
+        "SANDBOX_DIRECTORY_TOO_LARGE",
+        "SANDBOX_WRITE_TOO_LARGE",
         "SANDBOX_STRAY_PROCESS_DETECTED",
         "SANDBOX_EXEC_TIMEOUT",
     )
     forbid(
-        "services/sandbox-runtime/src/lumi_sandbox_runtime/docker_backend.py",
+        backend,
         "shell=True",
         "--privileged",
         "--env-file",
