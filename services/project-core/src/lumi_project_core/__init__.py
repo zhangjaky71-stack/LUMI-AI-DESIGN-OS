@@ -9,6 +9,7 @@ from .lifecycle import (
     require_paid_command_allowed,
     restore,
 )
+from .query import ProjectListFilter
 from .settings import (
     ProjectSettingsError,
     empty_project_settings,
@@ -19,6 +20,7 @@ __all__ = [
     "BriefValidationError",
     "CursorError",
     "ProjectCursor",
+    "ProjectListFilter",
     "ProjectSettingsError",
     "archive",
     "brief_hash",
