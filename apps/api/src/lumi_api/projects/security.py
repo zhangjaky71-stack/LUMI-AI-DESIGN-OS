@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lumi_api.api.v1.context import RequestContext
 from lumi_api.api.v1.errors import ApiProblem
-from lumi_api.auth.errors import AuthError, PermissionDenied, SessionInvalid
+from lumi_api.auth.errors import AuthError, SessionInvalid
 from lumi_api.auth.principal import PrincipalResolver
 from lumi_api.persistence.models import Session
 
@@ -65,7 +65,6 @@ async def _validate_browser_csrf(
     *,
     session_id: UUID,
     request: Request,
-    now: datetime,
 ) -> None:
     row = await session.scalar(select(Session).where(Session.id == session_id))
     if row is None or row.csrf_token_hash is None:
@@ -119,7 +118,7 @@ async def get_secure_project_context(request: Request) -> RequestContext:
                         required_scope=required_permission,
                         now=now,
                     )
-                except (PermissionDenied, AuthError) as exc:
+                except AuthError as exc:
                     raise ApiProblem(
                         status=403,
                         code="PERMISSION_DENIED",
@@ -174,7 +173,6 @@ async def get_secure_project_context(request: Request) -> RequestContext:
                     session,
                     session_id=principal.session_id,
                     request=request,
-                    now=now,
                 )
             return RequestContext(
                 organization_id=organization_id,
