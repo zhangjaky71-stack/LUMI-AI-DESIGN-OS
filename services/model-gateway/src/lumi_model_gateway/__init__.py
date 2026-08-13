@@ -57,6 +57,7 @@ from .ports import (
     ProviderHealthRegistry,
     ProviderRegistry,
 )
+from .postgres_registry import PostgresRegistryLoader, RegistryReadConnection
 from .pricing import PriceCard
 from .registry import InMemoryProviderHealthRegistry, InMemoryProviderRegistry
 from .registry_routing import RegistryAwareModelRouter
@@ -105,6 +106,7 @@ __all__ = [
     "PaidInvocationGuard",
     "PaidInvocationGuardRequiredError",
     "PaidStreamGuard",
+    "PostgresRegistryLoader",
     "PriceCard",
     "PricingSnapshot",
     "ProviderAdapter",
@@ -118,6 +120,7 @@ __all__ = [
     "RegistryAwareModelRouter",
     "RegistryModelSnapshot",
     "RegistryOrganizationPolicy",
+    "RegistryReadConnection",
     "RegistrySnapshot",
     "RequestBudgetGuard",
     "ResultStatus",
