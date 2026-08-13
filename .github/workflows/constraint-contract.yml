@@ -1,0 +1,44 @@
+name: Constraint Contract
+
+on:
+  pull_request:
+    paths:
+      - "contracts/design-ir/**"
+      - "services/design-ir/**"
+      - "contracts/constraints/**"
+      - "services/constraint-engine/**"
+      - "benchmarks/constraint-engine/**"
+      - "scripts/validate_design_ir_contracts.py"
+      - "scripts/validate_constraint_contracts.py"
+      - "scripts/run_constraint_benchmark.py"
+      - "docs/constraints/**"
+      - ".github/workflows/constraint-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  constraint-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile Design IR and Constraint reference runtimes
+        run: |
+          python -m compileall -q services/design-ir/src services/constraint-engine/src
+      - name: Revalidate upstream Design IR contract
+        run: python scripts/validate_design_ir_contracts.py
+      - name: Validate Constraint V1 contracts and dependency boundary
+        run: python scripts/validate_constraint_contracts.py
+      - name: Constraint Engine reference tests
+        env:
+          PYTHONPATH: services/design-ir/src:services/constraint-engine/src
+        run: python -m unittest discover -s services/constraint-engine/tests -p 'test_*.py' -v
+      - name: Run 100-case constraint-following benchmark
+        env:
+          PYTHONPATH: services/design-ir/src:services/constraint-engine/src
+        run: python scripts/run_constraint_benchmark.py

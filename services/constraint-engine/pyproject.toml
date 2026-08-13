@@ -1,0 +1,10 @@
+[project]
+name = "lumi-constraint-engine"
+version = "1.0.0"
+description = "LUMI Constraint Engine V1 reference implementation"
+requires-python = "==3.12.*"
+dependencies = []
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"

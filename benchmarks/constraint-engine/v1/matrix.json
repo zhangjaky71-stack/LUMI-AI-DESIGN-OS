@@ -1,0 +1,77 @@
+{
+  "benchmark_version": "constraint-following-v1",
+  "variants_per_template": 10,
+  "expected_case_count": 100,
+  "templates": [
+    {
+      "key": "only-background",
+      "fixture": "logo-and-qr-locks",
+      "mode": "preflight",
+      "intent": "只修改背景，Logo 和二维码保持不变",
+      "expected": "ALLOW"
+    },
+    {
+      "key": "keep-product",
+      "fixture": "group-mask",
+      "mode": "preflight",
+      "intent": "产品不要动",
+      "expected": "DENY"
+    },
+    {
+      "key": "resize-logo-proportionally",
+      "fixture": "logo-and-qr-locks",
+      "mode": "preflight",
+      "intent": "缩放 Logo 但不能变形",
+      "expected": "ALLOW"
+    },
+    {
+      "key": "keep-logo",
+      "fixture": "logo-and-qr-locks",
+      "mode": "preflight",
+      "intent": "Logo 不能被拉伸变形",
+      "expected": "DENY"
+    },
+    {
+      "key": "keep-qr",
+      "fixture": "logo-and-qr-locks",
+      "mode": "preflight",
+      "intent": "二维码位置和大小都不要动",
+      "expected": "DENY"
+    },
+    {
+      "key": "change-title-size",
+      "fixture": "single-frame-poster",
+      "mode": "preflight",
+      "intent": "只调整标题尺寸",
+      "expected": "ALLOW"
+    },
+    {
+      "key": "safe-area",
+      "fixture": "single-frame-poster",
+      "mode": "preflight",
+      "intent": "标题必须留在安全区",
+      "expected": "DENY"
+    },
+    {
+      "key": "non-overlap",
+      "fixture": "logo-and-qr-locks",
+      "mode": "preflight",
+      "intent": "Logo 不得压住二维码",
+      "expected": "DENY"
+    },
+    {
+      "key": "soft-style-warning",
+      "fixture": "single-frame-poster",
+      "mode": "preflight",
+      "intent": "尽量保持标题样式，但允许人工调整",
+      "expected": "ALLOW_WITH_WARNINGS"
+    },
+    {
+      "key": "qr-postflight",
+      "fixture": "logo-and-qr-locks",
+      "mode": "postflight",
+      "intent": "二维码最终必须可检测、可解码且 payload 不变",
+      "expected": "MIXED_PASS_REPAIRABLE"
+    }
+  ]
+}
