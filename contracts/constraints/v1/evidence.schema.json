@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumi.dev/constraints/v1/evidence.schema.json",
+  "title": "LUMI Constraint Postflight Evidence V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["constraint_id", "kind", "passed", "actual", "repairable"],
+  "properties": {
+    "constraint_id": {"type": "string", "minLength": 1},
+    "kind": {"enum": ["content_identity","text_match","identity","brand_compliance","protected_region_diff","contrast","qr","text_readability","resolution"]},
+    "passed": {"type": "boolean"},
+    "actual": {"type": "object", "additionalProperties": true},
+    "repairable": {"type": "boolean"},
+    "evidence_ref": {"type": "string"}
+  }
+}
