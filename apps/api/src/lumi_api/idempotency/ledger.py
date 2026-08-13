@@ -124,8 +124,7 @@ class CostLedgerGateway:
                            pricing_snapshot_id, external_provider_request_id, confidence,
                            cost_basis
                     FROM cost_ledger
-                    WHERE operation_id = $1 AND entry_type = $2 AND entry_key = $3
-                    FOR SHARE
+                    WHERE operation_id=$1 AND entry_type=$2 AND entry_key=$3
                     """,
                     entry.operation_id,
                     entry.entry_type,
