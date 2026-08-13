@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal
+from types import MappingProxyType
 
 from .errors import InvariantViolation
 from .ids import DomainId, new_uuid7
@@ -108,14 +109,16 @@ class ArtifactVersion:
     parent_version_id: DomainId | None = None
     status: ArtifactVersionStatus = ArtifactVersionStatus.DRAFT
 
+    def __post_init__(self) -> None:
+        if not self.content_hash.strip():
+            raise ValueError("content_hash is required")
+
     def transition_to(self, target: ArtifactVersionStatus) -> None:
         self.status = transition_artifact_version(self.status, target)
 
     def revised(self, *, content_hash: str) -> ArtifactVersion:
         if self.status is ArtifactVersionStatus.APPROVED:
             raise InvariantViolation("approved artifact versions are immutable; create from a branch")
-        if not content_hash.strip():
-            raise ValueError("content_hash is required")
         return ArtifactVersion(
             organization_id=self.organization_id,
             artifact_id=self.artifact_id,
@@ -190,6 +193,9 @@ class CostEntry:
     recorded_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     reverses_entry_id: DomainId | None = None
     metadata: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
     def reversal(self, *, reason: str) -> CostEntry:
         if not reason.strip():
