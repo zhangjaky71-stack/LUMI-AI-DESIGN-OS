@@ -24,6 +24,7 @@ from .contracts import (
     month_period_key,
 )
 from .gateway import PostgresCostGateway, usage_facts_from_values
+from .model_gateway_adapter import PostgresModelCostAccounting
 
 __all__ = [
     "ActualCost",
@@ -39,6 +40,7 @@ __all__ = [
     "CostSummary",
     "LedgerWriteResult",
     "PostgresCostGateway",
+    "PostgresModelCostAccounting",
     "QuotaExceeded",
     "QuotaLease",
     "QuotaMetric",
