@@ -96,12 +96,14 @@ def main() -> int:
         'FINANCIAL = "FINANCIAL"',
         'PRIVILEGED = "PRIVILEGED"',
         "TOOL_WRITE_IDEMPOTENCY_REQUIRED",
+        "parent_allow_patterns: tuple[str, ...] | None = None",
         "ToolSideEffectContext",
     )
     require(
         "services/tool-gateway/src/lumi_tool_gateway/policy.py",
         "AGENT_TOOL_NOT_ALLOWED",
         "SUBAGENT_PERMISSION_ESCALATION",
+        "context.parent_allow_patterns is not None",
         "ORG_TOOL_DENIED",
         "ToolRisk.WRITE_EXTERNAL",
         "ToolRisk.FINANCIAL",
@@ -116,6 +118,7 @@ def main() -> int:
         "result_offloader.store",
         "redact_arguments",
         "ToolAdapterExecutionError",
+        "ToolInternalError",
     )
     require(
         "services/tool-gateway/src/lumi_tool_gateway/ssrf.py",
@@ -131,12 +134,13 @@ def main() -> int:
         "resolved_ip=target.pinned_ip",
         "current_url = urljoin",
         "self.ssrf_policy.validate(current_url)",
-        '"Authorization"',
-        '"Cookie"',
+        '"User-Agent": "LUMI-ToolGateway/1.0"',
         "SandboxExecutor(Protocol)",
     )
     forbid(
         "services/tool-gateway/src/lumi_tool_gateway/native.py",
+        '"Authorization"',
+        '"Cookie"',
         "shell=True",
         "os.system",
         "Popen(",
