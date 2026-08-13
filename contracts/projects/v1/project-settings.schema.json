@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumi.dev/projects/v1/project-settings.schema.json",
+  "title": "LUMI Project Settings V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "default_locale",
+    "timezone",
+    "cost_budget_default",
+    "quality_profile",
+    "model_policy_id",
+    "data_retention_profile"
+  ],
+  "properties": {
+    "default_locale": {"type": "string", "minLength": 1, "maxLength": 64},
+    "timezone": {"type": "string", "minLength": 1, "maxLength": 100},
+    "cost_budget_default": {
+      "type": ["string", "null"],
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+      "maxLength": 64
+    },
+    "quality_profile": {"enum": ["fast", "balanced", "high_quality"]},
+    "model_policy_id": {"type": ["string", "null"], "maxLength": 160},
+    "data_retention_profile": {"type": "string", "minLength": 1, "maxLength": 100}
+  }
+}
