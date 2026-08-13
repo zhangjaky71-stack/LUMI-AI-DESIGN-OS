@@ -1,3 +1,4 @@
+from .bootstrap import load_named_catalog, load_skill_catalog
 from .deep_adapter import to_deep_agent_definition
 from .definition import AgentDefinition
 from .dependencies import (
@@ -67,7 +68,9 @@ __all__ = [
     "load_bootstrap_catalog",
     "load_definition",
     "load_definitions",
+    "load_named_catalog",
     "load_release_manifest",
+    "load_skill_catalog",
     "matches",
     "select_highest",
     "to_deep_agent_definition",
