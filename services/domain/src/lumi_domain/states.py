@@ -41,14 +41,14 @@ class ArtifactVersionStatus(StrEnum):
     REJECTED = "rejected"
 
 
-_PROJECT_TRANSITIONS = {
+_PROJECT_TRANSITIONS: dict[ProjectStatus, frozenset[ProjectStatus]] = {
     ProjectStatus.DRAFT: frozenset({ProjectStatus.ACTIVE, ProjectStatus.ARCHIVED}),
     ProjectStatus.ACTIVE: frozenset({ProjectStatus.PAUSED, ProjectStatus.ARCHIVED}),
     ProjectStatus.PAUSED: frozenset({ProjectStatus.ACTIVE, ProjectStatus.ARCHIVED}),
     ProjectStatus.ARCHIVED: frozenset(),
 }
 
-_AGENT_RUN_TRANSITIONS = {
+_AGENT_RUN_TRANSITIONS: dict[AgentRunStatus, frozenset[AgentRunStatus]] = {
     AgentRunStatus.PENDING: frozenset({AgentRunStatus.RUNNING, AgentRunStatus.CANCELLED}),
     AgentRunStatus.RUNNING: frozenset(
         {
@@ -69,7 +69,7 @@ _AGENT_RUN_TRANSITIONS = {
     AgentRunStatus.FAILED: frozenset(),
 }
 
-_TASK_TRANSITIONS = {
+_TASK_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.PENDING: frozenset({TaskStatus.READY, TaskStatus.CANCELLED}),
     TaskStatus.READY: frozenset({TaskStatus.RUNNING, TaskStatus.CANCELLED}),
     TaskStatus.RUNNING: frozenset(
@@ -88,7 +88,9 @@ _TASK_TRANSITIONS = {
     TaskStatus.CANCELLED: frozenset(),
 }
 
-_ARTIFACT_VERSION_TRANSITIONS = {
+_ARTIFACT_VERSION_TRANSITIONS: dict[
+    ArtifactVersionStatus, frozenset[ArtifactVersionStatus]
+] = {
     ArtifactVersionStatus.DRAFT: frozenset(
         {ArtifactVersionStatus.READY, ArtifactVersionStatus.REJECTED}
     ),
