@@ -78,7 +78,7 @@ def request(
     tool: ToolDefinition,
     *,
     patterns: tuple[str, ...] | None = None,
-    parent_patterns: tuple[str, ...] = (),
+    parent_patterns: tuple[str, ...] | None = None,
     permissions: frozenset[str] | None = None,
     arguments=None,
     idempotency_key: str | None = None,
@@ -88,7 +88,7 @@ def request(
         organization_id=organization_id,
         actor_id="user-1",
         granted_permissions=permissions or tool.permissions,
-        agent_allow_patterns=patterns or (tool.name,),
+        agent_allow_patterns=(tool.name,) if patterns is None else patterns,
         parent_allow_patterns=parent_patterns,
     )
     return ToolRequest(
@@ -124,6 +124,17 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
                 risk=ToolRisk.WRITE_INTERNAL,
                 idempotency=ToolIdempotency.NOT_REQUIRED,
             )
+
+    async def test_empty_agent_allowlist_is_default_deny(self) -> None:
+        tool = definition()
+        adapter = CountingAdapter(ToolAdapterOutput(data={"ok": True}))
+        gateway = ToolGateway(
+            registry=ToolRegistry((tool,)),
+            adapters={tool.key: adapter},
+        )
+        with self.assertRaisesRegex(ToolPermissionDeniedError, "AGENT_TOOL_NOT_ALLOWED"):
+            await gateway.invoke(request(tool, patterns=()))
+        self.assertEqual(adapter.calls, 0)
 
     async def test_input_schema_failure_happens_before_adapter(self) -> None:
         tool = definition()
@@ -163,6 +174,26 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
                     tool,
                     patterns=(tool.name,),
                     parent_patterns=("asset.*",),
+                )
+            )
+        self.assertEqual(adapter.calls, 0)
+
+    async def test_subagent_with_empty_parent_scope_has_no_tools(self) -> None:
+        tool = definition()
+        adapter = CountingAdapter(ToolAdapterOutput(data={"ok": True}))
+        gateway = ToolGateway(
+            registry=ToolRegistry((tool,)),
+            adapters={tool.key: adapter},
+        )
+        with self.assertRaisesRegex(
+            ToolPermissionDeniedError,
+            "SUBAGENT_PERMISSION_ESCALATION",
+        ):
+            await gateway.invoke(
+                request(
+                    tool,
+                    patterns=(tool.name,),
+                    parent_patterns=(),
                 )
             )
         self.assertEqual(adapter.calls, 0)
@@ -292,7 +323,10 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(ToolAdapterExecutionError):
             await gateway.invoke(request(tool))
-        self.assertEqual(audit.records[-1].error_code, "TOOL_ADAPTER_EXECUTION_ERROR")
+        self.assertEqual(
+            audit.records[-1].error_code,
+            "TOOL_ADAPTER_EXECUTION_ERROR",
+        )
         self.assertNotIn("provider secret", repr(audit.records[-1]))
 
     async def test_audit_redacts_secret_like_fields(self) -> None:
