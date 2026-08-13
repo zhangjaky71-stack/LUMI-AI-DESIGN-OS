@@ -5,7 +5,17 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import (
+    CHAR,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,6 +25,7 @@ from ..base import Base, CreatedAtMixin, IdMixin, MutableTimestampMixin
 class CostLedger(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "cost_ledger"
     __table_args__ = (
+        CheckConstraint("currency ~ '^[A-Z]{3}$'", name="cost_ledger_currency_check"),
         Index("ix_cost_ledger_org_created", "organization_id", "created_at"),
         Index("ix_cost_ledger_project_created", "project_id", "created_at"),
         Index("ix_cost_ledger_generation", "generation_id"),
@@ -60,7 +71,7 @@ class CostLedger(IdMixin, CreatedAtMixin, Base):
     model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     entry_type: Mapped[str] = mapped_column(String(64), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
     quantity: Mapped[Decimal | None] = mapped_column(Numeric(30, 10), nullable=True)
     unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -74,7 +85,7 @@ class UsageCounter(IdMixin, MutableTimestampMixin, Base):
             "organization_id",
             "period_key",
             "metric",
-            name="usage_counter_identity",
+            name="uq_usage_counters_identity",
         ),
         Index("ix_usage_counters_org_period", "organization_id", "period_key"),
     )
@@ -96,7 +107,7 @@ class IdempotencyOperation(IdMixin, MutableTimestampMixin, Base):
         UniqueConstraint(
             "organization_id",
             "idempotency_key",
-            name="idempotency_org_key",
+            name="uq_idempotency_operations_org_key",
         ),
         Index("ix_idempotency_operations_status_created", "status", "created_at"),
     )
@@ -117,6 +128,8 @@ class IdempotencyOperation(IdMixin, MutableTimestampMixin, Base):
 class OutboxEvent(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "outbox_events"
     __table_args__ = (
+        CheckConstraint("schema_version > 0", name="outbox_events_schema_version_check"),
+        CheckConstraint("publish_attempts >= 0", name="outbox_events_publish_attempts_check"),
         Index("ix_outbox_pending", "published_at", "created_at"),
         Index("ix_outbox_org_created", "organization_id", "created_at"),
         Index("ix_outbox_aggregate", "aggregate_type", "aggregate_id"),
@@ -139,7 +152,11 @@ class OutboxEvent(IdMixin, CreatedAtMixin, Base):
 class InboxEvent(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "inbox_events"
     __table_args__ = (
-        UniqueConstraint("consumer", "event_id", name="inbox_consumer_event"),
+        UniqueConstraint(
+            "consumer",
+            "event_id",
+            name="uq_inbox_events_consumer_event",
+        ),
         Index("ix_inbox_org_created", "organization_id", "created_at"),
     )
 
