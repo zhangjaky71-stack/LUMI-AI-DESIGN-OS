@@ -7,6 +7,7 @@ on:
       - "infra/sandbox/**"
       - "scripts/validate_sandbox_runtime_contract.py"
       - "scripts/integration_sandbox_runtime.py"
+      - "scripts/integration_sandbox_docker_config.py"
       - "docs/runtime/SANDBOX-RUNTIME-V1.md"
       - "reports/nodes/NODE-21/**"
       - "pyproject.toml"
@@ -33,6 +34,7 @@ jobs:
           services/sandbox-runtime/tests
           scripts/validate_sandbox_runtime_contract.py
           scripts/integration_sandbox_runtime.py
+          scripts/integration_sandbox_docker_config.py
       - name: Static sandbox security contract
         run: python scripts/validate_sandbox_runtime_contract.py
       - name: Stdlib sandbox contract tests
@@ -42,8 +44,37 @@ jobs:
           -s services/sandbox-runtime/tests
           -p 'test_*.py'
 
-  sandbox-docker-e2e:
+  sandbox-quality:
     needs: sandbox-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Sandbox Ruff gate
+        run: >-
+          uv run ruff check
+          services/sandbox-runtime
+          scripts/validate_sandbox_runtime_contract.py
+          scripts/integration_sandbox_runtime.py
+          scripts/integration_sandbox_docker_config.py
+      - name: Sandbox Pyright gate
+        run: >-
+          uv run pyright
+          services/sandbox-runtime/src
+          services/sandbox-runtime/tests
+
+  sandbox-docker-e2e:
+    needs: sandbox-quality
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -64,6 +95,10 @@ jobs:
           docker run --rm "$LUMI_SANDBOX_IMAGE" ffmpeg -version | head -1
           docker run --rm "$LUMI_SANDBOX_IMAGE" convert -version | head -1
           docker run --rm "$LUMI_SANDBOX_IMAGE" fc-list | head -1
+      - name: Inspect effective Docker hardening
+        run: >-
+          PYTHONPATH=services/sandbox-runtime/src
+          python scripts/integration_sandbox_docker_config.py
       - name: Docker security and functional acceptance
         run: >-
           PYTHONPATH=services/sandbox-runtime/src
@@ -74,8 +109,10 @@ jobs:
         run: |
           mkdir -p reports/nodes/NODE-21/runtime
           docker ps -a > reports/nodes/NODE-21/runtime/docker-ps.txt 2>&1 || true
-          docker inspect $(docker ps -aq --filter label=lumi.sandbox.runtime=node21) \
-            > reports/nodes/NODE-21/runtime/docker-inspect.json 2>&1 || true
+          ids=$(docker ps -aq --filter label=lumi.sandbox.runtime=node21)
+          if [ -n "$ids" ]; then
+            docker inspect $ids > reports/nodes/NODE-21/runtime/docker-inspect.json 2>&1 || true
+          fi
           cp -R /tmp/lumi-node21-e2e reports/nodes/NODE-21/runtime/e2e 2>/dev/null || true
       - name: Upload NODE-21 diagnostics
         if: failure()

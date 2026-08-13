@@ -45,6 +45,7 @@ def main() -> int:
         'FAILED = "FAILED"',
         "max_output_bytes",
         "pids_limit",
+        "SANDBOX_OUTPUT_BUDGET_EXCEEDS_STORAGE",
     )
     require(
         backend,
@@ -66,10 +67,17 @@ def main() -> int:
     )
     require(
         public_backend,
+        "SANDBOX_ROOT_HOST_EXECUTION_FORBIDDEN",
         "remaining_seconds",
         "requested_timeout",
+        '"exec",\n                        "-i"',
+        "SANDBOX_INPUT_QUOTA_EXCEEDED",
+        "SANDBOX_WRITE_TIMEOUT",
+        "_cleanup_exec_staging",
+        "_prune_oldest_files",
         "_best_effort_kill",
         "record.expires_monotonic <= now",
+        "shell=False",
     )
     forbid(
         backend,
@@ -77,6 +85,18 @@ def main() -> int:
         "--privileged",
         "--env-file",
         "type=bind,src=/var/run/docker.sock",
+    )
+    forbid(
+        public_backend,
+        "shell=True",
+        "--privileged",
+        "--env-file",
+    )
+    require(
+        "services/sandbox-runtime/src/lumi_sandbox_runtime/audit.py",
+        "max_bytes",
+        "_rotate_if_needed",
+        "os.replace",
     )
     require(
         "services/sandbox-runtime/src/lumi_sandbox_runtime/security.py",
@@ -93,6 +113,26 @@ def main() -> int:
         "imagemagick",
         "nodejs",
         "fontconfig",
+    )
+    require(
+        "scripts/integration_sandbox_docker_config.py",
+        'host["ReadonlyRootfs"] is True',
+        'host["Privileged"] is False',
+        'host["NetworkMode"] == "none"',
+        'host.get("CapDrop")',
+        'host["PidsLimit"]',
+        'host["Memory"]',
+        "no-new-privileges",
+        "/node21-rootfs-probe",
+        "/var/run/docker.sock",
+    )
+    require(
+        ".github/workflows/sandbox-runtime.yml",
+        "sandbox-contract:",
+        "sandbox-quality:",
+        "sandbox-docker-e2e:",
+        "integration_sandbox_docker_config.py",
+        "uv sync --all-packages --frozen",
     )
     assert_agent_adapter_has_no_host_exec()
     print("NODE-21 sandbox runtime static security contract: PASS")
