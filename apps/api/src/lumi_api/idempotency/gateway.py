@@ -369,7 +369,9 @@ class SideEffectGateway:
                 reason[:2000],
             )
             if row is None:
-                raise LeaseLostError("ambiguity state could not be committed because lease was lost")
+                raise LeaseLostError(
+                    "ambiguity state could not be committed because lease was lost"
+                )
         finally:
             await connection.close()
 
@@ -579,7 +581,9 @@ class SideEffectGateway:
                 lease_owner,
             )
             if row is None:
-                raise LeaseLostError("provider failure could not be committed because lease was lost")
+                raise LeaseLostError(
+                    "provider failure could not be committed because lease was lost"
+                )
         finally:
             await connection.close()
 
