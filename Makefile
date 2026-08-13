@@ -5,7 +5,7 @@ COMPOSE_ENV := $(COMPOSE_DIR)/.env
 COMPOSE_FILE := $(COMPOSE_DIR)/docker-compose.yml
 COMPOSE := docker compose --env-file $(COMPOSE_ENV) -f $(COMPOSE_FILE)
 
-.PHONY: bootstrap dev dev-web dev-admin dev-api dev-agent dev-worker lint typecheck test format-check check verify-scaffold ci-contracts ci-local eval-smoke eval eval-live eval-report product-parity-validate model-provider-validate model-gateway-contract capability-registry-contract capability-registry-seed tool-gateway-contract sandbox-contract sandbox-e2e infra-env infra-up infra-status infra-down infra-reset infra-logs doctor infra-smoke infra-persistence db-upgrade db-downgrade-one db-current db-seed
+.PHONY: bootstrap dev dev-web dev-admin dev-api dev-agent dev-worker lint typecheck test format-check check verify-scaffold ci-contracts ci-local eval-smoke eval eval-live eval-report product-parity-validate model-provider-validate model-gateway-contract capability-registry-contract capability-registry-seed tool-gateway-contract mcp-integration-contract cost-ledger-contract sandbox-contract sandbox-e2e infra-env infra-up infra-status infra-down infra-reset infra-logs doctor infra-smoke infra-persistence db-upgrade db-downgrade-one db-current db-seed
 
 bootstrap:
 	corepack enable
@@ -74,6 +74,17 @@ tool-gateway-contract:
 	PYTHONPATH=services/tool-gateway/src python3 scripts/validate_tool_gateway_contract.py
 	PYTHONPATH=services/tool-gateway/src python3 -m unittest discover -s services/tool-gateway/tests -p 'test_*.py'
 	PYTHONPATH=services/tool-gateway/src python3 scripts/integration_tool_gateway.py
+
+mcp-integration-contract:
+	PYTHONPATH=services/tool-gateway/src python3 scripts/validate_mcp_integration_contract.py
+	PYTHONPATH=services/tool-gateway/src python3 -m unittest discover -s services/tool-gateway/tests -p 'test_mcp_*.py'
+	PYTHONPATH=services/tool-gateway/src python3 scripts/integration_mcp_tool_gateway.py
+
+cost-ledger-contract:
+	PYTHONPATH=apps/api/src:services/model-gateway/src python3 scripts/validate_idempotency_contract.py
+	PYTHONPATH=apps/api/src:services/model-gateway/src python3 scripts/validate_cost_ledger_contract.py
+	PYTHONPATH=apps/api/src:services/model-gateway/src python3 -m unittest apps.api.tests.test_cost_contracts
+	PYTHONPATH=apps/api/src:services/model-gateway/src python3 -m unittest services.model-gateway.tests.test_cost_accounting
 
 sandbox-contract:
 	PYTHONPATH=services/sandbox-runtime/src python3 scripts/validate_sandbox_runtime_contract.py
