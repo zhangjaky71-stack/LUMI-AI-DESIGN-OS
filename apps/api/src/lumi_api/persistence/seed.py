@@ -47,6 +47,34 @@ TASK_DESIGN_ID = UUID("01900000-0000-7000-8000-000000000012")
 TASK_DEP_ID = UUID("01900000-0000-7000-8000-000000000013")
 
 
+def _seed_brief() -> dict[str, object]:
+    return {
+        "schema_version": "1.0",
+        "objective": "Deterministic NODE-17 fixture",
+        "audience": ["internal test users"],
+        "brand_context": "LUMI deterministic seed brand",
+        "deliverables": [],
+        "channels": [],
+        "visual_direction": [],
+        "copy_requirements": [],
+        "constraint_ids": [],
+        "reference_asset_ids": [],
+        "locale": "en",
+        "notes": "",
+    }
+
+
+def _seed_settings() -> dict[str, object]:
+    return {
+        "default_locale": "en",
+        "timezone": "UTC",
+        "cost_budget_default": None,
+        "quality_profile": "balanced",
+        "model_policy_id": None,
+        "data_retention_profile": "standard",
+    }
+
+
 async def _insert_ignore(session: AsyncSession, model: type[object], values: dict[str, object]) -> None:
     table = getattr(model, "__table__")
     await session.execute(insert(table).values(**values).on_conflict_do_nothing(index_elements=["id"]))
@@ -92,7 +120,7 @@ async def seed(session: AsyncSession) -> None:
             "id": UUID("01900000-0000-7000-8000-000000000014"),
             "organization_id": ORG_ID,
             "user_id": USER_OWNER_ID,
-            "role": "owner",
+            "role": "OWNER",
             "status": "active",
         },
     )
@@ -103,7 +131,7 @@ async def seed(session: AsyncSession) -> None:
             "id": UUID("01900000-0000-7000-8000-000000000015"),
             "organization_id": ORG_ID,
             "user_id": USER_MEMBER_ID,
-            "role": "designer",
+            "role": "EDITOR",
             "status": "active",
         },
     )
@@ -142,9 +170,10 @@ async def seed(session: AsyncSession) -> None:
                 "workspace_id": WORKSPACE_ID,
                 "name": name,
                 "status": "active",
-                "brief_json": {"goal": "deterministic NODE-10 fixture"},
+                "brief_json": _seed_brief(),
+                "brief_version": 1,
                 "brand_id": BRAND_ID,
-                "settings_json": {},
+                "settings_json": _seed_settings(),
                 "created_by": USER_OWNER_ID,
             },
         )
