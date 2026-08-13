@@ -232,7 +232,11 @@ test.describe("NODE-08 renderer fallback stress", () => {
         host.style.width = "800px";
         host.style.height = "600px";
         document.body.appendChild(host);
-        const stage = new konva.Stage({ container: host, width: 800, height: 600 });
+        const stage = new konva.Stage({
+          container: host,
+          width: 800,
+          height: 600,
+        });
         const layer = new konva.Layer({ listening: false });
         stage.add(layer);
         const columns = Math.ceil(Math.sqrt(logicalNodes));
@@ -295,9 +299,8 @@ test.describe("NODE-08 renderer fallback stress", () => {
         ) => FabricCanvas;
         Rect: new (options: Record<string, unknown>) => FabricObject;
       }
-      const fabric = (
-        window as unknown as { __LUMI_FABRIC__: FabricGlobal }
-      ).__LUMI_FABRIC__;
+      const fabric = (window as unknown as { __LUMI_FABRIC__: FabricGlobal })
+        .__LUMI_FABRIC__;
 
       function percentile(values: readonly number[], fraction: number): number {
         const sorted = [...values].sort((a, b) => a - b);
@@ -388,7 +391,9 @@ test.describe("NODE-08 renderer fallback stress", () => {
       metrics: [...pixiMetrics, ...konvaMetrics, ...fabricMetrics],
     };
 
-    expect(report.metrics.find((metric) => metric.scenario === "empty-rAF")).toBeDefined();
+    expect(
+      report.metrics.find((metric) => metric.scenario === "empty-rAF"),
+    ).toBeDefined();
     expect(
       report.metrics.find(
         (metric) =>

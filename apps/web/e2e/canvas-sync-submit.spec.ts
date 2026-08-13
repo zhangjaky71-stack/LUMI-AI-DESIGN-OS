@@ -110,12 +110,7 @@ test.describe("NODE-08 synchronous canvas workload", () => {
           let visible = 0;
           for (const position of positions) {
             const x = position.x - viewportX;
-            if (
-              x < -28 ||
-              x > 828 ||
-              position.y < -28 ||
-              position.y > 628
-            ) {
+            if (x < -28 || x > 828 || position.y < -28 || position.y > 628) {
               continue;
             }
             graphic.rect(x, position.y, 28, 28);
