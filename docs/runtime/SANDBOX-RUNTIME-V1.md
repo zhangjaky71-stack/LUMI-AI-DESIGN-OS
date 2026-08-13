@@ -49,6 +49,8 @@ Each container is created with:
 --user <non-root host uid:gid>
 ```
 
+On Linux, the local backend refuses to create a sandbox when the host process is UID 0. It fails closed with `SANDBOX_ROOT_HOST_EXECUTION_FORBIDDEN` rather than translating a privileged application process into a root sandbox.
+
 The backend never mounts `/var/run/docker.sock`, user home, repository root, cloud credential directories, database sockets, or application `.env` files.
 
 The runtime image is `lumi-sandbox:node21-v1`, built from `infra/sandbox/Dockerfile` and containing the approved P0 toolset: Python, Node.js, FFmpeg/FFprobe, ImageMagick, zip/unzip, and fontconfig utilities.
@@ -64,7 +66,7 @@ The logical workspace is:
 └── output/  writable size-limited tmpfs
 ```
 
-`/tmp` is a third size-limited tmpfs. The requested `disk_limit_mb` is divided across work/output/tmp so a command cannot fill the host filesystem through a writable bind mount.
+`/tmp` is a third size-limited tmpfs. The requested `disk_limit_mb` is divided across work/output/tmp so a command cannot fill the host filesystem through a writable bind mount. `input/` is separately bounded by a cumulative trusted-input quota derived from the same sandbox disk budget.
 
 The base root filesystem remains read-only.
 
@@ -91,6 +93,10 @@ Before host-side read/write/collect operations, the backend resolves the corresp
 
 therefore fails the file-tool boundary instead of being copied back to the host.
 
+Agent `write_file` does not use `docker cp` for the final write. Bytes are streamed over stdin to a fixed in-container Python writer running as the configured non-root container user. This prevents trusted control-plane copy semantics from accidentally producing root-owned Agent workspace files.
+
+A single `write_file` request is additionally capped to the smaller of the sandbox disk budget and 64 MiB. Larger outputs must be generated inside the sandbox and collected from `output/`.
+
 ## 6. Command boundary
 
 The sandbox supports argv execution, not host shell strings.
@@ -99,7 +105,7 @@ Control-plane commands such as Docker/Podman/nsenter and explicit Docker control
 
 A command that leaves background processes alive after returning is treated as a policy violation. The backend checks the container process namespace after each command and fails/kills the sandbox if stray Agent processes remain.
 
-A timed-out command kills the container and marks the sandbox `FAILED`; it is not reused after an uncertain process state.
+A command timeout kills the container and marks the sandbox `FAILED`; it is not reused after an uncertain process state. Effective command timeout is also bounded by the remaining sandbox TTL, so an active command cannot extend sandbox lifetime.
 
 ## 7. Network policy
 
@@ -115,7 +121,7 @@ The NODE-21 local/CI backend implements only `NONE`, using Docker `--network non
 
 `TOOL_PROXY_ONLY` and `ALLOWLIST` deliberately fail closed in this backend. Production must supply a dedicated egress-enforcing adapter/service. Merely setting `HTTP_PROXY` on a normally connected container is not considered an enforcement boundary.
 
-Allowlist validation rejects loopback, RFC1918, link-local/cloud metadata, `.internal`, `.local`, and Docker host aliases.
+Allowlist validation rejects loopback, RFC1918, link-local/cloud metadata, `.internal`, `.local`, and Docker host aliases. Production egress must also enforce these boundaries at connection/resolution time rather than trusting only a hostname pre-check.
 
 ## 8. Secret model
 
@@ -131,15 +137,18 @@ When a sandbox needs external access, future production adapters must use one of
 
 Command audit records redact common secret argument forms. Returned and persisted logs redact common authorization/token/password patterns. Redaction is defense in depth, not the primary secret boundary.
 
-## 9. Output and log limits
+## 9. Output, staging and log limits
 
 Agent stdout/stderr is drained continuously instead of being accumulated without bound in memory.
 
 - returned stdout/stderr is capped by `max_output_bytes`;
+- `max_output_bytes` cannot exceed one quarter of the sandbox disk budget;
 - drain threads continue consuming excess output to avoid process pipe deadlock;
-- retained execution logs have a separate hard cap;
+- retained execution logs have per-command caps and a per-sandbox total budget;
+- per-exec host staging directories are removed after every execution path, including failures;
+- local JSONL audit evidence rotates at a hard size budget;
 - audit logs and retained execution logs live outside the ephemeral sandbox workspace;
-- terminate removes workspace/input/staging data while keeping controlled audit/log evidence.
+- terminate removes workspace/input/staging data while keeping bounded audit/log evidence.
 
 ## 10. Asset input
 
@@ -149,15 +158,15 @@ The backend:
 
 ```text
 resolve reference
-→ enforce input size
+→ enforce cumulative input quota
 → recompute SHA-256
 → compare expected checksum when present
 → sanitize filename
-→ write opaque/checksum-prefixed file into input/
+→ write checksum-prefixed file into input/
 → expose it read-only to the container
 ```
 
-No object-storage credential enters the sandbox.
+Repeated uploads of the same checksum-addressed input reuse the existing file rather than consuming quota again. No object-storage credential enters the sandbox.
 
 ## 11. Artifact collection
 
@@ -207,7 +216,7 @@ FAILED
 
 `SandboxReaper` periodically executes `reap_expired()`. The Docker backend also labels containers with an expiry epoch and can remove expired orphaned containers left by a previous service process.
 
-Sandbox workspace persistence ends at termination. Durable outputs must be collected first.
+The public Docker backend can kill an active expired container before waiting on the per-sandbox execution lock. Sandbox workspace persistence ends at termination; durable outputs must be collected first.
 
 ## 14. Audit
 
@@ -231,7 +240,7 @@ small structured detail
 
 Audit does not store user file contents.
 
-`JsonlAuditSink` is the NODE-21 local reference sink. Production can replace it with the platform audit/observability adapter without changing Agent tooling.
+`JsonlAuditSink` is the NODE-21 bounded local reference sink and retains one rotated segment. Production can replace it with the platform audit/observability adapter without changing Agent tooling.
 
 ## 15. Resource limits
 
@@ -260,11 +269,13 @@ Hosted Docker acceptance executes:
 4. 512 MiB allocation attempt inside a 96 MiB sandbox;
 5. write larger than the writable tmpfs budget;
 6. command timeout and failed-sandbox invalidation;
-7. connection attempt to `169.254.169.254` under `network none`;
-8. absence of Docker socket;
-9. host-only secret environment variable non-inheritance;
-10. 200 KB stdout under a 4 KB return budget;
-11. malicious ZIP traversal and symlink fixtures.
+7. active command crossing sandbox TTL;
+8. connection attempt to `169.254.169.254` under `network none`;
+9. absence of Docker socket;
+10. host-private environment marker non-inheritance;
+11. 200 KB stdout under a 4 KB return budget;
+12. cumulative Asset input quota exhaustion;
+13. malicious ZIP traversal and symlink fixtures.
 
 ## 17. Functional acceptance suite
 
@@ -276,8 +287,10 @@ Hosted Docker acceptance also proves:
 - ImageMagick image transform;
 - trusted AssetResolver input;
 - read/write/list file tools;
+- Agent-written file remains writable by the non-root container user;
 - checksum + MIME output collection into an ArtifactSink;
 - DeepAgentSandboxTools execution against the real backend;
+- per-exec host staging cleanup;
 - terminate cleanup;
 - TTL automatic termination.
 
@@ -297,13 +310,13 @@ Dependency-light contract gate:
 make sandbox-contract
 ```
 
-Docker attack/functional gate:
+The dedicated workflow then runs a frozen workspace install plus targeted Ruff and Pyright. Docker attack/functional gate:
 
 ```bash
 make sandbox-e2e
 ```
 
-Global Python gates also include the sandbox-runtime tests once the normal repository environment is available.
+Global Python gates also include the sandbox-runtime tests through the repository test configuration.
 
 ## 20. Definition of Done
 
@@ -312,6 +325,7 @@ NODE-21 is complete only when:
 ```text
 sandbox abstraction implemented
 + local Docker backend green
++ static/unit quality gates green
 + escape/resource/network security suite green
 + Deep Agent adapter spike green
 + hosted required gates green
