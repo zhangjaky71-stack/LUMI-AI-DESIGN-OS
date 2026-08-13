@@ -9,10 +9,20 @@ from lumi_model_gateway import (
     Capability,
     CostConfidence,
     CostEstimate,
+    DeliveryState,
+    ErrorCategory,
+    InMemoryProviderHealthRegistry,
+    InMemoryProviderRegistry,
     LedgerBudgetGuard,
+    MockFailure,
+    MockProvider,
+    ModelGateway,
     ModelRequest,
+    ModelRouter,
+    RetryPolicy,
     Usage,
 )
+from lumi_model_gateway.testing import RecordingPaidInvocationGuard, RecordingSleeper
 
 
 class FakeAccounting:
@@ -203,6 +213,44 @@ class CostAccountingTests(unittest.IsolatedAsyncioTestCase):
         await reservation.release(reason="not_accepted")
         await reservation.release(reason="not_accepted")
         self.assertEqual(len(accounting.releases), 1)
+
+    async def test_provider_retry_reserves_and_commits_cost_once(self) -> None:
+        accounting = FakeAccounting()
+        provider = MockProvider(
+            provider="alpha",
+            model="retry-v1",
+            failures=(
+                MockFailure(
+                    ErrorCategory.RATE_LIMIT,
+                    DeliveryState.NOT_ACCEPTED,
+                    retry_after_seconds=0,
+                ),
+            ),
+        )
+        registry = InMemoryProviderRegistry((provider,))
+        health = InMemoryProviderHealthRegistry()
+        router = ModelRouter(registry=registry, health=health)
+        paid_guard = RecordingPaidInvocationGuard()
+        gateway = ModelGateway(
+            registry=registry,
+            health=health,
+            router=router,
+            paid_guard=paid_guard,
+            budget_guard=LedgerBudgetGuard(accounting),
+            retry_policy=RetryPolicy(
+                max_attempts_per_provider=2,
+                base_delay_seconds=0,
+                max_delay_seconds=0,
+                max_elapsed_seconds=5,
+            ),
+            sleeper=RecordingSleeper(),
+        )
+        result = await gateway.invoke(request())
+        self.assertEqual(result.provider, "alpha")
+        self.assertEqual(len(paid_guard.calls), 2)
+        self.assertEqual(len(accounting.reservations), 1)
+        self.assertEqual(len(accounting.commits), 1)
+        self.assertEqual(accounting.releases, [])
 
 
 if __name__ == "__main__":
