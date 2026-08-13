@@ -64,17 +64,17 @@ def upgrade() -> None:
             created_at timestamptz NOT NULL DEFAULT now(),
             updated_at timestamptz NOT NULL DEFAULT now(),
             version integer NOT NULL DEFAULT 1,
-            CONSTRAINT ck_cost_budget_scope_type CHECK (
+            CONSTRAINT ck_cost_budget_limits_scope_type CHECK (
                 scope_type IN ('organization','project','agent_run','task','operation')
             ),
-            CONSTRAINT ck_cost_budget_scope_identity CHECK (
+            CONSTRAINT ck_cost_budget_limits_scope_identity CHECK (
                 (scope_type = 'organization' AND scope_id IS NULL)
                 OR (scope_type <> 'organization' AND scope_id IS NOT NULL)
             ),
-            CONSTRAINT ck_cost_budget_period_key CHECK (length(period_key) BETWEEN 1 AND 32),
-            CONSTRAINT ck_cost_budget_amount CHECK (amount_limit >= 0),
-            CONSTRAINT ck_cost_budget_tolerance CHECK (tolerance_amount >= 0),
-            CONSTRAINT ck_cost_budget_currency CHECK (currency ~ '^[A-Z]{3}$')
+            CONSTRAINT ck_cost_budget_limits_period_key CHECK (length(period_key) BETWEEN 1 AND 32),
+            CONSTRAINT ck_cost_budget_limits_amount CHECK (amount_limit >= 0),
+            CONSTRAINT ck_cost_budget_limits_tolerance CHECK (tolerance_amount >= 0),
+            CONSTRAINT ck_cost_budget_limits_currency CHECK (currency ~ '^[A-Z]{3}$')
         )
         """
     )
