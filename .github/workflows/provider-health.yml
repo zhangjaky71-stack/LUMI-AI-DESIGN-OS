@@ -1,0 +1,87 @@
+name: Provider Health
+
+on:
+  pull_request:
+    paths:
+      - "services/model-gateway/src/lumi_model_gateway/provider_health.py"
+      - "services/model-gateway/src/lumi_model_gateway/provider_health_monitor.py"
+      - "services/model-gateway/tests/test_provider_health*.py"
+      - "scripts/validate_provider_health_contract.py"
+      - "scripts/integration_provider_health.py"
+      - "docs/runtime/PROVIDER-HEALTH-V1.md"
+      - "reports/nodes/NODE-24/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provider-health-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Revalidate NODE-23 Registry contract
+        run: >-
+          PYTHONPATH=services/model-gateway/src
+          python scripts/validate_capability_registry_contract.py
+      - name: Compile Provider Health runtime
+        run: >-
+          PYTHONPATH=services/model-gateway/src
+          python -m compileall -q
+          services/model-gateway/src/lumi_model_gateway/provider_health.py
+          services/model-gateway/src/lumi_model_gateway/provider_health_monitor.py
+          services/model-gateway/tests/test_provider_health.py
+          services/model-gateway/tests/test_provider_health_monitor.py
+          scripts/validate_provider_health_contract.py
+          scripts/integration_provider_health.py
+      - name: Static Provider Health contract
+        run: >-
+          PYTHONPATH=services/model-gateway/src
+          python scripts/validate_provider_health_contract.py
+      - name: Provider Health unit tests
+        run: >-
+          PYTHONPATH=services/model-gateway/src
+          python -m unittest discover
+          -s services/model-gateway/tests
+          -p 'test_provider_health*.py'
+      - name: Router health integration
+        run: >-
+          PYTHONPATH=services/model-gateway/src
+          python scripts/integration_provider_health.py
+
+  provider-health-quality:
+    needs: provider-health-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Provider Health Ruff gate
+        run: >-
+          uv run ruff check
+          services/model-gateway/src/lumi_model_gateway/provider_health.py
+          services/model-gateway/src/lumi_model_gateway/provider_health_monitor.py
+          services/model-gateway/tests/test_provider_health.py
+          services/model-gateway/tests/test_provider_health_monitor.py
+          scripts/validate_provider_health_contract.py
+          scripts/integration_provider_health.py
+      - name: Provider Health Pyright gate
+        run: >-
+          uv run pyright
+          services/model-gateway/src/lumi_model_gateway/provider_health.py
+          services/model-gateway/src/lumi_model_gateway/provider_health_monitor.py
+          services/model-gateway/tests/test_provider_health.py
+          services/model-gateway/tests/test_provider_health_monitor.py
