@@ -68,8 +68,6 @@ class _LedgerBudgetReservation:
             raise RuntimeError("MODEL_BUDGET_RESERVATION_RELEASED")
         amount = actual.amount_usd
         if amount is None:
-            # Accepted spend with no final provider amount is recorded using the best
-            # available estimate. Reconciliation must append an adjustment later.
             amount = self.estimate.amount_usd
             if amount is None:
                 raise BudgetExceededError(
@@ -82,9 +80,6 @@ class _LedgerBudgetReservation:
                 if self.estimate.confidence != CostConfidence.EXACT
                 else CostConfidence.ESTIMATED
             )
-        # The hard request budget was enforced before invoking the provider. Once a paid
-        # operation is accepted, actual spend is a sunk fact even if it exceeds estimate;
-        # accounting must record it and let subsequent reservations observe the overspend.
         await self.accounting.commit_provider_cost(
             reservation_ticket=self.ticket,
             actual_amount_usd=amount,
@@ -106,11 +101,7 @@ class _LedgerBudgetReservation:
 
 
 class LedgerBudgetGuard:
-    """NODE-27 durable BudgetGuard for ModelGateway.
-
-    It keeps Model Gateway independent from PostgreSQL/SQLAlchemy and makes budget
-    occupancy durable across retries/processes through ``CostAccountingPort``.
-    """
+    """NODE-27 durable BudgetGuard for ModelGateway."""
 
     def __init__(self, accounting: CostAccountingPort) -> None:
         self.accounting = accounting
@@ -137,20 +128,28 @@ class LedgerBudgetGuard:
             raise BudgetExceededError(
                 "durable budget reservation requires an estimated provider cost"
             )
-        ticket = await self.accounting.reserve_provider_cost(
-            organization_id=request.organization_id,
-            operation_id=request.operation_id,
-            project_id=request.project_id,
-            task_id=request.task_id,
-            agent_run_id=request.agent_run_id,
-            generation_id=request.generation_id,
-            provider=provider,
-            model=model,
-            estimated_amount_usd=amount,
-            confidence=estimate.confidence.value,
-            pricing_snapshot_id=estimate.price_snapshot_id,
-            reservation_key=f"model:{provider}:{model}",
-        )
+        try:
+            ticket = await self.accounting.reserve_provider_cost(
+                organization_id=request.organization_id,
+                operation_id=request.operation_id,
+                project_id=request.project_id,
+                task_id=request.task_id,
+                agent_run_id=request.agent_run_id,
+                generation_id=request.generation_id,
+                provider=provider,
+                model=model,
+                estimated_amount_usd=amount,
+                confidence=estimate.confidence.value,
+                pricing_snapshot_id=estimate.price_snapshot_id,
+                reservation_key=f"model:{provider}:{model}",
+            )
+        except Exception as exc:
+            if getattr(exc, "code", None) in {
+                "COST_BUDGET_EXCEEDED",
+                "COST_QUOTA_EXCEEDED",
+            }:
+                raise BudgetExceededError(str(exc)) from exc
+            raise
         return _LedgerBudgetReservation(
             accounting=self.accounting,
             ticket=ticket,
