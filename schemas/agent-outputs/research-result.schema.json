@@ -1,0 +1,1 @@
+{"title":"ResearchResult","type":"object","required":["findings","sources"],"properties":{"findings":{"type":"array","items":{"type":"string"}},"sources":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}
