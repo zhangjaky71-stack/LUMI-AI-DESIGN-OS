@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumi.dev/artifacts/v1/artifact-history.schema.json",
+  "title": "LUMI Artifact History V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["artifact", "branches", "versions", "edges", "files"],
+  "properties": {
+    "artifact": {"$ref": "#/$defs/artifact"},
+    "branches": {"type": "array", "items": {"$ref": "#/$defs/branch"}},
+    "versions": {"type": "array", "items": {"$ref": "#/$defs/version"}},
+    "edges": {"type": "array", "items": {"$ref": "#/$defs/edge"}},
+    "files": {"type": "array", "items": {"$ref": "#/$defs/file"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 160},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "organization_id", "project_id", "type", "title", "archived"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "organization_id": {"$ref": "#/$defs/id"},
+        "project_id": {"$ref": "#/$defs/id"},
+        "type": {"enum": ["DESIGN_DOCUMENT","RASTER_IMAGE","VECTOR_IMAGE","VIDEO","AUDIO","PDF","HTML","ARCHIVE","EXPORT_PACKAGE"]},
+        "title": {"type": "string", "maxLength": 300}, "archived": {"type": "boolean"}
+      }
+    },
+    "branch": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "organization_id", "artifact_id", "name", "base_version_id", "head_version_id", "created_by"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "organization_id": {"$ref": "#/$defs/id"},
+        "artifact_id": {"$ref": "#/$defs/id"}, "name": {"type": "string", "minLength": 1, "maxLength": 120},
+        "base_version_id": {"type": ["string", "null"]}, "head_version_id": {"type": ["string", "null"]},
+        "created_by": {"$ref": "#/$defs/id"}
+      }
+    },
+    "version": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id","organization_id","artifact_id","branch_id","parent_version_id","schema_version","version_number","status","content_hash","constraint_snapshot_hash","created_by_type","created_by_id","created_at"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "organization_id": {"$ref": "#/$defs/id"},
+        "artifact_id": {"$ref": "#/$defs/id"}, "branch_id": {"$ref": "#/$defs/id"},
+        "parent_version_id": {"type": ["string", "null"]}, "schema_version": {"type": "string", "minLength": 1},
+        "version_number": {"type": "integer", "minimum": 1},
+        "status": {"enum": ["DRAFT","READY","APPROVED","REJECTED","ARCHIVED"]},
+        "content_hash": {"$ref": "#/$defs/sha256"}, "primary_file_id": {"type": ["string", "null"]},
+        "design_document_version_id": {"type": ["string", "null"]},
+        "quality_score": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "constraint_snapshot_hash": {"$ref": "#/$defs/sha256"},
+        "created_by_type": {"enum": ["USER","AGENT","SYSTEM"]}, "created_by_id": {"$ref": "#/$defs/id"},
+        "created_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "edge": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id","organization_id","from_version_id","to_version_id","type","metadata"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "organization_id": {"$ref": "#/$defs/id"},
+        "from_version_id": {"$ref": "#/$defs/id"}, "to_version_id": {"$ref": "#/$defs/id"},
+        "type": {"enum": ["DERIVED_FROM","EDITED_FROM","GENERATED_FROM","COMPOSED_FROM","RESIZED_FROM","EXPORTED_FROM","REFERENCE_USED"]},
+        "metadata": {"type": "object", "additionalProperties": true}
+      }
+    },
+    "file": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id","organization_id","artifact_version_id","role","storage_key","mime_type","size_bytes","checksum_sha256","metadata"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "organization_id": {"$ref": "#/$defs/id"},
+        "artifact_version_id": {"$ref": "#/$defs/id"},
+        "role": {"enum": ["PREVIEW","ORIGINAL","THUMBNAIL","WEB_OPTIMIZED","PRINT_PDF","LAYER_DATA"]},
+        "storage_key": {"type": "string", "minLength": 1}, "mime_type": {"type": "string", "minLength": 1},
+        "size_bytes": {"type": "integer", "minimum": 0}, "checksum_sha256": {"$ref": "#/$defs/sha256"},
+        "width": {"type": ["integer", "null"], "minimum": 0}, "height": {"type": ["integer", "null"], "minimum": 0},
+        "duration_ms": {"type": ["integer", "null"], "minimum": 0}, "metadata": {"type": "object", "additionalProperties": true}
+      }
+    }
+  }
+}
