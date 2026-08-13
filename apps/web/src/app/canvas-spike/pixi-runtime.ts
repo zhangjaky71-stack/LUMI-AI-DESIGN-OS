@@ -109,7 +109,7 @@ declare global {
   }
 }
 
-export interface ScreenRect extends Rect {}
+export type ScreenRect = Rect;
 
 export interface CanvasSpikeSnapshot {
   readonly ready: boolean;

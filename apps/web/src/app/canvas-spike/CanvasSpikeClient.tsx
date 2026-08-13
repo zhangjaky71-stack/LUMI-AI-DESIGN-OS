@@ -94,7 +94,12 @@ export default function CanvasSpikeClient() {
 
   const beginResize = (event: React.PointerEvent<HTMLButtonElement>) => {
     const handle = event.currentTarget.dataset.resizeHandle;
-    if (handle !== "nw" && handle !== "ne" && handle !== "sw" && handle !== "se") {
+    if (
+      handle !== "nw" &&
+      handle !== "ne" &&
+      handle !== "sw" &&
+      handle !== "se"
+    ) {
       return;
     }
     event.preventDefault();
