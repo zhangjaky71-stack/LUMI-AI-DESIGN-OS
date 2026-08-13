@@ -245,9 +245,15 @@ def upgrade() -> None:
         "(organization_id, metric, expires_at) WHERE released_at IS NULL"
     )
 
-    # Financial truth is append-only for the runtime role. Budget/quota policy tables are
-    # control-plane managed: runtime can read them but cannot rewrite policy.
+    # 0002 established default DML privileges for future lumi_migration tables. NODE-27
+    # explicitly narrows every new financial/control-plane table rather than relying on
+    # GRANT statements to remove privileges that default privileges already supplied.
     op.execute("REVOKE UPDATE, DELETE ON cost_ledger FROM lumi_app")
+    op.execute("REVOKE UPDATE, DELETE ON usage_ledger FROM lumi_app")
+    op.execute("REVOKE DELETE ON cost_reservations FROM lumi_app")
+    op.execute("REVOKE INSERT, UPDATE, DELETE ON cost_budget_limits FROM lumi_app")
+    op.execute("REVOKE INSERT, UPDATE, DELETE ON quota_limits FROM lumi_app")
+    op.execute("REVOKE DELETE ON quota_leases FROM lumi_app")
     op.execute("GRANT SELECT, INSERT ON usage_ledger TO lumi_app")
     op.execute("GRANT SELECT, INSERT, UPDATE ON cost_reservations TO lumi_app")
     op.execute("GRANT SELECT ON cost_budget_limits, quota_limits TO lumi_app")
