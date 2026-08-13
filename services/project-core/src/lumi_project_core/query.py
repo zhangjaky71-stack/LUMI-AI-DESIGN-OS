@@ -3,12 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from .lifecycle import ProjectStatus
-
 
 @dataclass(frozen=True, slots=True)
 class ProjectListFilter:
-    status: ProjectStatus | None = None
+    status: str | None = None
     workspace_id: str | None = None
     created_by: str | None = None
     updated_after: datetime | None = None
