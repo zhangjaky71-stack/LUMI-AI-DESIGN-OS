@@ -1,0 +1,31 @@
+name: Application Services
+
+on:
+  pull_request:
+    paths:
+      - "services/application/**"
+      - "services/domain/**"
+      - "scripts/validate_application_boundaries.py"
+      - ".github/workflows/application-services.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  application-services:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile application source
+        run: python -m compileall -q services/application/src
+      - name: Validate application dependency boundary
+        run: python scripts/validate_application_boundaries.py
+      - name: Run stdlib application service tests
+        env:
+          PYTHONPATH: services/application/src:services/domain/src
+        run: python -m unittest discover -s services/application/tests -p 'test_*.py' -v
