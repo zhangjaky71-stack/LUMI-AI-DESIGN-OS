@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Generic, Literal, TypeVar
 from uuid import UUID
 
@@ -236,6 +237,30 @@ class ApprovalResource(StrictModel):
     decided_by: UUID | None = None
     decided_at: datetime | None = None
     version: int = Field(ge=1)
+
+
+class CostSummaryResource(StrictModel):
+    organization_id: UUID
+    project_id: UUID | None = None
+    currency: str = Field(pattern="^[A-Z]{3}$")
+    actual_cost: Decimal
+    adjustments: Decimal
+    reversals: Decimal
+    net_provider_cost: Decimal
+    active_reservations: Decimal = Field(ge=0)
+    unknown_cost_entries: int = Field(ge=0)
+    from_time: datetime
+    to_time: datetime
+
+
+class UsageSummaryResource(StrictModel):
+    organization_id: UUID
+    project_id: UUID | None = None
+    metric: str = Field(min_length=1, max_length=100)
+    quantity: Decimal = Field(ge=0)
+    unit: str = Field(min_length=1, max_length=64)
+    from_time: datetime
+    to_time: datetime
 
 
 class HealthResource(StrictModel):
