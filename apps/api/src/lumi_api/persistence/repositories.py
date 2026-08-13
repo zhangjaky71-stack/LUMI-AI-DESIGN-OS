@@ -1,26 +1,23 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from decimal import Decimal
-from typing import Any, Generic, TypeVar, cast
+from typing import Any, cast
 from uuid import UUID
 
 from lumi_domain import CostEntry as DomainCostEntry
-from lumi_domain import DomainEvent, Project as DomainProject, ProjectStatus
+from lumi_domain import DomainEvent, Money, Project as DomainProject, ProjectStatus
 from sqlalchemy import Select, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 
 from .models import CostLedger, OutboxEvent, Project
 
-ModelT = TypeVar("ModelT", bound=DeclarativeBase)
-
 
 class OptimisticLockError(RuntimeError):
     pass
 
 
-class TenantRepository(Generic[ModelT]):
+class TenantRepository[ModelT: DeclarativeBase]:
     def __init__(self, session: AsyncSession, organization_id: UUID, model: type[ModelT]) -> None:
         self._session = session
         self.organization_id = organization_id
@@ -154,10 +151,7 @@ class CostLedgerRepositoryAdapter(TenantRepository[CostLedger]):
             DomainCostEntry(
                 organization_id=row.organization_id,
                 id=row.id,
-                amount=__import__("lumi_domain").Money(
-                    Decimal(row.amount),
-                    row.currency,
-                ),
+                amount=Money(row.amount, row.currency),
                 category=row.entry_type,
                 recorded_at=row.occurred_at,
                 reverses_entry_id=row.reverses_entry_id,
