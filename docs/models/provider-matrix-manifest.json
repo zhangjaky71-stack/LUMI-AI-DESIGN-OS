@@ -9,7 +9,7 @@
     "models": 28,
     "route_eligible_models": 27,
     "benchmark_status": {"NOT_MEASURED": 28},
-    "lifecycle": {"stable": 21, "preview": 6, "deprecated": 1}
+    "lifecycle": {"stable": 23, "preview": 4, "deprecated": 1}
   },
   "source_catalog": "docs/models/provider-sources.json",
   "provider_glob": "docs/models/providers/*.json",
