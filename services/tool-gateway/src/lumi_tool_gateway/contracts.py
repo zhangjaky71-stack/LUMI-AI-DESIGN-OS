@@ -75,6 +75,8 @@ class ToolDefinition:
             raise ValueError("TOOL_DESCRIPTION_INVALID")
         if not self.permissions:
             raise ValueError("TOOL_PERMISSIONS_REQUIRED")
+        if self.is_write and self.idempotency != ToolIdempotency.REQUIRED:
+            raise ValueError("TOOL_WRITE_IDEMPOTENCY_REQUIRED")
         if not 0.1 <= self.timeout_seconds <= 3600:
             raise ValueError("TOOL_TIMEOUT_INVALID")
         if not 1024 <= self.max_inline_output_bytes <= 1024 * 1024:
