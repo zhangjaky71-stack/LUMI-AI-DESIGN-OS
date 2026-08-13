@@ -49,7 +49,13 @@ interface PixiContainer extends PixiDisplayObject {
 interface PixiGraphics extends PixiDisplayObject {
   clear(): this;
   rect(x: number, y: number, width: number, height: number): this;
-  roundRect(x: number, y: number, width: number, height: number, radius: number): this;
+  roundRect(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number,
+  ): this;
   fill(color: number | { color: number; alpha?: number }): this;
   stroke(options: { color: number; width: number; alpha?: number }): this;
 }
@@ -140,7 +146,14 @@ export interface CanvasSpikeBenchmarkReport {
   readonly notes: readonly string[];
 }
 
-type PointerMode = "idle" | "pan" | "drag" | "marquee" | "resize" | "rotate" | "pinch";
+type PointerMode =
+  | "idle"
+  | "pan"
+  | "drag"
+  | "marquee"
+  | "resize"
+  | "rotate"
+  | "pinch";
 type ResizeHandle = "nw" | "ne" | "sw" | "se";
 
 interface ActivePointer {
@@ -191,12 +204,17 @@ function percentile(values: readonly number[], fraction: number): number {
     return 0;
   }
   const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * fraction) - 1));
+  const index = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil(sorted.length * fraction) - 1),
+  );
   return sorted[index] ?? 0;
 }
 
 function mean(values: readonly number[]): number {
-  return values.length === 0 ? 0 : values.reduce((total, value) => total + value, 0) / values.length;
+  return values.length === 0
+    ? 0
+    : values.reduce((total, value) => total + value, 0) / values.length;
 }
 
 function distance(a: Point, b: Point): number {
@@ -308,20 +326,32 @@ export class CanvasSpikeRuntime {
     if (window.__LUMI_CANVAS_SPIKE__) {
       delete window.__LUMI_CANVAS_SPIKE__;
     }
-    this.#app?.destroy(true, { children: true, texture: true, textureSource: true });
+    this.#app?.destroy(true, {
+      children: true,
+      texture: true,
+      textureSource: true,
+    });
     this.#displays.clear();
     this.#app = null;
     this.#world = null;
   }
 
   snapshot(): CanvasSpikeSnapshot {
-    const selectedNodes = this.#store.list().filter((node) => this.#selected.has(node.id));
+    const selectedNodes = this.#store
+      .list()
+      .filter((node) => this.#selected.has(node.id));
     const worldBounds = unionBounds(selectedNodes);
     let selectionRect: ScreenRect | null = null;
     if (worldBounds) {
-      const topLeft = worldToScreen({ x: worldBounds.x, y: worldBounds.y }, this.#camera);
+      const topLeft = worldToScreen(
+        { x: worldBounds.x, y: worldBounds.y },
+        this.#camera,
+      );
       const bottomRight = worldToScreen(
-        { x: worldBounds.x + worldBounds.width, y: worldBounds.y + worldBounds.height },
+        {
+          x: worldBounds.x + worldBounds.width,
+          y: worldBounds.y + worldBounds.height,
+        },
         this.#camera,
       );
       selectionRect = {
@@ -343,7 +373,10 @@ export class CanvasSpikeRuntime {
       selectedImageRef: selectedImage?.assetRef ?? null,
       nodeCount: this.#store.list().length,
       visibleNodeCount: this.#visibleNodeCount,
-      history: { canUndo: this.#history.canUndo, canRedo: this.#history.canRedo },
+      history: {
+        canUndo: this.#history.canUndo,
+        canRedo: this.#history.canRedo,
+      },
     };
   }
 
@@ -410,7 +443,10 @@ export class CanvasSpikeRuntime {
   #handlePointerDown = (event: PointerEvent): void => {
     this.#app?.canvas.setPointerCapture(event.pointerId);
     const screen = this.#screenPoint(event);
-    this.#activePointers.set(event.pointerId, { id: event.pointerId, point: screen });
+    this.#activePointers.set(event.pointerId, {
+      id: event.pointerId,
+      point: screen,
+    });
 
     if (event.pointerType === "touch" && this.#activePointers.size >= 2) {
       const [first, second] = [...this.#activePointers.values()];
@@ -490,7 +526,9 @@ export class CanvasSpikeRuntime {
       const [first, second] = [...this.#activePointers.values()];
       if (first && second && this.#interaction.pinchStartDistance > 0) {
         const center = midpoint(first.point, second.point);
-        const ratio = distance(first.point, second.point) / this.#interaction.pinchStartDistance;
+        const ratio =
+          distance(first.point, second.point) /
+          this.#interaction.pinchStartDistance;
         let camera = zoomAtScreenPoint(
           this.#interaction.pinchStartCamera,
           this.#interaction.pinchStartCenter,
@@ -498,8 +536,12 @@ export class CanvasSpikeRuntime {
         );
         camera = {
           ...camera,
-          x: camera.x - (center.x - this.#interaction.pinchStartCenter.x) / camera.zoom,
-          y: camera.y - (center.y - this.#interaction.pinchStartCenter.y) / camera.zoom,
+          x:
+            camera.x -
+            (center.x - this.#interaction.pinchStartCenter.x) / camera.zoom,
+          y:
+            camera.y -
+            (center.y - this.#interaction.pinchStartCenter.y) / camera.zoom,
         };
         this.#camera = camera;
         this.#applyCamera();
@@ -527,15 +569,25 @@ export class CanvasSpikeRuntime {
     }
 
     if (this.#interaction.mode === "drag") {
-      const previousWorld = screenToWorld(this.#interaction.lastScreen, this.#camera);
+      const previousWorld = screenToWorld(
+        this.#interaction.lastScreen,
+        this.#camera,
+      );
       const nextWorld = screenToWorld(screen, this.#camera);
-      this.#store.translate([...this.#selected], nextWorld.x - previousWorld.x, nextWorld.y - previousWorld.y);
+      this.#store.translate(
+        [...this.#selected],
+        nextWorld.x - previousWorld.x,
+        nextWorld.y - previousWorld.y,
+      );
       this.#interaction.lastScreen = screen;
       void this.#syncDisplays(false);
       return;
     }
 
-    if (this.#interaction.mode === "marquee" && this.#interaction.marqueeStart) {
+    if (
+      this.#interaction.mode === "marquee" &&
+      this.#interaction.marqueeStart
+    ) {
       const start = this.#interaction.marqueeStart;
       this.#marqueeRect = normalizeRect({
         x: start.x,
@@ -562,8 +614,14 @@ export class CanvasSpikeRuntime {
 
     if (this.#interaction.mode === "drag") {
       this.#commitMutation("drag selection", this.#interaction.beforeNodes);
-    } else if (this.#interaction.mode === "marquee" && this.#interaction.marqueeStart) {
-      const startWorld = screenToWorld(this.#interaction.marqueeStart, this.#camera);
+    } else if (
+      this.#interaction.mode === "marquee" &&
+      this.#interaction.marqueeStart
+    ) {
+      const startWorld = screenToWorld(
+        this.#interaction.marqueeStart,
+        this.#camera,
+      );
       const endWorld = screenToWorld(screen, this.#camera);
       const ids = nodesInRect(this.#store.list(), {
         x: startWorld.x,
@@ -584,7 +642,11 @@ export class CanvasSpikeRuntime {
     event.preventDefault();
     const point = this.#screenPoint(event);
     const factor = Math.exp(-event.deltaY * 0.0012);
-    this.#camera = zoomAtScreenPoint(this.#camera, point, this.#camera.zoom * factor);
+    this.#camera = zoomAtScreenPoint(
+      this.#camera,
+      point,
+      this.#camera.zoom * factor,
+    );
     this.#applyCamera();
     this.#emit();
   };
@@ -649,7 +711,10 @@ export class CanvasSpikeRuntime {
       return;
     }
     this.#world.scale.set(this.#camera.zoom);
-    this.#world.position.set(-this.#camera.x * this.#camera.zoom, -this.#camera.y * this.#camera.zoom);
+    this.#world.position.set(
+      -this.#camera.x * this.#camera.zoom,
+      -this.#camera.y * this.#camera.zoom,
+    );
     this.#updateCulling();
   }
 
@@ -660,14 +725,19 @@ export class CanvasSpikeRuntime {
     }
     const rect = app.canvas.getBoundingClientRect();
     const topLeft = screenToWorld({ x: 0, y: 0 }, this.#camera);
-    const bottomRight = screenToWorld({ x: rect.width, y: rect.height }, this.#camera);
+    const bottomRight = screenToWorld(
+      { x: rect.width, y: rect.height },
+      this.#camera,
+    );
     const viewport = normalizeRect({
       x: topLeft.x,
       y: topLeft.y,
       width: bottomRight.x - topLeft.x,
       height: bottomRight.y - topLeft.y,
     });
-    const visible = new Set(cullNodes(this.#store.list(), viewport).map((node) => node.id));
+    const visible = new Set(
+      cullNodes(this.#store.list(), viewport).map((node) => node.id),
+    );
     this.#visibleNodeCount = visible.size;
     for (const [id, display] of this.#displays) {
       display.visible = visible.has(id);
@@ -773,7 +843,9 @@ export class CanvasSpikeRuntime {
   }
 
   copySelection(): void {
-    this.#clipboard = this.#store.list().filter((node) => this.#selected.has(node.id));
+    this.#clipboard = this.#store
+      .list()
+      .filter((node) => this.#selected.has(node.id));
   }
 
   pasteSelection(): void {
@@ -831,7 +903,9 @@ export class CanvasSpikeRuntime {
   }
 
   beginResize(handle: ResizeHandle, event: PointerEvent): void {
-    const selectedNodes = this.#store.list().filter((node) => this.#selected.has(node.id));
+    const selectedNodes = this.#store
+      .list()
+      .filter((node) => this.#selected.has(node.id));
     const bounds = unionBounds(selectedNodes);
     if (!bounds || selectedNodes.length === 0) {
       return;
@@ -849,16 +923,23 @@ export class CanvasSpikeRuntime {
       transformNodes: cloneNodes(selectedNodes),
     };
     window.addEventListener("pointermove", this.#handleTransformMove);
-    window.addEventListener("pointerup", this.#handleTransformUp, { once: true });
+    window.addEventListener("pointerup", this.#handleTransformUp, {
+      once: true,
+    });
   }
 
   beginRotate(event: PointerEvent): void {
-    const selectedNodes = this.#store.list().filter((node) => this.#selected.has(node.id));
+    const selectedNodes = this.#store
+      .list()
+      .filter((node) => this.#selected.has(node.id));
     const bounds = unionBounds(selectedNodes);
     if (!bounds || selectedNodes.length === 0) {
       return;
     }
-    const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    const center = {
+      x: bounds.x + bounds.width / 2,
+      y: bounds.y + bounds.height / 2,
+    };
     const screen = this.#screenPoint(event);
     const world = screenToWorld(screen, this.#camera);
     this.#interaction = {
@@ -873,11 +954,16 @@ export class CanvasSpikeRuntime {
       rotationStartAngle: Math.atan2(world.y - center.y, world.x - center.x),
     };
     window.addEventListener("pointermove", this.#handleTransformMove);
-    window.addEventListener("pointerup", this.#handleTransformUp, { once: true });
+    window.addEventListener("pointerup", this.#handleTransformUp, {
+      once: true,
+    });
   }
 
   #handleTransformMove = (event: PointerEvent): void => {
-    if (this.#interaction.mode !== "resize" && this.#interaction.mode !== "rotate") {
+    if (
+      this.#interaction.mode !== "resize" &&
+      this.#interaction.mode !== "rotate"
+    ) {
       return;
     }
     const bounds = this.#interaction.transformBounds;
@@ -886,7 +972,10 @@ export class CanvasSpikeRuntime {
     }
     const screen = this.#screenPoint(event);
     const world = screenToWorld(screen, this.#camera);
-    const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    const center = {
+      x: bounds.x + bounds.width / 2,
+      y: bounds.y + bounds.height / 2,
+    };
 
     if (this.#interaction.mode === "rotate") {
       const angle = Math.atan2(world.y - center.y, world.x - center.x);
@@ -916,7 +1005,9 @@ export class CanvasSpikeRuntime {
         return;
       }
       const anchorX = handle.includes("w") ? bounds.x + bounds.width : bounds.x;
-      const anchorY = handle.includes("n") ? bounds.y + bounds.height : bounds.y;
+      const anchorY = handle.includes("n")
+        ? bounds.y + bounds.height
+        : bounds.y;
       const targetWidth = Math.max(20, Math.abs(world.x - anchorX));
       const targetHeight = Math.max(20, Math.abs(world.y - anchorY));
       const scaleX = targetWidth / Math.max(1, bounds.width);
@@ -942,7 +1033,10 @@ export class CanvasSpikeRuntime {
   #handleTransformUp = (): void => {
     window.removeEventListener("pointermove", this.#handleTransformMove);
     const before = this.#interaction.beforeNodes;
-    const label = this.#interaction.mode === "rotate" ? "rotate selection" : "resize selection";
+    const label =
+      this.#interaction.mode === "rotate"
+        ? "rotate selection"
+        : "resize selection";
     this.#commitMutation(label, before);
     this.#interaction = this.#idleInteraction();
     void this.#syncDisplays(false);
@@ -959,7 +1053,9 @@ export class CanvasSpikeRuntime {
     metrics.push(await this.#measureShapeScene("simple-2k", 2_000, 45));
     metrics.push(await this.#measureShapeScene("simple-10k", 10_000, 30));
     metrics.push(await this.#measureImageScene("images-1k", 1_000, 20));
-    metrics.push(await this.#measureTextScene("text-1k-rich-100", 1_000, 100, 16));
+    metrics.push(
+      await this.#measureTextScene("text-1k-rich-100", 1_000, 100, 16),
+    );
     metrics.push(await this.#measureSelectedDrag("selected-500-drag", 500, 35));
 
     const report: CanvasSpikeBenchmarkReport = {
@@ -979,7 +1075,10 @@ export class CanvasSpikeRuntime {
     return report;
   }
 
-  async #frameSamples(frameCount: number, onFrame?: (index: number) => void): Promise<number[]> {
+  async #frameSamples(
+    frameCount: number,
+    onFrame?: (index: number) => void,
+  ): Promise<number[]> {
     const samples: number[] = [];
     let previous = performance.now();
     for (let index = 0; index < frameCount; index += 1) {
@@ -996,7 +1095,11 @@ export class CanvasSpikeRuntime {
     return samples;
   }
 
-  #metric(name: string, nodeCount: number, samples: readonly number[]): FrameMetric {
+  #metric(
+    name: string,
+    nodeCount: number,
+    samples: readonly number[],
+  ): FrameMetric {
     const p50 = percentile(samples, 0.5);
     const p95 = percentile(samples, 0.95);
     const average = mean(samples);
@@ -1011,7 +1114,11 @@ export class CanvasSpikeRuntime {
     };
   }
 
-  async #measureShapeScene(name: string, count: number, frames: number): Promise<FrameMetric> {
+  async #measureShapeScene(
+    name: string,
+    count: number,
+    frames: number,
+  ): Promise<FrameMetric> {
     const pixi = this.#pixi;
     const app = this.#app;
     if (!pixi || !app) {
@@ -1021,7 +1128,9 @@ export class CanvasSpikeRuntime {
     const nodes = createGridNodes(count, 62);
     const displays: PixiGraphics[] = [];
     for (const node of nodes) {
-      const graphic = new pixi.Graphics().roundRect(0, 0, 48, 48, 4).fill(0x666666);
+      const graphic = new pixi.Graphics()
+        .roundRect(0, 0, 48, 48, 4)
+        .fill(0x666666);
       graphic.position.set(node.x, node.y);
       root.addChild(graphic);
       displays.push(graphic);
@@ -1031,7 +1140,9 @@ export class CanvasSpikeRuntime {
     const samples = await this.#frameSamples(frames, () => {
       viewportX += 18;
       const visibleIds = new Set(
-        cullNodes(nodes, { x: viewportX, y: 0, width: 1600, height: 1000 }).map((node) => node.id),
+        cullNodes(nodes, { x: viewportX, y: 0, width: 1600, height: 1000 }).map(
+          (node) => node.id,
+        ),
       );
       for (let index = 0; index < displays.length; index += 1) {
         displays[index]!.visible = visibleIds.has(nodes[index]!.id);
@@ -1043,7 +1154,11 @@ export class CanvasSpikeRuntime {
     return this.#metric(name, count, samples);
   }
 
-  async #measureImageScene(name: string, count: number, frames: number): Promise<FrameMetric> {
+  async #measureImageScene(
+    name: string,
+    count: number,
+    frames: number,
+  ): Promise<FrameMetric> {
     const pixi = this.#pixi;
     const app = this.#app;
     if (!pixi || !app) {
@@ -1056,11 +1171,16 @@ export class CanvasSpikeRuntime {
       const sprite = new pixi.Sprite(texture);
       sprite.width = 80;
       sprite.height = 56;
-      sprite.position.set((index % columns) * 88, Math.floor(index / columns) * 64);
+      sprite.position.set(
+        (index % columns) * 88,
+        Math.floor(index / columns) * 64,
+      );
       root.addChild(sprite);
     }
     app.stage.addChild(root);
-    const samples = await this.#frameSamples(frames, (index) => root.position.set(-index * 12, -index * 4));
+    const samples = await this.#frameSamples(frames, (index) =>
+      root.position.set(-index * 12, -index * 4),
+    );
     app.stage.removeChild(root);
     root.destroy({ children: true });
     return this.#metric(name, count, samples);
@@ -1081,7 +1201,11 @@ export class CanvasSpikeRuntime {
     for (let index = 0; index < textCount; index += 1) {
       const text = new pixi.Text({
         text: `LUMI ${index} 中文 🧪`,
-        style: { fill: 0xffffff, fontSize: 14, fontFamily: "Arial, sans-serif" },
+        style: {
+          fill: 0xffffff,
+          fontSize: 14,
+          fontFamily: "Arial, sans-serif",
+        },
       });
       text.position.set((index % 30) * 120, Math.floor(index / 30) * 28);
       root.addChild(text);
@@ -1092,18 +1216,27 @@ export class CanvasSpikeRuntime {
           text: `<b>LUMI</b> <i>${index}</i> 中文`,
           style: { fill: 0xffffff, fontSize: 14 },
         });
-        rich.position.set((index % 20) * 160, 1100 + Math.floor(index / 20) * 36);
+        rich.position.set(
+          (index % 20) * 160,
+          1100 + Math.floor(index / 20) * 36,
+        );
         root.addChild(rich);
       }
     }
     app.stage.addChild(root);
-    const samples = await this.#frameSamples(frames, (index) => root.position.set(-index * 8, 0));
+    const samples = await this.#frameSamples(frames, (index) =>
+      root.position.set(-index * 8, 0),
+    );
     app.stage.removeChild(root);
     root.destroy({ children: true });
     return this.#metric(name, textCount + richTextCount, samples);
   }
 
-  async #measureSelectedDrag(name: string, count: number, frames: number): Promise<FrameMetric> {
+  async #measureSelectedDrag(
+    name: string,
+    count: number,
+    frames: number,
+  ): Promise<FrameMetric> {
     const pixi = this.#pixi;
     const app = this.#app;
     if (!pixi || !app) {

@@ -21,7 +21,10 @@ export function screenToWorld(point: Point, camera: CameraState): Point {
   };
 }
 
-export function panCamera(camera: CameraState, screenDelta: Point): CameraState {
+export function panCamera(
+  camera: CameraState,
+  screenDelta: Point,
+): CameraState {
   return {
     ...camera,
     x: camera.x - screenDelta.x / camera.zoom,

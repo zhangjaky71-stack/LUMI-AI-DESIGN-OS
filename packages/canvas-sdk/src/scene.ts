@@ -40,7 +40,10 @@ export class SpikeSceneStore {
     return { ...node };
   }
 
-  patch(id: string, patch: TransformPatch & { readonly text?: string }): SpikeNode {
+  patch(
+    id: string,
+    patch: TransformPatch & { readonly text?: string },
+  ): SpikeNode {
     const node = this.#nodes.get(id);
     if (!node) {
       throw new Error(`node not found: ${id}`);

@@ -6,7 +6,6 @@ import { nodesInRect, unionBounds } from "./geometry";
 import { CommandStack } from "./history";
 import { SpikeSceneStore, createSpikeSeedScene } from "./scene";
 
-
 describe("canvas spike coordinate model", () => {
   it("round-trips world and screen coordinates", () => {
     const camera = { x: -320, y: 180, zoom: 1.75 };
@@ -28,14 +27,20 @@ describe("canvas spike coordinate model", () => {
   });
 });
 
-
 describe("canvas spike scene operations", () => {
   it("marquee-selects intersecting nodes and computes union bounds", () => {
     const scene = createSpikeSeedScene();
-    const selected = nodesInRect(scene, { x: 100, y: 100, width: 600, height: 300 });
+    const selected = nodesInRect(scene, {
+      x: 100,
+      y: 100,
+      width: 600,
+      height: 300,
+    });
     expect(selected).toContain("rect-accent");
     expect(selected).toContain("text-title");
-    const bounds = unionBounds(scene.filter((node) => selected.includes(node.id)));
+    const bounds = unionBounds(
+      scene.filter((node) => selected.includes(node.id)),
+    );
     expect(bounds).not.toBeNull();
     expect(bounds?.width).toBeGreaterThan(400);
   });
@@ -55,7 +60,9 @@ describe("canvas spike scene operations", () => {
     const history = new CommandStack();
     const before = store.list();
     const after = before.map((node) =>
-      node.id === "rect-accent" ? { ...node, x: node.x + 40, y: node.y + 12 } : node,
+      node.id === "rect-accent"
+        ? { ...node, x: node.x + 40, y: node.y + 12 }
+        : node,
     );
     history.execute({
       label: "move",
@@ -69,7 +76,6 @@ describe("canvas spike scene operations", () => {
     expect(store.get("rect-accent")?.x).toBe(180);
   });
 });
-
 
 describe("canvas spike culling fixture", () => {
   it("exercises ten thousand nodes deterministically", () => {

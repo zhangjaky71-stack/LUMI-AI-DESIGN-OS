@@ -39,7 +39,9 @@ export default function CanvasSpikeClient() {
   const [textEditor, setTextEditor] = useState<TextEditorRequest | null>(null);
   const [draftText, setDraftText] = useState("");
   const [isComposing, setIsComposing] = useState(false);
-  const [benchmark, setBenchmark] = useState<CanvasSpikeBenchmarkReport | null>(null);
+  const [benchmark, setBenchmark] = useState<CanvasSpikeBenchmarkReport | null>(
+    null,
+  );
   const [benchmarkRunning, setBenchmarkRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,7 +59,9 @@ export default function CanvasSpikeClient() {
     });
     runtimeRef.current = runtime;
     void runtime.init().catch((cause: unknown) => {
-      setError(cause instanceof Error ? cause.message : "Canvas Spike 初始化失败");
+      setError(
+        cause instanceof Error ? cause.message : "Canvas Spike 初始化失败",
+      );
     });
     return () => {
       runtime.dispose();
@@ -88,11 +92,12 @@ export default function CanvasSpikeClient() {
     runtimeRef.current?.commitText(textEditor.nodeId, draftText);
   };
 
-  const beginResize = (handle: "nw" | "ne" | "sw" | "se") => (event: React.PointerEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    runtimeRef.current?.beginResize(handle, event.nativeEvent);
-  };
+  const beginResize =
+    (handle: "nw" | "ne" | "sw" | "se") => (event: React.PointerEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      runtimeRef.current?.beginResize(handle, event.nativeEvent);
+    };
 
   const beginRotate = (event: React.PointerEvent) => {
     event.preventDefault();
@@ -117,7 +122,9 @@ export default function CanvasSpikeClient() {
         <div className={styles.statusRow}>
           <span className={styles.pill}>Pixi {snapshot.pixiVersion}</span>
           <span className={styles.pill}>{snapshot.renderer}</span>
-          <span className={styles.pill}>Zoom {(snapshot.camera.zoom * 100).toFixed(0)}%</span>
+          <span className={styles.pill}>
+            Zoom {(snapshot.camera.zoom * 100).toFixed(0)}%
+          </span>
           <span className={snapshot.ready ? styles.ready : styles.pending}>
             {snapshot.ready ? "READY" : "LOADING"}
           </span>
@@ -128,27 +135,50 @@ export default function CanvasSpikeClient() {
         <aside className={styles.sidebar}>
           <h2>Spike Controls</h2>
           <p className={styles.help}>
-            Wheel/trackpad zoom-to-cursor · Space/middle drag pan · Shift multi-select · drag nodes ·
-            double-click text · Ctrl/Cmd C/V/Z/Y.
+            Wheel/trackpad zoom-to-cursor · Space/middle drag pan · Shift
+            multi-select · drag nodes · double-click text · Ctrl/Cmd C/V/Z/Y.
           </p>
 
           <div className={styles.buttonGrid}>
-            <button type="button" onClick={() => runtimeRef.current?.undo()} disabled={!snapshot.history.canUndo}>
+            <button
+              type="button"
+              onClick={() => runtimeRef.current?.undo()}
+              disabled={!snapshot.history.canUndo}
+            >
               Undo
             </button>
-            <button type="button" onClick={() => runtimeRef.current?.redo()} disabled={!snapshot.history.canRedo}>
+            <button
+              type="button"
+              onClick={() => runtimeRef.current?.redo()}
+              disabled={!snapshot.history.canRedo}
+            >
               Redo
             </button>
-            <button type="button" onClick={() => runtimeRef.current?.copySelection()} disabled={snapshot.selectedIds.length === 0}>
+            <button
+              type="button"
+              onClick={() => runtimeRef.current?.copySelection()}
+              disabled={snapshot.selectedIds.length === 0}
+            >
               Copy
             </button>
-            <button type="button" onClick={() => runtimeRef.current?.pasteSelection()}>
+            <button
+              type="button"
+              onClick={() => runtimeRef.current?.pasteSelection()}
+            >
               Paste
             </button>
-            <button type="button" onClick={() => runtimeRef.current?.reorderSelection(-1)} disabled={snapshot.selectedIds.length === 0}>
+            <button
+              type="button"
+              onClick={() => runtimeRef.current?.reorderSelection(-1)}
+              disabled={snapshot.selectedIds.length === 0}
+            >
               Layer −
             </button>
-            <button type="button" onClick={() => runtimeRef.current?.reorderSelection(1)} disabled={snapshot.selectedIds.length === 0}>
+            <button
+              type="button"
+              onClick={() => runtimeRef.current?.reorderSelection(1)}
+              disabled={snapshot.selectedIds.length === 0}
+            >
               Layer +
             </button>
           </div>
@@ -174,7 +204,10 @@ export default function CanvasSpikeClient() {
             </div>
           </dl>
 
-          <div className={styles.referenceCard} data-testid="selected-reference">
+          <div
+            className={styles.referenceCard}
+            data-testid="selected-reference"
+          >
             <span>Selected image reference</span>
             <strong>{snapshot.selectedImageRef ?? "—"}</strong>
           </div>
@@ -219,11 +252,31 @@ export default function CanvasSpikeClient() {
                 }}
                 data-testid="selection-box"
               >
-                <button className={`${styles.handle} ${styles.nw}`} onPointerDown={beginResize("nw")} aria-label="resize northwest" />
-                <button className={`${styles.handle} ${styles.ne}`} onPointerDown={beginResize("ne")} aria-label="resize northeast" />
-                <button className={`${styles.handle} ${styles.sw}`} onPointerDown={beginResize("sw")} aria-label="resize southwest" />
-                <button className={`${styles.handle} ${styles.se}`} onPointerDown={beginResize("se")} aria-label="resize southeast" />
-                <button className={styles.rotateHandle} onPointerDown={beginRotate} aria-label="rotate selection">
+                <button
+                  className={`${styles.handle} ${styles.nw}`}
+                  onPointerDown={beginResize("nw")}
+                  aria-label="resize northwest"
+                />
+                <button
+                  className={`${styles.handle} ${styles.ne}`}
+                  onPointerDown={beginResize("ne")}
+                  aria-label="resize northeast"
+                />
+                <button
+                  className={`${styles.handle} ${styles.sw}`}
+                  onPointerDown={beginResize("sw")}
+                  aria-label="resize southwest"
+                />
+                <button
+                  className={`${styles.handle} ${styles.se}`}
+                  onPointerDown={beginResize("se")}
+                  aria-label="resize southeast"
+                />
+                <button
+                  className={styles.rotateHandle}
+                  onPointerDown={beginRotate}
+                  aria-label="rotate selection"
+                >
                   ↻
                 </button>
               </div>
@@ -244,7 +297,11 @@ export default function CanvasSpikeClient() {
                 onCompositionEnd={() => setIsComposing(false)}
                 onBlur={commitText}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !isComposing) {
+                  if (
+                    event.key === "Enter" &&
+                    (event.ctrlKey || event.metaKey) &&
+                    !isComposing
+                  ) {
                     commitText();
                   }
                 }}
@@ -255,23 +312,28 @@ export default function CanvasSpikeClient() {
             ) : null}
           </div>
           <p className={styles.caption}>
-            Pixi Scene Graph is disposable renderer state. Camera coordinates, selection, undo/redo and
-            asset references live outside Pixi in <code>@lumi/canvas-sdk</code>.
+            Pixi Scene Graph is disposable renderer state. Camera coordinates,
+            selection, undo/redo and asset references live outside Pixi in{" "}
+            <code>@lumi/canvas-sdk</code>.
           </p>
         </div>
 
         <aside className={styles.benchmarkPanel}>
           <h2>Measured Browser Signal</h2>
           <p className={styles.help}>
-            CI headless Chromium is used as a reproducible regression signal. It is not treated as final
-            workstation/GPU certification.
+            CI headless Chromium is used as a reproducible regression signal. It
+            is not treated as final workstation/GPU certification.
           </p>
           {benchmark ? (
             <>
               <p className={styles.benchmarkMeta}>
-                {benchmark.renderer} · DPR {benchmark.devicePixelRatio} · {benchmark.pixiVersion}
+                {benchmark.renderer} · DPR {benchmark.devicePixelRatio} ·{" "}
+                {benchmark.pixiVersion}
               </p>
-              <div className={styles.metricList} data-testid="benchmark-results">
+              <div
+                className={styles.metricList}
+                data-testid="benchmark-results"
+              >
                 {benchmark.metrics.map((metric) => (
                   <article key={metric.name}>
                     <strong>{metric.name}</strong>
@@ -284,7 +346,9 @@ export default function CanvasSpikeClient() {
               </div>
             </>
           ) : (
-            <div className={styles.placeholder}>Run benchmark to populate actual browser frame metrics.</div>
+            <div className={styles.placeholder}>
+              Run benchmark to populate actual browser frame metrics.
+            </div>
           )}
         </aside>
       </section>

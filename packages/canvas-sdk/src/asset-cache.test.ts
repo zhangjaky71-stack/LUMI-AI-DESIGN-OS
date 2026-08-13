@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { ProgressiveAssetCache } from "./asset-cache";
 
-
 describe("progressive asset cache", () => {
   it("evicts least-recently-used unreferenced tiers", () => {
     let now = 0;
@@ -30,6 +29,8 @@ describe("progressive asset cache", () => {
     cache.put("asset-a", "full", 80);
     cache.acquire("asset-a", "full");
     cache.put("asset-b", "full", 80);
-    expect(cache.snapshot().map((entry) => entry.key)).toContain("asset-a:full");
+    expect(cache.snapshot().map((entry) => entry.key)).toContain(
+      "asset-a:full",
+    );
   });
 });
