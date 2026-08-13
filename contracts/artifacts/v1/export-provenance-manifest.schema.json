@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumi.dev/artifacts/v1/export-provenance-manifest.schema.json",
+  "title": "LUMI Export Provenance Manifest V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version","artifact_version","created_at","sources","models","rights","checksums","constraint_snapshot_hash","code_git_sha"],
+  "properties": {
+    "schema_version": {"const":"1.0"},
+    "artifact_version": {"type":"string","minLength":1},
+    "created_at": {"type":"string","format":"date-time"},
+    "sources": {"type":"array","items":{"type":"string"},"uniqueItems":true},
+    "models": {"type":"array","items":{"type":"string"},"uniqueItems":true},
+    "rights": {"type":"array","items":{"type":"object","additionalProperties":true}},
+    "checksums": {"type":"array","items":{"type":"object","additionalProperties":false,"required":["file_id","sha256"],"properties":{"file_id":{"type":"string"},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}}}},
+    "constraint_snapshot_hash": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "code_git_sha": {"type":"string","pattern":"^[0-9a-f]{40}$"}
+  }
+}

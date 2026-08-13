@@ -1,0 +1,20 @@
+{
+  "fixture_version": "1.0",
+  "artifact": {"id":"poster","organization_id":"org-a","project_id":"project-a","type":"DESIGN_DOCUMENT","title":"Campaign Poster","archived":false},
+  "branches": [
+    {"id":"main","organization_id":"org-a","artifact_id":"poster","name":"main","base_version_id":null,"head_version_id":"v4","created_by":"user-a"},
+    {"id":"dark","organization_id":"org-a","artifact_id":"poster","name":"alt-dark","base_version_id":"v2","head_version_id":"v2","created_by":"user-a"}
+  ],
+  "versions": [
+    {"id":"v1","organization_id":"org-a","artifact_id":"poster","branch_id":"main","parent_version_id":null,"schema_version":"1.0","version_number":1,"status":"READY","content_hash":"1111111111111111111111111111111111111111111111111111111111111111","constraint_snapshot_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","created_by_type":"AGENT","created_by_id":"agent-design","created_at":"2026-08-13T03:00:01Z"},
+    {"id":"v2","organization_id":"org-a","artifact_id":"poster","branch_id":"main","parent_version_id":"v1","schema_version":"1.0","version_number":2,"status":"APPROVED","content_hash":"2222222222222222222222222222222222222222222222222222222222222222","constraint_snapshot_hash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","created_by_type":"AGENT","created_by_id":"agent-design","created_at":"2026-08-13T03:00:02Z"},
+    {"id":"v3","organization_id":"org-a","artifact_id":"poster","branch_id":"main","parent_version_id":"v2","schema_version":"1.0","version_number":3,"status":"REJECTED","content_hash":"3333333333333333333333333333333333333333333333333333333333333333","constraint_snapshot_hash":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","created_by_type":"AGENT","created_by_id":"agent-design","created_at":"2026-08-13T03:00:03Z"},
+    {"id":"v4","organization_id":"org-a","artifact_id":"poster","branch_id":"main","parent_version_id":"v3","schema_version":"1.0","version_number":4,"status":"DRAFT","content_hash":"2222222222222222222222222222222222222222222222222222222222222222","constraint_snapshot_hash":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","created_by_type":"USER","created_by_id":"user-a","created_at":"2026-08-13T03:00:04Z"}
+  ],
+  "edges": [
+    {"id":"e12","organization_id":"org-a","from_version_id":"v1","to_version_id":"v2","type":"EDITED_FROM","metadata":{}},
+    {"id":"e24","organization_id":"org-a","from_version_id":"v2","to_version_id":"v4","type":"DERIVED_FROM","metadata":{"operation":"RESTORE"}},
+    {"id":"eref","organization_id":"org-a","from_version_id":"v1","to_version_id":"v4","type":"REFERENCE_USED","metadata":{"purpose":"layout reference"}}
+  ],
+  "files": []
+}
