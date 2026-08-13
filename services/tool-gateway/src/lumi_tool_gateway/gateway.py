@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
 from typing import Any
 
 from .audit import NullAuditSink, ToolAuditRecord, redact_arguments
@@ -10,6 +9,7 @@ from .contracts import (
     ToolAdapterOutput,
     ToolApproval,
     ToolCallStatus,
+    ToolDefinition,
     ToolIdempotency,
     ToolRequest,
     ToolResult,
@@ -18,9 +18,11 @@ from .contracts import (
     canonical_json_bytes,
 )
 from .errors import (
+    ToolAdapterExecutionError,
     ToolApprovalDeniedError,
     ToolGatewayError,
     ToolIdempotencyRequiredError,
+    ToolInternalError,
     ToolOutputOffloadRequiredError,
     ToolSideEffectGuardRequiredError,
     ToolTimeoutError,
@@ -119,8 +121,22 @@ class ToolGateway:
                 approval_id=approval_id,
             )
             raise
+        except Exception as exc:
+            self._audit_error(
+                request,
+                resolved_tool=resolved_tool,
+                risk=definition.risk.value,
+                sensitive_fields=definition.sensitive_fields,
+                error_code=ToolInternalError.code,
+                approval_id=approval_id,
+            )
+            raise ToolInternalError("unexpected Tool Gateway execution failure") from exc
 
-    async def _approval(self, definition, request: ToolRequest) -> ToolApproval:
+    async def _approval(
+        self,
+        definition: ToolDefinition,
+        request: ToolRequest,
+    ) -> ToolApproval:
         baseline = self.approval_policy.decision(definition)
         if baseline.decision != ApprovalDecision.REQUIRED:
             return baseline
@@ -139,7 +155,7 @@ class ToolGateway:
 
     async def _execute(
         self,
-        definition,
+        definition: ToolDefinition,
         request: ToolRequest,
         adapter: ToolAdapter,
     ) -> ToolSideEffectResponse:
@@ -149,9 +165,15 @@ class ToolGateway:
                     adapter.invoke(definition, request),
                     timeout=definition.timeout_seconds,
                 )
+            except ToolGatewayError:
+                raise
             except TimeoutError as exc:
                 raise ToolTimeoutError(
                     f"tool exceeded {definition.timeout_seconds:g}s timeout"
+                ) from exc
+            except Exception as exc:
+                raise ToolAdapterExecutionError(
+                    f"adapter failed for {definition.key}"
                 ) from exc
 
         if definition.idempotency == ToolIdempotency.NOT_REQUIRED:
@@ -182,7 +204,7 @@ class ToolGateway:
     async def _normalize_result(
         self,
         *,
-        definition,
+        definition: ToolDefinition,
         request: ToolRequest,
         response: ToolSideEffectResponse,
         approval_id: str | None,
@@ -228,7 +250,7 @@ class ToolGateway:
     def _audit(
         self,
         request: ToolRequest,
-        definition,
+        definition: ToolDefinition,
         result: ToolResult,
         *,
         side_effect_operation_id: str | None = None,
