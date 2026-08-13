@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
 from uuid import UUID
 
 from lumi_domain import new_uuid7
 from sqlalchemy import DateTime, Integer, MetaData, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 NAMING_CONVENTION = {
@@ -48,14 +47,6 @@ class MutableTimestampMixin(CreatedAtMixin):
         onupdate=func.now(),
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
-
-
-def json_default() -> dict[str, Any]:
-    return {}
-
-
-def json_column(*, nullable: bool = False) -> Mapped[dict[str, Any]]:
-    return mapped_column(JSONB, nullable=nullable, default=json_default)
 
 
 def utc_now() -> datetime:
