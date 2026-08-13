@@ -15,17 +15,18 @@ export function createGridNodes(count: number, spacing = 72): SpikeNode[] {
   for (let index = 0; index < count; index += 1) {
     const column = index % columns;
     const row = Math.floor(index / columns);
+    const isText = index % 17 === 0;
     nodes.push({
       id: `stress-${index}`,
-      kind: index % 17 === 0 ? "text" : "rect",
+      kind: isText ? "text" : "rect",
       x: column * spacing,
       y: row * spacing,
-      width: index % 17 === 0 ? 160 : 56,
-      height: index % 17 === 0 ? 32 : 56,
+      width: isText ? 160 : 56,
+      height: isText ? 32 : 56,
       rotation: 0,
       zIndex: index,
-      text: index % 17 === 0 ? `Node ${index}` : undefined,
       fill: 0x666666,
+      ...(isText ? { text: `Node ${index}` } : {}),
     });
   }
   return nodes;
