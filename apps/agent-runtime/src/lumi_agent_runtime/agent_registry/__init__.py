@@ -1,4 +1,8 @@
-from .bootstrap import load_named_catalog, load_skill_catalog
+from .bootstrap import (
+    load_bootstrap_catalog,
+    load_named_catalog,
+    load_skill_catalog,
+)
 from .deep_adapter import to_deep_agent_definition
 from .definition import AgentDefinition
 from .dependencies import (
@@ -8,7 +12,6 @@ from .dependencies import (
     Node25ToolCatalog,
     StaticNamedCatalog,
     StaticVersionedCatalog,
-    load_bootstrap_catalog,
 )
 from .errors import (
     AgentDefinitionInvalidError,
