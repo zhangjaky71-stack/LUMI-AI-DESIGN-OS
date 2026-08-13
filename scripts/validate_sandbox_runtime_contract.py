@@ -36,6 +36,7 @@ def assert_agent_adapter_has_no_host_exec() -> None:
 
 def main() -> int:
     backend = "services/sandbox-runtime/src/lumi_sandbox_runtime/local_backend.py"
+    public_backend = "services/sandbox-runtime/src/lumi_sandbox_runtime/docker_backend.py"
     require(
         "services/sandbox-runtime/src/lumi_sandbox_runtime/models.py",
         'NONE = "NONE"',
@@ -62,6 +63,13 @@ def main() -> int:
         "SANDBOX_WRITE_TOO_LARGE",
         "SANDBOX_STRAY_PROCESS_DETECTED",
         "SANDBOX_EXEC_TIMEOUT",
+    )
+    require(
+        public_backend,
+        "remaining_seconds",
+        "requested_timeout",
+        "_best_effort_kill",
+        "record.expires_monotonic <= now",
     )
     forbid(
         backend,
