@@ -114,6 +114,26 @@ def main() -> int:
         "nodejs",
         "fontconfig",
     )
+    require(
+        "scripts/integration_sandbox_docker_config.py",
+        'host["ReadonlyRootfs"] is True',
+        'host["Privileged"] is False',
+        'host["NetworkMode"] == "none"',
+        'host.get("CapDrop")',
+        'host["PidsLimit"]',
+        'host["Memory"]',
+        "no-new-privileges",
+        "/node21-rootfs-probe",
+        "/var/run/docker.sock",
+    )
+    require(
+        ".github/workflows/sandbox-runtime.yml",
+        "sandbox-contract:",
+        "sandbox-quality:",
+        "sandbox-docker-e2e:",
+        "integration_sandbox_docker_config.py",
+        "uv sync --all-packages --frozen",
+    )
     assert_agent_adapter_has_no_host_exec()
     print("NODE-21 sandbox runtime static security contract: PASS")
     return 0
