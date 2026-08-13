@@ -1,0 +1,151 @@
+name: LangGraph Control Plane
+
+on:
+  pull_request:
+    paths:
+      - "apps/agent-runtime/**"
+      - "apps/api/alembic/versions/0012_langgraph_control_plane.py"
+      - "scripts/validate_langgraph_control_plane_contract*.py"
+      - "scripts/integration_langgraph_*.py"
+      - "docs/runtime/LANGGRAPH-CONTROL-PLANE-V1.md"
+      - "reports/nodes/NODE-28/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  graph-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile NODE-28 control plane
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          python -m compileall -q
+          apps/agent-runtime/src/lumi_agent_runtime/control_plane
+          apps/agent-runtime/tests/test_control_plane.py
+          apps/agent-runtime/tests/test_resume_policy.py
+          apps/agent-runtime/tests/test_control_plane_client.py
+          scripts/validate_langgraph_control_plane_contract_v2.py
+          scripts/integration_langgraph_control_plane.py
+          scripts/integration_langgraph_postgres_control.py
+          scripts/integration_langgraph_postgres_checkpoint.py
+      - name: Revalidate NODE-20 idempotency boundary
+        run: python scripts/validate_idempotency_contract.py
+      - name: Revalidate NODE-25 Tool Gateway boundary
+        run: >-
+          PYTHONPATH=services/tool-gateway/src
+          python scripts/validate_tool_gateway_contract.py
+      - name: Revalidate NODE-27 cost/budget boundary
+        run: >-
+          PYTHONPATH=apps/api/src:services/model-gateway/src
+          python scripts/validate_cost_ledger_contract.py
+      - name: NODE-28 static architecture contract
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          python scripts/validate_langgraph_control_plane_contract_v2.py
+      - name: NODE-28 dependency-free unit tests
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          python -m unittest discover
+          -s apps/agent-runtime/tests
+          -p 'test_control_plane*.py'
+      - name: NODE-28 resume policy unit tests
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          python -m unittest discover
+          -s apps/agent-runtime/tests
+          -p 'test_resume_policy.py'
+
+  graph-quality:
+    needs: graph-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: NODE-28 pytest
+        run: >-
+          uv run pytest
+          apps/agent-runtime/tests/test_control_plane.py
+          apps/agent-runtime/tests/test_resume_policy.py
+          apps/agent-runtime/tests/test_control_plane_client.py
+          -q
+      - name: Current LangGraph checkpoint/interrupt integration
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          uv run python scripts/integration_langgraph_control_plane.py
+      - name: NODE-28 Ruff gate
+        run: >-
+          uv run ruff check
+          apps/agent-runtime/src/lumi_agent_runtime/control_plane
+          apps/agent-runtime/tests/test_control_plane.py
+          apps/agent-runtime/tests/test_resume_policy.py
+          apps/agent-runtime/tests/test_control_plane_client.py
+          apps/api/alembic/versions/0012_langgraph_control_plane.py
+          scripts/validate_langgraph_control_plane_contract_v2.py
+          scripts/integration_langgraph_control_plane.py
+          scripts/integration_langgraph_postgres_control.py
+          scripts/integration_langgraph_postgres_checkpoint.py
+      - name: NODE-28 Pyright gate
+        run: >-
+          uv run pyright
+          apps/agent-runtime/src/lumi_agent_runtime/control_plane
+          apps/agent-runtime/tests/test_control_plane.py
+          apps/agent-runtime/tests/test_resume_policy.py
+          apps/agent-runtime/tests/test_control_plane_client.py
+
+  graph-postgres:
+    needs: graph-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Start PostgreSQL and dependencies
+        run: |
+          make infra-env
+          make infra-up
+      - name: Upgrade and seed database
+        run: |
+          make db-upgrade
+          make db-seed
+      - name: PostgreSQL AgentRun control/CAS/privilege acceptance
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:apps/api/src
+          uv run python scripts/integration_langgraph_postgres_control.py
+      - name: Official PostgreSQL LangGraph saver restart acceptance
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:apps/api/src
+          uv run python scripts/integration_langgraph_postgres_checkpoint.py
+      - name: Migration downgrade/upgrade smoke
+        run: bash scripts/db-local downgrade-smoke
+      - name: Cleanup
+        if: always()
+        run: CONFIRM=1 make infra-reset || true
