@@ -26,7 +26,7 @@ jobs:
           corepack prepare pnpm@11.4.0 --activate
       - name: Frozen install
         run: pnpm install --frozen-lockfile
-      - name: Apply lint-safe spike fixes
+      - name: Apply lint-safe spike fixes and benchmark virtualization
         shell: bash
         run: |
           python3 - <<'PY'
@@ -34,10 +34,35 @@ jobs:
 
           path = Path('apps/web/src/app/canvas-spike/pixi-runtime.ts')
           text = path.read_text(encoding='utf-8')
-          old = 'export interface ScreenRect extends Rect {}'
-          new = 'export type ScreenRect = Rect;'
-          if old in text:
-              path.write_text(text.replace(old, new), encoding='utf-8')
+
+          text = text.replace('export interface ScreenRect extends Rect {}', 'export type ScreenRect = Rect;')
+          text = text.replace('  createGridNodes,\n', '')
+
+          benchmark_import = 'import { runVirtualizedCanvasBenchmark } from "./virtualized-benchmark";\n\n'
+          canvas_import_end = '} from "@lumi/canvas-sdk";\n\n'
+          if benchmark_import not in text:
+              text = text.replace(canvas_import_end, canvas_import_end + benchmark_import, 1)
+
+          percentile_start = text.find('function percentile(')
+          distance_start = text.find('function distance(')
+          if percentile_start >= 0 and distance_start > percentile_start:
+              text = text[:percentile_start] + text[distance_start:]
+
+          run_start = text.find('  async runBenchmark(): Promise<CanvasSpikeBenchmarkReport> {')
+          old_helpers_start = text.find('  async #frameSamples(', run_start)
+          if run_start >= 0 and old_helpers_start > run_start:
+              replacement = '''  async runBenchmark(): Promise<CanvasSpikeBenchmarkReport> {
+    const app = this.#app;
+    const pixi = this.#pixi;
+    if (!app || !pixi) {
+      throw new Error("canvas spike is not ready");
+    }
+    return runVirtualizedCanvasBenchmark(pixi, app);
+  }
+'''
+              text = text[:run_start] + replacement + '}\n'
+
+          path.write_text(text, encoding='utf-8')
           PY
       - name: Apply repository formatter
         run: pnpm exec prettier --write .github/workflows/ci.yml docs/adr/ADR-0001-CANVAS-RENDERER-SPIKE.md apps/web/e2e/canvas-spike.spec.ts apps/web/src/app/canvas-spike packages/canvas-sdk/src
@@ -52,5 +77,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .github/workflows/ci.yml docs/adr/ADR-0001-CANVAS-RENDERER-SPIKE.md apps/web/e2e/canvas-spike.spec.ts apps/web/src/app/canvas-spike packages/canvas-sdk/src
-          git commit -m 'style(canvas): apply lint-safe formatter changes (NODE-08)'
+          git commit -m 'perf(canvas): apply viewport-virtualized benchmark (NODE-08)'
           git push origin HEAD:node-08-canvas-technology-spike
