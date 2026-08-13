@@ -10,6 +10,34 @@ from .errors import MCPPolicyDeniedError, MCPSchemaInvalidError
 from .registry import MCPServerRegistry
 
 _SEGMENT = re.compile(r"[^a-z0-9_-]+")
+_ALLOWED_SCHEMA_KEYS = frozenset(
+    {
+        "$schema",
+        "$id",
+        "title",
+        "description",
+        "type",
+        "const",
+        "enum",
+        "properties",
+        "required",
+        "additionalProperties",
+        "minProperties",
+        "maxProperties",
+        "items",
+        "minItems",
+        "maxItems",
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "default",
+        "examples",
+        "deprecated",
+        "readOnly",
+        "writeOnly",
+    }
+)
 
 
 class MCPToolMapper:
@@ -82,37 +110,67 @@ class MCPToolMapper:
 
     def _validate_schema(self, schema: dict[str, Any], *, path: str) -> None:
         try:
-            encoded = json.dumps(schema, ensure_ascii=False, sort_keys=True)
+            encoded = json.dumps(
+                schema,
+                ensure_ascii=False,
+                sort_keys=True,
+                allow_nan=False,
+            )
         except (TypeError, ValueError) as exc:
             raise MCPSchemaInvalidError(f"{path}: non-JSON schema") from exc
         if len(encoded.encode("utf-8")) > 128 * 1024:
             raise MCPSchemaInvalidError(f"{path}: schema too large")
-        self._walk_schema(schema, path=path, depth=0)
+        self._validate_schema_node(schema, path=path, depth=0)
 
-    def _walk_schema(self, value: Any, *, path: str, depth: int) -> None:
+    def _validate_schema_node(
+        self,
+        schema: dict[str, Any],
+        *,
+        path: str,
+        depth: int,
+    ) -> None:
         if depth > 32:
             raise MCPSchemaInvalidError(f"{path}: schema too deep")
-        if isinstance(value, dict):
-            for key, child in value.items():
-                if not isinstance(key, str):
-                    raise MCPSchemaInvalidError(f"{path}: non-string schema key")
-                if key.lower() == "x-mcp-header":
+        unsupported = set(schema) - _ALLOWED_SCHEMA_KEYS
+        if unsupported:
+            names = ",".join(sorted(str(item) for item in unsupported))
+            raise MCPSchemaInvalidError(
+                f"{path}: unsupported schema keywords: {names}"
+            )
+        properties = schema.get("properties")
+        if properties is not None:
+            if not isinstance(properties, dict):
+                raise MCPSchemaInvalidError(f"{path}.properties: object required")
+            for name, child in properties.items():
+                if not isinstance(name, str) or not isinstance(child, dict):
                     raise MCPSchemaInvalidError(
-                        f"{path}: untrusted x-mcp-header mapping is disabled"
+                        f"{path}.properties: invalid property schema"
                     )
-                self._walk_schema(child, path=f"{path}.{key}", depth=depth + 1)
-            return
-        if isinstance(value, list):
-            for index, child in enumerate(value):
-                self._walk_schema(
+                self._validate_schema_node(
                     child,
-                    path=f"{path}[{index}]",
+                    path=f"{path}.properties.{name}",
                     depth=depth + 1,
                 )
-            return
-        if value is None or isinstance(value, (str, int, float, bool)):
-            return
-        raise MCPSchemaInvalidError(f"{path}: unsupported schema value")
+        items = schema.get("items")
+        if items is not None:
+            if not isinstance(items, dict):
+                raise MCPSchemaInvalidError(f"{path}.items: schema object required")
+            self._validate_schema_node(
+                items,
+                path=f"{path}.items",
+                depth=depth + 1,
+            )
+        additional = schema.get("additionalProperties")
+        if isinstance(additional, dict):
+            self._validate_schema_node(
+                additional,
+                path=f"{path}.additionalProperties",
+                depth=depth + 1,
+            )
+        elif additional is not None and not isinstance(additional, bool):
+            raise MCPSchemaInvalidError(
+                f"{path}.additionalProperties: bool or schema required"
+            )
 
 
 def mcp_lumi_tool_name(server_id: str, remote_tool_name: str) -> str:
