@@ -63,7 +63,7 @@ class _FixedRegistry:
 
 
 class RegistryAwareModelRouter(ModelRouter):
-    """Routes with one immutable Capability Registry snapshot per request."""
+    """Routes with one immutable Registry snapshot and policy view per request."""
 
     def __init__(
         self,
@@ -82,14 +82,19 @@ class RegistryAwareModelRouter(ModelRouter):
 
     async def route(self, request: ModelRequest) -> RoutingDecision:
         snapshot = self.capability_registry.snapshot()
-        adapters, registry_rejected = self._snapshot_adapters(request, snapshot)
+        base_policy = self.policy_resolver.resolve(request.organization_id)
+        policy = self._merged_policy(request, snapshot, base_policy)
+        adapters, registry_rejected = self._snapshot_adapters(
+            request,
+            snapshot,
+            policy,
+        )
         if not adapters:
             details = ";".join(
                 f"{key}={','.join(reasons)}"
                 for key, reasons in sorted(registry_rejected.items())
             )
             raise NoRouteError(f"no registry-eligible model route: {details}"[:2000])
-        policy = self._merged_policy(request, snapshot)
         router = ModelRouter(
             registry=_FixedRegistry(adapters),
             health=self.health,
@@ -117,9 +122,11 @@ class RegistryAwareModelRouter(ModelRouter):
         self,
         request: ModelRequest,
         snapshot: RegistrySnapshot,
+        policy: OrganizationModelPolicy,
     ) -> tuple[tuple[ProviderAdapter, ...], dict[str, tuple[str, ...]]]:
         accepted: list[ProviderAdapter] = []
         rejected: dict[str, tuple[str, ...]] = {}
+        requested_region = request.constraints.get("region")
         for adapter in self.registry.adapters():
             descriptor = adapter.descriptor
             model = snapshot.model(descriptor.key)
@@ -139,6 +146,20 @@ class RegistryAwareModelRouter(ModelRouter):
             if support == SupportLevel.PARTIAL:
                 rejected[descriptor.key] = ("REGISTRY_CAPABILITY_PARTIAL",)
                 continue
+            if requested_region:
+                if not model.regions:
+                    rejected[descriptor.key] = ("REGISTRY_REGION_UNKNOWN",)
+                    continue
+                if str(requested_region) not in model.regions:
+                    rejected[descriptor.key] = ("REGISTRY_REGION_UNAVAILABLE",)
+                    continue
+            if policy.allowed_regions:
+                if not model.regions:
+                    rejected[descriptor.key] = ("REGISTRY_REGION_UNKNOWN",)
+                    continue
+                if not set(model.regions).intersection(policy.allowed_regions):
+                    rejected[descriptor.key] = ("REGISTRY_ORG_REGION_MISMATCH",)
+                    continue
             quality = snapshot.quality_score(descriptor.key, request.capability)
             projected = ProviderModel(
                 provider=model.provider,
@@ -148,11 +169,7 @@ class RegistryAwareModelRouter(ModelRouter):
                     quality if quality is not None else descriptor.quality_score
                 ),
                 latency_class=descriptor.latency_class,
-                regions=(
-                    frozenset(model.regions)
-                    if model.regions
-                    else descriptor.regions
-                ),
+                regions=frozenset(model.regions),
                 supports_streaming=descriptor.supports_streaming,
                 supports_async=descriptor.supports_async,
             )
@@ -163,8 +180,8 @@ class RegistryAwareModelRouter(ModelRouter):
         self,
         request: ModelRequest,
         snapshot: RegistrySnapshot,
+        base: OrganizationModelPolicy,
     ) -> OrganizationModelPolicy:
-        base = self.policy_resolver.resolve(request.organization_id)
         registry_policy = snapshot.organization_policy(request.organization_id)
         if registry_policy is None:
             return base
