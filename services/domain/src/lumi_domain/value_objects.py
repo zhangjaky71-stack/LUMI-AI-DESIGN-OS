@@ -199,3 +199,45 @@ class NormalizedProviderError:
     provider: str
     provider_code: str | None = None
     safe_message: str | None = None
+
+
+def normalize_provider_error(
+    *,
+    provider: str,
+    status_code: int | None = None,
+    provider_code: str | None = None,
+    safe_message: str | None = None,
+) -> NormalizedProviderError:
+    """Normalize transport/provider error signals without importing any provider SDK."""
+    code_text = (provider_code or "").lower()
+    if status_code == 429 or "rate" in code_text:
+        code = ProviderErrorCode.RATE_LIMITED
+        retryable = True
+    elif status_code in {401, 403} or "auth" in code_text:
+        code = ProviderErrorCode.AUTHENTICATION
+        retryable = False
+    elif "safety" in code_text or "content_filter" in code_text:
+        code = ProviderErrorCode.SAFETY_BLOCK
+        retryable = False
+    elif status_code == 408 or "timeout" in code_text:
+        code = ProviderErrorCode.TIMEOUT
+        retryable = True
+    elif status_code is not None and status_code >= 500:
+        code = ProviderErrorCode.UNAVAILABLE
+        retryable = True
+    elif status_code in {400, 404, 409, 422}:
+        code = ProviderErrorCode.INVALID_REQUEST
+        retryable = False
+    elif "quota" in code_text or "credit" in code_text:
+        code = ProviderErrorCode.QUOTA_EXCEEDED
+        retryable = False
+    else:
+        code = ProviderErrorCode.UNKNOWN
+        retryable = False
+    return NormalizedProviderError(
+        code=code,
+        retryable=retryable,
+        provider=provider,
+        provider_code=provider_code,
+        safe_message=safe_message,
+    )
