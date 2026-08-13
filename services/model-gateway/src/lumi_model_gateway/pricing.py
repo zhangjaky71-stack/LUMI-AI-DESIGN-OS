@@ -64,6 +64,7 @@ class PriceCard:
         if request.capability in {
             Capability.VIDEO_TEXT_TO_VIDEO,
             Capability.VIDEO_IMAGE_TO_VIDEO,
+            Capability.VIDEO_EDIT,
         }:
             if self.video_usd_per_second is None:
                 return unknown_cost(self.snapshot_id)

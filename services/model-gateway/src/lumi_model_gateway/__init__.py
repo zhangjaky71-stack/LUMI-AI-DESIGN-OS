@@ -1,5 +1,19 @@
 from .api import ModelGatewayAPI
 from .budget import RequestBudgetGuard
+from .capability_registry import (
+    BenchmarkScore,
+    CapabilityClaim,
+    CapabilityRegistry,
+    EvidenceConfidence,
+    InMemoryCapabilityRegistry,
+    PricingSnapshot,
+    RegistryModelSnapshot,
+    RegistryOrganizationPolicy,
+    RegistrySnapshot,
+    RoutingProfile,
+    SupportLevel,
+    compile_registry_seed,
+)
 from .client import ModelGatewayClient
 from .errors import (
     AmbiguousProviderOutcomeError,
@@ -43,8 +57,10 @@ from .ports import (
     ProviderHealthRegistry,
     ProviderRegistry,
 )
+from .postgres_registry import PostgresRegistryLoader, RegistryReadConnection
 from .pricing import PriceCard
 from .registry import InMemoryProviderHealthRegistry, InMemoryProviderRegistry
+from .registry_routing import RegistryAwareModelRouter
 from .routing import (
     DefaultModelPolicyResolver,
     ModelRouter,
@@ -55,15 +71,20 @@ from .telemetry import MemoryCostTelemetrySink, NullCostTelemetrySink
 
 __all__ = [
     "AmbiguousProviderOutcomeError",
+    "BenchmarkScore",
     "BudgetExceededError",
     "BudgetGuard",
     "Capability",
+    "CapabilityClaim",
+    "CapabilityRegistry",
     "CostConfidence",
     "CostEstimate",
     "CostTelemetrySink",
     "DefaultModelPolicyResolver",
     "DeliveryState",
     "ErrorCategory",
+    "EvidenceConfidence",
+    "InMemoryCapabilityRegistry",
     "InMemoryProviderHealthRegistry",
     "InMemoryProviderRegistry",
     "LatencyProfile",
@@ -85,7 +106,9 @@ __all__ = [
     "PaidInvocationGuard",
     "PaidInvocationGuardRequiredError",
     "PaidStreamGuard",
+    "PostgresRegistryLoader",
     "PriceCard",
+    "PricingSnapshot",
     "ProviderAdapter",
     "ProviderHealthRegistry",
     "ProviderInvocationError",
@@ -94,14 +117,22 @@ __all__ = [
     "ProviderRegistry",
     "ProviderValidationError",
     "QualityProfile",
+    "RegistryAwareModelRouter",
+    "RegistryModelSnapshot",
+    "RegistryOrganizationPolicy",
+    "RegistryReadConnection",
+    "RegistrySnapshot",
     "RequestBudgetGuard",
     "ResultStatus",
     "RetryPolicy",
     "RouteCandidate",
     "RoutingDecision",
+    "RoutingProfile",
     "StaticModelPolicyResolver",
     "StreamChunk",
+    "SupportLevel",
     "TelemetryEvent",
     "Timing",
     "Usage",
+    "compile_registry_seed",
 ]

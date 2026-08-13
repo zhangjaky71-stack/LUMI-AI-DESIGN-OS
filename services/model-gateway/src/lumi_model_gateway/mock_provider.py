@@ -92,6 +92,7 @@ class MockProvider:
         if request.capability in {
             Capability.VIDEO_TEXT_TO_VIDEO,
             Capability.VIDEO_IMAGE_TO_VIDEO,
+            Capability.VIDEO_EDIT,
         }:
             provider_request_id = f"mock-video-{digest}"
             self._jobs[provider_request_id] = (request, 0, False)
@@ -282,6 +283,7 @@ class MockProvider:
         elif request.capability in {
             Capability.VIDEO_TEXT_TO_VIDEO,
             Capability.VIDEO_IMAGE_TO_VIDEO,
+            Capability.VIDEO_EDIT,
         }:
             outputs = (
                 ModelOutput(
