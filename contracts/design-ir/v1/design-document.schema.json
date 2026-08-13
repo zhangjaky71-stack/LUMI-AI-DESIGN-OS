@@ -1,0 +1,305 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumi.dev/design-ir/v1/design-document.schema.json",
+  "title": "LUMI Design IR Document V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "document_id", "unit", "root_id", "nodes", "resources", "metadata"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "document_id": {"$ref": "#/$defs/id"},
+    "unit": {"const": "px"},
+    "root_id": {"$ref": "#/$defs/id"},
+    "nodes": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/node"}
+    },
+    "resources": {"$ref": "#/$defs/resources"},
+    "metadata": {"$ref": "#/$defs/metadata"}
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "finiteNumber": {"type": "number"},
+    "normalizedNumber": {"type": "number", "minimum": 0, "maximum": 1},
+    "metadata": {"type": "object", "additionalProperties": true},
+    "color": {
+      "oneOf": [
+        {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["r", "g", "b", "a"],
+          "properties": {
+            "r": {"type": "integer", "minimum": 0, "maximum": 255},
+            "g": {"type": "integer", "minimum": 0, "maximum": 255},
+            "b": {"type": "integer", "minimum": 0, "maximum": 255},
+            "a": {"$ref": "#/$defs/normalizedNumber"}
+          }
+        }
+      ]
+    },
+    "paint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {"enum": ["SOLID", "NONE"]},
+        "color": {"$ref": "#/$defs/color"},
+        "opacity": {"$ref": "#/$defs/normalizedNumber"}
+      }
+    },
+    "transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height", "rotation_deg", "scale_x", "scale_y", "skew_x", "skew_y", "anchor_x", "anchor_y"],
+      "properties": {
+        "x": {"$ref": "#/$defs/finiteNumber"},
+        "y": {"$ref": "#/$defs/finiteNumber"},
+        "width": {"type": "number", "minimum": 0},
+        "height": {"type": "number", "minimum": 0},
+        "rotation_deg": {"$ref": "#/$defs/finiteNumber"},
+        "scale_x": {"$ref": "#/$defs/finiteNumber"},
+        "scale_y": {"$ref": "#/$defs/finiteNumber"},
+        "skew_x": {"$ref": "#/$defs/finiteNumber"},
+        "skew_y": {"$ref": "#/$defs/finiteNumber"},
+        "anchor_x": {"$ref": "#/$defs/normalizedNumber"},
+        "anchor_y": {"$ref": "#/$defs/normalizedNumber"}
+      }
+    },
+    "bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": {"$ref": "#/$defs/finiteNumber"},
+        "y": {"$ref": "#/$defs/finiteNumber"},
+        "width": {"type": "number", "minimum": 0},
+        "height": {"type": "number", "minimum": 0}
+      }
+    },
+    "semantic": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "description": {"type": "string", "maxLength": 2000},
+        "tags": {"type": "array", "items": {"type": "string", "maxLength": 120}, "uniqueItems": true},
+        "editable": {"type": "boolean"},
+        "protected": {"type": "boolean"}
+      }
+    },
+    "frameData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["background", "clip_content"],
+      "properties": {
+        "background": {"$ref": "#/$defs/paint"},
+        "clip_content": {"type": "boolean"},
+        "layout_hints": {"$ref": "#/$defs/metadata"},
+        "export_settings": {"$ref": "#/$defs/metadata"}
+      }
+    },
+    "textSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end", "style_override"],
+      "properties": {
+        "start": {"type": "integer", "minimum": 0},
+        "end": {"type": "integer", "minimum": 0},
+        "style_override": {"$ref": "#/$defs/metadata"}
+      }
+    },
+    "textData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content", "font_family", "font_size", "font_weight", "font_style", "line_height", "letter_spacing", "paragraph_spacing", "align", "vertical_align", "fill", "text_transform", "language", "writing_direction", "spans"],
+      "properties": {
+        "content": {"type": "string"},
+        "font_family": {"type": "string", "minLength": 1, "maxLength": 255},
+        "font_asset_id": {"$ref": "#/$defs/id"},
+        "font_size": {"type": "number", "exclusiveMinimum": 0},
+        "font_weight": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "font_style": {"enum": ["NORMAL", "ITALIC", "OBLIQUE"]},
+        "line_height": {"type": "number", "exclusiveMinimum": 0},
+        "letter_spacing": {"$ref": "#/$defs/finiteNumber"},
+        "paragraph_spacing": {"$ref": "#/$defs/finiteNumber"},
+        "align": {"enum": ["LEFT", "CENTER", "RIGHT", "JUSTIFY"]},
+        "vertical_align": {"enum": ["TOP", "MIDDLE", "BOTTOM"]},
+        "fill": {"$ref": "#/$defs/paint"},
+        "stroke": {"$ref": "#/$defs/paint"},
+        "text_transform": {"enum": ["NONE", "UPPERCASE", "LOWERCASE", "CAPITALIZE"]},
+        "language": {"type": "string", "minLength": 2, "maxLength": 35},
+        "writing_direction": {"enum": ["LTR", "RTL", "AUTO"]},
+        "spans": {"type": "array", "items": {"$ref": "#/$defs/textSpan"}}
+      }
+    },
+    "crop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": {"$ref": "#/$defs/normalizedNumber"},
+        "y": {"$ref": "#/$defs/normalizedNumber"},
+        "width": {"$ref": "#/$defs/normalizedNumber"},
+        "height": {"$ref": "#/$defs/normalizedNumber"}
+      }
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": {"$ref": "#/$defs/normalizedNumber"},
+        "y": {"$ref": "#/$defs/normalizedNumber"}
+      }
+    },
+    "imageData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asset_id", "crop", "fit", "focal_point", "filters"],
+      "properties": {
+        "asset_id": {"$ref": "#/$defs/id"},
+        "source_artifact_version_id": {"$ref": "#/$defs/id"},
+        "crop": {"$ref": "#/$defs/crop"},
+        "fit": {"enum": ["FILL", "CONTAIN", "COVER", "NONE"]},
+        "focal_point": {"$ref": "#/$defs/point"},
+        "filters": {"type": "array", "items": {"$ref": "#/$defs/metadata"}},
+        "mask_id": {"$ref": "#/$defs/id"},
+        "identity_binding": {"$ref": "#/$defs/metadata"}
+      }
+    },
+    "shapeData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape_type", "fill", "stroke", "stroke_width"],
+      "properties": {
+        "shape_type": {"enum": ["RECT", "ELLIPSE", "LINE", "POLYGON"]},
+        "fill": {"$ref": "#/$defs/paint"},
+        "stroke": {"$ref": "#/$defs/paint"},
+        "stroke_width": {"type": "number", "minimum": 0},
+        "points": {"type": "array", "items": {"$ref": "#/$defs/point"}}
+      }
+    },
+    "vectorCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "values"],
+      "properties": {
+        "command": {"enum": ["M", "L", "C", "Q", "Z"]},
+        "values": {"type": "array", "items": {"$ref": "#/$defs/finiteNumber"}, "maxItems": 6}
+      }
+    },
+    "vectorData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commands", "fill", "stroke", "stroke_width"],
+      "properties": {
+        "commands": {"type": "array", "items": {"$ref": "#/$defs/vectorCommand"}},
+        "fill": {"$ref": "#/$defs/paint"},
+        "stroke": {"$ref": "#/$defs/paint"},
+        "stroke_width": {"type": "number", "minimum": 0}
+      }
+    },
+    "videoData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asset_id", "trim_start_ms", "trim_end_ms", "autoplay_in_preview", "mute"],
+      "properties": {
+        "asset_id": {"$ref": "#/$defs/id"},
+        "trim_start_ms": {"type": "integer", "minimum": 0},
+        "trim_end_ms": {"type": "integer", "minimum": 0},
+        "poster_asset_id": {"$ref": "#/$defs/id"},
+        "autoplay_in_preview": {"type": "boolean"},
+        "mute": {"type": "boolean"}
+      }
+    },
+    "componentData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "component_key": {"type": "string", "minLength": 1, "maxLength": 255},
+        "variant": {"type": "string", "maxLength": 255},
+        "properties": {"$ref": "#/$defs/metadata"}
+      }
+    },
+    "instanceData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component_id"],
+      "properties": {
+        "component_id": {"$ref": "#/$defs/id"},
+        "overrides": {"$ref": "#/$defs/metadata"}
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "name", "role", "parent_id", "children", "visible", "locked", "opacity", "blend_mode", "transform", "bounds", "style_refs", "constraint_refs", "semantic", "metadata"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "kind": {"enum": ["DOCUMENT_ROOT", "FRAME", "GROUP", "TEXT", "IMAGE", "SHAPE", "VECTOR_PATH", "VIDEO", "MASK", "GUIDE", "COMPONENT", "INSTANCE"]},
+        "name": {"type": "string", "maxLength": 300},
+        "role": {
+          "type": "string",
+          "pattern": "^(BACKGROUND|HERO_PRODUCT|LOGO|HEADLINE|BODY_COPY|PRICE|CTA|QR_CODE|DECORATION|REFERENCE|custom:[A-Za-z0-9._:-]+)$"
+        },
+        "parent_id": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "children": {"type": "array", "items": {"$ref": "#/$defs/id"}, "uniqueItems": true},
+        "visible": {"type": "boolean"},
+        "locked": {"type": "boolean"},
+        "opacity": {"$ref": "#/$defs/normalizedNumber"},
+        "blend_mode": {"enum": ["NORMAL", "MULTIPLY", "SCREEN", "OVERLAY", "DARKEN", "LIGHTEN"]},
+        "transform": {"$ref": "#/$defs/transform"},
+        "bounds": {"$ref": "#/$defs/bounds"},
+        "style_refs": {"type": "array", "items": {"$ref": "#/$defs/id"}, "uniqueItems": true},
+        "constraint_refs": {"type": "array", "items": {"$ref": "#/$defs/id"}, "uniqueItems": true},
+        "semantic": {"$ref": "#/$defs/semantic"},
+        "metadata": {"$ref": "#/$defs/metadata"},
+        "frame": {"$ref": "#/$defs/frameData"},
+        "text": {"$ref": "#/$defs/textData"},
+        "image": {"$ref": "#/$defs/imageData"},
+        "shape": {"$ref": "#/$defs/shapeData"},
+        "vector_path": {"$ref": "#/$defs/vectorData"},
+        "video": {"$ref": "#/$defs/videoData"},
+        "component": {"$ref": "#/$defs/componentData"},
+        "instance": {"$ref": "#/$defs/instanceData"}
+      },
+      "allOf": [
+        {"if": {"properties": {"kind": {"const": "FRAME"}}}, "then": {"required": ["frame"]}},
+        {"if": {"properties": {"kind": {"const": "TEXT"}}}, "then": {"required": ["text"]}},
+        {"if": {"properties": {"kind": {"const": "IMAGE"}}}, "then": {"required": ["image"]}},
+        {"if": {"properties": {"kind": {"const": "SHAPE"}}}, "then": {"required": ["shape"]}},
+        {"if": {"properties": {"kind": {"const": "VECTOR_PATH"}}}, "then": {"required": ["vector_path"]}},
+        {"if": {"properties": {"kind": {"const": "VIDEO"}}}, "then": {"required": ["video"]}},
+        {"if": {"properties": {"kind": {"const": "COMPONENT"}}}, "then": {"required": ["component"]}},
+        {"if": {"properties": {"kind": {"const": "INSTANCE"}}}, "then": {"required": ["instance"]}}
+      ]
+    },
+    "resourceEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "kind": {"enum": ["ASSET", "FONT", "BRAND_TOKEN", "STYLE"]},
+        "metadata": {"$ref": "#/$defs/metadata"}
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assets", "fonts", "brand_tokens", "styles"],
+      "properties": {
+        "assets": {"type": "object", "additionalProperties": {"$ref": "#/$defs/resourceEntry"}},
+        "fonts": {"type": "object", "additionalProperties": {"$ref": "#/$defs/resourceEntry"}},
+        "brand_tokens": {"type": "object", "additionalProperties": {"$ref": "#/$defs/resourceEntry"}},
+        "styles": {"type": "object", "additionalProperties": {"$ref": "#/$defs/resourceEntry"}}
+      }
+    }
+  }
+}
