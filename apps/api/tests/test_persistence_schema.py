@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import Numeric, select
+import lumi_api.persistence.models  # noqa: F401
+from sqlalchemy import CheckConstraint, Numeric, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +14,6 @@ from lumi_api.persistence.base import Base
 from lumi_api.persistence.models import CostLedger, Project
 from lumi_api.persistence.repositories import TenantRepository
 from lumi_api.persistence.session import require_database_url
-import lumi_api.persistence.models  # noqa: F401
 
 EXPECTED_TABLES = {
     "users",
@@ -146,7 +146,15 @@ def test_migrations_are_frozen_and_do_not_execute_live_metadata() -> None:
 
 
 def test_lineage_and_task_self_loop_guards_exist_in_schema() -> None:
-    artifact_constraints = {constraint.name for constraint in Base.metadata.tables["artifact_edges"].constraints}
-    task_constraints = {constraint.name for constraint in Base.metadata.tables["task_dependencies"].constraints}
-    assert "ck_artifact_edges_artifact_edge_no_self_loop" in artifact_constraints
-    assert "ck_task_dependencies_task_dependency_no_self_loop" in task_constraints
+    artifact_checks = [
+        str(constraint.sqltext)
+        for constraint in Base.metadata.tables["artifact_edges"].constraints
+        if isinstance(constraint, CheckConstraint)
+    ]
+    task_checks = [
+        str(constraint.sqltext)
+        for constraint in Base.metadata.tables["task_dependencies"].constraints
+        if isinstance(constraint, CheckConstraint)
+    ]
+    assert any("from_artifact_version_id" in check for check in artifact_checks)
+    assert any("task_id" in check and "depends_on_task_id" in check for check in task_checks)
