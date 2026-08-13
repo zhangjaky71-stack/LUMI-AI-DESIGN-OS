@@ -1,7 +1,6 @@
 import {
   CommandStack,
   SpikeSceneStore,
-  createGridNodes,
   createSpikeSeedScene,
   cullNodes,
   nodeBounds,
@@ -16,6 +15,8 @@ import {
   type Rect,
   type SpikeNode,
 } from "@lumi/canvas-sdk";
+
+import { runVirtualizedCanvasBenchmark } from "./virtualized-benchmark";
 
 export const PIXI_VERSION = "8.19.0";
 export const PIXI_CDN_URL = `https://cdn.jsdelivr.net/npm/pixi.js@${PIXI_VERSION}/dist/pixi.min.js`;
@@ -197,24 +198,6 @@ const PRODUCT_DATA_URI =
 
 function cloneNodes(nodes: readonly SpikeNode[]): SpikeNode[] {
   return nodes.map((node) => ({ ...node }));
-}
-
-function percentile(values: readonly number[], fraction: number): number {
-  if (values.length === 0) {
-    return 0;
-  }
-  const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil(sorted.length * fraction) - 1),
-  );
-  return sorted[index] ?? 0;
-}
-
-function mean(values: readonly number[]): number {
-  return values.length === 0
-    ? 0
-    : values.reduce((total, value) => total + value, 0) / values.length;
 }
 
 function distance(a: Point, b: Point): number {
@@ -1048,217 +1031,6 @@ export class CanvasSpikeRuntime {
     if (!app || !pixi) {
       throw new Error("canvas spike is not ready");
     }
-
-    const metrics: FrameMetric[] = [];
-    metrics.push(await this.#measureShapeScene("simple-2k", 2_000, 45));
-    metrics.push(await this.#measureShapeScene("simple-10k", 10_000, 30));
-    metrics.push(await this.#measureImageScene("images-1k", 1_000, 20));
-    metrics.push(
-      await this.#measureTextScene("text-1k-rich-100", 1_000, 100, 16),
-    );
-    metrics.push(await this.#measureSelectedDrag("selected-500-drag", 500, 35));
-
-    const report: CanvasSpikeBenchmarkReport = {
-      schemaVersion: 1,
-      pixiVersion: this.#pixi.VERSION ?? PIXI_VERSION,
-      renderer: rendererName(app.renderer),
-      devicePixelRatio: window.devicePixelRatio || 1,
-      userAgent: navigator.userAgent,
-      measuredAt: new Date().toISOString(),
-      metrics,
-      notes: [
-        "Browser measurements include requestAnimationFrame scheduling and renderer work.",
-        "CI headless Chromium numbers are a reproducible regression signal, not representative end-user GPU certification.",
-        "The spike pins PixiJS through a runtime CDN URL; NODE-40 owns the production package dependency decision.",
-      ],
-    };
-    return report;
-  }
-
-  async #frameSamples(
-    frameCount: number,
-    onFrame?: (index: number) => void,
-  ): Promise<number[]> {
-    const samples: number[] = [];
-    let previous = performance.now();
-    for (let index = 0; index < frameCount; index += 1) {
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame((now) => {
-          onFrame?.(index);
-          samples.push(now - previous);
-          previous = now;
-          resolve();
-        });
-      });
-    }
-    samples.shift();
-    return samples;
-  }
-
-  #metric(
-    name: string,
-    nodeCount: number,
-    samples: readonly number[],
-  ): FrameMetric {
-    const p50 = percentile(samples, 0.5);
-    const p95 = percentile(samples, 0.95);
-    const average = mean(samples);
-    return {
-      name,
-      nodeCount,
-      frames: samples.length,
-      p50FrameMs: Number(p50.toFixed(3)),
-      p95FrameMs: Number(p95.toFixed(3)),
-      meanFrameMs: Number(average.toFixed(3)),
-      approximateFps: Number((1000 / Math.max(average, 0.001)).toFixed(1)),
-    };
-  }
-
-  async #measureShapeScene(
-    name: string,
-    count: number,
-    frames: number,
-  ): Promise<FrameMetric> {
-    const pixi = this.#pixi;
-    const app = this.#app;
-    if (!pixi || !app) {
-      throw new Error("PixiJS not ready");
-    }
-    const root = new pixi.Container();
-    const nodes = createGridNodes(count, 62);
-    const displays: PixiGraphics[] = [];
-    for (const node of nodes) {
-      const graphic = new pixi.Graphics()
-        .roundRect(0, 0, 48, 48, 4)
-        .fill(0x666666);
-      graphic.position.set(node.x, node.y);
-      root.addChild(graphic);
-      displays.push(graphic);
-    }
-    app.stage.addChild(root);
-    let viewportX = 0;
-    const samples = await this.#frameSamples(frames, () => {
-      viewportX += 18;
-      const visibleIds = new Set(
-        cullNodes(nodes, { x: viewportX, y: 0, width: 1600, height: 1000 }).map(
-          (node) => node.id,
-        ),
-      );
-      for (let index = 0; index < displays.length; index += 1) {
-        displays[index]!.visible = visibleIds.has(nodes[index]!.id);
-      }
-      root.position.set(-viewportX, 0);
-    });
-    app.stage.removeChild(root);
-    root.destroy({ children: true });
-    return this.#metric(name, count, samples);
-  }
-
-  async #measureImageScene(
-    name: string,
-    count: number,
-    frames: number,
-  ): Promise<FrameMetric> {
-    const pixi = this.#pixi;
-    const app = this.#app;
-    if (!pixi || !app) {
-      throw new Error("PixiJS not ready");
-    }
-    const texture = await pixi.Assets.load(PRODUCT_DATA_URI);
-    const root = new pixi.Container();
-    const columns = 40;
-    for (let index = 0; index < count; index += 1) {
-      const sprite = new pixi.Sprite(texture);
-      sprite.width = 80;
-      sprite.height = 56;
-      sprite.position.set(
-        (index % columns) * 88,
-        Math.floor(index / columns) * 64,
-      );
-      root.addChild(sprite);
-    }
-    app.stage.addChild(root);
-    const samples = await this.#frameSamples(frames, (index) =>
-      root.position.set(-index * 12, -index * 4),
-    );
-    app.stage.removeChild(root);
-    root.destroy({ children: true });
-    return this.#metric(name, count, samples);
-  }
-
-  async #measureTextScene(
-    name: string,
-    textCount: number,
-    richTextCount: number,
-    frames: number,
-  ): Promise<FrameMetric> {
-    const pixi = this.#pixi;
-    const app = this.#app;
-    if (!pixi || !app) {
-      throw new Error("PixiJS not ready");
-    }
-    const root = new pixi.Container();
-    for (let index = 0; index < textCount; index += 1) {
-      const text = new pixi.Text({
-        text: `LUMI ${index} 中文 🧪`,
-        style: {
-          fill: 0xffffff,
-          fontSize: 14,
-          fontFamily: "Arial, sans-serif",
-        },
-      });
-      text.position.set((index % 30) * 120, Math.floor(index / 30) * 28);
-      root.addChild(text);
-    }
-    if (pixi.HTMLText) {
-      for (let index = 0; index < richTextCount; index += 1) {
-        const rich = new pixi.HTMLText({
-          text: `<b>LUMI</b> <i>${index}</i> 中文`,
-          style: { fill: 0xffffff, fontSize: 14 },
-        });
-        rich.position.set(
-          (index % 20) * 160,
-          1100 + Math.floor(index / 20) * 36,
-        );
-        root.addChild(rich);
-      }
-    }
-    app.stage.addChild(root);
-    const samples = await this.#frameSamples(frames, (index) =>
-      root.position.set(-index * 8, 0),
-    );
-    app.stage.removeChild(root);
-    root.destroy({ children: true });
-    return this.#metric(name, textCount + richTextCount, samples);
-  }
-
-  async #measureSelectedDrag(
-    name: string,
-    count: number,
-    frames: number,
-  ): Promise<FrameMetric> {
-    const pixi = this.#pixi;
-    const app = this.#app;
-    if (!pixi || !app) {
-      throw new Error("PixiJS not ready");
-    }
-    const root = new pixi.Container();
-    const displays: PixiGraphics[] = [];
-    for (let index = 0; index < count; index += 1) {
-      const graphic = new pixi.Graphics().rect(0, 0, 20, 20).fill(0x40c4ff);
-      graphic.position.set((index % 25) * 28, Math.floor(index / 25) * 28);
-      root.addChild(graphic);
-      displays.push(graphic);
-    }
-    app.stage.addChild(root);
-    const samples = await this.#frameSamples(frames, () => {
-      for (const display of displays) {
-        display.x += 1;
-        display.y += 0.25;
-      }
-    });
-    app.stage.removeChild(root);
-    root.destroy({ children: true });
-    return this.#metric(name, count, samples);
+    return runVirtualizedCanvasBenchmark(pixi, app);
   }
 }
