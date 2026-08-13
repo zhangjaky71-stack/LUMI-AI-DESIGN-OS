@@ -34,6 +34,15 @@ from .identity import (
     Workspace,
     WorkspaceMember,
 )
+from .model_registry import (
+    ModelBenchmarkScore,
+    ModelCapabilityClaim,
+    ModelPricingSnapshot,
+    ModelRegistryModel,
+    ModelRegistryVersion,
+    ModelRoutingProfile,
+    OrganizationModelPolicyRecord,
+)
 from .platform import (
     AuditEvent,
     CostLedger,
@@ -98,9 +107,16 @@ __all__ = [
     "Generation",
     "IdempotencyOperation",
     "InboxEvent",
+    "ModelBenchmarkScore",
+    "ModelCapabilityClaim",
+    "ModelPricingSnapshot",
+    "ModelRegistryModel",
+    "ModelRegistryVersion",
+    "ModelRoutingProfile",
     "Organization",
     "OrganizationInvite",
     "OrganizationMember",
+    "OrganizationModelPolicyRecord",
     "OutboxEvent",
     "PasswordCredential",
     "PasswordResetToken",

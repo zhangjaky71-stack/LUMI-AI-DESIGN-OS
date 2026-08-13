@@ -1,0 +1,119 @@
+name: Capability Registry
+
+on:
+  pull_request:
+    paths:
+      - "config/model-registry/**"
+      - "docs/models/**"
+      - "services/model-gateway/**"
+      - "apps/api/alembic/**"
+      - "apps/api/src/lumi_api/persistence/models/**"
+      - "scripts/validate_capability_registry_contract.py"
+      - "scripts/seed_capability_registry.py"
+      - "scripts/integration_capability_registry.py"
+      - "docs/runtime/CAPABILITY-REGISTRY-V1.md"
+      - "reports/nodes/NODE-23/**"
+      - "Makefile"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  registry-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile registry runtime
+        run: >-
+          PYTHONPATH=services/model-gateway/src
+          python -m compileall -q
+          services/model-gateway/src
+          services/model-gateway/tests/test_capability_registry.py
+          scripts/validate_capability_registry_contract.py
+      - name: Static Registry contract
+        run: >-
+          PYTHONPATH=services/model-gateway/src
+          python scripts/validate_capability_registry_contract.py
+      - name: Registry unit tests
+        run: >-
+          PYTHONPATH=services/model-gateway/src
+          python -m unittest services.model-gateway.tests.test_capability_registry
+
+  registry-quality:
+    needs: registry-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Registry Ruff gate
+        run: >-
+          uv run ruff check
+          services/model-gateway
+          apps/api/src/lumi_api/persistence/models/model_registry.py
+          apps/api/alembic/versions/0010_capability_registry.py
+          scripts/validate_capability_registry_contract.py
+          scripts/seed_capability_registry.py
+          scripts/integration_capability_registry.py
+      - name: Registry Pyright gate
+        run: >-
+          uv run pyright
+          services/model-gateway/src/lumi_model_gateway/capability_registry.py
+          services/model-gateway/src/lumi_model_gateway/registry_routing.py
+          services/model-gateway/tests/test_capability_registry.py
+
+  registry-postgres:
+    needs: registry-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Start PostgreSQL and dependencies
+        run: |
+          make infra-env
+          make infra-up
+      - name: Upgrade database and verify ORM drift
+        run: |
+          make db-upgrade
+          bash scripts/db-local schema-check
+          make db-seed
+      - name: Seed compiled NODE-07 registry snapshot
+        run: >-
+          PYTHONPATH=services/model-gateway/src
+          uv run python scripts/seed_capability_registry.py
+      - name: PostgreSQL Registry acceptance
+        run: >-
+          PYTHONPATH=services/model-gateway/src
+          uv run python scripts/integration_capability_registry.py
+      - name: Migration downgrade/upgrade smoke
+        run: bash scripts/db-local downgrade-smoke
+      - name: Cleanup
+        if: always()
+        run: CONFIRM=1 make infra-reset || true
