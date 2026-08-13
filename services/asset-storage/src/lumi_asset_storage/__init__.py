@@ -9,10 +9,9 @@ from .models import (
     SignedDownload,
     SignedPartUpload,
     SignedUpload,
-    UploadQuota,
     UploadRequest,
 )
-from .quota import require_upload_allowed, require_verified_size_within_quota
+from .quota import UploadQuota, require_upload_allowed, require_verified_size_within_quota
 from .rights import rights_from_assertion
 from .sniff import (
     SniffResult,
