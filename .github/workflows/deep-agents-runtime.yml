@@ -1,0 +1,147 @@
+name: Deep Agents Runtime
+
+on:
+  pull_request:
+    paths:
+      - "apps/agent-runtime/**"
+      - "services/tool-gateway/**"
+      - "scripts/validate_deep_agents_runtime_contract*.py"
+      - "scripts/integration_deep_agent*.py"
+      - "docs/runtime/DEEP-AGENTS-RUNTIME-V1.md"
+      - "reports/nodes/NODE-29/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deep-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile NODE-29 runtime and tests
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          python -m compileall -q
+          apps/agent-runtime/src/lumi_agent_runtime/deep_runtime
+          apps/agent-runtime/tests/test_deep_runtime_contracts.py
+          apps/agent-runtime/tests/test_deep_runtime_factory.py
+          apps/agent-runtime/tests/test_deep_runtime_tooling.py
+          scripts/validate_deep_agents_runtime_contract_v2.py
+          scripts/integration_deep_agents_runtime.py
+          scripts/integration_deep_agent_tool_gateway.py
+          scripts/integration_deep_agent_node28_stack.py
+      - name: Revalidate NODE-25 Tool Gateway
+        run: >-
+          PYTHONPATH=services/tool-gateway/src
+          python scripts/validate_tool_gateway_contract.py
+      - name: Revalidate NODE-28 LangGraph control plane
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          python scripts/validate_langgraph_control_plane_contract_v2.py
+      - name: NODE-29 static architecture contract
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          python scripts/validate_deep_agents_runtime_contract_v2.py
+      - name: Dependency-free NODE-29 contract tests
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          python -m unittest discover
+          -s apps/agent-runtime/tests
+          -p 'test_deep_runtime_contracts.py'
+      - name: Dependency-free NODE-29 factory tests
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          python -m unittest discover
+          -s apps/agent-runtime/tests
+          -p 'test_deep_runtime_factory.py'
+      - name: Dependency-free NODE-29 tooling tests
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          python -m unittest discover
+          -s apps/agent-runtime/tests
+          -p 'test_deep_runtime_tooling.py'
+
+  deep-quality:
+    needs: deep-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Current Deep Agents package/signature smoke
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          uv run python -c
+          "import inspect, deepagents; p=inspect.signature(deepagents.create_deep_agent).parameters; required={'model','tools','system_prompt','subagents','backend','checkpointer'}; missing=required-set(p); assert not missing, missing"
+      - name: NODE-29 pytest
+        run: >-
+          uv run pytest
+          apps/agent-runtime/tests/test_deep_runtime_contracts.py
+          apps/agent-runtime/tests/test_deep_runtime_factory.py
+          apps/agent-runtime/tests/test_deep_runtime_tooling.py
+          -q
+      - name: Current create_deep_agent integration
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          uv run python scripts/integration_deep_agents_runtime.py
+      - name: Current LangChain ToolCall injection integration
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          uv run python scripts/integration_deep_agent_tool_gateway.py
+      - name: NODE-29 Ruff gate
+        run: >-
+          uv run ruff check
+          apps/agent-runtime/src/lumi_agent_runtime/deep_runtime
+          apps/agent-runtime/tests/test_deep_runtime_contracts.py
+          apps/agent-runtime/tests/test_deep_runtime_factory.py
+          apps/agent-runtime/tests/test_deep_runtime_tooling.py
+          scripts/validate_deep_agents_runtime_contract_v2.py
+          scripts/integration_deep_agents_runtime.py
+          scripts/integration_deep_agent_tool_gateway.py
+          scripts/integration_deep_agent_node28_stack.py
+      - name: NODE-29 Pyright gate
+        run: >-
+          uv run pyright
+          apps/agent-runtime/src/lumi_agent_runtime/deep_runtime
+          apps/agent-runtime/tests/test_deep_runtime_contracts.py
+          apps/agent-runtime/tests/test_deep_runtime_factory.py
+          apps/agent-runtime/tests/test_deep_runtime_tooling.py
+
+  deep-stack:
+    needs: deep-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Re-run NODE-28 current LangGraph integration
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          uv run python scripts/integration_langgraph_control_plane.py
+      - name: Deep Agents -> NODE-28 exact-version stack integration
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          uv run python scripts/integration_deep_agent_node28_stack.py
