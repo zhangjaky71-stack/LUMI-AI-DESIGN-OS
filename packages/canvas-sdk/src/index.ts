@@ -1,3 +1,4 @@
+export * from "./asset-cache";
 export * from "./benchmark";
 export * from "./camera";
 export * from "./geometry";
