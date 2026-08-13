@@ -23,7 +23,6 @@ class SemVer:
         if match is None:
             raise ValueError(f"AGENT_SEMVER_INVALID:{value}")
         prerelease = match.group(4)
-        # Stable releases sort after prereleases for the same core version.
         if prerelease is None:
             rank: tuple[tuple[int, int | str], ...] = ((2, 0),)
         else:
@@ -52,45 +51,50 @@ def matches(version: SemVer, selector: str) -> bool:
             raise ValueError(f"AGENT_SEMVER_SELECTOR_INVALID:{selector}")
         return version.major == int(prefix)
     if selector.startswith("^"):
-        base = _parse_partial(selector[1:], selector)
-        lower = _lower_bound(base)
-        upper = _caret_upper(base)
-        return lower <= version < upper
+        base, _ = _parse_partial(selector[1:], selector)
+        return _stable(*base) <= version < _caret_upper(base)
     if selector.startswith("~"):
-        base = _parse_partial(selector[1:], selector)
-        lower = _lower_bound(base)
-        upper = SemVer(base[0], base[1] + 1, 0, ((2, 0),), f"{base[0]}.{base[1] + 1}.0")
-        return lower <= version < upper
+        base, count = _parse_partial(selector[1:], selector)
+        upper = (
+            _stable(base[0] + 1, 0, 0)
+            if count == 1
+            else _stable(base[0], base[1] + 1, 0)
+        )
+        return _stable(*base) <= version < upper
     raise ValueError(f"AGENT_SEMVER_SELECTOR_INVALID:{selector}")
 
 
 def select_highest(versions: tuple[str, ...], selector: str) -> str | None:
-    candidates = [SemVer.parse(value) for value in versions]
-    matched = [item for item in candidates if matches(item, selector)]
-    if not matched:
-        return None
-    return max(matched).text
+    matched = [
+        item
+        for item in (SemVer.parse(value) for value in versions)
+        if matches(item, selector)
+    ]
+    return max(matched).text if matched else None
 
 
-def _parse_partial(value: str, selector: str) -> tuple[int, int, int]:
+def _parse_partial(
+    value: str,
+    selector: str,
+) -> tuple[tuple[int, int, int], int]:
     parts = value.split(".")
     if not 1 <= len(parts) <= 3 or any(not part.isdigit() for part in parts):
         raise ValueError(f"AGENT_SEMVER_SELECTOR_INVALID:{selector}")
+    count = len(parts)
     numbers = [int(part) for part in parts]
     while len(numbers) < 3:
         numbers.append(0)
-    return numbers[0], numbers[1], numbers[2]
-
-
-def _lower_bound(base: tuple[int, int, int]) -> SemVer:
-    major, minor, patch = base
-    return SemVer(major, minor, patch, ((2, 0),), f"{major}.{minor}.{patch}")
+    return (numbers[0], numbers[1], numbers[2]), count
 
 
 def _caret_upper(base: tuple[int, int, int]) -> SemVer:
     major, minor, patch = base
     if major > 0:
-        return SemVer(major + 1, 0, 0, ((2, 0),), f"{major + 1}.0.0")
+        return _stable(major + 1, 0, 0)
     if minor > 0:
-        return SemVer(0, minor + 1, 0, ((2, 0),), f"0.{minor + 1}.0")
-    return SemVer(0, 0, patch + 1, ((2, 0),), f"0.0.{patch + 1}")
+        return _stable(0, minor + 1, 0)
+    return _stable(0, 0, patch + 1)
+
+
+def _stable(major: int, minor: int, patch: int) -> SemVer:
+    return SemVer(major, minor, patch, ((2, 0),), f"{major}.{minor}.{patch}")
