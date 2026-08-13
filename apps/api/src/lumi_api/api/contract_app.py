@@ -9,6 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from lumi_domain import new_uuid7
 
+from .v1.cost_router import cost_router
 from .v1.errors import ApiProblem, api_problem_handler, validation_problem_handler
 from .v1.router import router
 from .v1.services import ApiV1Gateway
@@ -45,6 +46,7 @@ def install_api_v1(app: FastAPI, *, gateway: ApiV1Gateway | None = None) -> None
         cast(Callable[..., Response], validation_problem_handler),
     )
     app.include_router(router)
+    app.include_router(cost_router)
 
 
 def create_contract_app(*, gateway: ApiV1Gateway | None = None) -> FastAPI:
