@@ -75,12 +75,23 @@ class ProjectResource(StrictModel):
     name: str
     status: ProjectStatus
     brief: dict[str, Any] = Field(default_factory=dict)
+    brief_version: int = Field(ge=1)
     brand_id: UUID | None = None
     active_branch_id: UUID | None = None
     settings: dict[str, Any] = Field(default_factory=dict)
     version: int = Field(ge=1)
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+class ProjectBriefVersionResource(StrictModel):
+    id: UUID
+    project_id: UUID
+    brief_version: int = Field(ge=1)
+    brief_hash: str = Field(pattern="^[0-9a-f]{64}$")
+    brief: dict[str, Any]
+    created_by: UUID
+    created_at: datetime
 
 
 class AssetCreate(StrictModel):

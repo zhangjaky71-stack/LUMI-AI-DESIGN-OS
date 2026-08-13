@@ -4,7 +4,18 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    CHAR,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -111,6 +122,8 @@ class BrandRule(IdMixin, MutableTimestampMixin, Base):
 class Project(IdMixin, MutableTimestampMixin, Base):
     __tablename__ = "projects"
     __table_args__ = (
+        CheckConstraint("brief_version > 0", name="brief_version"),
+        CheckConstraint("status IN ('draft','active','paused','archived')", name="status"),
         Index("ix_projects_org_created", "organization_id", "created_at"),
         Index("ix_projects_org_status", "organization_id", "status"),
         Index("ix_projects_workspace_created", "workspace_id", "created_at"),
@@ -129,6 +142,12 @@ class Project(IdMixin, MutableTimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(300), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
     brief_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    brief_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
+    )
     brand_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("brands.id", ondelete="SET NULL"),
@@ -142,6 +161,77 @@ class Project(IdMixin, MutableTimestampMixin, Base):
         nullable=False,
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ProjectBriefVersion(IdMixin, CreatedAtMixin, Base):
+    __tablename__ = "project_brief_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "brief_version",
+            name="uq_project_brief_versions_project_version",
+        ),
+        CheckConstraint("brief_version > 0", name="version"),
+        CheckConstraint("brief_hash ~ '^[0-9a-f]{64}$'", name="hash"),
+        Index(
+            "ix_project_brief_versions_org_project",
+            "organization_id",
+            "project_id",
+            "brief_version",
+        ),
+    )
+
+    organization_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    brief_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    brief_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    brief_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    source_input: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+
+class ProjectSummary(IdMixin, MutableTimestampMixin, Base):
+    __tablename__ = "project_summaries"
+    __table_args__ = (
+        UniqueConstraint("project_id", name="uq_project_summaries_project"),
+        CheckConstraint("active_run_count >= 0", name="active_runs"),
+        CheckConstraint("artifact_count >= 0", name="artifacts"),
+        Index("ix_project_summaries_org_activity", "organization_id", "last_activity_at"),
+    )
+
+    organization_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    latest_artifact_preview_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        nullable=True,
+    )
+    last_activity_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    active_run_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    artifact_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
 
 class ProjectMember(IdMixin, CreatedAtMixin, Base):

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import Header, Query, Request
+from lumi_domain import ProjectStatus
+from lumi_project_core import ProjectListFilter
 
 from .errors import ApiProblem
 
@@ -16,6 +19,11 @@ _ETAG_VERSION = re.compile(r'^(?:W/)?"?(?P<version>[1-9][0-9]*)"?$')
 class RequestContext:
     organization_id: UUID
     request_id: str
+    actor_id: UUID | None = None
+    actor_type: str = "contract_only"
+    permissions: frozenset[str] = field(default_factory=frozenset)
+    trace_id: str | None = None
+    api_token_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +54,24 @@ def get_page_request(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> PageRequest:
     return PageRequest(cursor=cursor, limit=limit)
+
+
+def get_project_list_filter(
+    status: Annotated[ProjectStatus | None, Query()] = None,
+    workspace_id: Annotated[UUID | None, Query()] = None,
+    created_by: Annotated[UUID | None, Query()] = None,
+    updated_after: Annotated[datetime | None, Query()] = None,
+    updated_before: Annotated[datetime | None, Query()] = None,
+    q: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
+) -> ProjectListFilter:
+    return ProjectListFilter(
+        status=status.value if status is not None else None,
+        workspace_id=str(workspace_id) if workspace_id else None,
+        created_by=str(created_by) if created_by else None,
+        updated_after=updated_after,
+        updated_before=updated_before,
+        name_query=q,
+    )
 
 
 def require_idempotency_key(

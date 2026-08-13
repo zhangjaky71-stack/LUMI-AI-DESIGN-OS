@@ -1,0 +1,10 @@
+[project]
+name = "lumi-project-core"
+version = "1.0.0"
+description = "LUMI Project / Brief V1 contract and cursor utilities"
+requires-python = "==3.12.*"
+dependencies = []
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"

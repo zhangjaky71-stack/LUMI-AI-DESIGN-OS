@@ -33,6 +33,7 @@ class SessionPrincipal:
 class ApiTokenPrincipal:
     token_id: UUID
     organization_id: UUID
+    created_by: UUID
     scopes: frozenset[str]
 
 
@@ -137,6 +138,7 @@ class PrincipalResolver:
         return ApiTokenPrincipal(
             token_id=row.id,
             organization_id=row.organization_id,
+            created_by=row.created_by,
             scopes=frozenset(row.scopes),
         )
 

@@ -5,6 +5,7 @@ from typing import Protocol, TypeVar
 from uuid import UUID
 
 from fastapi import Request
+from lumi_project_core import ProjectListFilter
 
 from .context import PageRequest, RequestContext
 from .contracts import (
@@ -20,6 +21,7 @@ from .contracts import (
     AssetResource,
     GenerationCreate,
     GenerationResource,
+    ProjectBriefVersionResource,
     ProjectCreate,
     ProjectPatch,
     ProjectResource,
@@ -39,7 +41,10 @@ class PageResult[T]:
 
 class ApiV1Gateway(Protocol):
     async def list_projects(
-        self, context: RequestContext, page: PageRequest
+        self,
+        context: RequestContext,
+        page: PageRequest,
+        filters: ProjectListFilter,
     ) -> PageResult[ProjectResource]: ...
 
     async def create_project(
@@ -59,6 +64,14 @@ class ApiV1Gateway(Protocol):
     async def archive_project(
         self, context: RequestContext, project_id: UUID, expected_version: int
     ) -> None: ...
+
+    async def restore_project(
+        self, context: RequestContext, project_id: UUID, expected_version: int
+    ) -> ProjectResource: ...
+
+    async def list_project_brief_versions(
+        self, context: RequestContext, project_id: UUID
+    ) -> list[ProjectBriefVersionResource]: ...
 
     async def list_assets(
         self, context: RequestContext, project_id: UUID | None, page: PageRequest

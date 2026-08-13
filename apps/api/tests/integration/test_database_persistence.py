@@ -37,7 +37,7 @@ async def _head_and_table_count() -> None:
     try:
         async with engine.connect() as connection:
             head = (await connection.execute(text("SELECT version_num FROM alembic_version"))).scalar_one()
-            assert head == "0004_auth_security"
+            assert head == "0006_project_core"
             count = (
                 await connection.execute(
                     text(
@@ -51,7 +51,7 @@ async def _head_and_table_count() -> None:
                     )
                 )
             ).scalar_one()
-            assert count == 46
+            assert count == 48
     finally:
         await engine.dispose()
 

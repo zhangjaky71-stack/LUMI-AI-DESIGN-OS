@@ -1,0 +1,82 @@
+name: Project Integration
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/projects/**"
+      - "apps/api/src/lumi_api/project_app.py"
+      - "apps/api/src/lumi_api/auth/principal.py"
+      - "apps/api/src/lumi_api/api/v1/**"
+      - "apps/api/src/lumi_api/persistence/**"
+      - "apps/api/alembic/**"
+      - "apps/api/tests/**"
+      - "services/auth/**"
+      - "services/domain/**"
+      - "services/project-core/**"
+      - "pyproject.toml"
+      - "apps/api/pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/project-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  project-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen Python install
+        run: uv sync --all-packages --frozen
+      - name: Targeted static quality
+        run: |
+          uv run ruff check services/project-core apps/api/src/lumi_api/projects apps/api/src/lumi_api/project_app.py apps/api/src/lumi_api/auth/principal.py apps/api/tests/integration/test_project_core.py apps/api/tests/integration/test_project_security.py
+          uv run pyright services/project-core apps/api/src/lumi_api/projects apps/api/src/lumi_api/project_app.py apps/api/src/lumi_api/auth/principal.py
+      - name: Prepare local infrastructure
+        run: make infra-env
+      - name: Start PostgreSQL infrastructure
+        run: make infra-up
+      - name: Upgrade empty database
+        run: make db-upgrade
+      - name: Verify ORM migration drift
+        run: bash scripts/db-local schema-check
+      - name: Seed deterministic fixtures
+        run: make db-seed
+      - name: Verify Project persistence contract
+        run: uv run pytest apps/api/tests/test_persistence_schema.py
+      - name: Run Project integration suite
+        env:
+          LUMI_DB_INTEGRATION: "1"
+        run: >-
+          uv run pytest
+          apps/api/tests/integration/test_database_persistence.py
+          apps/api/tests/integration/test_project_core.py
+          apps/api/tests/integration/test_project_security.py
+      - name: Capture database diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p reports/project-integration
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml ps > reports/project-integration/compose-ps.txt 2>&1 || true
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml logs --no-color --tail=300 postgres > reports/project-integration/postgres.log 2>&1 || true
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: project-integration-${{ github.run_id }}
+          path: reports/project-integration
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Cleanup
+        if: always()
+        run: CONFIRM=1 make infra-reset || true

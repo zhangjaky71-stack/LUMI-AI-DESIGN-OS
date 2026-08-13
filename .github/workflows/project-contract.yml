@@ -1,0 +1,32 @@
+name: Project Contract
+
+on:
+  pull_request:
+    paths:
+      - "contracts/projects/**"
+      - "services/project-core/**"
+      - "scripts/validate_project_contracts.py"
+      - "apps/api/alembic/versions/0006_project_core.py"
+      - ".github/workflows/project-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  project-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: services/project-core/src
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile Project Core reference package
+        run: python -m compileall -q services/project-core/src scripts/validate_project_contracts.py
+      - name: Validate Project V1 contracts
+        run: python scripts/validate_project_contracts.py
+      - name: Run stdlib Project Core tests
+        run: python -m unittest discover -s services/project-core/tests -p 'test_*.py' -v

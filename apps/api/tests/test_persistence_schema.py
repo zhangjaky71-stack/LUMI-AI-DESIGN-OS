@@ -30,6 +30,8 @@ EXPECTED_TABLES = {
     "api_tokens",
     "projects",
     "project_members",
+    "project_brief_versions",
+    "project_summaries",
     "brands",
     "brand_palettes",
     "brand_fonts",
@@ -74,6 +76,7 @@ GLOBAL_IDENTITY_TABLES = {
 }
 TENANT_TABLES = EXPECTED_TABLES - GLOBAL_IDENTITY_TABLES
 IMMUTABLE_HISTORY_TABLES = {
+    "project_brief_versions",
     "design_document_versions",
     "artifact_edges",
     "artifact_files",
@@ -86,7 +89,7 @@ IMMUTABLE_HISTORY_TABLES = {
 
 def test_all_current_tables_are_registered() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
-    assert len(Base.metadata.tables) == 46
+    assert len(Base.metadata.tables) == 48
 
 
 def test_tenant_tables_carry_organization_id() -> None:
@@ -148,18 +151,26 @@ def test_migrations_are_frozen_and_chained_without_live_metadata_execution() -> 
     second = (versions / "0002_workflow_platform_schema.py").read_text(encoding="utf-8")
     hardening = (versions / "0003_runtime_privilege_hardening.py").read_text(encoding="utf-8")
     auth = (versions / "0004_auth_security.py").read_text(encoding="utf-8")
+    auth_roles = (versions / "0005_auth_role_hardening.py").read_text(encoding="utf-8")
+    projects = (versions / "0006_project_core.py").read_text(encoding="utf-8")
 
-    for source in (first, second, hardening, auth):
+    for source in (first, second, hardening, auth, auth_roles, projects):
         assert "Base.metadata.create_all" not in source
         assert "metadata.create_all" not in source
 
     assert 'down_revision = "0001_domain_core_schema"' in second
     assert 'down_revision = "0002_workflow_platform_schema"' in hardening
     assert 'down_revision = "0003_runtime_privilege_hardening"' in auth
+    assert 'down_revision = "0004_auth_security"' in auth_roles
+    assert 'down_revision = "0005_auth_role_hardening"' in projects
     assert "CREATE TRIGGER trg_cost_ledger_immutable" in hardening
     assert "GRANT UPDATE (status, quality_score) ON artifact_versions" in hardening
     assert "password_credentials" in auth
     assert "api_tokens" in auth
+    assert "ck_organization_members_role" in auth_roles
+    assert "CREATE TABLE project_brief_versions" in projects
+    assert "trg_project_brief_versions_immutable" in projects
+    assert "CREATE TABLE project_summaries" in projects
 
 
 def test_lineage_and_task_self_loop_guards_exist_in_schema() -> None:
@@ -195,3 +206,31 @@ def test_auth_secrets_are_hashed_and_sessions_have_csrf_revocation_fields() -> N
     session_columns = Base.metadata.tables["sessions"].c
     for required in ("token_hash", "csrf_token_hash", "expires_at", "last_seen_at", "revoked_at"):
         assert required in session_columns
+
+
+def test_project_brief_history_and_summary_projection_contracts() -> None:
+    projects = Base.metadata.tables["projects"].c
+    assert "brief_version" in projects
+
+    history = Base.metadata.tables["project_brief_versions"].c
+    for required in (
+        "organization_id",
+        "project_id",
+        "brief_version",
+        "brief_hash",
+        "brief_json",
+        "source_input",
+        "created_by",
+        "created_at",
+    ):
+        assert required in history
+    assert "updated_at" not in history
+
+    summary = Base.metadata.tables["project_summaries"].c
+    for required in (
+        "latest_artifact_preview_id",
+        "last_activity_at",
+        "active_run_count",
+        "artifact_count",
+    ):
+        assert required in summary

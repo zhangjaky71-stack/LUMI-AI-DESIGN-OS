@@ -19,6 +19,7 @@ members = [
   "apps/worker-media",
   "services/auth",
   "services/domain",
+  "services/project-core",
   "services/model-gateway",
   "services/tool-gateway",
   "services/sandbox-runtime",
@@ -31,6 +32,7 @@ members = [
 [tool.uv.sources]
 lumi-auth = { workspace = true }
 lumi-domain = { workspace = true }
+lumi-project-core = { workspace = true }
 
 [tool.ruff]
 target-version = "py312"
@@ -41,6 +43,7 @@ src = [
   "apps/worker-media/src",
   "services/auth/src",
   "services/domain/src",
+  "services/project-core/src",
   "services/model-gateway/src",
   "services/tool-gateway/src",
   "services/sandbox-runtime/src",
@@ -61,6 +64,7 @@ known-first-party = [
   "lumi_worker_media",
   "lumi_auth",
   "lumi_domain",
+  "lumi_project_core",
   "lumi_model_gateway",
   "lumi_tool_gateway",
   "lumi_sandbox_runtime",
@@ -77,16 +81,17 @@ pythonVersion = "3.12"
 typeCheckingMode = "standard"
 include = ["apps", "services", "evals"]
 exclude = ["**/__pycache__", ".venv"]
-extraPaths = ["services/auth/src", "services/domain/src"]
+extraPaths = ["services/auth/src", "services/domain/src", "services/project-core/src"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
-pythonpath = [".", "services/auth/src", "services/domain/src"]
+pythonpath = [".", "services/auth/src", "services/domain/src", "services/project-core/src"]
 testpaths = [
   "apps/api/tests",
   "apps/agent-runtime/tests",
   "apps/worker-media/tests",
   "services/auth/tests",
   "services/domain/tests",
+  "services/project-core/tests",
   "evals/tests",
 ]
