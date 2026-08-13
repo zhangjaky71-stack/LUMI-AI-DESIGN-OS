@@ -1,0 +1,31 @@
+{
+  "matrix_version": "1.0.0",
+  "observed_at": "2026-08-12",
+  "expected_categories": [
+    "Agent / Workflow",
+    "Canvas / Editing",
+    "Generation",
+    "Brand",
+    "Production / Export",
+    "Project / Collaboration",
+    "Platform / SaaS"
+  ],
+  "expected_counts": {
+    "capabilities": 67,
+    "targets": {
+      "PARITY": 56,
+      "SUPERSET": 7,
+      "DEFER": 4,
+      "OUT-OF-SCOPE": 0
+    },
+    "competitor_status": {
+      "confirmed": 56,
+      "confirmed_marketing": 9,
+      "not_confirmed": 2
+    },
+    "parity_acceptance_cases": 56
+  },
+  "source_catalog": "docs/product/lovart-evidence-sources.json",
+  "capability_glob": "docs/product/capabilities/*.json",
+  "acceptance_glob": "evals/datasets/product-parity/v1/cases-*.json"
+}
