@@ -47,7 +47,9 @@ from .project import (
     BrandPalette,
     BrandRule,
     Project,
+    ProjectBriefVersion,
     ProjectMember,
+    ProjectSummary,
 )
 from .workflow import (
     AgentRun,
@@ -97,7 +99,9 @@ __all__ = [
     "PasswordCredential",
     "PasswordResetToken",
     "Project",
+    "ProjectBriefVersion",
     "ProjectMember",
+    "ProjectSummary",
     "ProviderRequest",
     "Session",
     "Task",
