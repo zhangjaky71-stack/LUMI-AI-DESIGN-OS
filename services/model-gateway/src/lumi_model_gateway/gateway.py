@@ -120,14 +120,18 @@ class ModelGateway:
                     self._validate_result(candidate.provider, candidate.model, result)
                 except ModelGatewayError as exc:
                     if not isinstance(exc, ProviderInvocationError):
-                        await reservation.release()
+                        await reservation.release(reason="gateway_error_before_acceptance")
                         raise
                     error = exc
                 except Exception as exc:
                     error = adapter.normalize_error(exc)
                 else:
                     self.health.record_success(candidate.provider, candidate.model)
-                    await reservation.commit(result.cost)
+                    await reservation.commit(
+                        result.cost,
+                        usage=result.usage,
+                        provider_request_id=result.provider_request_id,
+                    )
                     self._record_telemetry(
                         request=request,
                         candidate=candidate,
@@ -138,6 +142,7 @@ class ModelGateway:
                         usage=result.usage,
                         cost=result.cost,
                         error_category=None,
+                        provider_request_id=result.provider_request_id,
                     )
                     return result
 
@@ -151,6 +156,7 @@ class ModelGateway:
                     usage=None,
                     cost=candidate.estimate,
                     error_category=error.category.value,
+                    provider_request_id=None,
                 )
                 last_error = error
                 can_retry = (
@@ -174,12 +180,14 @@ class ModelGateway:
                     continue
                 self.health.record_failure(candidate.provider, candidate.model, error)
                 if error.ambiguous:
+                    # The provider may already have charged. Preserve the reservation as an
+                    # estimated actual cost; later reconciliation appends an adjustment.
                     await reservation.commit(candidate.estimate)
                     raise AmbiguousProviderOutcomeError(
                         "provider outcome is not proven safe to retry or cross-fallback: "
                         f"{candidate.key}/{error.category.value}"
                     ) from error
-                await reservation.release()
+                await reservation.release(reason="provider_not_accepted")
                 if not error.fallbackable:
                     raise error
                 break
@@ -237,13 +245,14 @@ class ModelGateway:
                     usage=final_usage,
                     cost=candidate.estimate,
                     error_category=error.category.value,
+                    provider_request_id=None,
                 )
                 if emitted > 0 or error.ambiguous:
-                    await reservation.commit(candidate.estimate)
+                    await reservation.commit(candidate.estimate, usage=final_usage)
                     raise AmbiguousProviderOutcomeError(
                         "stream failed after provider acceptance/output; fallback is unsafe"
                     ) from error
-                await reservation.release()
+                await reservation.release(reason="stream_not_accepted")
                 if error.fallbackable:
                     continue
                 raise
@@ -260,19 +269,20 @@ class ModelGateway:
                     usage=final_usage,
                     cost=candidate.estimate,
                     error_category=error.category.value,
+                    provider_request_id=None,
                 )
                 if emitted > 0 or error.ambiguous:
-                    await reservation.commit(candidate.estimate)
+                    await reservation.commit(candidate.estimate, usage=final_usage)
                     raise AmbiguousProviderOutcomeError(
                         "stream outcome is ambiguous; fallback is unsafe"
                     ) from error
-                await reservation.release()
+                await reservation.release(reason="stream_not_accepted")
                 if error.fallbackable:
                     continue
                 raise error from exc
             else:
                 self.health.record_success(candidate.provider, candidate.model)
-                await reservation.commit(candidate.estimate)
+                await reservation.commit(candidate.estimate, usage=final_usage)
                 self._record_telemetry(
                     request=request,
                     candidate=candidate,
@@ -283,6 +293,7 @@ class ModelGateway:
                     usage=final_usage,
                     cost=candidate.estimate,
                     error_category=None,
+                    provider_request_id=None,
                 )
                 return
         raise NoRouteError("all safe streaming fallbacks were exhausted")
@@ -330,6 +341,7 @@ class ModelGateway:
         usage: Usage | None,
         cost: CostEstimate | None,
         error_category: str | None,
+        provider_request_id: str | None,
     ) -> None:
         self.telemetry.record(
             TelemetryEvent(
@@ -349,5 +361,10 @@ class ModelGateway:
                 error_category=error_category,
                 semantic_hash=request.semantic_hash,
                 trace_id=request.trace_id,
+                project_id=request.project_id,
+                task_id=request.task_id,
+                agent_run_id=request.agent_run_id,
+                generation_id=request.generation_id,
+                provider_request_id=provider_request_id,
             )
         )

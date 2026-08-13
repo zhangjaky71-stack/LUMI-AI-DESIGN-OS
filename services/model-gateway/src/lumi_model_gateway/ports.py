@@ -11,6 +11,7 @@ from .models import (
     ProviderModel,
     StreamChunk,
     TelemetryEvent,
+    Usage,
 )
 
 
@@ -79,9 +80,15 @@ class PaidStreamGuard(Protocol):
 
 
 class BudgetReservation(Protocol):
-    async def commit(self, actual: CostEstimate) -> None: ...
+    async def commit(
+        self,
+        actual: CostEstimate,
+        *,
+        usage: Usage | None = None,
+        provider_request_id: str | None = None,
+    ) -> None: ...
 
-    async def release(self) -> None: ...
+    async def release(self, *, reason: str = "not_accepted") -> None: ...
 
 
 class BudgetGuard(Protocol):

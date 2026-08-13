@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol, TypeVar
 from uuid import UUID
 
@@ -19,6 +20,7 @@ from .contracts import (
     ArtifactVersionResource,
     AssetCreate,
     AssetResource,
+    CostSummaryResource,
     GenerationCreate,
     GenerationResource,
     ProjectBriefVersionResource,
@@ -26,6 +28,7 @@ from .contracts import (
     ProjectPatch,
     ProjectResource,
     TaskResource,
+    UsageSummaryResource,
 )
 from .errors import ApiProblem
 
@@ -137,6 +140,24 @@ class ApiV1Gateway(Protocol):
         idempotency_key: str,
         expected_version: int,
     ) -> ApprovalResource: ...
+
+    async def get_cost_summary(
+        self,
+        context: RequestContext,
+        *,
+        from_time: datetime,
+        to_time: datetime,
+        project_id: UUID | None = None,
+    ) -> CostSummaryResource: ...
+
+    async def list_usage_summary(
+        self,
+        context: RequestContext,
+        *,
+        from_time: datetime,
+        to_time: datetime,
+        project_id: UUID | None = None,
+    ) -> list[UsageSummaryResource]: ...
 
 
 def get_api_v1_gateway(request: Request) -> ApiV1Gateway:

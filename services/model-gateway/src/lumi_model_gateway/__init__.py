@@ -15,6 +15,7 @@ from .capability_registry import (
     compile_registry_seed,
 )
 from .client import ModelGatewayClient
+from .cost_accounting import CostAccountingPort, LedgerBudgetGuard
 from .errors import (
     AmbiguousProviderOutcomeError,
     BudgetExceededError,
@@ -77,6 +78,7 @@ __all__ = [
     "Capability",
     "CapabilityClaim",
     "CapabilityRegistry",
+    "CostAccountingPort",
     "CostConfidence",
     "CostEstimate",
     "CostTelemetrySink",
@@ -88,6 +90,7 @@ __all__ = [
     "InMemoryProviderHealthRegistry",
     "InMemoryProviderRegistry",
     "LatencyProfile",
+    "LedgerBudgetGuard",
     "MemoryCostTelemetrySink",
     "MockFailure",
     "MockProvider",
