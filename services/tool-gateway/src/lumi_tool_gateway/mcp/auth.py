@@ -22,6 +22,7 @@ _RESERVED_HEADERS = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class MCPRequestAuth:
+    organization_id: UUID
     headers: dict[str, str]
     subject: str | None = None
     expires_at_epoch: int | None = None
@@ -59,5 +60,5 @@ class NoAuthCredentialProvider:
         *,
         organization_id: UUID,
     ) -> MCPRequestAuth:
-        del server, organization_id
-        return MCPRequestAuth(headers={})
+        del server
+        return MCPRequestAuth(organization_id=organization_id, headers={})
