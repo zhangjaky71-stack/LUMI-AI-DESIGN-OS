@@ -1,0 +1,18 @@
+{
+  "registry_version": "1.0.0",
+  "observed_at": "2026-08-13",
+  "pricing_expires_at": "2026-09-12",
+  "required_providers": ["openai", "google", "anthropic", "black-forest-labs", "runway"],
+  "required_modalities": ["reasoning", "image_generation", "image_edit", "video_generation", "embedding"],
+  "expected_counts": {
+    "providers": 5,
+    "models": 28,
+    "route_eligible_models": 27,
+    "benchmark_status": {"NOT_MEASURED": 28},
+    "lifecycle": {"stable": 21, "preview": 6, "deprecated": 1}
+  },
+  "source_catalog": "docs/models/provider-sources.json",
+  "provider_glob": "docs/models/providers/*.json",
+  "route_policy": "docs/models/route-candidates.json",
+  "benchmark_suite": "evals/datasets/model-provider/suite.json"
+}
