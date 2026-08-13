@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumi.dev/assets/v1/create-upload.schema.json",
+  "title": "LUMI Create Asset Upload V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "project_id","original_name","declared_mime_type","declared_size",
+    "checksum_sha256","rights_assertion","upload_mode"
+  ],
+  "properties": {
+    "project_id": {"type":"string","minLength":1},
+    "original_name": {"type":"string","minLength":1,"maxLength":512},
+    "declared_mime_type": {"type":"string","minLength":1,"maxLength":255},
+    "declared_size": {"type":"integer","minimum":1},
+    "checksum_sha256": {"type":"string","pattern":"^[0-9a-fA-F]{64}$"},
+    "rights_assertion": {"enum":["USER_OWNED","LICENSED","UNKNOWN"]},
+    "source_reference": {"type":["string","null"],"maxLength":2048},
+    "upload_mode": {"enum":["single","multipart"]}
+  }
+}
