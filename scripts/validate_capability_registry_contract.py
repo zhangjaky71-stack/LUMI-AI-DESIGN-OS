@@ -40,8 +40,8 @@ def validate_seed_manifest() -> None:
         raise SystemExit("NODE-07/23 source registry version mismatch")
 
 
-def validate_routing_weights() -> None:
-    from lumi_model_gateway import compile_registry_seed
+def validate_compiled_registry() -> None:
+    from lumi_model_gateway import Capability, SupportLevel, compile_registry_seed
 
     snapshot = compile_registry_seed(
         ROOT / "config/model-registry/registry.seed.v1.yaml",
@@ -51,11 +51,34 @@ def validate_routing_weights() -> None:
         raise SystemExit("compiled registry must contain 28 NODE-07 models")
     if snapshot.benchmarks:
         raise SystemExit("NODE-07 NOT_MEASURED data must not become fake benchmark rows")
+    if (
+        snapshot.support("runway:aleph2", Capability.VIDEO_EDIT)
+        != SupportLevel.FULL
+    ):
+        raise SystemExit("Runway Aleph2 documented video_edit claim missing")
+    if (
+        snapshot.support(
+            "google:gemini-embedding-2",
+            Capability.EMBEDDING_MULTIMODAL,
+        )
+        != SupportLevel.FULL
+    ):
+        raise SystemExit("Gemini embedding multimodal documented claim missing")
     for profile in snapshot.routing_profiles:
         weights = json.loads(profile.weights_json)
-        total = sum((Decimal(str(value)) for value in weights.values()), Decimal("0"))
+        total = sum(
+            (Decimal(str(value)) for value in weights.values()),
+            Decimal("0"),
+        )
         if total != Decimal("1.00"):
-            raise SystemExit(f"routing weights must sum to 1: {profile.profile}={total}")
+            raise SystemExit(
+                f"routing weights must sum to 1: {profile.profile}={total}"
+            )
+    video_edit = next(
+        item for item in snapshot.routing_profiles if item.profile == "video.edit"
+    )
+    if video_edit.required_capabilities != (Capability.VIDEO_EDIT,):
+        raise SystemExit("video.edit route must require VIDEO_EDIT capability")
 
 
 def assert_router_has_no_provider_literals() -> None:
@@ -66,7 +89,13 @@ def assert_router_has_no_provider_literals() -> None:
         for node in ast.walk(tree)
         if isinstance(node, ast.Constant) and isinstance(node.value, str)
     }
-    for provider in ("openai", "google", "anthropic", "runway", "black-forest-labs"):
+    for provider in (
+        "openai",
+        "google",
+        "anthropic",
+        "runway",
+        "black-forest-labs",
+    ):
         if provider in literals:
             raise SystemExit(f"Registry-aware Router hardcodes provider: {provider}")
 
@@ -82,6 +111,7 @@ def main() -> int:
         'VERIFIED_DOCS = "verified_docs"',
         'LIVE_TEST = "live_test"',
         'INFERRED = "inferred"',
+        '"video_edit": Capability.VIDEO_EDIT',
         "pricing_at",
         "rank_candidates",
         "organization_policy",
@@ -94,6 +124,20 @@ def main() -> int:
         "REGISTRY_VERSION:",
         "REGISTRY_CAPABILITY_UNKNOWN",
         "REGISTRY_CAPABILITY_PARTIAL",
+        "REGISTRY_REGION_UNKNOWN",
+    )
+    require(
+        "services/model-gateway/src/lumi_model_gateway/postgres_registry.py",
+        "class RegistryReadConnection(Protocol)",
+        "class PostgresRegistryLoader",
+        "MODEL_REGISTRY_ACTIVE_VERSION_NOT_FOUND",
+        "organization_model_policies",
+    )
+    forbid(
+        "services/model-gateway/src/lumi_model_gateway/postgres_registry.py",
+        "import asyncpg",
+        "import sqlalchemy",
+        "from sqlalchemy",
     )
     require(
         "apps/api/alembic/versions/0010_capability_registry.py",
@@ -113,7 +157,7 @@ def main() -> int:
         "ACCESS_TOKEN",
     )
     assert_router_has_no_provider_literals()
-    validate_routing_weights()
+    validate_compiled_registry()
     print("NODE-23 capability registry static contract: PASS")
     return 0
 
