@@ -54,11 +54,22 @@ The first measurement was executed in Headless Chrome 149 with WebGL and proved 
 
 These numbers **do not satisfy the workstation-target interpretation of the NODE-08 2k/60fps goal**. They are retained as truthful first-pass evidence, not hidden or relabeled as PASS. The environment is headless CI with software/virtualized graphics and is therefore treated as a reproducible regression signal rather than workstation GPU certification.
 
-Before final acceptance, the spike will improve visible-object virtualization so the benchmark measures the architecture LUMI intends to ship rather than retaining thousands of offscreen Pixi display objects. Final clean-run numbers will be recorded separately and compared with this first pass.
+## 3. Virtualization optimization pass
 
-The optimization pass is itself part of acceptance: it must preserve the same observable editor behavior while reducing renderer-resident offscreen work rather than merely lowering the benchmark fixture size.
+The second architecture pass keeps every logical fixture size unchanged while changing renderer residency:
 
-## 3. Decision gate
+```text
+2k / 10k simple scene  -> logical nodes remain 2k / 10k; Pixi uses viewport + overscan pool
+1k image scene         -> logical images remain 1k; Pixi sprites are viewport pooled
+1k text + 100 rich     -> logical stress remains 1.1k; regular text is viewport pooled and all rich-text stress remains represented
+500 selected drag      -> all 500 Pixi displays stay resident and move every frame
+```
+
+This is a production-relevant architecture change rather than a smaller benchmark. The optimized report adds `rendererResidentNodes` to each metric so future regressions can distinguish logical scene scale from GPU/renderer residency.
+
+The optimized Chromium measurement is now running on the same Playwright scenario and will be recorded here before NODE-08 can become COMPLETE.
+
+## 4. Decision gate
 
 ADR `docs/adr/ADR-0001-CANVAS-RENDERER-SPIKE.md` remains **VALIDATING** until:
 
