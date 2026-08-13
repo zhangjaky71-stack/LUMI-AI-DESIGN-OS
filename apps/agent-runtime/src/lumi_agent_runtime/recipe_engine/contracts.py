@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import Any
@@ -11,7 +11,6 @@ from typing import Any
 from lumi_agent_runtime.agent_registry.semver import SemVer
 
 _ID = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
-_NAME = re.compile(r"^[a-z][a-z0-9_.:-]{0,127}$")
 
 
 class StepType(StrEnum):
@@ -201,16 +200,17 @@ class RecipeDefinition:
 
     @property
     def content_hash(self) -> str:
-        payload = {
-            "id": self.recipe_id,
-            "version": self.version,
-            "inputs": list(self.inputs),
-            "steps": [item.to_payload() for item in self.steps],
-            "outputs": self.outputs,
-            "budget_limit_usd": self.budget_limit_usd,
-            "metadata": self.metadata,
-        }
-        return _hash_json(payload)
+        return _hash_json(
+            {
+                "id": self.recipe_id,
+                "version": self.version,
+                "inputs": list(self.inputs),
+                "steps": [item.to_payload() for item in self.steps],
+                "outputs": self.outputs,
+                "budget_limit_usd": self.budget_limit_usd,
+                "metadata": self.metadata,
+            }
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,6 +274,12 @@ class TaskTemplate:
     budget_limit_usd: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if not self.task_key or len(self.task_key) > 255:
+            raise ValueError("TASK_TEMPLATE_KEY_INVALID")
+        _positive_decimal_or_none(self.budget_limit_usd, "TASK_TEMPLATE_BUDGET_INVALID")
+        _json_guard(self.metadata, depth=0)
+
 
 @dataclass(frozen=True, slots=True)
 class TaskGraphTemplate:
@@ -283,6 +289,15 @@ class TaskGraphTemplate:
     recipe_budget_limit_usd: str | None
     outputs: dict[str, str]
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        keys = [item.task_key for item in self.tasks]
+        if not self.tasks or len(set(keys)) != len(keys):
+            raise ValueError("TASK_GRAPH_TEMPLATE_KEYS_INVALID")
+        _positive_decimal_or_none(
+            self.recipe_budget_limit_usd, "TASK_GRAPH_TEMPLATE_BUDGET_INVALID"
+        )
+        _json_guard(self.metadata, depth=0)
 
     @property
     def content_hash(self) -> str:
@@ -333,8 +348,8 @@ class RecipeProvenance:
                 "exact_version": self.exact_version,
                 "recipe_definition_hash": self.recipe_definition_hash,
                 "release_manifest_revision": self.release_manifest_revision,
-                "agents": [item.__dict__ for item in self.agents],
-                "skills": [item.__dict__ for item in self.skills],
+                "agents": [asdict(item) for item in self.agents],
+                "skills": [asdict(item) for item in self.skills],
                 "subrecipes": list(self.subrecipes),
                 "task_graph_template_hash": self.task_graph_template_hash,
             }
