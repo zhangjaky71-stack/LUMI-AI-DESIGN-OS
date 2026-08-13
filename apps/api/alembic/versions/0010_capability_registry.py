@@ -18,13 +18,16 @@ def upgrade() -> None:
         """
         CREATE TABLE model_registry_versions (
             id uuid PRIMARY KEY,
-            version integer NOT NULL UNIQUE CHECK (version > 0),
+            version integer NOT NULL,
             source_registry_version varchar(64) NOT NULL,
-            content_hash char(64) NOT NULL UNIQUE,
+            content_hash char(64) NOT NULL,
             observed_at timestamptz NOT NULL,
             source_ref varchar(512) NOT NULL,
             activated_at timestamptz,
-            created_at timestamptz NOT NULL DEFAULT now()
+            created_at timestamptz NOT NULL DEFAULT now(),
+            CONSTRAINT model_registry_versions_version_key UNIQUE (version),
+            CONSTRAINT model_registry_versions_content_hash_key UNIQUE (content_hash),
+            CONSTRAINT ck_model_registry_versions_version CHECK (version > 0)
         )
         """
     )
@@ -66,9 +69,9 @@ def upgrade() -> None:
             created_at timestamptz NOT NULL DEFAULT now(),
             CONSTRAINT uq_model_capability_claim_version_key
                 UNIQUE (registry_version_id, model_key, capability),
-            CONSTRAINT ck_model_capability_claim_support
+            CONSTRAINT ck_model_capability_claims_support
                 CHECK (support IN ('full','partial','none','unknown')),
-            CONSTRAINT ck_model_capability_claim_confidence
+            CONSTRAINT ck_model_capability_claims_confidence
                 CHECK (confidence IN ('verified_docs','live_test','inferred'))
         )
         """
@@ -79,19 +82,23 @@ def upgrade() -> None:
             id uuid PRIMARY KEY,
             registry_version_id uuid NOT NULL
                 REFERENCES model_registry_versions(id) ON DELETE CASCADE,
-            price_snapshot_key varchar(128) NOT NULL UNIQUE,
+            price_snapshot_key varchar(128) NOT NULL,
             model_key varchar(512) NOT NULL,
             currency char(3) NOT NULL,
             unit varchar(128) NOT NULL,
-            price numeric(30,10) NOT NULL CHECK (price >= 0),
+            price numeric(30,10) NOT NULL,
             minimum_charge numeric(30,10),
             effective_from timestamptz NOT NULL,
             valid_until timestamptz,
             observed_at timestamptz NOT NULL,
             source_ref varchar(1024) NOT NULL,
             created_at timestamptz NOT NULL DEFAULT now(),
-            CONSTRAINT ck_model_pricing_currency CHECK (currency ~ '^[A-Z]{3}$'),
-            CONSTRAINT ck_model_pricing_window
+            CONSTRAINT model_pricing_snapshots_price_snapshot_key_key
+                UNIQUE (price_snapshot_key),
+            CONSTRAINT ck_model_pricing_snapshots_price CHECK (price >= 0),
+            CONSTRAINT ck_model_pricing_snapshots_currency
+                CHECK (currency ~ '^[A-Z]{3}$'),
+            CONSTRAINT ck_model_pricing_snapshots_window
                 CHECK (valid_until IS NULL OR valid_until > effective_from)
         )
         """
@@ -104,10 +111,10 @@ def upgrade() -> None:
                 REFERENCES model_registry_versions(id) ON DELETE CASCADE,
             model_key varchar(512) NOT NULL,
             profile varchar(100) NOT NULL,
-            score numeric(10,4) NOT NULL CHECK (score >= 0 AND score <= 100),
+            score numeric(10,4) NOT NULL,
             dataset_version varchar(128) NOT NULL,
             run_id varchar(255) NOT NULL,
-            sample_count integer NOT NULL CHECK (sample_count > 0),
+            sample_count integer NOT NULL,
             statistics_json jsonb NOT NULL DEFAULT '{}'::jsonb,
             confidence varchar(32) NOT NULL,
             observed_at timestamptz NOT NULL,
@@ -115,7 +122,11 @@ def upgrade() -> None:
             created_at timestamptz NOT NULL DEFAULT now(),
             CONSTRAINT uq_model_benchmark_version_identity
                 UNIQUE (registry_version_id, model_key, profile, dataset_version, run_id),
-            CONSTRAINT ck_model_benchmark_confidence
+            CONSTRAINT ck_model_benchmark_scores_score
+                CHECK (score >= 0 AND score <= 100),
+            CONSTRAINT ck_model_benchmark_scores_sample_count
+                CHECK (sample_count > 0),
+            CONSTRAINT ck_model_benchmark_scores_confidence
                 CHECK (confidence IN ('verified_docs','live_test','inferred'))
         )
         """
@@ -145,7 +156,7 @@ def upgrade() -> None:
             id uuid PRIMARY KEY,
             organization_id uuid NOT NULL
                 REFERENCES organizations(id) ON DELETE CASCADE,
-            policy_version integer NOT NULL CHECK (policy_version > 0),
+            policy_version integer NOT NULL,
             disabled_providers_json jsonb NOT NULL DEFAULT '[]'::jsonb,
             denied_models_json jsonb NOT NULL DEFAULT '[]'::jsonb,
             allowed_regions_json jsonb NOT NULL DEFAULT '[]'::jsonb,
@@ -157,7 +168,9 @@ def upgrade() -> None:
             created_at timestamptz NOT NULL DEFAULT now(),
             CONSTRAINT uq_organization_model_policy_version
                 UNIQUE (organization_id, policy_version),
-            CONSTRAINT ck_organization_model_policy_window
+            CONSTRAINT ck_organization_model_policies_policy_version
+                CHECK (policy_version > 0),
+            CONSTRAINT ck_organization_model_policies_window
                 CHECK (effective_to IS NULL OR effective_to > effective_from)
         )
         """
