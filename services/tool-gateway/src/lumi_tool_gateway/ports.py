@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Protocol
 
+from .audit import ToolAuditRecord
 from .contracts import (
     ToolAdapterOutput,
     ToolApproval,
@@ -49,16 +50,4 @@ class ResultOffloader(Protocol):
 
 
 class AuditSink(Protocol):
-    def record(self, event: ToolAuditEvent) -> None: ...
-
-
-class ToolAuditEvent(Protocol):
-    tool_call_id: str
-    organization_id: str
-    actor_id: str
-    actor_agent: str
-    resolved_tool: str
-    risk: str
-    purpose: str
-    status: str
-    trace_id: str | None
+    def record(self, event: ToolAuditRecord) -> None: ...
