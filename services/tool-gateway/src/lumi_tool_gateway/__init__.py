@@ -1,5 +1,7 @@
+from .api import ToolGatewayAPI
 from .audit import MemoryAuditSink, NullAuditSink, ToolAuditRecord, redact_arguments
 from .catalog import build_p0_registry, p0_tool_definitions
+from .client import ToolGatewayClient, ToolGatewayTransport
 from .contracts import (
     ApprovalDecision,
     ToolAdapterOutput,
@@ -48,6 +50,9 @@ __all__ = [
     "ToolCallStatus",
     "ToolDefinition",
     "ToolGateway",
+    "ToolGatewayAPI",
+    "ToolGatewayClient",
+    "ToolGatewayTransport",
     "ToolIdempotency",
     "ToolPermissionContext",
     "ToolPermissionPolicy",
