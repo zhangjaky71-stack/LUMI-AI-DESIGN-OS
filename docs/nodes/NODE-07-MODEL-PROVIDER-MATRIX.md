@@ -1,13 +1,16 @@
 # NODE-07 — Model Provider Matrix
 
 > Phase: 0 Benchmark Before Build  
-> Status: **VALIDATING**  
-> Implementation Status: **VALIDATING**  
-> Implementation Branch: `node-07-model-provider-matrix`  
+> Status: **COMPLETE**  
+> Implementation Status: **COMPLETE**  
+> Implemented Commit: `8f6d2169435e879a1c42ac6d4ba92118f068d0ac`  
+> Implementation PR: `#5`  
 > Acceptance Report: `reports/nodes/NODE-07/acceptance.md`  
+> Clean Acceptance CI: `31654622745`  
 > Registry Version: `1.0.0`  
 > Observed At: `2026-08-13`  
 > Pricing Snapshot Expires: `2026-09-12`  
+> Implemented At: `2026-08-13`  
 > Priority: P0  
 > Depends on: NODE-05, NODE-06  
 > Produces: 供应商/模型能力数据库、价格/生命周期快照、任务级候选路由、Live Benchmark 合同
@@ -22,8 +25,6 @@ NODE-07 **不提前宣布某个模型最好**。质量、毫秒延迟、真实�
 
 ## 2. v1 Provider Scope
 
-当前首批五家 Provider：
-
 ```text
 OpenAI
 Google Gemini API
@@ -36,37 +37,14 @@ Runway API
 
 ```text
 reasoning / multimodal vision
-image generation
-image edit
-video generation
-video edit
-text embedding
-multimodal embedding
+image generation / image edit
+video generation / video edit
+text embedding / multimodal embedding
 OCR-like multimodal extraction route
 structured rerank route
 ```
 
-OCR / rerank 暂时保持可替换能力路由，不为了辅助任务提前锁定额外专用厂商。
-
-## 3. Machine-readable Registry
-
-```text
-docs/models/
-├─ provider-matrix-manifest.json
-├─ provider-sources.json
-├─ route-candidates.json
-└─ providers/
-   ├─ openai.json
-   ├─ google.json
-   ├─ anthropic.json
-   ├─ black-forest-labs.json
-   └─ runway.json
-
-config/
-└─ model-registry.seed.json
-```
-
-v1.0.0 Snapshot：
+## 3. Registry Snapshot
 
 ```text
 5 providers
@@ -80,6 +58,18 @@ v1.0.0 Snapshot：
 0 live-measured model winners
 ```
 
+Machine-readable source of truth：
+
+```text
+docs/models/provider-matrix-manifest.json
+docs/models/provider-sources.json
+docs/models/route-candidates.json
+docs/models/providers/*.json
+config/model-registry.seed.json
+```
+
+Human-readable matrix：`docs/models/MODEL-PROVIDER-MATRIX.md`。
+
 ## 4. Lifecycle Contract
 
 ```text
@@ -90,11 +80,11 @@ legacy      → 不可 route eligible
 shutdown    → 不可 route eligible
 ```
 
-注册表保留一个 deprecated sentinel，确保陈旧模型不能误入候选路由。
+注册表保留 deprecated sentinel，确保陈旧模型不能误入活跃路由。
 
 ## 5. Measurement Truthfulness
 
-若没有执行 LUMI live benchmark：
+无 LUMI live benchmark 时必须保持：
 
 ```json
 {
@@ -104,36 +94,28 @@ shutdown    → 不可 route eligible
 }
 ```
 
-禁止：
-
-- 把厂商“fastest/frontier/studio quality”等营销/定位转成 LUMI 数值分数；
-- 根据聊天主观印象宣布 winner；
-- 在无商业 Key/预算时伪造 P50/P95 latency；
-- 把 preview model 当无回退的永久生产 primary。
+禁止把供应商 marketing/positioning 转成 LUMI 分数，也禁止在无 Key/预算时伪造延迟或质量排名。
 
 ## 6. Price Snapshot Contract
 
-每条价格保存 provider-native unit、USD 数值、官方 source、`observed_at` 和 `pricing_expires_at`。
-
-必须保留特殊价格语义，不能强行压平为单一数字：
+价格记录保留 provider-native unit、USD 值、官方 source、`observed_at`、`pricing_expires_at`。特殊语义不可压平成一个数字：
 
 ```text
-input / cached input / output token
+input/cached/output token
 context-length tier
 promotion expiry
-image token output
-per-megapixel image price
-per-image floor
+image output token
+per-megapixel/per-image
 per-video-second
 minimum generation charge
 multimodal embedding modality price
 ```
 
-v1 价格快照最多使用 30 天；到期后需要重新核验官方文档。
+v1 快照最长使用 30 天，到期必须重新核验。
 
 ## 7. Task Routes
 
-`docs/models/route-candidates.json` 当前定义 15 条候选路由：
+当前 15 条候选路由：
 
 ```text
 reasoning.director
@@ -153,49 +135,11 @@ embedding.text
 embedding.multimodal
 ```
 
-所有 `selected_primary = null`。
+所有 `selected_primary = null`。候选集合只是 benchmark 输入，不是最终 ranking。
 
-路由候选集不是 ranking 结果，只是 live benchmark 输入。
+## 8. Live Benchmark Contract
 
-## 8. Benchmark Profiles
-
-`evals/datasets/model-provider/suite.json` 定义：
-
-```text
-reasoning:
-  brief decomposition
-  long project planning
-  constraints
-  tool selection
-  repair decision
-
-vision / retrieval:
-  poster text extraction
-  layout geometry
-  multilingual read
-  asset/doc rerank
-
-image:
-  general prompt adherence
-  premium hero
-  typography / multilingual poster text
-  local edit
-  product/logo/QR protection
-  fast variants / cost throughput
-
-video:
-  storyboard adherence
-  identity consistency
-  motion
-  audio
-  duration/aspect
-  edit preservation
-
-embedding:
-  brand document retrieval
-  asset search
-  cross-modal retrieval
-```
+`evals/datasets/model-provider/suite.json` 定义 reasoning、vision/retrieval、image、video、embedding 的任务组。
 
 核心实测 dimensions：
 
@@ -208,20 +152,16 @@ cost_usd
 failure_rate
 ```
 
-## 9. Live Benchmark Safety
-
-NODE-07 live suite：
+NODE-07 保持：
 
 ```text
 execution_status = SPECIFIED_NOT_RUN
 live_policy = SKIPPED_WITHOUT_PROVIDER_KEY_AND_POSITIVE_BUDGET
 ```
 
-没有 provider key 和明确正数预算时，必须 `SKIPPED`，不能 PASS。
+没有 Provider Key 与明确正数预算时必须 `SKIPPED`，不能 PASS。
 
-## 10. Provider Adapter Contract for NODE-22
-
-统一调用流程：
+## 9. Provider Adapter Contract for NODE-22
 
 ```text
 resolve capability route
@@ -254,9 +194,9 @@ INSUFFICIENT_QUOTA
 UNKNOWN
 ```
 
-## 11. Runtime Seed Contract
+## 10. Runtime Seed Contract
 
-`config/model-registry.seed.json` 明确：
+`config/model-registry.seed.json` 规定：
 
 ```text
 source of truth = docs/models/providers/*.json
@@ -266,60 +206,70 @@ benchmark required before primary selection
 staleness = 30 days
 ```
 
-NODE-22/23 实施时将这些记录正规化进入 Model Gateway / Capability Registry，而不是把当前 JSON 当最终生产数据库。
+NODE-22/23 再把这些合同正规化进入 Model Gateway / Capability Registry。
 
-## 12. CI Contract
-
-新增：
+## 11. CI Contract
 
 ```bash
 make model-provider-validate
 ```
 
-Validator：`scripts/validate_model_provider_matrix.py`
+`scripts/validate_model_provider_matrix.py` 强制检查：
 
-它强制检查：
-
-- 五家 Provider 覆盖；
-- 官方 first-party source host；
-- 日期与 price expiry；
-- 28 model / 27 eligible；
-- lifecycle 计数；
-- reasoning/image/edit/video/embedding 能力覆盖；
+- 5 Provider / first-party source host；
+- 28 models / 27 route eligible；
+- 23 stable / 4 preview / 1 deprecated；
+- reasoning/image/edit/video/embedding 覆盖；
 - active candidate 必须有官方价格；
 - inactive lifecycle 不可 route eligible；
-- 未实测质量/延迟必须保持 `NOT_MEASURED`；
-- route candidate 必须存在且 eligible；
+- 未实测 quality/latency 必须为 `NOT_MEASURED`；
 - preview-only route 必须有 stable fallback；
-- `selected_primary` 在 live benchmark 前必须为 null；
-- 所有 15 route 都必须映射 benchmark group；
-- live benchmark 必须保持明确 SKIPPED policy。
+- live benchmark 前 `selected_primary` 必须为 null；
+- 15 route 全部映射 benchmark group；
+- live missing credentials/budget 为 SKIPPED contract。
 
-Validator 已接入 `scripts/ci-contracts`，并由 `evals/tests/test_model_provider_matrix_contract.py` 做 Python 回归测试。
+Validator 已接入 blocking `contracts` job，并由 `evals/tests/test_model_provider_matrix_contract.py` 做 Python 回归。
 
-## 13. Human-readable Matrix
+## 12. Clean Acceptance Evidence
 
-完整可读报告：
+Clean PR `#5` / CI `31654622745`：
 
-- `docs/models/MODEL-PROVIDER-MATRIX.md`
+```text
+frontend    PASS
+python      PASS — 19 tests; Pyright 0 errors / 0 warnings
+contracts   PASS
+integration PASS
+eval-smoke  PASS
+secret-scan PASS — run 31654622779
+dependency review PASS — run 31654622764
+```
 
-它记录当前模型族、任务候选集、生命周期、价格快照、Adapter 约束和刷新策略，但不会把尚未测量的数据伪装成排名。
+Registry validator exact contract：
 
-## 14. 验收标准
+```text
+providers=5 models=28 route_eligible=27
+lifecycle=stable:23, preview:4, deprecated:1
+official_sources=30 routes=15
+benchmark_status=NOT_MEASURED:28
+no provider winner selected before LUMI live benchmark
+```
 
-- [x] 覆盖 reasoning/image/video/embedding，并包含 image/video edit。
+详细证据见 `reports/nodes/NODE-07/acceptance.md`。
+
+## 13. 验收标准
+
+- [x] reasoning/image/video/embedding 与 edit 覆盖。
 - [x] 至少五家 Provider。
-- [x] 所有能力/价格/lifecycle 记录有时间戳和 first-party source。
-- [x] 能力和价格可独立演进。
-- [x] 建立 15 个任务级候选路由，而不是单一“最好模型”。
+- [x] 能力/价格/lifecycle 有时间戳和 first-party source。
+- [x] 建立 15 个任务级候选路由。
 - [x] preview lifecycle 有稳定回退规则。
 - [x] 无 live benchmark 时真实值为 `NOT_MEASURED`。
 - [x] Provider Adapter contract 可支持 NODE-22。
 - [x] Live suite 无 Key/预算时必须 SKIPPED。
 - [x] Registry validator 接入 CI contracts。
-- [ ] Implementation PR 完整 NODE-04/05/06 gates 全绿并归档。
+- [x] Implementation PR 完整 NODE-04/05/06 gates 全绿并归档。
 
-## 15. Definition of Done
+## 14. Definition of Done
 
 ```text
 provider source snapshot                 PASS
@@ -331,7 +281,8 @@ provider adapter contract               PASS
 unknowns explicitly NOT_MEASURED        PASS
 registry validator                      PASS
 CI contract integration                 PASS
-clean implementation PR validation      PENDING
+clean implementation PR validation      PASS
+implementation merged to main           PASS
 ```
 
 下一节点：NODE-08 Canvas Technology Spike。
