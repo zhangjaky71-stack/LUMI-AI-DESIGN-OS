@@ -37,6 +37,12 @@ from .errors import (
 from .expression import evaluate_expression, validate_expression
 from .loader import load_recipe, load_recipes, load_release_manifest
 from .registry import RecipeRegistry
+from .release import (
+    RecipeDefinitionValidator,
+    RecipeEvalEvidence,
+    RecipeEvalGate,
+    RecipePromotionManager,
+)
 
 __all__ = [
     "ApprovalPolicy",
@@ -53,10 +59,14 @@ __all__ = [
     "RecipeCycleError",
     "RecipeDefinition",
     "RecipeDefinitionInvalidError",
+    "RecipeDefinitionValidator",
     "RecipeDependencyError",
     "RecipeEngineError",
+    "RecipeEvalEvidence",
+    "RecipeEvalGate",
     "RecipeExpressionError",
     "RecipeNotFoundError",
+    "RecipePromotionManager",
     "RecipeProvenance",
     "RecipeReferenceError",
     "RecipeRegistry",
