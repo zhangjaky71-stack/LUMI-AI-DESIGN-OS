@@ -1,0 +1,10 @@
+[project]
+name = "lumi-domain"
+version = "0.0.0"
+description = "Renderer, persistence, transport and provider independent domain model for LUMI AI Design OS"
+requires-python = "==3.12.*"
+dependencies = []
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
