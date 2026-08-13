@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Annotated, cast
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import Header, Query, Request
@@ -65,7 +65,7 @@ def get_project_list_filter(
     q: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
 ) -> ProjectListFilter:
     return ProjectListFilter(
-        status=cast(object, status.value.upper()) if status is not None else None,  # type: ignore[arg-type]
+        status=status.value if status is not None else None,
         workspace_id=str(workspace_id) if workspace_id else None,
         created_by=str(created_by) if created_by else None,
         updated_after=updated_after,
