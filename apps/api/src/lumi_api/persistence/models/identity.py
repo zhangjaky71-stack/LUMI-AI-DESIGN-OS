@@ -18,6 +18,7 @@ class User(IdMixin, MutableTimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Organization(IdMixin, MutableTimestampMixin, Base):
@@ -134,5 +135,10 @@ class Session(IdMixin, CreatedAtMixin, Base):
         nullable=True,
     )
     token_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    csrf_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    user_agent_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ip_risk_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
