@@ -522,7 +522,7 @@ def _route_capabilities(name: str) -> tuple[Capability, ...]:
     if name.startswith("video."):
         return (Capability.VIDEO_TEXT_TO_VIDEO,)
     if name == "embedding.multimodal":
-        return (Capability.EMEDDING_MULTIMODAL,)  # type: ignore[attr-defined]
+        return (Capability.EMBEDDING_MULTIMODAL,)
     if name.startswith("embedding."):
         return (Capability.EMBEDDING_TEXT,)
     if name == "vision.ocr":
