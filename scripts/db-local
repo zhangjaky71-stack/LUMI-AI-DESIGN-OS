@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="$ROOT_DIR/infra/compose/.env"
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  cp "$ROOT_DIR/infra/compose/env.local.example" "$ENV_FILE"
+  echo "Created infra/compose/.env from LOCAL_ONLY example"
+fi
+
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
+export DATABASE_URL="postgresql+asyncpg://${POSTGRES_APP_USER}:${POSTGRES_APP_PASSWORD}@localhost:${POSTGRES_PORT}/${POSTGRES_DB}"
+export MIGRATION_DATABASE_URL="postgresql+asyncpg://${POSTGRES_MIGRATION_USER}:${POSTGRES_MIGRATION_PASSWORD}@localhost:${POSTGRES_PORT}/${POSTGRES_DB}"
+
+command="${1:-}"
+case "$command" in
+  upgrade)
+    exec uv run --package lumi-api alembic -c apps/api/alembic.ini upgrade head
+    ;;
+  downgrade-one)
+    exec uv run --package lumi-api alembic -c apps/api/alembic.ini downgrade -1
+    ;;
+  current)
+    exec uv run --package lumi-api alembic -c apps/api/alembic.ini current
+    ;;
+  seed)
+    exec uv run --package lumi-api python -m lumi_api.persistence.seed
+    ;;
+  *)
+    echo "Usage: scripts/db-local {upgrade|downgrade-one|current|seed}" >&2
+    exit 2
+    ;;
+esac
