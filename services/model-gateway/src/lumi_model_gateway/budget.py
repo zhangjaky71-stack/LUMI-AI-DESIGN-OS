@@ -21,18 +21,12 @@ class _RequestBudgetReservation:
         usage: Usage | None = None,
         provider_request_id: str | None = None,
     ) -> None:
-        del usage, provider_request_id
+        del actual, usage, provider_request_id
         if self.released:
             raise RuntimeError("MODEL_BUDGET_RESERVATION_RELEASED")
-        if self.request_limit is not None:
-            if actual.amount_usd is None:
-                raise BudgetExceededError(
-                    "actual cost is unknown under a hard request budget"
-                )
-            if actual.amount_usd > self.request_limit:
-                raise BudgetExceededError(
-                    f"actual cost {actual.amount_usd} exceeds request budget {self.request_limit}"
-                )
+        # Budget enforcement is pre-invocation. Once the provider accepted a paid
+        # operation, accounting must not erase the sunk cost because actual spend
+        # exceeded the estimate. Durable NODE-27 guards block subsequent spend.
         self.committed = True
 
     async def release(self, *, reason: str = "not_accepted") -> None:
