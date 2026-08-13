@@ -21,7 +21,13 @@ interface PixiContainer extends PixiDisplayObject {
 
 interface PixiGraphics extends PixiDisplayObject {
   rect(x: number, y: number, width: number, height: number): this;
-  roundRect(x: number, y: number, width: number, height: number, radius: number): this;
+  roundRect(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number,
+  ): this;
   fill(color: number): this;
 }
 
@@ -32,7 +38,10 @@ interface PixiText extends PixiDisplayObject {
 interface PixiApplicationLike {
   readonly canvas: HTMLCanvasElement;
   readonly stage: PixiContainer;
-  readonly renderer: { readonly name?: string; readonly type?: number | string };
+  readonly renderer: {
+    readonly name?: string;
+    readonly type?: number | string;
+  };
 }
 
 interface PixiNamespaceLike {
@@ -142,7 +151,10 @@ function rendererName(renderer: PixiApplicationLike["renderer"]): string {
   return "webgl-preferred";
 }
 
-function viewportSize(app: PixiApplicationLike): { width: number; height: number } {
+function viewportSize(app: PixiApplicationLike): {
+  width: number;
+  height: number;
+} {
   const rect = app.canvas.getBoundingClientRect();
   return {
     width: Math.max(480, Math.min(1280, rect.width || 960)),
@@ -284,17 +296,20 @@ async function measureVirtualizedText(
   frames: number,
 ): Promise<VirtualizedFrameMetric> {
   const { width, height } = viewportSize(app);
-  const regularNodes: SpikeNode[] = Array.from({ length: textCount }, (_, index) => ({
-    id: `text-${index}`,
-    kind: "text",
-    x: (index % 30) * 120,
-    y: Math.floor(index / 30) * 30,
-    width: 110,
-    height: 24,
-    rotation: 0,
-    zIndex: index,
-    text: `LUMI ${index} 中文 🧪`,
-  }));
+  const regularNodes: SpikeNode[] = Array.from(
+    { length: textCount },
+    (_, index) => ({
+      id: `text-${index}`,
+      kind: "text",
+      x: (index % 30) * 120,
+      y: Math.floor(index / 30) * 30,
+      width: 110,
+      height: 24,
+      rotation: 0,
+      zIndex: index,
+      text: `LUMI ${index} 中文 🧪`,
+    }),
+  );
   const regularPoolSize = poolSizeFor(regularNodes, width, height);
   const root = new pixi.Container();
   const regularPool: PixiText[] = [];
@@ -389,8 +404,12 @@ export async function runVirtualizedCanvasBenchmark(
   const pixi = pixiValue as PixiNamespaceLike;
   const app = appValue as PixiApplicationLike;
   const metrics: VirtualizedFrameMetric[] = [];
-  metrics.push(await measureVirtualizedShapes(pixi, app, "simple-2k", 2_000, 45));
-  metrics.push(await measureVirtualizedShapes(pixi, app, "simple-10k", 10_000, 30));
+  metrics.push(
+    await measureVirtualizedShapes(pixi, app, "simple-2k", 2_000, 45),
+  );
+  metrics.push(
+    await measureVirtualizedShapes(pixi, app, "simple-10k", 10_000, 30),
+  );
   metrics.push(await measureVirtualizedImages(pixi, app, 1_000, 20));
   metrics.push(await measureVirtualizedText(pixi, app, 1_000, 100, 16));
   metrics.push(await measureSelectedDrag(pixi, app, 500, 35));
