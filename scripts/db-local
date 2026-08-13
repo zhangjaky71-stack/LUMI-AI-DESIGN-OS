@@ -32,6 +32,9 @@ case "$command" in
   current)
     exec uv run --package lumi-api alembic -c apps/api/alembic.ini current
     ;;
+  schema-check)
+    exec uv run --package lumi-api alembic -c apps/api/alembic.ini check
+    ;;
   seed)
     exec uv run --package lumi-api python -m lumi_api.persistence.seed
     ;;
@@ -40,7 +43,7 @@ case "$command" in
     exec uv run pytest apps/api/tests/integration/test_database_persistence.py -q
     ;;
   *)
-    echo "Usage: scripts/db-local {upgrade|downgrade-one|downgrade-smoke|current|seed|integration-test}" >&2
+    echo "Usage: scripts/db-local {upgrade|downgrade-one|downgrade-smoke|current|schema-check|seed|integration-test}" >&2
     exit 2
     ;;
 esac
