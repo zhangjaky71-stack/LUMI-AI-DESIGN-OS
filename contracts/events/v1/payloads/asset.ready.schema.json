@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lumi:event:asset.ready:1",
+  "title": "asset.ready payload v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["asset_id", "kind"],
+  "properties": {
+    "asset_id": {"type": "string", "format": "uuid"},
+    "project_id": {"type": ["string", "null"], "format": "uuid"},
+    "kind": {"type": "string", "minLength": 1},
+    "mime_type": {"type": ["string", "null"]},
+    "checksum_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+  }
+}
