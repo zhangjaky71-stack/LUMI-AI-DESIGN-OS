@@ -33,6 +33,7 @@ src = [
   "apps/api/src",
   "apps/agent-runtime/src",
   "apps/worker-media/src",
+  "services/domain/src",
   "services/model-gateway/src",
   "services/tool-gateway/src",
   "services/sandbox-runtime/src",
@@ -51,6 +52,7 @@ known-first-party = [
   "lumi_api",
   "lumi_agent_runtime",
   "lumi_worker_media",
+  "lumi_domain",
   "lumi_model_gateway",
   "lumi_tool_gateway",
   "lumi_sandbox_runtime",
@@ -67,13 +69,15 @@ pythonVersion = "3.12"
 typeCheckingMode = "standard"
 include = ["apps", "services", "evals"]
 exclude = ["**/__pycache__", ".venv"]
+extraPaths = ["services/domain/src"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
-pythonpath = ["."]
+pythonpath = [".", "services/domain/src"]
 testpaths = [
   "apps/api/tests",
   "apps/agent-runtime/tests",
   "apps/worker-media/tests",
+  "services/domain/tests",
   "evals/tests",
 ]
