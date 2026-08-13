@@ -28,7 +28,7 @@ class ModelRegistryVersion(IdMixin, CreatedAtMixin, Base):
     __table_args__ = (
         UniqueConstraint("version", name="model_registry_versions_version_key"),
         UniqueConstraint("content_hash", name="model_registry_versions_content_hash_key"),
-        CheckConstraint("version > 0", name="model_registry_versions_version_check"),
+        CheckConstraint("version > 0", name="version"),
     )
 
     version: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -78,11 +78,11 @@ class ModelCapabilityClaim(IdMixin, CreatedAtMixin, Base):
         ),
         CheckConstraint(
             "support IN ('full','partial','none','unknown')",
-            name="model_capability_claim_support",
+            name="support",
         ),
         CheckConstraint(
             "confidence IN ('verified_docs','live_test','inferred')",
-            name="model_capability_claim_confidence",
+            name="confidence",
         ),
         Index(
             "ix_model_capability_claim_lookup",
@@ -109,12 +109,15 @@ class ModelCapabilityClaim(IdMixin, CreatedAtMixin, Base):
 class ModelPricingSnapshot(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "model_pricing_snapshots"
     __table_args__ = (
-        UniqueConstraint("price_snapshot_key", name="model_pricing_snapshots_price_snapshot_key_key"),
-        CheckConstraint("price >= 0", name="model_pricing_snapshots_price_check"),
-        CheckConstraint("currency ~ '^[A-Z]{3}$'", name="model_pricing_currency"),
+        UniqueConstraint(
+            "price_snapshot_key",
+            name="model_pricing_snapshots_price_snapshot_key_key",
+        ),
+        CheckConstraint("price >= 0", name="price"),
+        CheckConstraint("currency ~ '^[A-Z]{3}$'", name="currency"),
         CheckConstraint(
             "valid_until IS NULL OR valid_until > effective_from",
-            name="model_pricing_window",
+            name="window",
         ),
         Index("ix_model_pricing_lookup", "model_key", "effective_from", "valid_until"),
     )
@@ -147,17 +150,11 @@ class ModelBenchmarkScore(IdMixin, CreatedAtMixin, Base):
             "run_id",
             name="uq_model_benchmark_version_identity",
         ),
-        CheckConstraint(
-            "score >= 0 AND score <= 100",
-            name="model_benchmark_scores_score_check",
-        ),
-        CheckConstraint(
-            "sample_count > 0",
-            name="model_benchmark_scores_sample_count_check",
-        ),
+        CheckConstraint("score >= 0 AND score <= 100", name="score"),
+        CheckConstraint("sample_count > 0", name="sample_count"),
         CheckConstraint(
             "confidence IN ('verified_docs','live_test','inferred')",
-            name="model_benchmark_confidence",
+            name="confidence",
         ),
         Index("ix_model_benchmark_lookup", "model_key", "profile", "observed_at"),
     )
@@ -211,10 +208,10 @@ class OrganizationModelPolicyRecord(IdMixin, CreatedAtMixin, Base):
             "policy_version",
             name="uq_organization_model_policy_version",
         ),
-        CheckConstraint("policy_version > 0", name="organization_model_policies_policy_version_check"),
+        CheckConstraint("policy_version > 0", name="policy_version"),
         CheckConstraint(
             "effective_to IS NULL OR effective_to > effective_from",
-            name="organization_model_policy_window",
+            name="window",
         ),
         Index(
             "ix_org_model_policy_effective",
