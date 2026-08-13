@@ -7,6 +7,7 @@ on:
       - "infra/sandbox/**"
       - "scripts/validate_sandbox_runtime_contract.py"
       - "scripts/integration_sandbox_runtime.py"
+      - "scripts/integration_sandbox_docker_config.py"
       - "docs/runtime/SANDBOX-RUNTIME-V1.md"
       - "reports/nodes/NODE-21/**"
       - "pyproject.toml"
@@ -33,6 +34,7 @@ jobs:
           services/sandbox-runtime/tests
           scripts/validate_sandbox_runtime_contract.py
           scripts/integration_sandbox_runtime.py
+          scripts/integration_sandbox_docker_config.py
       - name: Static sandbox security contract
         run: python scripts/validate_sandbox_runtime_contract.py
       - name: Stdlib sandbox contract tests
@@ -64,6 +66,7 @@ jobs:
           services/sandbox-runtime
           scripts/validate_sandbox_runtime_contract.py
           scripts/integration_sandbox_runtime.py
+          scripts/integration_sandbox_docker_config.py
       - name: Sandbox Pyright gate
         run: >-
           uv run pyright
@@ -92,6 +95,10 @@ jobs:
           docker run --rm "$LUMI_SANDBOX_IMAGE" ffmpeg -version | head -1
           docker run --rm "$LUMI_SANDBOX_IMAGE" convert -version | head -1
           docker run --rm "$LUMI_SANDBOX_IMAGE" fc-list | head -1
+      - name: Inspect effective Docker hardening
+        run: >-
+          PYTHONPATH=services/sandbox-runtime/src
+          python scripts/integration_sandbox_docker_config.py
       - name: Docker security and functional acceptance
         run: >-
           PYTHONPATH=services/sandbox-runtime/src
