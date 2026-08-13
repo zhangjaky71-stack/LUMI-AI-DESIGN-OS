@@ -22,7 +22,10 @@ from lumi_tool_gateway.native import (
     WebSearchAdapter,
 )
 from lumi_tool_gateway.ssrf import SSRFPolicy
-from lumi_tool_gateway.testing import MemoryIdempotentSideEffectGuard, MemoryResultOffloader
+from lumi_tool_gateway.testing import (
+    MemoryIdempotentSideEffectGuard,
+    MemoryResultOffloader,
+)
 
 
 class SearchBackend:
@@ -105,10 +108,18 @@ class DerivedAssetHandler:
         )
 
 
+async def project_query_handler(definition, request) -> ToolAdapterOutput:
+    del definition
+    return ToolAdapterOutput(
+        data={"query": request.arguments["query"], "rows": []},
+        summary="Tenant-scoped domain query fixture.",
+    )
+
+
 def permission_context(
     organization_id: UUID,
     *,
-    parent_patterns: tuple[str, ...] = (),
+    parent_patterns: tuple[str, ...] | None = None,
 ) -> ToolPermissionContext:
     registry = build_p0_registry()
     permissions = frozenset(
@@ -120,7 +131,14 @@ def permission_context(
         organization_id=organization_id,
         actor_id="integration-user",
         granted_permissions=permissions,
-        agent_allow_patterns=("web.*", "asset.*", "project.*", "artifact.*", "sandbox.*", "media.*"),
+        agent_allow_patterns=(
+            "web.*",
+            "asset.*",
+            "project.*",
+            "artifact.*",
+            "sandbox.*",
+            "media.*",
+        ),
         parent_allow_patterns=parent_patterns,
     )
 
@@ -131,7 +149,7 @@ def make_request(
     *,
     organization_id: UUID,
     operation_key: str | None = None,
-    parent_patterns: tuple[str, ...] = (),
+    parent_patterns: tuple[str, ...] | None = None,
     tool_call_id: UUID | None = None,
     task_id: UUID | None = None,
 ) -> ToolRequest:
@@ -169,14 +187,7 @@ async def main_async() -> None:
             ssrf_policy=SSRFPolicy(resolver=Resolver()),
         ),
         "asset.write-derived@1.0.0": NativeFunctionAdapter(asset_handler),
-        "project.query@1.0.0": NativeFunctionAdapter(
-            lambda definition, request: _async_output(
-                ToolAdapterOutput(
-                    data={"query": request.arguments["query"], "rows": []},
-                    summary="Tenant-scoped domain query fixture.",
-                )
-            )
-        ),
+        "project.query@1.0.0": NativeFunctionAdapter(project_query_handler),
         "sandbox.execute@1.0.0": SandboxExecuteAdapter(sandbox_executor),
     }
     guard = MemoryIdempotentSideEffectGuard()
@@ -298,16 +309,15 @@ async def main_async() -> None:
     assert guard.invocations == 2
     assert guard.replays == 1
     assert audit.records
-    assert all(record.organization_id == str(organization_id) for record in audit.records)
+    assert all(
+        record.organization_id == str(organization_id)
+        for record in audit.records
+    )
     print(
         "NODE-25 Tool Gateway integration: PASS "
         f"audit={len(audit.records)} offloaded={len(offloader.objects)} "
         f"side_effect_invocations={guard.invocations} replays={guard.replays}"
     )
-
-
-async def _async_output(output: ToolAdapterOutput) -> ToolAdapterOutput:
-    return output
 
 
 def main() -> int:
