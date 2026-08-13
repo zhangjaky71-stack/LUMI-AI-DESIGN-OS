@@ -23,16 +23,14 @@ class MCPServerRegistry:
     ) -> None:
         self.ssrf_policy = ssrf_policy or SSRFPolicy()
         self._servers: dict[str, MCPServerDefinition] = {}
-        self._validated_targets: dict[str, ValidatedTarget] = {}
         for definition in definitions:
             self.register(definition)
 
     def register(self, definition: MCPServerDefinition) -> None:
         if definition.server_id in self._servers:
             raise ValueError(f"MCP_SERVER_DUPLICATE:{definition.server_id}")
-        target = self.ssrf_policy.validate(definition.base_url)
+        self.ssrf_policy.validate(definition.base_url)
         self._servers[definition.server_id] = definition
-        self._validated_targets[definition.server_id] = target
 
     def resolve(
         self,
@@ -55,14 +53,16 @@ class MCPServerRegistry:
             raise MCPPolicyDeniedError("MCP_SERVER_TENANT_DENIED")
         return definition
 
-    def validated_target(
+    def runtime_target(
         self,
         server_id: str,
         *,
         organization_id: UUID,
     ) -> ValidatedTarget:
-        self.resolve(server_id, organization_id=organization_id)
-        return self._validated_targets[server_id]
+        definition = self.resolve(server_id, organization_id=organization_id)
+        # DNS/IP policy is intentionally re-evaluated at request time rather than
+        # trusting the address observed when an administrator registered the server.
+        return self.ssrf_policy.validate(definition.base_url)
 
     def negotiate_protocol(
         self,
