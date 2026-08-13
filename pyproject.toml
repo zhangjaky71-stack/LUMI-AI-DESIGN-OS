@@ -81,11 +81,22 @@ pythonVersion = "3.12"
 typeCheckingMode = "standard"
 include = ["apps", "services", "evals"]
 exclude = ["**/__pycache__", ".venv"]
-extraPaths = ["services/auth/src", "services/domain/src", "services/project-core/src"]
+extraPaths = [
+  "services/auth/src",
+  "services/domain/src",
+  "services/project-core/src",
+  "services/sandbox-runtime/src",
+]
 
 [tool.pytest.ini_options]
 addopts = "-q"
-pythonpath = [".", "services/auth/src", "services/domain/src", "services/project-core/src"]
+pythonpath = [
+  ".",
+  "services/auth/src",
+  "services/domain/src",
+  "services/project-core/src",
+  "services/sandbox-runtime/src",
+]
 testpaths = [
   "apps/api/tests",
   "apps/agent-runtime/tests",
@@ -93,5 +104,6 @@ testpaths = [
   "services/auth/tests",
   "services/domain/tests",
   "services/project-core/tests",
+  "services/sandbox-runtime/tests",
   "evals/tests",
 ]
