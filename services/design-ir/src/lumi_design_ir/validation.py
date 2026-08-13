@@ -25,6 +25,21 @@ NODE_KINDS = frozenset(
     }
 )
 
+EPHEMERAL_METADATA_KEYS = frozenset(
+    {
+        "hover",
+        "selection",
+        "selection_marquee",
+        "open_panel",
+        "cursor",
+        "cursor_location",
+        "viewport",
+        "camera",
+        "dom_element_id",
+        "pixi_texture_id",
+    }
+)
+
 
 def _require_mapping(value: Any, label: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
@@ -41,6 +56,22 @@ def _walk_finite(value: Any, path: str = "$") -> None:
     elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         for index, item in enumerate(value):
             _walk_finite(item, f"{path}[{index}]")
+
+
+def _reject_ephemeral_metadata(value: Any, path: str = "$") -> None:
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            next_path = f"{path}.{key}"
+            if key == "metadata" and isinstance(item, Mapping):
+                forbidden = sorted(EPHEMERAL_METADATA_KEYS.intersection(item))
+                if forbidden:
+                    raise StructuralValidationError(
+                        f"ephemeral UI metadata is not persistable at {next_path}: {forbidden}"
+                    )
+            _reject_ephemeral_metadata(item, next_path)
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        for index, item in enumerate(value):
+            _reject_ephemeral_metadata(item, f"{path}[{index}]")
 
 
 def _resource_ids(resources: Mapping[str, Any], bucket: str) -> set[str]:
@@ -68,6 +99,7 @@ def validate_document(document: Mapping[str, Any]) -> None:
         raise StructuralValidationError("root node parent_id must be null")
 
     _walk_finite(document)
+    _reject_ephemeral_metadata(document)
 
     parents: dict[str, str | None] = {}
     children_map: dict[str, tuple[str, ...]] = {}
