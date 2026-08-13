@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import TypeVar
 
 from .errors import InvalidTransition
 
@@ -41,8 +40,6 @@ class ArtifactVersionStatus(StrEnum):
     APPROVED = "approved"
     REJECTED = "rejected"
 
-
-E = TypeVar("E", bound=StrEnum)
 
 _PROJECT_TRANSITIONS = {
     ProjectStatus.DRAFT: frozenset({ProjectStatus.ACTIVE, ProjectStatus.ARCHIVED}),
@@ -103,25 +100,27 @@ _ARTIFACT_VERSION_TRANSITIONS = {
 }
 
 
-def _transition(current: E, target: E, transitions: dict[E, frozenset[E]]) -> E:
-    if target not in transitions[current]:
+def transition_project(current: ProjectStatus, target: ProjectStatus) -> ProjectStatus:
+    if target not in _PROJECT_TRANSITIONS[current]:
         raise InvalidTransition(f"cannot transition {current.value} -> {target.value}")
     return target
 
 
-def transition_project(current: ProjectStatus, target: ProjectStatus) -> ProjectStatus:
-    return _transition(current, target, _PROJECT_TRANSITIONS)
-
-
 def transition_agent_run(current: AgentRunStatus, target: AgentRunStatus) -> AgentRunStatus:
-    return _transition(current, target, _AGENT_RUN_TRANSITIONS)
+    if target not in _AGENT_RUN_TRANSITIONS[current]:
+        raise InvalidTransition(f"cannot transition {current.value} -> {target.value}")
+    return target
 
 
 def transition_task(current: TaskStatus, target: TaskStatus) -> TaskStatus:
-    return _transition(current, target, _TASK_TRANSITIONS)
+    if target not in _TASK_TRANSITIONS[current]:
+        raise InvalidTransition(f"cannot transition {current.value} -> {target.value}")
+    return target
 
 
 def transition_artifact_version(
     current: ArtifactVersionStatus, target: ArtifactVersionStatus
 ) -> ArtifactVersionStatus:
-    return _transition(current, target, _ARTIFACT_VERSION_TRANSITIONS)
+    if target not in _ARTIFACT_VERSION_TRANSITIONS[current]:
+        raise InvalidTransition(f"cannot transition {current.value} -> {target.value}")
+    return target
