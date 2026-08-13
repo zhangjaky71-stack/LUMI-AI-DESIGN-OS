@@ -9,7 +9,6 @@ from uuid import uuid4
 
 from lumi_model_gateway import (
     Capability,
-    CapabilityClaim,
     EvidenceConfidence,
     InMemoryCapabilityRegistry,
     InMemoryProviderHealthRegistry,
@@ -37,12 +36,25 @@ class CapabilityRegistryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.snapshot.source_registry_version, "1.0.0")
         self.assertEqual(self.snapshot.benchmarks, ())
         self.assertEqual(
-            self.snapshot.support("openai:gpt-image-2", Capability.IMAGE_GENERATE),
+            self.snapshot.support(
+                "openai:gpt-image-2",
+                Capability.IMAGE_GENERATE,
+            ),
             SupportLevel.FULL,
         )
         self.assertEqual(
-            self.snapshot.support("openai:gpt-image-2", Capability.OCR_DOCUMENT),
+            self.snapshot.support(
+                "openai:gpt-image-2",
+                Capability.OCR_DOCUMENT,
+            ),
             SupportLevel.UNKNOWN,
+        )
+        self.assertEqual(
+            self.snapshot.support(
+                "google:gemini-embedding-2",
+                Capability.EMBEDDING_MULTIMODAL,
+            ),
+            SupportLevel.FULL,
         )
 
     def test_unknown_and_partial_are_not_treated_as_full(self) -> None:
@@ -59,7 +71,10 @@ class CapabilityRegistryTests(unittest.IsolatedAsyncioTestCase):
         changed = replace(self.snapshot, capability_claims=claims)
         self.assertNotIn(
             key,
-            {item.model_key for item in changed.list_models(Capability.IMAGE_GENERATE)},
+            {
+                item.model_key
+                for item in changed.list_models(Capability.IMAGE_GENERATE)
+            },
         )
         self.assertIn(
             key,
@@ -86,6 +101,14 @@ class CapabilityRegistryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(expired, ())
         self.assertTrue(all(item.currency == "USD" for item in active))
 
+    def test_generic_native_usd_prices_are_preserved(self) -> None:
+        prices = self.snapshot.pricing_at(
+            "runway:gen4.5",
+            datetime(2026, 8, 14, tzinfo=UTC),
+        )
+        self.assertTrue(any(item.unit == "video_second:native" for item in prices))
+        self.assertTrue(any(item.price == Decimal("0.12") for item in prices))
+
     def test_org_policy_filters_provider_without_mutating_global_snapshot(self) -> None:
         organization_id = uuid4()
         policy = RegistryOrganizationPolicy(
@@ -102,7 +125,10 @@ class CapabilityRegistryTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("openai", {item.provider for item in models})
         self.assertIn(
             "openai",
-            {item.provider for item in self.snapshot.list_models(Capability.LLM_REASONING)},
+            {
+                item.provider
+                for item in self.snapshot.list_models(Capability.LLM_REASONING)
+            },
         )
 
     def test_benchmark_history_selects_latest_profile_run(self) -> None:
@@ -128,7 +154,13 @@ class CapabilityRegistryTests(unittest.IsolatedAsyncioTestCase):
         latest = snapshot.benchmark("openai:gpt-5.6-sol", "planning")
         assert latest is not None
         self.assertEqual(latest.run_id, "run-2")
-        self.assertEqual(snapshot.quality_score("openai:gpt-5.6-sol", Capability.LLM_REASONING), 84)
+        self.assertEqual(
+            snapshot.quality_score(
+                "openai:gpt-5.6-sol",
+                Capability.LLM_REASONING,
+            ),
+            84,
+        )
 
     def test_cache_activation_does_not_mutate_captured_request_snapshot(self) -> None:
         registry = InMemoryCapabilityRegistry(self.snapshot)
@@ -166,7 +198,9 @@ class CapabilityRegistryTests(unittest.IsolatedAsyncioTestCase):
         decision = await router.route(request)
         self.assertEqual(decision.candidates[0].model, "gpt-5.6-sol")
         reasons = decision.candidates[0].reason_codes
-        self.assertTrue(any(item.startswith("REGISTRY_SNAPSHOT:") for item in reasons))
+        self.assertTrue(
+            any(item.startswith("REGISTRY_SNAPSHOT:") for item in reasons)
+        )
         self.assertIn("REGISTRY_VERSION:1", reasons)
 
         claims = tuple(
