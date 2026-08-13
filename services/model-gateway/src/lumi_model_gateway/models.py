@@ -68,6 +68,8 @@ class ModelRequest:
     request_id: UUID = field(default_factory=uuid4)
     project_id: UUID | None = None
     task_id: UUID | None = None
+    agent_run_id: UUID | None = None
+    generation_id: UUID | None = None
     quality_profile: QualityProfile = QualityProfile.BALANCED
     latency_profile: LatencyProfile = LatencyProfile.INTERACTIVE
     budget_limit_usd: Decimal | None = None
@@ -78,6 +80,8 @@ class ModelRequest:
     trace_id: str | None = None
 
     def __post_init__(self) -> None:
+        if isinstance(self.budget_limit_usd, float):
+            raise ValueError("MODEL_BUDGET_FLOAT_FORBIDDEN")
         if self.budget_limit_usd is not None and self.budget_limit_usd < 0:
             raise ValueError("MODEL_BUDGET_LIMIT_INVALID")
         if len(self.reference_assets) > 32:
@@ -112,6 +116,8 @@ class ModelRequest:
             "operation_id": str(self.operation_id),
             "project_id": str(self.project_id) if self.project_id else None,
             "task_id": str(self.task_id) if self.task_id else None,
+            "agent_run_id": str(self.agent_run_id) if self.agent_run_id else None,
+            "generation_id": str(self.generation_id) if self.generation_id else None,
             "capability": self.capability.value,
             "quality_profile": self.quality_profile.value,
             "latency_profile": self.latency_profile.value,
@@ -169,6 +175,22 @@ class CostEstimate:
     price_snapshot_id: str | None = None
     detail: dict[str, Decimal | int | str] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if isinstance(self.amount_usd, float):
+            raise ValueError("MODEL_COST_FLOAT_FORBIDDEN")
+        if self.amount_usd is not None:
+            if not self.amount_usd.is_finite() or self.amount_usd < 0:
+                raise ValueError("MODEL_COST_AMOUNT_INVALID")
+        if self.price_snapshot_id is not None and len(self.price_snapshot_id) > 128:
+            raise ValueError("MODEL_PRICE_SNAPSHOT_INVALID")
+        for key, value in self.detail.items():
+            if not key or len(key) > 128:
+                raise ValueError("MODEL_COST_DETAIL_KEY_INVALID")
+            if isinstance(value, float):
+                raise ValueError("MODEL_COST_DETAIL_FLOAT_FORBIDDEN")
+            if isinstance(value, Decimal) and not value.is_finite():
+                raise ValueError("MODEL_COST_DETAIL_NON_FINITE")
+
 
 @dataclass(frozen=True, slots=True)
 class Usage:
@@ -180,6 +202,25 @@ class Usage:
     image_output_tokens: int | None = None
     seconds: Decimal | None = None
     units: dict[str, Decimal] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for value in (
+            self.input_tokens,
+            self.output_tokens,
+            self.total_tokens,
+            self.cached_input_tokens,
+            self.image_input_tokens,
+            self.image_output_tokens,
+        ):
+            if value is not None and value < 0:
+                raise ValueError("MODEL_USAGE_NEGATIVE")
+        if self.seconds is not None and (not self.seconds.is_finite() or self.seconds < 0):
+            raise ValueError("MODEL_USAGE_SECONDS_INVALID")
+        for key, value in self.units.items():
+            if not key or len(key) > 100:
+                raise ValueError("MODEL_USAGE_UNIT_KEY_INVALID")
+            if not value.is_finite() or value < 0:
+                raise ValueError("MODEL_USAGE_UNIT_VALUE_INVALID")
 
 
 @dataclass(frozen=True, slots=True)
@@ -272,6 +313,11 @@ class TelemetryEvent:
     error_category: str | None
     semantic_hash: str
     trace_id: str | None
+    project_id: UUID | None = None
+    task_id: UUID | None = None
+    agent_run_id: UUID | None = None
+    generation_id: UUID | None = None
+    provider_request_id: str | None = None
 
 
 def quality_threshold(profile: QualityProfile) -> int:
