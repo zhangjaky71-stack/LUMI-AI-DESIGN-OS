@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"DesignOutput","type":"object","properties":{"artifact_refs":{"type":"array","items":{"type":"string"}},"design_spec":{"type":"object"},"variants":{"type":"array","items":{"type":"object"}},"verification":{"type":"object"}},"additionalProperties":true}
