@@ -69,6 +69,7 @@ pythonVersion = "3.12"
 typeCheckingMode = "standard"
 include = ["apps", "services", "evals"]
 exclude = ["**/__pycache__", ".venv"]
+extraPaths = ["services/domain/src"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
