@@ -27,6 +27,7 @@ from lumi_domain import (
     Task,
     TaskStatus,
     new_uuid7,
+    normalize_provider_error,
     uuid7_timestamp_ms,
 )
 from lumi_domain.invariants import (
@@ -124,6 +125,11 @@ def test_asset_storage_owner_must_match_tenant() -> None:
         )
 
 
+def test_storage_reference_requires_checksum() -> None:
+    with pytest.raises(ValueError, match="sha256"):
+        StorageRef("assets", "a.png", "missing-checksum", new_uuid7())
+
+
 def test_tenant_membership_is_required_before_access() -> None:
     organization_id = new_uuid7()
     require_tenant_membership(
@@ -159,7 +165,7 @@ def test_generation_enforces_paid_operation_identity_itself() -> None:
 def test_cost_entry_is_immutable_and_adjustments_are_new_ledger_entries() -> None:
     original = CostEntry(new_uuid7(), Money(Decimal("10.00"), "USD"), "provider_cost")
     with pytest.raises(FrozenInstanceError):
-        original.category = "mutated"  # type: ignore[misc]
+        setattr(original, "category", "mutated")
     reversal = original.reversal(reason="provider refund")
     assert reversal.id != original.id
     assert reversal.reverses_entry_id == original.id
@@ -169,9 +175,22 @@ def test_cost_entry_is_immutable_and_adjustments_are_new_ledger_entries() -> Non
     assert adjustment.amount.amount == Decimal("2.50")
 
 
-def test_provider_errors_are_domain_values_not_provider_exceptions() -> None:
-    assert ProviderErrorCode.RATE_LIMITED.value == "rate_limited"
-    assert ProviderErrorCode.SAFETY_BLOCK.value == "safety_block"
+def test_provider_errors_are_normalized_without_provider_sdk_types() -> None:
+    rate_limited = normalize_provider_error(
+        provider="example",
+        status_code=429,
+        provider_code="rate_limit_exceeded",
+    )
+    assert rate_limited.code is ProviderErrorCode.RATE_LIMITED
+    assert rate_limited.retryable is True
+
+    safety = normalize_provider_error(provider="example", provider_code="content_filter")
+    assert safety.code is ProviderErrorCode.SAFETY_BLOCK
+    assert safety.retryable is False
+
+    unavailable = normalize_provider_error(provider="example", status_code=503)
+    assert unavailable.code is ProviderErrorCode.UNAVAILABLE
+    assert unavailable.retryable is True
 
 
 def test_domain_package_has_no_framework_or_provider_sdk_imports() -> None:
