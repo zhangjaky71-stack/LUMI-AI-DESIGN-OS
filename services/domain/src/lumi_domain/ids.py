@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import secrets
 import time
-from typing import TypeAlias
 from uuid import UUID
 
-DomainId: TypeAlias = UUID
+type DomainId = UUID
 
 
 def new_uuid7(*, unix_ms: int | None = None) -> DomainId:
-    """Create an RFC 9562 UUIDv7 without depending on persistence or a third-party package."""
+    """Create an RFC 9562 UUIDv7 without persistence or third-party dependencies."""
     timestamp_ms = int(time.time_ns() // 1_000_000 if unix_ms is None else unix_ms)
     if not 0 <= timestamp_ms < 1 << 48:
         raise ValueError("UUIDv7 timestamp must fit in 48 bits")
