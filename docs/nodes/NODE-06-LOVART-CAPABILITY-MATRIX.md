@@ -1,7 +1,10 @@
 # NODE-06 — Lovart Capability Matrix
 
 > Phase: 0 Benchmark Before Build  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **VALIDATING**  
+> Implementation Status: **VALIDATING**  
+> Implementation Branch: `node-06-lovart-capability-matrix`  
+> Acceptance Report: `reports/nodes/NODE-06/acceptance.md`  
 > Priority: P0  
 > Depends on: NODE-05  
 > Produces: 合法、可复验的竞品能力基准与 LUMI 验收矩阵
@@ -12,217 +15,214 @@
 
 将“做一个类似 Lovart.ai 的产品级系统”从模糊目标转化为可测试能力列表。只研究公开产品行为、公开文档和公开营销能力，不复制其专有代码、模型权重、商标、视觉资产或未公开实现。
 
-## 2. 公开基准范围
+NODE-06 是**产品能力合同**，不是“已经实现这些能力”的声明。每个 `PARITY` 项必须在未来 owning Node 中获得可执行验收证据，才能从 `PLANNED` 升级为 `COMPLETE`。
 
-截至 Architecture V2 规划期，Lovart 官方公开产品重点包括：
+## 2. 2026-08-12/13 官方复验后的公开基准范围
 
-- 自然语言 Brief 到完成资产的 Agent 工作流；
-- 自动选择不同图像/视频模型；
-- Infinite / ChatCanvas 类统一工作区；
-- Touch Edit / 局部修改；
-- Brand Kit 与品牌一致性；
-- 图片、视频、营销套件等多类输出；
-- 多尺寸/批量变体；
-- 多格式导出；
-- Autonomous 与 Guided collaboration 两种交互方式；
-- 项目/版本/Canvas 上的持续迭代。
+当前官方证据确认或官方营销材料声称的重点包括：
 
-实现阶段必须重新通过官方网页/文档核验当日产品能力，并在矩阵中记录 `observed_at`。
+- 自然语言 Brief 到完成资产；
+- Web Search、Thinking/Fast Mode、Chat History；
+- 自动/手动模型选择、`@` 严格模型锁定、直连 Image/Video Generator；
+- 内置多步骤 Skills 与从成功对话生成 Custom Skills；
+- Infinite Canvas、Layer、对象历史、Generated Files、Mini Map；
+- Touch Edit / 精确局部修改 / Quick AI Editing / Multi-Angles；
+- Brand Kit、品牌手册解析、项目级/单次应用；
+- 图片、视频、批量变体、Mockup、多尺寸适配；
+- PNG/JPEG/MP4/PDF/PPTX/HTML/SVG/PSD 导出；
+- Projects、资产复用、聊天历史、社区发布；
+- 官方营销材料中的版本比较/恢复/分支、团队评审/审批；
+- Credits、订阅、Top-up、额度规则与商业使用条款。
 
-## 3. Matrix Schema
+证据目录：`docs/product/lovart-evidence-sources.json`。
 
-```yaml
-capability_id: CAP-CANVAS-001
-category: Canvas
-name: Infinite canvas
-source_type: official_docs
-source_url: "..."
-observed_at: 2026-08-12
-competitor_status: confirmed
-lumi_target: parity
-lumi_phase: 7
-acceptance_suite: canvas-infinite-v1
-notes: ""
-```
+## 3. Matrix Contract
 
-## 4. 能力类别
-
-### A. Agent / Workflow
+机器可读矩阵按七大类拆分：
 
 ```text
-A01 Natural-language brief
-A02 Research before design
-A03 Autonomous planning
-A04 Guided mode
-A05 Multi-step project execution
-A06 Task progress visibility
-A07 Continue/refine conversation
-A08 Model/tool auto-selection
+docs/product/capabilities/
+├─ A-agent-workflow.json
+├─ B-canvas-editing.json
+├─ C-generation.json
+├─ D-brand.json
+├─ E-production-export.json
+├─ F-project-collaboration.json
+└─ G-platform-saas.json
 ```
 
-### B. Canvas / Editing
+每个 capability 至少：
+
+```json
+{
+  "capability_id": "B10",
+  "category": "Canvas / Editing",
+  "name": "Semantic local Touch Edit without manual mask",
+  "competitor_status": "confirmed",
+  "lumi_target": "PARITY",
+  "owning_nodes": ["NODE-47", "NODE-55"],
+  "acceptance_case": "PARITY-B10",
+  "evidence": [{"source_id": "SRC-TOUCH"}],
+  "observed_at": "2026-08-12",
+  "lumi_status": "PLANNED",
+  "gap": "OPEN"
+}
+```
+
+## 4. Snapshot v1.0.0
 
 ```text
-B01 Infinite canvas
-B02 Multi-artifact workspace
-B03 Drag/select/resize/rotate
-B04 Layers
-B05 Local/touch editing
-B06 Text editing
-B07 Layout editing
-B08 Version comparison
-B09 Zoom/pan/navigation
-B10 Reference assets on canvas
+7 categories
+67 atomic capabilities
+56 Lovart confirmed
+9 Lovart confirmed_marketing
+2 Lovart not_confirmed
+56 LUMI PARITY
+7 LUMI SUPERSET
+4 LUMI DEFER
+56 product-parity acceptance specs
 ```
 
-### C. Generation
-
-```text
-C01 Text/image generation
-C02 Image editing
-C03 Product scene generation
-C04 Video generation
-C05 Variants
-C06 Resize/adaptation
-C07 Mockup workflow
-C08 Mixed-model routing
-```
-
-### D. Brand
-
-```text
-D01 Brand asset upload
-D02 Colors
-D03 Fonts
-D04 Logo rules
-D05 Tone/style memory
-D06 On-brand generation
-D07 Cross-surface consistency
-```
-
-### E. Production / Export
-
-```text
-E01 High-res export
-E02 PNG/JPEG/WebP
-E03 SVG where structurally possible
-E04 PDF
-E05 Print settings/bleed where implemented
-E06 Layered/editable project export where feasible
-E07 Batch export
-```
-
-### F. Project / Collaboration
-
-```text
-F01 Projects
-F02 Asset organization
-F03 History
-F04 Team sharing
-F05 Comment/review
-F06 Approval
-```
-
-### G. Platform / SaaS
-
-```text
-G01 Account/workspace
-G02 Credits/usage
-G03 Billing
-G04 Reliability/recovery
-G05 Safety/rights metadata
-```
+`confirmed_marketing` 代表官方 Lovart feature/tool/blog 页面存在公开声明，但当前核心 docs 未提供同等操作细节。`not_confirmed` 仅表示本轮官方资料未找到合格公开证据，不推断竞争对手内部是否存在该能力。
 
 ## 5. Target Labels
 
-每项能力必须标：
-
 ```text
-PARITY      = LUMI 必须达到公开基准
-SUPERSET    = LUMI 目标更强
-DEFER       = 产品级系统不影响首发，可 P1/P2
-OUT-OF-SCOPE= 不符合 LUMI 战略或法律/成本约束
+PARITY       = LUMI 必须达到公开基准，并绑定 product-parity case
+SUPERSET     = LUMI 明确做得更强，由 owning Node 的专门验收证明
+DEFER        = 不影响首发核心验收，后移到 P1/P2
+OUT-OF-SCOPE = 不符合 LUMI 战略、法律或成本约束
 ```
 
-## 6. LUMI 重点 SUPERSET
+## 6. LUMI SUPERSET
 
-LUMI 不仅做表面功能对照，以下设计为自有工程优势：
+当前 v1.0.0 的 7 个 SUPERSET：
 
-- Design IR / DSL 可版本化；
-- Constraint Engine 机器级“不要动”；
-- Artifact/Provenance Graph；
-- Benchmark Release Gate；
-- Model Gateway 可插拔；
-- Tool/MCP Gateway；
-- 可审计 Cost Ledger；
-- Agent/Skill/Recipe Registry；
-- Sandbox + Side Effect 幂等执行。
+1. A10 — Versioned Skill Registry；
+2. B06 — Artifact/Object immutable history + provenance；
+3. B12 — Deterministic non-destructive edit branch/restore；
+4. F04 — Version-bound compare/fork/restore；
+5. G04 — Artifact-level rights governance；
+6. G07 — Provenance / audit lineage；
+7. G08 — Durable workflow recovery / resumable execution。
 
-## 7. 验收场景映射
+这些目标依赖 NODE-15、20、28、30、31、42、59、65、68 等后续工程节点。
 
-每项 parity 能力必须至少映射一个 test/eval case，例如：
+## 7. Acceptance Mapping
+
+所有 56 个 `PARITY` capability 必须与一个且仅一个验收 case 一一对应：
 
 ```text
-Touch Edit
-→ fixture: poster-with-product-logo-qr
-→ command: 只把背景改成黑色
-→ expected:
-   product identity unchanged
-   logo unchanged
-   QR geometry unchanged
-   background changed
+evals/datasets/product-parity/v1/
+├─ cases-A.json
+├─ cases-B.json
+├─ cases-C.json
+├─ cases-D.json
+├─ cases-E.json
+├─ cases-F.json
+└─ cases-G.json
+```
+
+NODE-06 只生成 `SPECIFIED_NOT_RUN` acceptance spec。owning Node 实现时再补真实 fixture、runner、grader、baseline/candidate 结果。
+
+高信号场景：
+
+```text
+PARITY-B10
+command:
+  只把海报背景改成黑色；产品、Logo、二维码位置与尺寸必须保持不变。
+expected:
+  background changed
+  product identity unchanged
+  logo unchanged
+  QR geometry unchanged
 ```
 
 ## 8. Evidence 标准
 
-证据优先级：
+优先级：
 
-1. 官方 docs；
-2. 官方 features/product page；
-3. 官方发布说明；
-4. 产品公开可操作 UI 观察；
-5. 二手评测仅作为补充。
+1. official docs / statement / changelog；
+2. official feature / tool page；
+3. official blog / product update。
 
-禁止仅根据 SEO 转载文章认定功能已存在。
+本节点不使用第三方 SEO 转载文章作为能力确认依据。证据 URL、tier、观察日期统一保存在 source catalog，并由 validator 约束必须属于 `https://www.lovart.ai/`。
 
 ## 9. Gap Report
 
-矩阵生成：
-
-```text
-Confirmed competitor capability
-       ↓
-LUMI target
-       ↓
-Current implementation status
-       ↓
-Gap
-       ↓
-Owning NODE
-```
-
-输出至少：
+人类可读完整矩阵：
 
 - `docs/product/COMPETITOR-CAPABILITY-MATRIX.md`
-- `evals/datasets/product-parity/*.yaml`
 
-## 10. 验收标准
+机器可读 source/matrix/cases：
 
-- [ ] 至少覆盖 A～G 七大类。
-- [ ] 每个公开竞争能力有来源和观察日期。
-- [ ] 所有 PARITY 项映射 owning Node。
-- [ ] 所有关键项有 acceptance case。
-- [ ] 明确区分公开事实与 LUMI 推断。
-- [ ] 不复制竞争对手专有实现/内容。
+- `docs/product/lovart-evidence-sources.json`
+- `docs/product/capability-matrix-manifest.json`
+- `docs/product/capabilities/*.json`
+- `evals/datasets/product-parity/v1/*.json`
 
-## 11. Definition of Done
+当前 67 项 `lumi_status=PLANNED`、`gap=OPEN` 是正确状态；不能因为 NODE-06 写完矩阵就伪称产品已有竞争能力。
+
+## 10. CI Contract
+
+新增：
+
+```bash
+make product-parity-validate
+```
+
+Validator：`scripts/validate_product_parity.py`
+
+它强制验证：
+
+- 7 类完整覆盖；
+- v1.0.0 的 67/56/7/4 计数；
+- competitor evidence status 计数；
+- evidence source 存在且为官方 Lovart URL；
+- 每个 confirmed/marketing capability 有证据；
+- 每个 capability 有 owning Node；
+- 56 个 PARITY 与 56 个 acceptance case 一一对应；
+- matrix/dataset version、observed_at 一致；
+- NODE-06 acceptance cases 必须保持 `SPECIFIED_NOT_RUN`。
+
+Validator 已接入 `scripts/ci-contracts`，因此 GitHub `contracts` job 是阻断门。
+
+## 11. 测试
+
+`evals/tests/test_product_parity_contract.py` 在 Python suite 中执行 validator，并确认关键计数输出：
 
 ```text
-public capability evidence collected
-+ matrix versioned
-+ parity targets assigned
-+ eval cases linked
-+ implementation nodes mapped
+categories=7
+capabilities=67
+PARITY=56
+SUPERSET=7
+DEFER=4
+parity_acceptance_cases=56
+```
+
+## 12. 验收标准
+
+- [x] 覆盖 A～G 七大类。
+- [x] 每个 confirmed/confirmed_marketing 竞争能力有官方来源和观察日期。
+- [x] 所有 PARITY 项映射 owning Node。
+- [x] 所有 56 个 PARITY 项有 acceptance case。
+- [x] 明确区分 `confirmed` / `confirmed_marketing` / `not_confirmed`。
+- [x] 不复制竞争对手专有实现/内容。
+- [x] 机器可读矩阵版本化。
+- [x] Matrix contract 接入 CI `contracts` job。
+- [ ] Implementation PR 的完整 NODE-04/05 gates 全绿并归档证据。
+
+## 13. Definition of Done
+
+```text
+public capability evidence collected       PASS
+matrix versioned                            PASS
+parity/superset/defer targets assigned      PASS
+56 eval acceptance specs linked             PASS
+implementation nodes mapped                 PASS
+matrix validator implemented                PASS
+CI contract gate wired                      PASS
+clean implementation PR validation          PENDING
 ```
 
 下一节点：NODE-07 Model Provider Matrix。
