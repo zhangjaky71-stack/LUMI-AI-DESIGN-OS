@@ -15,6 +15,7 @@ from .contracts import (
     MCPTrustLevel,
 )
 from .errors import MCPError
+from .integration import MCPIntegrationBuilder, MCPIntegrationPlan
 from .mapping import MCPToolMapper
 from .registry import MCPServerRegistry
 from .transport import MCPHTTPResponse, MCPHTTPTransport
@@ -30,6 +31,8 @@ __all__ = [
     "MCPError",
     "MCPHTTPResponse",
     "MCPHTTPTransport",
+    "MCPIntegrationBuilder",
+    "MCPIntegrationPlan",
     "MCPNetworkPolicy",
     "MCPProtocolEra",
     "MCPRequestAuth",
