@@ -6,10 +6,21 @@ from lumi_agent_runtime.skill_registry import SkillRegistry
 from .atomic import AtomicStepCompiler
 from .catalog import P0_DETERMINISTIC_SERVICES, P0_MEDIA_OPERATIONS
 from .containers import ContainerCompiler
-from .contracts import CompiledRecipe, RecipeProvenance, StepType, TaskGraphTemplate
+from .contracts import (
+    CompiledRecipe,
+    RecipeProvenance,
+    StepType,
+    TaskGraphTemplate,
+    TaskTemplate,
+)
 from .registry import RecipeRegistry
 from .resolution import CompileBindings, RecipeReferenceResolver
-from .validation import dependency_closure, topological_steps, validate_outputs, validate_step_references
+from .validation import (
+    dependency_closure,
+    topological_steps,
+    validate_outputs,
+    validate_step_references,
+)
 
 
 class RecipeCompiler:
@@ -23,7 +34,11 @@ class RecipeCompiler:
         media_operations: frozenset[str] = P0_MEDIA_OPERATIONS,
     ) -> None:
         self.recipes = recipes
-        resolver = RecipeReferenceResolver(agents=agents, skills=skills, recipes=recipes)
+        resolver = RecipeReferenceResolver(
+            agents=agents,
+            skills=skills,
+            recipes=recipes,
+        )
         self.atomic = AtomicStepCompiler(
             resolver=resolver,
             deterministic_services=deterministic_services,
@@ -36,7 +51,7 @@ class RecipeCompiler:
         definition = resolved.definition
         validate_outputs(definition)
         bindings = CompileBindings()
-        tasks = []
+        tasks: list[TaskTemplate] = []
         for step in topological_steps(definition):
             sources = dependency_closure(step.step_id, definition)
             validate_step_references(step, definition, sources)
@@ -86,9 +101,19 @@ class RecipeCompiler:
             exact_version=definition.version,
             recipe_definition_hash=definition.content_hash,
             release_manifest_revision=resolved.manifest_revision,
-            agents=tuple(bindings.agents[key] for key in sorted(bindings.agents)),
-            skills=tuple(bindings.skills[key] for key in sorted(bindings.skills)),
-            subrecipes=tuple(bindings.subrecipes[key] for key in sorted(bindings.subrecipes)),
+            agents=tuple(
+                bindings.agents[key] for key in sorted(bindings.agents)
+            ),
+            skills=tuple(
+                bindings.skills[key] for key in sorted(bindings.skills)
+            ),
+            subrecipes=tuple(
+                bindings.subrecipes[key] for key in sorted(bindings.subrecipes)
+            ),
             task_graph_template_hash=graph.content_hash,
         )
-        return CompiledRecipe(definition=definition, task_graph=graph, provenance=provenance)
+        return CompiledRecipe(
+            definition=definition,
+            task_graph=graph,
+            provenance=provenance,
+        )
