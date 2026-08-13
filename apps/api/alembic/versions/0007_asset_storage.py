@@ -79,7 +79,7 @@ UPGRADE_STATEMENTS = (
         organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
         project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
         asset_id uuid NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-        asset_file_id uuid NOT NULL REFERENCES asset_files(id) ON DELETE CASCADE,
+        asset_file_id uuid NOT NULL,
         status varchar(32) NOT NULL,
         scanner_status varchar(32),
         sniffed_mime_type varchar(255),
