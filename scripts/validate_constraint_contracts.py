@@ -63,7 +63,7 @@ def validate_contract_json() -> None:
     assert isinstance(precedence, dict)
     values = [precedence[source] for source in EXPECTED_SOURCES]
     assert all(isinstance(value, int) for value in values)
-    assert all(left > right for left, right in zip(values, values[1:], strict=True)), (
+    assert all(left > right for left, right in zip(values, values[1:])), (
         "source precedence must strictly descend in frozen source order"
     )
 
