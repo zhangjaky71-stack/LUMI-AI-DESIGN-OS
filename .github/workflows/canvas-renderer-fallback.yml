@@ -1,0 +1,45 @@
+name: Canvas Renderer Fallback
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/e2e/canvas-renderer-fallback.spec.ts"
+      - "apps/web/src/app/canvas-spike/**"
+      - "packages/canvas-sdk/**"
+      - ".github/workflows/canvas-renderer-fallback.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  renderer-fallback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.4.0 --activate
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium runtime
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Pixi batched vs Konva vs Fabric stress
+        run: pnpm exec playwright test apps/web/e2e/canvas-renderer-fallback.spec.ts --reporter=line
+      - name: Upload renderer comparison evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: canvas-renderer-fallback-${{ github.run_id }}
+          path: |
+            reports/canvas-spike/renderer-fallback.json
+            reports/canvas-spike/renderer-fallback.md
+            test-results
+          if-no-files-found: warn
+          retention-days: 14
