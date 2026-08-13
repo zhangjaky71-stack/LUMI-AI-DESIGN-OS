@@ -40,7 +40,7 @@ UPGRADE_STATEMENTS = (
         CONSTRAINT ck_project_brief_versions_hash CHECK (brief_hash ~ '^[0-9a-f]{64}$')
     )
     """,
-    "CREATE INDEX ix_project_brief_versions_org_project ON project_brief_versions (organization_id, project_id, brief_version DESC)",
+    "CREATE INDEX ix_project_brief_versions_org_project ON project_brief_versions (organization_id, project_id, brief_version)",
     """
     CREATE TABLE project_summaries (
         id uuid PRIMARY KEY,
@@ -58,7 +58,7 @@ UPGRADE_STATEMENTS = (
         CONSTRAINT ck_project_summaries_artifacts CHECK (artifact_count >= 0)
     )
     """,
-    "CREATE INDEX ix_project_summaries_org_activity ON project_summaries (organization_id, last_activity_at DESC)",
+    "CREATE INDEX ix_project_summaries_org_activity ON project_summaries (organization_id, last_activity_at)",
     """
     CREATE FUNCTION reject_project_brief_version_mutation()
     RETURNS trigger AS $$
