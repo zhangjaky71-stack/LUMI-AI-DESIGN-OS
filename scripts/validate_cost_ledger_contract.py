@@ -171,10 +171,16 @@ def main() -> int:
         "provider invoice reconciliation",
         "concurrent generation quota must reject third lease",
         "runtime mutation must be denied",
-        "UPDATE usage_ledger SET quantity=999",
-        "DELETE FROM cost_reservations",
-        "DELETE FROM quota_leases",
         "mock-price-v1",
+    )
+    require(
+        "scripts/integration_cost_privileges.py",
+        "UPDATE usage_ledger SET quantity=quantity WHERE false",
+        "DELETE FROM cost_reservations WHERE false",
+        "INSERT INTO cost_budget_limits",
+        "UPDATE quota_limits SET quantity_limit=quantity_limit WHERE false",
+        "DELETE FROM quota_leases WHERE false",
+        "runtime mutation must be denied",
     )
 
     print("NODE-27 cost ledger/budget/quota static contract: PASS")
