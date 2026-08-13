@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "apps/web/e2e/canvas-renderer-fallback.spec.ts"
+      - "apps/web/e2e/canvas-sync-submit.spec.ts"
       - "apps/web/src/app/canvas-spike/**"
       - "packages/canvas-sdk/**"
       - ".github/workflows/canvas-renderer-fallback.yml"
@@ -30,8 +31,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Install Chromium runtime
         run: pnpm exec playwright install --with-deps chromium
-      - name: Pixi batched vs Konva vs Fabric stress
-        run: pnpm exec playwright test apps/web/e2e/canvas-renderer-fallback.spec.ts --reporter=line
+      - name: Renderer fallback + synchronous submit stress
+        run: pnpm exec playwright test apps/web/e2e/canvas-renderer-fallback.spec.ts apps/web/e2e/canvas-sync-submit.spec.ts --reporter=line
       - name: Upload renderer comparison evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -40,6 +41,8 @@ jobs:
           path: |
             reports/canvas-spike/renderer-fallback.json
             reports/canvas-spike/renderer-fallback.md
+            reports/canvas-spike/sync-submit.json
+            reports/canvas-spike/sync-submit.md
             test-results
           if-no-files-found: warn
           retention-days: 14
