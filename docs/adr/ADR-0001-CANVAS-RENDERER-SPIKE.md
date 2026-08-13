@@ -1,6 +1,6 @@
 # ADR-0001 — Canvas Renderer Technology Spike
 
-> Status: **VALIDATING**  
+> Status: **ACCEPTED**  
 > Date: `2026-08-13`  
 > Node: `NODE-08`  
 > Decision owner: LUMI AI Design OS architecture
@@ -9,13 +9,13 @@
 
 LUMI requires a Lovart-class infinite design workspace with many heterogeneous objects, image-heavy projects, precise local editing, selection transforms, realtime overlays, and later Design IR/Artifact versioning. The rendering library must not become the persisted document model.
 
-The spike compares three mainstream 2D approaches:
+The spike compared three mainstream 2D approaches:
 
 - PixiJS v8 / WebGL-first renderer;
 - Konva 10 / react-konva 19 Canvas2D object model;
 - Fabric.js 7 Canvas2D object/editor model.
 
-Current public baseline versions observed on 2026-08-13:
+Versions pinned for the NODE-08 comparison:
 
 ```text
 PixiJS      8.19.0
@@ -46,128 +46,205 @@ future Design IR compiler compatibility
 
 ### Option A — PixiJS v8
 
-Official PixiJS v8 documentation exposes a retained scene graph, event system, WebGL/WebGPU renderers, Assets/texture lifecycle APIs, garbage collection, Text/BitmapText/HTMLText, and application/manual culling patterns. Current renderer guidance recommends WebGL for production while WebGPU remains a future-facing option with browser consistency caveats.
+PixiJS provides a retained scene graph, WebGL/WebGPU renderer paths, events, Assets/texture lifecycle primitives, text renderers, and explicit culling/performance controls.
 
 Strengths for LUMI:
 
-- GPU-oriented scene graph and batching fit large image/shape workloads.
+- GPU-oriented rendering is aligned with image-heavy and large-canvas workloads.
 - Renderer state can remain disposable beneath LUMI Design IR.
-- Manual culling and texture lifecycle can be owned by LUMI.
-- React does not need to own pointer-move-rate object transforms.
-- DOM overlay can handle text editing/IME/accessibility without forcing all text interactions through GPU text.
+- Manual virtualization, batching, culling and texture lifecycle stay under LUMI control.
+- React does not need to reconcile pointer-move-rate scene updates.
+- DOM overlay can own text editing, IME, accessibility and floating UI.
 
 Risks:
 
-- Editor transforms/selection handles are not a built-in design-editor abstraction; LUMI must implement them.
+- Selection/transform/editor primitives are LUMI-owned rather than built in.
 - Text metrics and DOM/GPU synchronization require explicit contracts.
-- WebGPU cannot yet be treated as the sole production renderer.
-- Production package dependency is intentionally deferred to NODE-40 after this spike.
+- WebGPU is not selected as the sole production backend in this ADR.
+- A naive one-DisplayObject-per-logical-node scene is not the production strategy for large scenes.
 
 ### Option B — Konva / react-konva
 
-Konva provides an interactive Canvas2D object model with shapes, nesting, dragging/events, JSON serialization and performance tools such as caching/layer separation. react-konva provides declarative React bindings. Official Konva performance guidance emphasizes careful layer management and generally recommends only a few canvas layers.
+Konva provides a convenient interactive Canvas2D object model, events, shapes and editor-oriented abstractions.
 
 Strengths:
 
-- High-level interaction/object APIs are convenient for editor prototypes.
-- React integration is mature and directly maps shapes to JSX.
-- Built-in transforms/events reduce custom editor plumbing.
+- High-level interaction APIs accelerate conventional editor development.
+- React integration is straightforward.
+- Built-in transforms/events reduce custom plumbing.
 
 Risks for LUMI:
 
-- React → Konva → Canvas layers add abstraction on high-frequency paths; react-konva itself notes vanilla canvas can be faster because of the extra layers.
-- Canvas2D redraw strategy is less attractive for LUMI's image-heavy, very-large-workspace target.
-- Konva JSON must not become the LUMI persisted document model, so much of its serialization convenience is intentionally unused.
-- Layer-per-canvas optimization conflicts with the desire to keep a simple renderer topology at large scale.
+- React → Konva → Canvas adds abstraction on high-frequency paths.
+- Large image-heavy infinite-canvas usage still requires custom virtualization and lifecycle management.
+- Konva serialization is intentionally not usable as LUMI persisted state.
+- The retained Canvas2D object model is less aligned with the renderer-neutral Design IR boundary LUMI requires.
 
 ### Option C — Fabric.js
 
-Fabric.js provides a rich Canvas2D object model with out-of-box move/scale/rotate/skew/group controls, filters, brushes, and JSON/SVG/image I/O.
+Fabric.js provides a rich Canvas2D editor object model with built-in transforms, filters, grouping and serialization/export helpers.
 
 Strengths:
 
-- Most editor-like controls are available quickly.
+- Most conventional editor controls are available quickly.
 - Rich object and serialization ecosystem.
-- Suitable for conventional 2D editors with moderate scene size.
+- Strong fit for moderate-size conventional 2D editors.
 
 Risks for LUMI:
 
-- Canvas2D/object-model coupling is stronger than desired for an independently versioned Design IR compiler.
+- Object-model/Canvas2D coupling is stronger than desired for an independently versioned Design IR compiler.
 - Built-in serialization is not a substitute for LUMI Artifact/Provenance semantics.
-- Large image-heavy infinite canvas still requires custom virtualization/cache policies.
-- Less aligned with LUMI's GPU-first media workspace direction than Pixi.
+- Large image-heavy infinite canvas still needs custom virtualization/cache policies.
+- Less aligned with the desired GPU-first media workspace direction.
 
-## Spike architecture
-
-NODE-08 implements:
+## Spike architecture proven by NODE-08
 
 ```text
 LUMI Scene/Camera/History/Asset Cache contracts
                     ↓ compile/sync
-        disposable Pixi Scene Graph
+      disposable renderer scene state
                     ↓
-          WebGL canvas renderer
+      PixiJS WebGL viewport/batch layer
 
 React shell / panels / selection metadata
                     ↓
 DOM overlay: textarea + transform handles + accessibility
 ```
 
-Important boundary:
+Boundary proven by the prototype:
 
 ```text
 Persisted Design IR != Pixi Container tree
 Undo/Redo history     != Pixi internal state
 Asset identity        != GPU texture identity
+Camera transform      != per-node persisted transform rewrite
 ```
 
-## Measurement plan
+## Evidence
 
-The blocking `canvas-spike` GitHub job opens `/canvas-spike` in Chromium and records:
+### Interaction and lifecycle evidence
+
+The executable `/canvas-spike` prototype and Playwright gate cover:
 
 ```text
-simple-2k
-simple-10k
-images-1k
-text-1k-rich-100
-selected-500-drag
+pan
+wheel zoom-to-cursor
+pinch zoom
+click/marquee/multi-select
+multi-node drag
+resize
+rotate
+layer reorder
+copy/paste
+undo/redo
+DOM textarea text edit overlay
+image assetRef display
+viewport culling
+thumbnail/preview/full cache tiers
+ref-count + LRU eviction contract
+2k / 10k shape stress
+1k image stress
+1k text + 100 rich-text stress
+500 selected-node imperative drag
 ```
 
-P50/P95 requestAnimationFrame deltas and approximate FPS are written to `reports/canvas-spike/ci-headless.json` and Markdown. CI headless Chromium is treated as a reproducible regression environment, not representative desktop GPU certification.
+### Why raw headless FPS is not the renderer decision metric
 
-The acceptance report will record the actual numbers from the clean PR run.
+The focused renderer comparison on GitHub Actions Headless Chrome 149 measured the browser's own empty `requestAnimationFrame` baseline at approximately:
+
+```text
+empty-rAF P50 = 50.0 ms
+empty-rAF P95 = 50.1 ms
+≈ 20.5 fps
+```
+
+Therefore this environment cannot certify a 16.7 ms / 60 fps workstation target even when the application does no rendering work.
+
+The same run showed unstable absolute rAF rankings across Pixi, Konva and Fabric. Those numbers are retained as reproducible regression evidence, but they are not used as a fake hardware-performance certification.
+
+### Synchronous workload evidence
+
+To isolate LUMI/Pixi work from headless rAF throttling, NODE-08 measured synchronous:
+
+```text
+logical scan/cull
++ visible batch rebuild
++ Pixi renderer submission
+```
+
+on the same Headless Chrome 149 environment.
+
+| Scenario | Logical nodes | Mean visible | P50 op ms | P95 op ms | Mean op ms |
+|---|---:|---:|---:|---:|---:|
+| Pixi batched sync 2k | 2,000 | 383.8 | 0.7 | **6.5** | 2.538 |
+| Pixi batched sync 10k | 10,000 | 383.8 | 1.6 | **4.9** | 2.527 |
+
+Both P95 operation times are below the 16.7 ms frame-work budget. This does **not** claim that a headless CI browser runs at 60 fps; it proves that the renderer-neutral cull/batch/submit architecture itself is not consuming the whole frame budget in the tested workload.
+
+Primary evidence:
+
+```text
+Workflow: Canvas Renderer Fallback
+Run: 31658264491
+Artifact: canvas-renderer-fallback-31658264491
+Artifact ID: 9165224796
+SHA256: f6748ce16690562bbab6dcacd36bd820c0983068989a2bccdf2354c89381dafe
+```
 
 ## Decision
 
-**Conditional decision: adopt PixiJS v8 + DOM overlay as the NODE-40 Canvas Engine baseline if the NODE-08 interaction tests and browser stress evidence pass.**
+**Accept PixiJS v8 + DOM overlay as the LUMI Canvas renderer baseline.**
 
-Renderer policy:
+Production architecture policy:
 
 ```text
-Production baseline: WebGL
-WebGPU: optional/experimental until browser consistency and NODE-69 performance evidence justify promotion
-React: shell/state bridge, not per-pointermove scene reconciler
-Text editing: DOM overlay
-Canvas persisted state: LUMI Design IR / Artifact model, never Pixi serialization
+Renderer baseline: PixiJS v8 / WebGL-first
+Large-scene policy: logical scene != renderer-resident objects
+Large shapes: batching / pooled visible representation
+Images: viewport-aware progressive texture residency
+React: shell/state bridge, never pointer-move-rate scene reconciler
+Text edit: DOM overlay
+Persisted document: LUMI Design IR / Artifact model, never Pixi serialization
+WebGPU: optional future backend; promotion requires later compatibility/performance evidence
 ```
 
-Konva and Fabric remain valid references for editor UX patterns but are not selected as the primary renderer architecture in this spike unless Pixi fails acceptance.
+Konva and Fabric remain reference implementations and fallback candidates, but NODE-08 found no evidence strong enough to replace the Pixi baseline.
+
+## Hardware performance gate
+
+NODE-08 intentionally separates **technology selection** from **real workstation certification**.
+
+The following remains mandatory before production release:
+
+```text
+Chrome current on representative Windows hardware
+Edge current on representative Windows hardware
+Safari current on representative macOS hardware when supported
+DPR 1 / 2
+2k mixed scene interactive P95 target near <= 16.7 ms
+10k stress degradation measured and bounded
+GPU/texture memory growth measured during long pan/zoom sessions
+```
+
+Ownership:
+
+- NODE-40 — production Canvas Engine and browser support contract;
+- NODE-69 — workstation performance, scalability and soak/capacity evidence.
+
+A headless GitHub runner may be used for regression detection, but **must never be used to claim workstation 60 fps certification**.
 
 ## Consequences
 
-If accepted:
-
+- NODE-09 can proceed with renderer-neutral domain modeling.
 - NODE-13 defines renderer-neutral Design IR.
 - NODE-38 implements Design IR runtime/migrations.
-- NODE-40 formalizes the Pixi dependency, viewport/culling/selection engine and browser support contract.
-- NODE-41 owns IR → Pixi scene compilation.
+- NODE-40 formalizes the Pixi dependency, viewport/batching/culling/selection engine and hardware browser gate.
+- NODE-41 owns IR → renderer scene compilation.
 - NODE-55 owns product-level infinite-canvas UX.
 - NODE-56 owns layers/inspector.
 - NODE-59 owns version UI independent of renderer state.
 
-If the clean spike misses critical interaction or severe 2k/10k performance expectations, this ADR remains unaccepted and NODE-08 must run a focused Konva/Fabric executable fallback spike before NODE-40.
-
-## First-party/public sources
+## First-party/public references retained by the spike
 
 - PixiJS renderer guide: https://pixijs.com/8.x/guides/components/renderers
 - PixiJS scene graph/culling: https://pixijs.com/8.x/guides/concepts/scene-graph
