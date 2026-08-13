@@ -1,0 +1,94 @@
+name: Sandbox Runtime Security
+
+on:
+  pull_request:
+    paths:
+      - "services/sandbox-runtime/**"
+      - "infra/sandbox/**"
+      - "scripts/validate_sandbox_runtime_contract.py"
+      - "scripts/integration_sandbox_runtime.py"
+      - "docs/runtime/SANDBOX-RUNTIME-V1.md"
+      - "reports/nodes/NODE-21/**"
+      - "pyproject.toml"
+      - "Makefile"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sandbox-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile sandbox runtime
+        run: >-
+          PYTHONPATH=services/sandbox-runtime/src
+          python -m compileall -q
+          services/sandbox-runtime/src
+          services/sandbox-runtime/tests
+          scripts/validate_sandbox_runtime_contract.py
+          scripts/integration_sandbox_runtime.py
+      - name: Static sandbox security contract
+        run: python scripts/validate_sandbox_runtime_contract.py
+      - name: Stdlib sandbox contract tests
+        run: >-
+          PYTHONPATH=services/sandbox-runtime/src
+          python -m unittest discover
+          -s services/sandbox-runtime/tests
+          -p 'test_*.py'
+
+  sandbox-docker-e2e:
+    needs: sandbox-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      LUMI_SANDBOX_DOCKER_E2E: "1"
+      LUMI_SANDBOX_IMAGE: lumi-sandbox:node21-v1
+      LUMI_SANDBOX_RUNTIME_ROOT: /tmp/lumi-node21-e2e
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Build versioned sandbox image
+        run: docker build -t "$LUMI_SANDBOX_IMAGE" -f infra/sandbox/Dockerfile infra/sandbox
+      - name: Verify sandbox image tools
+        run: |
+          docker run --rm "$LUMI_SANDBOX_IMAGE" python --version
+          docker run --rm "$LUMI_SANDBOX_IMAGE" node --version
+          docker run --rm "$LUMI_SANDBOX_IMAGE" ffmpeg -version | head -1
+          docker run --rm "$LUMI_SANDBOX_IMAGE" convert -version | head -1
+          docker run --rm "$LUMI_SANDBOX_IMAGE" fc-list | head -1
+      - name: Docker security and functional acceptance
+        run: >-
+          PYTHONPATH=services/sandbox-runtime/src
+          python scripts/integration_sandbox_runtime.py
+      - name: Capture diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p reports/nodes/NODE-21/runtime
+          docker ps -a > reports/nodes/NODE-21/runtime/docker-ps.txt 2>&1 || true
+          docker inspect $(docker ps -aq --filter label=lumi.sandbox.runtime=node21) \
+            > reports/nodes/NODE-21/runtime/docker-inspect.json 2>&1 || true
+          cp -R /tmp/lumi-node21-e2e reports/nodes/NODE-21/runtime/e2e 2>/dev/null || true
+      - name: Upload NODE-21 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-21-sandbox-runtime-${{ github.run_id }}
+          path: reports/nodes/NODE-21/runtime
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          ids=$(docker ps -aq --filter label=lumi.sandbox.runtime=node21)
+          if [ -n "$ids" ]; then docker rm -f -v $ids || true; fi
+          rm -rf /tmp/lumi-node21-e2e
