@@ -68,18 +68,13 @@ class _LedgerBudgetReservation:
             raise RuntimeError("MODEL_BUDGET_RESERVATION_RELEASED")
         amount = actual.amount_usd
         if amount is None:
-            # An accepted paid operation with unknown final amount remains a cost fact.
-            # NODE-27 records the best available estimate with estimated/unknown confidence
-            # and later reconciles using immutable adjustment rows.
+            # Accepted spend with no final provider amount is recorded using the best
+            # available estimate. Reconciliation must append an adjustment later.
             amount = self.estimate.amount_usd
             if amount is None:
                 raise BudgetExceededError(
                     "accepted provider operation has neither actual nor estimated cost"
                 )
-        if self.request_limit is not None and amount > self.request_limit:
-            raise BudgetExceededError(
-                f"actual cost {amount} exceeds request budget {self.request_limit}"
-            )
         confidence = actual.confidence
         if actual.amount_usd is None:
             confidence = (
@@ -87,6 +82,9 @@ class _LedgerBudgetReservation:
                 if self.estimate.confidence != CostConfidence.EXACT
                 else CostConfidence.ESTIMATED
             )
+        # The hard request budget was enforced before invoking the provider. Once a paid
+        # operation is accepted, actual spend is a sunk fact even if it exceeds estimate;
+        # accounting must record it and let subsequent reservations observe the overspend.
         await self.accounting.commit_provider_cost(
             reservation_ticket=self.ticket,
             actual_amount_usd=amount,
@@ -98,9 +96,7 @@ class _LedgerBudgetReservation:
         self.committed = True
 
     async def release(self, *, reason: str = "not_accepted") -> None:
-        if self.committed:
-            return
-        if self.released:
+        if self.committed or self.released:
             return
         await self.accounting.release_provider_cost(
             reservation_ticket=self.ticket,
@@ -137,8 +133,6 @@ class LedgerBudgetGuard:
                 raise BudgetExceededError(
                     f"estimated cost {amount} exceeds request budget {request.budget_limit_usd}"
                 )
-        # Durable hierarchy reservation cannot safely reserve an unknown amount. If there
-        # is no durable estimate, fail closed rather than allow unbounded concurrent spend.
         if amount is None:
             raise BudgetExceededError(
                 "durable budget reservation requires an estimated provider cost"
