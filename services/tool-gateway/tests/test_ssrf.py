@@ -29,8 +29,26 @@ class FakeTransport:
         self.responses = list(responses)
         self.calls: list[dict[str, object]] = []
 
-    async def fetch(self, **kwargs) -> HTTPTransportResponse:
-        self.calls.append(dict(kwargs))
+    async def fetch(
+        self,
+        *,
+        url: str,
+        resolved_ip: str,
+        host_header: str,
+        timeout_seconds: float,
+        max_bytes: int,
+        headers: dict[str, str],
+    ) -> HTTPTransportResponse:
+        self.calls.append(
+            {
+                "url": url,
+                "resolved_ip": resolved_ip,
+                "host_header": host_header,
+                "timeout_seconds": timeout_seconds,
+                "max_bytes": max_bytes,
+                "headers": dict(headers),
+            }
+        )
         return self.responses.pop(0)
 
 
