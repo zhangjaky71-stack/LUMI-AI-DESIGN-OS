@@ -1,0 +1,190 @@
+name: Queue Event Runtime
+
+on:
+  pull_request:
+    paths:
+      - "apps/worker-media/**"
+      - "apps/api/alembic/**"
+      - "apps/api/src/lumi_api/persistence/**"
+      - "scripts/validate_queue_runtime_contract.py"
+      - "scripts/integration_queue_event_runtime.py"
+      - "docs/runtime/QUEUE-EVENT-RUNTIME-V1.md"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "infra/compose/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  queue-event-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+      RABBITMQ_URL: amqp://lumi:lumi_rabbit_local_only@127.0.0.1:5672//
+      CELERY_RESULT_BACKEND: rpc://
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Frozen Python install
+        run: uv sync --all-packages --frozen
+
+      - name: Static NODE-19 contract
+        run: uv run python scripts/validate_queue_runtime_contract.py
+
+      - name: Queue runtime lint
+        run: >-
+          uv run ruff check
+          apps/worker-media
+          apps/api/src/lumi_api/persistence
+          apps/api/alembic/versions/0008_queue_event_runtime.py
+          scripts/validate_queue_runtime_contract.py
+          scripts/integration_queue_event_runtime.py
+
+      - name: Queue runtime unit tests
+        run: uv run pytest apps/worker-media/tests -q
+
+      - name: Prepare local infrastructure
+        run: make infra-env
+
+      - name: Start PostgreSQL RabbitMQ and local dependencies
+        run: make infra-up
+
+      - name: Upgrade database and verify ORM drift
+        run: |
+          make db-upgrade
+          bash scripts/db-local schema-check
+          make db-seed
+
+      - name: Declare RabbitMQ topology
+        run: >-
+          uv run python -m lumi_worker_media.cli
+          declare-topology --consumer node19-smoke
+
+      - name: Live RabbitMQ Outbox Inbox and DLQ acceptance
+        run: uv run python scripts/integration_queue_event_runtime.py
+
+      - name: Start real Celery image worker
+        shell: bash
+        run: |
+          mkdir -p reports/nodes/NODE-19
+          uv run celery -A lumi_worker_media.app:celery_app worker \
+            --pool=solo \
+            --queues=lumi.media.image \
+            --hostname=node19-image@%h \
+            --loglevel=INFO \
+            > reports/nodes/NODE-19/celery-worker.log 2>&1 &
+          echo $! > reports/nodes/NODE-19/celery-worker.pid
+          sleep 5
+
+      - name: Celery sample job smoke
+        run: |
+          uv run python - <<'PY'
+          from uuid import uuid4
+          from lumi_worker_media.app import celery_app
+
+          message = {
+              "job_id": str(uuid4()),
+              "organization_id": str(uuid4()),
+              "project_id": str(uuid4()),
+              "operation_id": None,
+              "trace_id": "node19-ci",
+          }
+          result = celery_app.send_task(
+              "lumi.jobs.image.transform",
+              args=[message],
+              queue="lumi.media.image",
+              routing_key="image.transform",
+          )
+          payload = result.get(timeout=20)
+          assert payload["status"] == "accepted", payload
+          print(payload)
+          PY
+
+      - name: Celery permanent failure to job DLQ
+        run: |
+          uv run python - <<'PY'
+          import asyncpg
+          import asyncio
+          import os
+          from uuid import uuid4
+          from kombu import Connection
+          from lumi_worker_media.app import celery_app
+          from lumi_worker_media.topology import build_dlq_queues
+
+          result = celery_app.send_task(
+              "lumi.jobs.image.transform",
+              args=[{"job_id": str(uuid4())}],
+              queue="lumi.media.image",
+              routing_key="image.transform",
+          )
+          try:
+              result.get(timeout=20, propagate=True)
+          except Exception:
+              pass
+          else:
+              raise AssertionError("invalid job must fail")
+
+          dlqs = {queue.name: queue for queue in build_dlq_queues()}
+          with Connection(os.environ["RABBITMQ_URL"]) as connection:
+              with connection.SimpleQueue(dlqs["lumi.media.image.dlq"]) as queue:
+                  message = queue.get(block=True, timeout=10)
+                  assert message.payload["message_kind"] == "job"
+                  message.ack()
+
+          async def verify_db() -> None:
+              dsn = os.environ["DATABASE_URL"].replace(
+                  "postgresql+asyncpg://", "postgresql://", 1
+              )
+              connection = await asyncpg.connect(dsn)
+              try:
+                  count = await connection.fetchval(
+                      "SELECT count(*) FROM dead_letter_records "
+                      "WHERE message_kind = 'job'"
+                  )
+                  assert int(count) >= 1
+              finally:
+                  await connection.close()
+
+          asyncio.run(verify_db())
+          PY
+
+      - name: Capture diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p reports/nodes/NODE-19
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml ps \
+            > reports/nodes/NODE-19/compose-ps.txt 2>&1 || true
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml logs \
+            --no-color --tail=300 rabbitmq > reports/nodes/NODE-19/rabbitmq.log 2>&1 || true
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml logs \
+            --no-color --tail=300 postgres > reports/nodes/NODE-19/postgres.log 2>&1 || true
+
+      - name: Upload NODE-19 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-19-queue-event-runtime-${{ github.run_id }}
+          path: reports/nodes/NODE-19
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: |
+          if [ -f reports/nodes/NODE-19/celery-worker.pid ]; then
+            kill "$(cat reports/nodes/NODE-19/celery-worker.pid)" || true
+          fi
+          CONFIRM=1 make infra-reset || true

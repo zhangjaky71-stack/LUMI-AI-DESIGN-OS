@@ -53,6 +53,7 @@ from .project import (
     ProjectMember,
     ProjectSummary,
 )
+from .queue_runtime import DeadLetterRecord
 from .workflow import (
     AgentRun,
     AgentRunStep,
@@ -90,6 +91,7 @@ __all__ = [
     "BrandPalette",
     "BrandRule",
     "CostLedger",
+    "DeadLetterRecord",
     "DesignDocument",
     "DesignDocumentVersion",
     "EmailVerificationToken",
