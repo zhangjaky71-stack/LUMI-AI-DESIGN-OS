@@ -5,7 +5,7 @@ from typing import cast
 from uuid import UUID
 
 import lumi_api.persistence.models  # noqa: F401
-from sqlalchemy import CheckConstraint, Numeric, select
+from sqlalchemy import Numeric, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +23,11 @@ EXPECTED_TABLES = {
     "workspace_members",
     "auth_identities",
     "sessions",
+    "password_credentials",
+    "email_verification_tokens",
+    "password_reset_tokens",
+    "organization_invites",
+    "api_tokens",
     "projects",
     "project_members",
     "brands",
@@ -59,7 +64,15 @@ EXPECTED_TABLES = {
     "audit_events",
 }
 
-TENANT_TABLES = EXPECTED_TABLES - {"users", "organizations", "auth_identities"}
+GLOBAL_IDENTITY_TABLES = {
+    "users",
+    "organizations",
+    "auth_identities",
+    "password_credentials",
+    "email_verification_tokens",
+    "password_reset_tokens",
+}
+TENANT_TABLES = EXPECTED_TABLES - GLOBAL_IDENTITY_TABLES
 IMMUTABLE_HISTORY_TABLES = {
     "design_document_versions",
     "artifact_edges",
@@ -71,9 +84,9 @@ IMMUTABLE_HISTORY_TABLES = {
 }
 
 
-def test_all_p0_tables_are_registered() -> None:
+def test_all_current_tables_are_registered() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
-    assert len(Base.metadata.tables) == 41
+    assert len(Base.metadata.tables) == 46
 
 
 def test_tenant_tables_carry_organization_id() -> None:
@@ -129,32 +142,56 @@ def test_runtime_database_url_requires_asyncpg() -> None:
     assert require_database_url(settings).startswith("postgresql+asyncpg://")
 
 
-def test_migrations_are_frozen_and_do_not_execute_live_metadata() -> None:
+def test_migrations_are_frozen_and_chained_without_live_metadata_execution() -> None:
     versions = Path(__file__).parents[1] / "alembic" / "versions"
     first = (versions / "0001_domain_core_schema.py").read_text(encoding="utf-8")
     second = (versions / "0002_workflow_platform_schema.py").read_text(encoding="utf-8")
     hardening = (versions / "0003_runtime_privilege_hardening.py").read_text(encoding="utf-8")
+    auth = (versions / "0004_auth_security.py").read_text(encoding="utf-8")
 
-    for source in (first, second, hardening):
+    for source in (first, second, hardening, auth):
         assert "Base.metadata.create_all" not in source
         assert "metadata.create_all" not in source
 
     assert 'down_revision = "0001_domain_core_schema"' in second
     assert 'down_revision = "0002_workflow_platform_schema"' in hardening
+    assert 'down_revision = "0003_runtime_privilege_hardening"' in auth
     assert "CREATE TRIGGER trg_cost_ledger_immutable" in hardening
     assert "GRANT UPDATE (status, quality_score) ON artifact_versions" in hardening
+    assert "password_credentials" in auth
+    assert "api_tokens" in auth
 
 
 def test_lineage_and_task_self_loop_guards_exist_in_schema() -> None:
-    artifact_checks = [
-        str(constraint.sqltext)
-        for constraint in Base.metadata.tables["artifact_edges"].constraints
-        if isinstance(constraint, CheckConstraint)
-    ]
-    task_checks = [
-        str(constraint.sqltext)
-        for constraint in Base.metadata.tables["task_dependencies"].constraints
-        if isinstance(constraint, CheckConstraint)
-    ]
-    assert any("from_artifact_version_id" in check for check in artifact_checks)
-    assert any("task_id" in check and "depends_on_task_id" in check for check in task_checks)
+    artifact_constraints = {
+        constraint.name for constraint in Base.metadata.tables["artifact_edges"].constraints
+    }
+    task_constraints = {
+        constraint.name for constraint in Base.metadata.tables["task_dependencies"].constraints
+    }
+    assert "ck_artifact_edges_artifact_edge_no_self_loop" in artifact_constraints
+    assert "ck_task_dependencies_task_dependency_no_self_loop" in task_constraints
+
+
+def test_auth_secrets_are_hashed_and_sessions_have_csrf_revocation_fields() -> None:
+    password_columns = Base.metadata.tables["password_credentials"].c
+    assert "password_hash" in password_columns
+    assert "password" not in password_columns
+
+    for table_name in (
+        "email_verification_tokens",
+        "password_reset_tokens",
+        "organization_invites",
+    ):
+        columns = Base.metadata.tables[table_name].c
+        assert "token_hash" in columns
+        assert "token" not in columns
+
+    api_columns = Base.metadata.tables["api_tokens"].c
+    assert "secret_hash" in api_columns
+    assert "secret" not in api_columns
+    assert "prefix" in api_columns
+
+    session_columns = Base.metadata.tables["sessions"].c
+    for required in ("token_hash", "csrf_token_hash", "expires_at", "last_seen_at", "revoked_at"):
+        assert required in session_columns

@@ -17,6 +17,7 @@ members = [
   "apps/api",
   "apps/agent-runtime",
   "apps/worker-media",
+  "services/auth",
   "services/domain",
   "services/model-gateway",
   "services/tool-gateway",
@@ -28,6 +29,7 @@ members = [
 ]
 
 [tool.uv.sources]
+lumi-auth = { workspace = true }
 lumi-domain = { workspace = true }
 
 [tool.ruff]
@@ -37,6 +39,7 @@ src = [
   "apps/api/src",
   "apps/agent-runtime/src",
   "apps/worker-media/src",
+  "services/auth/src",
   "services/domain/src",
   "services/model-gateway/src",
   "services/tool-gateway/src",
@@ -56,6 +59,7 @@ known-first-party = [
   "lumi_api",
   "lumi_agent_runtime",
   "lumi_worker_media",
+  "lumi_auth",
   "lumi_domain",
   "lumi_model_gateway",
   "lumi_tool_gateway",
@@ -66,22 +70,23 @@ known-first-party = [
   "lumi_asset_intelligence",
   "evals",
 ]
-known-third-party = ["fastapi"]
+known-third-party = ["argon2", "fastapi"]
 
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
 include = ["apps", "services", "evals"]
 exclude = ["**/__pycache__", ".venv"]
-extraPaths = ["services/domain/src"]
+extraPaths = ["services/auth/src", "services/domain/src"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
-pythonpath = [".", "services/domain/src"]
+pythonpath = [".", "services/auth/src", "services/domain/src"]
 testpaths = [
   "apps/api/tests",
   "apps/agent-runtime/tests",
   "apps/worker-media/tests",
+  "services/auth/tests",
   "services/domain/tests",
   "evals/tests",
 ]

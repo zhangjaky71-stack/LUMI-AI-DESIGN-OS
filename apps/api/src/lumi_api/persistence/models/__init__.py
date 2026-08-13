@@ -6,6 +6,13 @@ from .asset import (
     AssetPreview,
     AssetRights,
 )
+from .auth_security import (
+    ApiToken,
+    EmailVerificationToken,
+    OrganizationInvite,
+    PasswordCredential,
+    PasswordResetToken,
+)
 from .design import (
     Artifact,
     ArtifactBranch,
@@ -55,6 +62,7 @@ from .workflow import (
 __all__ = [
     "AgentRun",
     "AgentRunStep",
+    "ApiToken",
     "Approval",
     "Artifact",
     "ArtifactBranch",
@@ -78,12 +86,16 @@ __all__ = [
     "CostLedger",
     "DesignDocument",
     "DesignDocumentVersion",
+    "EmailVerificationToken",
     "Generation",
     "IdempotencyOperation",
     "InboxEvent",
     "Organization",
+    "OrganizationInvite",
     "OrganizationMember",
     "OutboxEvent",
+    "PasswordCredential",
+    "PasswordResetToken",
     "Project",
     "ProjectMember",
     "ProviderRequest",
