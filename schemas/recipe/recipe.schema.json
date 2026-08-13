@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lumi:recipe:v1",
+  "title": "LUMI Design Recipe V1",
+  "type": "object",
+  "required": ["id", "version", "inputs", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "inputs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 128}
+    },
+    "budget_limit_usd": {"type": ["string", "integer"]},
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {"$ref": "#/$defs/step"}
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": {"type": "string", "pattern": "^\\$"}
+    },
+    "metadata": {"type": "object"}
+  },
+  "$defs": {
+    "step": {
+      "type": "object",
+      "required": ["id", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$"},
+        "type": {
+          "enum": [
+            "deterministic",
+            "agent",
+            "parallel",
+            "foreach",
+            "approval",
+            "quality_gate",
+            "media_job",
+            "subrecipe",
+            "finalize"
+          ]
+        },
+        "depends_on": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$"}
+        },
+        "input": {
+          "type": "object",
+          "additionalProperties": {"type": "string", "pattern": "^\\$"}
+        },
+        "output_schema": {"type": "string", "minLength": 1, "maxLength": 128},
+        "if": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "budget_limit_usd": {"type": ["string", "integer"]},
+        "agent": {"type": "string", "minLength": 3, "maxLength": 128},
+        "skills": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 3, "maxLength": 128}
+        },
+        "service": {"type": "string", "minLength": 1, "maxLength": 128},
+        "operation": {"type": "string", "minLength": 1, "maxLength": 128},
+        "recipe": {"type": "string", "minLength": 3, "maxLength": 128},
+        "parallel": {"$ref": "#/$defs/parallel"},
+        "children": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {"$ref": "#/$defs/step"}
+        },
+        "count": {"type": "integer", "minimum": 1, "maximum": 8},
+        "template": {"$ref": "#/$defs/step"},
+        "approval": {"$ref": "#/$defs/approval"},
+        "quality_gate": {"$ref": "#/$defs/quality"},
+        "loop": {"$ref": "#/$defs/loop"},
+        "metadata": {"type": "object"}
+      }
+    },
+    "parallel": {
+      "type": "object",
+      "required": ["max_parallel", "join_policy", "budget_limit_usd", "budget_split"],
+      "additionalProperties": false,
+      "properties": {
+        "max_parallel": {"type": "integer", "minimum": 1, "maximum": 8},
+        "join_policy": {"enum": ["ALL", "ANY", "MIN_SUCCESS"]},
+        "min_success": {"type": "integer", "minimum": 1, "maximum": 8},
+        "budget_limit_usd": {"type": ["string", "integer"]},
+        "budget_split": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {"type": ["string", "integer"]}
+        }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "required": ["prompt_summary", "allowed_actions"],
+      "additionalProperties": false,
+      "properties": {
+        "prompt_summary": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "allowed_actions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 64}
+        },
+        "artifact_refs": {"type": "array", "items": {"type": "string", "pattern": "^\\$"}},
+        "option_refs": {"type": "array", "items": {"type": "string", "pattern": "^\\$"}},
+        "expiry_seconds": {"type": "integer", "minimum": 60, "maximum": 604800},
+        "resume_mapping": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "quality": {
+      "type": "object",
+      "required": ["metrics", "thresholds"],
+      "additionalProperties": false,
+      "properties": {
+        "metrics": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+        "thresholds": {"type": "object", "additionalProperties": {"type": "number"}},
+        "repair_recipe": {"type": "string", "minLength": 3, "maxLength": 128},
+        "max_repair_iterations": {"type": "integer", "minimum": 0, "maximum": 3}
+      }
+    },
+    "loop": {
+      "type": "object",
+      "required": ["max_iterations"],
+      "additionalProperties": false,
+      "properties": {
+        "max_iterations": {"type": "integer", "minimum": 1, "maximum": 5},
+        "budget_limit_usd": {"type": ["string", "integer"]},
+        "stop_condition": {"type": "string", "minLength": 1, "maxLength": 1000}
+      }
+    }
+  }
+}
