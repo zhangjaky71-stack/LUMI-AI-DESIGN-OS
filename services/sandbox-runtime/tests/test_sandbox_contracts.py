@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -10,7 +11,9 @@ from lumi_sandbox_runtime import (
     DeepAgentSandboxTools,
     ExecRequest,
     ExecResult,
+    JsonlAuditSink,
     NetworkPolicy,
+    SandboxAuditRecord,
     SandboxPathError,
     SandboxSpec,
     SandboxState,
@@ -94,6 +97,13 @@ class SandboxContractTests(unittest.TestCase):
             SandboxSpec(uuid4(), uuid4(), cpu_limit=0.01)
         with self.assertRaisesRegex(ValueError, "ALLOWLIST_REQUIRED"):
             SandboxSpec(uuid4(), uuid4(), network_policy=NetworkPolicy.ALLOWLIST)
+        with self.assertRaisesRegex(ValueError, "OUTPUT_BUDGET_EXCEEDS_STORAGE"):
+            SandboxSpec(
+                uuid4(),
+                uuid4(),
+                disk_limit_mb=32,
+                max_output_bytes=9 * 1024 * 1024,
+            )
 
     def test_workspace_paths_are_scoped_and_input_is_read_only(self) -> None:
         self.assertEqual(
@@ -177,6 +187,27 @@ class SandboxContractTests(unittest.TestCase):
                 "SYMLINK_FORBIDDEN",
             ):
                 extract_zip_safely(symlink_zip, root / "links")
+
+    def test_local_jsonl_audit_rotates_at_a_hard_budget(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "sandbox.jsonl"
+            sink = JsonlAuditSink(path, max_bytes=1024)
+            record = SandboxAuditRecord(
+                timestamp=datetime.now(UTC),
+                sandbox_id=uuid4(),
+                organization_id=uuid4(),
+                agent_run_id=uuid4(),
+                action="sandbox.exec.completed",
+                state=SandboxState.IDLE,
+                image="lumi-sandbox:node21-v1",
+                network_policy=NetworkPolicy.NONE,
+                detail={"message": "x" * 400},
+            )
+            for _ in range(8):
+                sink.emit(record)
+            self.assertTrue(path.exists())
+            self.assertTrue(path.with_name("sandbox.jsonl.1").exists())
+            self.assertLessEqual(path.stat().st_size, 1024)
 
     def test_deep_agent_adapter_exposes_only_sandbox_tools(self) -> None:
         backend = _FakeBackend()
