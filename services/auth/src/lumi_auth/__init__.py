@@ -9,6 +9,7 @@ from .policy import (
     permissions_for_roles,
     require_last_owner_invariant,
 )
+from .rate_limit import InMemorySlidingWindowRateLimiter, RateLimiter, RateLimitExceeded
 from .sessions import CookieContract, SessionRecord, revoke_session, touch_session, validate_csrf, validate_session
 from .tokens import (
     IssuedToken,
@@ -24,8 +25,11 @@ __all__ = [
     "AccessDecision",
     "ApiTokenRecord",
     "CookieContract",
+    "InMemorySlidingWindowRateLimiter",
     "IssuedToken",
     "Membership",
+    "RateLimitExceeded",
+    "RateLimiter",
     "RequestContext",
     "SessionRecord",
     "SingleUseTokenRecord",
