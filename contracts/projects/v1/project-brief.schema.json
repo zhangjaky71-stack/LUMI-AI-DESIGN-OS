@@ -4,12 +4,25 @@
   "title": "LUMI Project Brief V1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version","summary","objectives","audiences","deliverables","channels","reference_asset_ids","constraint_ids","notes"],
+  "required": [
+    "schema_version",
+    "objective",
+    "audience",
+    "brand_context",
+    "deliverables",
+    "channels",
+    "visual_direction",
+    "copy_requirements",
+    "constraint_ids",
+    "reference_asset_ids",
+    "locale",
+    "notes"
+  ],
   "properties": {
     "schema_version": {"const": "1.0"},
-    "summary": {"type": "string", "maxLength": 5000},
-    "objectives": {"type": "array", "maxItems": 50, "items": {"type": "string", "minLength": 1, "maxLength": 1000}},
-    "audiences": {"type": "array", "maxItems": 50, "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+    "objective": {"type": "string", "maxLength": 5000},
+    "audience": {"type": "array", "maxItems": 50, "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+    "brand_context": {"type": "string", "maxLength": 10000},
     "deliverables": {
       "type": "array",
       "maxItems": 100,
@@ -29,8 +42,11 @@
       }
     },
     "channels": {"type": "array", "maxItems": 50, "items": {"type": "string", "minLength": 1, "maxLength": 100}},
-    "reference_asset_ids": {"type": "array", "maxItems": 200, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 160}},
+    "visual_direction": {"type": "array", "maxItems": 100, "items": {"type": "string", "minLength": 1, "maxLength": 1000}},
+    "copy_requirements": {"type": "array", "maxItems": 100, "items": {"type": "string", "minLength": 1, "maxLength": 2000}},
     "constraint_ids": {"type": "array", "maxItems": 500, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 160}},
+    "reference_asset_ids": {"type": "array", "maxItems": 200, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 160}},
+    "locale": {"type": "string", "minLength": 1, "maxLength": 64},
     "notes": {"type": "string", "maxLength": 10000}
   }
 }
