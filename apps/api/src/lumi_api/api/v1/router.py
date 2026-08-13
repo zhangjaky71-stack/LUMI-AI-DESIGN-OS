@@ -4,11 +4,13 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response, status
+from lumi_project_core import ProjectListFilter
 
 from .context import (
     PageRequest,
     RequestContext,
     get_page_request,
+    get_project_list_filter,
     get_request_context,
     require_idempotency_key,
     require_if_match_version,
@@ -32,6 +34,7 @@ from .contracts import (
     HealthResource,
     PageMeta,
     ProblemDetails,
+    ProjectBriefVersionResource,
     ProjectCreate,
     ProjectPatch,
     ProjectResource,
@@ -45,6 +48,7 @@ router = APIRouter(prefix="/api/v1")
 
 ContextDep = Annotated[RequestContext, Depends(get_request_context)]
 PageDep = Annotated[PageRequest, Depends(get_page_request)]
+ProjectFilterDep = Annotated[ProjectListFilter, Depends(get_project_list_filter)]
 GatewayDep = Annotated[ApiV1Gateway, Depends(get_api_v1_gateway)]
 IdempotencyDep = Annotated[str, Depends(require_idempotency_key)]
 IfMatchDep = Annotated[int, Depends(require_if_match_version)]
@@ -91,9 +95,10 @@ async def health() -> DataEnvelope[HealthResource]:
 async def list_projects(
     context: ContextDep,
     page: PageDep,
+    filters: ProjectFilterDep,
     gateway: GatewayDep,
 ) -> CollectionEnvelope[ProjectResource]:
-    result = await gateway.list_projects(context, page)
+    result = await gateway.list_projects(context, page, filters)
     return CollectionEnvelope(data=result.items, meta=_page_meta(context, result))
 
 
@@ -175,6 +180,44 @@ async def archive_project(
 ) -> Response:
     await gateway.archive_project(context, project_id, expected_version)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/projects/{project_id}:restore",
+    operation_id="restoreProject",
+    response_model=DataEnvelope[ProjectResource],
+    responses=problem_responses(),
+    tags=["projects"],
+)
+async def restore_project(
+    project_id: UUID,
+    context: ContextDep,
+    expected_version: IfMatchDep,
+    gateway: GatewayDep,
+    response: Response,
+) -> DataEnvelope[ProjectResource]:
+    resource = await gateway.restore_project(context, project_id, expected_version)
+    _set_version_etag(response, resource.version)
+    return DataEnvelope(data=resource, meta=_meta(context))
+
+
+@router.get(
+    "/projects/{project_id}/brief/versions",
+    operation_id="listProjectBriefVersions",
+    response_model=CollectionEnvelope[ProjectBriefVersionResource],
+    responses=problem_responses(),
+    tags=["projects"],
+)
+async def list_project_brief_versions(
+    project_id: UUID,
+    context: ContextDep,
+    gateway: GatewayDep,
+) -> CollectionEnvelope[ProjectBriefVersionResource]:
+    resources = await gateway.list_project_brief_versions(context, project_id)
+    return CollectionEnvelope(
+        data=resources,
+        meta=PageMeta(request_id=context.request_id, next_cursor=None, has_more=False),
+    )
 
 
 @router.get(
