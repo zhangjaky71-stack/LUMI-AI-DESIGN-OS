@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -17,6 +16,7 @@ from .contracts import (
     BudgetScope,
     CostAdjustment,
     CostConfidence,
+    CostContext,
     CostLedgerConflict,
     CostSummary,
     LedgerWriteResult,
@@ -30,14 +30,12 @@ from .contracts import (
     month_period_key,
 )
 
-_FINANCIAL_ENTRY_TYPES = frozenset({"actual_cost", "adjustment", "reversal"})
-
 
 class PostgresCostGateway:
-    """Durable NODE-27 provider-cost truth and P0 budget/quota guard.
+    """Durable provider-cost truth plus P0 budget/quota reservations.
 
-    The runtime role may append financial/usage facts and mutate transient reservations/
-    leases. Budget and quota limits themselves are control-plane read-only for lumi_app.
+    ``cost_ledger`` and ``usage_ledger`` are append-only facts. ``cost_reservations``
+    and ``quota_leases`` are transient occupancy state and may be released/expired.
     """
 
     def __init__(self, dsn: str) -> None:
@@ -52,7 +50,7 @@ class PostgresCostGateway:
                 existing = await connection.fetchrow(
                     """
                     SELECT * FROM cost_reservations
-                    WHERE operation_id = $1 AND reservation_key = $2
+                    WHERE operation_id=$1 AND reservation_key=$2
                     FOR UPDATE
                     """,
                     request.context.operation_id,
@@ -60,41 +58,37 @@ class PostgresCostGateway:
                 )
                 if existing is not None:
                     self._assert_reservation_identity(existing, request)
-                    status = existing["status"]
-                    if status in {"active", "committed"}:
+                    if existing["status"] in {"active", "committed"}:
                         return ReservationHandle(
                             reservation_id=existing["id"],
                             request=request,
                             replayed=True,
                         )
-                    if status in {"released", "expired"}:
-                        # A proven-not-accepted provider attempt may be retried later. Reusing
-                        # the same transient row is safe because financial truth is not stored
-                        # in the reservation table.
-                        await self._check_budget_limits(
-                            connection,
-                            request=request,
-                            projected_amount=request.estimated_amount,
-                            exclude_reservation_id=existing["id"],
-                        )
-                        expires_at = datetime.now(UTC) + timedelta(seconds=request.ttl_seconds)
-                        await connection.execute(
-                            """
-                            UPDATE cost_reservations
-                            SET status='active', actual_amount=NULL, expires_at=$2,
-                                committed_at=NULL, released_at=NULL, release_reason=NULL,
-                                updated_at=now(), version=version+1
-                            WHERE id=$1
-                            """,
-                            existing["id"],
-                            expires_at,
-                        )
-                        return ReservationHandle(
-                            reservation_id=existing["id"],
-                            request=request,
-                            replayed=False,
-                        )
-                    raise ReservationConflict("unsupported reservation state")
+                    if existing["status"] not in {"released", "expired"}:
+                        raise ReservationConflict("unsupported reservation state")
+                    await self._check_budget_limits(
+                        connection,
+                        request=request,
+                        projected_amount=request.estimated_amount,
+                        exclude_reservation_id=existing["id"],
+                    )
+                    expires_at = datetime.now(UTC) + timedelta(seconds=request.ttl_seconds)
+                    await connection.execute(
+                        """
+                        UPDATE cost_reservations
+                        SET status='active', actual_amount=NULL, expires_at=$2,
+                            committed_at=NULL, released_at=NULL, release_reason=NULL,
+                            updated_at=now(), version=version+1
+                        WHERE id=$1
+                        """,
+                        existing["id"],
+                        expires_at,
+                    )
+                    return ReservationHandle(
+                        reservation_id=existing["id"],
+                        request=request,
+                        replayed=False,
+                    )
 
                 await self._check_budget_limits(
                     connection,
@@ -146,6 +140,7 @@ class PostgresCostGateway:
         handle: ReservationHandle,
         actual: ActualCost,
     ) -> LedgerWriteResult:
+        """Append sunk provider cost; never reject a paid fact because budget was exceeded."""
         self._assert_commit_context(handle, actual)
         connection = await asyncpg.connect(self.dsn)
         try:
@@ -159,43 +154,26 @@ class PostgresCostGateway:
                     raise ReservationConflict("reservation not found")
                 self._assert_reservation_identity(reservation, handle.request)
                 if reservation["status"] == "committed":
-                    return await self._existing_actual_result(connection, actual)
-                if reservation["status"] != "active":
+                    result = await self._existing_actual_result(connection, actual)
+                    await self._assert_existing_usage(connection, actual, result.entry_id)
+                    return result
+                if reservation["status"] == "released":
+                    raise ReservationConflict("released not-accepted reservation cannot commit")
+                if reservation["status"] not in {"active", "expired"}:
                     raise ReservationConflict(
                         f"reservation cannot commit from {reservation['status']}"
                     )
-                if reservation["expires_at"] <= datetime.now(UTC):
-                    await connection.execute(
-                        """
-                        UPDATE cost_reservations
-                        SET status='expired', released_at=now(), release_reason='ttl',
-                            updated_at=now(), version=version+1
-                        WHERE id=$1
-                        """,
-                        handle.reservation_id,
-                    )
-                    raise ReservationConflict("reservation expired")
 
-                projected_request = replace(
-                    handle.request,
-                    estimated_amount=actual.amount,
-                    confidence=actual.confidence,
-                    pricing_snapshot_id=actual.pricing_snapshot_id,
-                )
-                await self._check_budget_limits(
-                    connection,
-                    request=projected_request,
-                    projected_amount=actual.amount,
-                    exclude_reservation_id=handle.reservation_id,
-                )
+                # Preflight budget enforcement happened before provider invocation. Actual
+                # spend is now a sunk financial fact, including a late result after TTL.
                 result = await self._insert_actual(connection, actual)
                 await self._insert_usage_facts(connection, actual, result.entry_id)
                 await connection.execute(
                     """
                     UPDATE cost_reservations
                     SET status='committed', actual_amount=$2, confidence=$3,
-                        pricing_snapshot_id=$4, committed_at=now(), updated_at=now(),
-                        version=version+1
+                        pricing_snapshot_id=$4, committed_at=now(), released_at=NULL,
+                        release_reason=NULL, updated_at=now(), version=version+1
                     WHERE id=$1
                     """,
                     handle.reservation_id,
@@ -247,7 +225,7 @@ class PostgresCostGateway:
     async def record_reversal(
         self,
         *,
-        context: Any,
+        context: CostContext,
         target_entry_id: UUID,
         reason: str,
         entry_key: str,
@@ -267,20 +245,15 @@ class PostgresCostGateway:
                 )
                 if target is None:
                     raise CostLedgerConflict("reversal target not found")
-                if (
-                    target["organization_id"] != context.organization_id
-                    or target["operation_id"] != context.operation_id
-                ):
-                    raise CostLedgerConflict("reversal target context mismatch")
+                self._assert_correction_target(target, context)
                 if target["entry_type"] not in {"actual_cost", "adjustment"}:
                     raise CostLedgerConflict("entry type cannot be reversed")
-                amount = -Decimal(target["amount"])
                 return await self._insert_correction_row(
                     connection,
                     context=context,
                     target=target,
                     entry_type="reversal",
-                    amount=amount,
+                    amount=-Decimal(target["amount"]),
                     reason=reason,
                     entry_key=entry_key,
                     confidence=CostConfidence.EXACT,
@@ -306,7 +279,7 @@ class PostgresCostGateway:
             project_clause = ""
             if project_id is not None:
                 args.append(project_id)
-                project_clause = f" AND project_id = ${len(args)}"
+                project_clause = f" AND project_id=${len(args)}"
             row = await connection.fetchrow(
                 f"""
                 SELECT
@@ -329,7 +302,7 @@ class PostgresCostGateway:
             reservation_project_clause = ""
             if project_id is not None:
                 reservation_args.append(project_id)
-                reservation_project_clause = f" AND project_id = ${len(reservation_args)}"
+                reservation_project_clause = f" AND project_id=${len(reservation_args)}"
             active = await connection.fetchval(
                 f"""
                 SELECT COALESCE(sum(estimated_amount),0)
@@ -374,7 +347,7 @@ class PostgresCostGateway:
             project_clause = ""
             if project_id is not None:
                 args.append(project_id)
-                project_clause = f" AND project_id = ${len(args)}"
+                project_clause = f" AND project_id=${len(args)}"
             rows = await connection.fetch(
                 f"""
                 SELECT metric, unit, sum(quantity) AS quantity
@@ -464,7 +437,12 @@ class PostgresCostGateway:
                     operation_id,
                     metric,
                 )
-                if existing is not None and existing["released_at"] is None:
+                now = datetime.now(UTC)
+                if (
+                    existing is not None
+                    and existing["released_at"] is None
+                    and existing["expires_at"] > now
+                ):
                     if Decimal(existing["quantity"]) != quantity or existing["unit"] != unit:
                         raise ReservationConflict("quota lease replay mismatch")
                     return QuotaLease(
@@ -489,21 +467,27 @@ class PostgresCostGateway:
                     period_key,
                 )
                 if limit is not None:
-                    active = await connection.fetchval(
-                        """
-                        SELECT COALESCE(sum(quantity),0) FROM quota_leases
-                        WHERE organization_id=$1 AND metric=$2
-                          AND released_at IS NULL AND expires_at > now()
-                        """,
-                        organization_id,
-                        metric,
-                    )
-                    if Decimal(active) + quantity > Decimal(limit["quantity_limit"]):
-                        raise QuotaExceeded(
-                            f"quota {metric} would exceed {limit['quantity_limit']} {limit['unit']}"
+                    if limit["unit"] != unit:
+                        raise QuotaExceeded("quota unit mismatch")
+                    active = Decimal(
+                        await connection.fetchval(
+                            """
+                            SELECT COALESCE(sum(quantity),0) FROM quota_leases
+                            WHERE organization_id=$1 AND metric=$2
+                              AND released_at IS NULL AND expires_at > now()
+                              AND ($3::uuid IS NULL OR id <> $3)
+                            """,
+                            organization_id,
+                            metric,
+                            existing["id"] if existing is not None else None,
                         )
-                lease_id = new_uuid7()
-                expires_at = datetime.now(UTC) + timedelta(seconds=ttl_seconds)
+                    )
+                    if active + quantity > Decimal(limit["quantity_limit"]):
+                        raise QuotaExceeded(
+                            f"quota {metric} would exceed {limit['quantity_limit']} {unit}"
+                        )
+                lease_id = existing["id"] if existing is not None else new_uuid7()
+                expires_at = now + timedelta(seconds=ttl_seconds)
                 if existing is None:
                     await connection.execute(
                         """
@@ -521,7 +505,6 @@ class PostgresCostGateway:
                         expires_at,
                     )
                 else:
-                    lease_id = existing["id"]
                     await connection.execute(
                         """
                         UPDATE quota_leases SET quantity=$2, unit=$3, expires_at=$4,
@@ -569,7 +552,7 @@ class PostgresCostGateway:
         unit: str,
         period_key: str = "lifetime",
     ) -> None:
-        """Read-only hook for externally measured quotas such as Asset storage bytes."""
+        """Read-only hook for externally measured quota facts, e.g. Asset bytes."""
         if current_quantity < 0 or requested_delta < 0:
             raise ValueError("QUOTA_QUANTITY_INVALID")
         connection = await asyncpg.connect(self.dsn)
@@ -608,11 +591,7 @@ class PostgresCostGateway:
                 )
                 if target is None:
                     raise CostLedgerConflict("adjustment target not found")
-                if (
-                    target["organization_id"] != adjustment.context.organization_id
-                    or target["operation_id"] != adjustment.context.operation_id
-                ):
-                    raise CostLedgerConflict("adjustment target context mismatch")
+                self._assert_correction_target(target, adjustment.context)
                 if target["entry_type"] != "actual_cost":
                     raise CostLedgerConflict("adjustment must target actual cost")
                 return await self._insert_correction_row(
@@ -634,7 +613,7 @@ class PostgresCostGateway:
         self,
         connection: asyncpg.Connection,
         *,
-        context: Any,
+        context: CostContext,
         target: asyncpg.Record,
         entry_type: str,
         amount: Decimal,
@@ -684,7 +663,7 @@ class PostgresCostGateway:
             return LedgerWriteResult(entry_id=inserted["id"], inserted=True)
         existing = await connection.fetchrow(
             """
-            SELECT id, amount, currency, reverses_entry_id, entry_type
+            SELECT id, amount, currency, reverses_entry_id
             FROM cost_ledger
             WHERE operation_id=$1 AND entry_type=$2 AND entry_key=$3
             """,
@@ -698,7 +677,7 @@ class PostgresCostGateway:
             or existing["currency"] != target["currency"]
             or existing["reverses_entry_id"] != target["id"]
         ):
-            raise CostLedgerConflict("correction idempotency key reused with different semantics")
+            raise CostLedgerConflict("correction replay differs from immutable fact")
         return LedgerWriteResult(entry_id=existing["id"], inserted=False)
 
     async def _insert_actual(
@@ -770,7 +749,7 @@ class PostgresCostGateway:
             or existing["external_provider_request_id"] != actual.external_provider_request_id
             or existing["confidence"] != actual.confidence.value
         ):
-            raise CostLedgerConflict("actual cost replay differs from immutable financial fact")
+            raise CostLedgerConflict("actual replay differs from immutable financial fact")
         return LedgerWriteResult(entry_id=existing["id"], inserted=False)
 
     async def _insert_usage_facts(
@@ -780,7 +759,6 @@ class PostgresCostGateway:
         cost_entry_id: UUID,
     ) -> None:
         for fact in actual.usage:
-            usage_id = new_uuid7()
             inserted = await connection.fetchrow(
                 """
                 INSERT INTO usage_ledger (
@@ -795,7 +773,7 @@ class PostgresCostGateway:
                 ON CONFLICT ON CONSTRAINT uq_usage_ledger_operation_metric_key DO NOTHING
                 RETURNING id
                 """,
-                usage_id,
+                new_uuid7(),
                 actual.context.organization_id,
                 actual.context.operation_id,
                 cost_entry_id,
@@ -813,22 +791,40 @@ class PostgresCostGateway:
                 actual.occurred_at,
             )
             if inserted is None:
-                existing = await connection.fetchrow(
-                    """
-                    SELECT quantity, unit, cost_entry_id FROM usage_ledger
-                    WHERE operation_id=$1 AND metric=$2 AND entry_key=$3
-                    """,
-                    actual.context.operation_id,
-                    fact.metric,
-                    fact.entry_key,
-                )
-                if (
-                    existing is None
-                    or Decimal(existing["quantity"]) != fact.quantity
-                    or existing["unit"] != fact.unit
-                    or existing["cost_entry_id"] != cost_entry_id
-                ):
-                    raise CostLedgerConflict("usage replay differs from immutable usage fact")
+                await self._assert_usage_fact(connection, actual, fact, cost_entry_id)
+
+    async def _assert_existing_usage(
+        self,
+        connection: asyncpg.Connection,
+        actual: ActualCost,
+        cost_entry_id: UUID,
+    ) -> None:
+        for fact in actual.usage:
+            await self._assert_usage_fact(connection, actual, fact, cost_entry_id)
+
+    async def _assert_usage_fact(
+        self,
+        connection: asyncpg.Connection,
+        actual: ActualCost,
+        fact: UsageFact,
+        cost_entry_id: UUID,
+    ) -> None:
+        existing = await connection.fetchrow(
+            """
+            SELECT quantity, unit, cost_entry_id FROM usage_ledger
+            WHERE operation_id=$1 AND metric=$2 AND entry_key=$3
+            """,
+            actual.context.operation_id,
+            fact.metric,
+            fact.entry_key,
+        )
+        if (
+            existing is None
+            or Decimal(existing["quantity"]) != fact.quantity
+            or existing["unit"] != fact.unit
+            or existing["cost_entry_id"] != cost_entry_id
+        ):
+            raise CostLedgerConflict("usage replay differs from immutable usage fact")
 
     async def _check_budget_limits(
         self,
@@ -838,8 +834,7 @@ class PostgresCostGateway:
         projected_amount: Decimal,
         exclude_reservation_id: UUID | None,
     ) -> None:
-        limits = await self._applicable_budget_limits(connection, request)
-        for limit in limits:
+        for limit in await self._applicable_budget_limits(connection, request):
             spent = await self._scope_cost(connection, limit, request)
             active = await self._scope_active_reservations(
                 connection,
@@ -860,8 +855,7 @@ class PostgresCostGateway:
         connection: asyncpg.Connection,
         request: BudgetReservationRequest,
     ) -> list[asyncpg.Record]:
-        now = datetime.now(UTC)
-        periods = (lifetime_period_key(), month_period_key(now))
+        periods = (lifetime_period_key(), month_period_key(datetime.now(UTC)))
         context = request.context
         rows = await connection.fetch(
             """
@@ -895,13 +889,14 @@ class PostgresCostGateway:
         request: BudgetReservationRequest,
     ) -> Decimal:
         where, values = self._scope_clause(limit, request, table_alias="c")
+        args: list[Any] = [request.context.organization_id, request.currency, *values]
         period_clause = ""
-        args: list[Any] = [request.context.organization_id, request.currency]
-        args.extend(values)
         if str(limit["period_key"]).startswith("month:"):
             start, end = _month_bounds(str(limit["period_key"]))
             args.extend([start, end])
-            period_clause = f" AND c.occurred_at >= ${len(args)-1} AND c.occurred_at < ${len(args)}"
+            period_clause = (
+                f" AND c.occurred_at >= ${len(args)-1} AND c.occurred_at < ${len(args)}"
+            )
         value = await connection.fetchval(
             f"""
             SELECT COALESCE(sum(c.amount),0)
@@ -924,8 +919,7 @@ class PostgresCostGateway:
         exclude_reservation_id: UUID | None,
     ) -> Decimal:
         where, values = self._scope_clause(limit, request, table_alias="r")
-        args: list[Any] = [request.context.organization_id, request.currency]
-        args.extend(values)
+        args: list[Any] = [request.context.organization_id, request.currency, *values]
         exclude = ""
         if exclude_reservation_id is not None:
             args.append(exclude_reservation_id)
@@ -950,20 +944,17 @@ class PostgresCostGateway:
         table_alias: str,
     ) -> tuple[str, list[Any]]:
         scope = BudgetScope(limit["scope_type"])
-        context = request.context
         if scope == BudgetScope.ORGANIZATION:
             return "", []
-        field_and_value = {
-            BudgetScope.PROJECT: ("project_id", context.project_id),
-            BudgetScope.AGENT_RUN: ("agent_run_id", context.agent_run_id),
-            BudgetScope.TASK: ("task_id", context.task_id),
-            BudgetScope.OPERATION: ("operation_id", context.operation_id),
+        field, value = {
+            BudgetScope.PROJECT: ("project_id", request.context.project_id),
+            BudgetScope.AGENT_RUN: ("agent_run_id", request.context.agent_run_id),
+            BudgetScope.TASK: ("task_id", request.context.task_id),
+            BudgetScope.OPERATION: ("operation_id", request.context.operation_id),
         }[scope]
-        field, value = field_and_value
         if value is None or value != limit["scope_id"]:
             raise BudgetExceeded("budget scope context mismatch")
-        # Caller always has organization_id/currency as $1/$2; scope value is $3.
-        return f" AND {table_alias}.{field} = $3", [value]
+        return f" AND {table_alias}.{field}=$3", [value]
 
     async def _expire_reservations(
         self,
@@ -1024,6 +1015,17 @@ class PostgresCostGateway:
             raise ReservationConflict("actual provider/model differs from reservation")
         if actual.currency != request.currency:
             raise ReservationConflict("actual currency differs from reservation")
+
+    def _assert_correction_target(
+        self,
+        target: asyncpg.Record,
+        context: CostContext,
+    ) -> None:
+        if (
+            target["organization_id"] != context.organization_id
+            or target["operation_id"] != context.operation_id
+        ):
+            raise CostLedgerConflict("correction target context mismatch")
 
 
 def usage_facts_from_values(
