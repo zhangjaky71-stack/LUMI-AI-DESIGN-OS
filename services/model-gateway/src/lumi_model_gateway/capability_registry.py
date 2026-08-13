@@ -223,7 +223,9 @@ class RegistrySnapshot:
                 continue
             if policy and model.model_key in policy.denied_models:
                 continue
-            if policy and policy.allowed_regions and model.regions:
+            if policy and policy.allowed_regions:
+                if not model.regions:
+                    continue
                 if not set(model.regions).intersection(policy.allowed_regions):
                     continue
             rows.append(model)
@@ -264,6 +266,11 @@ class RegistrySnapshot:
                 continue
             if policy and model_key in policy.denied_models:
                 continue
+            if policy and policy.allowed_regions:
+                if not model.regions:
+                    continue
+                if not set(model.regions).intersection(policy.allowed_regions):
+                    continue
             if any(
                 self.support(model_key, capability) != SupportLevel.FULL
                 for capability in profile.required_capabilities
@@ -330,14 +337,16 @@ def compile_registry_seed(
     source_registry_version = str(seed["source_registry_version"])
     if manifest.get("registry_version") != source_registry_version:
         raise ValueError("MODEL_REGISTRY_SOURCE_VERSION_MISMATCH")
-    provider_files = tuple(str(item) for item in seed["provider_files"])
+
     models: list[RegistryModelSnapshot] = []
     claims: list[CapabilityClaim] = []
     pricing: list[PricingSnapshot] = []
     observed_values: list[datetime] = []
     source_bytes: list[bytes] = [seed_path.read_bytes(), manifest_path.read_bytes()]
     providers_seen: set[str] = set()
-    for relative in provider_files:
+    model_keys_seen: set[str] = set()
+
+    for relative in tuple(str(item) for item in seed["provider_files"]):
         path = repository_root / relative
         source_bytes.append(path.read_bytes())
         provider_payload = _read_json(path)
@@ -348,10 +357,15 @@ def compile_registry_seed(
         observed_at = _date_time(str(provider_payload["observed_at"]))
         observed_values.append(observed_at)
         valid_until = _date_time(str(provider_payload["pricing_expires_at"]))
+
         for raw in provider_payload["models"]:
             model_key = str(raw["registry_id"])
+            if model_key in model_keys_seen:
+                raise ValueError(f"MODEL_REGISTRY_MODEL_DUPLICATE:{model_key}")
+            model_keys_seen.add(model_key)
             model_id = str(raw["model_id"])
             source_ref = f"{relative}#{model_key}"
+            regions = tuple(sorted(str(item) for item in raw.get("regions", [])))
             models.append(
                 RegistryModelSnapshot(
                     model_key=model_key,
@@ -361,6 +375,7 @@ def compile_registry_seed(
                     route_eligible=bool(raw["route_eligible"]),
                     observed_at=observed_at,
                     source_ref=source_ref,
+                    regions=regions,
                     benchmark_status=str(
                         raw.get("benchmark_status", "NOT_MEASURED")
                     ),
@@ -400,9 +415,14 @@ def compile_registry_seed(
                         source_ref=source_ref,
                     )
                 )
-    required_providers = set(str(item) for item in manifest["required_providers"])
+
+    required_providers = {str(item) for item in manifest["required_providers"]}
     if providers_seen != required_providers:
         raise ValueError("MODEL_REGISTRY_PROVIDER_SET_MISMATCH")
+    expected_models = int(manifest["expected_counts"]["models"])
+    if len(models) != expected_models:
+        raise ValueError("MODEL_REGISTRY_MODEL_COUNT_MISMATCH")
+
     route_path = repository_root / str(seed["route_policy"])
     benchmark_path = repository_root / str(seed["benchmark_suite"])
     source_bytes.extend((route_path.read_bytes(), benchmark_path.read_bytes()))
@@ -448,17 +468,19 @@ def _capability_map(
     documented = raw.get("documented_capabilities", {})
     limits = dict(documented) if isinstance(documented, dict) else {}
     inputs = {str(item) for item in limits.get("input", [])}
-    mapped: set[Capability] = set()
     modalities = {str(item) for item in raw.get("modalities", [])}
+    mapped: set[Capability] = set()
+    modality_map = {
+        "reasoning": Capability.LLM_REASONING,
+        "vision": Capability.LLM_VISION,
+        "image_generation": Capability.IMAGE_GENERATE,
+        "image_edit": Capability.IMAGE_EDIT,
+        "video_generation": Capability.VIDEO_TEXT_TO_VIDEO,
+        "video_edit": Capability.VIDEO_EDIT,
+        "embedding": Capability.EMBEDDING_TEXT,
+    }
     for modality in modalities:
-        capability = {
-            "reasoning": Capability.LLM_REASONING,
-            "vision": Capability.LLM_VISION,
-            "image_generation": Capability.IMAGE_GENERATE,
-            "image_edit": Capability.IMAGE_EDIT,
-            "video_generation": Capability.VIDEO_TEXT_TO_VIDEO,
-            "embedding": Capability.EMBEDDING_TEXT,
-        }.get(modality)
+        capability = modality_map.get(modality)
         if capability is not None:
             mapped.add(capability)
     if bool(limits.get("structured_output")):
@@ -493,7 +515,6 @@ def _compile_route(
     observed_at: str,
     source_ref: str,
 ) -> RoutingProfile:
-    name = str(raw["route"])
     weights = {
         "quality": "0.45",
         "constraint": "0.30",
@@ -501,6 +522,7 @@ def _compile_route(
         "latency": "0.10",
         "availability": "0.05",
     }
+    name = str(raw["route"])
     return RoutingProfile(
         profile=name,
         required_capabilities=_route_capabilities(name),
@@ -518,7 +540,7 @@ def _route_capabilities(name: str) -> tuple[Capability, ...]:
             return (Capability.IMAGE_EDIT,)
         return (Capability.IMAGE_GENERATE,)
     if name == "video.edit":
-        return ()
+        return (Capability.VIDEO_EDIT,)
     if name.startswith("video."):
         return (Capability.VIDEO_TEXT_TO_VIDEO,)
     if name == "embedding.multimodal":
@@ -537,6 +559,8 @@ def _benchmark_profile_for(capability: Capability) -> str | None:
         Capability.IMAGE_GENERATE: "product_identity",
         Capability.IMAGE_EDIT: "image_edit_precision",
         Capability.VIDEO_TEXT_TO_VIDEO: "video_motion",
+        Capability.VIDEO_IMAGE_TO_VIDEO: "video_motion",
+        Capability.VIDEO_EDIT: "video_motion",
     }.get(capability)
 
 
