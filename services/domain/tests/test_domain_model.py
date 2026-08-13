@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import FrozenInstanceError, fields
 from decimal import Decimal
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -209,9 +210,10 @@ def test_cost_entry_is_deeply_immutable_and_adjustments_are_new_entries() -> Non
     original_metadata["provider"] = "mutated-outside"
     assert original.metadata["provider"] == "example"
     with pytest.raises(TypeError):
-        original.metadata["provider"] = "mutated"  # type: ignore[index]
+        cast(dict[str, str], original.metadata)["provider"] = "mutated"
+    attribute_name = "category"
     with pytest.raises(FrozenInstanceError):
-        setattr(original, "category", "mutated")
+        setattr(original, attribute_name, "mutated")
 
     reversal = original.reversal(reason="provider refund")
     assert reversal.id != original.id
