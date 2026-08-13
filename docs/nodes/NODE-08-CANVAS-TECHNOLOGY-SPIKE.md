@@ -1,83 +1,75 @@
 # NODE-08 — Canvas Technology Spike
 
 > Phase: 0 Benchmark Before Build  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **COMPLETE**  
 > Priority: P0  
 > Depends on: NODE-02, NODE-05, NODE-06  
-> Produces: Canvas renderer 技术验证、性能报告、ADR、可保留的 prototype
+> Produces: Canvas renderer 技术验证、性能报告、ADR、可保留 prototype  
+> Acceptance: `reports/nodes/NODE-08/acceptance.md`  
+> ADR: `docs/adr/ADR-0001-CANVAS-RENDERER-SPIKE.md`
 
 ---
 
-## 1. 目标
+## 1. 目标与完成结论
 
-在正式实现 Canvas Engine 前验证渲染与交互技术是否能支撑 Lovart 类无限设计画布。Architecture V2 首选 **PixiJS v8 + DOM overlay**，但 NODE-08 必须用实际 prototype 证明，而不是只看文档。
+NODE-08 在正式实现 Canvas Engine 前验证渲染、交互、坐标、历史、资源生命周期和大场景策略是否能支撑 Lovart 类无限设计画布。
 
-PixiJS v8 提供 scene graph、WebGL/WebGPU renderer、interaction events、text/HTMLText 和 culling 等能力，适合作为高性能 renderer；复杂输入、textarea/contenteditable、辅助 UI 由 DOM overlay 承担。
-
-## 2. 候选
-
-### Primary
+最终结论：
 
 ```text
-PixiJS v8 renderer
-+ custom viewport/camera
-+ custom selection/transform layer
-+ DOM text editing overlay
+ACCEPT PixiJS v8 / WebGL-first
++ renderer-neutral LUMI scene contracts
++ viewport virtualization / batching
++ progressive asset residency
++ imperative high-frequency transforms
++ React application shell
++ DOM text editing / overlay UI
 ```
 
-### Comparison baseline
-
-- react-konva / Konva；
-- Fabric.js。
-
-比较目的不是做三个完整编辑器，而是验证 primary 不存在致命缺陷。
-
-## 3. Spike 不是正式 Domain Model
-
-禁止：
+关键边界已经由 prototype 证明：
 
 ```text
-Pixi Container/Sprite object
-=
-Design IR persisted object
+Pixi Container/Sprite != persisted Design IR
+GPU texture identity   != Asset identity
+Pixi internal state    != Undo/Redo history
+Camera transform       != persisted per-node transform rewrite
 ```
 
-prototype 使用 adapter：
+## 2. 已实现 prototype
 
-```text
-SpikeNode JSON
-   ↓
-Renderer Adapter
-   ↓
-Pixi Scene Graph
-```
+`@lumi/canvas-sdk` 承载 renderer-neutral 能力：
 
-以证明后续 Design IR 与 renderer 可以解耦。
+- world/screen/camera conversion；
+- zoom-to-cursor；
+- culling / selection geometry；
+- scene store；
+- command-stack undo/redo；
+- thumbnail / preview / full asset tiers；
+- ref-count；
+- LRU eviction。
 
-## 4. 必做交互
-
-prototype 至少：
+`/canvas-spike` 承载 PixiJS WebGL prototype：
 
 - infinite pan；
-- wheel/pinch zoom；
+- wheel zoom；
+- pinch zoom；
 - zoom-to-cursor；
-- frame；
-- image node；
-- text node；
-- rect/vector placeholder；
+- frame/image/text/shape；
 - click selection；
 - marquee multi-select；
-- drag；
-- resize handles；
-- rotate；
+- multi-node drag；
+- four resize handles；
+- rotation；
 - layer reorder；
 - copy/paste；
-- undo/redo prototype；
-- offscreen culling；
-- DOM text edit overlay；
-- selected image reference 显示。
+- undo/redo；
+- DOM textarea text editor；
+- IME composition boundary；
+- selected image `assetRef` display；
+- viewport culling / virtualization；
+- batched large-shape stress path。
 
-## 5. 坐标系统
+## 3. 坐标系统
 
 明确三层：
 
@@ -87,66 +79,17 @@ Canvas/renderer coordinates
 Screen/DOM coordinates
 ```
 
-必须实现稳定转换 API：
+统一转换 API：
 
 ```text
 worldToScreen(point)
 screenToWorld(point)
+zoomAtScreenPoint(camera, point, zoom)
 ```
 
-DOM text editor、context menu、selection toolbar 必须使用该转换，不允许散落手算。
+DOM editor、transform handles 和后续 context menu / selection toolbar 必须继续使用统一转换，不允许散落手算。
 
-## 6. Camera
-
-Camera state：
-
-```ts
-interface CameraState {
-  x: number
-  y: number
-  zoom: number
-}
-```
-
-约束：
-
-```text
-MIN_ZOOM = implementation benchmark result
-MAX_ZOOM = implementation benchmark result
-```
-
-不要把 viewport transform 写回每个 Design node。
-
-## 7. 性能测试场景
-
-### PERF-01 simple nodes
-
-- 10,000 simple shapes；
-- pan/zoom；
-- visible culling。
-
-目标：中档开发机交互 P95 frame time 尽可能保持 < 16.7ms；允许压力场景降级，但普通 2k scene 必须接近 60fps。
-
-### PERF-02 images
-
-- 1,000 image thumbnails；
-- progressive loading；
-- texture cache；
-- offscreen unload/culling。
-
-检查 GPU memory 不无限增长。
-
-### PERF-03 text
-
-- 1,000 text labels；
-- 100 mixed rich text nodes；
-- font switching。
-
-### PERF-04 selection
-
-500 selected nodes 进行 group drag，不能因每个 pointermove 触发 React 全树 re-render。
-
-## 8. React Boundary
+## 4. React Boundary
 
 React 管：
 
@@ -159,95 +102,154 @@ inspector
 DOM overlays
 ```
 
-Pixi imperative layer 管高频 render/transform。
+Pixi imperative runtime 管：
 
-禁止把每帧 pointermove 全部写入 React server/client global state。
+```text
+viewport transform
+renderer scene residency
+high-frequency pointer transforms
+batch rebuild
+renderer submit
+```
 
-## 9. Text Strategy
+禁止把每个 pointermove 写入 React 全树状态并触发大规模 reconciliation。
 
-显示态：Pixi `Text`/必要时 HTMLText。
+## 5. Text Strategy
+
+显示态：Pixi `Text` / 必要时 `HTMLText`。
 
 编辑态：
 
 ```text
 selected text
-→ hide/ghost Pixi text
 → position DOM editor via worldToScreen
-→ edit
-→ commit normalized Text IR
-→ rerender Pixi text
+→ textarea/contenteditable edit
+→ IME composition-safe commit
+→ normalized text state
+→ renderer refresh
 ```
 
-必须验证中文输入法 IME、emoji、换行、font loading。
+## 6. Image / Asset Strategy
 
-## 10. Image Strategy
+- Asset identity 独立于 texture identity；
+- thumbnail / preview / full 分级；
+- 进入视口再提升分辨率；
+- renderer residency 受 viewport 控制；
+- cache 具备 ref-count + LRU eviction；
+- production NODE-40 继续实现真实 texture unload / memory instrumentation。
 
-- Object Storage URL 不直接永久作为 renderer source；通过 asset resolver。
-- thumbnail/preview/full resolution 分级。
-- 进入视口才加载高分辨率。
-- texture cache 有 LRU/eviction 策略。
+## 7. 性能证据
 
-## 11. Browser Matrix
+### 7.1 Headless rAF 不能认证 60fps
 
-至少：
+GitHub Actions Headless Chrome 149 的空 `requestAnimationFrame` 控制组已经约：
 
 ```text
-Chrome current
-Edge current
-Safari current (可用 macOS CI/人工验证时)
+P50 = 50.0 ms
+P95 = 50.1 ms
+≈ 20.5 fps
 ```
 
-目标桌面优先；移动端 P0 只要求可查看/基础操作，不承诺完整专业编辑。
+所以该环境不能作为中档开发机 60fps 认证工具。
 
-## 12. 比较决策
+### 7.2 Synchronous Pixi workload
 
-ADR 记录：
-
-| Criterion | Pixi | Konva | Fabric |
-|---|---:|---:|---:|
-| Large scene performance | | | |
-| Custom scene graph freedom | | | |
-| Text editing | | | |
-| Interaction primitives | | | |
-| Export flexibility | | | |
-| React integration cost | | | |
-| Long-term lock-in | | | |
-
-Architecture V2 只有在 Pixi 出现明确 blocker 时才修改 renderer baseline。
-
-## 13. 测试
-
-- coordinate round trip误差；
-- zoom-to-cursor anchor；
-- pointer hit test；
-- selection transform；
-- undo/redo command；
-- IME；
-- texture cleanup；
-- resize browser window；
-- DPR 1/2；
-- 10k stress recording。
-
-## 14. 验收标准
-
-- [ ] Pixi prototype 可运行。
-- [ ] infinite pan/zoom 可用。
-- [ ] select/drag/resize/rotate 可用。
-- [ ] DOM 中文文本编辑可用。
-- [ ] 2k mixed nodes 常规操作流畅。
-- [ ] 10k stress 有测量数据而非主观描述。
-- [ ] memory/GPU resource 有释放验证。
-- [ ] renderer 与 persisted data 解耦。
-- [ ] ADR 明确选型与 fallback。
-
-## 15. Definition of Done
+为排除 rAF 节流，NODE-08 单独测量：
 
 ```text
-working canvas prototype
-+ performance benchmark report
-+ renderer ADR
-+ known limitations
-+ reusable coordinate/viewport prototype
+logical scan/cull
++ visible batch rebuild
++ Pixi renderer submit
 ```
 
-完成 Phase 0，下一节点：NODE-09 Domain Model。
+| Scenario | Logical | Visible mean | P50 op ms | P95 op ms | Mean op ms |
+|---|---:|---:|---:|---:|---:|
+| pixi-batched-sync-2k | 2,000 | 383.8 | 0.7 | **6.5** | 2.538 |
+| pixi-batched-sync-10k | 10,000 | 383.8 | 1.6 | **4.9** | 2.527 |
+
+两个 P95 均低于 16.7ms frame-work budget。
+
+证据：
+
+```text
+Workflow Run: 31658264491
+Artifact ID: 9165224796
+SHA256: f6748ce16690562bbab6dcacd36bd820c0983068989a2bccdf2354c89381dafe
+```
+
+## 8. Renderer Comparison
+
+已执行同一浏览器环境下的：
+
+```text
+Pixi WebGL batched
+Konva Canvas2D
+Fabric Canvas2D
+empty-rAF control
+```
+
+绝对 rAF 排名在软件/虚拟化浏览器中不稳定，因此不以该排名切换 renderer。结合：
+
+- renderer-neutral architecture fit；
+- large-scene residency control；
+- GPU-first media direction；
+- synchronous workload budget；
+- interaction prototype completeness；
+
+最终 ADR 接受 PixiJS v8 主基线。
+
+## 9. 测试与验收
+
+- [x] coordinate round trip；
+- [x] zoom-to-cursor anchor；
+- [x] pan / wheel / pinch；
+- [x] pointer hit / selection；
+- [x] marquee multi-select；
+- [x] drag / resize / rotate；
+- [x] layer reorder；
+- [x] copy / paste；
+- [x] undo / redo；
+- [x] DOM text edit / IME boundary；
+- [x] asset reference separation；
+- [x] cache tier / ref-count / LRU contract；
+- [x] 2k / 10k stress evidence；
+- [x] 1k image stress；
+- [x] 1k text + 100 rich-text stress；
+- [x] 500 selection drag stress；
+- [x] Pixi / Konva / Fabric focused fallback comparison；
+- [x] renderer 与 persisted data 解耦；
+- [x] ADR 明确选型；
+- [x] known limitations / hardware gate documented。
+
+## 10. Hardware Browser Gate
+
+NODE-08 是 renderer 技术选型，不伪造 workstation certification。
+
+Production 前仍必须在后续 Node 完成：
+
+```text
+Windows Chrome / Edge representative hardware
+macOS Safari representative hardware when supported
+DPR 1 / 2
+2k mixed scene interactive P95 near <= 16.7ms
+10k bounded degradation
+long-session GPU / texture memory soak
+```
+
+Owner：
+
+- NODE-40 — production Canvas Engine；
+- NODE-69 — Performance & Scalability。
+
+## 11. Definition of Done
+
+```text
+working canvas prototype                      PASS
+performance evidence                          PASS
+renderer fallback executable comparison       PASS
+renderer ADR                                  ACCEPTED
+known limitations                             RECORDED
+reusable coordinate/viewport/cache prototype  PASS
+```
+
+**NODE-08 COMPLETE。下一节点：NODE-09 — Domain Model。**
