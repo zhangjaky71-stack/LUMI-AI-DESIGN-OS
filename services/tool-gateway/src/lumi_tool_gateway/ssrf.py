@@ -28,7 +28,7 @@ class SystemHostResolver:
     def resolve(self, hostname: str) -> tuple[str, ...]:
         try:
             rows = socket.getaddrinfo(hostname, None, type=socket.SOCK_STREAM)
-        except socket.gaierror as exc:
+        except (OSError, UnicodeError) as exc:
             raise ToolSSRFBlockedError("TOOL_DNS_RESOLUTION_FAILED") from exc
         addresses = sorted({row[4][0] for row in rows})
         if not addresses:
@@ -90,7 +90,11 @@ class SSRFPolicy:
             raise ToolSSRFBlockedError("TOOL_URL_PORT_BLOCKED")
 
         literal = _parse_ip(hostname)
-        addresses = (str(literal),) if literal is not None else self.resolver.resolve(hostname)
+        addresses = (
+            (str(literal),)
+            if literal is not None
+            else self.resolver.resolve(hostname)
+        )
         normalized: list[str] = []
         for address in addresses:
             ip = _parse_ip(address)
