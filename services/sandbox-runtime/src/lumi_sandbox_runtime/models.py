@@ -52,6 +52,9 @@ class SandboxSpec:
             raise ValueError("SANDBOX_TIMEOUT_INVALID")
         if not 1024 <= self.max_output_bytes <= 64 * 1024 * 1024:
             raise ValueError("SANDBOX_MAX_OUTPUT_INVALID")
+        disk_bytes = self.disk_limit_mb * 1024 * 1024
+        if self.max_output_bytes > disk_bytes // 4:
+            raise ValueError("SANDBOX_OUTPUT_BUDGET_EXCEEDS_STORAGE")
         if not 5 <= self.ttl_seconds <= 86_400:
             raise ValueError("SANDBOX_TTL_INVALID")
         if self.network_policy != NetworkPolicy.ALLOWLIST and self.allowed_hosts:
