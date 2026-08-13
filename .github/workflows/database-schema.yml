@@ -41,12 +41,16 @@ jobs:
         run: make infra-up
       - name: Empty database to Alembic head
         run: make db-upgrade
+      - name: Verify ORM to migration drift
+        run: bash scripts/db-local schema-check
       - name: Seed deterministic fixtures
         run: make db-seed
       - name: Verify current revision
         run: make db-current
       - name: Recent downgrade then re-upgrade
         run: bash scripts/db-local downgrade-smoke
+      - name: Re-check ORM to migration drift after downgrade smoke
+        run: bash scripts/db-local schema-check
       - name: Live persistence acceptance tests
         run: bash scripts/db-local integration-test
       - name: Capture database diagnostics on failure
