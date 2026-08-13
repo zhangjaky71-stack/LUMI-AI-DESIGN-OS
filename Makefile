@@ -64,6 +64,7 @@ sandbox-contract:
 
 sandbox-e2e:
 	docker build -t lumi-sandbox:node21-v1 -f infra/sandbox/Dockerfile infra/sandbox
+	LUMI_SANDBOX_DOCKER_E2E=1 PYTHONPATH=services/sandbox-runtime/src python3 scripts/integration_sandbox_docker_config.py
 	LUMI_SANDBOX_DOCKER_E2E=1 PYTHONPATH=services/sandbox-runtime/src python3 scripts/integration_sandbox_runtime.py
 
 ci-contracts:
