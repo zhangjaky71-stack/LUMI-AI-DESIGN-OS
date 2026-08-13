@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumi.dev/artifacts/v1/provenance.schema.json",
+  "title": "LUMI Artifact Provenance V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["artifact_version_id","organization_id","agent_run_id","task_id","generation_id","provider","model","provider_request_id","prompt_hash","prompt_template_version","input_asset_ids","input_artifact_version_ids","design_ir_schema_version","constraint_snapshot_hash","recipe_version","skill_versions","code_git_sha"],
+  "properties": {
+    "artifact_version_id": {"type":"string","minLength":1},
+    "organization_id": {"type":"string","minLength":1},
+    "agent_run_id": {"type":["string","null"]},
+    "task_id": {"type":["string","null"]},
+    "generation_id": {"type":["string","null"]},
+    "provider": {"type":["string","null"]},
+    "model": {"type":["string","null"]},
+    "provider_request_id": {"type":["string","null"]},
+    "prompt_hash": {"type":["string","null"],"pattern":"^[0-9a-f]{64}$"},
+    "prompt_template_version": {"type":["string","null"]},
+    "input_asset_ids": {"type":"array","items":{"type":"string"},"uniqueItems":true},
+    "input_artifact_version_ids": {"type":"array","items":{"type":"string"},"uniqueItems":true},
+    "design_ir_schema_version": {"type":["string","null"]},
+    "constraint_snapshot_hash": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "recipe_version": {"type":["string","null"]},
+    "skill_versions": {"type":"object","additionalProperties":{"type":"string"}},
+    "code_git_sha": {"type":"string","pattern":"^[0-9a-f]{40}$"}
+  }
+}
