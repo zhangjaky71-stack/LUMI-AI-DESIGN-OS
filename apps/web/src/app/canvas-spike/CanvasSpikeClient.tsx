@@ -92,12 +92,15 @@ export default function CanvasSpikeClient() {
     runtimeRef.current?.commitText(textEditor.nodeId, draftText);
   };
 
-  const beginResize =
-    (handle: "nw" | "ne" | "sw" | "se") => (event: React.PointerEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      runtimeRef.current?.beginResize(handle, event.nativeEvent);
-    };
+  const beginResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const handle = event.currentTarget.dataset.resizeHandle;
+    if (handle !== "nw" && handle !== "ne" && handle !== "sw" && handle !== "se") {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    runtimeRef.current?.beginResize(handle, event.nativeEvent);
+  };
 
   const beginRotate = (event: React.PointerEvent) => {
     event.preventDefault();
@@ -254,22 +257,26 @@ export default function CanvasSpikeClient() {
               >
                 <button
                   className={`${styles.handle} ${styles.nw}`}
-                  onPointerDown={beginResize("nw")}
+                  data-resize-handle="nw"
+                  onPointerDown={beginResize}
                   aria-label="resize northwest"
                 />
                 <button
                   className={`${styles.handle} ${styles.ne}`}
-                  onPointerDown={beginResize("ne")}
+                  data-resize-handle="ne"
+                  onPointerDown={beginResize}
                   aria-label="resize northeast"
                 />
                 <button
                   className={`${styles.handle} ${styles.sw}`}
-                  onPointerDown={beginResize("sw")}
+                  data-resize-handle="sw"
+                  onPointerDown={beginResize}
                   aria-label="resize southwest"
                 />
                 <button
                   className={`${styles.handle} ${styles.se}`}
-                  onPointerDown={beginResize("se")}
+                  data-resize-handle="se"
+                  onPointerDown={beginResize}
                   aria-label="resize southeast"
                 />
                 <button
