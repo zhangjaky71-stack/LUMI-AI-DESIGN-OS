@@ -5,6 +5,8 @@ from .asset import (
     AssetMetadata,
     AssetPreview,
     AssetRights,
+    AssetUploadSession,
+    AssetValidationRun,
 )
 from .auth_security import (
     ApiToken,
@@ -78,6 +80,8 @@ __all__ = [
     "AssetMetadata",
     "AssetPreview",
     "AssetRights",
+    "AssetUploadSession",
+    "AssetValidationRun",
     "AuditEvent",
     "AuthIdentity",
     "Brand",
