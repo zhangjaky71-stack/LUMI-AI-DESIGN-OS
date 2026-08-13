@@ -10,9 +10,11 @@ from .models import (
     CostEstimate,
     ModelRequest,
     ModelResult,
+    ProviderLatencyClass,
     ProviderModel,
     RoutingDecision,
     StreamChunk,
+    quality_threshold,
 )
 from .ports import ProviderAdapter, ProviderHealthRegistry, ProviderRegistry
 from .routing import (
@@ -103,13 +105,20 @@ class RegistryAwareModelRouter(ModelRouter):
         decision = await router.route(
             self._apply_registry_preference(request, snapshot)
         )
-        marker = (
+        snapshot_marker = (
             f"REGISTRY_SNAPSHOT:{snapshot.snapshot_id}",
             f"REGISTRY_VERSION:{snapshot.registry_version}",
             f"REGISTRY_HASH:{snapshot.content_hash[:16]}",
         )
         candidates = tuple(
-            replace(candidate, reason_codes=candidate.reason_codes + marker)
+            replace(
+                candidate,
+                reason_codes=(
+                    candidate.reason_codes
+                    + snapshot_marker
+                    + self._evidence_markers(snapshot, request, candidate.key)
+                ),
+            )
             for candidate in decision.candidates
         )
         return RoutingDecision(
@@ -160,15 +169,20 @@ class RegistryAwareModelRouter(ModelRouter):
                 if not set(model.regions).intersection(policy.allowed_regions):
                     rejected[descriptor.key] = ("REGISTRY_ORG_REGION_MISMATCH",)
                     continue
-            quality = snapshot.quality_score(descriptor.key, request.capability)
+            measured_quality = snapshot.quality_score(
+                descriptor.key,
+                request.capability,
+            )
             projected = ProviderModel(
                 provider=model.provider,
                 model=model.model,
                 capabilities=frozenset({request.capability}),
                 quality_score=(
-                    quality if quality is not None else descriptor.quality_score
+                    measured_quality
+                    if measured_quality is not None
+                    else quality_threshold(request.quality_profile)
                 ),
-                latency_class=descriptor.latency_class,
+                latency_class=_latency_class(model.latency_class),
                 regions=frozenset(model.regions),
                 supports_streaming=descriptor.supports_streaming,
                 supports_async=descriptor.supports_async,
@@ -213,6 +227,36 @@ class RegistryAwareModelRouter(ModelRouter):
         hints: dict[str, Any] = dict(request.routing_hints)
         hints["preferred_model"] = policy.preferred_models[0]
         return replace(request, routing_hints=hints)
+
+    @staticmethod
+    def _evidence_markers(
+        snapshot: RegistrySnapshot,
+        request: ModelRequest,
+        model_key: str,
+    ) -> tuple[str, str]:
+        model = snapshot.model(model_key)
+        quality = snapshot.quality_score(model_key, request.capability)
+        return (
+            (
+                "REGISTRY_QUALITY_MEASURED"
+                if quality is not None
+                else "REGISTRY_QUALITY_UNMEASURED"
+            ),
+            (
+                "REGISTRY_LATENCY_MEASURED"
+                if model is not None and model.latency_class is not None
+                else "REGISTRY_LATENCY_UNMEASURED"
+            ),
+        )
+
+
+def _latency_class(value: str | None) -> ProviderLatencyClass:
+    if value is None:
+        return ProviderLatencyClass.STANDARD
+    try:
+        return ProviderLatencyClass(value)
+    except ValueError as exc:
+        raise ValueError(f"MODEL_REGISTRY_LATENCY_CLASS_INVALID:{value}") from exc
 
 
 def _intersect_or_other(
