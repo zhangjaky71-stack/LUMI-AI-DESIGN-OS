@@ -17,6 +17,7 @@ members = [
   "apps/api",
   "apps/agent-runtime",
   "apps/worker-media",
+  "services/domain",
   "services/model-gateway",
   "services/tool-gateway",
   "services/sandbox-runtime",
@@ -25,6 +26,9 @@ members = [
   "services/visual-critic",
   "services/asset-intelligence",
 ]
+
+[tool.uv.sources]
+lumi-domain = { workspace = true }
 
 [tool.ruff]
 target-version = "py312"
