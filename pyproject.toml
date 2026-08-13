@@ -85,6 +85,7 @@ extraPaths = [
   "services/auth/src",
   "services/domain/src",
   "services/project-core/src",
+  "services/model-gateway/src",
   "services/sandbox-runtime/src",
 ]
 
@@ -95,6 +96,7 @@ pythonpath = [
   "services/auth/src",
   "services/domain/src",
   "services/project-core/src",
+  "services/model-gateway/src",
   "services/sandbox-runtime/src",
 ]
 testpaths = [
@@ -104,6 +106,7 @@ testpaths = [
   "services/auth/tests",
   "services/domain/tests",
   "services/project-core/tests",
+  "services/model-gateway/tests",
   "services/sandbox-runtime/tests",
   "evals/tests",
 ]
