@@ -64,9 +64,13 @@ def _variant_operation_id(root_operation_id: str, variant_index: int) -> str:
 def _validate_reference_roles(spec: ImageGenerationSpec) -> None:
     if spec.mode in _REFERENCE_REQUIRED_MODES and not spec.references:
         raise ImageGenerationPipelineError("GENERATION_MODE_REQUIRES_REFERENCE")
-    if spec.mode == "PRODUCT_SCENE" and not any(item.role == "IDENTITY" for item in spec.references):
+    if spec.mode == "PRODUCT_SCENE" and not any(
+        item.role == "IDENTITY" for item in spec.references
+    ):
         raise ImageGenerationPipelineError("PRODUCT_SCENE_IDENTITY_REFERENCE_REQUIRED")
-    if spec.mode == "STYLE_REFERENCE" and not any(item.role == "STYLE" for item in spec.references):
+    if spec.mode == "STYLE_REFERENCE" and not any(
+        item.role == "STYLE" for item in spec.references
+    ):
         raise ImageGenerationPipelineError("STYLE_REFERENCE_ROLE_REQUIRED")
 
 
@@ -293,8 +297,7 @@ class ImageGenerationPipeline:
             job = _replace_candidate(job, candidate)
             self.repository.save(job)
 
-        job = await self._finalize(job, completed_at=created_at)
-        return job
+        return await self._finalize(job, completed_at=created_at)
 
     async def resume_pending(
         self,
@@ -341,17 +344,32 @@ class ImageGenerationPipeline:
                     pending_result=pending.result,
                 )
             except Exception as exc:
-                failed = replace(
+                deferred = replace(
                     candidate,
-                    status="FAILED",
-                    error_code=f"GENERATION_POLL_EXCEPTION:{type(exc).__name__}",
+                    status="PROVIDER_PENDING",
+                    error_code=f"GENERATION_POLL_DEFERRED:{type(exc).__name__}",
                 )
-                job = _replace_candidate(job, failed)
+                job = _replace_candidate(job, deferred)
                 self.repository.save(job)
+                await self.events.emit(
+                    "generation.provider_submitted",
+                    organization_id=organization_id,
+                    generation_id=generation_id,
+                    payload={
+                        "candidate_id": candidate.candidate_id,
+                        "variant_index": candidate.variant_index,
+                        "provider": pending.result.provider,
+                        "model": pending.result.model,
+                        "provider_request_id": pending.result.provider_request_id or "",
+                        "status": "POLL_DEFERRED",
+                    },
+                )
                 continue
 
             if result.status == "PENDING":
                 self.repository.save_pending(replace(pending, result=result))
+                job = _replace_candidate(job, replace(candidate, error_code=None))
+                self.repository.save(job)
                 continue
 
             self.repository.delete_pending(
@@ -441,69 +459,85 @@ class ImageGenerationPipeline:
                 error_code=f"GENERATION_OUTPUT_INVALID:{type(exc).__name__}",
             )
 
-        validation = await self.validator.validate(
-            spec=spec,
-            candidate_id=candidate_id,
-            image=image,
-            stored=stored,
-            references=authorized,
-        )
-        validation = _safety_bundle(validation, result)
-        provenance = GenerationProvenanceSnapshot(
-            generation_id=request.generation_id,
-            organization_id=spec.organization_id,
-            project_id=spec.project_id,
-            task_id=spec.task_id,
-            operation_id=spec.operation_id,
-            variant_operation_id=request.variant_operation_id,
-            variant_index=request.variant_index,
-            provider=result.provider,
-            model=result.model,
-            model_revision=result.model_revision,
-            provider_request_id=result.provider_request_id,
-            prompt_hash=request.prompt.prompt_hash,
-            prompt_template_version=request.prompt.template_version,
-            prompt_compilation_ref=spec.prompt_compilation_ref,
-            reference_asset_refs=tuple(
-                f"asset:{reference.asset_id}@{reference.asset_version}" for reference in authorized
-            ),
-            seed=result.seed,
-            width=stored.width,
-            height=stored.height,
-            quality_profile=spec.quality_profile,
-            routing_reason_codes=result.routing_reason_codes,
-            pricing_snapshot_id=result.pricing_snapshot_id,
-            cost_usd=result.cost_usd,
-            cost_confidence=result.cost_confidence,
-            agent_run_id=spec.agent_run_id,
-            recipe_version=spec.recipe_version,
-            skill_versions=spec.skill_versions,
-            code_git_sha=spec.code_git_sha,
-            constraint_snapshot_hash=constraint_snapshot_hash(spec),
-            brand_rule_set_version=spec.brand_rule_set_version,
-            identity_validation_snapshot_id=validation.identity_validation_snapshot_id,
-            safety_metadata=result.safety_metadata,
-        )
-        provisional = GenerationCandidate(
-            candidate_id=candidate_id,
-            generation_id=request.generation_id,
-            variant_index=request.variant_index,
-            status="VALIDATING",
-            provider=result.provider,
-            model=result.model,
-            provider_request_id=result.provider_request_id,
-            provider_output_ref=output.ref,
-            stored_image=stored,
-            validation=validation,
-            provenance_snapshot_id=provenance.snapshot_id,
-        )
-        artifact = await self.artifacts.create_candidate(
-            spec=spec,
-            candidate=provisional,
-            stored=stored,
-            provenance=provenance,
-            validation=validation,
-        )
+        try:
+            validation = await self.validator.validate(
+                spec=spec,
+                candidate_id=candidate_id,
+                image=image,
+                stored=stored,
+                references=authorized,
+            )
+            validation = _safety_bundle(validation, result)
+            provenance = GenerationProvenanceSnapshot(
+                generation_id=request.generation_id,
+                organization_id=spec.organization_id,
+                project_id=spec.project_id,
+                task_id=spec.task_id,
+                operation_id=spec.operation_id,
+                variant_operation_id=request.variant_operation_id,
+                variant_index=request.variant_index,
+                provider=result.provider,
+                model=result.model,
+                model_revision=result.model_revision,
+                provider_request_id=result.provider_request_id,
+                prompt_hash=request.prompt.prompt_hash,
+                prompt_template_version=request.prompt.template_version,
+                prompt_compilation_ref=spec.prompt_compilation_ref,
+                reference_asset_refs=tuple(
+                    f"asset:{reference.asset_id}@{reference.asset_version}"
+                    for reference in authorized
+                ),
+                seed=result.seed,
+                width=stored.width,
+                height=stored.height,
+                quality_profile=spec.quality_profile,
+                routing_reason_codes=result.routing_reason_codes,
+                pricing_snapshot_id=result.pricing_snapshot_id,
+                cost_usd=result.cost_usd,
+                cost_confidence=result.cost_confidence,
+                agent_run_id=spec.agent_run_id,
+                recipe_version=spec.recipe_version,
+                skill_versions=spec.skill_versions,
+                code_git_sha=spec.code_git_sha,
+                constraint_snapshot_hash=constraint_snapshot_hash(spec),
+                brand_rule_set_version=spec.brand_rule_set_version,
+                identity_validation_snapshot_id=validation.identity_validation_snapshot_id,
+                safety_metadata=result.safety_metadata,
+            )
+            provisional = GenerationCandidate(
+                candidate_id=candidate_id,
+                generation_id=request.generation_id,
+                variant_index=request.variant_index,
+                status="VALIDATING",
+                provider=result.provider,
+                model=result.model,
+                provider_request_id=result.provider_request_id,
+                provider_output_ref=output.ref,
+                stored_image=stored,
+                validation=validation,
+                provenance_snapshot_id=provenance.snapshot_id,
+            )
+            artifact = await self.artifacts.create_candidate(
+                spec=spec,
+                candidate=provisional,
+                stored=stored,
+                provenance=provenance,
+                validation=validation,
+            )
+        except Exception as exc:
+            return GenerationCandidate(
+                candidate_id=candidate_id,
+                generation_id=request.generation_id,
+                variant_index=request.variant_index,
+                status="FAILED",
+                provider=result.provider,
+                model=result.model,
+                provider_request_id=result.provider_request_id,
+                provider_output_ref=output.ref,
+                stored_image=stored,
+                error_code=f"GENERATION_POSTFLIGHT_EXCEPTION:{type(exc).__name__}",
+            )
+
         status = "REJECTED" if validation.hard_failed or artifact.status == "REJECTED" else "READY"
         completed = replace(
             provisional,
