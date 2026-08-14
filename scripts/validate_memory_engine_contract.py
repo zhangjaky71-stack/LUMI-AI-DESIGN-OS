@@ -90,12 +90,14 @@ def main() -> int:
         "supersedes_id",
     )
     sensitive_block = pipeline.split(
-        'if sensitivity.classification.value != "NONE":', 1
+        'if sensitivity.classification.value != "NONE":',
+        1,
     )[1].split("policy =", 1)[0]
     if "insert_candidate" in sensitive_block:
         raise SystemExit("NODE-35 persists rejected sensitive candidate content")
     rejected_scope = pipeline.split("if not policy.allowed:", 1)[1].split(
-        "if policy.outcome", 1
+        "if policy.outcome",
+        1,
     )[0]
     if "insert_candidate" in rejected_scope:
         raise SystemExit("NODE-35 persists rejected scope-spoofed candidate content")
@@ -106,6 +108,7 @@ def main() -> int:
         "MEMORY_AGENT_BRAND_WRITE_DENIED",
         "MEMORY_USER_SCOPE_DENIED",
         "memory.organization.read",
+        "memory.project.delete",
         "scope_matches_access",
     )
     require(
@@ -147,15 +150,24 @@ def main() -> int:
     )
     for forbidden in FORBIDDEN_RUNTIME_IMPORTS:
         if f"import {forbidden}" in postgres or f"from {forbidden}" in postgres:
-            raise SystemExit(f"NODE-35 Postgres repository imports concrete SDK: {forbidden}")
+            raise SystemExit(
+                f"NODE-35 Postgres repository imports concrete SDK: {forbidden}"
+            )
 
-    require(
+    context_source = require(
         "apps/agent-runtime/src/lumi_agent_runtime/memory_engine/context_source.py",
         "ContextKind.MEMORY",
         '"instruction_authority": "none"',
         "MemorySearchQuery",
         "query_embedding",
+        "trusted_origin",
+        "MemoryActorType.USER",
+        "MemoryActorType.SYSTEM",
+        "UNTRUSTED_RETRIEVED",
     )
+    if "trusted_project_scope and trusted_origin" not in context_source:
+        raise SystemExit("NODE-35 Memory trust promotion ignores record origin")
+
     deep = require(
         "apps/agent-runtime/src/lumi_agent_runtime/memory_engine/deep_adapter.py",
         "class DeepAgentMemoryStore(BaseStore)",
@@ -165,7 +177,9 @@ def main() -> int:
         "MemorySearchQuery",
     )
     if "organization_id = value" in deep or "scope_id = value" in deep:
-        raise SystemExit("NODE-35 Deep Agent store accepts model-controlled tenant scope")
+        raise SystemExit(
+            "NODE-35 Deep Agent store accepts model-controlled tenant scope"
+        )
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/memory_engine/deep_provider.py",
         "DeepAgentMemoryStoreProvider",
@@ -179,7 +193,9 @@ def main() -> int:
         "CREATE TABLE memory_records",
         "CREATE TABLE memory_candidates",
         "embedding vector",
-        "REVOKE DELETE ON memory_records, memory_candidates FROM lumi_app",
+        "REVOKE DELETE",
+        "ON memory_records, memory_candidates",
+        "FROM lumi_app",
     )
     if "raw_chat" in migration or "conversation_history" in migration:
         raise SystemExit("NODE-35 schema contains raw-chat memory storage")
@@ -219,10 +235,15 @@ def main() -> int:
             if isinstance(node, ast.Import):
                 roots = {alias.name.split(".", 1)[0] for alias in node.names}
                 if roots & FORBIDDEN_RUNTIME_IMPORTS:
-                    raise SystemExit(f"Memory Engine imports ambient authority: {path}")
+                    raise SystemExit(
+                        f"Memory Engine imports ambient authority: {path}"
+                    )
             if isinstance(node, ast.ImportFrom) and node.module:
-                if node.module.split(".", 1)[0] in FORBIDDEN_RUNTIME_IMPORTS:
-                    raise SystemExit(f"Memory Engine imports ambient authority: {path}")
+                root = node.module.split(".", 1)[0]
+                if root in FORBIDDEN_RUNTIME_IMPORTS:
+                    raise SystemExit(
+                        f"Memory Engine imports ambient authority: {path}"
+                    )
 
     print("NODE-35 Memory Engine static contract: PASS")
     return 0
