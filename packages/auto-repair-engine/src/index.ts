@@ -1,4 +1,5 @@
 export * from "./comparator";
+export * from "./memory-repository";
 export * from "./money";
 export * from "./observability";
 export * from "./planner";
