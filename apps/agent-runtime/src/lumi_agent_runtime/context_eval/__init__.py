@@ -17,6 +17,7 @@ from .contracts import (
 )
 from .evaluator import evaluate_context
 from .loader import load_eval_corpus
+from .reporting import report_payload, write_report
 from .runner import (
     ContextEvalExecutor,
     ContextEvalRun,
@@ -45,5 +46,7 @@ __all__ = [
     "evaluate_suite",
     "load_baseline",
     "load_eval_corpus",
+    "report_payload",
     "run_eval_suite",
+    "write_report",
 ]
