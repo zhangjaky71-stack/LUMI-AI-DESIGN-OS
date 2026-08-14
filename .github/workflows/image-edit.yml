@@ -1,0 +1,126 @@
+name: Image Edit
+
+on:
+  pull_request:
+    paths:
+      - "services/image-edit/**"
+      - "services/model-gateway/**"
+      - "services/image-generation/**"
+      - "services/artifact-history/**"
+      - "packages/design-ir/**"
+      - "packages/design-constraints/**"
+      - "db/migrations/0001_artifact_engine.sql"
+      - "db/migrations/0006_image_edit.sql"
+      - "fixtures/image-edit/**"
+      - "scripts/validate_image_edit.py"
+      - "scripts/benchmark_image_edit.py"
+      - "docs/runtime/IMAGE-EDIT-V1.md"
+      - "docs/nodes/NODE-47-IMAGE-EDIT.md"
+      - "reports/nodes/NODE-47/**"
+      - ".github/workflows/image-edit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image-edit-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile NODE-47
+        run: python -m compileall -q services/image-edit/src services/image-edit/tests scripts/validate_image_edit.py scripts/benchmark_image_edit.py
+      - name: Validate architecture contract
+        env:
+          PYTHONPATH: services/image-edit/src:services/image-generation/src:services/model-gateway/src:services/artifact-history/src
+        run: python scripts/validate_image_edit.py
+
+  image-edit-quality:
+    needs: image-edit-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --all-packages --frozen
+      - name: Run NODE-47 tests
+        env:
+          PYTHONPATH: services/image-edit/src:services/image-generation/src:services/model-gateway/src:services/artifact-history/src:services/identity-engine/src:services/brand-rules/src
+        run: uv run pytest services/image-edit/tests -q
+      - name: Ruff
+        run: uv run ruff check --ignore E501 services/image-edit/src services/image-edit/tests scripts/validate_image_edit.py scripts/benchmark_image_edit.py services/model-gateway/src/lumi_model_gateway/routing.py
+      - name: Pyright
+        run: uv run pyright -p services/image-edit/pyrightconfig.json
+
+  image-edit-integration:
+    needs: image-edit-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: lumi
+          POSTGRES_PASSWORD: lumi
+          POSTGRES_DB: lumi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lumi -d lumi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+      - run: uv sync --all-packages --frozen
+      - name: Regression suites
+        env:
+          PYTHONPATH: services/image-edit/src:services/image-generation/src:services/model-gateway/src:services/artifact-history/src:services/identity-engine/src:services/brand-rules/src
+        run: uv run pytest services/image-edit/tests services/model-gateway/tests services/artifact-history/tests -q
+      - name: Apply Artifact and Image Edit migrations
+        env:
+          PGPASSWORD: lumi
+        run: |
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0001_artifact_engine.sql
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0006_image_edit.sql
+      - name: Verify edit DB contracts
+        env:
+          PGPASSWORD: lumi
+        run: |
+          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc "select count(*) from information_schema.tables where table_name like 'image_edit_%';")" = "6"
+          psql -h 127.0.0.1 -U lumi -d lumi -Atc "select data_type from information_schema.columns where table_name='image_edit_provenance' and column_name='cost_usd';" | grep -qx numeric
+
+  image-edit-benchmark:
+    needs: image-edit-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run planning/mask benchmark
+        env:
+          PYTHONPATH: services/image-edit/src
+        run: python scripts/benchmark_image_edit.py
+      - name: Preserve live-provider quality gate
+        run: |
+          echo "Synthetic golden cases do not certify live protected-edit quality."
+          echo "Production routing remains gated on approved NODE-23 provider/model edit benchmark evidence."

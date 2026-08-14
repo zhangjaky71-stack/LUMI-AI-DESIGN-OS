@@ -7,6 +7,7 @@ from uuid import UUID
 
 from .errors import NoRouteError, ProviderInvocationError
 from .models import (
+    Capability,
     LatencyProfile,
     ModelRequest,
     ProviderLatencyClass,
@@ -54,6 +55,25 @@ class _EvaluatedCandidate:
     candidate: RouteCandidate
 
 
+def _required_capabilities(request: ModelRequest) -> tuple[Capability, ...]:
+    raw = request.constraints.get("required_capabilities")
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ValueError("MODEL_REQUIRED_CAPABILITIES_INVALID")
+    capabilities: list[Capability] = []
+    for item in raw:
+        if not isinstance(item, str):
+            raise ValueError("MODEL_REQUIRED_CAPABILITY_INVALID")
+        try:
+            capability = Capability(item)
+        except ValueError as exc:
+            raise ValueError(f"MODEL_REQUIRED_CAPABILITY_UNKNOWN:{item}") from exc
+        if capability not in capabilities:
+            capabilities.append(capability)
+    return tuple(capabilities)
+
+
 class ModelRouter:
     def __init__(
         self,
@@ -64,7 +84,8 @@ class ModelRouter:
     ) -> None:
         self.registry = registry
         self.health = health
-        self.policy_resolver = policy_resolver or DefaultModelPolicyResolver()
+        self.router_policy = policy_resolver or DefaultModelPolicyResolver()
+        self.policy_resolver = self.router_policy
 
     async def route(self, request: ModelRequest) -> RoutingDecision:
         policy = self.policy_resolver.resolve(request.organization_id)
@@ -133,6 +154,10 @@ class ModelRouter:
         reasons: list[str] = []
         if request.capability not in descriptor.capabilities:
             reasons.append("CAPABILITY_MISMATCH")
+        required = _required_capabilities(request)
+        missing = [capability.value for capability in required if capability not in descriptor.capabilities]
+        if missing:
+            reasons.append("ADDITIONAL_CAPABILITY_MISMATCH:" + ",".join(sorted(missing)))
         if descriptor.quality_score < quality_threshold(request.quality_profile):
             reasons.append("QUALITY_BELOW_THRESHOLD")
         if not latency_allowed(request.latency_profile, descriptor.latency_class):
@@ -190,6 +215,8 @@ class ModelRouter:
             "POLICY_ALLOWED",
             "BUDGET_ALLOWED",
         ]
+        if _required_capabilities(request):
+            reasons.append("ADDITIONAL_CAPABILITIES_MATCH")
         preferred_provider = request.routing_hints.get("preferred_provider")
         preferred_model = request.routing_hints.get("preferred_model")
         if preferred_provider == descriptor.provider:

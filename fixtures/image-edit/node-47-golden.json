@@ -1,0 +1,14 @@
+{
+  "fixture_kind": "synthetic_control_plane_golden_suite",
+  "production_quality_claim": false,
+  "case_count": 125,
+  "expansion": "25 deterministic cases per template",
+  "note": "Validates routing/protection/versioning contracts only; does not certify live provider visual fidelity.",
+  "templates": [
+    {"category":"UNCHANGED_PRODUCT","count":25,"instruction":"change only the background to black","expected":{"protected_unchanged":true,"model_invocations":1}},
+    {"category":"UNCHANGED_LOGO","count":25,"instruction":"replace the table surface but keep the logo unchanged","expected":{"protected_unchanged":true,"model_invocations":1}},
+    {"category":"UNCHANGED_QR","count":25,"instruction":"change the background color; preserve the QR exactly","expected":{"protected_unchanged":true,"qr_decodable":true,"model_invocations":1}},
+    {"category":"BACKGROUND_CHANGED","count":25,"instruction":"replace the neutral background with charcoal black","expected":{"requested_region_changed":true,"model_invocations":1}},
+    {"category":"STRUCTURAL_NO_MODEL","count":25,"instruction":"resize the title text to 48px","expected":{"model_invocations":0}}
+  ]
+}
