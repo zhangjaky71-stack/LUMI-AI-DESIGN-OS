@@ -13,10 +13,13 @@ MODEL = ROOT / "services/video-generation/src/lumi_video_generation/model.py"
 GATEWAY = ROOT / "services/video-generation/src/lumi_video_generation/model_gateway_adapter.py"
 ROUTER = ROOT / "services/model-gateway/src/lumi_model_gateway/routing.py"
 SANDBOX = ROOT / "services/video-generation/src/lumi_video_generation/media_sandbox.py"
+OUTPUT = ROOT / "services/video-generation/src/lumi_video_generation/output_adapter.py"
 ARTIFACT = ROOT / "services/video-generation/src/lumi_video_generation/artifact_adapter.py"
 REPOSITORY = ROOT / "services/video-generation/src/lumi_video_generation/repository.py"
 MIGRATION = ROOT / "db/migrations/0007_video_generation.sql"
 TESTS = ROOT / "services/video-generation/tests/test_video_generation.py"
+OUTPUT_TESTS = ROOT / "services/video-generation/tests/test_video_output_adapter.py"
+ROUTING_TESTS = ROOT / "services/video-generation/tests/test_video_routing_and_sandbox.py"
 PROVIDER_REPORT = ROOT / "reports/nodes/NODE-48/provider-benchmark.md"
 
 EXPECTED_MODES = {"TEXT_TO_VIDEO", "IMAGE_TO_VIDEO", "STORYBOARD_MULTI_SHOT"}
@@ -39,9 +42,12 @@ def main() -> None:
     gateway = GATEWAY.read_text(encoding="utf-8")
     router = ROUTER.read_text(encoding="utf-8")
     sandbox = SANDBOX.read_text(encoding="utf-8")
+    output = OUTPUT.read_text(encoding="utf-8")
     artifact = ARTIFACT.read_text(encoding="utf-8")
     repository = REPOSITORY.read_text(encoding="utf-8")
     tests = TESTS.read_text(encoding="utf-8")
+    output_tests = OUTPUT_TESTS.read_text(encoding="utf-8")
+    routing_tests = ROUTING_TESTS.read_text(encoding="utf-8")
     sql = MIGRATION.read_text(encoding="utf-8")
     provider_report = PROVIDER_REPORT.read_text(encoding="utf-8")
 
@@ -62,6 +68,9 @@ def main() -> None:
     require("adelay=" in sandbox and "amix=inputs=" in sandbox, "typed multi-track audio mixing missing")
     require("VIDEO_FFMPEG_TRANSITION_NOT_SUPPORTED_V1" in sandbox, "unsupported transition must fail closed")
 
+    require("fetch_to_staging" in output and "discard_staging" in output, "provider output staging boundary missing")
+    require("VIDEO_DURABLE_CHECKSUM_MISMATCH" in output, "durable video checksum verification missing")
+    require("source_ref=output_ref" in output, "provider output ref must terminate at staging fetch")
     require('type="VIDEO"' in artifact and 'type="COMPOSED_FROM"' in artifact, "video Artifact lineage missing")
     require("provenance.paid_operation_id" in artifact, "shot attempt artifact identity must bind paid operation")
     require("Decimal" in model and "float" in model, "Decimal validation contract missing")
@@ -95,6 +104,9 @@ def main() -> None:
     )
     for token in test_tokens:
         require(token in tests, f"missing executable evidence: {token}")
+    require("test_provider_url_stops_at_staging" in output_tests, "staged output regression missing")
+    require("test_request_provider_exclusion_routes_retry_to_second_provider" in routing_tests, "provider retry exclusion regression missing")
+    require("test_multi_track_audio_is_compiled" in routing_tests, "multi-track audio regression missing")
 
     require("PENDING" in provider_report and "no live provider score" in provider_report.casefold(), "live provider benchmark honesty gate missing")
     print("NODE-48 video generation architecture contract: OK")
