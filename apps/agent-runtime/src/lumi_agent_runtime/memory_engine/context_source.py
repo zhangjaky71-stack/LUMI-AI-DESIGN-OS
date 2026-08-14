@@ -14,12 +14,17 @@ from lumi_agent_runtime.context_engine import (
     TrustLevel,
 )
 
-from .contracts import MemoryAccessContext, MemoryScope, MemorySearchQuery
+from .contracts import (
+    MemoryAccessContext,
+    MemoryActorType,
+    MemoryScope,
+    MemorySearchQuery,
+)
 from .retrieval import MemoryRetriever
 
 
 class MemoryContextSource:
-    """NODE-34 source adapter. Memory remains DATA, never instruction authority."""
+    """NODE-34 source adapter. Memory remains data, never instruction authority."""
 
     def __init__(
         self,
@@ -53,7 +58,9 @@ class MemoryContextSource:
                 access=access,
                 text=request.query or request.purpose,
                 limit=request.retrieval_limit,
-                query_embedding=_query_embedding(request.metadata.get("query_embedding")),
+                query_embedding=_query_embedding(
+                    request.metadata.get("query_embedding")
+                ),
             )
         )
         output: list[RetrievalCandidate] = []
@@ -70,9 +77,18 @@ class MemoryContextSource:
                 sort_keys=True,
                 default=str,
             )
+            trusted_project_scope = record.scope_type in {
+                MemoryScope.PROJECT,
+                MemoryScope.BRAND,
+                MemoryScope.ORGANIZATION,
+            }
+            trusted_origin = record.created_by_type in {
+                MemoryActorType.USER,
+                MemoryActorType.SYSTEM,
+            }
             trust = (
                 TrustLevel.TRUSTED_PROJECT
-                if record.scope_type in {MemoryScope.PROJECT, MemoryScope.BRAND, MemoryScope.ORGANIZATION}
+                if trusted_project_scope and trusted_origin
                 else TrustLevel.UNTRUSTED_RETRIEVED
             )
             item = ContextItem(
@@ -91,6 +107,7 @@ class MemoryContextSource:
                 metadata={
                     "instruction_authority": "none",
                     "memory_scope": record.scope_type.value,
+                    "memory_created_by": record.created_by_type.value,
                     "source_refs": [
                         {
                             "source_type": ref.source_type,
