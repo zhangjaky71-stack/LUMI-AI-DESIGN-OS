@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import unittest
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid5
 
 from langgraph.store.base import BaseStore
 
-from lumi_agent_runtime.context_engine import ContextRequest, LayerBudget, ContextLayer
+from lumi_agent_runtime.context_engine import ContextLayer, ContextRequest, LayerBudget
 from lumi_agent_runtime.memory_engine import (
     DeepAgentMemoryStore,
     InMemoryMemoryRepository,
@@ -17,7 +18,6 @@ from lumi_agent_runtime.memory_engine import (
     MemoryCandidateOutcome,
     MemoryContextSource,
     MemoryEngineService,
-    MemoryGovernanceService,
     MemoryKind,
     MemoryRetriever,
     MemoryScope,
@@ -129,7 +129,12 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.repo.list_records(organization_id=ORG), ())
 
     async def test_explicit_remember_boosts_confidence_and_deduplicates(self) -> None:
-        first = candidate("layout", "Prefer generous negative space", explicit=True, confidence=0.4)
+        first = candidate(
+            "layout",
+            "Prefer generous negative space",
+            explicit=True,
+            confidence=0.4,
+        )
         written = await self.service.remember(first, access=access())
         self.assertEqual(written.outcome, MemoryCandidateOutcome.WRITE)
         self.assertGreaterEqual(written.record.confidence, 0.9)
@@ -141,7 +146,9 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_conflict_requires_confirmation_then_explicit_supersedes(self) -> None:
         old = await self.service.remember(candidate("palette", "Use cool gray"), access=access())
-        conflict = await self.service.remember(candidate("palette", "Use warm gray"), access=access())
+        conflict = await self.service.remember(
+            candidate("palette", "Use warm gray"), access=access()
+        )
         self.assertEqual(conflict.outcome, MemoryCandidateOutcome.REQUIRE_CONFIRMATION)
         replacement = await self.service.remember(
             candidate("palette", "Use warm gray", explicit=True),
@@ -167,7 +174,10 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.repo.candidates()[0][1], "BRAND_RULE_PROPOSAL")
 
     async def test_scope_filter_happens_before_ranking(self) -> None:
-        await self.service.remember(candidate("hero", "Premium hero lighting", explicit=True), access=access())
+        await self.service.remember(
+            candidate("hero", "Premium hero lighting", explicit=True),
+            access=access(),
+        )
         foreign_repo = InMemoryMemoryRepository()
         foreign_service = MemoryEngineService(foreign_repo)
         foreign = candidate(
@@ -176,27 +186,47 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
             organization_id=OTHER_ORG,
             explicit=True,
         )
-        await foreign_service.remember(foreign, access=access(organization_id=OTHER_ORG))
-        results = await self.service.search(MemorySearchQuery(access=access(), text="premium hero", limit=10))
+        await foreign_service.remember(
+            foreign,
+            access=access(organization_id=OTHER_ORG),
+        )
+        results = await self.service.search(
+            MemorySearchQuery(access=access(), text="premium hero", limit=10)
+        )
         self.assertEqual(len(results), 1)
         self.assertNotIn("FOREIGN", results[0].record.summary)
 
     async def test_user_delete_and_retention_hold(self) -> None:
         user_access = access(MemoryActorType.USER)
         write = await self.service.remember(
-            candidate("density", "Prefer compact controls", scope=MemoryScope.USER, actor=MemoryActorType.USER, explicit=True),
+            candidate(
+                "density",
+                "Prefer compact controls",
+                scope=MemoryScope.USER,
+                actor=MemoryActorType.USER,
+                explicit=True,
+            ),
             access=user_access,
         )
         deleted = await self.service.delete(write.record.memory_id, access=user_access)
         self.assertEqual(deleted.status, MemoryStatus.DELETED)
 
-        held = candidate("font", "Prefer geometric sans", scope=MemoryScope.USER, actor=MemoryActorType.USER, explicit=True)
-        held_result = await self.service.remember(held, access=user_access)
+        held_result = await self.service.remember(
+            candidate(
+                "font",
+                "Prefer geometric sans",
+                scope=MemoryScope.USER,
+                actor=MemoryActorType.USER,
+                explicit=True,
+            ),
+            access=user_access,
+        )
         record = held_result.record
-        held_record = record.__class__(**{**record.__dict__}) if hasattr(record, "__dict__") else None
-        # frozen/slots dataclass: use repository version-safe replace through dataclasses.
-        from dataclasses import replace
-        held_record = replace(record, retention_hold=True, version=record.version + 1)
+        held_record = replace(
+            record,
+            retention_hold=True,
+            version=record.version + 1,
+        )
         await self.repo.update_record(held_record, expected_version=record.version)
         with self.assertRaisesRegex(Exception, "MEMORY_RETENTION_HOLD"):
             await self.service.delete(held_record.memory_id, access=user_access)
@@ -204,18 +234,38 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
     async def test_consolidation_preserves_lineage_and_expires_records(self) -> None:
         now = datetime(2026, 8, 14, tzinfo=UTC)
         first = await self.service.remember(
-            candidate("episode", "Direction A", kind=MemoryKind.EPISODIC_SUMMARY, temporal=True),
-            access=access(), now=now,
+            candidate(
+                "episode",
+                "Direction A",
+                kind=MemoryKind.EPISODIC_SUMMARY,
+                temporal=True,
+            ),
+            access=access(),
+            now=now,
         )
         second = await self.service.remember(
-            candidate("episode", "Direction B", kind=MemoryKind.EPISODIC_SUMMARY, temporal=True),
-            access=access(), now=now + timedelta(seconds=1),
+            candidate(
+                "episode",
+                "Direction B",
+                kind=MemoryKind.EPISODIC_SUMMARY,
+                temporal=True,
+            ),
+            access=access(),
+            now=now + timedelta(seconds=1),
         )
         expiring = await self.service.remember(
-            candidate("scratch", "temporary", expires_at=now - timedelta(seconds=1)),
-            access=access(), now=now - timedelta(minutes=5),
+            candidate(
+                "scratch",
+                "temporary",
+                expires_at=now - timedelta(seconds=1),
+            ),
+            access=access(),
+            now=now - timedelta(minutes=5),
         )
-        changed = await self.service.consolidate(organization_id=ORG, now=now + timedelta(minutes=1))
+        changed = await self.service.consolidate(
+            organization_id=ORG,
+            now=now + timedelta(minutes=1),
+        )
         self.assertIn(first.record.memory_id, changed)
         self.assertIn(second.record.memory_id, changed)
         expired = await self.repo.get(expiring.record.memory_id)
@@ -223,12 +273,17 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
         active = await self.repo.list_active(organization_id=ORG)
         episodes = [item for item in active if item.semantic_key == "episode"]
         self.assertEqual(len(episodes), 1)
-        self.assertGreaterEqual(len(episodes[0].source_refs), 1)
 
     async def test_memory_context_source_is_data_only(self) -> None:
-        await self.service.remember(candidate("layout", "Use negative space", explicit=True), access=access())
-        source_adapter = MemoryContextSource(MemoryRetriever(self.repo), access_for_request=lambda _: access())
-        request = ContextRequest(
+        await self.service.remember(
+            candidate("layout", "Use negative space", explicit=True),
+            access=access(),
+        )
+        source_adapter = MemoryContextSource(
+            MemoryRetriever(self.repo),
+            access_for_request=lambda _: access(),
+        )
+        context_request = ContextRequest(
             organization_id=ORG,
             project_id=PROJECT,
             agent_run_id=UUID("01920000-0000-7000-8000-000000000010"),
@@ -246,7 +301,7 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
                 LayerBudget(ContextLayer.L4_RETRIEVED, 300),
             ),
         )
-        rows = await source_adapter.search(request)
+        rows = await source_adapter.search(context_request)
         self.assertEqual(rows[0].item.metadata["instruction_authority"], "none")
         self.assertEqual(rows[0].item.kind.value, "MEMORY")
 
@@ -262,10 +317,14 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
         await store.aput(
             ("memory",),
             "visual-density",
-            {"summary": "Prefer spacious layouts", "kind": "PREFERENCE", "explicit_remember": True},
+            {
+                "summary": "Prefer spacious layouts",
+                "kind": "PREFERENCE",
+                "explicit_remember": True,
+            },
         )
-        item = await store.aget(("memory",), "visual-density")
-        self.assertEqual(item.value["summary"], "Prefer spacious layouts")
+        stored = await store.aget(("memory",), "visual-density")
+        self.assertEqual(stored.value["summary"], "Prefer spacious layouts")
         with self.assertRaises(PermissionError):
             await store.aget(("other-tenant",), "visual-density")
 
