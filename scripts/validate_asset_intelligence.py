@@ -91,7 +91,10 @@ def validate_contracts() -> None:
 
     scoped_position = search.index("scoped_candidates")
     scoring_position = search.index("for record in candidates")
+    relevance_position = search.index("if not _has_mode_evidence")
+    usage_position = search.index("usage = _usage_score")
     require(scoped_position < scoring_position, "scoring must happen after scoped candidate retrieval")
+    require(relevance_position < usage_position, "usage may rerank relevant assets but not create relevance")
     require("._records" not in search, "search engine may not bypass scoped repository retrieval")
     require("_scope_allows" in repository, "repository is missing pre-retrieval access filtering")
     require("filename" not in search.casefold(), "search ranking must not guess from filenames")
