@@ -20,11 +20,35 @@ from lumi_video_generation.model import (
     TimelineAudioTrack,
     TimelineClip,
     VideoOutputSpec,
+    VideoTaskSpec,
     VideoTimeline,
 )
 from lumi_video_generation.model_gateway_adapter import ModelGatewayVideoAdapter
 from lumi_video_generation.storyboard import compile_storyboard
-from test_video_generation import _spec
+
+ORG = "00000000-0000-0000-0000-000000000001"
+PROJECT = "00000000-0000-0000-0000-000000000002"
+TASK = "00000000-0000-0000-0000-000000000003"
+OPERATION = "00000000-0000-0000-0000-000000000004"
+
+
+def _spec() -> VideoTaskSpec:
+    return VideoTaskSpec(
+        organization_id=ORG,
+        project_id=PROJECT,
+        task_id=TASK,
+        operation_id=OPERATION,
+        mode="TEXT_TO_VIDEO",
+        prompt="cinematic product video",
+        duration_seconds=Decimal("2"),
+        aspect_ratio="16:9",
+        width=1600,
+        height=900,
+        fps=24,
+        budget_limit_usd=Decimal("1"),
+        code_git_sha="a" * 40,
+        quality_retry_limit=1,
+    )
 
 
 class PassthroughPaidGuard:
