@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Mapping, Protocol, cast
+from typing import Mapping, Protocol
 
 from .model import CompiledShot, RenderedVideo, ShotValidationReport, StoredVideoClip, ValidationDecision, ValidationFinding, VideoProbeResult, VideoTaskSpec, VideoTimeline
 
