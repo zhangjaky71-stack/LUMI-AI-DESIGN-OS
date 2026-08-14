@@ -1,0 +1,159 @@
+name: Task Graph Runtime
+
+on:
+  pull_request:
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/task_graph/**"
+      - "apps/agent-runtime/tests/test_task_graph_*.py"
+      - "apps/api/alembic/versions/0015_task_graph_runtime.py"
+      - "apps/api/src/lumi_api/persistence/models/workflow.py"
+      - "apps/api/src/lumi_api/persistence/models/task_graph.py"
+      - "apps/api/src/lumi_api/persistence/models/__init__.py"
+      - "scripts/validate_task_graph_contract.py"
+      - "scripts/integration_task_graph_*.py"
+      - "docs/runtime/TASK-GRAPH-V1.md"
+      - "reports/nodes/NODE-33/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  task-graph-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile NODE-33 runtime and acceptance
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src:scripts
+          python -m compileall -q
+          apps/agent-runtime/src/lumi_agent_runtime/task_graph
+          apps/agent-runtime/tests/test_task_graph_runtime.py
+          apps/agent-runtime/tests/test_task_graph_join_condition.py
+          apps/agent-runtime/tests/test_task_graph_control.py
+          apps/agent-runtime/tests/test_task_graph_scheduler.py
+          apps/agent-runtime/tests/test_task_graph_postgres_contract.py
+          scripts/validate_task_graph_contract.py
+          scripts/integration_task_graph_recipe.py
+          scripts/integration_task_graph_postgres.py
+          apps/api/alembic/versions/0015_task_graph_runtime.py
+          apps/api/src/lumi_api/persistence/models/task_graph.py
+          apps/api/src/lumi_api/persistence/models/workflow.py
+      - name: Revalidate NODE-32 Recipe Engine
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python scripts/validate_recipe_engine_contract.py
+      - name: NODE-33 static Task Graph contract
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python scripts/validate_task_graph_contract.py
+      - name: NODE-33 dependency-light unit tests
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python -m unittest discover
+          -s apps/agent-runtime/tests
+          -p 'test_task_graph_*.py'
+      - name: NODE-32 to NODE-33 deterministic integration
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src:scripts
+          python scripts/integration_task_graph_recipe.py
+
+  task-graph-quality:
+    needs: task-graph-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: NODE-33 pytest
+        run: >-
+          uv run pytest
+          apps/agent-runtime/tests/test_task_graph_runtime.py
+          apps/agent-runtime/tests/test_task_graph_join_condition.py
+          apps/agent-runtime/tests/test_task_graph_control.py
+          apps/agent-runtime/tests/test_task_graph_scheduler.py
+          apps/agent-runtime/tests/test_task_graph_postgres_contract.py
+          -q
+      - name: NODE-33 Ruff gate
+        run: >-
+          uv run ruff check
+          apps/agent-runtime/src/lumi_agent_runtime/task_graph
+          apps/agent-runtime/tests/test_task_graph_runtime.py
+          apps/agent-runtime/tests/test_task_graph_join_condition.py
+          apps/agent-runtime/tests/test_task_graph_control.py
+          apps/agent-runtime/tests/test_task_graph_scheduler.py
+          apps/agent-runtime/tests/test_task_graph_postgres_contract.py
+          scripts/validate_task_graph_contract.py
+          scripts/integration_task_graph_recipe.py
+          scripts/integration_task_graph_postgres.py
+          apps/api/alembic/versions/0015_task_graph_runtime.py
+          apps/api/src/lumi_api/persistence/models/task_graph.py
+          apps/api/src/lumi_api/persistence/models/workflow.py
+      - name: NODE-33 Pyright gate
+        run: >-
+          uv run pyright
+          apps/agent-runtime/src/lumi_agent_runtime/task_graph
+          apps/agent-runtime/tests/test_task_graph_runtime.py
+          apps/agent-runtime/tests/test_task_graph_join_condition.py
+          apps/agent-runtime/tests/test_task_graph_control.py
+          apps/agent-runtime/tests/test_task_graph_scheduler.py
+          apps/agent-runtime/tests/test_task_graph_postgres_contract.py
+
+  task-graph-postgres:
+    needs: task-graph-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Start local infrastructure
+        run: |
+          make infra-env
+          make infra-up
+      - name: Upgrade database to NODE-33 head
+        run: make db-upgrade
+      - name: Verify Alembic ORM metadata has no drift
+        run: bash scripts/db-local schema-check
+      - name: Verify NODE-33 ORM tables and condition column
+        run: >-
+          uv run --package lumi-api python -c
+          "from lumi_api.persistence.base import Base; import lumi_api.persistence.models;
+          assert 'task_graph_instances' in Base.metadata.tables;
+          assert 'task_attempts' in Base.metadata.tables;
+          assert 'condition_expression' in Base.metadata.tables['tasks'].c"
+      - name: Seed deterministic project fixtures
+        run: make db-seed
+      - name: Concurrent scheduler and retry integration
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src:scripts
+          uv run python scripts/integration_task_graph_postgres.py
+      - name: Migration downgrade upgrade smoke
+        run: bash scripts/db-local downgrade-smoke
+      - name: Reset infrastructure
+        if: always()
+        run: CONFIRM=1 make infra-reset || true

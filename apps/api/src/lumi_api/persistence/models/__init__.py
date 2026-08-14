@@ -69,6 +69,7 @@ from .project import (
     ProjectSummary,
 )
 from .queue_runtime import DeadLetterRecord
+from .task_graph import TaskAttemptRecord, TaskGraphInstance
 from .workflow import (
     AgentRun,
     AgentRunStep,
@@ -138,7 +139,9 @@ __all__ = [
     "QuotaLimit",
     "Session",
     "Task",
+    "TaskAttemptRecord",
     "TaskDependency",
+    "TaskGraphInstance",
     "UsageCounter",
     "UsageLedger",
     "User",
