@@ -54,6 +54,8 @@ class KnowledgeIndexer:
         existing = await self.repository.get_document(document_id)
         if existing is not None:
             if existing.status == KnowledgeStatus.READY:
+                if existing.metadata.get("index_request_hash") != request.semantic_hash:
+                    raise ValueError("KNOWLEDGE_INDEX_VERSION_CONFIGURATION_CONFLICT")
                 return existing
             raise ValueError("KNOWLEDGE_DOCUMENT_IDENTITY_CONFLICT")
 
