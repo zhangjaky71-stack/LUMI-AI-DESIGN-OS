@@ -6,6 +6,7 @@ from .contracts import (
     KnowledgeCitation,
     KnowledgeDocument,
     KnowledgeIndexRequest,
+    KnowledgeIngestRequest,
     KnowledgePermissionScope,
     KnowledgeSearchQuery,
     KnowledgeSearchResult,
@@ -21,6 +22,7 @@ from .extraction import (
     extract_native_then_ocr,
 )
 from .indexer import KnowledgeEmbeddingPort, KnowledgeIndexer
+from .ingestion import TransactionalKnowledgeIngestionService
 from .postgres_repository import (
     PostgresKnowledgeRepository,
     PostgresKnowledgeRepositorySession,
@@ -41,6 +43,7 @@ __all__ = [
     "KnowledgeExtractionResult",
     "KnowledgeIndexRequest",
     "KnowledgeIndexer",
+    "KnowledgeIngestRequest",
     "KnowledgePermissionScope",
     "KnowledgeRepository",
     "KnowledgeRetriever",
@@ -54,6 +57,7 @@ __all__ = [
     "KnowledgeTrust",
     "PostgresKnowledgeRepository",
     "PostgresKnowledgeRepositorySession",
+    "TransactionalKnowledgeIngestionService",
     "TransactionalKnowledgeService",
     "chunk_document",
     "deterministic_document_id",
