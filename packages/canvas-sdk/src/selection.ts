@@ -31,7 +31,8 @@ export class CanvasSelectionModel {
   set(ids: readonly string[], primaryId: string | null = ids[0] ?? null): void {
     this.#selected.clear();
     for (const id of ids) this.#selected.add(id);
-    this.#primaryId = primaryId && this.#selected.has(primaryId) ? primaryId : (ids[0] ?? null);
+    this.#primaryId =
+      primaryId && this.#selected.has(primaryId) ? primaryId : (ids[0] ?? null);
   }
 
   click(
@@ -51,10 +52,19 @@ export class CanvasSelectionModel {
     return hit.id;
   }
 
-  marquee(rect: Rect, index: CanvasSpatialIndex, mode: SelectionMode = "replace"): readonly string[] {
+  marquee(
+    rect: Rect,
+    index: CanvasSpatialIndex,
+    mode: SelectionMode = "replace",
+  ): readonly string[] {
     const ids = index
       .query(rect)
-      .filter((node) => this.#isolationRootId === null || node.id === this.#isolationRootId || this.#descendsFrom(node.id, this.#isolationRootId, index))
+      .filter(
+        (node) =>
+          this.#isolationRootId === null ||
+          node.id === this.#isolationRootId ||
+          this.#descendsFrom(node.id, this.#isolationRootId, index),
+      )
       .map((node) => node.id);
     this.#apply(ids, mode);
     if (ids.length) this.#primaryId = ids[ids.length - 1] ?? this.#primaryId;
@@ -77,7 +87,9 @@ export class CanvasSelectionModel {
   transformableIds(scene: CanvasSceneSnapshot): string[] {
     return [...this.#selected].filter((id) => {
       const node = scene.nodes.get(id);
-      return Boolean(node && !node.locked && node.kind !== "DOCUMENT_ROOT" && node.kind !== "GUIDE");
+      return Boolean(
+        node && !node.locked && node.kind !== "DOCUMENT_ROOT" && node.kind !== "GUIDE",
+      );
     });
   }
 
@@ -112,7 +124,11 @@ export class CanvasSelectionModel {
   }
 
   #descendsFrom(nodeId: string, rootId: string, index: CanvasSpatialIndex): boolean {
-    // Isolation ancestry is already enforced by hitTest; marquee uses a cheap conservative fallback.
-    return nodeId !== rootId && index.size > 0;
+    let current = index.get(nodeId);
+    while (current?.parent_id) {
+      if (current.parent_id === rootId) return true;
+      current = index.get(current.parent_id);
+    }
+    return false;
   }
 }
