@@ -11,7 +11,7 @@ import type {
 
 export class BrandRuleError extends Error {}
 
-function stringArray(value: JsonValue | undefined): readonly string[] {
+function stringArray(value: JsonValue | undefined): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
@@ -103,10 +103,11 @@ function evaluateColor(rule: BrandRule, node: DesignNode, context: BrandEvaluati
     return [diagnostic(rule, "BRAND_COLOR_NOT_ALLOWED", node.id, tokenIds, color, replacement ? [repair(context, node.id, "fill", replacement, rule.id)] : undefined)];
   }
   if (rule.type === "FORBIDDEN_COLORS") {
-    const forbidden = new Set(stringArray(rule.parameters.colors).map(normalizedColor));
+    const forbiddenColors = stringArray(rule.parameters.colors);
+    const forbidden = new Set(forbiddenColors.map(normalizedColor));
     if (!forbidden.has(normalized)) return [];
     const replacement = context.token_set.colors[0]?.value;
-    return [diagnostic(rule, "BRAND_COLOR_FORBIDDEN", node.id, stringArray(rule.parameters.colors), color, replacement ? [repair(context, node.id, "fill", replacement, rule.id)] : undefined)];
+    return [diagnostic(rule, "BRAND_COLOR_FORBIDDEN", node.id, forbiddenColors, color, replacement ? [repair(context, node.id, "fill", replacement, rule.id)] : undefined)];
   }
   return [];
 }
@@ -206,7 +207,7 @@ function evaluateSpacing(rule: BrandRule, node: DesignNode, context: BrandEvalua
   if (rule.type !== "SPACING_SCALE") return [];
   const spacing = nested(node, "metadata.spacing") ?? nested(node, "spacing");
   if (typeof spacing !== "number") return [];
-  const scale = context.token_set.spacing_scale;
+  const scale = [...context.token_set.spacing_scale];
   const tolerance = numberValue(rule.parameters.tolerance, 0.01);
   if (scale.some((allowed) => Math.abs(allowed - spacing) <= tolerance)) return [];
   const replacement = [...scale].sort((a, b) => Math.abs(a - spacing) - Math.abs(b - spacing))[0];
