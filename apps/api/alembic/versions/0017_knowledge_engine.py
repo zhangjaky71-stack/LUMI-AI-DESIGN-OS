@@ -144,11 +144,6 @@ UPGRADE_STATEMENTS = (
     ON knowledge_chunks (document_id, ordinal)
     """,
     """
-    CREATE INDEX ix_knowledge_chunks_fts
-    ON knowledge_chunks
-    USING gin (to_tsvector('simple', text))
-    """,
-    """
     GRANT SELECT, INSERT, UPDATE
     ON knowledge_documents, knowledge_chunks
     TO lumi_app
