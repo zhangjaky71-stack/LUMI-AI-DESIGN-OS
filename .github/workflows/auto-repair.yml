@@ -1,0 +1,187 @@
+name: Auto Repair
+
+on:
+  pull_request:
+    paths:
+      - "packages/auto-repair-engine/**"
+      - "packages/quality-engine/**"
+      - "packages/design-constraints/**"
+      - "packages/design-ir/**"
+      - "db/migrations/0001_artifact_engine.sql"
+      - "db/migrations/0009_visual_critic.sql"
+      - "db/migrations/0010_auto_repair.sql"
+      - "evals/datasets/auto-repair/**"
+      - "evals/fixtures/auto-repair/**"
+      - "scripts/validate_auto_repair.py"
+      - "docs/nodes/NODE-51-AUTO-REPAIR.md"
+      - "docs/runtime/AUTO-REPAIR-V1.md"
+      - "reports/nodes/NODE-51/**"
+      - ".github/workflows/auto-repair.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repair-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Validate NODE-51 architecture contract
+        run: python scripts/validate_auto_repair.py
+      - name: Typecheck Auto Repair Engine
+        run: pnpm --filter @lumi/auto-repair-engine typecheck
+      - name: Typecheck Quality dependency
+        run: pnpm --filter @lumi/quality-engine typecheck
+      - name: Typecheck Constraint dependency
+        run: pnpm --filter @lumi/design-constraints typecheck
+
+  repair-quality:
+    needs: repair-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run complete Auto Repair suite
+        run: pnpm --filter @lumi/auto-repair-engine test
+
+  repair-integration:
+    needs: repair-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Re-run NODE-50 plus repair integration
+        run: |
+          pnpm --filter @lumi/quality-engine exec vitest run src/quality-engine.test.ts
+          pnpm --filter @lumi/auto-repair-engine exec vitest run src/auto-repair.test.ts
+
+  repair-budget:
+    needs: repair-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Validate exact money + reserve ordering
+        run: |
+          pnpm --filter @lumi/auto-repair-engine exec vitest run src/money.test.ts src/auto-repair.test.ts
+      - name: Run NODE-05 repair baseline/candidate release gate
+        run: python -m evals.cli compare --suite auto-repair --baseline evals/fixtures/auto-repair/baseline.json --candidate evals/fixtures/auto-repair/candidate.json --out /tmp/auto-repair-eval
+
+  repair-db:
+    needs: repair-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: lumi
+          POSTGRES_PASSWORD: lumi
+          POSTGRES_DB: lumi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lumi -d lumi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Apply Artifact, Quality and Auto Repair migrations
+        env:
+          PGPASSWORD: lumi
+        run: |
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0001_artifact_engine.sql
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0009_visual_critic.sql
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0010_auto_repair.sql
+      - name: Verify DRAFT off-head and transactional CAS promotion
+        env:
+          PGPASSWORD: lumi
+        run: |
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO artifacts(id,organization_id,project_id,type,title) VALUES
+            ('00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002','RASTER_IMAGE','repair fixture');
+          INSERT INTO artifact_branches(id,organization_id,artifact_id,name,base_version_id,head_version_id,created_by) VALUES
+            ('00000000-0000-4000-8000-000000000006','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000003','main',NULL,NULL,'00000000-0000-4000-8000-000000000001');
+          INSERT INTO artifact_versions(id,organization_id,artifact_id,branch_id,parent_version_id,schema_version,version_number,status,content_hash,constraint_snapshot_hash,created_by_type,created_by_id) VALUES
+            ('00000000-0000-4000-8000-000000000004','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000006',NULL,'1.0',1,'DRAFT',repeat('a',64),repeat('b',64),'SYSTEM','node51');
+          UPDATE artifact_branches SET head_version_id='00000000-0000-4000-8000-000000000004' WHERE id='00000000-0000-4000-8000-000000000006';
+          INSERT INTO quality_results(quality_result_id,organization_id,project_id,artifact_id,artifact_version_id,design_document_version_id,profile_id,profile_version,status,overall_score,confidence,created_at) VALUES
+            ('quality-result:source','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000004','design-v1','quality:production-web','1.0.0','FAIL_REPAIRABLE',60,1,now());
+          INSERT INTO auto_repair_loops(loop_id,organization_id,project_id,artifact_id,branch_id,source_artifact_version_id,source_quality_result_id,policy_id,policy_version,status) VALUES
+            ('repair-loop:dbtest','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000006','00000000-0000-4000-8000-000000000004','quality-result:source','repair-policy:production-web','1.0.0','RUNNING');
+          INSERT INTO artifact_versions(id,organization_id,artifact_id,branch_id,parent_version_id,schema_version,version_number,status,content_hash,constraint_snapshot_hash,created_by_type,created_by_id) VALUES
+            ('00000000-0000-4000-8000-000000000007','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000006','00000000-0000-4000-8000-000000000004','1.0',2,'DRAFT',repeat('c',64),repeat('d',64),'SYSTEM','node51');
+          DO $$ BEGIN IF (SELECT head_version_id FROM artifact_branches WHERE id='00000000-0000-4000-8000-000000000006') <> '00000000-0000-4000-8000-000000000004'::uuid THEN RAISE EXCEPTION 'candidate advanced head before quality'; END IF; END $$;
+          INSERT INTO quality_results(quality_result_id,organization_id,project_id,artifact_id,artifact_version_id,design_document_version_id,profile_id,profile_version,status,overall_score,confidence,created_at) VALUES
+            ('quality-result:candidate','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000007','design-v2','quality:production-web','1.0.0','PASS',93,1,now());
+          SELECT promote_auto_repair_candidate('00000000-0000-4000-8000-000000000001','repair-loop:dbtest','00000000-0000-4000-8000-000000000007','00000000-0000-4000-8000-000000000004','READY','quality-result:candidate');
+          DO $$ BEGIN IF (SELECT head_version_id FROM artifact_branches WHERE id='00000000-0000-4000-8000-000000000006') <> '00000000-0000-4000-8000-000000000007'::uuid THEN RAISE EXCEPTION 'approved candidate did not advance head'; END IF; IF (SELECT status FROM artifact_versions WHERE id='00000000-0000-4000-8000-000000000007') <> 'READY' THEN RAISE EXCEPTION 'candidate not READY'; END IF; END $$;
+          INSERT INTO artifact_versions(id,organization_id,artifact_id,branch_id,parent_version_id,schema_version,version_number,status,content_hash,constraint_snapshot_hash,created_by_type,created_by_id) VALUES
+            ('00000000-0000-4000-8000-000000000008','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000006','00000000-0000-4000-8000-000000000007','1.0',3,'DRAFT',repeat('e',64),repeat('f',64),'SYSTEM','node51'),
+            ('00000000-0000-4000-8000-000000000009','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000006','00000000-0000-4000-8000-000000000007','1.0',4,'READY',repeat('1',64),repeat('2',64),'USER','user-edit');
+          INSERT INTO quality_results(quality_result_id,organization_id,project_id,artifact_id,artifact_version_id,design_document_version_id,profile_id,profile_version,status,overall_score,confidence,created_at) VALUES
+            ('quality-result:stale-candidate','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000008','design-v3','quality:production-web','1.0.0','PASS',95,1,now());
+          UPDATE artifact_branches SET head_version_id='00000000-0000-4000-8000-000000000009' WHERE id='00000000-0000-4000-8000-000000000006';
+          DO $$ BEGIN
+            BEGIN
+              PERFORM promote_auto_repair_candidate('00000000-0000-4000-8000-000000000001','repair-loop:dbtest','00000000-0000-4000-8000-000000000008','00000000-0000-4000-8000-000000000007','READY','quality-result:stale-candidate');
+              RAISE EXCEPTION 'expected CAS conflict was not raised';
+            EXCEPTION WHEN OTHERS THEN
+              IF SQLERRM = 'expected CAS conflict was not raised' THEN RAISE; END IF;
+            END;
+          END $$;
+          DO $$ BEGIN IF (SELECT head_version_id FROM artifact_branches WHERE id='00000000-0000-4000-8000-000000000006') <> '00000000-0000-4000-8000-000000000009'::uuid THEN RAISE EXCEPTION 'user head overwritten'; END IF; IF (SELECT status FROM artifact_versions WHERE id='00000000-0000-4000-8000-000000000008') <> 'DRAFT' THEN RAISE EXCEPTION 'stale repair candidate was promoted'; END IF; END $$;
+          SQL
+
+  repair-benchmark:
+    needs: repair-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run deterministic 2k-node structural repair benchmark
+        run: pnpm --filter @lumi/auto-repair-engine exec vitest run src/repair-benchmark.test.ts
