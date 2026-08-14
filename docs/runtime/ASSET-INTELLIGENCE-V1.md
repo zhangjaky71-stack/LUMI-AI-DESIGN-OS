@@ -8,7 +8,7 @@ NODE-45 turns verified `READY` assets into a tenant-scoped semantic index that A
 
 1. **No filename guessing.** Search and Agent resolution rank analysis evidence, not user filenames.
 2. **Scope before score.** `organization_id`, project/brand scope, permission tags and rights are applied before lexical/OCR/vector scoring.
-3. **No mixed embedding spaces.** Every index pins analyzer version, embedding model/version, dimension and `embedding_space_id`.
+3. **No mixed embedding spaces.** Every index pins analyzer version, embedding model/version, preprocessor version, registry snapshot, vector dimensions and `embedding_space_id`.
 4. **No semantic-equals-duplicate shortcut.** Exact checksum, perceptual near-duplicate and semantic similarity are separate evidence tiers.
 5. **No automatic deletion from similarity.** The DB duplicate edge has `auto_delete=false` as a hard check.
 6. **Manual metadata wins over automatic metadata.** AUTO analyzers cannot overwrite USER fields; protected technical metadata is SYSTEM-owned.
@@ -16,6 +16,7 @@ NODE-45 turns verified `READY` assets into a tenant-scoped semantic index that A
 8. **NODE-44 owns identity decisions.** NODE-45 exports versioned OCR/region/embedding evidence but never computes an identity PASS/FAIL threshold.
 9. **No biometric index.** NODE-45 has no face-specific persistent or cross-tenant index.
 10. **Deletion propagates.** Tombstoned assets disappear from retrieval before asynchronous physical index reconciliation completes.
+11. **Usage is reranking only.** Selected/approved/rejected signals cannot manufacture relevance for an unrelated query.
 
 ## READY ingestion
 
@@ -38,7 +39,7 @@ Analysis does not block upload completion. Job identity binds organization, asse
 
 ## Analyzer provider boundary
 
-The core package is deliberately dependency-free. Production model adapters implement `AssetAnalyzer`; NODE-23 supplies the versioned `AnalyzerBundleSnapshot`. The runtime refuses an embedding model/version or vector dimension that does not match the target index.
+The core package is deliberately dependency-free. Production model adapters implement `AssetAnalyzer`; NODE-23 supplies the versioned `AnalyzerBundleSnapshot`. The runtime refuses any analyzer/embedding bundle whose model id, model version, preprocessor version, registry snapshot or vector dimensions do not match the target index.
 
 `FixtureAnalyzer` and `StaticCapabilityRegistry` exist only for deterministic conformance tests. They are not production OCR/VLM implementations and are not model-quality evidence.
 
@@ -69,9 +70,10 @@ version
 analyzer_version
 embedding_model_id
 embedding_model_version
+embedding_preprocessor_version
 embedding_dimensions
 embedding_space_id
-registry_snapshot_id (persistence)
+registry_snapshot_id
 state = BUILDING | READY | ACTIVE | RETIRED | FAILED
 ```
 
@@ -111,7 +113,7 @@ Application runtime calls only:
 repository.scoped_candidates(scope, filters, active_index_id)
 ```
 
-The repository removes unauthorized rows before the search engine calculates any score. The PostgreSQL migration also defines `asset_intelligence_semantic_candidates(...)` with organization, permission tags, rights, project/brand and commercial-use predicates in the candidate query.
+The repository removes unauthorized rows before the search engine calculates any score. The PostgreSQL migration also defines `asset_intelligence_semantic_candidates(...)` with organization, permission tags, rights, project/brand and commercial-use predicates in the candidate query. The SQL path additionally requires the requested index to be `ACTIVE` and requires each embedding row to match the index's model/version/preprocessor/dimension/space provenance before vector ranking.
 
 This avoids the unsafe pattern:
 
@@ -131,7 +133,7 @@ SIMILAR_TO  accessible source asset embedding against scoped candidates
 HYBRID      weighted semantic + lexical + OCR + bounded usage signals
 ```
 
-Semantic text queries require a query embedder whose model/version/dimension matches the active index.
+Each mode requires its own relevance evidence before a result is admitted. Usage signals can only rerank an already relevant result. Semantic text queries require a query embedder whose model/version/preprocessor/registry snapshot/dimension match the active index.
 
 ## Agent Asset Resolver
 
@@ -156,7 +158,7 @@ For commercial output, `commercial_search_request()` narrows rights to `USER_OWN
 
 ## Approved usage signals
 
-`SELECTED`, `APPROVED`, and `REJECTED` are bounded ranking features. `training_authorization_granted` is stored independently and defaults false. An approved asset is **not** automatically authorized for model training.
+`SELECTED`, `APPROVED`, and `REJECTED` are bounded ranking features. They cannot make an otherwise unrelated asset become a search result. `training_authorization_granted` is stored independently and defaults false. An approved asset is **not** automatically authorized for model training.
 
 ## NODE-44 evidence boundary
 
