@@ -109,6 +109,9 @@ UPGRADE_STATEMENTS = (
         ordinal integer NOT NULL,
         content_hash char(64) NOT NULL,
         text text NOT NULL,
+        search_tsv tsvector GENERATED ALWAYS AS (
+            to_tsvector('simple', text)
+        ) STORED,
         token_estimate integer NOT NULL,
         locator_json jsonb NOT NULL,
         embedding_model varchar(255),
@@ -154,6 +157,10 @@ UPGRADE_STATEMENTS = (
     """
     CREATE INDEX ix_knowledge_chunks_document
     ON knowledge_chunks (document_id, ordinal)
+    """,
+    """
+    CREATE INDEX ix_knowledge_chunks_fts
+    ON knowledge_chunks USING gin (search_tsv)
     """,
     """
     GRANT SELECT, INSERT, UPDATE
