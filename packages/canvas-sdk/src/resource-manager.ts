@@ -70,6 +70,10 @@ export class CanvasResourceManager<T> {
     }
   }
 
+  peek(assetId: string, tier: AssetTier): T | null {
+    return this.#resources.get(resourceKey(assetId, tier))?.resource ?? null;
+  }
+
   release(assetId: string, tier: AssetTier): void {
     const key = resourceKey(assetId, tier);
     const entry = this.#resources.get(key);
