@@ -49,13 +49,25 @@ export async function encodeSvgWithChromium({ svg, format, width, height, qualit
           );
         });
         if (output.type !== mime) throw new Error(`EXPORT_WORKER_MIME_UNSUPPORTED:${output.type}`);
+        const verificationUrl = URL.createObjectURL(output);
+        try {
+          const verificationImage = new Image();
+          verificationImage.decoding = "sync";
+          verificationImage.src = verificationUrl;
+          await verificationImage.decode();
+          if (verificationImage.naturalWidth !== widthPx || verificationImage.naturalHeight !== heightPx) {
+            throw new Error(`EXPORT_WORKER_DECODE_DIMENSIONS_MISMATCH:${verificationImage.naturalWidth}x${verificationImage.naturalHeight}`);
+          }
+        } finally {
+          URL.revokeObjectURL(verificationUrl);
+        }
         const dataUrl = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onerror = () => reject(reader.error ?? new Error("EXPORT_WORKER_READ_FAILED"));
           reader.onload = () => resolve(String(reader.result));
           reader.readAsDataURL(output);
         });
-        return { dataUrl, mimeType: output.type, byteLength: output.size };
+        return { dataUrl, mimeType: output.type, byteLength: output.size, decodedWidth: widthPx, decodedHeight: heightPx };
       } finally {
         URL.revokeObjectURL(url);
       }
@@ -71,7 +83,7 @@ export async function encodeSvgWithChromium({ svg, format, width, height, qualit
     if (markerIndex < 0) throw new Error("EXPORT_WORKER_DATA_URL_INVALID");
     const bytes = Buffer.from(result.dataUrl.slice(markerIndex + marker.length), "base64");
     if (bytes.length !== result.byteLength) throw new Error("EXPORT_WORKER_BYTE_LENGTH_MISMATCH");
-    return { bytes: new Uint8Array(bytes), mime_type: result.mimeType, width, height };
+    return { bytes: new Uint8Array(bytes), mime_type: result.mimeType, width: result.decodedWidth, height: result.decodedHeight };
   } finally {
     await browser.close();
   }
