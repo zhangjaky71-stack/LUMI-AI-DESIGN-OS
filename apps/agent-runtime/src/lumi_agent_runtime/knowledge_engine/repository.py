@@ -30,6 +30,8 @@ class KnowledgeRepository(Protocol):
         self,
         *,
         organization_id: UUID,
+        project_id: UUID | None,
+        include_organization_scope: bool,
     ) -> tuple[KnowledgeChunk, ...]: ...
 
     async def list_chunks(
@@ -91,14 +93,21 @@ class InMemoryKnowledgeRepository:
         self,
         *,
         organization_id: UUID,
+        project_id: UUID | None,
+        include_organization_scope: bool,
     ) -> tuple[KnowledgeChunk, ...]:
         output: list[KnowledgeChunk] = []
         for document in self._documents.values():
-            if (
-                document.organization_id == organization_id
-                and document.status == KnowledgeStatus.READY
-            ):
-                output.extend(self._chunks.get(document.document_id, ()))
+            if document.organization_id != organization_id:
+                continue
+            if document.status != KnowledgeStatus.READY:
+                continue
+            if document.project_id is None:
+                if not include_organization_scope:
+                    continue
+            elif document.project_id != project_id:
+                continue
+            output.extend(self._chunks.get(document.document_id, ()))
         return tuple(output)
 
     async def list_chunks(
