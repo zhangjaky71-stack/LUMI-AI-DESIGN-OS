@@ -6,10 +6,33 @@ from decimal import Decimal
 
 import pytest
 
-from lumi_video_generation.model import StoredVideoClip, VideoProbeResult
+from lumi_video_generation.model import CompiledShot, StoredVideoClip, VideoProbeResult, VideoTaskSpec
 from lumi_video_generation.output_adapter import StagedProviderVideo, VerifiedVideoOutputAdapter
 from lumi_video_generation.storyboard import compile_storyboard
-from test_video_generation import _spec
+
+ORG = "00000000-0000-0000-0000-000000000001"
+PROJECT = "00000000-0000-0000-0000-000000000002"
+TASK = "00000000-0000-0000-0000-000000000003"
+OPERATION = "00000000-0000-0000-0000-000000000004"
+
+
+def _spec() -> VideoTaskSpec:
+    return VideoTaskSpec(
+        organization_id=ORG,
+        project_id=PROJECT,
+        task_id=TASK,
+        operation_id=OPERATION,
+        mode="TEXT_TO_VIDEO",
+        prompt="video output adapter test",
+        duration_seconds=Decimal("2"),
+        aspect_ratio="16:9",
+        width=1600,
+        height=900,
+        fps=24,
+        budget_limit_usd=Decimal("1"),
+        code_git_sha="a" * 40,
+        quality_retry_limit=0,
+    )
 
 
 class Fetcher:
@@ -48,7 +71,14 @@ class Store:
         self.discarded: list[str] = []
         self.corrupt_checksum = corrupt_checksum
 
-    async def promote(self, *, spec: object, shot: object, staged: StagedProviderVideo, probe: VideoProbeResult) -> StoredVideoClip:
+    async def promote(
+        self,
+        *,
+        spec: VideoTaskSpec,
+        shot: CompiledShot,
+        staged: StagedProviderVideo,
+        probe: VideoProbeResult,
+    ) -> StoredVideoClip:
         del spec, shot
         return StoredVideoClip(
             storage_key="video/clips/durable.mp4",
