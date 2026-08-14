@@ -16,13 +16,30 @@ class ScriptedVideoGateway:
         self.submit_count = 0
         self.poll_count = 0
         self.cancel_count = 0
+        self.exclusions: list[tuple[str, ...]] = []
 
-    async def estimate(self, *, spec: VideoTaskSpec, shot: CompiledShot, continuity_refs: tuple[str, ...]) -> GatewayEstimate:
+    async def estimate(
+        self,
+        *,
+        spec: VideoTaskSpec,
+        shot: CompiledShot,
+        continuity_refs: tuple[str, ...],
+        excluded_provider_keys: tuple[str, ...] = (),
+    ) -> GatewayEstimate:
         del spec, shot, continuity_refs
+        self.exclusions.append(excluded_provider_keys)
         return self.estimate_result
 
-    async def submit(self, *, spec: VideoTaskSpec, shot: CompiledShot, continuity_refs: tuple[str, ...]) -> GatewayVideoResult:
+    async def submit(
+        self,
+        *,
+        spec: VideoTaskSpec,
+        shot: CompiledShot,
+        continuity_refs: tuple[str, ...],
+        excluded_provider_keys: tuple[str, ...] = (),
+    ) -> GatewayVideoResult:
         del spec, shot, continuity_refs
+        self.exclusions.append(excluded_provider_keys)
         self.submit_count += 1
         return self.submits.popleft()
 
