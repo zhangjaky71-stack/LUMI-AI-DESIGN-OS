@@ -128,13 +128,12 @@ def main() -> int:
         "KNOWLEDGE_INDEX_FINALIZE_FAILED",
         "ingest_config_hash",
     )
-    transaction_positions = [
-        ingestion.index("self.repository.transaction()"),
-        ingestion.rindex("self.repository.transaction()"),
-    ]
-    extraction_position = ingestion.index("extract_native_then_ocr")
-    if transaction_positions[0] < extraction_position < transaction_positions[1]:
-        raise SystemExit("NODE-36 extraction appears inside a durable DB transaction")
+    ingest_body = ingestion.split("async def ingest", 1)[1].split(
+        "async def _begin_extraction",
+        1,
+    )[0]
+    if "self.repository.transaction()" in ingest_body:
+        raise SystemExit("NODE-36 extraction is held inside a durable DB transaction")
 
     indexer = require(
         "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/indexer.py",
@@ -155,15 +154,16 @@ def main() -> int:
     retrieval = require(
         "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/retrieval.py",
         "include_organization_scope",
-        "list_ready_chunks",
+        "search_ready_chunks",
         "query.expanded_queries",
         "query.require_fresh",
         "query_embedding_space_id",
+        "candidate_limit",
         "_diversify",
         "score = min",
     )
-    if retrieval.index("list_ready_chunks") > retrieval.index("score = min"):
-        raise SystemExit("NODE-36 retrieval scores before scoped repository filtering")
+    if retrieval.index("search_ready_chunks") > retrieval.index("score = min"):
+        raise SystemExit("NODE-36 retrieval scores before scoped candidate retrieval")
 
     postgres = require(
         "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/postgres_repository.py",
@@ -172,6 +172,10 @@ def main() -> int:
         "FOR UPDATE",
         "d.project_id=$2",
         "d.permission_scope='ORGANIZATION'",
+        "websearch_to_tsquery",
+        "c.search_tsv",
+        "c.embedding <=> $4::vector",
+        "c.embedding_space_id=$5",
         "ON CONFLICT (document_id, ordinal) DO UPDATE",
         "version=version+1",
         "_decode_vector",
@@ -213,6 +217,8 @@ def main() -> int:
         "chunker_version",
         "index_version",
         "embedding_space_id",
+        "search_tsv tsvector GENERATED ALWAYS AS",
+        "USING gin (search_tsv)",
         "REVOKE DELETE",
     )
     if "raw_chat" in migration or "conversation_history" in migration:
@@ -225,6 +231,8 @@ def main() -> int:
         "scope_key",
         "index_version",
         "embedding_space_id",
+        "Computed(\"to_tsvector('simple', text)\"",
+        'postgresql_using="gin"',
     )
     require(
         "apps/api/src/lumi_api/persistence/models/__init__.py",
@@ -234,6 +242,11 @@ def main() -> int:
     require(
         "apps/agent-runtime/tests/test_knowledge_scope_identity.py",
         "same_source_can_exist_in_two_projects_without_cross_supersede",
+    )
+    require(
+        "apps/agent-runtime/tests/test_knowledge_boundaries.py",
+        "same_index_version_rejects_configuration_drift",
+        "context_embedding_without_space_falls_back_to_lexical",
     )
     require(
         "scripts/integration_knowledge_engine.py",
