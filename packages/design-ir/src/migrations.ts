@@ -33,14 +33,14 @@ export class DesignIrMigrationRegistry {
         throw new Error(`No Design IR migration path from ${current.schema_version} to ${targetVersion}`);
       }
       const provenance = structuredClone(current.metadata.provenance);
-      const next = step.migrate(structuredClone(current));
-      if (next.schema_version !== step.to) {
-        throw new Error(`Migration ${step.from} -> ${step.to} returned ${next.schema_version}`);
+      const migrated = step.migrate(structuredClone(current));
+      if (migrated.schema_version !== step.to) {
+        throw new Error(`Migration ${step.from} -> ${step.to} returned ${migrated.schema_version}`);
       }
-      if (provenance !== undefined && next.metadata.provenance === undefined) {
-        next.metadata = { ...next.metadata, provenance } as DesignDocument["metadata"];
-      }
-      current = next;
+      current =
+        provenance !== undefined && migrated.metadata.provenance === undefined
+          ? { ...migrated, metadata: { ...migrated.metadata, provenance } }
+          : migrated;
     }
     return current;
   }
