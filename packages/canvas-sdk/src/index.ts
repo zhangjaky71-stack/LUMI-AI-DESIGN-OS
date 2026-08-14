@@ -1,4 +1,5 @@
 export * from "./asset-cache";
+export * from "./asset-residency";
 export * from "./benchmark";
 export * from "./camera";
 export * from "./clipboard";
