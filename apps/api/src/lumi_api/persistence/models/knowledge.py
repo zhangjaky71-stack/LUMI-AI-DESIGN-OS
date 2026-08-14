@@ -27,6 +27,7 @@ class KnowledgeDocumentModel(IdMixin, MutableTimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint(
             "organization_id",
+            "scope_key",
             "source_type",
             "source_id",
             "source_version",
@@ -39,8 +40,11 @@ class KnowledgeDocumentModel(IdMixin, MutableTimestampMixin, Base):
             name="permission_scope",
         ),
         CheckConstraint(
-            "permission_scope <> 'PROJECT' OR project_id IS NOT NULL",
-            name="project_scope",
+            "(permission_scope='PROJECT' AND project_id IS NOT NULL "
+            "AND scope_key='PROJECT:' || project_id::text) OR "
+            "(permission_scope='ORGANIZATION' AND project_id IS NULL "
+            "AND scope_key='ORGANIZATION')",
+            name="scope_key",
         ),
         CheckConstraint(
             "source_type IN ('ASSET','URL','TEXT','ARTIFACT','INTERNAL_DOCUMENT')",
@@ -66,6 +70,7 @@ class KnowledgeDocumentModel(IdMixin, MutableTimestampMixin, Base):
         Index(
             "ix_knowledge_documents_source_lookup",
             "organization_id",
+            "scope_key",
             "source_type",
             "source_id",
             "status",
@@ -82,6 +87,7 @@ class KnowledgeDocumentModel(IdMixin, MutableTimestampMixin, Base):
         ForeignKey("projects.id", ondelete="CASCADE"),
     )
     permission_scope: Mapped[str] = mapped_column(String(32), nullable=False)
+    scope_key: Mapped[str] = mapped_column(String(512), nullable=False)
     source_type: Mapped[str] = mapped_column(String(32), nullable=False)
     source_id: Mapped[str] = mapped_column(String(1024), nullable=False)
     source_version: Mapped[str] = mapped_column(String(255), nullable=False)
