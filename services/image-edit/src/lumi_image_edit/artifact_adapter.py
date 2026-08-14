@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import datetime, timezone
 
 from lumi_artifacts.history import ArtifactHistory, ArtifactHistoryError
