@@ -79,6 +79,7 @@ function renderKey(node: DesignNode): string {
     id: node.id,
     kind: node.kind,
     visible: node.visible ?? true,
+    locked: node.locked ?? false,
     opacity: node.opacity ?? 1,
     blend_mode: node.blend_mode ?? "normal",
     transform: node.transform ?? {},
@@ -113,7 +114,13 @@ export function projectDesignDocument(document: DesignDocument): CanvasSceneSnap
   const visited = new Set<string>();
   let paint = 0;
 
-  const visit = (id: string, parentWorld: Matrix2D, depth: number): void => {
+  const visit = (
+    id: string,
+    parentWorld: Matrix2D,
+    depth: number,
+    parentVisible: boolean,
+    parentLocked: boolean,
+  ): void => {
     if (visited.has(id)) return;
     if (visiting.has(id)) {
       diagnostic(diagnostics, id, "CYCLE");
@@ -132,7 +139,14 @@ export function projectDesignDocument(document: DesignDocument): CanvasSceneSnap
     const local = transformToMatrix(node.transform ?? {});
     const world = multiplyMatrix(parentWorld, local);
     const dimensions = safeDimensions(node);
-    const localBounds: Rect = { x: 0, y: 0, width: dimensions.width, height: dimensions.height };
+    const localBounds: Rect = {
+      x: 0,
+      y: 0,
+      width: dimensions.width,
+      height: dimensions.height,
+    };
+    const effectiveVisible = parentVisible && (node.visible ?? true);
+    const effectiveLocked = parentLocked || (node.locked ?? false);
     const sceneNode: CanvasSceneNode = {
       id: node.id,
       kind: node.kind,
@@ -140,8 +154,8 @@ export function projectDesignDocument(document: DesignDocument): CanvasSceneSnap
       children: [...node.children],
       depth,
       paint_order: paint,
-      visible: node.visible ?? true,
-      locked: node.locked ?? false,
+      visible: effectiveVisible,
+      locked: effectiveLocked,
       local_matrix: local,
       world_matrix: world,
       local_bounds: localBounds,
@@ -170,18 +184,18 @@ export function projectDesignDocument(document: DesignDocument): CanvasSceneSnap
           `declared=${child.parent_id ?? "null"}, expected=${id}`,
         );
       }
-      visit(childId, world, depth + 1);
+      visit(childId, world, depth + 1, effectiveVisible, effectiveLocked);
     }
     visiting.delete(id);
     visited.add(id);
   };
 
-  visit(document.root_id, IDENTITY_MATRIX, 0);
+  visit(document.root_id, IDENTITY_MATRIX, 0, true, false);
 
   for (const node of Object.values(document.nodes)) {
     if (!visited.has(node.id)) {
       diagnostic(diagnostics, node.id, "MISSING_PARENT", "node is unreachable from document root");
-      visit(node.id, IDENTITY_MATRIX, 0);
+      visit(node.id, IDENTITY_MATRIX, 0, true, false);
     }
   }
 
