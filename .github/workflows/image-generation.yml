@@ -1,0 +1,169 @@
+name: Image Generation
+
+on:
+  pull_request:
+    paths:
+      - "services/image-generation/**"
+      - "services/model-gateway/**"
+      - "services/asset-intelligence/**"
+      - "services/artifact-history/**"
+      - "services/brand-rules/**"
+      - "services/identity-engine/**"
+      - "packages/design-constraints/**"
+      - "db/migrations/0001_artifact_engine.sql"
+      - "db/migrations/0005_image_generation.sql"
+      - "fixtures/image-generation/**"
+      - "scripts/validate_image_generation.py"
+      - "scripts/benchmark_image_generation.py"
+      - "docs/runtime/IMAGE-GENERATION-V1.md"
+      - "docs/nodes/NODE-46-IMAGE-GENERATION.md"
+      - "reports/nodes/NODE-46/**"
+      - ".github/workflows/image-generation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image-generation-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile NODE-46 contract files
+        run: >-
+          python -m compileall -q
+          services/image-generation/src/lumi_image_generation
+          services/image-generation/tests
+          scripts/validate_image_generation.py
+          scripts/benchmark_image_generation.py
+      - name: Validate NODE-46 architecture contract
+        env:
+          PYTHONPATH: >-
+            services/image-generation/src:
+            services/model-gateway/src:
+            services/asset-intelligence/src:
+            services/artifact-history/src
+        run: python scripts/validate_image_generation.py
+
+  image-generation-quality:
+    needs: image-generation-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen Python workspace install
+        run: uv sync --all-packages --frozen
+      - name: Run NODE-46 tests
+        env:
+          PYTHONPATH: >-
+            services/image-generation/src:
+            services/model-gateway/src:
+            services/asset-intelligence/src:
+            services/artifact-history/src:
+            services/brand-rules/src:
+            services/identity-engine/src:
+            services/domain/src
+        run: uv run pytest services/image-generation/tests -q
+      - name: Ruff correctness gate
+        run: >-
+          uv run ruff check --ignore E501
+          services/image-generation/src
+          services/image-generation/tests
+          scripts/validate_image_generation.py
+          scripts/benchmark_image_generation.py
+      - name: Pyright gate
+        run: uv run pyright -p services/image-generation/pyrightconfig.json
+
+  image-generation-integration:
+    needs: image-generation-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: lumi
+          POSTGRES_PASSWORD: lumi
+          POSTGRES_DB: lumi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lumi -d lumi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen Python workspace install
+        run: uv sync --all-packages --frozen
+      - name: Run Model Gateway / Asset / Artifact / Generation integration regressions
+        env:
+          PYTHONPATH: >-
+            services/image-generation/src:
+            services/model-gateway/src:
+            services/asset-intelligence/src:
+            services/artifact-history/src:
+            services/brand-rules/src:
+            services/identity-engine/src:
+            services/domain/src
+        run: >-
+          uv run pytest
+          services/image-generation/tests
+          services/model-gateway/tests
+          services/artifact-history/tests
+          services/asset-intelligence/tests
+          -q
+      - name: Apply Artifact + Image Generation migrations on empty PostgreSQL
+        env:
+          PGPASSWORD: lumi
+        run: >-
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1
+          -f db/migrations/0001_artifact_engine.sql
+          && psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1
+          -f db/migrations/0005_image_generation.sql
+      - name: Verify NODE-46 DB contracts exist
+        env:
+          PGPASSWORD: lumi
+        run: |
+          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc "select count(*) from information_schema.tables where table_name like 'image_generation_%';")" = "5"
+          psql -h 127.0.0.1 -U lumi -d lumi -Atc "select data_type from information_schema.columns where table_name='image_generation_provenance' and column_name='cost_usd';" | grep -qx numeric
+          psql -h 127.0.0.1 -U lumi -d lumi -Atc "select count(*) from pg_constraint where conname like 'image_generation_%';" >/dev/null
+
+  image-generation-benchmark:
+    needs: image-generation-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run deterministic orchestration benchmark
+        env:
+          PYTHONPATH: services/image-generation/src
+          LUMI_IMAGE_GENERATION_BENCHMARK_ITERATIONS: "5000"
+        run: python scripts/benchmark_image_generation.py
+      - name: Record live-provider benchmark gate
+        run: >-
+          echo "Live provider/model quality evidence is intentionally not fabricated by CI."
+          && echo "Production routing remains gated on NODE-23 benchmark snapshots for selected live adapters."
