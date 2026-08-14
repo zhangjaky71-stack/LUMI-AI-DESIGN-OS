@@ -19,6 +19,7 @@ REQUIRED = {
     "contracts.py",
     "extraction.py",
     "indexer.py",
+    "ingestion.py",
     "postgres_repository.py",
     "repository.py",
     "retrieval.py",
@@ -87,6 +88,7 @@ def main() -> int:
 
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/contracts.py",
+        "KnowledgeIngestRequest",
         "KnowledgeSegment",
         "source_updated_at",
         "scope_key",
@@ -96,6 +98,7 @@ def main() -> int:
         "embedding_space_id",
         "expanded_queries",
         "require_fresh",
+        "KNOWLEDGE_FRESHNESS_WINDOW_REQUIRED",
     )
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/chunking.py",
@@ -115,10 +118,30 @@ def main() -> int:
     if extraction.index("extract_native(") > extraction.index("extract_ocr("):
         raise SystemExit("NODE-36 OCR is attempted before native extraction")
 
+    ingestion = require(
+        "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/ingestion.py",
+        "TransactionalKnowledgeIngestionService",
+        "KnowledgeStatus.PENDING",
+        "KnowledgeStatus.EXTRACTING",
+        "extract_native_then_ocr",
+        "KNOWLEDGE_EXTRACTION_FAILED",
+        "KNOWLEDGE_INDEX_FINALIZE_FAILED",
+        "ingest_config_hash",
+    )
+    transaction_positions = [
+        ingestion.index("self.repository.transaction()"),
+        ingestion.rindex("self.repository.transaction()"),
+    ]
+    extraction_position = ingestion.index("extract_native_then_ocr")
+    if transaction_positions[0] < extraction_position < transaction_positions[1]:
+        raise SystemExit("NODE-36 extraction appears inside a durable DB transaction")
+
     indexer = require(
         "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/indexer.py",
         "acquire_source_lock",
         "request.scope_key",
+        "KNOWLEDGE_INDEX_VERSION_CONFIGURATION_CONFLICT",
+        "KNOWLEDGE_INGEST_CONFIGURATION_CONFLICT",
         "KnowledgeStatus.CHUNKING",
         "KnowledgeStatus.EMBEDDING",
         "KnowledgeStatus.READY",
@@ -161,6 +184,7 @@ def main() -> int:
         "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/context_source.py",
         "ContextKind.KNOWLEDGE",
         '"instruction_authority": "none"',
+        "_embedding_pair",
         "citation_source_id",
         "citation_source_hash",
         "knowledge_stale",
@@ -213,6 +237,7 @@ def main() -> int:
     )
     require(
         "scripts/integration_knowledge_engine.py",
+        "TransactionalKnowledgeIngestionService",
         "asyncio.gather",
         '"SUPERSEDED"',
         'locator["page"] == 2',
