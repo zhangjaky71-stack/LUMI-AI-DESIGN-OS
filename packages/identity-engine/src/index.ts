@@ -4,5 +4,7 @@ export * from "./privacy";
 export * from "./provider";
 export * from "./runtime";
 export * from "./cache";
+export * from "./reference-set";
+export * from "./compare";
 export * from "./constraint-adapter";
 export * from "./artifact-gate";
