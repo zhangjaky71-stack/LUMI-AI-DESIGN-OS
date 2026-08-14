@@ -1,0 +1,151 @@
+name: Identity Engine
+
+on:
+  pull_request:
+    paths:
+      - "packages/identity-engine/**"
+      - "packages/design-constraints/**"
+      - "packages/artifact-sdk/src/types.ts"
+      - "packages/artifact-sdk/src/hashing.ts"
+      - "packages/artifact-sdk/src/export.ts"
+      - "services/identity-engine/**"
+      - "services/artifact-history/src/lumi_artifacts/model.py"
+      - "services/artifact-history/src/lumi_artifacts/export_manifest.py"
+      - "db/migrations/0003_identity_engine.sql"
+      - "fixtures/identity/**"
+      - "scripts/validate_identity_engine.py"
+      - "scripts/benchmark_identity_engine.py"
+      - "docs/runtime/IDENTITY-ENGINE-V1.md"
+      - "docs/nodes/NODE-44-IDENTITY-ENGINE.md"
+      - "reports/nodes/NODE-44/**"
+      - ".github/workflows/identity-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  identity-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install frozen root toolchain
+        run: pnpm install --frozen-lockfile --filter lumi-ai-design-os
+      - name: Compile Python contract files
+        run: >-
+          python -m compileall -q
+          services/identity-engine/src/lumi_identity_engine
+          services/identity-engine/tests
+          scripts/validate_identity_engine.py
+          scripts/benchmark_identity_engine.py
+      - name: Validate NODE-44 architecture contract
+        run: PYTHONPATH=services/identity-engine/src python scripts/validate_identity_engine.py
+      - name: Typecheck Identity Engine package
+        run: pnpm exec tsc -p packages/identity-engine/tsconfig.json --noEmit
+
+  identity-quality:
+    needs: identity-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install frozen root toolchain
+        run: pnpm install --frozen-lockfile --filter lumi-ai-design-os
+      - name: Frozen Python workspace install
+        run: uv sync --all-packages --frozen
+      - name: Run TypeScript Identity Engine tests
+        run: pnpm exec vitest run packages/identity-engine/src
+      - name: Run Python Identity Engine tests
+        run: >-
+          PYTHONPATH=services/identity-engine/src
+          uv run pytest services/identity-engine/tests -q
+      - name: Ruff correctness gate
+        run: >-
+          uv run ruff check --ignore E501
+          services/identity-engine/src
+          services/identity-engine/tests
+          scripts/validate_identity_engine.py
+          scripts/benchmark_identity_engine.py
+      - name: Pyright gate
+        run: uv run pyright -p services/identity-engine/pyrightconfig.json
+
+  identity-integration:
+    needs: identity-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install frozen root toolchain
+        run: pnpm install --frozen-lockfile --filter lumi-ai-design-os
+      - name: Frozen Python workspace install
+        run: uv sync --all-packages --frozen
+      - name: Typecheck Constraint / Identity / Artifact boundaries
+        run: >-
+          pnpm exec tsc -p packages/design-constraints/tsconfig.json --noEmit
+          && pnpm exec tsc -p packages/identity-engine/tsconfig.json --noEmit
+          && pnpm exec tsc -p packages/artifact-sdk/tsconfig.json --noEmit
+      - name: Run Constraint / Identity / Artifact integration tests
+        run: >-
+          pnpm exec vitest run
+          packages/design-constraints/src
+          packages/identity-engine/src
+          packages/artifact-sdk/src
+      - name: Verify Python Artifact model compatibility
+        run: >-
+          PYTHONPATH=services/identity-engine/src:services/artifact-history/src
+          uv run pytest
+          services/identity-engine/tests
+          services/artifact-history/tests
+          -q
+
+  identity-benchmark:
+    needs: identity-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run 1k Logo + 1k Product local identity benchmark
+        env:
+          LUMI_IDENTITY_BENCHMARK_ITERATIONS_PER_TYPE: "1000"
+          LUMI_IDENTITY_BENCHMARK_BUDGET_MS: "3000"
+        run: >-
+          PYTHONPATH=services/identity-engine/src
+          python scripts/benchmark_identity_engine.py

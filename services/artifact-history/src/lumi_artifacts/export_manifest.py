@@ -25,6 +25,12 @@ def build_export_manifest(
         and provenance.brand_rule_set_version != version.brand_rule_set_version
     ):
         raise ValueError("brand rule set version mismatch between version and provenance")
+    if (
+        provenance.identity_validation_snapshot_id is not None
+        and version.identity_validation_snapshot_id is not None
+        and provenance.identity_validation_snapshot_id != version.identity_validation_snapshot_id
+    ):
+        raise ValueError("identity validation snapshot mismatch between version and provenance")
 
     file_rows = tuple(file for file in files if file.artifact_version_id == version.id)
     rights_rows = tuple(right for right in rights if right.organization_id == version.organization_id)
@@ -61,6 +67,10 @@ def build_export_manifest(
         "constraint_snapshot_hash": version.constraint_snapshot_hash,
         "brand_rule_set_version": (
             provenance.brand_rule_set_version or version.brand_rule_set_version
+        ),
+        "identity_validation_snapshot_id": (
+            provenance.identity_validation_snapshot_id
+            or version.identity_validation_snapshot_id
         ),
         "code_git_sha": provenance.code_git_sha,
     }

@@ -65,6 +65,7 @@ export interface ArtifactVersion {
   readonly primary_file_id?: string | null;
   readonly design_document_version_id?: string | null;
   readonly brand_rule_set_version?: string | null;
+  readonly identity_validation_snapshot_id?: string | null;
   readonly quality_score?: number | null;
 }
 
@@ -109,6 +110,7 @@ export interface ArtifactProvenance {
   readonly code_git_sha: string;
   readonly compiler?: CompilerArtifactProvenance;
   readonly brand_rule_set_version?: string;
+  readonly identity_validation_snapshot_id?: string;
   readonly agent_run_id?: string;
   readonly task_id?: string;
   readonly generation_id?: string;

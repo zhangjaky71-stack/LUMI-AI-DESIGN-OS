@@ -70,6 +70,7 @@ class ArtifactVersion:
     design_document_version_id: str | None = None
     quality_score: float | None = None
     brand_rule_set_version: str | None = None
+    identity_validation_snapshot_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.version_number < 1:
@@ -80,6 +81,8 @@ class ArtifactVersion:
             raise ValueError("quality_score must be in [0,1]")
         if self.brand_rule_set_version is not None and not self.brand_rule_set_version.strip():
             raise ValueError("brand_rule_set_version cannot be blank")
+        if self.identity_validation_snapshot_id is not None and not self.identity_validation_snapshot_id.strip():
+            raise ValueError("identity_validation_snapshot_id cannot be blank")
 
     @property
     def immutable_content_identity(self) -> tuple[Any, ...]:
@@ -95,6 +98,7 @@ class ArtifactVersion:
             self.primary_file_id,
             self.design_document_version_id,
             self.brand_rule_set_version,
+            self.identity_validation_snapshot_id,
             self.created_by_type,
             self.created_by_id,
             self.created_at,
@@ -147,6 +151,7 @@ class ProvenanceRecord:
     constraint_snapshot_hash: str
     code_git_sha: str
     brand_rule_set_version: str | None = None
+    identity_validation_snapshot_id: str | None = None
     agent_run_id: str | None = None
     task_id: str | None = None
     generation_id: str | None = None
@@ -169,6 +174,8 @@ class ProvenanceRecord:
             raise ValueError("code_git_sha must be lowercase 40-character git SHA")
         if self.brand_rule_set_version is not None and not self.brand_rule_set_version.strip():
             raise ValueError("brand_rule_set_version cannot be blank")
+        if self.identity_validation_snapshot_id is not None and not self.identity_validation_snapshot_id.strip():
+            raise ValueError("identity_validation_snapshot_id cannot be blank")
         object.__setattr__(self, "input_asset_ids", tuple(dict.fromkeys(self.input_asset_ids)))
         object.__setattr__(self, "input_artifact_version_ids", tuple(dict.fromkeys(self.input_artifact_version_ids)))
         object.__setattr__(self, "skill_versions", _freeze(self.skill_versions))

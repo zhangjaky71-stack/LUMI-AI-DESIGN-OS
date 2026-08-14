@@ -1,0 +1,10 @@
+[project]
+name = "lumi-identity-engine"
+version = "1.0.0"
+description = "LUMI Identity Engine V1 reference runtime"
+requires-python = "==3.12.*"
+dependencies = []
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
