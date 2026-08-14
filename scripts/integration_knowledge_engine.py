@@ -12,7 +12,8 @@ import asyncpg
 
 from lumi_agent_runtime.knowledge_engine import (
     KnowledgeAccessContext,
-    KnowledgeIndexRequest,
+    KnowledgeExtractionResult,
+    KnowledgeIngestRequest,
     KnowledgePermissionScope,
     KnowledgeSearchQuery,
     KnowledgeSegment,
@@ -21,6 +22,7 @@ from lumi_agent_runtime.knowledge_engine import (
     KnowledgeStatus,
     KnowledgeTrust,
     PostgresKnowledgeRepository,
+    TransactionalKnowledgeIngestionService,
     TransactionalKnowledgeService,
 )
 
@@ -56,6 +58,35 @@ class FixtureEmbedder:
         )
 
 
+class FixtureExtractor:
+    async def extract_native(self, source_ref, *, access):
+        del access
+        pricing = "120 dollars" if source_ref.version == "1" else "150 dollars"
+        segments = (
+            KnowledgeSegment(
+                "NODE-36 product overview and positioning.",
+                page=1,
+                section="Overview",
+            ),
+            KnowledgeSegment(
+                f"Annual enterprise pricing is {pricing} per seat.",
+                page=2,
+                section="Pricing",
+            ),
+        )
+        return KnowledgeExtractionResult(
+            normalized_text="\n".join(segment.text for segment in segments),
+            segments=segments,
+            parser_version="pdf-native-v1",
+            language="en",
+            used_ocr=False,
+        )
+
+    async def extract_ocr(self, source_ref, *, access):
+        del source_ref, access
+        raise AssertionError("OCR must not run when native extraction succeeds")
+
+
 def source(version: str) -> KnowledgeSourceRef:
     identity = f"{PREFIX}asset:{version}"
     return KnowledgeSourceRef(
@@ -78,33 +109,18 @@ def access() -> KnowledgeAccessContext:
     )
 
 
-def index_request(version: str, pricing: str) -> KnowledgeIndexRequest:
-    segments = (
-        KnowledgeSegment(
-            "NODE-36 product overview and positioning.",
-            page=1,
-            section="Overview",
-        ),
-        KnowledgeSegment(
-            f"Annual enterprise pricing is {pricing} per seat.",
-            page=2,
-            section="Pricing",
-        ),
-    )
-    return KnowledgeIndexRequest(
+def ingest_request(version: str) -> KnowledgeIngestRequest:
+    return KnowledgeIngestRequest(
         access=access(),
         source=source(version),
         trust=KnowledgeTrust.USER_CONTENT,
-        normalized_text="\n".join(segment.text for segment in segments),
         project_id=PROJECT_ID,
         permission_scope=KnowledgePermissionScope.PROJECT,
-        parser_version="pdf-native-v1",
         chunker_version="structure-window-v1",
         index_version=f"node36-index-{version}",
         embedding_space_id="node36-embedding-space-v1",
         chunk_size_tokens=100,
         chunk_overlap_tokens=10,
-        segments=segments,
     )
 
 
@@ -112,10 +128,12 @@ async def main_async() -> None:
     migration = await asyncpg.connect(_dsn("MIGRATION_DATABASE_URL"))
     runtime = await asyncpg.connect(_dsn("DATABASE_URL"))
     repository = PostgresKnowledgeRepository(runtime_connection)
-    service = TransactionalKnowledgeService(
+    ingestion = TransactionalKnowledgeIngestionService(
         repository,
+        extractor=FixtureExtractor(),
         embedder=FixtureEmbedder(),
     )
+    service = TransactionalKnowledgeService(repository)
     try:
         assert await migration.fetchval(
             "SELECT count(*) FROM organizations WHERE id=$1",
@@ -128,13 +146,15 @@ async def main_async() -> None:
 
         await _cleanup(migration)
 
-        first_request = index_request("1", "120 dollars")
+        first_request = ingest_request("1")
         first_a, first_b = await asyncio.gather(
-            service.index(first_request),
-            service.index(first_request),
+            ingestion.ingest(first_request),
+            ingestion.ingest(first_request),
         )
         assert first_a.document_id == first_b.document_id
         assert first_a.status == KnowledgeStatus.READY
+        assert first_a.version >= 6
+        assert first_a.metadata["used_ocr"] is False
         assert await migration.fetchval(
             """
             SELECT count(*) FROM knowledge_documents
@@ -158,7 +178,7 @@ async def main_async() -> None:
         assert results[0].citation.source_version == "1"
         assert results[0].semantic_score > 0.99
 
-        second = await service.index(index_request("2", "150 dollars"))
+        second = await ingestion.ingest(ingest_request("2"))
         assert second.status == KnowledgeStatus.READY
         old_status = await migration.fetchval(
             "SELECT status FROM knowledge_documents WHERE id=$1",
