@@ -1,0 +1,10 @@
+{
+  "include": ["src", "tests"],
+  "extraPaths": [
+    "../image-generation/src",
+    "../model-gateway/src",
+    "../artifact-history/src"
+  ],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "strict"
+}

@@ -1,0 +1,9 @@
+[project]
+name = "lumi-image-edit"
+version = "0.0.0"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
