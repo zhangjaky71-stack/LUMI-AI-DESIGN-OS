@@ -1,0 +1,140 @@
+name: Brand Rules Engine
+
+on:
+  pull_request:
+    paths:
+      - "packages/brand-rules/**"
+      - "packages/artifact-sdk/src/types.ts"
+      - "services/brand-rules/**"
+      - "services/artifact-history/src/lumi_artifacts/model.py"
+      - "db/migrations/0002_brand_rules.sql"
+      - "scripts/validate_brand_rules_engine.py"
+      - "scripts/benchmark_brand_rules_engine.py"
+      - "docs/runtime/BRAND-RULES-ENGINE-V1.md"
+      - "docs/nodes/NODE-43-BRAND-RULES-ENGINE.md"
+      - "reports/nodes/NODE-43/**"
+      - ".github/workflows/brand-rules-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  brand-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install frozen root toolchain
+        run: pnpm install --frozen-lockfile --filter lumi-ai-design-os
+      - name: Compile Python contract files
+        run: >-
+          python -m compileall -q
+          services/brand-rules/src/lumi_brand_rules
+          services/brand-rules/tests
+          scripts/validate_brand_rules_engine.py
+          scripts/benchmark_brand_rules_engine.py
+      - name: Validate NODE-43 architecture contract
+        run: python scripts/validate_brand_rules_engine.py
+      - name: Typecheck Brand Rules package
+        run: pnpm exec tsc -p packages/brand-rules/tsconfig.json --noEmit
+
+  brand-quality:
+    needs: brand-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install frozen root toolchain
+        run: pnpm install --frozen-lockfile --filter lumi-ai-design-os
+      - name: Frozen Python workspace install
+        run: uv sync --all-packages --frozen
+      - name: Run TypeScript Brand Rules tests
+        run: pnpm exec vitest run packages/brand-rules/src/brand-rules.test.ts
+      - name: Run Python Brand Rules tests
+        run: >-
+          PYTHONPATH=services/brand-rules/src
+          uv run pytest services/brand-rules/tests -q
+      - name: Ruff gate
+        run: >-
+          uv run ruff check
+          services/brand-rules/src
+          services/brand-rules/tests
+          scripts/validate_brand_rules_engine.py
+          scripts/benchmark_brand_rules_engine.py
+      - name: Pyright gate
+        run: uv run pyright -p services/brand-rules/pyrightconfig.json
+
+  brand-integration:
+    needs: brand-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install frozen root toolchain
+        run: pnpm install --frozen-lockfile --filter lumi-ai-design-os
+      - name: Typecheck integration boundaries
+        run: >-
+          pnpm exec tsc -p packages/design-constraints/tsconfig.json --noEmit
+          && pnpm exec tsc -p packages/artifact-sdk/tsconfig.json --noEmit
+          && pnpm exec tsc -p packages/brand-rules/tsconfig.json --noEmit
+      - name: Run Constraint / Brand / Artifact integration tests
+        run: >-
+          pnpm exec vitest run
+          packages/design-constraints/src
+          packages/brand-rules/src
+          packages/artifact-sdk/src
+      - name: Verify Python Artifact model compatibility
+        run: >-
+          PYTHONPATH=services/brand-rules/src:services/artifact-history/src
+          python -m pytest
+          services/brand-rules/tests
+          services/artifact-history/tests
+          -q
+
+  brand-benchmark:
+    needs: brand-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run 2k-node / 40-rule deterministic benchmark
+        run: >-
+          PYTHONPATH=services/brand-rules/src
+          python scripts/benchmark_brand_rules_engine.py
+          --nodes 2000
+          --rules 40
+          --runs 5
+          --max-median-ms 1500
