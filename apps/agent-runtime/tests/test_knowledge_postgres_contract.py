@@ -28,6 +28,8 @@ class KnowledgePostgresContractTests(unittest.TestCase):
         self.assertIn("index_version", text)
         self.assertIn("embedding_space_id", text)
         self.assertIn("source_updated_at", text)
+        self.assertIn("search_tsv tsvector GENERATED ALWAYS AS", text)
+        self.assertIn("USING gin (search_tsv)", text)
         self.assertIn("REVOKE DELETE", text)
         self.assertIn("scope_key='PROJECT:' || project_id::text", text)
         self.assertIn("scope_key='ORGANIZATION'", text)
@@ -53,6 +55,9 @@ class KnowledgePostgresContractTests(unittest.TestCase):
         self.assertIn("index_version", text)
         self.assertIn("embedding_space_id", text)
         self.assertIn("source_updated_at", text)
+        self.assertIn("Computed(\"to_tsvector('simple', text)\"", text)
+        self.assertIn('"ix_knowledge_chunks_fts"', text)
+        self.assertIn('postgresql_using="gin"', text)
 
     def test_postgres_repository_is_sdk_neutral_and_transaction_safe(self) -> None:
         text = REPOSITORY.read_text(encoding="utf-8")
@@ -78,14 +83,18 @@ class KnowledgePostgresContractTests(unittest.TestCase):
                 imported.add(node.module.split(".", 1)[0])
         self.assertFalse(imported & forbidden)
 
-    def test_project_acl_is_in_durable_candidate_query_before_scoring(self) -> None:
+    def test_project_acl_is_in_durable_fts_and_vector_candidate_queries(self) -> None:
         postgres = REPOSITORY.read_text(encoding="utf-8")
         self.assertIn("d.project_id=$2", postgres)
         self.assertIn("d.permission_scope='ORGANIZATION'", postgres)
+        self.assertIn("websearch_to_tsquery", postgres)
+        self.assertIn("c.search_tsv", postgres)
+        self.assertIn("c.embedding <=> $4::vector", postgres)
+        self.assertIn("c.embedding_space_id=$5", postgres)
         retrieval = RETRIEVAL.read_text(encoding="utf-8")
-        self.assertIn("list_ready_chunks", retrieval)
+        self.assertIn("search_ready_chunks", retrieval)
         self.assertLess(
-            retrieval.index("list_ready_chunks"),
+            retrieval.index("search_ready_chunks"),
             retrieval.index("score = min"),
         )
 
