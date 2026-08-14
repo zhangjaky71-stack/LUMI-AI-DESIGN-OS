@@ -34,7 +34,7 @@
 | 270-case benchmark corpus | benchmark spec + deterministic builder | IMPLEMENTED |
 | 2k node / 100 op / 100 constraint benchmark | `scripts/benchmark_constraint_validator.py` | IMPLEMENTED; hosted measurement pending |
 | Static contract validator | `scripts/validate_constraint_runtime.py` | IMPLEMENTED |
-| Dedicated CI | `.github/workflows/constraint-validator.yml` | IMPLEMENTED; hosted execution pending |
+| Dedicated CI | `.github/workflows/constraint-validator.yml` | IMPLEMENTED; hosted runner blocked externally |
 
 ## Frozen V1 type coverage
 
@@ -92,6 +92,22 @@ The deterministic corpus contains 270 cases:
 
 The performance harness measures 2,000 nodes / 100 operations / 100 constraints and reports median/p95. No unmeasured latency result is claimed in this report.
 
+## Hosted CI attempt
+
+Draft PR #39 triggered Constraint Validator workflow run `31783395060` for release head `19a531899a31e020403e8d8b468296ea7c7a6df4`.
+
+Observed jobs:
+
+- `constraint-contract`: **failure before execution**;
+- `constraint-quality`: skipped because the contract dependency did not run green;
+- `constraint-benchmark`: skipped because the quality dependency did not run green.
+
+The contract job contained no executed steps. GitHub check annotation reported:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+
+This is an external GitHub Actions account/billing blocker. It is **not** evidence of a NODE-39 implementation or test failure.
+
 ## Acceptance gates before COMPLETE
 
 1. Hosted `constraint-contract` executes green.
@@ -103,4 +119,4 @@ The performance harness measures 2,000 nodes / 100 operations / 100 constraints 
 
 ## Current disposition
 
-Implementation, schemas, fixtures, tests, benchmark harness, runtime documentation and CI definitions are present. NODE-39 is intentionally **not COMPLETE** until hosted GitHub Actions actually execute successfully. If the previously observed GitHub account billing/spending-limit condition prevents jobs from starting, it must be recorded as an external CI blocker rather than a code failure.
+NODE-39 remains **IMPLEMENTED / VALIDATING / not COMPLETE**. Implementation, schemas, fixtures, tests, benchmark harness, runtime documentation and CI definitions are present, but hosted validation has not executed due the external GitHub billing/spending-limit condition. The node must not be marked COMPLETE until the required hosted jobs actually run green.
