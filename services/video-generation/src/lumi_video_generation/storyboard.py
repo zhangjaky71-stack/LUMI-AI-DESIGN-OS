@@ -19,6 +19,12 @@ def shot_operation_id(root_operation_id: str, shot_id: str) -> str:
     return str(uuid5(_stable_uuid(root_operation_id), f"video-shot:{shot_id}"))
 
 
+def retry_shot_operation_id(root_operation_id: str, shot_id: str, attempt: int) -> str:
+    if attempt < 1:
+        raise ValueError("VIDEO_RETRY_ATTEMPT_INVALID")
+    return str(uuid5(_stable_uuid(root_operation_id), f"video-shot:{shot_id}:quality-retry:{attempt}"))
+
+
 def compile_storyboard(spec: VideoTaskSpec) -> CompiledStoryboard:
     if spec.shots:
         shots = spec.shots
