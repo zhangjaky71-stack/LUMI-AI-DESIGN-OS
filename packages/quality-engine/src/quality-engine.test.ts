@@ -115,7 +115,7 @@ function identityReport(status: IdentityValidationReport["status"], severity: Id
     provider_version: "5",
     preprocessor_version: "2",
     evidence_refs: [],
-    reason_code: status === "FAIL" ? "WRONG_SKU" : undefined,
+    ...(status === "FAIL" ? { reason_code: "WRONG_SKU" } : {}),
     identity_validation_snapshot_id: "identity-validation:abc",
   };
 }
