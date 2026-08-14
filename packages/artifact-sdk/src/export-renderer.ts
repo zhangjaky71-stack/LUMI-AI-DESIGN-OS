@@ -39,6 +39,9 @@ export class CompositeExportRenderer implements ExportRendererPort {
 
   async render(source: ExportSourceSnapshot, variant: ExportVariant): Promise<RenderedExportPayload> {
     assertExportProfile(variant.color_profile);
+    if ((variant.bleed ?? 0) !== 0 || variant.crop_marks === true) {
+      throw new Error("EXPORT_PRINT_MARKS_NOT_IMPLEMENTED_V1");
+    }
     if (variant.resize_mode === "CROP" && (variant.width === undefined || variant.height === undefined)) {
       throw new Error("EXPORT_CROP_TARGET_DIMENSIONS_REQUIRED");
     }
