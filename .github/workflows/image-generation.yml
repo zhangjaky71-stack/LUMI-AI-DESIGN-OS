@@ -42,11 +42,7 @@ jobs:
           scripts/benchmark_image_generation.py
       - name: Validate NODE-46 architecture contract
         env:
-          PYTHONPATH: >-
-            services/image-generation/src:
-            services/model-gateway/src:
-            services/asset-intelligence/src:
-            services/artifact-history/src
+          PYTHONPATH: services/image-generation/src:services/model-gateway/src:services/asset-intelligence/src:services/artifact-history/src
         run: python scripts/validate_image_generation.py
 
   image-generation-quality:
@@ -67,14 +63,7 @@ jobs:
         run: uv sync --all-packages --frozen
       - name: Run NODE-46 tests
         env:
-          PYTHONPATH: >-
-            services/image-generation/src:
-            services/model-gateway/src:
-            services/asset-intelligence/src:
-            services/artifact-history/src:
-            services/brand-rules/src:
-            services/identity-engine/src:
-            services/domain/src
+          PYTHONPATH: services/image-generation/src:services/model-gateway/src:services/asset-intelligence/src:services/artifact-history/src:services/brand-rules/src:services/identity-engine/src:services/domain/src
         run: uv run pytest services/image-generation/tests -q
       - name: Ruff correctness gate
         run: >-
@@ -118,14 +107,7 @@ jobs:
         run: uv sync --all-packages --frozen
       - name: Run Model Gateway / Asset / Artifact / Generation integration regressions
         env:
-          PYTHONPATH: >-
-            services/image-generation/src:
-            services/model-gateway/src:
-            services/asset-intelligence/src:
-            services/artifact-history/src:
-            services/brand-rules/src:
-            services/identity-engine/src:
-            services/domain/src
+          PYTHONPATH: services/image-generation/src:services/model-gateway/src:services/asset-intelligence/src:services/artifact-history/src:services/brand-rules/src:services/identity-engine/src:services/domain/src
         run: >-
           uv run pytest
           services/image-generation/tests
