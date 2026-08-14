@@ -27,7 +27,7 @@ def _digest(*parts: str) -> str:
 
 
 class ArtifactHistoryVideoAdapter:
-    """NODE-42 append-only adapter for generated shot clips and final video."""
+    """NODE-42 append-only adapter for generated shot attempts and final video."""
 
     def __init__(self, history: ArtifactHistory) -> None:
         self.history = history
@@ -44,7 +44,7 @@ class ArtifactHistoryVideoAdapter:
         validation: ShotValidationReport,
         continuity_parent_version_ids: tuple[str, ...],
     ) -> str:
-        digest = _digest(provenance.video_job_id, shot.shot.shot_id)
+        digest = _digest(provenance.video_job_id, shot.shot.shot_id, provenance.paid_operation_id)
         artifact_id = f"artifact:video-clip:{digest}"
         branch_id = f"artifact-branch:video-clip:{digest}"
         version_id = f"artifact-version:video-clip:{digest}"
@@ -56,7 +56,7 @@ class ArtifactHistoryVideoAdapter:
             organization_id=spec.organization_id,
             project_id=spec.project_id,
             type="VIDEO",
-            title=f"Video shot {shot.shot.shot_id}",
+            title=f"Video shot {shot.shot.shot_id} attempt",
         ))
         self.history.add_branch(ArtifactBranch(
             id=branch_id,
@@ -102,6 +102,7 @@ class ArtifactHistoryVideoAdapter:
                 "poster_frame_ref": clip.poster_frame_ref,
                 "tail_frame_ref": clip.tail_frame_ref,
                 "video_shot_provenance_snapshot_id": provenance.snapshot_id,
+                "paid_operation_id": provenance.paid_operation_id,
             },
         ))
         source_asset_ids = [item.asset_id for item in spec.source_images]
@@ -138,7 +139,7 @@ class ArtifactHistoryVideoAdapter:
                     from_version_id=parent_id,
                     to_version_id=version_id,
                     type="REFERENCE_USED",
-                    metadata={"shot_id": shot.shot.shot_id},
+                    metadata={"shot_id": shot.shot.shot_id, "paid_operation_id": provenance.paid_operation_id},
                 ))
         if validation.decision == "PASS":
             self.history.transition_status(version_id, "READY")
