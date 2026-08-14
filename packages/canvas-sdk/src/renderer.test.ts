@@ -8,7 +8,7 @@ import {
   type PixiV8Bindings,
 } from "./renderer";
 
-function documentFixture(content = "Hello"): DesignDocument {
+function documentFixture(content = "Hello", frameWidth = 300): DesignDocument {
   return {
     schema_version: "1.0",
     document_id: "render-doc",
@@ -21,7 +21,7 @@ function documentFixture(content = "Hello"): DesignDocument {
         kind: "FRAME",
         parent_id: "root",
         children: ["text"],
-        transform: { x: 10, y: 10, width: 300, height: 200 },
+        transform: { x: 10, y: 10, width: frameWidth, height: 200 },
       },
       text: {
         id: "text",
@@ -54,6 +54,8 @@ function fakeBindings() {
     createPlaceholder: (id) => create(id),
     setLocalMatrix: vi.fn(),
     setCamera: vi.fn(),
+    redrawShape: vi.fn(),
+    setDisplaySize: vi.fn(),
     setVisible: vi.fn(),
     setText: vi.fn(),
     setAsset: vi.fn(),
@@ -77,6 +79,7 @@ describe("PixiV8RendererAdapter", () => {
     const first = adapter.sync(scene, new Set(["frame", "text"]));
     expect(first.created).toBe(3);
     expect(first.updated).toBe(3);
+    expect(bindings.redrawShape).toHaveBeenCalled();
     expect(JSON.stringify(document)).not.toContain("stage");
     expect(JSON.stringify(document)).not.toContain("pixi");
 
@@ -85,16 +88,26 @@ describe("PixiV8RendererAdapter", () => {
     expect(second.updated).toBe(0);
   });
 
-  it("updates only dirty render keys and destroys removed objects", () => {
+  it("updates dirty text and resized frame geometry only", () => {
     const { bindings } = fakeBindings();
     const adapter = new PixiV8RendererAdapter(bindings);
-    adapter.sync(projectDesignDocument(documentFixture("Before")), new Set(["frame", "text"]));
+    adapter.sync(projectDesignDocument(documentFixture("Before", 300)), new Set(["frame", "text"]));
     const dirty = adapter.sync(
-      projectDesignDocument(documentFixture("After")),
+      projectDesignDocument(documentFixture("After", 360)),
       new Set(["frame", "text"]),
     );
-    expect(dirty.updated).toBe(1);
+    expect(dirty.updated).toBe(2);
+    expect(bindings.setText).toHaveBeenCalledWith(expect.anything(), "After");
+    expect(bindings.redrawShape).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: "frame", local_bounds: expect.objectContaining({ width: 360 }) }),
+    );
+  });
 
+  it("destroys removed objects without recursive double-disposal", () => {
+    const { bindings } = fakeBindings();
+    const adapter = new PixiV8RendererAdapter(bindings);
+    adapter.sync(projectDesignDocument(documentFixture("After")), new Set(["frame", "text"]));
     const withoutText = documentFixture("After");
     const frame = withoutText.nodes.frame!;
     const next: DesignDocument = {
@@ -106,6 +119,6 @@ describe("PixiV8RendererAdapter", () => {
     };
     const removed = adapter.sync(projectDesignDocument(next), new Set(["frame"]));
     expect(removed.removed).toBe(1);
-    expect(bindings.destroyDisplay).toHaveBeenCalled();
+    expect(bindings.destroyDisplay).toHaveBeenCalledTimes(1);
   });
 });
