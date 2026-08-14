@@ -34,13 +34,15 @@
 | Compiled style to Pixi | renderer + `pixi-v8-bindings.ts` | IMPLEMENTED |
 | Compiled Text style/font to Pixi | text style bridge | IMPLEMENTED |
 | Mask/clip bridge | renderer second pass + `setMask` | IMPLEMENTED |
+| Missing mask handle retry | renderer records only actually bound mask handle | IMPLEMENTED |
 | CanvasController uses compiler | injected `CanvasSceneCompilerPort` | IMPLEMENTED |
 | Compile LRU cache | `compiler-cache.ts` | IMPLEMENTED |
-| Full/incremental equivalence test | `compiler.test.ts` | IMPLEMENTED; hosted execution pending |
-| Compiler/Pixi bridge test | `compiler-renderer.test.ts` | IMPLEMENTED; hosted execution pending |
-| 2k/100-op benchmark | `compiler-benchmark.ts` | IMPLEMENTED; hosted measurement pending |
-| Architecture validator | `scripts/validate_canvas_compiler.py` | IMPLEMENTED |
+| Full/incremental equivalence test | `compiler.test.ts` | IMPLEMENTED; hosted execution blocked |
+| Compiler/Pixi bridge test | `compiler-renderer.test.ts` | IMPLEMENTED; hosted execution blocked |
+| 2k/100-op benchmark | `compiler-benchmark.ts` | IMPLEMENTED; hosted execution blocked |
+| Architecture validator | `scripts/validate_canvas_compiler.py` | IMPLEMENTED; hosted execution blocked |
 | Runtime documentation | `docs/runtime/CANVAS-COMPILER-V1.md` | IMPLEMENTED |
+| Dedicated CI | `.github/workflows/canvas-compiler.yml` | IMPLEMENTED; hosted runner blocked |
 
 ## Compiler boundary
 
@@ -136,6 +138,8 @@ NODE-41 does not move Pixi into compiler core. The existing NODE-40 adapter cons
 - opacity/blend mode;
 - mask/clip references.
 
+If a referenced mask display is not materialized, the adapter does not mark the mask id as successfully bound. A later sync can therefore retry when the display becomes available.
+
 `PixiV8RendererAdapter` remains replaceable by another renderer using the same `CanvasRenderPlan` / compiled scene semantics.
 
 ## Benchmark acceptance
@@ -179,6 +183,37 @@ No absolute latency claim is made until hosted execution produces evidence.
 - `compiler-benchmark.test.ts`
   - 2k node / 100 operation equivalence harness.
 
+## Hosted CI evidence
+
+Initial release head:
+
+```text
+38716eebe756f74a6f3258fd278d6f2f5d02d90e
+```
+
+Canvas Compiler workflow run:
+
+```text
+31787967035
+```
+
+Observed jobs:
+
+```text
+compiler-contract      failure before any step executed
+compiler-quality       skipped
+compiler-equivalence   skipped
+compiler-benchmark     skipped
+```
+
+GitHub check annotation:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+
+Therefore no NODE-41 architecture validator, dependency-complete TypeScript typecheck, unit/conformance test or benchmark step executed in hosted CI. This is an external GitHub Actions account/billing blocker, not an observed compiler code/test failure.
+
+The local execution environment contains `tsc`, but cannot resolve `github.com`, so it cannot clone the real workspace and pinned dependencies. No dependency-complete local PASS is claimed either.
+
 ## Acceptance gates before COMPLETE
 
 1. Hosted compiler architecture validator executes green.
@@ -192,6 +227,6 @@ No absolute latency claim is made until hosted execution produces evidence.
 
 ## Current disposition
 
-Implementation, compiler contracts, full/incremental execution, deterministic hashing, resource/font/style resolution, Canvas/Pixi integration, tests, benchmark harness, architecture validator and runtime documentation are present.
+Implementation, compiler contracts, full/incremental execution, deterministic hashing, resource/font/style resolution, Canvas/Pixi integration, tests, benchmark harness, architecture validator, runtime documentation and dedicated CI are present.
 
-NODE-41 remains **IMPLEMENTED / VALIDATING / not COMPLETE** until hosted jobs actually execute successfully. If the previously observed GitHub Actions billing/spending-limit condition prevents runners from starting, it must be recorded as an external CI blocker rather than a code/test failure.
+NODE-41 remains **IMPLEMENTED / VALIDATING / not COMPLETE**. Hosted execution is currently blocked by the GitHub Actions billing/spending-limit condition. The blocker is recorded as external CI infrastructure evidence and is not treated as code PASS or code failure.
