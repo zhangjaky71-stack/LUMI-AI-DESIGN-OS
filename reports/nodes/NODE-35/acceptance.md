@@ -301,18 +301,29 @@ It contains no direct `asyncpg`, SQLAlchemy or provider SDK import.
 
 JSONB values are explicitly serialized; JSONB/pgvector readback accepts driver-decoded or textual representations.
 
-## 19. NODE-34 integration
+## 19. NODE-34 integration and trust origin
 
 `MemoryContextSource` contributes Memory as L4 evidence.
 
-Project/Brand/Organization memory renders as:
+**Scope is not sufficient to grant trust.** The adapter requires both a trusted project-like scope and a trusted record origin.
 
 ```text
-TRUSTED_PROJECT_DATA
-instruction_authority=none
+PROJECT / BRAND / ORGANIZATION
++ created_by_type in {USER, SYSTEM}
+  -> TRUSTED_PROJECT_DATA
+  -> instruction_authority=none
+
+PROJECT / BRAND / ORGANIZATION
++ created_by_type == AGENT
+  -> UNTRUSTED_RETRIEVED_DATA
+  -> instruction_authority=none
+
+USER / AGENT / SESSION
+  -> UNTRUSTED_RETRIEVED_DATA
+  -> instruction_authority=none
 ```
 
-User/Agent/Session memory renders as untrusted retrieved data.
+This prevents an Agent from writing Project-scoped model output and having it trust-promote itself on a later turn.
 
 Memory never promotes itself to system/Agent instructions.
 
@@ -350,6 +361,7 @@ Covers:
 - user soft delete;
 - retention hold;
 - expiry/consolidation;
+- Agent Project-memory trust-promotion prevention;
 - Context adapter data authority;
 - actual LangGraph BaseStore adapter and namespace denial.
 
@@ -506,6 +518,7 @@ Release-blocking checks include:
 - consolidation/retention;
 - advisory lock / FOR UPDATE / CAS;
 - Context data-only adapter;
+- record-origin trust check;
 - fixed Deep Agent namespace;
 - 0016 schema/ORM;
 - runtime no DELETE;
@@ -533,8 +546,7 @@ Expected workflow:
 
 - frozen workspace install;
 - pytest;
-- Ruff;
-- Pyright;
+- NODE-35-scoped Ruff/Pyright;
 - machine-readable report generation;
 - report artifact upload.
 
@@ -580,6 +592,7 @@ Final classification must be derived from actual job steps/runner assignment.
 - [x] Transactional Postgres repository implemented.
 - [x] Advisory lock for concurrent first-write implemented.
 - [x] NODE-34 MemoryContextSource implemented.
+- [x] Agent Project-memory trust promotion prevented.
 - [x] NODE-29 DeepAgent BaseStore implemented.
 - [x] DeepAgent store provider implemented.
 - [x] Unit tests implemented.
