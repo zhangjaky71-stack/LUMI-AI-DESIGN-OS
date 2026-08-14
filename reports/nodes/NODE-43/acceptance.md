@@ -26,11 +26,11 @@ Base: `node-42-artifact-engine-release`
 | NODE-42 approval gate | `artifact-gate.ts` | Implemented |
 | Exact artifact brand rule version | Artifact SDK + Python artifact model + migration | Implemented |
 | Tenant-aware persistence | composite org keys in migration | Implemented |
-| TS conformance tests | `brand-rules.test.ts`, `constraint-adapter.test.ts` | Implemented; hosted execution pending |
-| Python conformance tests | `services/brand-rules/tests/test_brand_rules.py` | Implemented; hosted execution pending |
-| Static contract validator | `scripts/validate_brand_rules_engine.py` | Implemented; hosted execution pending |
-| 2k/40 deterministic benchmark | `scripts/benchmark_brand_rules_engine.py` | Implemented; hosted measurement pending |
-| Dedicated CI | `.github/workflows/brand-rules-engine.yml` | Implemented; hosted execution pending |
+| TS conformance tests | `brand-rules.test.ts`, `constraint-adapter.test.ts`, `artifact-versioning.test.ts` | Implemented; hosted execution blocked externally |
+| Python conformance tests | `services/brand-rules/tests/test_brand_rules.py` | Implemented; hosted execution blocked externally |
+| Static contract validator | `scripts/validate_brand_rules_engine.py` | Implemented; hosted execution blocked externally |
+| 2k/40 deterministic benchmark | `scripts/benchmark_brand_rules_engine.py` | Implemented; hosted measurement blocked externally |
+| Dedicated CI | `.github/workflows/brand-rules-engine.yml` | Implemented; runner did not start |
 
 ## Frozen architecture assertions
 
@@ -56,14 +56,35 @@ Base: `node-42-artifact-engine-release`
 - reviewer can intentionally promote approved cited rule to HARD;
 - stale token/asset version -> evaluation error, never silent PASS;
 - ArtifactVersion/report brand-version mismatch -> approval denied;
+- artifact canonical manifest preserves legacy no-brand hash behavior and binds concrete brand versions;
 - NODE-39 adapter maps brand diagnostics;
 - resolver outage -> `VALIDATION_UNAVAILABLE` hard violation.
 
-## Hosted validation
+## Hosted validation evidence
 
-At the time this report was authored, NODE-43 had not yet been published as its release PR, so no dedicated hosted run is claimed here.
+Draft PR: `#43` (`node-43-brand-rules-engine-release` -> `node-42-artifact-engine-release`)
 
-Completion requires all of these to **actually execute green**:
+First dedicated Brand Rules Engine run:
+
+```text
+run_id: 31791291685
+head_sha: 5a47d37e4625a48b83d33d761669bfcfd65bfb66
+brand-contract check/job: 94738558710
+brand-contract conclusion: failure
+runner_id: 0
+steps: []
+brand-quality: skipped
+brand-integration: skipped
+brand-benchmark: skipped
+```
+
+GitHub annotation on `brand-contract`:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+
+This is an **external GitHub Actions account/billing blocker**. The contract job did not acquire a runner and executed zero workflow steps; therefore this is not evidence of a TypeScript, Python, SQL, test, lint, typecheck, integration, or benchmark failure.
+
+Completion still requires all of these to **actually execute green**:
 
 ```text
 brand-contract
@@ -72,7 +93,7 @@ brand-integration
 brand-benchmark
 ```
 
-If GitHub Actions is prevented from starting by the repository/account billing or spending-limit condition observed on preceding nodes, record the exact annotation as an **external CI blocker**. Do not relabel the node PASS, COMPLETE, or code-failed from a zero-step runner failure.
+A zero-step runner failure must not be relabeled as PASS, COMPLETE, or a code/test failure.
 
 ## Current decision
 
