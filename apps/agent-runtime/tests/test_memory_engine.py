@@ -8,7 +8,12 @@ from uuid import UUID, uuid5
 
 from langgraph.store.base import BaseStore
 
-from lumi_agent_runtime.context_engine import ContextLayer, ContextRequest, LayerBudget
+from lumi_agent_runtime.context_engine import (
+    ContextLayer,
+    ContextRequest,
+    LayerBudget,
+    TrustLevel,
+)
 from lumi_agent_runtime.memory_engine import (
     DeepAgentMemoryStore,
     InMemoryMemoryRepository,
@@ -82,7 +87,10 @@ def candidate(
     }[scope]
     actor_id = "agent-1" if actor == MemoryActorType.AGENT else str(USER)
     return MemoryCandidate(
-        candidate_id=uuid5(organization_id, f"{key}:{summary}:{scope.value}:{actor.value}"),
+        candidate_id=uuid5(
+            organization_id,
+            f"{key}:{summary}:{scope.value}:{actor.value}",
+        ),
         organization_id=organization_id,
         scope_type=scope,
         scope_id=scope_id,
@@ -108,18 +116,31 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
     def test_canonical_scope_vocabulary(self) -> None:
         self.assertEqual(
             {item.value for item in MemoryScope},
-            {"SESSION", "USER", "PROJECT", "BRAND", "AGENT", "ORGANIZATION"},
+            {
+                "SESSION",
+                "USER",
+                "PROJECT",
+                "BRAND",
+                "AGENT",
+                "ORGANIZATION",
+            },
         )
 
     async def test_agent_cannot_write_organization_memory(self) -> None:
         result = await self.service.remember(
-            candidate("org-secret", "never global", scope=MemoryScope.ORGANIZATION),
+            candidate(
+                "org-secret",
+                "never global",
+                scope=MemoryScope.ORGANIZATION,
+            ),
             access=access(),
         )
         self.assertEqual(result.outcome, MemoryCandidateOutcome.REJECT_SCOPE)
         self.assertEqual(await self.repo.list_records(organization_id=ORG), ())
 
-    async def test_sensitive_content_is_rejected_without_candidate_persistence(self) -> None:
+    async def test_sensitive_content_is_rejected_without_candidate_persistence(
+        self,
+    ) -> None:
         result = await self.service.remember(
             candidate("credential", "api_key = sk-abcdefghijklmnopqrstuvwxyz"),
             access=access(),
@@ -128,7 +149,9 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.repo.candidates(), ())
         self.assertEqual(await self.repo.list_records(organization_id=ORG), ())
 
-    async def test_explicit_remember_boosts_confidence_and_deduplicates(self) -> None:
+    async def test_explicit_remember_boosts_confidence_and_deduplicates(
+        self,
+    ) -> None:
         first = candidate(
             "layout",
             "Prefer generous negative space",
@@ -137,29 +160,50 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
         )
         written = await self.service.remember(first, access=access())
         self.assertEqual(written.outcome, MemoryCandidateOutcome.WRITE)
+        assert written.record is not None
         self.assertGreaterEqual(written.record.confidence, 0.9)
         repeated = await self.service.remember(first, access=access())
-        self.assertEqual(repeated.outcome, MemoryCandidateOutcome.DEDUPLICATE_CONFIRM)
+        self.assertEqual(
+            repeated.outcome,
+            MemoryCandidateOutcome.DEDUPLICATE_CONFIRM,
+        )
         rows = await self.repo.list_active(organization_id=ORG)
         self.assertEqual(len(rows), 1)
         self.assertGreater(rows[0].version, 1)
 
-    async def test_conflict_requires_confirmation_then_explicit_supersedes(self) -> None:
-        old = await self.service.remember(candidate("palette", "Use cool gray"), access=access())
-        conflict = await self.service.remember(
-            candidate("palette", "Use warm gray"), access=access()
+    async def test_conflict_requires_confirmation_then_explicit_supersedes(
+        self,
+    ) -> None:
+        old = await self.service.remember(
+            candidate("palette", "Use cool gray"),
+            access=access(),
         )
-        self.assertEqual(conflict.outcome, MemoryCandidateOutcome.REQUIRE_CONFIRMATION)
+        assert old.record is not None
+        conflict = await self.service.remember(
+            candidate("palette", "Use warm gray"),
+            access=access(),
+        )
+        self.assertEqual(
+            conflict.outcome,
+            MemoryCandidateOutcome.REQUIRE_CONFIRMATION,
+        )
         replacement = await self.service.remember(
             candidate("palette", "Use warm gray", explicit=True),
             access=access(),
         )
         self.assertEqual(replacement.outcome, MemoryCandidateOutcome.WRITE)
-        self.assertEqual(replacement.record.supersedes_id, old.record.memory_id)
+        assert replacement.record is not None
+        self.assertEqual(
+            replacement.record.supersedes_id,
+            old.record.memory_id,
+        )
         old_record = await self.repo.get(old.record.memory_id)
+        assert old_record is not None
         self.assertEqual(old_record.status, MemoryStatus.SUPERSEDED)
 
-    async def test_brand_constraint_becomes_proposal_not_active_memory(self) -> None:
+    async def test_brand_constraint_becomes_proposal_not_active_memory(
+        self,
+    ) -> None:
         result = await self.service.remember(
             candidate(
                 "logo-lock",
@@ -169,7 +213,10 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
             ),
             access=access(),
         )
-        self.assertEqual(result.outcome, MemoryCandidateOutcome.BRAND_RULE_PROPOSAL)
+        self.assertEqual(
+            result.outcome,
+            MemoryCandidateOutcome.BRAND_RULE_PROPOSAL,
+        )
         self.assertEqual(await self.repo.list_active(organization_id=ORG), ())
         self.assertEqual(self.repo.candidates()[0][1], "BRAND_RULE_PROPOSAL")
 
@@ -191,7 +238,11 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
             access=access(organization_id=OTHER_ORG),
         )
         results = await self.service.search(
-            MemorySearchQuery(access=access(), text="premium hero", limit=10)
+            MemorySearchQuery(
+                access=access(),
+                text="premium hero",
+                limit=10,
+            )
         )
         self.assertEqual(len(results), 1)
         self.assertNotIn("FOREIGN", results[0].record.summary)
@@ -208,7 +259,11 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
             ),
             access=user_access,
         )
-        deleted = await self.service.delete(write.record.memory_id, access=user_access)
+        assert write.record is not None
+        deleted = await self.service.delete(
+            write.record.memory_id,
+            access=user_access,
+        )
         self.assertEqual(deleted.status, MemoryStatus.DELETED)
 
         held_result = await self.service.remember(
@@ -221,17 +276,26 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
             ),
             access=user_access,
         )
+        assert held_result.record is not None
         record = held_result.record
         held_record = replace(
             record,
             retention_hold=True,
             version=record.version + 1,
         )
-        await self.repo.update_record(held_record, expected_version=record.version)
+        await self.repo.update_record(
+            held_record,
+            expected_version=record.version,
+        )
         with self.assertRaisesRegex(Exception, "MEMORY_RETENTION_HOLD"):
-            await self.service.delete(held_record.memory_id, access=user_access)
+            await self.service.delete(
+                held_record.memory_id,
+                access=user_access,
+            )
 
-    async def test_consolidation_preserves_lineage_and_expires_records(self) -> None:
+    async def test_consolidation_preserves_lineage_and_expires_records(
+        self,
+    ) -> None:
         now = datetime(2026, 8, 14, tzinfo=UTC)
         first = await self.service.remember(
             candidate(
@@ -262,6 +326,9 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
             access=access(),
             now=now - timedelta(minutes=5),
         )
+        assert first.record is not None
+        assert second.record is not None
+        assert expiring.record is not None
         changed = await self.service.consolidate(
             organization_id=ORG,
             now=now + timedelta(minutes=1),
@@ -269,12 +336,13 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(first.record.memory_id, changed)
         self.assertIn(second.record.memory_id, changed)
         expired = await self.repo.get(expiring.record.memory_id)
+        assert expired is not None
         self.assertEqual(expired.status, MemoryStatus.EXPIRED)
         active = await self.repo.list_active(organization_id=ORG)
         episodes = [item for item in active if item.semantic_key == "episode"]
         self.assertEqual(len(episodes), 1)
 
-    async def test_memory_context_source_is_data_only(self) -> None:
+    async def test_agent_project_memory_does_not_promote_trust(self) -> None:
         await self.service.remember(
             candidate("layout", "Use negative space", explicit=True),
             access=access(),
@@ -304,8 +372,11 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
         rows = await source_adapter.search(context_request)
         self.assertEqual(rows[0].item.metadata["instruction_authority"], "none")
         self.assertEqual(rows[0].item.kind.value, "MEMORY")
+        self.assertEqual(rows[0].item.trust, TrustLevel.UNTRUSTED_RETRIEVED)
 
-    async def test_deep_agent_store_is_real_basestore_and_namespace_is_fixed(self) -> None:
+    async def test_deep_agent_store_is_real_basestore_and_namespace_is_fixed(
+        self,
+    ) -> None:
         store = DeepAgentMemoryStore(
             service=self.service,
             access=access(),
@@ -324,6 +395,7 @@ class MemoryEngineTests(unittest.IsolatedAsyncioTestCase):
             },
         )
         stored = await store.aget(("memory",), "visual-density")
+        assert stored is not None
         self.assertEqual(stored.value["summary"], "Prefer spacious layouts")
         with self.assertRaises(PermissionError):
             await store.aget(("other-tenant",), "visual-density")
