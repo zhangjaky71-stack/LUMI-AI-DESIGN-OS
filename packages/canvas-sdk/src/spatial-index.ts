@@ -42,6 +42,10 @@ export class CanvasSpatialIndex {
     }
   }
 
+  get(id: string): CanvasSceneNode | null {
+    return this.#nodes.get(id) ?? null;
+  }
+
   query(rect: Rect): CanvasSceneNode[] {
     const ids = new Set<string>();
     for (const key of this.#keysForRect(rect)) {
@@ -53,7 +57,10 @@ export class CanvasSpatialIndex {
       .sort((left, right) => left.paint_order - right.paint_order);
   }
 
-  hitTest(point: Point, options: { readonly includeLocked?: boolean; readonly isolationRoot?: string | null } = {}): CanvasSceneNode[] {
+  hitTest(
+    point: Point,
+    options: { readonly includeLocked?: boolean; readonly isolationRoot?: string | null } = {},
+  ): CanvasSceneNode[] {
     const probe: Rect = { x: point.x, y: point.y, width: 0, height: 0 };
     return this.query(probe)
       .filter((node) => (options.includeLocked ?? true) || !node.locked)
