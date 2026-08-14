@@ -1,0 +1,209 @@
+name: Memory Engine
+
+on:
+  pull_request:
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/memory_engine/**"
+      - "apps/agent-runtime/src/lumi_agent_runtime/context_engine/**"
+      - "apps/agent-runtime/src/lumi_agent_runtime/context_eval/**"
+      - "apps/agent-runtime/tests/test_memory_*.py"
+      - "apps/agent-runtime/tests/test_context_*.py"
+      - "apps/api/alembic/versions/0016_memory_engine.py"
+      - "apps/api/src/lumi_api/persistence/models/memory.py"
+      - "apps/api/src/lumi_api/persistence/models/__init__.py"
+      - "evals/context/**"
+      - "scripts/integration_memory_engine.py"
+      - "scripts/integration_context_*.py"
+      - "scripts/run_context_eval_report.py"
+      - "scripts/validate_memory_engine_contract.py"
+      - "scripts/validate_context_engine_contract.py"
+      - "scripts/validate_context_eval_contract.py"
+      - "docs/runtime/MEMORY-ENGINE-V1.md"
+      - "reports/nodes/NODE-35/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  memory-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile NODE-34/35 runtime and acceptance
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src:scripts
+          python -m compileall -q
+          apps/agent-runtime/src/lumi_agent_runtime/context_engine
+          apps/agent-runtime/src/lumi_agent_runtime/context_eval
+          apps/agent-runtime/src/lumi_agent_runtime/memory_engine
+          apps/agent-runtime/tests/test_context_engine.py
+          apps/agent-runtime/tests/test_context_learning.py
+          apps/agent-runtime/tests/test_context_postgres_contract.py
+          apps/agent-runtime/tests/test_context_eval.py
+          apps/agent-runtime/tests/test_memory_engine.py
+          apps/agent-runtime/tests/test_memory_postgres_contract.py
+          scripts/integration_context_engine.py
+          scripts/integration_context_postgres.py
+          scripts/integration_context_eval.py
+          scripts/integration_context_eval_baseline.py
+          scripts/integration_memory_engine.py
+          scripts/run_context_eval_report.py
+          scripts/validate_context_engine_contract.py
+          scripts/validate_context_eval_contract.py
+          scripts/validate_memory_engine_contract.py
+          apps/api/alembic/versions/0016_memory_engine.py
+          apps/api/src/lumi_api/persistence/models/memory.py
+      - name: Revalidate NODE-34 Context Engine
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python scripts/validate_context_engine_contract.py
+      - name: Validate NODE-35 Memory Engine
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python scripts/validate_memory_engine_contract.py
+      - name: Validate Memory retrieval evaluation contract
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python scripts/validate_context_eval_contract.py
+      - name: Dependency-light Context and Memory unit tests
+        run: |
+          export PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python -m unittest discover -s apps/agent-runtime/tests -p 'test_memory_*.py'
+          python -m unittest discover -s apps/agent-runtime/tests -p 'test_context_engine.py'
+          python -m unittest discover -s apps/agent-runtime/tests -p 'test_context_learning.py'
+          python -m unittest discover -s apps/agent-runtime/tests -p 'test_context_eval.py'
+          python -m unittest discover -s apps/agent-runtime/tests -p 'test_context_postgres_contract.py'
+      - name: Long-project Context regression
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src:scripts
+          python scripts/integration_context_engine.py
+      - name: Canonical Memory retrieval evaluation
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src:scripts
+          python scripts/integration_context_eval.py
+      - name: Approved baseline regression
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src:scripts
+          python scripts/integration_context_eval_baseline.py
+
+  memory-quality:
+    needs: memory-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: NODE-34/35 pytest
+        run: >-
+          uv run pytest
+          apps/agent-runtime/tests/test_context_engine.py
+          apps/agent-runtime/tests/test_context_learning.py
+          apps/agent-runtime/tests/test_context_postgres_contract.py
+          apps/agent-runtime/tests/test_context_eval.py
+          apps/agent-runtime/tests/test_memory_engine.py
+          apps/agent-runtime/tests/test_memory_postgres_contract.py
+          -q
+      - name: NODE-34/35 Ruff gate
+        run: >-
+          uv run ruff check
+          apps/agent-runtime/src/lumi_agent_runtime/context_engine
+          apps/agent-runtime/src/lumi_agent_runtime/context_eval
+          apps/agent-runtime/src/lumi_agent_runtime/memory_engine
+          apps/agent-runtime/tests/test_context_engine.py
+          apps/agent-runtime/tests/test_context_learning.py
+          apps/agent-runtime/tests/test_context_postgres_contract.py
+          apps/agent-runtime/tests/test_context_eval.py
+          apps/agent-runtime/tests/test_memory_engine.py
+          apps/agent-runtime/tests/test_memory_postgres_contract.py
+          scripts/integration_context_engine.py
+          scripts/integration_context_postgres.py
+          scripts/integration_context_eval.py
+          scripts/integration_context_eval_baseline.py
+          scripts/integration_memory_engine.py
+          scripts/run_context_eval_report.py
+          scripts/validate_context_engine_contract.py
+          scripts/validate_context_eval_contract.py
+          scripts/validate_memory_engine_contract.py
+          apps/api/alembic/versions/0016_memory_engine.py
+          apps/api/src/lumi_api/persistence/models/memory.py
+      - name: NODE-35 Pyright gate
+        run: >-
+          uv run pyright
+          apps/agent-runtime/src/lumi_agent_runtime/memory_engine
+          apps/agent-runtime/src/lumi_agent_runtime/context_eval
+          apps/agent-runtime/tests/test_memory_engine.py
+          apps/agent-runtime/tests/test_memory_postgres_contract.py
+      - name: Generate machine-readable Memory retrieval report
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src:scripts
+          uv run python scripts/run_context_eval_report.py
+      - name: Upload Memory retrieval report
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-35-memory-retrieval-report
+          path: artifacts/context-eval/memory-retrieval-v1.json
+          if-no-files-found: error
+
+  memory-postgres:
+    needs: memory-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Start local infrastructure
+        run: |
+          make infra-env
+          make infra-up
+      - name: Upgrade database to NODE-35 head
+        run: make db-upgrade
+      - name: Verify Alembic ORM metadata has no drift
+        run: bash scripts/db-local schema-check
+      - name: Verify NODE-35 ORM tables
+        run: >-
+          uv run --package lumi-api python -c
+          "from lumi_api.persistence.base import Base; import lumi_api.persistence.models;
+          assert 'memory_records' in Base.metadata.tables;
+          assert 'memory_candidates' in Base.metadata.tables;
+          assert 'embedding_dimensions' in Base.metadata.tables['memory_records'].c"
+      - name: Seed deterministic project fixtures
+        run: make db-seed
+      - name: Revalidate NODE-34 PostgreSQL Context readback
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src:scripts
+          uv run python scripts/integration_context_postgres.py
+      - name: Concurrent NODE-35 Memory Engine integration
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src:scripts
+          uv run python scripts/integration_memory_engine.py
+      - name: Migration downgrade upgrade smoke
+        run: bash scripts/db-local downgrade-smoke
+      - name: Reset infrastructure
+        if: always()
+        run: CONFIRM=1 make infra-reset || true
