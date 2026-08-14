@@ -11,7 +11,7 @@ import {
   type DesignConstraint,
   type GuardedExecutionResult,
 } from "../../design-constraints/src/index";
-import { invertMatrix, applyMatrix } from "./matrix";
+import { applyMatrix, invertMatrix } from "./matrix";
 import type { CanvasSceneSnapshot } from "./ir-scene";
 import type { Rect } from "./types";
 
@@ -41,6 +41,21 @@ function unionRects(rects: readonly Rect[]): Rect | null {
 
 function same(left: number | undefined, right: number | undefined, epsilon = 1e-8): boolean {
   return Math.abs(finite(left) - finite(right)) <= epsilon;
+}
+
+function allowNoop(document: DesignDocument): TransformCommitResult {
+  return {
+    accepted: true,
+    document,
+    guarded: {
+      preflight: {
+        decision: "ALLOW",
+        violations: [],
+        conflicts: [],
+        effective_constraint_ids: [],
+      },
+    },
+  };
 }
 
 export class CanvasTransformSession {
@@ -109,7 +124,11 @@ export class CanvasTransformSession {
         Math.max(1e-6, targetWorldBounds.width / group.width),
         Math.max(1e-6, targetWorldBounds.height / group.height),
       );
-      target = { ...targetWorldBounds, width: group.width * scale, height: group.height * scale };
+      target = {
+        ...targetWorldBounds,
+        width: group.width * scale,
+        height: group.height * scale,
+      };
     }
     const scaleX = target.width / group.width;
     const scaleY = target.height / group.height;
@@ -125,8 +144,12 @@ export class CanvasTransformSession {
       const parentMatrix = sceneNode.parent_id
         ? this.#scene.nodes.get(sceneNode.parent_id)?.world_matrix
         : undefined;
-      const inverseParent = invertMatrix(parentMatrix ?? { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 });
-      const localTopLeft = inverseParent ? applyMatrix(inverseParent, nextWorldTopLeft) : nextWorldTopLeft;
+      const inverseParent = invertMatrix(
+        parentMatrix ?? { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+      );
+      const localTopLeft = inverseParent
+        ? applyMatrix(inverseParent, nextWorldTopLeft)
+        : nextWorldTopLeft;
       this.#previews.set(sceneNode.id, {
         ...original,
         x: localTopLeft.x,
@@ -147,6 +170,10 @@ export class CanvasTransformSession {
       .filter((value): value is TransformPreview => value !== null);
   }
 
+  operations(): readonly DesignOperation[] {
+    return this.#buildOperations();
+  }
+
   previewDocument(): DesignDocument {
     const operations = this.#buildOperations();
     if (!operations.length) return this.#document;
@@ -159,6 +186,7 @@ export class CanvasTransformSession {
     overrides: readonly ConstraintOverrideToken[] = [],
   ): TransformCommitResult {
     const operations = this.#buildOperations();
+    if (!operations.length) return allowNoop(this.#document);
     const guarded = guardedExecute(this.#document, operations, constraints, { overrides });
     const execution = guarded.execution;
     const accepted = guarded.preflight.decision !== "DENY" && Boolean(execution?.ok);
@@ -193,7 +221,10 @@ export class CanvasTransformSession {
           type: "RESIZE_NODE",
           target_ids: [id],
           expected_document_version: version,
-          payload: { width: Math.max(1e-6, finite(next.width)), height: Math.max(1e-6, finite(next.height)) },
+          payload: {
+            width: Math.max(1e-6, finite(next.width)),
+            height: Math.max(1e-6, finite(next.height)),
+          },
           reason: "canvas-transform",
         });
       }
