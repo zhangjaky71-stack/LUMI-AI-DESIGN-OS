@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from lumi_model_gateway.gateway import ModelGateway
@@ -17,12 +16,13 @@ from lumi_model_gateway.models import (
 from .model import (
     GatewayGenerationRequest,
     GatewayGenerationResult,
+    GatewayResultStatus,
+    GenerationMode,
     ProviderOutputRef,
 )
 from .ports import GatewayEstimate
 
-
-_MODE_CAPABILITY: dict[str, Capability] = {
+_MODE_CAPABILITY: dict[GenerationMode, Capability] = {
     "TEXT_TO_IMAGE": Capability.IMAGE_GENERATE,
     "REFERENCE_TO_IMAGE": Capability.IMAGE_REFERENCE_CONSISTENCY,
     "PRODUCT_SCENE": Capability.IMAGE_REFERENCE_CONSISTENCY,
@@ -111,8 +111,8 @@ def _normalize_outputs(result: ModelResult) -> tuple[ProviderOutputRef, ...]:
     return tuple(outputs)
 
 
-def _status(value: ResultStatus) -> str:
-    return value.value.upper()
+def _status(value: ResultStatus) -> GatewayResultStatus:
+    return cast(GatewayResultStatus, value.value.upper())
 
 
 class ModelGatewayImageAdapter:
@@ -155,7 +155,7 @@ class ModelGatewayImageAdapter:
             index, candidate = matching
             reasons = candidate.reason_codes + ((f"FALLBACK_INDEX:{index}",) if index else ())
         return GatewayGenerationResult(
-            status=_status(result.status),  # type: ignore[arg-type]
+            status=_status(result.status),
             provider=result.provider,
             model=result.model,
             model_revision=None,
@@ -184,7 +184,7 @@ class ModelGatewayImageAdapter:
         if result.provider != pending_result.provider or result.model != pending_result.model:
             raise ValueError("GENERATION_ASYNC_PROVIDER_IDENTITY_CHANGED")
         return GatewayGenerationResult(
-            status=_status(result.status),  # type: ignore[arg-type]
+            status=_status(result.status),
             provider=result.provider,
             model=result.model,
             model_revision=pending_result.model_revision,
