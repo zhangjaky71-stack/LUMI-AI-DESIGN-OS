@@ -3,9 +3,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from datetime import UTC, datetime
-from typing import Any, Awaitable, Callable
-from uuid import uuid5
+from typing import Any, Awaitable
+from uuid import UUID, uuid5
 
 from langgraph.store.base import BaseStore, GetOp, Item, ListNamespacesOp, PutOp, SearchItem, SearchOp
 
@@ -63,12 +62,18 @@ class DeepAgentMemoryStore(BaseStore):
                     results.append(None)
             elif isinstance(op, SearchOp):
                 self._assert_namespace_prefix(op.namespace_prefix)
-                rows = await self._search(op.query or "memory", limit=op.limit, offset=op.offset)
+                rows = await self._search(
+                    op.query or "memory",
+                    limit=op.limit,
+                    offset=op.offset,
+                )
                 results.append(rows)
             elif isinstance(op, ListNamespacesOp):
                 results.append([_VIRTUAL_NAMESPACE])
             else:
-                raise TypeError(f"MEMORY_STORE_OPERATION_UNSUPPORTED:{type(op).__name__}")
+                raise TypeError(
+                    f"MEMORY_STORE_OPERATION_UNSUPPORTED:{type(op).__name__}"
+                )
         return results
 
     def batch(self, ops: list[Any]) -> list[Any]:
@@ -76,13 +81,28 @@ class DeepAgentMemoryStore(BaseStore):
 
     async def _get(self, key: str) -> Item | None:
         rows = await self.service.search(
-            MemorySearchQuery(access=self.access, text=key, limit=50, scope_types=(self.scope_type,))
+            MemorySearchQuery(
+                access=self.access,
+                text=key,
+                limit=50,
+                scope_types=(self.scope_type,),
+            )
         )
-        match = next((row.record for row in rows if row.record.semantic_key == key and row.record.scope_id == self.scope_id), None)
+        match = next(
+            (
+                row.record
+                for row in rows
+                if row.record.semantic_key == key
+                and row.record.scope_id == self.scope_id
+            ),
+            None,
+        )
         return _item(match) if match is not None else None
 
     async def _put(self, key: str, value: dict[str, Any]) -> None:
-        kind = MemoryKind(str(value.get("kind", MemoryKind.WORKFLOW_LEARNING.value)))
+        kind = MemoryKind(
+            str(value.get("kind", MemoryKind.WORKFLOW_LEARNING.value))
+        )
         summary = str(value.get("summary") or value.get("content") or "").strip()
         if not summary:
             raise ValueError("MEMORY_STORE_SUMMARY_REQUIRED")
@@ -91,10 +111,18 @@ class DeepAgentMemoryStore(BaseStore):
             raise ValueError("MEMORY_STORE_VALUE_MUST_BE_OBJECT")
         explicit = bool(value.get("explicit_remember", False))
         confidence = float(value.get("confidence", 0.75))
-        material = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+        material = json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+        )
         candidate_id = uuid5(
             self.access.organization_id,
-            f"deep-memory:{self.scope_type.value}:{self.scope_id}:{key}:{hashlib.sha256(material.encode()).hexdigest()}",
+            (
+                f"deep-memory:{self.scope_type.value}:{self.scope_id}:{key}:"
+                f"{hashlib.sha256(material.encode()).hexdigest()}"
+            ),
         )
         candidate = MemoryCandidate(
             candidate_id=candidate_id,
@@ -113,8 +141,16 @@ class DeepAgentMemoryStore(BaseStore):
             metadata={"source": "deep-agent-store"},
         )
         decision = await self.service.remember(candidate, access=self.access)
-        if decision.outcome.value in {"REJECT_SCOPE", "REJECT_SENSITIVE", "REQUIRE_CONFIRMATION", "BRAND_RULE_PROPOSAL"}:
-            raise PermissionError(f"MEMORY_STORE_WRITE_NOT_ACTIVE:{decision.outcome.value}:{decision.reason}")
+        if decision.outcome.value in {
+            "REJECT_SCOPE",
+            "REJECT_SENSITIVE",
+            "REQUIRE_CONFIRMATION",
+            "BRAND_RULE_PROPOSAL",
+        }:
+            raise PermissionError(
+                f"MEMORY_STORE_WRITE_NOT_ACTIVE:{decision.outcome.value}:"
+                f"{decision.reason}"
+            )
 
     async def _delete(self, key: str) -> None:
         item = await self._get(key)
@@ -123,10 +159,15 @@ class DeepAgentMemoryStore(BaseStore):
         memory_id = item.value.get("memory_id")
         if not isinstance(memory_id, str):
             raise ValueError("MEMORY_STORE_ITEM_ID_INVALID")
-        from uuid import UUID
         await self.service.delete(UUID(memory_id), access=self.access)
 
-    async def _search(self, query: str, *, limit: int, offset: int) -> list[SearchItem]:
+    async def _search(
+        self,
+        query: str,
+        *,
+        limit: int,
+        offset: int,
+    ) -> list[SearchItem]:
         rows = await self.service.search(
             MemorySearchQuery(
                 access=self.access,
@@ -135,7 +176,9 @@ class DeepAgentMemoryStore(BaseStore):
                 scope_types=(self.scope_type,),
             )
         )
-        scoped = [row for row in rows if row.record.scope_id == self.scope_id][offset : offset + limit]
+        scoped = [
+            row for row in rows if row.record.scope_id == self.scope_id
+        ][offset : offset + limit]
         return [
             SearchItem(
                 namespace=_VIRTUAL_NAMESPACE,
@@ -176,7 +219,10 @@ def deep_agent_project_memory_store(
         source_id=str(context.agent_run_id),
         version="1",
         content_hash=hashlib.sha256(
-            f"{context.organization_id}:{context.project_id}:{context.agent_run_id}:{context.root_agent}".encode()
+            (
+                f"{context.organization_id}:{context.project_id}:"
+                f"{context.agent_run_id}:{context.root_agent}"
+            ).encode()
         ).hexdigest(),
     )
     return DeepAgentMemoryStore(
