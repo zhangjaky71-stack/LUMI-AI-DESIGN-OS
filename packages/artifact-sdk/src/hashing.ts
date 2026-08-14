@@ -32,7 +32,7 @@ export function artifactStableManifest(
     schema_version: version.schema_version,
     content_hash: version.content_hash,
     constraint_snapshot_hash: version.constraint_snapshot_hash,
-    brand_rule_set_version: brandRuleSetVersion,
+    ...(brandRuleSetVersion ? { brand_rule_set_version: brandRuleSetVersion } : {}),
     compiler: compilerIdentity(provenance.compiler),
     code_git_sha: provenance.code_git_sha,
     prompt_hash: provenance.prompt_hash ?? null,
