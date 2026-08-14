@@ -1,18 +1,12 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Any, cast
+from dataclasses import dataclass
+from typing import Any, Mapping, cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from lumi_model_gateway.gateway import ModelGateway
-from lumi_model_gateway.models import (
-    Capability,
-    LatencyProfile,
-    ModelRequest,
-    ModelResult,
-    QualityProfile,
-    ResultStatus,
-)
+from lumi_model_gateway.models import Capability, LatencyProfile, ModelRequest, ModelResult, QualityProfile, ResultStatus
 
 from .model import CompiledShot, GatewayEstimate, GatewayVideoResult, ProviderJobRecord, VideoTaskSpec
 
@@ -28,22 +22,46 @@ def _capability(shot: CompiledShot, continuity_refs: tuple[str, ...]) -> Capabil
     return Capability.VIDEO_IMAGE_TO_VIDEO if shot.shot.source_ref is not None or continuity_refs else Capability.VIDEO_TEXT_TO_VIDEO
 
 
-def _required_features(shot: CompiledShot, continuity_refs: tuple[str, ...]) -> list[str]:
-    required: list[str] = []
+def _required_features(shot: CompiledShot, continuity_refs: tuple[str, ...]) -> frozenset[str]:
+    required: set[str] = set()
     if shot.shot.source_ref is not None:
-        required.append("video.start_frame")
+        required.add("video.start_frame")
     if continuity_refs:
-        required.append("video.reference_image")
+        required.add("video.reference_image")
     if shot.shot.camera_motion:
-        required.append("video.camera_controls")
-    return required
+        required.add("video.camera_controls")
+    return frozenset(required)
 
 
-def to_model_request(spec: VideoTaskSpec, shot: CompiledShot, continuity_refs: tuple[str, ...]) -> ModelRequest:
+@dataclass(frozen=True, slots=True)
+class VideoFeatureRegistry:
+    snapshot_id: str
+    provider_features: Mapping[str, frozenset[str]]
+
+    def allowed_provider_keys(self, required: frozenset[str]) -> tuple[str, ...]:
+        if not required:
+            return ()
+        allowed = tuple(sorted(key for key, features in self.provider_features.items() if required <= features))
+        if not allowed:
+            raise ValueError("VIDEO_REQUIRED_PROVIDER_FEATURES_UNAVAILABLE")
+        return allowed
+
+
+def to_model_request(
+    spec: VideoTaskSpec,
+    shot: CompiledShot,
+    continuity_refs: tuple[str, ...],
+    *,
+    feature_registry: VideoFeatureRegistry | None = None,
+) -> ModelRequest:
     refs: list[str] = []
     if shot.shot.source_ref is not None:
         refs.append(shot.shot.source_ref.durable_ref)
     refs.extend(continuity_refs)
+    required_features = _required_features(shot, continuity_refs)
+    if required_features and feature_registry is None:
+        raise ValueError("VIDEO_PROVIDER_FEATURE_REGISTRY_REQUIRED")
+    allowed_keys = feature_registry.allowed_provider_keys(required_features) if feature_registry else ()
     inputs: dict[str, Any] = {
         "prompt": shot.shot.prompt,
         "negative_prompt": spec.negative_prompt,
@@ -55,6 +73,16 @@ def to_model_request(spec: VideoTaskSpec, shot: CompiledShot, continuity_refs: t
         "subject_action": shot.shot.subject_action,
         "seed": spec.seed,
     }
+    constraints: dict[str, Any] = {
+        "duration_seconds": format(shot.shot.duration_seconds, "f"),
+        "width": spec.width,
+        "height": spec.height,
+        "fps": spec.fps,
+        "required_features": sorted(required_features),
+    }
+    if allowed_keys:
+        constraints["allowed_provider_keys"] = list(allowed_keys)
+        constraints["video_feature_registry_snapshot_id"] = feature_registry.snapshot_id if feature_registry else None
     return ModelRequest(
         organization_id=_stable_uuid(spec.organization_id),
         project_id=_stable_uuid(spec.project_id),
@@ -68,13 +96,7 @@ def to_model_request(spec: VideoTaskSpec, shot: CompiledShot, continuity_refs: t
         budget_limit_usd=spec.budget_limit_usd,
         inputs=inputs,
         reference_assets=tuple(refs),
-        constraints={
-            "duration_seconds": format(shot.shot.duration_seconds, "f"),
-            "width": spec.width,
-            "height": spec.height,
-            "fps": spec.fps,
-            "required_features": _required_features(shot, continuity_refs),
-        },
+        constraints=constraints,
         routing_hints={"allow_fallback": True},
     )
 
@@ -111,36 +133,42 @@ def _normalize(result: ModelResult, routing_reason_codes: tuple[str, ...]) -> Ga
 
 
 class ModelGatewayVideoAdapter:
-    def __init__(self, gateway: ModelGateway) -> None:
+    def __init__(self, gateway: ModelGateway, *, feature_registry: VideoFeatureRegistry | None = None) -> None:
         self.gateway = gateway
+        self.feature_registry = feature_registry
+
+    def _request(self, spec: VideoTaskSpec, shot: CompiledShot, continuity_refs: tuple[str, ...]) -> ModelRequest:
+        return to_model_request(spec, shot, continuity_refs, feature_registry=self.feature_registry)
 
     async def estimate(self, *, spec: VideoTaskSpec, shot: CompiledShot, continuity_refs: tuple[str, ...]) -> GatewayEstimate:
-        request = to_model_request(spec, shot, continuity_refs)
+        request = self._request(spec, shot, continuity_refs)
         decision = await self.gateway.router.route(request)
         candidate = decision.candidates[0]
         if candidate.estimate.amount_usd is None:
             raise ValueError("VIDEO_PROVIDER_COST_ESTIMATE_REQUIRED")
+        reasons = candidate.reason_codes
+        if self.feature_registry is not None:
+            reasons += (f"VIDEO_FEATURE_REGISTRY:{self.feature_registry.snapshot_id}",)
         return GatewayEstimate(
             amount_usd=candidate.estimate.amount_usd,
             provider=candidate.provider,
             model=candidate.model,
             pricing_snapshot_id=candidate.estimate.price_snapshot_id,
-            routing_reason_codes=candidate.reason_codes,
+            routing_reason_codes=reasons,
         )
 
     async def submit(self, *, spec: VideoTaskSpec, shot: CompiledShot, continuity_refs: tuple[str, ...]) -> GatewayVideoResult:
-        request = to_model_request(spec, shot, continuity_refs)
+        request = self._request(spec, shot, continuity_refs)
         decision = await self.gateway.router.route(request)
         result = await self.gateway.invoke(request)
-        matching = next(
-            ((index, item) for index, item in enumerate(decision.candidates) if item.provider == result.provider and item.model == result.model),
-            None,
-        )
+        matching = next(((index, item) for index, item in enumerate(decision.candidates) if item.provider == result.provider and item.model == result.model), None)
         if matching is None:
             reasons = ("ROUTE_DECISION_CHANGED_DURING_INVOKE",)
         else:
             index, item = matching
             reasons = item.reason_codes + ((f"FALLBACK_INDEX:{index}",) if index else ())
+        if self.feature_registry is not None:
+            reasons += (f"VIDEO_FEATURE_REGISTRY:{self.feature_registry.snapshot_id}",)
         return _normalize(result, reasons)
 
     async def poll(self, *, pending: ProviderJobRecord) -> GatewayVideoResult:
@@ -168,5 +196,11 @@ class ModelGatewayVideoAdapter:
         return _normalize(result, pending.result.routing_reason_codes)
 
 
-def request_hash(spec: VideoTaskSpec, shot: CompiledShot, continuity_refs: tuple[str, ...]) -> str:
-    return hashlib.sha256(to_model_request(spec, shot, continuity_refs).semantic_hash.encode()).hexdigest()
+def request_hash(
+    spec: VideoTaskSpec,
+    shot: CompiledShot,
+    continuity_refs: tuple[str, ...],
+    *,
+    feature_registry: VideoFeatureRegistry | None = None,
+) -> str:
+    return hashlib.sha256(to_model_request(spec, shot, continuity_refs, feature_registry=feature_registry).semantic_hash.encode()).hexdigest()
