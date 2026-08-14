@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from datetime import datetime
 from typing import Any, AsyncIterator, Callable, Protocol
 from uuid import UUID
 
@@ -57,10 +56,11 @@ class PostgresKnowledgeRepositorySession:
         self,
         *,
         organization_id: UUID,
+        scope_key: str,
         source_type: str,
         source_id: str,
     ) -> None:
-        key = f"{organization_id}:{source_type}:{source_id}"
+        key = f"{organization_id}:{scope_key}:{source_type}:{source_id}"
         await self.connection.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             key,
@@ -77,6 +77,7 @@ class PostgresKnowledgeRepositorySession:
         self,
         *,
         organization_id: UUID,
+        scope_key: str,
         source_type: str,
         source_id: str,
     ) -> tuple[KnowledgeDocument, ...]:
@@ -86,6 +87,7 @@ class PostgresKnowledgeRepositorySession:
             WHERE organization_id=$1
               AND source_type=$2
               AND source_id=$3
+              AND scope_key=$4
               AND status='READY'
             ORDER BY updated_at DESC, id
             FOR UPDATE
@@ -93,6 +95,7 @@ class PostgresKnowledgeRepositorySession:
             organization_id,
             source_type,
             source_id,
+            scope_key,
         )
         return tuple(_document(row) for row in rows)
 
@@ -167,7 +170,7 @@ class PostgresKnowledgeRepositorySession:
         await self.connection.execute(
             """
             INSERT INTO knowledge_documents (
-                id, organization_id, project_id, permission_scope,
+                id, organization_id, project_id, permission_scope, scope_key,
                 source_type, source_id, source_version, source_hash,
                 title, source_uri, observed_at, source_updated_at,
                 trust, status, normalized_text, parser_version,
@@ -175,13 +178,14 @@ class PostgresKnowledgeRepositorySession:
                 embedding_space_id, metadata_json, version
             ) VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-                $17,$18,$19,$20,$21::jsonb,$22
+                $17,$18,$19,$20,$21,$22::jsonb,$23
             )
             """,
             document.document_id,
             document.organization_id,
             document.project_id,
             document.permission_scope.value,
+            document.scope_key,
             document.source.source_type.value,
             document.source.source_id,
             document.source.version,
@@ -214,22 +218,24 @@ class PostgresKnowledgeRepositorySession:
             UPDATE knowledge_documents
             SET project_id=$2,
                 permission_scope=$3,
-                trust=$4,
-                status=$5,
-                normalized_text=$6,
-                parser_version=$7,
-                chunker_version=$8,
-                index_version=$9,
-                language=$10,
-                embedding_space_id=$11,
-                metadata_json=$12::jsonb,
+                scope_key=$4,
+                trust=$5,
+                status=$6,
+                normalized_text=$7,
+                parser_version=$8,
+                chunker_version=$9,
+                index_version=$10,
+                language=$11,
+                embedding_space_id=$12,
+                metadata_json=$13::jsonb,
                 updated_at=now(),
                 version=version+1
-            WHERE id=$1 AND version=$13
+            WHERE id=$1 AND version=$14
             """,
             document.document_id,
             document.project_id,
             document.permission_scope.value,
+            document.scope_key,
             document.trust.value,
             document.status.value,
             document.normalized_text,
@@ -287,7 +293,7 @@ class PostgresKnowledgeRepositorySession:
 
 
 def _document(row: Any) -> KnowledgeDocument:
-    return KnowledgeDocument(
+    document = KnowledgeDocument(
         document_id=row["id"],
         organization_id=row["organization_id"],
         project_id=row["project_id"],
@@ -315,6 +321,9 @@ def _document(row: Any) -> KnowledgeDocument:
         updated_at=row["updated_at"],
         version=int(row["version"]),
     )
+    if row["scope_key"] != document.scope_key:
+        raise ValueError("KNOWLEDGE_SCOPE_KEY_CORRUPT")
+    return document
 
 
 def _chunk(row: Any) -> KnowledgeChunk:
