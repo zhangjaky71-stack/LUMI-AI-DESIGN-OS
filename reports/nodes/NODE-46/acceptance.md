@@ -96,7 +96,7 @@ No live-provider score is invented in this node. Therefore NODE-46 cannot be mar
 
 ## Lockfile discipline
 
-`services/image-generation` is intentionally dependency-free and is not added to the root uv workspace in this node. Root `uv.lock` must remain unchanged. Dedicated CI uses the frozen root dev environment and explicit `PYTHONPATH` to run the service, while production packaging can be added only from the pinned Python 3.12/uv environment without hand-editing lock state.
+`services/image-generation` is intentionally dependency-free and is not added to the root uv workspace in this node. Root `uv.lock` remains SHA `43ca410851428ad00cd7e42ac57c2c12f1fb8666`. Dedicated CI uses the frozen root dev environment and explicit `PYTHONPATH` to run the service, while production packaging can be added only from the pinned Python 3.12/uv environment without hand-editing lock state.
 
 ## Hosted validation requirement
 
@@ -111,7 +111,26 @@ image-generation-benchmark
 
 `image-generation-integration` also applies `0001_artifact_engine.sql` and `0005_image_generation.sql` to a fresh PostgreSQL instance.
 
-If GitHub returns the known account billing/spending-limit failure (`runner_id=0`, zero steps), record it as an external blocker. It is neither PASS nor an observed code/test failure.
+## Hosted validation evidence — initial release HEAD
+
+```text
+head_sha: 986268bce460c185ee99414cd37f518c31175c7b
+workflow: Image Generation
+run_id: 31798615593
+image-generation-contract job_id: 94761138825
+conclusion: failure
+runner_id: 0
+steps: []
+image-generation-quality: skipped
+image-generation-integration: skipped
+image-generation-benchmark: skipped
+```
+
+GitHub annotation:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+
+This is the same external account-level GitHub Actions blocker observed on prior nodes. The runner never started, so there is no hosted evidence of a pytest, Pyright, Ruff, static validator, PostgreSQL migration, integration, or benchmark failure. It is also not PASS.
 
 ## Current decision
 
