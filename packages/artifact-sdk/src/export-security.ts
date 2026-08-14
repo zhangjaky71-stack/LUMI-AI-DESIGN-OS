@@ -1,7 +1,7 @@
 const CONTROL = /[\u0000-\u001f\u007f]/g;
 const RESERVED = /[<>:"/\\|?*]/g;
 const SENSITIVE_KEY = /(?:^|_)(?:api_?key|secret|authorization|access_?token|refresh_?token|provider_?token|hidden_?prompt|system_?prompt)(?:$|_)/i;
-const EPHEMERAL_REF_KEY = /^(?:uri|url|signed_url|presigned_url|download_url)$/i;
+const EPHEMERAL_REF_KEY = /(?:^|_)(?:uri|url)$/i;
 
 export function sanitizeExportFilename(input: string, fallback = "export"): string {
   const normalized = input.normalize("NFC").replace(CONTROL, "").replace(RESERVED, "_").trim();
