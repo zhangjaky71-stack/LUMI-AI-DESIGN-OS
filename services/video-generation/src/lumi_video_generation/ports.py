@@ -14,6 +14,7 @@ from .model import (
     ShotValidationReport,
     StoredVideoClip,
     VideoJob,
+    VideoProbeResult,
     VideoTaskSpec,
     VideoTimeline,
 )
@@ -45,7 +46,7 @@ class VideoOutputPort(Protocol):
         shot: CompiledShot,
         output_ref: str,
         declared_mime_type: str | None,
-    ) -> tuple[StoredVideoClip, object]: ...
+    ) -> tuple[StoredVideoClip, VideoProbeResult]: ...
 
 
 class VideoValidationPort(Protocol):
@@ -55,7 +56,7 @@ class VideoValidationPort(Protocol):
         spec: VideoTaskSpec,
         shot: CompiledShot,
         clip: StoredVideoClip,
-        probe: object,
+        probe: VideoProbeResult,
         safety_metadata: Mapping[str, object],
     ) -> ShotValidationReport: ...
 
@@ -63,6 +64,7 @@ class VideoValidationPort(Protocol):
         self,
         *,
         spec: VideoTaskSpec,
+        timeline: VideoTimeline,
         rendered: RenderedVideo,
     ) -> ShotValidationReport: ...
 
@@ -85,6 +87,7 @@ class VideoArtifactPort(Protocol):
         spec: VideoTaskSpec,
         rendered: RenderedVideo,
         provenance: FinalVideoProvenance,
+        validation: ShotValidationReport,
         clip_artifact_version_ids: tuple[str, ...],
     ) -> str: ...
 
