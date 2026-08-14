@@ -5,17 +5,19 @@ from contextlib import AbstractAsyncContextManager
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Callable, Protocol
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 from .errors import (
+    TaskGraphBudgetError,
     TaskGraphClaimError,
     TaskGraphConflictError,
+    TaskGraphExpansionError,
     TaskGraphLeaseError,
     TaskGraphStateError,
 )
 from .events import TaskGraphEvent
 from .instantiator import InstantiatedTaskGraph
-from .task_contracts import logical_operation_key
+from .task_contracts import TaskSnapshot, logical_operation_key
 
 
 class TaskGraphDbConnection(Protocol):
@@ -34,23 +36,14 @@ class TaskGraphDbConnection(Protocol):
     async def fetchrow(self, query: str, *args: object) -> Any | None: ...
 
 
-ConnectionFactory = Callable[
-    [],
-    AbstractAsyncContextManager[TaskGraphDbConnection],
-]
-
+ConnectionFactory = Callable[[], AbstractAsyncContextManager[TaskGraphDbConnection]]
 _TERMINAL = frozenset({"SUCCEEDED", "FAILED_FINAL", "CANCELLED", "SKIPPED"})
 _WAITING = frozenset({"WAITING_APPROVAL", "WAITING_INPUT", "WAITING_EXTERNAL"})
 _FINISH_TARGETS = _TERMINAL | _WAITING | {"FAILED_RETRYABLE"}
 
 
 class PostgresTaskGraphStore:
-    """SDK-neutral durable TaskGraph store with transactional outbox writes.
-
-    This class owns persistence primitives, not Recipe semantics. Join/condition decisions
-    stay in the pure NODE-33 runtime; scheduler code uses ``mark_ready`` only after those
-    rules have been evaluated.
-    """
+    """Durable SDK-neutral TaskGraph persistence and scheduling primitives."""
 
     def __init__(self, connection_factory: ConnectionFactory) -> None:
         self.connection_factory = connection_factory
@@ -98,69 +91,13 @@ class PostgresTaskGraphStore:
                     graph.task_count,
                     graph.started_at,
                 )
-                task_rows: list[tuple[object, ...]] = []
-                dependency_rows: list[tuple[object, ...]] = []
-                for task in bundle.tasks:
-                    task_rows.append(
-                        (
-                            task.task_id,
-                            task.organization_id,
-                            task.project_id,
-                            task.agent_run_id,
-                            task.parent_task_id,
-                            task.graph_id,
-                            task.recipe_step_id,
-                            task.task_key,
-                            task.step_type,
-                            task.status.value,
-                            _agent_owner_key(task.owner),
-                            task.owner,
-                            json.dumps(task.input_bindings),
-                            json.dumps({}),
-                            task.priority,
-                            task.attempt_count,
-                            task.max_attempts,
-                            Decimal("0"),
-                            _decimal_or_none(task.budget_limit_usd),
-                            task.output_schema,
-                            json.dumps(task.metadata),
-                            task.state_version,
-                            task.progress_current,
-                            task.progress_total,
-                            task.dynamic_depth,
-                            task.dynamic_child_limit,
-                            task.concurrency_group,
-                            task.concurrency_limit,
-                        )
-                    )
-                    dependency_rows.extend(
-                        (
-                            uuid4(),
-                            task.organization_id,
-                            task.task_id,
-                            dependency,
-                        )
-                        for dependency in task.depends_on
-                    )
-                await connection.executemany(
-                    """
-                    INSERT INTO tasks (
-                        id, organization_id, project_id, agent_run_id,
-                        parent_task_id, task_graph_id, recipe_step_id,
-                        task_key, type, status, owner_agent_key, owner_key,
-                        input_json, output_json, priority, attempt_count,
-                        max_attempts, budget_reserved, budget_limit_usd,
-                        output_schema, metadata_json, state_version,
-                        progress_current, progress_total, dynamic_depth,
-                        dynamic_child_limit, concurrency_group, concurrency_limit
-                    ) VALUES (
-                        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
-                        $13::jsonb,$14::jsonb,$15,$16,$17,$18,$19,$20,
-                        $21::jsonb,$22,$23,$24,$25,$26,$27,$28
-                    )
-                    """,
-                    task_rows,
-                )
+                task_rows = [_task_insert_row(task) for task in bundle.tasks]
+                await connection.executemany(_TASK_INSERT_SQL, task_rows)
+                dependency_rows = [
+                    (uuid4(), task.organization_id, task.task_id, dependency)
+                    for task in bundle.tasks
+                    for dependency in task.depends_on
+                ]
                 if dependency_rows:
                     await connection.executemany(
                         """
@@ -271,7 +208,7 @@ class PostgresTaskGraphStore:
                           AND EXISTS (
                               SELECT 1 FROM task_graph_instances g
                               WHERE g.id = t.task_graph_id
-                                AND g.status IN ('PENDING','RUNNING')
+                                AND g.status = 'RUNNING'
                                 AND g.cancellation_requested_at IS NULL
                           )
                           AND (
@@ -300,19 +237,12 @@ class PostgresTaskGraphStore:
                     updated = await connection.fetchrow(
                         """
                         UPDATE tasks
-                        SET status = 'RUNNING',
-                            attempt_count = $2,
-                            lease_owner = $3,
-                            lease_expires_at = $4,
-                            heartbeat_at = $5,
-                            started_at = COALESCE(started_at, $5),
-                            retry_not_before = NULL,
-                            wait_reason = NULL,
-                            state_version = state_version + 1,
-                            updated_at = now()
-                        WHERE id = $1
-                          AND state_version = $6
-                          AND status = 'READY'
+                        SET status = 'RUNNING', attempt_count = $2,
+                            lease_owner = $3, lease_expires_at = $4,
+                            heartbeat_at = $5, started_at = COALESCE(started_at, $5),
+                            retry_not_before = NULL, wait_reason = NULL,
+                            state_version = state_version + 1, updated_at = now()
+                        WHERE id = $1 AND state_version = $6 AND status = 'READY'
                         RETURNING *
                         """,
                         task_id,
@@ -329,8 +259,7 @@ class PostgresTaskGraphStore:
                         """
                         INSERT INTO task_attempts (
                             id, organization_id, task_graph_id, task_id,
-                            attempt_number, logical_operation_key,
-                            status, started_at
+                            attempt_number, logical_operation_key, status, started_at
                         ) VALUES ($1,$2,$3,$4,$5,$6,'RUNNING',$7)
                         """,
                         uuid4(),
@@ -372,13 +301,9 @@ class PostgresTaskGraphStore:
             row = await connection.fetchrow(
                 """
                 UPDATE tasks
-                SET heartbeat_at = $3,
-                    lease_expires_at = $4,
-                    updated_at = now()
-                WHERE id = $1
-                  AND status = 'RUNNING'
-                  AND lease_owner = $2
-                  AND lease_expires_at >= $3
+                SET heartbeat_at = $3, lease_expires_at = $4, updated_at = now()
+                WHERE id = $1 AND status = 'RUNNING'
+                  AND lease_owner = $2 AND lease_expires_at >= $3
                 RETURNING *
                 """,
                 task_id,
@@ -403,12 +328,9 @@ class PostgresTaskGraphStore:
                 row = await connection.fetchrow(
                     """
                     UPDATE tasks
-                    SET status = 'READY',
-                        state_version = state_version + 1,
+                    SET status = 'READY', state_version = state_version + 1,
                         updated_at = now()
-                    WHERE id = $1
-                      AND state_version = $2
-                      AND status = $3
+                    WHERE id = $1 AND state_version = $2 AND status = $3
                       AND cancellation_requested_at IS NULL
                     RETURNING *
                     """,
@@ -418,11 +340,13 @@ class PostgresTaskGraphStore:
                 )
                 if row is None:
                     raise TaskGraphConflictError("TASK_READY_CAS_CONFLICT")
+                graph_id = UUID(str(row["task_graph_id"]))
+                await _set_graph_running(connection, graph_id)
                 await _insert_outbox(
                     connection,
                     TaskGraphEvent(
                         event_name="task.ready",
-                        graph_id=UUID(str(row["task_graph_id"])),
+                        graph_id=graph_id,
                         task_id=task_id,
                         organization_id=UUID(str(row["organization_id"])),
                         payload=event_payload or {"task_key": str(row["task_key"])},
@@ -462,24 +386,18 @@ class PostgresTaskGraphStore:
                     or current["lease_expires_at"] < now
                 ):
                     raise TaskGraphLeaseError("TASK_FINISH_LEASE_INVALID")
-                metadata_patch: dict[str, Any] = {}
-                if error:
-                    metadata_patch["last_error"] = dict(error)
+                metadata_patch = {"last_error": dict(error)} if error else {}
                 is_terminal = target_status in _TERMINAL
                 row = await connection.fetchrow(
                     """
                     UPDATE tasks
-                    SET status = $2,
-                        output_json = $3::jsonb,
+                    SET status = $2, output_json = $3::jsonb,
                         metadata_json = metadata_json || $4::jsonb,
-                        wait_reason = $5,
-                        external_ref = $6,
-                        lease_owner = NULL,
-                        lease_expires_at = NULL,
+                        wait_reason = $5, external_ref = $6,
+                        lease_owner = NULL, lease_expires_at = NULL,
                         heartbeat_at = NULL,
                         finished_at = CASE WHEN $7 THEN $8 ELSE finished_at END,
-                        state_version = state_version + 1,
-                        updated_at = now()
+                        state_version = state_version + 1, updated_at = now()
                     WHERE id = $1
                     RETURNING *
                     """,
@@ -496,13 +414,9 @@ class PostgresTaskGraphStore:
                 result = await connection.execute(
                     """
                     UPDATE task_attempts
-                    SET status = $3,
-                        error_category = $4,
-                        result_ref = $5,
-                        cost_amount_usd = $6,
-                        completed_at = $7
-                    WHERE task_id = $1
-                      AND attempt_number = $2
+                    SET status = $3, error_category = $4, result_ref = $5,
+                        cost_amount_usd = $6, completed_at = $7
+                    WHERE task_id = $1 AND attempt_number = $2
                       AND status = 'RUNNING'
                     """,
                     task_id,
@@ -515,12 +429,12 @@ class PostgresTaskGraphStore:
                 )
                 if not result.endswith(" 1"):
                     raise TaskGraphConflictError("TASK_ATTEMPT_FINISH_CONFLICT")
-                event_name = _event_for_status(target_status)
+                graph_id = UUID(str(current["task_graph_id"]))
                 await _insert_outbox(
                     connection,
                     TaskGraphEvent(
-                        event_name=event_name,
-                        graph_id=UUID(str(current["task_graph_id"])),
+                        event_name=_event_for_status(target_status),
+                        graph_id=graph_id,
                         task_id=task_id,
                         organization_id=UUID(str(current["organization_id"])),
                         payload={
@@ -531,12 +445,7 @@ class PostgresTaskGraphStore:
                         },
                     ),
                 )
-                if is_terminal:
-                    await _recompute_graph_locked(
-                        connection,
-                        UUID(str(current["task_graph_id"])),
-                        now,
-                    )
+                await _recompute_graph_locked(connection, graph_id, now)
                 return dict(row)
 
     async def resume_waiting(
@@ -551,13 +460,9 @@ class PostgresTaskGraphStore:
                 row = await connection.fetchrow(
                     """
                     UPDATE tasks
-                    SET status = 'READY',
-                        external_ref = $3,
-                        wait_reason = NULL,
-                        state_version = state_version + 1,
-                        updated_at = now()
-                    WHERE id = $1
-                      AND state_version = $2
+                    SET status = 'READY', external_ref = $3, wait_reason = NULL,
+                        state_version = state_version + 1, updated_at = now()
+                    WHERE id = $1 AND state_version = $2
                       AND status IN ('WAITING_APPROVAL','WAITING_INPUT','WAITING_EXTERNAL')
                       AND cancellation_requested_at IS NULL
                     RETURNING *
@@ -568,11 +473,13 @@ class PostgresTaskGraphStore:
                 )
                 if row is None:
                     raise TaskGraphConflictError("TASK_RESUME_CAS_CONFLICT")
+                graph_id = UUID(str(row["task_graph_id"]))
+                await _set_graph_running(connection, graph_id)
                 await _insert_outbox(
                     connection,
                     TaskGraphEvent(
                         event_name="task.ready",
-                        graph_id=UUID(str(row["task_graph_id"])),
+                        graph_id=graph_id,
                         task_id=task_id,
                         organization_id=UUID(str(row["organization_id"])),
                         payload={"resume_ref": resume_ref},
@@ -592,12 +499,9 @@ class PostgresTaskGraphStore:
                 row = await connection.fetchrow(
                     """
                     UPDATE tasks
-                    SET status = 'READY',
-                        retry_not_before = $3,
-                        state_version = state_version + 1,
-                        updated_at = now()
-                    WHERE id = $1
-                      AND state_version = $2
+                    SET status = 'READY', retry_not_before = $3,
+                        state_version = state_version + 1, updated_at = now()
+                    WHERE id = $1 AND state_version = $2
                       AND status = 'FAILED_RETRYABLE'
                       AND attempt_count < max_attempts
                       AND cancellation_requested_at IS NULL
@@ -609,11 +513,13 @@ class PostgresTaskGraphStore:
                 )
                 if row is None:
                     raise TaskGraphConflictError("TASK_RETRY_CAS_CONFLICT")
+                graph_id = UUID(str(row["task_graph_id"]))
+                await _set_graph_running(connection, graph_id)
                 await _insert_outbox(
                     connection,
                     TaskGraphEvent(
                         event_name="task.retry_scheduled",
-                        graph_id=UUID(str(row["task_graph_id"])),
+                        graph_id=graph_id,
                         task_id=task_id,
                         organization_id=UUID(str(row["organization_id"])),
                         payload={"retry_not_before": retry_not_before.isoformat()},
@@ -636,8 +542,7 @@ class PostgresTaskGraphStore:
                 rows = await connection.fetch(
                     """
                     SELECT * FROM tasks
-                    WHERE task_graph_id = $1
-                      AND status = 'RUNNING'
+                    WHERE task_graph_id = $1 AND status = 'RUNNING'
                       AND lease_expires_at < $2
                     ORDER BY lease_expires_at
                     FOR UPDATE SKIP LOCKED
@@ -650,33 +555,37 @@ class PostgresTaskGraphStore:
                 for row in rows:
                     task_id = UUID(str(row["id"]))
                     attempt = int(row["attempt_count"])
+                    target = (
+                        "FAILED_FINAL"
+                        if attempt >= int(row["max_attempts"])
+                        else "FAILED_RETRYABLE"
+                    )
                     await connection.execute(
                         """
                         UPDATE tasks
-                        SET status = 'FAILED_RETRYABLE',
+                        SET status = $2,
                             metadata_json = metadata_json ||
-                                '{"provider_reconciliation_required":true,"failure":"lease_expired"}'::jsonb,
-                            lease_owner = NULL,
-                            lease_expires_at = NULL,
+                              '{"provider_reconciliation_required":true,"failure":"lease_expired"}'::jsonb,
+                            lease_owner = NULL, lease_expires_at = NULL,
                             heartbeat_at = NULL,
-                            state_version = state_version + 1,
-                            updated_at = now()
+                            finished_at = CASE WHEN $2 = 'FAILED_FINAL' THEN $3 ELSE finished_at END,
+                            state_version = state_version + 1, updated_at = now()
                         WHERE id = $1
                         """,
                         task_id,
+                        target,
+                        now,
                     )
                     result = await connection.execute(
                         """
                         UPDATE task_attempts
-                        SET status = 'FAILED_RETRYABLE',
-                            error_category = 'lease_expired',
-                            completed_at = $3
-                        WHERE task_id = $1
-                          AND attempt_number = $2
+                        SET status = $3, error_category = 'lease_expired', completed_at = $4
+                        WHERE task_id = $1 AND attempt_number = $2
                           AND status = 'RUNNING'
                         """,
                         task_id,
                         attempt,
+                        target,
                         now,
                     )
                     if not result.endswith(" 1"):
@@ -689,29 +598,140 @@ class PostgresTaskGraphStore:
                             task_id=task_id,
                             organization_id=UUID(str(row["organization_id"])),
                             payload={
-                                "status": "FAILED_RETRYABLE",
+                                "status": target,
                                 "error_category": "lease_expired",
                                 "provider_reconciliation_required": True,
                             },
                         ),
                     )
                     reclaimed.append(task_id)
+                if reclaimed:
+                    await _recompute_graph_locked(connection, graph_id, now)
         return tuple(reclaimed)
 
-    async def request_cancel(
+    async def add_dynamic_task(
         self,
-        graph_id: UUID,
+        parent_task_id: UUID,
         *,
-        now: datetime,
+        child_key: str,
+        owner: str,
+        step_type: str,
+        output_schema: str,
+        budget_limit_usd: str | None = None,
+        concurrency_group: str | None = None,
+        concurrency_limit: int | None = None,
+        dynamic_child_limit: int = 0,
     ) -> dict[str, Any]:
+        if not child_key or not 0 <= dynamic_child_limit <= 32:
+            raise TaskGraphExpansionError("TASK_DYNAMIC_CHILD_ARGUMENT_INVALID")
+        async with self.connection_factory() as connection:
+            async with connection.transaction():
+                parent = await connection.fetchrow(
+                    "SELECT * FROM tasks WHERE id = $1 FOR UPDATE",
+                    parent_task_id,
+                )
+                if parent is None or str(parent["status"]) != "RUNNING":
+                    raise TaskGraphExpansionError("TASK_DYNAMIC_PARENT_MUST_BE_RUNNING")
+                parent_limit = int(parent["dynamic_child_limit"])
+                parent_depth = int(parent["dynamic_depth"])
+                if parent_limit < 1:
+                    raise TaskGraphExpansionError("TASK_DYNAMIC_EXPANSION_NOT_ALLOWED")
+                if parent_depth >= 4:
+                    raise TaskGraphExpansionError("TASK_DYNAMIC_DEPTH_LIMIT")
+                count = await connection.fetchrow(
+                    "SELECT count(*) AS count FROM tasks WHERE parent_task_id = $1",
+                    parent_task_id,
+                )
+                if count is None or int(count["count"]) >= parent_limit:
+                    raise TaskGraphExpansionError("TASK_DYNAMIC_CHILD_LIMIT")
+                parent_budget = parent["budget_limit_usd"]
+                if budget_limit_usd is not None and parent_budget is not None:
+                    if Decimal(budget_limit_usd) > Decimal(str(parent_budget)):
+                        raise TaskGraphBudgetError("TASK_DYNAMIC_BUDGET_ESCALATION")
+                parent_concurrency = parent["concurrency_limit"]
+                if (
+                    concurrency_limit is not None
+                    and parent_concurrency is not None
+                    and concurrency_limit > int(parent_concurrency)
+                ):
+                    raise TaskGraphExpansionError("TASK_DYNAMIC_CONCURRENCY_ESCALATION")
+                if dynamic_child_limit > parent_limit:
+                    raise TaskGraphExpansionError("TASK_DYNAMIC_CHILD_SCOPE_ESCALATION")
+                graph_id = UUID(str(parent["task_graph_id"]))
+                organization_id = UUID(str(parent["organization_id"]))
+                task_id = uuid5(graph_id, f"dynamic:{parent_task_id}:{child_key}")
+                metadata = json.dumps({"dynamic": True})
+                row = await connection.fetchrow(
+                    """
+                    INSERT INTO tasks (
+                        id, organization_id, project_id, agent_run_id, parent_task_id,
+                        task_graph_id, recipe_step_id, task_key, type, status,
+                        owner_agent_key, owner_key, input_json, output_json, priority,
+                        attempt_count, max_attempts, budget_reserved, budget_limit_usd,
+                        output_schema, condition_expression, metadata_json, state_version,
+                        progress_current, progress_total, dynamic_depth,
+                        dynamic_child_limit, concurrency_group, concurrency_limit
+                    ) VALUES (
+                        $1,$2,$3,$4,$5,$6,$7,$8,$9,'READY',$10,$11,
+                        '{}'::jsonb,'{}'::jsonb,$12,0,$13,0,$14,$15,NULL,$16::jsonb,
+                        1,0,1,$17,$18,$19,$20
+                    )
+                    RETURNING *
+                    """,
+                    task_id,
+                    organization_id,
+                    UUID(str(parent["project_id"])),
+                    UUID(str(parent["agent_run_id"])),
+                    parent_task_id,
+                    graph_id,
+                    str(parent["recipe_step_id"]),
+                    f"{parent['task_key']}.{child_key}",
+                    step_type,
+                    _agent_owner_key(owner),
+                    owner,
+                    int(parent["priority"]),
+                    int(parent["max_attempts"]),
+                    _decimal_or_none(budget_limit_usd),
+                    output_schema,
+                    metadata,
+                    parent_depth + 1,
+                    dynamic_child_limit,
+                    concurrency_group or parent["concurrency_group"],
+                    concurrency_limit or parent_concurrency,
+                )
+                await connection.execute(
+                    """
+                    UPDATE task_graph_instances
+                    SET task_count = task_count + 1, status = 'RUNNING',
+                        state_version = state_version + 1, updated_at = now()
+                    WHERE id = $1
+                    """,
+                    graph_id,
+                )
+                await _insert_outbox(
+                    connection,
+                    TaskGraphEvent(
+                        event_name="task.dynamic_created",
+                        graph_id=graph_id,
+                        task_id=task_id,
+                        organization_id=organization_id,
+                        payload={
+                            "task_key": str(row["task_key"]),
+                            "parent_task_id": str(parent_task_id),
+                            "dynamic_depth": parent_depth + 1,
+                        },
+                    ),
+                )
+                return dict(row)
+
+    async def request_cancel(self, graph_id: UUID, *, now: datetime) -> dict[str, Any]:
         async with self.connection_factory() as connection:
             async with connection.transaction():
                 graph = await connection.fetchrow(
                     """
                     UPDATE task_graph_instances
                     SET cancellation_requested_at = COALESCE(cancellation_requested_at, $2),
-                        state_version = state_version + 1,
-                        updated_at = now()
+                        state_version = state_version + 1, updated_at = now()
                     WHERE id = $1
                     RETURNING *
                     """,
@@ -723,10 +743,8 @@ class PostgresTaskGraphStore:
                 await connection.execute(
                     """
                     UPDATE tasks
-                    SET status = 'CANCELLED',
-                        cancellation_requested_at = $2,
-                        finished_at = $2,
-                        state_version = state_version + 1,
+                    SET status = 'CANCELLED', cancellation_requested_at = $2,
+                        finished_at = $2, state_version = state_version + 1,
                         updated_at = now()
                     WHERE task_graph_id = $1
                       AND status IN ('PENDING','READY','FAILED_RETRYABLE',
@@ -739,8 +757,7 @@ class PostgresTaskGraphStore:
                     """
                     UPDATE tasks
                     SET cancellation_requested_at = $2,
-                        state_version = state_version + 1,
-                        updated_at = now()
+                        state_version = state_version + 1, updated_at = now()
                     WHERE task_graph_id = $1 AND status = 'RUNNING'
                     """,
                     graph_id,
@@ -766,13 +783,9 @@ class PostgresTaskGraphStore:
                 row = await connection.fetchrow(
                     """
                     UPDATE tasks
-                    SET status = $4,
-                        metadata_json = metadata_json || $5::jsonb,
-                        state_version = state_version + 1,
-                        updated_at = now()
-                    WHERE id = $1
-                      AND state_version = $2
-                      AND status = $3
+                    SET status = $4, metadata_json = metadata_json || $5::jsonb,
+                        state_version = state_version + 1, updated_at = now()
+                    WHERE id = $1 AND state_version = $2 AND status = $3
                     RETURNING *
                     """,
                     task_id,
@@ -796,6 +809,68 @@ class PostgresTaskGraphStore:
                 return dict(row)
 
 
+_TASK_INSERT_SQL = """
+INSERT INTO tasks (
+    id, organization_id, project_id, agent_run_id, parent_task_id,
+    task_graph_id, recipe_step_id, task_key, type, status,
+    owner_agent_key, owner_key, input_json, output_json, priority,
+    attempt_count, max_attempts, budget_reserved, budget_limit_usd,
+    output_schema, condition_expression, metadata_json, state_version,
+    progress_current, progress_total, dynamic_depth, dynamic_child_limit,
+    concurrency_group, concurrency_limit
+) VALUES (
+    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,
+    $15,$16,$17,$18,$19,$20,$21,$22::jsonb,$23,$24,$25,$26,$27,$28,$29
+)
+"""
+
+
+def _task_insert_row(task: TaskSnapshot) -> tuple[object, ...]:
+    return (
+        task.task_id,
+        task.organization_id,
+        task.project_id,
+        task.agent_run_id,
+        task.parent_task_id,
+        task.graph_id,
+        task.recipe_step_id,
+        task.task_key,
+        task.step_type,
+        task.status.value,
+        _agent_owner_key(task.owner),
+        task.owner,
+        json.dumps(task.input_bindings),
+        json.dumps({}),
+        task.priority,
+        task.attempt_count,
+        task.max_attempts,
+        Decimal("0"),
+        _decimal_or_none(task.budget_limit_usd),
+        task.output_schema,
+        task.condition,
+        json.dumps(task.metadata),
+        task.state_version,
+        task.progress_current,
+        task.progress_total,
+        task.dynamic_depth,
+        task.dynamic_child_limit,
+        task.concurrency_group,
+        task.concurrency_limit,
+    )
+
+
+async def _set_graph_running(connection: TaskGraphDbConnection, graph_id: UUID) -> None:
+    await connection.execute(
+        """
+        UPDATE task_graph_instances
+        SET status = 'RUNNING', completed_at = NULL,
+            state_version = state_version + 1, updated_at = now()
+        WHERE id = $1 AND status = 'WAITING'
+        """,
+        graph_id,
+    )
+
+
 async def _recompute_graph_locked(
     connection: TaskGraphDbConnection,
     graph_id: UUID,
@@ -809,7 +884,9 @@ async def _recompute_graph_locked(
                count(*) FILTER (WHERE status = 'FAILED_FINAL') AS failed,
                count(*) FILTER (WHERE status = 'CANCELLED') AS cancelled,
                count(*) FILTER (WHERE status = 'SKIPPED') AS skipped,
-               count(*) FILTER (WHERE status = 'RUNNING') AS running
+               count(*) FILTER (WHERE status = 'RUNNING') AS running,
+               count(*) FILTER (WHERE status = 'READY') AS ready,
+               count(*) FILTER (WHERE status IN ('WAITING_APPROVAL','WAITING_INPUT','WAITING_EXTERNAL')) AS waiting
         FROM tasks WHERE task_graph_id = $1
         """,
         graph_id,
@@ -820,24 +897,21 @@ async def _recompute_graph_locked(
     completed = int(counts["completed"])
     failed = int(counts["failed"])
     cancelled = int(counts["cancelled"])
-    running = int(counts["running"])
     if total > 0 and completed == total:
         status = "FAILED_FINAL" if failed else ("CANCELLED" if cancelled else "SUCCEEDED")
         completed_at = now
+    elif int(counts["waiting"]) and not int(counts["running"]) and not int(counts["ready"]):
+        status = "WAITING"
+        completed_at = None
     else:
-        status = "RUNNING" if running or completed else "PENDING"
+        status = "RUNNING"
         completed_at = None
     await connection.execute(
         """
         UPDATE task_graph_instances
-        SET status = $2,
-            completed_count = $3,
-            succeeded_count = $4,
-            failed_count = $5,
-            cancelled_count = $6,
-            skipped_count = $7,
-            completed_at = $8,
-            state_version = state_version + 1,
+        SET status = $2, completed_count = $3, succeeded_count = $4,
+            failed_count = $5, cancelled_count = $6, skipped_count = $7,
+            completed_at = $8, state_version = state_version + 1,
             updated_at = now()
         WHERE id = $1
         """,
@@ -852,10 +926,7 @@ async def _recompute_graph_locked(
     )
 
 
-async def _insert_outbox(
-    connection: TaskGraphDbConnection,
-    event: TaskGraphEvent,
-) -> None:
+async def _insert_outbox(connection: TaskGraphDbConnection, event: TaskGraphEvent) -> None:
     payload = {
         "graph_id": str(event.graph_id),
         "task_id": str(event.task_id) if event.task_id is not None else None,
