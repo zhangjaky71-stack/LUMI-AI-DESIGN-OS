@@ -49,6 +49,7 @@ export async function exportFingerprint(source: ExportSourceSnapshot, spec: Expo
   assertNoSensitiveExportMetadata(source.design_document, "$.design_document");
   assertNoSensitiveExportMetadata(source.rights_summary, "$.rights_summary");
   if (source.project_snapshot) assertNoSensitiveExportMetadata(source.project_snapshot, "$.project_snapshot");
+  assertNoEphemeralExportRefs(source.design_document, "$.design_document");
   assertNoEphemeralExportRefs(source.render_plan, "$.render_plan");
   return canonicalSha256({
     export_engine: "1.0.0",
