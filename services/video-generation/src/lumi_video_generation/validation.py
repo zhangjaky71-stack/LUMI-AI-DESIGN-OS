@@ -3,15 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Mapping, Protocol, cast
 
-from .model import (
-    CompiledShot,
-    RenderedVideo,
-    ShotValidationReport,
-    StoredVideoClip,
-    ValidationFinding,
-    VideoProbeResult,
-    VideoTaskSpec,
-)
+from .model import CompiledShot, RenderedVideo, ShotValidationReport, StoredVideoClip, ValidationFinding, VideoProbeResult, VideoTaskSpec, VideoTimeline
 
 
 class IdentityContinuityPort(Protocol):
@@ -80,12 +72,10 @@ class CompositeVideoValidator:
         spec: VideoTaskSpec,
         shot: CompiledShot,
         clip: StoredVideoClip,
-        probe: object,
+        probe: VideoProbeResult,
         safety_metadata: Mapping[str, object],
     ) -> ShotValidationReport:
         del clip
-        if not isinstance(probe, VideoProbeResult):
-            raise TypeError("VIDEO_PROBE_RESULT_REQUIRED")
         findings = _technical_findings(spec, shot, probe)
         if safety_metadata.get("blocked") is True:
             findings.append(ValidationFinding(
@@ -124,15 +114,22 @@ class CompositeVideoValidator:
                 findings.extend(brand_findings)
         frozen = tuple(findings)
         return ShotValidationReport(
-            decision=cast(Any, _decision(frozen)),
+            decision=cast(ValidationDecisionCompat, _decision(frozen)),
             findings=frozen,
             identity_validation_snapshot_id=identity_snapshot,
             brand_validation_snapshot_id=brand_snapshot,
         )
 
-    async def validate_final(self, *, spec: VideoTaskSpec, rendered: RenderedVideo) -> ShotValidationReport:
+    async def validate_final(
+        self,
+        *,
+        spec: VideoTaskSpec,
+        timeline: VideoTimeline,
+        rendered: RenderedVideo,
+    ) -> ShotValidationReport:
         findings: list[ValidationFinding] = []
-        expected_ms = int(spec.duration_seconds * Decimal("1000"))
+        expected_seconds = sum((item.duration_seconds for item in timeline.clips), Decimal("0"))
+        expected_ms = int(expected_seconds * Decimal("1000"))
         if abs(rendered.video.duration_ms - expected_ms) > 250:
             findings.append(ValidationFinding(
                 validator="video-final",
@@ -150,4 +147,7 @@ class CompositeVideoValidator:
                 reason_code="VIDEO_FINAL_RESOLUTION_MISMATCH",
             ))
         frozen = tuple(findings)
-        return ShotValidationReport(decision=cast(Any, _decision(frozen)), findings=frozen)
+        return ShotValidationReport(decision=cast(ValidationDecisionCompat, _decision(frozen)), findings=frozen)
+
+
+from .model import ValidationDecision as ValidationDecisionCompat
