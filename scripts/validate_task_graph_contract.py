@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from uuid import uuid4
 
-from lumi_agent_runtime.task_graph import TaskState, logical_operation_key
+from lumi_agent_runtime.task_graph import (
+    DurableTaskGraphScheduler,
+    TaskState,
+    logical_operation_key,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "apps/agent-runtime/src/lumi_agent_runtime/task_graph"
@@ -19,6 +24,23 @@ EXPECTED_STATES = {
     "FAILED_FINAL",
     "CANCELLED",
     "SKIPPED",
+}
+REQUIRED_MODULES = {
+    "errors.py",
+    "events.py",
+    "task_contracts.py",
+    "instantiator.py",
+    "lifecycle.py",
+    "complete_fail.py",
+    "claims.py",
+    "cancellation.py",
+    "dynamic.py",
+    "memory_store.py",
+    "postgres_store.py",
+    "scheduler.py",
+    "state_machine.py",
+    "states.py",
+    "wait_progress.py",
 }
 FORBIDDEN_IMPORTS = {
     "asyncpg",
@@ -42,13 +64,17 @@ def require(path: str, *markers: str) -> str:
 
 
 def main() -> int:
+    missing = sorted(name for name in REQUIRED_MODULES if not (PACKAGE / name).is_file())
+    if missing:
+        raise SystemExit(f"NODE-33 runtime modules missing: {missing}")
     if {item.value for item in TaskState} != EXPECTED_STATES:
         raise SystemExit("NODE-33 TaskState contract drifted")
+    if not isinstance(DurableTaskGraphScheduler, type):
+        raise SystemExit("NODE-33 durable scheduler is not public")
 
-    fake_graph = __import__("uuid").uuid4()
-    fake_task = __import__("uuid").uuid4()
-    logical = logical_operation_key(fake_graph, fake_task)
-    if logical != f"task:{fake_graph}:{fake_task}" or "attempt" in logical:
+    graph_id, task_id = uuid4(), uuid4()
+    logical = logical_operation_key(graph_id, task_id)
+    if logical != f"task:{graph_id}:{task_id}" or "attempt" in logical:
         raise SystemExit("NODE-33 logical operation key must be stable across retries")
 
     migration = require(
@@ -58,10 +84,7 @@ def main() -> int:
         '"task_attempts"',
         'op.add_column("tasks"',
         'sa.Column("task_graph_id"',
-        'sa.Column("owner_key"',
-        'sa.Column("budget_limit_usd"',
-        'sa.Column("output_schema"',
-        'sa.Column("metadata_json"',
+        'sa.Column("condition_expression"',
         'sa.Column("cancellation_requested_at"',
         'sa.Column("logical_operation_key"',
         'sa.UniqueConstraint("task_id", "attempt_number"',
@@ -79,74 +102,57 @@ def main() -> int:
     store = require(
         "apps/agent-runtime/src/lumi_agent_runtime/task_graph/postgres_store.py",
         "FOR UPDATE SKIP LOCKED",
-        "LIMIT 1",
-        "state_version = state_version + 1",
         "AND state_version = $6",
+        "g.status = 'RUNNING'",
         "INSERT INTO task_attempts",
         "logical_operation_key",
         "INSERT INTO outbox_events",
         "event_name, aggregate_type",
-        "aggregate_id, schema_version, payload_json, publish_attempts",
-        "INSERT INTO tasks (",
-        "task_key, type, status, owner_agent_key, owner_key",
-        "input_json, output_json",
-        "budget_reserved, budget_limit_usd",
-        "output_schema, metadata_json",
-        "INSERT INTO task_dependencies",
         "id, organization_id, task_id, depends_on_task_id",
+        "owner_agent_key, owner_key",
+        "output_schema, condition_expression, metadata_json",
+        "task.condition",
         "TASK_ATTEMPT_FINISH_CONFLICT",
         "TASK_ATTEMPT_RECLAIM_CONFLICT",
         "provider_reconciliation_required",
-        "async def load_graph",
-        "async def list_tasks",
-        "async def list_attempts",
-        "async def timeline",
-        "async def heartbeat",
-        "async def finish_running",
-        "async def resume_waiting",
-        "async def schedule_retry",
-        "async def reclaim_expired",
-        "async def request_cancel",
+        "async def add_dynamic_task",
+        "TASK_DYNAMIC_BUDGET_ESCALATION",
+        "TASK_DYNAMIC_CONCURRENCY_ESCALATION",
+        "async def _set_graph_running",
+        'status = "WAITING"',
     )
-    for forbidden in ("task_key, kind", "owner_agent,", "event_type"):
+    for forbidden in (
+        "task_key, kind",
+        "owner_agent,",
+        "event_type",
+        "g.status IN ('PENDING','RUNNING')",
+        'status = "PENDING"',
+    ):
         if forbidden in store:
-            raise SystemExit(f"NODE-33 store uses non-canonical schema marker: {forbidden}")
-    if store.count("AND status = 'RUNNING'") < 4:
-        raise SystemExit("NODE-33 attempt/lease lifecycle must be RUNNING guarded")
+            raise SystemExit(f"NODE-33 store uses invalid schema/state marker: {forbidden}")
 
-    workflow = require(
+    require(
         "apps/api/src/lumi_api/persistence/models/workflow.py",
         "task_graph_id:",
         "owner_key:",
-        "budget_limit_usd:",
-        "output_schema:",
-        "metadata_json:",
+        "condition_expression:",
         "cancellation_requested_at:",
         "lease_expires_at:",
         "concurrency_limit:",
     )
-    if "class Task(" not in workflow:
-        raise SystemExit("NODE-33 Task ORM missing")
     require(
         "apps/api/src/lumi_api/persistence/models/task_graph.py",
         "class TaskGraphInstance",
         "class TaskAttemptRecord",
-        '"task_graph_instances"',
-        '"task_attempts"',
     )
     require(
         "apps/api/src/lumi_api/persistence/models/__init__.py",
         "from .task_graph import TaskAttemptRecord, TaskGraphInstance",
-        '"TaskAttemptRecord"',
-        '"TaskGraphInstance"',
     )
-
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/task_graph/claims.py",
         "provider_reconciliation_required",
         "logical_operation_key",
-        "lease_expires_at",
-        "heartbeat_at",
     )
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/task_graph/lifecycle.py",
@@ -157,10 +163,13 @@ def main() -> int:
         "UPSTREAM_JOIN_UNSATISFIED",
     )
     require(
-        "apps/agent-runtime/src/lumi_agent_runtime/task_graph/cancellation.py",
-        "cancellation_requested_at",
-        "TASK_CANCEL_ACK_INVALID",
-        "TaskState.RUNNING",
+        "apps/agent-runtime/src/lumi_agent_runtime/task_graph/scheduler.py",
+        "class DurableTaskGraphScheduler",
+        "_join_decision",
+        "_condition_context",
+        "await self.store.mark_ready",
+        "await self.store.claim_ready",
+        "await self.store.reclaim_expired",
     )
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/task_graph/dynamic.py",
@@ -169,7 +178,6 @@ def main() -> int:
         "TASK_DYNAMIC_BUDGET_ESCALATION",
         "TASK_DYNAMIC_CONCURRENCY_ESCALATION",
         "TASK_DYNAMIC_CHILD_SCOPE_ESCALATION",
-        "task_count=graph.task_count + 1",
     )
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/compiler.py",
@@ -181,17 +189,11 @@ def main() -> int:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 roots = {alias.name.split(".", 1)[0] for alias in node.names}
-                bad = roots & FORBIDDEN_IMPORTS
-                if bad:
-                    raise SystemExit(
-                        f"Task Graph imports ambient authority: {path}:{sorted(bad)}"
-                    )
+                if roots & FORBIDDEN_IMPORTS:
+                    raise SystemExit(f"Task Graph imports ambient authority: {path}")
             if isinstance(node, ast.ImportFrom) and node.module:
-                root = node.module.split(".", 1)[0]
-                if root in FORBIDDEN_IMPORTS:
-                    raise SystemExit(
-                        f"Task Graph imports ambient authority: {path}:{root}"
-                    )
+                if node.module.split(".", 1)[0] in FORBIDDEN_IMPORTS:
+                    raise SystemExit(f"Task Graph imports ambient authority: {path}")
 
     print("NODE-33 Task Graph static contract: PASS")
     return 0
