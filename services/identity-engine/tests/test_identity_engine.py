@@ -145,8 +145,8 @@ class IdentityEngineTests(unittest.TestCase):
             identity=self.identity,
             profile=self.profile,
             candidate=candidate(
-                {"score": 98.0, "confidence": 0.45},
-                {"score": 97.0, "confidence": 0.5},
+                {"score": 98.0, "confidence": 0.05},
+                {"score": 97.0, "confidence": 0.1},
                 H1,
             ),
             references=(reference(),),
