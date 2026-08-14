@@ -29,7 +29,7 @@ ConnectionFactory = Callable[[], AbstractAsyncContextManager[MemoryDbConnection]
 
 
 class PostgresMemoryRepository:
-    """Transaction factory. All multi-step memory writes must use transaction()."""
+    """Transaction factory. All multi-step memory writes use transaction()."""
 
     def __init__(self, connection_factory: ConnectionFactory) -> None:
         self.connection_factory = connection_factory
@@ -123,13 +123,9 @@ class PostgresMemoryRepositorySession:
             record.kind.value,
             record.semantic_key,
             record.content_hash,
-            json.dumps(record.content_structured, ensure_ascii=False, sort_keys=True),
+            _json_dump(record.content_structured),
             record.summary,
-            json.dumps(
-                [_source_payload(ref) for ref in record.source_refs],
-                ensure_ascii=False,
-                sort_keys=True,
-            ),
+            _json_dump([_source_payload(ref) for ref in record.source_refs]),
             record.confidence,
             record.status.value,
             record.created_by_type.value,
@@ -145,13 +141,18 @@ class PostgresMemoryRepositorySession:
             record.embedding_version,
             len(record.embedding) if record.embedding is not None else None,
             _vector_literal(record.embedding),
-            json.dumps(record.metadata, ensure_ascii=False, sort_keys=True, default=str),
+            _json_dump(record.metadata),
             record.created_at,
             record.version,
         )
         return record
 
-    async def update_record(self, record: MemoryRecord, *, expected_version: int) -> MemoryRecord:
+    async def update_record(
+        self,
+        record: MemoryRecord,
+        *,
+        expected_version: int,
+    ) -> MemoryRecord:
         result = await self.connection.execute(
             """
             UPDATE memory_records SET
@@ -165,13 +166,9 @@ class PostgresMemoryRepositorySession:
             """,
             record.memory_id,
             record.content_hash,
-            json.dumps(record.content_structured, ensure_ascii=False, sort_keys=True),
+            _json_dump(record.content_structured),
             record.summary,
-            json.dumps(
-                [_source_payload(ref) for ref in record.source_refs],
-                ensure_ascii=False,
-                sort_keys=True,
-            ),
+            _json_dump([_source_payload(ref) for ref in record.source_refs]),
             record.confidence,
             record.status.value,
             record.last_confirmed_at,
@@ -185,14 +182,20 @@ class PostgresMemoryRepositorySession:
             record.embedding_version,
             len(record.embedding) if record.embedding is not None else None,
             _vector_literal(record.embedding),
-            json.dumps(record.metadata, ensure_ascii=False, sort_keys=True, default=str),
+            _json_dump(record.metadata),
             expected_version,
         )
         if not result.endswith(" 1"):
             raise MemoryConflictError("MEMORY_VERSION_CONFLICT")
         return record
 
-    async def insert_candidate(self, candidate: MemoryCandidate, *, outcome: str, reason: str | None) -> None:
+    async def insert_candidate(
+        self,
+        candidate: MemoryCandidate,
+        *,
+        outcome: str,
+        reason: str | None,
+    ) -> None:
         if outcome in {"REJECT_SENSITIVE", "REJECT_SCOPE"}:
             raise MemoryConflictError("MEMORY_REJECTED_CONTENT_MUST_NOT_PERSIST")
         await self.connection.execute(
@@ -211,13 +214,9 @@ class PostgresMemoryRepositorySession:
             candidate.kind.value,
             candidate.semantic_key,
             candidate.content_hash,
-            json.dumps(candidate.content_structured, ensure_ascii=False, sort_keys=True),
+            _json_dump(candidate.content_structured),
             candidate.summary,
-            json.dumps(
-                [_source_payload(ref) for ref in candidate.source_refs],
-                ensure_ascii=False,
-                sort_keys=True,
-            ),
+            _json_dump([_source_payload(ref) for ref in candidate.source_refs]),
             candidate.confidence,
             candidate.created_by_type.value,
             candidate.created_by_id,
@@ -226,10 +225,16 @@ class PostgresMemoryRepositorySession:
             outcome,
             reason,
             candidate.expires_at,
-            json.dumps(candidate.metadata, ensure_ascii=False, sort_keys=True, default=str),
+            _json_dump(candidate.metadata),
         )
 
-    async def soft_delete(self, memory_id: UUID, *, deleted_at: datetime, expected_version: int) -> MemoryRecord:
+    async def soft_delete(
+        self,
+        memory_id: UUID,
+        *,
+        deleted_at: datetime,
+        expected_version: int,
+    ) -> MemoryRecord:
         result = await self.connection.execute(
             """
             UPDATE memory_records
@@ -242,14 +247,16 @@ class PostgresMemoryRepositorySession:
         )
         if not result.endswith(" 1"):
             raise MemoryConflictError("MEMORY_DELETE_VERSION_OR_RETENTION_CONFLICT")
-        row = await self.connection.fetchrow("SELECT * FROM memory_records WHERE id=$1", memory_id)
+        row = await self.connection.fetchrow(
+            "SELECT * FROM memory_records WHERE id=$1",
+            memory_id,
+        )
         if row is None:
             raise MemoryConflictError("MEMORY_DELETE_MISSING")
         return _record(row)
 
 
 def _record(row: Any) -> MemoryRecord:
-    embedding = row["embedding"]
     return MemoryRecord(
         memory_id=row["id"],
         organization_id=row["organization_id"],
@@ -257,9 +264,11 @@ def _record(row: Any) -> MemoryRecord:
         scope_id=row["scope_id"],
         kind=MemoryKind(row["kind"]),
         semantic_key=row["semantic_key"],
-        content_structured=dict(row["content_structured"]),
+        content_structured=_json_object(row["content_structured"]),
         summary=row["summary"],
-        source_refs=tuple(MemorySourceRef(**dict(item)) for item in row["source_refs"]),
+        source_refs=tuple(
+            MemorySourceRef(**item) for item in _json_list(row["source_refs"])
+        ),
         confidence=float(row["confidence"]),
         status=MemoryStatus(row["status"]),
         created_by_type=MemoryActorType(row["created_by_type"]),
@@ -273,11 +282,43 @@ def _record(row: Any) -> MemoryRecord:
         version=int(row["version"]),
         retention_hold=bool(row["retention_hold"]),
         deleted_at=row["deleted_at"],
-        embedding=tuple(float(item) for item in embedding) if embedding is not None else None,
+        embedding=_decode_vector(row["embedding"]),
         embedding_model=row["embedding_model"],
         embedding_version=row["embedding_version"],
-        metadata=dict(row["metadata_json"] or {}),
+        metadata=_json_object(row["metadata_json"]),
     )
+
+
+def _json_dump(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    decoded = json.loads(value) if isinstance(value, str) else value
+    if not isinstance(decoded, dict):
+        raise MemoryConflictError("MEMORY_JSON_OBJECT_DECODE_INVALID")
+    return dict(decoded)
+
+
+def _json_list(value: Any) -> list[dict[str, Any]]:
+    decoded = json.loads(value) if isinstance(value, str) else value
+    if not isinstance(decoded, list):
+        raise MemoryConflictError("MEMORY_JSON_LIST_DECODE_INVALID")
+    return [dict(item) for item in decoded]
+
+
+def _decode_vector(value: Any) -> tuple[float, ...] | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text.startswith("[") or not text.endswith("]"):
+            raise MemoryConflictError("MEMORY_VECTOR_DECODE_INVALID")
+        body = text[1:-1].strip()
+        return () if not body else tuple(float(item) for item in body.split(","))
+    return tuple(float(item) for item in value)
 
 
 def _source_payload(ref: MemorySourceRef) -> dict[str, str]:
