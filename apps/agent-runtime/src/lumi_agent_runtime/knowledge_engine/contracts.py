@@ -107,10 +107,20 @@ class KnowledgeDocument:
             raise ValueError("KNOWLEDGE_DOCUMENT_TEXT_EMPTY")
         if not self.parser_version or not self.chunker_version or not self.index_version:
             raise ValueError("KNOWLEDGE_DOCUMENT_INDEX_IDENTITY_INVALID")
-        if self.permission_scope == KnowledgePermissionScope.PROJECT and self.project_id is None:
-            raise ValueError("KNOWLEDGE_PROJECT_SCOPE_REQUIRES_PROJECT")
+        if self.permission_scope == KnowledgePermissionScope.PROJECT:
+            if self.project_id is None:
+                raise ValueError("KNOWLEDGE_PROJECT_SCOPE_REQUIRES_PROJECT")
+        elif self.project_id is not None:
+            raise ValueError("KNOWLEDGE_ORGANIZATION_SCOPE_FORBIDS_PROJECT")
         if self.version < 1:
             raise ValueError("KNOWLEDGE_DOCUMENT_VERSION_INVALID")
+
+    @property
+    def scope_key(self) -> str:
+        if self.permission_scope == KnowledgePermissionScope.PROJECT:
+            assert self.project_id is not None
+            return f"PROJECT:{self.project_id}"
+        return "ORGANIZATION"
 
     @property
     def content_hash(self) -> str:
@@ -180,6 +190,8 @@ class KnowledgeSearchQuery:
             raise ValueError("KNOWLEDGE_QUERY_EMBEDDING_IDENTITY_INVALID")
         if self.max_source_age_seconds is not None and self.max_source_age_seconds < 1:
             raise ValueError("KNOWLEDGE_FRESHNESS_WINDOW_INVALID")
+        if self.require_fresh and self.max_source_age_seconds is None:
+            raise ValueError("KNOWLEDGE_FRESHNESS_WINDOW_REQUIRED")
         if any(not item.strip() for item in self.expanded_queries):
             raise ValueError("KNOWLEDGE_EXPANDED_QUERY_INVALID")
 
@@ -239,16 +251,27 @@ class KnowledgeIndexRequest:
         if self.permission_scope == KnowledgePermissionScope.PROJECT:
             if self.project_id is None or self.access.project_id != self.project_id:
                 raise ValueError("KNOWLEDGE_INDEX_PROJECT_SCOPE_DENIED")
-        elif "knowledge.organization.write" not in self.access.granted_permissions:
-            raise ValueError("KNOWLEDGE_INDEX_ORGANIZATION_SCOPE_DENIED")
+        else:
+            if self.project_id is not None:
+                raise ValueError("KNOWLEDGE_INDEX_ORGANIZATION_PROJECT_FORBIDDEN")
+            if "knowledge.organization.write" not in self.access.granted_permissions:
+                raise ValueError("KNOWLEDGE_INDEX_ORGANIZATION_SCOPE_DENIED")
         if not self.parser_version or not self.chunker_version or not self.index_version:
             raise ValueError("KNOWLEDGE_INDEX_VERSION_REQUIRED")
+
+    @property
+    def scope_key(self) -> str:
+        if self.permission_scope == KnowledgePermissionScope.PROJECT:
+            assert self.project_id is not None
+            return f"PROJECT:{self.project_id}"
+        return "ORGANIZATION"
 
     @property
     def semantic_hash(self) -> str:
         payload = {
             "organization_id": str(self.access.organization_id),
             "project_id": str(self.project_id) if self.project_id else None,
+            "scope_key": self.scope_key,
             "permission_scope": self.permission_scope.value,
             "source": {
                 "type": self.source.source_type.value,
