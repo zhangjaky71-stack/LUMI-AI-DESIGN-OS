@@ -22,6 +22,7 @@ from .model import (
     VideoTimeline,
 )
 from .model_gateway_adapter import ModelGatewayVideoAdapter, VideoFeatureRegistry
+from .output_adapter import StagedProviderVideo, VerifiedVideoOutputAdapter
 from .pipeline import VideoGenerationPipeline
 from .repository import InMemoryVideoRepository, VideoOperationConflict
 from .storyboard import compile_storyboard, retry_shot_operation_id, shot_operation_id
@@ -49,8 +50,10 @@ __all__ = [
     "ShotSpec",
     "ShotValidationReport",
     "SourceImageRef",
+    "StagedProviderVideo",
     "StoredVideoClip",
     "TypedFfmpegSandbox",
+    "VerifiedVideoOutputAdapter",
     "VideoFeatureRegistry",
     "VideoGenerationPipeline",
     "VideoJob",
