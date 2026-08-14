@@ -33,17 +33,22 @@ class KnowledgeRetriever:
         include_organization_scope = (
             "knowledge.organization.read" in query.access.granted_permissions
         )
-        chunks = await self.repository.list_ready_chunks(
+        candidate_limit = min(400, max(64, query.limit * 10))
+        chunks = await self.repository.search_ready_chunks(
             organization_id=query.access.organization_id,
             project_id=query.access.project_id,
             include_organization_scope=include_organization_scope,
+            query_texts=(query.text, *query.expanded_queries),
+            query_embedding=query.query_embedding,
+            query_embedding_space_id=query.query_embedding_space_id,
+            limit=candidate_limit,
         )
         allowed_source_types = set(query.source_types)
         now = query.now or datetime.now(UTC)
         results: list[KnowledgeSearchResult] = []
         for chunk in chunks:
-            # Defense in depth. The repository must already have performed these
-            # filters before reading candidates from durable search storage.
+            # Defense in depth. Durable candidate retrieval must already have
+            # applied the same organization/project permission boundary.
             if chunk.organization_id != query.access.organization_id:
                 continue
             if chunk.project_id is not None:
