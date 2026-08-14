@@ -7,11 +7,14 @@ export type PixiMatrixLike = object;
 
 export interface PixiContainerLike {
   visible: boolean;
+  width: number;
+  height: number;
   label?: string;
   addChild(child: PixiContainerLike): unknown;
   removeChild(child: PixiContainerLike): unknown;
   destroy(options?: unknown): void;
   setFromMatrix(matrix: PixiMatrixLike): void;
+  setSize?(width: number, height: number): void;
 }
 
 export interface PixiTextLike extends PixiContainerLike {
@@ -73,6 +76,10 @@ function asContainer(handle: PixiDisplayHandle): PixiContainerLike {
   return handle as ManagedPixiHandle;
 }
 
+function asGraphics(handle: PixiDisplayHandle): PixiGraphicsLike {
+  return handle as PixiGraphicsLike & PixiDisplayHandle;
+}
+
 function numericFill(node: CanvasSceneNode): number {
   const fill = node.metadata.fill;
   if (typeof fill === "number" && Number.isFinite(fill)) return fill;
@@ -81,9 +88,24 @@ function numericFill(node: CanvasSceneNode): number {
   return 0xb8b8b8;
 }
 
+function drawGraphics(graphics: PixiGraphicsLike, node: CanvasSceneNode): void {
+  graphics.clear();
+  graphics
+    .rect(
+      0,
+      0,
+      Math.max(0, node.local_bounds.width),
+      Math.max(0, node.local_bounds.height),
+    )
+    .fill(numericFill(node));
+  if (node.kind === "GUIDE" && graphics.stroke) {
+    graphics.stroke({ width: 1, color: numericFill(node) });
+  }
+}
+
 function missingGraphic(runtime: PixiV8RuntimeModule, id: string): ManagedPixiHandle {
   const graphics = managed(new runtime.Graphics(), id);
-  graphics.rect(0, 0, 64, 64).fill(0xd0d0d0);
+  graphics.clear().rect(0, 0, 64, 64).fill(0xd0d0d0);
   if (graphics.stroke) graphics.stroke({ width: 1, color: 0x777777 });
   return graphics;
 }
@@ -96,17 +118,7 @@ export function createPixiV8Bindings(
   const stage = managed(host.stage, "__lumi_canvas_stage__");
   const createGraphics = (id: string, node: CanvasSceneNode): ManagedPixiHandle => {
     const graphics = managed(new runtime.Graphics(), id);
-    graphics
-      .rect(
-        0,
-        0,
-        Math.max(0, node.local_bounds.width),
-        Math.max(0, node.local_bounds.height),
-      )
-      .fill(numericFill(node));
-    if (node.kind === "GUIDE" && graphics.stroke) {
-      graphics.stroke({ width: 1, color: numericFill(node) });
-    }
+    drawGraphics(graphics, node);
     return graphics;
   };
   const matrix = (value: Matrix2D): PixiMatrixLike =>
@@ -154,6 +166,17 @@ export function createPixiV8Bindings(
         }),
       );
     },
+    redrawShape(handle, node) {
+      drawGraphics(asGraphics(handle), node);
+    },
+    setDisplaySize(handle, width, height) {
+      const display = asContainer(handle);
+      if (display.setSize) display.setSize(Math.max(0, width), Math.max(0, height));
+      else {
+        display.width = Math.max(0, width);
+        display.height = Math.max(0, height);
+      }
+    },
     setVisible(handle, visible) {
       asContainer(handle).visible = visible;
     },
@@ -175,7 +198,7 @@ export function createPixiV8Bindings(
       asContainer(parent).removeChild(asContainer(child));
     },
     destroyDisplay(handle) {
-      asContainer(handle).destroy({ children: true });
+      asContainer(handle).destroy({ children: false });
     },
     resize(widthCssPx, heightCssPx, devicePixelRatio) {
       host.resize(widthCssPx, heightCssPx, devicePixelRatio);
