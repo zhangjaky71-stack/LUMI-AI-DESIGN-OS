@@ -1,6 +1,7 @@
 import type { CanvasSceneNode } from "./ir-scene";
 import type { Matrix2D } from "./matrix";
 import type { PixiDisplayHandle, PixiV8Bindings } from "./renderer";
+import type { CameraState } from "./types";
 
 export type PixiMatrixLike = object;
 
@@ -108,6 +109,8 @@ export function createPixiV8Bindings(
     }
     return graphics;
   };
+  const matrix = (value: Matrix2D): PixiMatrixLike =>
+    new runtime.Matrix(value.a, value.b, value.c, value.d, value.tx, value.ty);
 
   return {
     stage,
@@ -119,7 +122,9 @@ export function createPixiV8Bindings(
     },
     createImage(id, assetId) {
       const texture = textures.textureForAsset(assetId);
-      return texture === null ? missingGraphic(runtime, id) : managed(runtime.Sprite.from(texture), id);
+      return texture === null
+        ? missingGraphic(runtime, id)
+        : managed(runtime.Sprite.from(texture), id);
     },
     createShape(id, node) {
       return createGraphics(id, node);
@@ -127,14 +132,26 @@ export function createPixiV8Bindings(
     createVideoPoster(id, assetId) {
       if (!assetId) return missingGraphic(runtime, id);
       const texture = textures.textureForAsset(assetId);
-      return texture === null ? missingGraphic(runtime, id) : managed(runtime.Sprite.from(texture), id);
+      return texture === null
+        ? missingGraphic(runtime, id)
+        : managed(runtime.Sprite.from(texture), id);
     },
     createPlaceholder(id) {
       return missingGraphic(runtime, id);
     },
-    setLocalMatrix(handle, matrix: Matrix2D) {
-      asContainer(handle).setFromMatrix(
-        new runtime.Matrix(matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty),
+    setLocalMatrix(handle, value) {
+      asContainer(handle).setFromMatrix(matrix(value));
+    },
+    setCamera(camera: CameraState) {
+      stage.setFromMatrix(
+        matrix({
+          a: camera.zoom,
+          b: 0,
+          c: 0,
+          d: camera.zoom,
+          tx: -camera.x * camera.zoom,
+          ty: -camera.y * camera.zoom,
+        }),
       );
     },
     setVisible(handle, visible) {
