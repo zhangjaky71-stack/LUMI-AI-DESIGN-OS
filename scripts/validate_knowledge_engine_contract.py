@@ -89,6 +89,7 @@ def main() -> int:
         "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/contracts.py",
         "KnowledgeSegment",
         "source_updated_at",
+        "scope_key",
         "parser_version",
         "chunker_version",
         "index_version",
@@ -101,6 +102,7 @@ def main() -> int:
         'locator["page"]',
         'locator["section"]',
         "segment_index",
+        "scope_key",
         "index_version",
     )
     extraction = require(
@@ -116,6 +118,7 @@ def main() -> int:
     indexer = require(
         "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/indexer.py",
         "acquire_source_lock",
+        "request.scope_key",
         "KnowledgeStatus.CHUNKING",
         "KnowledgeStatus.EMBEDDING",
         "KnowledgeStatus.READY",
@@ -142,6 +145,7 @@ def main() -> int:
     postgres = require(
         "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/postgres_repository.py",
         "pg_advisory_xact_lock",
+        "scope_key",
         "FOR UPDATE",
         "d.project_id=$2",
         "d.permission_scope='ORGANIZATION'",
@@ -179,6 +183,8 @@ def main() -> int:
         "CREATE TABLE knowledge_documents",
         "CREATE TABLE knowledge_chunks",
         "permission_scope",
+        "scope_key",
+        "scope_key='PROJECT:' || project_id::text",
         "parser_version",
         "chunker_version",
         "index_version",
@@ -192,6 +198,7 @@ def main() -> int:
         '__tablename__ = "knowledge_documents"',
         '__tablename__ = "knowledge_chunks"',
         "permission_scope",
+        "scope_key",
         "index_version",
         "embedding_space_id",
     )
@@ -199,6 +206,10 @@ def main() -> int:
         "apps/api/src/lumi_api/persistence/models/__init__.py",
         "KnowledgeChunkModel",
         "KnowledgeDocumentModel",
+    )
+    require(
+        "apps/agent-runtime/tests/test_knowledge_scope_identity.py",
+        "same_source_can_exist_in_two_projects_without_cross_supersede",
     )
     require(
         "scripts/integration_knowledge_engine.py",
