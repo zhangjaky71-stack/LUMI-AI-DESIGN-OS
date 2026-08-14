@@ -493,7 +493,7 @@ class PostgresTaskGraphStore:
                     now,
                 )
                 attempt = int(current["attempt_count"])
-                await connection.execute(
+                result = await connection.execute(
                     """
                     UPDATE task_attempts
                     SET status = $3,
@@ -501,7 +501,9 @@ class PostgresTaskGraphStore:
                         result_ref = $5,
                         cost_amount_usd = $6,
                         completed_at = $7
-                    WHERE task_id = $1 AND attempt_number = $2
+                    WHERE task_id = $1
+                      AND attempt_number = $2
+                      AND status = 'RUNNING'
                     """,
                     task_id,
                     attempt,
@@ -511,6 +513,8 @@ class PostgresTaskGraphStore:
                     _decimal_or_none(cost_amount_usd),
                     now,
                 )
+                if not result.endswith(" 1"):
+                    raise TaskGraphConflictError("TASK_ATTEMPT_FINISH_CONFLICT")
                 event_name = _event_for_status(target_status)
                 await _insert_outbox(
                     connection,
@@ -661,18 +665,22 @@ class PostgresTaskGraphStore:
                         """,
                         task_id,
                     )
-                    await connection.execute(
+                    result = await connection.execute(
                         """
                         UPDATE task_attempts
                         SET status = 'FAILED_RETRYABLE',
                             error_category = 'lease_expired',
                             completed_at = $3
-                        WHERE task_id = $1 AND attempt_number = $2
+                        WHERE task_id = $1
+                          AND attempt_number = $2
+                          AND status = 'RUNNING'
                         """,
                         task_id,
                         attempt,
                         now,
                     )
+                    if not result.endswith(" 1"):
+                        raise TaskGraphConflictError("TASK_ATTEMPT_RECLAIM_CONFLICT")
                     await _insert_outbox(
                         connection,
                         TaskGraphEvent(
