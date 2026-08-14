@@ -66,20 +66,25 @@ def main() -> int:
         "apps/agent-runtime/src/lumi_agent_runtime/context_engine/builder.py",
         "request.context_budget_tokens",
         "required_source_ids",
-        "render_context_item",
         "CONTEXT_REQUIRED_LAYER_BUDGET_EXHAUSTED",
         "CONTEXT_REQUIRED_SOURCE_NOT_INCLUDED",
         "source_versions",
         "cache_key",
     )
     require(
+        "apps/agent-runtime/src/lumi_agent_runtime/context_engine/budget.py",
+        "render_context_item",
+        "conservative_token_estimate",
+    )
+    safety = require(
         "apps/agent-runtime/src/lumi_agent_runtime/context_engine/safety.py",
         "UNTRUSTED_RETRIEVED_DATA",
         "TRUSTED_PROJECT_DATA",
-        '"instruction_authority"] = "none"',
-        '"instruction_authority"] = "project-data-only"',
+        'metadata["instruction_authority"] = "none"',
         "prompt_injection_suspected",
     )
+    if "project-data-only" in safety:
+        raise SystemExit("NODE-34 project data authority marker drifted")
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/context_engine/retrieval.py",
         "semantic_score",
@@ -88,18 +93,35 @@ def main() -> int:
         "candidate.organization_id == organization_id",
         "candidate.project_id == project_id",
     )
-    require(
+    postgres = require(
         "apps/agent-runtime/src/lumi_agent_runtime/context_engine/postgres_source.py",
-        "FROM project_summaries",
-        "JOIN brand_rules",
+        "FROM projects",
+        "brief_json",
+        "brief_version",
+        "brand_rules",
         "FROM tasks",
-        "FROM task_dependencies",
+        "task_dependencies",
         "FROM assets",
+        "asset_metadata",
         "FROM artifacts",
+        "asset_embeddings",
+        "e.dimensions",
         "query_embedding",
-        "organization_id = $1 AND project_id = $2",
         "UNTRUSTED_RETRIEVED",
     )
+    for forbidden in (
+        "project_summaries",
+        "original_filename",
+        "e.dims",
+        "INSERT INTO",
+        "UPDATE ",
+        "DELETE FROM",
+        "chat_history",
+        "conversation_messages",
+    ):
+        if forbidden in postgres:
+            raise SystemExit(f"NODE-34 canonical/read-only source violation: {forbidden}")
+
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/context_engine/cache.py",
         "source_versions",
@@ -124,14 +146,6 @@ def main() -> int:
     for forbidden in ("raw_chat", "chat_history", "conversation_messages"):
         if forbidden in learning:
             raise SystemExit(f"NODE-34 learning stores forbidden history marker: {forbidden}")
-
-    postgres = (PACKAGE / "postgres_source.py").read_text(encoding="utf-8")
-    for forbidden in ("INSERT INTO", "UPDATE ", "DELETE FROM"):
-        if forbidden in postgres:
-            raise SystemExit(f"NODE-34 project context adapter is not read-only: {forbidden}")
-    for forbidden in ("chat_history", "conversation_messages"):
-        if forbidden in postgres:
-            raise SystemExit(f"NODE-34 reads forbidden raw history source: {forbidden}")
 
     for path in PACKAGE.glob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
