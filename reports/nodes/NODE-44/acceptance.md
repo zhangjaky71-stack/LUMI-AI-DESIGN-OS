@@ -32,11 +32,11 @@ Base: `node-43-brand-rules-engine-release`
 | No persistent/cross-tenant face index | runtime policy + DB CHECK | Implemented |
 | Tenant/version persistence | `0003_identity_engine.sql` | Implemented |
 | Artifact report/batch FK integrity | tenant-aware FK to `artifact_versions` | Implemented |
-| TypeScript conformance tests | `packages/identity-engine/src/*.test.ts` | Implemented; hosted execution pending |
-| Python conformance tests | `services/identity-engine/tests/test_identity_engine.py` | Implemented; hosted execution pending |
-| Static contract validator | `scripts/validate_identity_engine.py` | Implemented; hosted execution pending |
-| Product/Logo local benchmark | `scripts/benchmark_identity_engine.py` | Implemented; hosted measurement pending |
-| Dedicated CI | `.github/workflows/identity-engine.yml` | Implemented; hosted execution pending |
+| TypeScript conformance tests | `packages/identity-engine/src/*.test.ts` | Implemented; hosted execution blocked before steps |
+| Python conformance tests | `services/identity-engine/tests/test_identity_engine.py` | Implemented; hosted execution blocked before steps |
+| Static contract validator | `scripts/validate_identity_engine.py` | Implemented; hosted execution blocked before steps |
+| Product/Logo local benchmark | `scripts/benchmark_identity_engine.py` | Implemented; hosted measurement blocked before steps |
+| Dedicated CI | `.github/workflows/identity-engine.yml` | Implemented; hosted runner blocked before steps |
 
 ## Frozen architecture assertions
 
@@ -78,11 +78,29 @@ Base: `node-43-brand-rules-engine-release`
 
 `fixtures/identity/node-44-calibration.json` is synthetic conformance data. It proves the calibration algorithm and TS/Python contract; it does **not** prove production thresholds. `reports/nodes/NODE-44/calibration.md` defines the real-data calibration gate.
 
-## Hosted validation
+## Hosted validation evidence
 
-No hosted NODE-44 run is claimed until the release PR exists and GitHub Actions actually attempts the dedicated workflow.
+The first dedicated NODE-44 run was triggered from release head `bb21cb276f02d0e17da2932e59b98c1efa22be35`:
 
-Completion requires all of these to **actually execute green**:
+```text
+workflow: Identity Engine
+run_id: 31793702999
+identity-contract job: 94746021396
+identity-contract conclusion: failure
+identity-contract runner_id: 0
+identity-contract steps: []
+identity-quality: skipped
+identity-integration: skipped
+identity-benchmark: skipped
+```
+
+GitHub annotation:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+
+This is an **external GitHub Actions account/billing blocker**. The contract job received no runner and executed zero steps. Therefore no NODE-44 TypeScript typecheck/test, Python compile/test/Ruff/Pyright, integration suite, static validator, or benchmark actually ran on the hosted environment. This failure must not be interpreted as either a code failure or PASS.
+
+Completion still requires all of these to **actually execute green** after the runner/account condition is resolved:
 
 ```text
 identity-contract
@@ -90,8 +108,6 @@ identity-quality
 identity-integration
 identity-benchmark
 ```
-
-If GitHub Actions cannot start because of the account payment/spending-limit condition already observed on prior nodes, record the exact zero-step runner evidence as an **external CI blocker**. Do not mark the node PASS or COMPLETE.
 
 ## Current decision
 
