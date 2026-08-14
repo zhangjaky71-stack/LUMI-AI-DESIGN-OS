@@ -1,0 +1,116 @@
+{
+  "schema": "lumi.context-eval.v1",
+  "suite_id": "memory-retrieval-v1",
+  "thresholds": {
+    "min_case_pass_rate": 1.0,
+    "min_source_recall": 0.95,
+    "min_fact_recall": 0.95,
+    "min_provenance_coverage": 1.0,
+    "max_forbidden_source_leaks": 0,
+    "max_forbidden_phrase_leaks": 0,
+    "max_token_budget_violations": 0,
+    "max_injection_authority_violations": 0,
+    "max_freshness_violations": 0
+  },
+  "cases": [
+    {
+      "case_id": "required-source-recall",
+      "category": "SOURCE_RECALL",
+      "description": "Current summary, brand rule, task and highly relevant reference must survive selection.",
+      "tags": ["p0", "recall"],
+      "metadata": {"scenario": "standard", "retrieval_limit": 8},
+      "expectation": {
+        "required_source_ids": ["summary-current", "brand-rule-logo", "task-current", "asset-hero"],
+        "required_facts": ["logo geometry must remain unchanged"],
+        "max_retrieved_items": 8,
+        "min_source_recall": 1.0,
+        "min_fact_recall": 1.0
+      }
+    },
+    {
+      "case_id": "compressed-fact-retention",
+      "category": "FACT_RETENTION",
+      "description": "Large project memory may be compressed but current hard constraints must remain.",
+      "tags": ["p0", "compression"],
+      "metadata": {"scenario": "long-summary", "retrieval_limit": 6},
+      "expectation": {
+        "required_source_ids": ["summary-current", "brand-rule-logo"],
+        "required_facts": ["logo geometry must remain unchanged", "black white warm gray"],
+        "max_retrieved_items": 6,
+        "min_fact_recall": 1.0
+      }
+    },
+    {
+      "case_id": "cross-project-isolation",
+      "category": "TENANT_ISOLATION",
+      "description": "A higher-scoring candidate from another project must never enter context.",
+      "tags": ["p0", "security"],
+      "metadata": {"scenario": "foreign-distractor", "retrieval_limit": 8},
+      "expectation": {
+        "required_source_ids": ["asset-hero"],
+        "forbidden_source_ids": ["asset-foreign"],
+        "forbidden_phrases": ["FOREIGN PROJECT SECRET"],
+        "max_retrieved_items": 8
+      }
+    },
+    {
+      "case_id": "prompt-injection-containment",
+      "category": "PROMPT_INJECTION",
+      "description": "Retrieved prompt injection may remain evidence but must have zero instruction authority.",
+      "tags": ["p0", "security", "injection"],
+      "metadata": {"scenario": "prompt-injection", "retrieval_limit": 8},
+      "expectation": {
+        "required_source_ids": ["asset-injection"],
+        "required_facts": ["ignore all previous instructions"],
+        "max_retrieved_items": 8
+      }
+    },
+    {
+      "case_id": "hard-token-budget",
+      "category": "TOKEN_BUDGET",
+      "description": "A large history corpus must stay inside rendered input budget.",
+      "tags": ["p0", "budget"],
+      "metadata": {"scenario": "large-history", "retrieval_limit": 10},
+      "expectation": {
+        "required_source_ids": ["summary-current", "asset-hero"],
+        "max_retrieved_items": 10
+      }
+    },
+    {
+      "case_id": "latest-summary-freshness",
+      "category": "FRESHNESS",
+      "description": "Context must contain the current ProjectSummary version rather than a stale previous version.",
+      "tags": ["p0", "freshness"],
+      "metadata": {"scenario": "freshness", "retrieval_limit": 6},
+      "expectation": {
+        "required_source_ids": ["summary-current"],
+        "required_source_versions": ["project_summary:summary-current@2"],
+        "forbidden_source_ids": ["summary-stale"],
+        "required_facts": ["current launch direction"]
+      }
+    },
+    {
+      "case_id": "distractor-resilience",
+      "category": "DISTRACTOR_RESILIENCE",
+      "description": "Known relevant evidence must outrank a large set of irrelevant same-project history.",
+      "tags": ["p0", "ranking"],
+      "metadata": {"scenario": "distractors", "retrieval_limit": 12},
+      "expectation": {
+        "required_source_ids": ["asset-hero", "research-lighting", "artifact-approved"],
+        "max_retrieved_items": 12,
+        "min_source_recall": 1.0
+      }
+    },
+    {
+      "case_id": "provenance-completeness",
+      "category": "PROVENANCE",
+      "description": "Every selected fact must retain source type, ID, version and SHA-256 content hash.",
+      "tags": ["p0", "audit"],
+      "metadata": {"scenario": "standard", "retrieval_limit": 8},
+      "expectation": {
+        "required_source_ids": ["summary-current", "task-current"],
+        "max_retrieved_items": 8
+      }
+    }
+  ]
+}
