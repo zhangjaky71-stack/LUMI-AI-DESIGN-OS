@@ -46,8 +46,8 @@ Base: `node-47-image-edit-release`
 | Unsupported CROSSFADE fail-closed | compiler + test | Implemented V1 boundary |
 | PostgreSQL persistence | `0007_video_generation.sql` | Implemented |
 | 48-case synthetic matrix | conformance fixture | Implemented synthetic evidence |
-| Dependency-free planning benchmark | benchmark script | Implemented; hosted execution pending |
-| Dedicated four-stage CI | workflow | Implemented; hosted execution pending |
+| Dependency-free planning benchmark | benchmark script | Implemented; hosted runner blocked |
+| Dedicated four-stage CI | workflow | Implemented; hosted runner blocked |
 | Live provider visual-quality benchmark | provider benchmark report | **Pending** |
 
 ## Safety and correctness assertions
@@ -64,6 +64,7 @@ Base: `node-47-image-edit-release`
 10. FFmpeg execution receives typed argv and sandbox-resolved paths; no user-controlled shell command exists.
 11. Terminal provider-job rows are retained for crash-safe replay.
 12. Cost reconciliation happens before downstream acceptance and is idempotent by paid operation.
+13. Production video providers must return `PENDING` plus a provider job id from submit; synchronous terminal submit is rejected by the NODE-48 Model Gateway adapter so production execution always enters the persisted external-wait protocol before terminal processing.
 
 ## Synthetic evidence honesty
 
@@ -92,11 +93,50 @@ No live score is fabricated by NODE-48.
 
 ## Lockfile discipline
 
-`services/video-generation` introduces no external Python dependency and is not hand-added to the root workspace lock. Root `uv.lock` must remain unchanged. Dedicated CI runs it through the frozen root development environment plus explicit `PYTHONPATH`.
+`services/video-generation` introduces no external Python dependency and is not hand-added to the root workspace lock. Root `uv.lock` remains unchanged at SHA `43ca410851428ad00cd7e42ac57c2c12f1fb8666`. Dedicated CI runs it through the frozen root development environment plus explicit `PYTHONPATH`.
+
+## Hosted validation evidence — initial release HEAD
+
+Initial release HEAD:
+
+```text
+head_sha: 571af6adbb744a793163db850b9df9eda13665cb
+```
+
+NODE-48 workflow:
+
+```text
+workflow: Video Generation
+run_id: 31811017624
+video-generation-contract job_id: 94801382200
+conclusion: failure
+runner_id: 0
+steps: []
+video-generation-integration: skipped
+video-generation-quality: skipped
+video-generation-benchmark: skipped
+```
+
+Cross-node NODE-22 regression workflow, triggered because NODE-48 changes request-scoped routing gates:
+
+```text
+workflow: Model Gateway
+run_id: 31811017514
+model-gateway job_id: 94801381660
+conclusion: failure
+runner_id: 0
+steps: []
+```
+
+Both failed check runs carry the same GitHub annotation:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+
+This is an external GitHub Actions account/billing blocker. The runner never started, so there is no hosted evidence of a Python compile, architecture validator, pytest, Ruff, Pyright, PostgreSQL migration, integration regression, planning benchmark, or Model Gateway regression failure. It is also not PASS.
 
 ## Hosted validation requirement
 
-Required jobs:
+Required NODE-48 jobs:
 
 ```text
 video-generation-contract
@@ -104,6 +144,8 @@ video-generation-quality
 video-generation-integration
 video-generation-benchmark
 ```
+
+The cross-node `Model Gateway` regression job must also execute green because NODE-48 changes request-scoped provider routing filters.
 
 If GitHub returns the known account-level billing/spending-limit zero-step failure, record it as an external validation blocker. It is neither PASS nor an observed code/test failure.
 
@@ -114,4 +156,5 @@ If GitHub returns the known account-level billing/spending-limit zero-step failu
 Blocking completion evidence:
 
 1. hosted NODE-48 jobs must actually execute green;
-2. selected live video provider/model revisions need approved benchmark snapshots.
+2. cross-node Model Gateway regression must actually execute green;
+3. selected live video provider/model revisions need approved benchmark snapshots.
