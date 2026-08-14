@@ -1,18 +1,16 @@
 # NODE-42 — Artifact Engine Runtime
 
 > Phase: 5 Design Intelligence  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **IMPLEMENTED / VALIDATING / not COMPLETE**  
 > Priority: P0 / CORE  
-> Depends on: NODE-15, NODE-18, NODE-38  
-> Produces: Artifact/Version/Branch/Lineage/Provenance 服务、比较/恢复/分叉/GC
+> Depends on: NODE-15, NODE-18, NODE-38, NODE-41  
+> Produces: Artifact / Version / Branch / Lineage / Provenance / File / Export / GC runtime
 
----
+## Frozen boundary
 
-## 1. 目标
+All design outcomes are represented through stable `Artifact` identity and immutable `ArtifactVersion` history. NODE-42 consumes NODE-41 `CompiledSceneSnapshot.render_plan` and `provenance`; it does not reconstruct visual semantics from Pixi/browser state and does not introduce a second Design IR protocol.
 
-实现所有设计成果的不可变版本与血缘管理，使局部编辑、生成、导出、回滚、审批都围绕 ArtifactVersion 发生。
-
-## 2. Services
+## Implemented services
 
 ```text
 ArtifactService
@@ -21,146 +19,85 @@ BranchService
 LineageService
 ProvenanceService
 ArtifactFileService
+ExportService
 GarbageCollectionService
 ```
 
-## 3. Create Artifact
+Primary implementation evidence:
 
-创建逻辑作品 + main branch + v1可同 transaction完成。生成式任务可先创建 candidate Artifact/Version，成功后 READY。
+- `packages/artifact-sdk/src/types.ts`
+- `packages/artifact-sdk/src/engine.ts`
+- `packages/artifact-sdk/src/compiler-bridge.ts`
+- `packages/artifact-sdk/src/hashing.ts`
+- `packages/artifact-sdk/src/export.ts`
+- `packages/artifact-sdk/src/gc.ts`
+- `services/artifact-history/src/lumi_artifacts/history.py`
+- `services/artifact-history/src/lumi_artifacts/runtime.py`
+- `services/artifact-history/src/lumi_artifacts/storage.py`
+- `db/migrations/0001_artifact_engine.sql`
 
-## 4. Version Creation
+## Version and branch semantics
 
-输入：
+Version creation is append-only. `(organization_id, artifact_id, version_number)` is unique. Branch heads use expected-head compare-and-swap; a stale expected head is a conflict and must never fall back to blind overwrite.
 
-```text
-parent_version_id
-content/design_document_ref
-files[]
-provenance
-constraint_snapshot
-quality summary
-```
+Restore never moves a historical pointer backward. Restoring an older version creates a new DRAFT version at the current branch tip and records lineage back to the restored source.
 
-事务：
+## Approval
 
-```text
-verify parent/head policy
-→ create immutable version
-→ add lineage edges
-→ update branch head optimistic
-→ outbox event
-```
+`APPROVED` requires READY plus required validation evidence. Approval changes status/quality metadata only; the version content identity is immutable. Any subsequent edit creates a new DRAFT version.
 
-## 5. Branch / Fork
+## Provenance
+
+Artifact provenance records exact refs and NODE-41 compiler identity:
 
 ```text
-fork version v2
-→ branch alt-a base=v2 head=v2
-→ next edit creates alt-a:v3a
-```
-
-P0 branch name唯一于 artifact。
-
-## 6. Restore
-
-恢复旧版本不移动时间历史：
-
-```text
-restore(v2)
-→ copy logical content ref/snapshot
-→ create new head v7 derived_from v2
-```
-
-## 7. Compare
-
-结构化设计：semantic diff from NODE-38。
-
-Raster：生成 optional visual diff/overlay metrics。
-
-Video：metadata + keyframe/contact-sheet comparison P1。
-
-## 8. Provenance
-
-每 version 必须写 exact refs：
-
-```text
-agent_run/task/generation
-model/provider
-prompt hash/template version
-recipe/agent/skill versions
-input assets/artifacts
-compiler version
+agent_run / task / generation
+model / provider
+prompt hash / template version
+recipe / skill versions
+input assets / artifact versions
+constraint snapshot
 git sha
-constraints
+compiler version
+document/schema/document version
+resource + style token versions
+font versions
+compile hash
 ```
 
-缺失关键 provenance 时 status不能成为 fully traceable；记录 completeness score/status。
+`compilerProvenanceFromSnapshot()` accepts the actual NODE-41 `CompiledSceneSnapshot` type and fails closed when `compile_hash` is absent.
 
-## 9. Approval Integration
+## File attach and storage
 
-Version `APPROVED` 后 immutable；后续 edit 创建新 DRAFT。Approval 记录 exact version id，不能指 Artifact floating head。
+Files are attached only after storage HEAD/stat proves the durable object exists and checksum SHA-256, size and MIME match. `storage_key` is a durable object key, never a signed URL. Runtime presigned URLs are excluded from stable hashing.
 
-## 10. File Attach
+## Export
 
-文件先 storage verified，后 attach。DB metadata与Object Storage checksum一致；禁止 attach不存在 object。
+`ArtifactExportRegistry` freezes renderer-neutral PNG/JPEG/PDF/SVG adapter contracts. NODE-42 owns export orchestration, manifest/provenance/file semantics and storage verification; actual encoder implementations remain replaceable renderer/export infrastructure and are not faked by this node.
 
-## 11. Duplicate
+## GC
 
-相同 content hash 可复用 storage blob，但租户/rights metadata仍独立。跨 tenant 不因hash自动共享可访问 URL。
+GC follows mark → retention delay → graph/legal-hold recheck → delete. Branch heads/bases, READY/APPROVED versions, retention and legal holds remain live. Shared content-addressed blobs are removed only after the final reference disappears.
 
-## 12. GC
+## Database
 
-两阶段：
+`db/migrations/0001_artifact_engine.sql` creates the NODE-15 frozen tables:
 
-```text
-mark unreferenced
-→ retention delay
-→ recheck graph/legal hold
-→ delete object
-→ record audit
-```
+- `artifacts`
+- `artifact_versions`
+- `artifact_branches`
+- `artifact_edges`
+- `artifact_files`
+- `artifact_provenance`
 
-Versions本身按产品 retention，不能为了省存储立即抹历史。
+Organization-aware composite foreign keys, version/branch uniqueness, hash checks, durable storage-key checks and CAS guidance are encoded in the migration.
 
-## 13. APIs
+## Validation
 
-```text
-GET /artifacts/{id}
-GET /artifacts/{id}/versions
-GET /artifact-versions/{id}
-GET /artifact-versions/{id}/lineage
-POST /artifact-versions/{id}/fork
-POST /artifact-versions/{id}/restore
-POST /artifact-versions/{id}/approve
-GET /artifact-versions/{a}/compare/{b}
-```
+Tests cover branch concurrency, restore, monotonic version numbers, approval gating, lineage safety, cross-tenant isolation, verified storage attachment, deterministic manifest identity, compiler provenance and GC live-ref protection. Existing NODE-15 Python lineage/rights/GC tests remain part of the regression suite.
 
-## 14. Tests
+Dedicated CI: `.github/workflows/artifact-engine.yml`.
 
-- concurrent branch head；
-- restore；
-- fork；
-- multi-parent lineage；
-- approved immutability；
-- cross-tenant hash reuse isolation；
-- missing storage object；
-- GC live ref保护。
-
-## 15. 验收标准
-
-- [ ] 全部成果可形成 ArtifactVersion。
-- [ ] Version immutable。
-- [ ] fork/restore/compare可用。
-- [ ] lineage/provenance可查询。
-- [ ] approved version不覆盖。
-- [ ] GC安全。
-
-## 16. Definition of Done
-
-```text
-artifact engine implemented
-+ version concurrency tests green
-+ provenance/GC tests green
-```
+NODE-42 becomes COMPLETE only when hosted `artifact-contract`, `artifact-quality`, `artifact-integration`, and `artifact-benchmark` execute green. External runner/billing failures are recorded as blockers, not PASS or code failures.
 
 下一节点：NODE-43 Brand Rules Engine。

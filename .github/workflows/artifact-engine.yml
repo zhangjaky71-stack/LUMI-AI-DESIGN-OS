@@ -1,0 +1,86 @@
+name: Artifact Engine
+
+on:
+  pull_request:
+    paths:
+      - "packages/artifact-sdk/**"
+      - "packages/canvas-sdk/**"
+      - "services/artifact-history/**"
+      - "db/migrations/0001_artifact_engine.sql"
+      - "scripts/validate_artifact_engine.py"
+      - "docs/runtime/ARTIFACT-ENGINE-V1.md"
+      - "docs/nodes/NODE-42-ARTIFACT-ENGINE.md"
+      - "reports/nodes/NODE-42/**"
+      - ".github/workflows/artifact-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  artifact-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Validate architecture
+        run: python scripts/validate_artifact_engine.py
+      - name: Typecheck Artifact SDK
+        run: pnpm --filter @lumi/artifact-sdk typecheck
+
+  artifact-quality:
+    needs: artifact-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run Artifact SDK tests
+        run: pnpm --filter @lumi/artifact-sdk test
+      - name: Run Python Artifact history tests
+        run: PYTHONPATH=services/artifact-history/src python -m pytest services/artifact-history/tests
+
+  artifact-integration:
+    needs: artifact-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Verify NODE-41 to NODE-42 compiler bridge tests
+        run: pnpm --filter @lumi/artifact-sdk exec vitest run src/artifact-engine.test.ts
+
+  artifact-benchmark:
+    needs: artifact-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run deterministic Artifact SDK conformance workload
+        run: pnpm --filter @lumi/artifact-sdk test
