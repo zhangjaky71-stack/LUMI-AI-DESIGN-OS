@@ -35,6 +35,7 @@ from .identity import (
     Workspace,
     WorkspaceMember,
 )
+from .memory import MemoryCandidateModel, MemoryRecordModel
 from .model_registry import (
     ModelBenchmarkScore,
     ModelCapabilityClaim,
@@ -117,6 +118,8 @@ __all__ = [
     "Generation",
     "IdempotencyOperation",
     "InboxEvent",
+    "MemoryCandidateModel",
+    "MemoryRecordModel",
     "ModelBenchmarkScore",
     "ModelCapabilityClaim",
     "ModelPricingSnapshot",
