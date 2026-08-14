@@ -15,15 +15,24 @@ function compilerIdentity(value: CompilerArtifactProvenance | undefined): unknow
 }
 
 export function artifactStableManifest(
-  version: Pick<ArtifactVersion, "artifact_id" | "schema_version" | "content_hash" | "constraint_snapshot_hash">,
+  version: Pick<ArtifactVersion, "artifact_id" | "schema_version" | "content_hash" | "constraint_snapshot_hash" | "brand_rule_set_version">,
   provenance: ArtifactProvenance,
   files: readonly ArtifactFile[],
 ): unknown {
+  const brandRuleSetVersion = provenance.brand_rule_set_version ?? version.brand_rule_set_version ?? null;
+  if (
+    provenance.brand_rule_set_version !== undefined
+    && version.brand_rule_set_version != null
+    && provenance.brand_rule_set_version !== version.brand_rule_set_version
+  ) {
+    throw new Error("brand rule set version mismatch between ArtifactVersion and provenance");
+  }
   return {
     artifact_id: version.artifact_id,
     schema_version: version.schema_version,
     content_hash: version.content_hash,
     constraint_snapshot_hash: version.constraint_snapshot_hash,
+    brand_rule_set_version: brandRuleSetVersion,
     compiler: compilerIdentity(provenance.compiler),
     code_git_sha: provenance.code_git_sha,
     prompt_hash: provenance.prompt_hash ?? null,
@@ -49,7 +58,7 @@ export function artifactStableManifest(
 }
 
 export async function artifactManifestSha256(
-  version: Pick<ArtifactVersion, "artifact_id" | "schema_version" | "content_hash" | "constraint_snapshot_hash">,
+  version: Pick<ArtifactVersion, "artifact_id" | "schema_version" | "content_hash" | "constraint_snapshot_hash" | "brand_rule_set_version">,
   provenance: ArtifactProvenance,
   files: readonly ArtifactFile[],
 ): Promise<string> {
