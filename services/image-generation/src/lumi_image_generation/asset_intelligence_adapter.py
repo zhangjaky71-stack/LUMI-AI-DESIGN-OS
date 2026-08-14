@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from typing import cast
+
 from lumi_asset_intelligence.model import (
     AccessScope,
     AssetIndexRepository,
     AssetSearchFilters,
+    Rights as AssetRights,
 )
 
 from .model import AuthorizedReference, ImageGenerationSpec, ImageReference
@@ -36,10 +39,13 @@ class AssetIntelligenceReferenceAuthorizer:
     ) -> tuple[AuthorizedReference, ...]:
         if not references:
             return ()
-        allowed_rights = (
-            ("USER_OWNED", "LICENSED")
-            if self.require_commercial_rights
-            else ("USER_OWNED", "LICENSED", "UNKNOWN")
+        allowed_rights = cast(
+            tuple[AssetRights, ...],
+            (
+                ("USER_OWNED", "LICENSED")
+                if self.require_commercial_rights
+                else ("USER_OWNED", "LICENSED", "UNKNOWN")
+            ),
         )
         scope = AccessScope(
             organization_id=spec.organization_id,
