@@ -1,5 +1,6 @@
 import { canonicalSha256, canonicalStringify } from "../../design-ir/src/index";
 import type { ExportFileRecord, ExportManifest, ExportSourceSnapshot, ExportSpec } from "./export-engine-types";
+import { assertNoSensitiveExportMetadata } from "./export-security";
 
 function semanticSpec(spec: ExportSpec): unknown {
   return {
@@ -39,6 +40,9 @@ export async function exportFingerprint(source: ExportSourceSnapshot, spec: Expo
   if (source.design_document_version_id !== spec.design_document_version_id) {
     throw new Error("EXPORT_SOURCE_DESIGN_VERSION_MISMATCH");
   }
+  assertNoSensitiveExportMetadata(source.design_document, "$.design_document");
+  assertNoSensitiveExportMetadata(source.rights_summary, "$.rights_summary");
+  if (source.project_snapshot) assertNoSensitiveExportMetadata(source.project_snapshot, "$.project_snapshot");
   return canonicalSha256({
     export_engine: "1.0.0",
     source: {
@@ -56,6 +60,7 @@ export async function exportFingerprint(source: ExportSourceSnapshot, spec: Expo
 export async function exportManifestHash(
   manifest: Omit<ExportManifest, "manifest_sha256">,
 ): Promise<string> {
+  assertNoSensitiveExportMetadata(manifest, "$.manifest");
   return canonicalSha256(manifest);
 }
 
