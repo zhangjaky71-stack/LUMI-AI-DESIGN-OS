@@ -43,10 +43,7 @@ class StaticModelPolicyResolver:
         self._policies = {policy.organization_id: policy for policy in policies}
 
     def resolve(self, organization_id: UUID) -> OrganizationModelPolicy:
-        return self._policies.get(
-            organization_id,
-            OrganizationModelPolicy(organization_id=organization_id),
-        )
+        return self._policies.get(organization_id, OrganizationModelPolicy(organization_id=organization_id))
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +69,20 @@ def _required_capabilities(request: ModelRequest) -> tuple[Capability, ...]:
         if capability not in capabilities:
             capabilities.append(capability)
     return tuple(capabilities)
+
+
+def _provider_key_filter(request: ModelRequest, field: str) -> frozenset[str]:
+    raw = request.constraints.get(field)
+    if raw is None:
+        return frozenset()
+    if not isinstance(raw, list):
+        raise ValueError(f"MODEL_{field.upper()}_INVALID")
+    values: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str) or not item or len(item) > 512 or ":" not in item:
+            raise ValueError(f"MODEL_{field.upper()}_ENTRY_INVALID")
+        values.add(item)
+    return frozenset(values)
 
 
 class ModelRouter:
@@ -103,41 +114,26 @@ class ModelRouter:
             except ProviderInvocationError as exc:
                 rejected[key] = (f"PROVIDER_VALIDATE:{exc.category.value}",)
                 continue
-            budget_reasons = self._budget_rejections(
-                request,
-                policy,
-                estimate.amount_usd,
-            )
+            budget_reasons = self._budget_rejections(request, policy, estimate.amount_usd)
             if budget_reasons:
                 rejected[key] = tuple(budget_reasons)
                 continue
             reason_codes = self._reason_codes(request, adapter)
             score = self._score(request, adapter, estimate.amount_usd)
-            accepted.append(
-                _EvaluatedCandidate(
-                    adapter=adapter,
-                    candidate=RouteCandidate(
-                        provider=adapter.descriptor.provider,
-                        model=adapter.descriptor.model,
-                        estimate=estimate,
-                        score=score,
-                        reason_codes=tuple(reason_codes),
-                    ),
-                )
-            )
+            accepted.append(_EvaluatedCandidate(
+                adapter=adapter,
+                candidate=RouteCandidate(
+                    provider=adapter.descriptor.provider,
+                    model=adapter.descriptor.model,
+                    estimate=estimate,
+                    score=score,
+                    reason_codes=tuple(reason_codes),
+                ),
+            ))
         if not accepted:
-            details = ";".join(
-                f"{key}={','.join(reasons)}"
-                for key, reasons in sorted(rejected.items())
-            )
+            details = ";".join(f"{key}={','.join(reasons)}" for key, reasons in sorted(rejected.items()))
             raise NoRouteError(f"no eligible model route: {details}"[:2000])
-        accepted.sort(
-            key=lambda item: (
-                -item.candidate.score,
-                item.candidate.provider,
-                item.candidate.model,
-            )
-        )
+        accepted.sort(key=lambda item: (-item.candidate.score, item.candidate.provider, item.candidate.model))
         return RoutingDecision(
             request_id=request.request_id,
             candidates=tuple(item.candidate for item in accepted),
@@ -158,6 +154,12 @@ class ModelRouter:
         missing = [capability.value for capability in required if capability not in descriptor.capabilities]
         if missing:
             reasons.append("ADDITIONAL_CAPABILITY_MISMATCH:" + ",".join(sorted(missing)))
+        allowed_keys = _provider_key_filter(request, "allowed_provider_keys")
+        excluded_keys = _provider_key_filter(request, "excluded_provider_keys")
+        if allowed_keys and descriptor.key not in allowed_keys:
+            reasons.append("REQUEST_PROVIDER_KEY_NOT_ALLOWED")
+        if descriptor.key in excluded_keys:
+            reasons.append("REQUEST_PROVIDER_KEY_EXCLUDED")
         if descriptor.quality_score < quality_threshold(request.quality_profile):
             reasons.append("QUALITY_BELOW_THRESHOLD")
         if not latency_allowed(request.latency_profile, descriptor.latency_class):
@@ -169,12 +171,10 @@ class ModelRouter:
         if descriptor.key in policy.denied_models or descriptor.model in policy.denied_models:
             reasons.append("ORG_MODEL_DENIED")
         requested_region = request.constraints.get("region")
-        if requested_region and descriptor.regions:
-            if requested_region not in descriptor.regions:
-                reasons.append("REGION_UNAVAILABLE")
-        if policy.allowed_regions and descriptor.regions:
-            if not descriptor.regions.intersection(policy.allowed_regions):
-                reasons.append("ORG_REGION_POLICY_MISMATCH")
+        if requested_region and descriptor.regions and requested_region not in descriptor.regions:
+            reasons.append("REGION_UNAVAILABLE")
+        if policy.allowed_regions and descriptor.regions and not descriptor.regions.intersection(policy.allowed_regions):
+            reasons.append("ORG_REGION_POLICY_MISMATCH")
         if not self.health.healthy(descriptor.provider, descriptor.model):
             reasons.append("PROVIDER_UNHEALTHY")
         return reasons
@@ -185,14 +185,7 @@ class ModelRouter:
         policy: OrganizationModelPolicy,
         amount_usd: Decimal | None,
     ) -> list[str]:
-        limits = [
-            limit
-            for limit in (
-                request.budget_limit_usd,
-                policy.max_estimated_request_usd,
-            )
-            if limit is not None
-        ]
+        limits = [limit for limit in (request.budget_limit_usd, policy.max_estimated_request_usd) if limit is not None]
         if not limits:
             return []
         if amount_usd is None:
@@ -201,11 +194,7 @@ class ModelRouter:
             return ["BUDGET_EXCEEDED"]
         return []
 
-    def _reason_codes(
-        self,
-        request: ModelRequest,
-        adapter: ProviderAdapter,
-    ) -> list[str]:
+    def _reason_codes(self, request: ModelRequest, adapter: ProviderAdapter) -> list[str]:
         descriptor = adapter.descriptor
         reasons = [
             "CAPABILITY_MATCH",
@@ -217,6 +206,8 @@ class ModelRouter:
         ]
         if _required_capabilities(request):
             reasons.append("ADDITIONAL_CAPABILITIES_MATCH")
+        if _provider_key_filter(request, "allowed_provider_keys"):
+            reasons.append("REQUEST_PROVIDER_ALLOWLIST_MATCH")
         preferred_provider = request.routing_hints.get("preferred_provider")
         preferred_model = request.routing_hints.get("preferred_model")
         if preferred_provider == descriptor.provider:
@@ -225,12 +216,7 @@ class ModelRouter:
             reasons.append("PREFERRED_MODEL")
         return reasons
 
-    def _score(
-        self,
-        request: ModelRequest,
-        adapter: ProviderAdapter,
-        amount_usd: Decimal | None,
-    ) -> int:
+    def _score(self, request: ModelRequest, adapter: ProviderAdapter, amount_usd: Decimal | None) -> int:
         descriptor = adapter.descriptor
         score = descriptor.quality_score * 10
         latency_bonus = {
