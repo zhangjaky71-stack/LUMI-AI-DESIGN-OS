@@ -3,6 +3,7 @@ import type {
   ConstraintOverrideToken,
   DesignConstraint,
 } from "../../design-constraints/src/index";
+import type { CanvasAssetResidencyPort } from "./asset-residency";
 import {
   fitWorldRect,
   panCamera,
@@ -24,6 +25,7 @@ export interface CanvasControllerOptions {
   readonly initial_camera?: CameraState;
   readonly initial_viewport?: CanvasViewport;
   readonly renderer?: CanvasRendererAdapter;
+  readonly asset_residency?: CanvasAssetResidencyPort;
   readonly request_frame?: (callback: FrameRequestCallback) => number;
   readonly cancel_frame?: (id: number) => void;
 }
@@ -59,6 +61,7 @@ export class CanvasController {
   readonly #spatial = new CanvasSpatialIndex();
   readonly #commands: CanvasCommandBus;
   readonly #renderer?: CanvasRendererAdapter;
+  readonly #assetResidency?: CanvasAssetResidencyPort;
   readonly #requestFrame: (callback: FrameRequestCallback) => number;
   readonly #cancelFrame: (id: number) => void;
   #constraints: readonly DesignConstraint[] = [];
@@ -74,9 +77,11 @@ export class CanvasController {
     this.#camera = options.initial_camera ?? { x: 0, y: 0, zoom: 1 };
     this.#viewport = options.initial_viewport ?? { width: 1280, height: 720 };
     this.#renderer = options.renderer;
+    this.#assetResidency = options.asset_residency;
     this.#requestFrame =
       options.request_frame ?? ((callback) => globalThis.requestAnimationFrame(callback));
     this.#cancelFrame = options.cancel_frame ?? ((id) => globalThis.cancelAnimationFrame(id));
+    this.#assetResidency?.setInvalidator?.(() => this.scheduleRender());
   }
 
   snapshot(): CanvasRuntimeSnapshot {
@@ -288,6 +293,7 @@ export class CanvasController {
         parentId = this.#scene.nodes.get(parentId)?.parent_id ?? null;
       }
     }
+    this.#assetResidency?.update(this.#scene, visible, this.#camera.zoom);
     return this.#renderer.sync(this.#scene, visible);
   }
 
@@ -304,6 +310,7 @@ export class CanvasController {
       this.#cancelFrame(this.#scheduledFrame);
       this.#scheduledFrame = null;
     }
+    this.#assetResidency?.destroy();
     this.#renderer?.destroy();
   }
 
