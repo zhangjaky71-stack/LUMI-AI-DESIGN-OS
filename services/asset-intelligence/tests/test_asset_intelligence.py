@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -28,6 +29,7 @@ from lumi_asset_intelligence.model import (
     DuplicatePolicy,
     MetadataField,
     OcrBlock,
+    Rights,
     UsageSignal,
     VerifiedReadyAsset,
 )
@@ -38,7 +40,7 @@ from lumi_asset_intelligence.search import AssetRankingProfile, AssetSearchEngin
 from lumi_asset_intelligence.service import AssetIntelligenceService, commercial_search_request
 
 ROOT = Path(__file__).resolve().parents[3]
-FIXTURE = json.loads(
+FIXTURE: dict[str, Any] = json.loads(
     (ROOT / "fixtures/asset-intelligence/node-45-conformance.json").read_text(encoding="utf-8")
 )
 ORG_A = "00000000-0000-0000-0000-00000000000a"
@@ -75,7 +77,7 @@ def _bundle(org: str) -> AnalyzerBundleSnapshot:
     return AnalyzerBundleSnapshot(analyzer_version="analyzer-bundle-v1", embedding=embedding)
 
 
-def _asset(raw: dict[str, object]) -> VerifiedReadyAsset:
+def _asset(raw: dict[str, Any]) -> VerifiedReadyAsset:
     return VerifiedReadyAsset(
         asset_id=str(raw["asset_id"]),
         asset_version="v1",
@@ -86,13 +88,17 @@ def _asset(raw: dict[str, object]) -> VerifiedReadyAsset:
         mime_type="image/png",
         media_type="IMAGE",
         size_bytes=1024,
-        rights=str(raw["rights"]),  # type: ignore[arg-type]
+        rights=cast(Rights, str(raw["rights"])),
         commercial_use_allowed=bool(raw["commercial_use_allowed"]),
         training_authorized=False,
         permission_tags=tuple(str(item) for item in raw.get("permission_tags", [])),
         preview_ref=f"preview:{raw['asset_id']}",
         technical_metadata={"width": 1200, "height": 1200, "color_space": "sRGB"},
-        user_metadata={"campaign": "manual-approved"} if str(raw["asset_id"]).endswith("101") else {},
+        user_metadata={
+            "campaign": "manual-approved"
+        }
+        if str(raw["asset_id"]).endswith("101")
+        else {},
     )
 
 
@@ -104,22 +110,34 @@ def _outputs() -> tuple[FixtureAnalyzer, ...]:
     for raw in FIXTURE["assets"]:
         asset_id = str(raw["asset_id"])
         visual[asset_id] = AnalyzerOutput(
-            metadata=(MetadataField("campaign", "auto-derived", "AUTO", 0.7, "fixture", "v1"),),
+            metadata=(
+                MetadataField("campaign", "auto-derived", "AUTO", 0.7, "fixture", "v1"),
+            ),
             semantic_description=str(raw["description"]),
             visual_tags=tuple(str(item) for item in raw["tags"]),
         )
-        blocks = tuple(
-            OcrBlock(
-                text=str(item["text"]),
-                confidence=float(item["confidence"]),
-                bbox=BoundingBox(*[float(value) for value in item["bbox"]]),
-                language="en",
-                analyzer_id="fixture-ocr",
-                analyzer_version="analyzer-bundle-v1",
+        blocks: list[OcrBlock] = []
+        for item in raw["ocr"]:
+            bbox = item["bbox"]
+            blocks.append(
+                OcrBlock(
+                    text=str(item["text"]),
+                    confidence=float(item["confidence"]),
+                    bbox=BoundingBox(
+                        x=float(bbox[0]),
+                        y=float(bbox[1]),
+                        width=float(bbox[2]),
+                        height=float(bbox[3]),
+                    ),
+                    language="en",
+                    analyzer_id="fixture-ocr",
+                    analyzer_version="analyzer-bundle-v1",
+                )
             )
-            for item in raw["ocr"]
+        ocr[asset_id] = AnalyzerOutput(
+            ocr_blocks=tuple(blocks),
+            language="en" if blocks else None,
         )
-        ocr[asset_id] = AnalyzerOutput(ocr_blocks=blocks, language="en" if blocks else None)
         embedding[asset_id] = AnalyzerOutput(
             embedding=tuple(float(value) for value in raw["embedding"])
         )
@@ -185,6 +203,10 @@ class FixtureQueryEmbedder:
         return (1.0, 0.0, 0.0, 0.0)
 
 
+class BadVersionQueryEmbedder(FixtureQueryEmbedder):
+    model_version = "2099-01-01"
+
+
 def _scope(*, permissions: tuple[str, ...] = ()) -> AccessScope:
     return AccessScope(organization_id=ORG_A, permission_tags=permissions)
 
@@ -209,7 +231,10 @@ def test_duplicate_tiers_remain_distinct() -> None:
     exact = repository.get_analysis(ORG_A, str(FIXTURE["assets"][1]["asset_id"]), index.index_id)
     near = repository.get_analysis(ORG_A, str(FIXTURE["assets"][2]["asset_id"]), index.index_id)
     semantic = repository.get_analysis(ORG_A, str(FIXTURE["assets"][3]["asset_id"]), index.index_id)
-    assert source and exact and near and semantic
+    assert source is not None
+    assert exact is not None
+    assert near is not None
+    assert semantic is not None
     policy = DuplicatePolicy("dup-policy-v1", perceptual_max_hamming=4, semantic_similarity_floor=0.90)
 
     assert {item.tier for item in classify_similarity(source, exact, policy)} == {
@@ -262,7 +287,12 @@ def test_permission_scope_can_admit_private_asset_without_cross_tenant_leak() ->
 
 def test_commercial_search_excludes_unknown_rights() -> None:
     _, _, _, service, index, _ = _runtime()
-    base = AssetSearchRequest(scope=_scope(), query="black coffee cup", mode="SEMANTIC")
+    base = AssetSearchRequest(
+        scope=_scope(),
+        query="black coffee cup",
+        mode="SEMANTIC",
+        filters=AssetSearchFilters(media_types=("IMAGE",)),
+    )
     request = commercial_search_request(base)
     hits = service.search(request, index, query_embedder=FixtureQueryEmbedder())
     ids = {hit.asset_id for hit in hits}
@@ -293,7 +323,12 @@ def test_usage_signal_changes_ranking_without_granting_training_rights() -> None
 
 def test_agent_resolver_is_explainable_and_requires_confirmation() -> None:
     _, _, _, service, index, _ = _runtime()
-    request = AssetSearchRequest(scope=_scope(), query="black coffee cup", mode="HYBRID", limit=3)
+    request = AssetSearchRequest(
+        scope=_scope(),
+        query="black coffee cup",
+        mode="HYBRID",
+        limit=3,
+    )
     result = service.resolve_for_agent(request, index, query_embedder=FixtureQueryEmbedder())
     assert result.requires_agent_confirmation is True
     assert result.candidates
@@ -348,15 +383,17 @@ def test_reindex_requires_compare_and_audited_switch() -> None:
 def test_query_embedding_model_upgrade_cannot_mix_spaces() -> None:
     _, _, _, _, index, _ = _runtime()
     request = AssetSearchRequest(scope=_scope(), query="coffee", mode="SEMANTIC")
-    bad = FixtureQueryEmbedder()
-    object.__setattr__(bad, "model_version", "2099-01-01")
     with pytest.raises(ValueError, match="QUERY_EMBEDDING_MODEL_VERSION_MISMATCH"):
-        attach_query_embedding(request, index, bad)
+        attach_query_embedding(request, index, BadVersionQueryEmbedder())
 
 
 def test_identity_adapter_exposes_evidence_not_identity_score() -> None:
     repository, _, _, _, index, _ = _runtime()
-    record = repository.get_analysis(ORG_A, str(FIXTURE["assets"][0]["asset_id"]), index.index_id)
+    record = repository.get_analysis(
+        ORG_A,
+        str(FIXTURE["assets"][0]["asset_id"]),
+        index.index_id,
+    )
     assert record is not None
     evidence = identity_evidence_from_analysis(record)
     assert evidence.asset_version == "v1"
