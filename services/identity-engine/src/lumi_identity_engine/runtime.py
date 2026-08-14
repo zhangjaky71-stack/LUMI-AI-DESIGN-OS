@@ -154,7 +154,7 @@ def _assert_face_privacy(
         raise ValueError("FACE_EXPLICIT_CONSENT_REQUIRED")
     if not face_policy.purpose.strip():
         raise ValueError("FACE_PROCESSING_PURPOSE_REQUIRED")
-    if face_policy.persistent_biometric_index is not False:
+    if face_policy.persistent_biometric_index:
         raise ValueError("PERSISTENT_FACE_INDEX_FORBIDDEN")
 
 
