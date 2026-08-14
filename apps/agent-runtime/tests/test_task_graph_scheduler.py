@@ -69,18 +69,13 @@ class DurableSchedulerTests(unittest.IsolatedAsyncioTestCase):
         graph_id = uuid4()
         first_id, second_id = uuid4(), uuid4()
         rows = (
-            row(
-                graph_id=graph_id,
-                task_id=first_id,
-                status="SUCCEEDED",
-                output={"approved": True},
-            ),
+            row(graph_id=graph_id, task_id=first_id, status="SUCCEEDED"),
             row(
                 graph_id=graph_id,
                 task_id=second_id,
                 status="PENDING",
                 depends_on=(first_id,),
-                condition=f"steps.{first_id}.approved == True",
+                condition="inputs.enabled == True",
             ),
         )
         store = FakeDurableStore(rows)
@@ -89,6 +84,7 @@ class DurableSchedulerTests(unittest.IsolatedAsyncioTestCase):
             graph_id,
             worker_id="scheduler-test",
             now=datetime(2026, 8, 14, tzinfo=UTC),
+            condition_context={"inputs": {"enabled": True}},
         )
         self.assertTrue(store.reclaimed)
         self.assertTrue(store.claimed)
