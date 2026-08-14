@@ -1,0 +1,98 @@
+{
+  "fixture_version": "node-46-conformance-v1",
+  "notice": "Synthetic orchestration fixture. It validates contracts, security and deterministic control flow; it is not live image-model quality evidence.",
+  "modes": [
+    "TEXT_TO_IMAGE",
+    "REFERENCE_TO_IMAGE",
+    "PRODUCT_SCENE",
+    "STYLE_REFERENCE",
+    "TRANSPARENT_ASSET",
+    "BACKGROUND_GENERATION",
+    "COMPOSITION_EXPLORATION"
+  ],
+  "reference_roles": ["IDENTITY", "STYLE", "COMPOSITION", "CONTENT"],
+  "base_spec": {
+    "organization_id": "00000000-0000-0000-0000-000000000001",
+    "project_id": "00000000-0000-0000-0000-000000000002",
+    "task_id": "00000000-0000-0000-0000-000000000003",
+    "operation_id": "00000000-0000-0000-0000-000000000004",
+    "purpose": "product campaign visual",
+    "mode": "PRODUCT_SCENE",
+    "prompt_compilation_ref": "prompt-compile:fixture:v1",
+    "aspect_ratio": "1:1",
+    "target_width": 1024,
+    "target_height": 1024,
+    "variant_count": 4,
+    "quality_profile": "HIGH",
+    "budget_limit_usd": "0.025",
+    "output_format": "PNG"
+  },
+  "references": [
+    {
+      "asset_id": "00000000-0000-0000-0000-000000000101",
+      "asset_version": "v1",
+      "role": "IDENTITY",
+      "source": "USER_EXPLICIT",
+      "rights": "USER_OWNED",
+      "commercial_use_allowed": true,
+      "expected": "ALLOWED"
+    },
+    {
+      "asset_id": "00000000-0000-0000-0000-000000000102",
+      "asset_version": "v1",
+      "role": "STYLE",
+      "source": "ASSET_RESOLVER",
+      "rights": "LICENSED",
+      "commercial_use_allowed": true,
+      "expected": "ALLOWED"
+    },
+    {
+      "asset_id": "00000000-0000-0000-0000-000000000103",
+      "asset_version": "v1",
+      "role": "CONTENT",
+      "source": "ASSET_RESOLVER",
+      "rights": "UNKNOWN",
+      "commercial_use_allowed": false,
+      "expected_commercial": "DENIED"
+    }
+  ],
+  "budget_cases": [
+    {
+      "requested_variants": 4,
+      "budget_usd": "0.025",
+      "estimated_cost_per_variant_usd": "0.01",
+      "expected_selected": 2,
+      "reason": "VARIANT_COUNT_REDUCED_FOR_BUDGET"
+    },
+    {
+      "requested_variants": 1,
+      "budget_usd": "0.005",
+      "estimated_cost_per_variant_usd": "0.01",
+      "expected_error": "GENERATION_BUDGET_INSUFFICIENT_FOR_ONE_VARIANT"
+    }
+  ],
+  "provider_cases": [
+    {
+      "name": "rate-limit-fallback",
+      "primary_error": "RATE_LIMIT",
+      "delivery_state": "NOT_ACCEPTED",
+      "expected_fallback": true
+    },
+    {
+      "name": "ambiguous-paid-outcome",
+      "primary_error": "TIMEOUT",
+      "delivery_state": "UNKNOWN",
+      "expected_fallback": false,
+      "expected_reconciliation": true
+    }
+  ],
+  "quality_benchmark_profiles": [
+    "chinese_poster_text_fidelity",
+    "product_consistency",
+    "brand_style",
+    "multiple_aspect_ratios",
+    "transparent_asset",
+    "cost_latency",
+    "fallback"
+  ]
+}
