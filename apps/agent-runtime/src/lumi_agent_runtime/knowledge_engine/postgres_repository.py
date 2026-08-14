@@ -107,30 +107,8 @@ class PostgresKnowledgeRepositorySession:
         include_organization_scope: bool,
     ) -> tuple[KnowledgeChunk, ...]:
         rows = await self.connection.fetch(
-            """
-            SELECT
-                c.*,
-                d.source_type AS d_source_type,
-                d.source_id AS d_source_id,
-                d.source_version AS d_source_version,
-                d.source_hash AS d_source_hash,
-                d.title AS d_title,
-                d.source_uri AS d_source_uri,
-                d.observed_at AS d_observed_at,
-                d.source_updated_at AS d_source_updated_at,
-                d.trust AS d_trust
-            FROM knowledge_chunks c
-            JOIN knowledge_documents d ON d.id=c.document_id
-            WHERE d.organization_id=$1
-              AND d.status='READY'
-              AND (
-                    ($2::uuid IS NOT NULL AND d.project_id=$2)
-                    OR (
-                        $3::boolean
-                        AND d.project_id IS NULL
-                        AND d.permission_scope='ORGANIZATION'
-                    )
-              )
+            _SCOPED_CHUNK_SELECT
+            + """
             ORDER BY d.updated_at DESC, d.id, c.ordinal
             """,
             organization_id,
@@ -138,6 +116,86 @@ class PostgresKnowledgeRepositorySession:
             include_organization_scope,
         )
         return tuple(_chunk(row) for row in rows)
+
+    async def search_ready_chunks(
+        self,
+        *,
+        organization_id: UUID,
+        project_id: UUID | None,
+        include_organization_scope: bool,
+        query_texts: tuple[str, ...],
+        query_embedding: tuple[float, ...] | None,
+        query_embedding_space_id: str | None,
+        limit: int,
+    ) -> tuple[KnowledgeChunk, ...]:
+        if not 1 <= limit <= 400:
+            raise ValueError("KNOWLEDGE_CANDIDATE_LIMIT_INVALID")
+        selected: dict[UUID, Any] = {}
+        branch_limit = max(16, min(limit, 160))
+
+        for raw_query in query_texts[:4]:
+            query_text = raw_query.strip()
+            if not query_text:
+                continue
+            rows = await self.connection.fetch(
+                _SCOPED_CHUNK_SELECT
+                + """
+                  AND c.search_tsv @@ websearch_to_tsquery('simple', $4)
+                ORDER BY
+                    ts_rank_cd(
+                        c.search_tsv,
+                        websearch_to_tsquery('simple', $4)
+                    ) DESC,
+                    d.updated_at DESC,
+                    c.ordinal
+                LIMIT $5
+                """,
+                organization_id,
+                project_id,
+                include_organization_scope,
+                query_text,
+                branch_limit,
+            )
+            for row in rows:
+                selected.setdefault(row["id"], row)
+
+        if query_embedding is not None and query_embedding_space_id is not None:
+            rows = await self.connection.fetch(
+                _SCOPED_CHUNK_SELECT
+                + """
+                  AND c.embedding IS NOT NULL
+                  AND c.embedding_space_id=$5
+                  AND c.embedding_dimensions=$6
+                ORDER BY c.embedding <=> $4::vector
+                LIMIT $7
+                """,
+                organization_id,
+                project_id,
+                include_organization_scope,
+                _vector_literal(query_embedding),
+                query_embedding_space_id,
+                len(query_embedding),
+                branch_limit,
+            )
+            for row in rows:
+                selected.setdefault(row["id"], row)
+
+        if not selected:
+            rows = await self.connection.fetch(
+                _SCOPED_CHUNK_SELECT
+                + """
+                ORDER BY d.updated_at DESC, d.id, c.ordinal
+                LIMIT $4
+                """,
+                organization_id,
+                project_id,
+                include_organization_scope,
+                branch_limit,
+            )
+            for row in rows:
+                selected.setdefault(row["id"], row)
+
+        return tuple(_chunk(row) for row in tuple(selected.values())[:limit])
 
     async def list_chunks(
         self,
@@ -202,7 +260,12 @@ class PostgresKnowledgeRepositorySession:
             document.index_version,
             document.language,
             document.embedding_space_id,
-            json.dumps(document.metadata, ensure_ascii=False, sort_keys=True, default=str),
+            json.dumps(
+                document.metadata,
+                ensure_ascii=False,
+                sort_keys=True,
+                default=str,
+            ),
             document.version,
         )
         return document
@@ -244,7 +307,12 @@ class PostgresKnowledgeRepositorySession:
             document.index_version,
             document.language,
             document.embedding_space_id,
-            json.dumps(document.metadata, ensure_ascii=False, sort_keys=True, default=str),
+            json.dumps(
+                document.metadata,
+                ensure_ascii=False,
+                sort_keys=True,
+                default=str,
+            ),
             expected_version,
         )
         if not result.endswith(" 1"):
@@ -290,6 +358,33 @@ class PostgresKnowledgeRepositorySession:
             """,
             rows,
         )
+
+
+_SCOPED_CHUNK_SELECT = """
+SELECT
+    c.*,
+    d.source_type AS d_source_type,
+    d.source_id AS d_source_id,
+    d.source_version AS d_source_version,
+    d.source_hash AS d_source_hash,
+    d.title AS d_title,
+    d.source_uri AS d_source_uri,
+    d.observed_at AS d_observed_at,
+    d.source_updated_at AS d_source_updated_at,
+    d.trust AS d_trust
+FROM knowledge_chunks c
+JOIN knowledge_documents d ON d.id=c.document_id
+WHERE d.organization_id=$1
+  AND d.status='READY'
+  AND (
+        ($2::uuid IS NOT NULL AND d.project_id=$2)
+        OR (
+            $3::boolean
+            AND d.project_id IS NULL
+            AND d.permission_scope='ORGANIZATION'
+        )
+  )
+"""
 
 
 def _document(row: Any) -> KnowledgeDocument:
@@ -366,13 +461,23 @@ def _chunk_write_row(chunk: KnowledgeChunk) -> tuple[object, ...]:
         chunk.content_hash,
         chunk.text,
         chunk.token_estimate,
-        json.dumps(chunk.locator, ensure_ascii=False, sort_keys=True, default=str),
+        json.dumps(
+            chunk.locator,
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+        ),
         chunk.embedding_model,
         chunk.embedding_version,
         chunk.embedding_space_id,
         len(chunk.embedding) if chunk.embedding is not None else None,
         _vector_literal(chunk.embedding),
-        json.dumps(chunk.metadata, ensure_ascii=False, sort_keys=True, default=str),
+        json.dumps(
+            chunk.metadata,
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+        ),
     )
 
 
