@@ -53,7 +53,7 @@ export async function buildRepairPlan(input: {
   const version = getDocumentVersion(source.subject.design_document);
   const operations = source.quality.repair_actions.filter((item) => item.expected_document_version === version);
   if (operations.length) {
-    const fingerprint = canonicalSha256({ kind: "STRUCTURAL_DESIGN_OP", operations: operations.map((item) => ({ type: item.type, target_ids: item.target_ids, payload: item.payload })) });
+    const fingerprint = await canonicalSha256({ kind: "STRUCTURAL_DESIGN_OP", operations: operations.map((item) => ({ type: item.type, target_ids: item.target_ids, payload: item.payload })) });
     if (!input.attempted_fingerprints.has(fingerprint)) {
       items.push({
         item_id: `repair-item:${fingerprint.slice(0, 24)}`,
@@ -74,7 +74,7 @@ export async function buildRepairPlan(input: {
   const orderedViolations = [...source.quality.violations].sort((a, b) => severityRank(a.severity) - severityRank(b.severity) || a.violation_id.localeCompare(b.violation_id));
   for (const violation of orderedViolations) {
     const kind = actionFor(violation);
-    const fingerprint = canonicalSha256({ kind, reason_code: violation.reason_code, target_id: violation.target_id ?? null });
+    const fingerprint = await canonicalSha256({ kind, reason_code: violation.reason_code, target_id: violation.target_id ?? null });
     if (input.attempted_fingerprints.has(fingerprint) || items.some((item) => item.fingerprint === fingerprint)) continue;
     const base = {
       item_id: `repair-item:${fingerprint.slice(0, 24)}`,
@@ -92,7 +92,7 @@ export async function buildRepairPlan(input: {
       continue;
     }
     if (!input.estimator) {
-      const manualFingerprint = canonicalSha256({ kind: "MANUAL_REVIEW", reason_code: `COST_ESTIMATOR_UNAVAILABLE:${violation.reason_code}` });
+      const manualFingerprint = await canonicalSha256({ kind: "MANUAL_REVIEW", reason_code: `COST_ESTIMATOR_UNAVAILABLE:${violation.reason_code}` });
       items.push({
         item_id: `repair-item:${manualFingerprint.slice(0, 24)}`,
         fingerprint: manualFingerprint,
@@ -114,7 +114,7 @@ export async function buildRepairPlan(input: {
   items.sort((a, b) => a.priority - b.priority || b.expected_gain - a.expected_gain || a.item_id.localeCompare(b.item_id));
   const planIdentity = { loop_id: input.loop_id, iteration: input.iteration, source_quality_result_id: source.quality.quality_result_id, policy_id: input.policy.policy_id, policy_version: input.policy.version, items: items.map((item) => item.fingerprint) };
   return {
-    plan_id: `repair-plan:${canonicalSha256(planIdentity)}`,
+    plan_id: `repair-plan:${await canonicalSha256(planIdentity)}`,
     source_quality_result_id: source.quality.quality_result_id,
     source_artifact_version_id: source.subject.artifact_version_id,
     source_design_document_version_id: source.subject.design_document_version_id,
