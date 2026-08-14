@@ -1,0 +1,145 @@
+name: Export Engine
+
+on:
+  pull_request:
+    paths:
+      - "packages/artifact-sdk/**"
+      - "packages/canvas-sdk/**"
+      - "packages/design-ir/**"
+      - "services/asset-storage/**"
+      - "db/migrations/0001_artifact_engine.sql"
+      - "db/migrations/0008_export_engine.sql"
+      - "fixtures/export-engine/**"
+      - "scripts/export-raster-worker.mjs"
+      - "scripts/export-raster-worker.test.mjs"
+      - "scripts/validate_export_engine.py"
+      - "docs/nodes/NODE-49-EXPORT-ENGINE.md"
+      - "docs/runtime/EXPORT-ENGINE-V1.md"
+      - "reports/nodes/NODE-49/**"
+      - ".github/workflows/export-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Validate NODE-49 architecture contract
+        run: python scripts/validate_export_engine.py
+      - name: Typecheck Artifact SDK
+        run: pnpm --filter @lumi/artifact-sdk typecheck
+      - name: Typecheck Canvas compiler dependency
+        run: pnpm --filter @lumi/canvas-sdk typecheck
+
+  export-quality:
+    needs: export-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run Artifact SDK including NODE-49 suites
+        run: pnpm --filter @lumi/artifact-sdk test
+      - name: Run Canvas Compiler regression suite
+        run: >-
+          pnpm --filter @lumi/canvas-sdk exec vitest run
+          src/compiler.test.ts
+          src/compiler-renderer.test.ts
+
+  export-formats:
+    needs: export-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Install pinned Chromium runtime
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Validate real PNG JPEG WebP encoding and decoded dimensions
+        run: node scripts/export-raster-worker.test.mjs
+      - name: Re-run SVG PDF ZIP LUMI targeted tests
+        run: >-
+          pnpm --filter @lumi/artifact-sdk exec vitest run
+          src/export-engine-v1.test.ts
+          src/export-package.test.ts
+          src/export-source-adapter.test.ts
+          src/export-artifact-adapter.test.ts
+
+  export-db:
+    needs: export-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: lumi
+          POSTGRES_PASSWORD: lumi
+          POSTGRES_DB: lumi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lumi -d lumi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Apply Artifact and Export migrations
+        env:
+          PGPASSWORD: lumi
+        run: |
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0001_artifact_engine.sql
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0008_export_engine.sql
+      - name: Verify Export DB contracts
+        env:
+          PGPASSWORD: lumi
+        run: |
+          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc "select count(*) from information_schema.tables where table_name in ('export_jobs','export_files','export_format_validations','export_download_audit');")" = "4"
+          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc "select count(*) from information_schema.columns where table_name in ('export_jobs','export_files') and column_name in ('signed_url','presigned_url');")" = "0"
+          psql -h 127.0.0.1 -U lumi -d lumi -Atc "select data_type from information_schema.columns where table_name='export_jobs' and column_name='source_snapshot';" | grep -qx jsonb
+          psql -h 127.0.0.1 -U lumi -d lumi -Atc "select data_type from information_schema.columns where table_name='export_files' and column_name='checksum_sha256';" | grep -qx character
+
+  export-benchmark:
+    needs: export-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run deterministic 100-file package benchmark
+        run: >-
+          pnpm --filter @lumi/artifact-sdk exec vitest run
+          src/export-benchmark.test.ts
