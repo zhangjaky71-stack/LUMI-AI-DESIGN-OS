@@ -411,19 +411,27 @@ It:
 
 `MemoryContextSource` implements the NODE-34 `ContextSourcePort` boundary.
 
-Memory enters context only as L4 retrieved evidence.
+Memory enters context only as L4 retrieved evidence. **Scope alone never grants trust.** The adapter checks both scope and the origin of the record.
 
 Authority:
 
 ```text
-PROJECT / BRAND / ORGANIZATION memory
+PROJECT / BRAND / ORGANIZATION
++ created_by_type in {USER, SYSTEM}
   -> TRUSTED_PROJECT_DATA
   -> instruction_authority=none
 
-USER / AGENT / SESSION memory
+PROJECT / BRAND / ORGANIZATION
++ created_by_type == AGENT
+  -> UNTRUSTED_RETRIEVED_DATA
+  -> instruction_authority=none
+
+USER / AGENT / SESSION
   -> UNTRUSTED_RETRIEVED_DATA
   -> instruction_authority=none
 ```
+
+This prevents an Agent from writing a Project-scoped memory and then having that same model-generated content promoted into a trusted project fact on the next turn.
 
 Memory never becomes system/developer/Agent instruction solely because it is persistent.
 
@@ -584,6 +592,7 @@ Release-blocking invariants:
 9. Conflict replacement preserves supersede lineage.
 10. Runtime role cannot physical DELETE memory rows.
 11. Context sees memory as data, never new instruction authority.
-12. Deep Agent namespace cannot select another tenant/scope.
-13. Memory/Context evaluation must not regress below approved baseline.
-14. NODE-35 is not COMPLETE until required execution gates actually run green.
+12. Agent-created Project memory cannot promote itself to trusted project data.
+13. Deep Agent namespace cannot select another tenant/scope.
+14. Memory/Context evaluation must not regress below approved baseline.
+15. NODE-35 is not COMPLETE until required execution gates actually run green.
