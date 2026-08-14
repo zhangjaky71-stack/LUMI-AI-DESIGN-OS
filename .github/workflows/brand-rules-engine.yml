@@ -5,8 +5,11 @@ on:
     paths:
       - "packages/brand-rules/**"
       - "packages/artifact-sdk/src/types.ts"
+      - "packages/artifact-sdk/src/hashing.ts"
+      - "packages/artifact-sdk/src/export.ts"
       - "services/brand-rules/**"
       - "services/artifact-history/src/lumi_artifacts/model.py"
+      - "services/artifact-history/src/lumi_artifacts/export_manifest.py"
       - "db/migrations/0002_brand_rules.sql"
       - "scripts/validate_brand_rules_engine.py"
       - "scripts/benchmark_brand_rules_engine.py"
@@ -71,14 +74,14 @@ jobs:
       - name: Frozen Python workspace install
         run: uv sync --all-packages --frozen
       - name: Run TypeScript Brand Rules tests
-        run: pnpm exec vitest run packages/brand-rules/src/brand-rules.test.ts
+        run: pnpm exec vitest run packages/brand-rules/src
       - name: Run Python Brand Rules tests
         run: >-
           PYTHONPATH=services/brand-rules/src
           uv run pytest services/brand-rules/tests -q
-      - name: Ruff gate
+      - name: Ruff correctness gate
         run: >-
-          uv run ruff check
+          uv run ruff check --ignore E501
           services/brand-rules/src
           services/brand-rules/tests
           scripts/validate_brand_rules_engine.py
