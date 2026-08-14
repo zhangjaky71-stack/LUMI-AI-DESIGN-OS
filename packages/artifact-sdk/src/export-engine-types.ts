@@ -33,6 +33,9 @@ export interface ExportSourceSnapshot {
   readonly content_hash: string;
   readonly constraint_snapshot_hash: string;
   readonly compiler_provenance: CompilerArtifactProvenance;
+  /** Exact immutable Design IR snapshot. Export must never re-read floating latest. */
+  readonly design_document: unknown;
+  /** NODE-41 disposable derivative compiled from the same exact Design IR snapshot. */
   readonly render_plan: unknown;
   readonly brand_rule_set_version?: string | null;
   readonly rights_summary: Readonly<Record<string, unknown>>;
