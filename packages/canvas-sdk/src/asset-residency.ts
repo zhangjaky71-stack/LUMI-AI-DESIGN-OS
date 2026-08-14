@@ -1,5 +1,6 @@
+import type { AssetTier } from "./asset-cache";
 import type { CanvasSceneSnapshot } from "./ir-scene";
-import { CanvasResourceManager, type AssetTier } from "./resource-manager";
+import { CanvasResourceManager } from "./resource-manager";
 
 export interface CanvasAssetResidencyPort {
   update(scene: CanvasSceneSnapshot, visibleIds: ReadonlySet<string>, zoom: number): void;
