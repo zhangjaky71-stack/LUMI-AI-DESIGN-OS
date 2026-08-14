@@ -7,99 +7,57 @@
 
 ## 1. Purpose
 
-Task Graph is the project-level durable execution ledger for LUMI AI DESIGN OS.
+Task Graph is the project-level durable execution ledger for LUMI AI DESIGN OS. NODE-32 freezes the versioned business skeleton as a `TaskGraphTemplate`; NODE-33 instantiates and runs that template as recoverable Tasks.
 
-It converts a compiled NODE-32 `TaskGraphTemplate` into persistent Task instances that can survive process restarts, wait for humans or providers, retry safely, run bounded parallel work, expose a product timeline, and support cooperative cancellation.
+The boundaries are explicit:
 
-Task Graph is deliberately different from two adjacent concepts:
+- **Recipe** = deterministic/versioned workflow skeleton.
+- **Task Graph** = durable project execution state and scheduler source of truth.
+- **Deep Agent Todo** = Agent-local planning aid only.
+- **LangSmith** = observability/tracing, not the business state database.
 
-- **Recipe** defines the deterministic business skeleton and versioned provenance.
-- **Task Graph** records durable project execution and scheduling state.
-- **Deep Agent Todo** is an Agent-local reasoning/planning aid and is not the project execution source of truth.
+Project Timeline and progress are queried from TaskGraph persistence, never reconstructed from trace text.
 
-The UI must query Task Graph state for project progress. It must not reconstruct business state from LangSmith traces or Agent Todo text.
+## 2. Source of truth
 
-## 2. Architectural boundary
-
-```text
-NODE-32 Recipe Engine
-        |
-        | CompiledRecipe + TaskGraphTemplate
-        v
-NODE-33 TaskGraph Instantiator
-        |
-        | immutable graph/task provenance
-        v
-TaskGraphService / Scheduler
-        |
-        +--> tasks + task_dependencies
-        +--> task_graph_instances
-        +--> task_attempts
-        +--> NODE-19 outbox_events
-        |
-        +--> Agent Runtime / deterministic service / media worker / human wait
-        |
-        +--> NODE-20 logical side-effect identity
-        +--> NODE-27 budget/quota reservation
-```
-
-NODE-33 does not grant model, tool, browser, filesystem, provider, or database authority to an Agent. It schedules already-authorized execution owners.
-
-## 3. Source-of-truth tables
-
-NODE-33 intentionally reuses the existing workflow ledger from `0002_workflow_platform_schema`:
+NODE-33 reuses the existing workflow ledger:
 
 - `tasks`
 - `task_dependencies`
-- `outbox_events`
-
-It does **not** create a competing second Task table.
+- NODE-19 `outbox_events`
 
 Migration `0015_task_graph_runtime` adds:
 
 - `task_graph_instances`
 - `task_attempts`
-- TaskGraph-specific columns on `tasks`
+- TaskGraph-specific columns to the existing `tasks` table
 
-The existing `tasks.type`, `owner_agent_key`, `input_json`, `output_json`, `budget_reserved`, attempt fields, timestamps and existing foreign keys remain compatible with earlier nodes.
+It does **not** create a second competing Task table.
 
-## 4. Graph provenance
+## 3. Frozen provenance
 
-A TaskGraph instance freezes:
+Each Graph freezes:
 
-- `recipe_id`
-- `recipe_version`
-- Recipe definition hash
-- Recipe provenance hash
-- TaskGraphTemplate hash
-- final TaskGraph provenance hash
-- organization/project/agent-run IDs
-- recipe budget upper bound
-- task count
+- organization/project/agent-run IDs;
+- Recipe ID and exact version;
+- Recipe definition hash;
+- Recipe provenance hash;
+- TaskGraphTemplate hash;
+- final TaskGraph provenance hash;
+- Recipe budget upper bound;
+- Task count.
 
-A process restart reloads the same graph identity rather than recompiling a newer Recipe alias.
+A restarted scheduler reloads this frozen Graph. It does not resolve a newer Recipe/Agent/Skill alias midway through a run.
 
-This prevents a long-running project from silently changing behavior because an Agent, Skill, Model policy or Recipe release moved after the run started.
-
-## 5. Deterministic identity
-
-Task IDs are derived deterministically from the Graph identity and Task key for compiled Recipe tasks.
-
-Dynamic child tasks use a deterministic identity derived from:
+Compiled Task IDs are deterministic within the Graph:
 
 ```text
-graph_id + parent_task_id + dynamic child key
+uuid5(graph_id, "task:<task_key>")
 ```
 
-This gives stable replay/debug identity while the database still enforces:
+Dynamic child identity is deterministic from Graph, parent and child key.
 
-```text
-UNIQUE(task_graph_id, task_key)
-```
-
-## 6. Task states
-
-V1 Task states are:
+## 4. Task states
 
 ```text
 PENDING
@@ -115,7 +73,7 @@ CANCELLED
 SKIPPED
 ```
 
-Terminal states:
+Terminal Task states are:
 
 ```text
 SUCCEEDED
@@ -124,80 +82,90 @@ CANCELLED
 SKIPPED
 ```
 
-WAITING states are durable. A process can restart while a Task waits for approval, user input or an external asynchronous provider.
-
-## 7. Graph states
-
-Graph state is derived from durable Task state rather than Agent narration.
-
-The reference runtime supports:
+Graph states are exactly:
 
 ```text
-PENDING
 RUNNING
+WAITING
 SUCCEEDED
 FAILED_FINAL
 CANCELLED
 ```
 
-A graph reaches a terminal state only when its durable Task ledger permits that conclusion.
+There is no Graph `PENDING` state in V1.
 
-## 8. State-version CAS
+## 5. Durable Task fields
 
-Every NODE-33 Task has an independent `state_version` in addition to the older generic row version.
-
-State mutations use compare-and-set semantics:
+NODE-33 preserves legacy canonical columns such as:
 
 ```text
-WHERE id = :task_id
-  AND state_version = :expected
-  AND status = :expected_status
-
-SET state_version = state_version + 1
+type
+owner_agent_key
+input_json
+output_json
+budget_reserved
+attempt_count
+max_attempts
 ```
 
-A stale scheduler/worker therefore cannot overwrite a newer state transition.
+and adds durable execution metadata including:
 
-## 9. Readiness
+```text
+task_graph_id
+recipe_step_id
+task_key
+owner_key
+budget_limit_usd
+output_schema
+condition_expression
+metadata_json
+state_version
+lease_owner
+lease_expires_at
+heartbeat_at
+retry_not_before
+wait_reason
+external_ref
+cancellation_requested_at
+progress_current
+progress_total
+dynamic_depth
+dynamic_child_limit
+concurrency_group
+concurrency_limit
+```
 
-A Task becomes `READY` only after the pure runtime has established that its business conditions are satisfied.
+`condition_expression` is persisted because a restarted scheduler must be able to re-evaluate whether a PENDING Task can become READY.
 
-Readiness considers:
+## 6. Readiness and durable scheduler
 
-- dependency terminal states;
-- join policy;
-- safe condition expression;
+`DurableTaskGraphScheduler` reconstructs Task state from PostgreSQL and reuses the same NODE-33 readiness rules used by the reference runtime.
+
+Readiness includes:
+
+- dependency state;
+- ALL / ANY / MIN_SUCCESS join policy;
+- NODE-32 safe condition expression;
+- retry timing;
 - graph cancellation;
-- retry delay;
-- attempt budget;
-- Task/parallel concurrency constraints;
-- upstream failure semantics.
+- attempt capacity;
+- concurrency group limits.
 
-The database claim query does not reimplement Recipe business logic. It only claims rows already marked `READY`.
+The durable scheduler performs:
 
-This keeps one definition of join/condition behavior.
+```text
+reclaim expired leases
+-> reload durable tasks/dependencies/conditions
+-> promote eligible PENDING -> READY
+-> deterministically SKIP impossible/false branches
+-> claim READY tasks
+```
 
-## 10. Join policies
+Business join/condition rules are evaluated before a row is marked READY. The claim SQL does not invent a second Recipe semantics engine.
 
-NODE-33 supports bounded join policies compiled by NODE-32:
+## 7. Safe conditions
 
-### ALL
-
-All required dependencies must satisfy the join.
-
-### ANY
-
-At least one dependency must succeed/satisfy the join. Once all dependencies are terminal and none satisfy it, the downstream Task cannot become ready.
-
-### MIN_SUCCESS
-
-A configured minimum number of dependencies must succeed. The runtime can decide early when the threshold is reached or can mark the downstream branch unsatisfied once the threshold becomes impossible.
-
-## 11. Safe conditions
-
-Task conditions reuse NODE-32's restricted expression evaluator.
-
-Allowed expression roots are bounded data contexts such as:
+Conditions reuse NODE-32's restricted evaluator. Allowed context roots are bounded data only:
 
 ```text
 inputs
@@ -206,83 +174,96 @@ steps
 run
 ```
 
-Arbitrary Python execution, function calls, subprocesses, SQL, provider SDKs and network access are not available to conditions.
+No `eval`, arbitrary function call, SQL, subprocess, browser, provider SDK or network authority is granted to a condition.
 
-A false condition produces deterministic branch skipping rather than executing an Agent to "decide" whether to ignore the step.
+False condition:
 
-## 12. Scheduler claim algorithm
+```text
+PENDING -> SKIPPED
+reason = CONDITION_FALSE
+```
+
+Impossible join:
+
+```text
+PENDING -> SKIPPED
+reason = UPSTREAM_JOIN_UNSATISFIED
+```
+
+## 8. Concurrent claim
 
 The PostgreSQL scheduler uses a transaction-local loop:
 
 ```text
-SELECT one READY candidate
+SELECT one READY task
 FOR UPDATE SKIP LOCKED
 LIMIT 1
 
--> verify graph active
+-> verify Graph RUNNING
 -> verify retry_not_before
--> verify attempt capacity
+-> verify max_attempts
+-> verify cancellation
 -> verify concurrency group capacity
--> CAS READY -> RUNNING
--> create task_attempts row
--> create task.started outbox event
--> repeat up to requested bounded batch size
+-> CAS READY -> RUNNING using state_version
+-> create TaskAttempt
+-> create NODE-19 outbox event
+-> repeat up to bounded claim limit
 ```
 
-Using `LIMIT 1` inside the transaction is intentional. The second selection sees the first Task already marked `RUNNING`, so a batch cannot accidentally over-claim a concurrency group.
+Selecting one row at a time inside the transaction is intentional: a second selection sees the first Task already RUNNING, so one batch cannot over-claim the same concurrency group.
 
-Multiple scheduler replicas can race without claiming the same row because PostgreSQL row locks and `SKIP LOCKED` provide the serialization boundary.
+Multiple scheduler replicas can race without claiming the same Task.
 
-## 13. Lease and heartbeat
+## 9. State-version CAS
 
-A claimed Task records:
-
-- `lease_owner`
-- `lease_expires_at`
-- `heartbeat_at`
-- incremented attempt number
-
-A worker may heartbeat only while:
+Every Task uses `state_version` compare-and-set semantics:
 
 ```text
-status == RUNNING
-lease_owner == worker
-lease_expires_at >= now
+WHERE id = :task_id
+  AND state_version = :expected_version
+  AND status = :expected_status
+
+SET state_version = state_version + 1
 ```
 
-Completion uses the same lease ownership checks.
+Stale workers/schedulers cannot overwrite a newer state transition.
 
-A stale worker therefore cannot finish a Task after another recovery path has taken ownership.
+## 10. Lease and heartbeat
 
-## 14. Lease expiry is not paid-retry permission
-
-A crashed worker creates ambiguity for external paid side effects.
-
-NODE-33 therefore treats lease expiry as:
+A running Task records:
 
 ```text
-FAILED_RETRYABLE
+lease_owner
+lease_expires_at
+heartbeat_at
+```
+
+Heartbeat/completion requires the same active lease owner. A stale worker cannot finish a Task after ownership has expired or moved.
+
+## 11. Lease expiry and paid effects
+
+Lease expiry is an ambiguity boundary, not proof that an external request failed.
+
+NODE-33 marks recoverable expiry with reconciliation evidence:
+
+```text
 provider_reconciliation_required = true
 failure = lease_expired
 ```
 
-It does **not** assume that the external request failed.
+If attempts are exhausted, the Task becomes `FAILED_FINAL`; otherwise it becomes `FAILED_RETRYABLE`.
 
-Before paid work is repeated, execution must flow through NODE-20 reconciliation/idempotency semantics.
+A repeated paid side effect must still pass NODE-20 reconciliation/idempotency. NODE-33 never treats lease expiry as permission for blind second billing.
 
-## 15. Logical operation identity
+## 12. Stable logical operation identity
 
-This is a critical cross-node invariant.
-
-The logical idempotency identity is:
+The logical side-effect identity is:
 
 ```text
 task:<graph_id>:<task_id>
 ```
 
-It does not contain the attempt number.
-
-Example:
+It does **not** include attempt number.
 
 ```text
 attempt 1 -> task:GRAPH:TASK
@@ -290,45 +271,40 @@ attempt 2 -> task:GRAPH:TASK
 attempt 3 -> task:GRAPH:TASK
 ```
 
-`attempt_number` records execution history only.
+`attempt_number` is execution history only. This lets NODE-20 recognize replay/reconcile/retry-safe behavior for the same logical operation.
 
-This allows NODE-20 to classify a repeated attempt as replay/reconcile/retry-safe for the same logical side effect instead of treating each attempt as a new paid operation.
+## 13. Attempt ledger
 
-## 16. Attempt ledger
+`task_attempts` stores:
 
-`task_attempts` records:
+- Graph/Task/organization identity;
+- monotonically increasing attempt number;
+- stable logical operation key;
+- status/error/result/cost;
+- started/completed timestamps.
 
-- Task/Graph/organization identity
-- monotonically increasing attempt number
-- stable logical operation key
-- execution status
-- error category
-- result reference
-- cost amount
-- start/completion timestamps
+Database invariant:
 
-`UNIQUE(task_id, attempt_number)` prevents duplicate attempt numbers.
+```text
+UNIQUE(task_id, attempt_number)
+```
 
-The logical operation key is intentionally **not unique**, because multiple execution attempts belong to one logical idempotent operation.
+The logical operation key is intentionally not unique across attempts.
 
-Attempt rows are non-deletable by the runtime application role. An active attempt may be updated from `RUNNING` to its terminal/wait/retry state; store SQL requires `status = 'RUNNING'` for that lifecycle transition.
+Runtime role may update an active `RUNNING` attempt to its completion/wait/retry state, but cannot delete TaskAttempt history. Store updates are guarded by `status='RUNNING'`.
 
-## 17. Retry
-
-Retry flow is:
+## 14. Retry
 
 ```text
 RUNNING
-  -> FAILED_RETRYABLE
-  -> READY with retry_not_before
-  -> RUNNING (new attempt_number, same logical_operation_key)
+-> FAILED_RETRYABLE
+-> READY with retry_not_before
+-> RUNNING with next attempt_number
 ```
 
-The Task never becomes a new logical Task during retry.
+The Task ID and logical operation key remain unchanged.
 
-`max_attempts` is bounded. Once retry is not allowed, failure becomes final.
-
-## 18. WAIT and resume
+## 15. WAIT and resume
 
 Durable wait states:
 
@@ -338,98 +314,94 @@ WAITING_INPUT
 WAITING_EXTERNAL
 ```
 
-Entering WAIT clears the worker lease and finishes the active execution attempt.
+Entering a wait closes the active execution attempt and clears the lease. If no runnable work remains, Graph state becomes `WAITING`.
 
-A resume requires an explicit resume reference, for example:
+Resume requires an explicit reference and transitions the same Task to READY. PostgreSQL resume also restores the Graph from `WAITING` to `RUNNING` in the same transactional boundary.
 
-```text
-approval://...
-input://...
-provider-result://...
-```
+## 16. Cancellation
 
-Resume transitions the same Task back to `READY`; it does not create a replacement Task.
+Graph cancellation is cooperative:
 
-## 19. Cancellation
+- non-running Tasks cancel immediately;
+- RUNNING Tasks receive `cancellation_requested_at`;
+- the current worker acknowledges cancellation under its lease.
 
-Graph cancellation has two policies in one operation:
+This avoids pretending an in-flight provider side effect vanished. Existing completed Artifacts are not deleted.
 
-- non-running Tasks are cancelled immediately;
-- RUNNING Tasks receive `cancellation_requested_at` and must cooperatively acknowledge cancellation.
+## 17. Dynamic Tasks
 
-This avoids killing an in-flight external side effect without knowing its provider state.
+Agent-proposed child work can enter the durable Graph only through the TaskGraph boundary.
 
-Completed Artifacts are not deleted by Task cancellation. Cancellation stops future execution; Artifact retention/version policy remains owned by the Artifact subsystem.
-
-## 20. Parallel concurrency
-
-NODE-32 fan-out metadata becomes:
-
-- `concurrency_group`
-- `concurrency_limit`
-
-The durable scheduler counts `RUNNING` Tasks in the same Graph/group before each claim.
-
-A configured group limit is therefore enforced across multiple scheduler processes, not only inside one Python process.
-
-## 21. Parallel budget boundary
-
-NODE-32 computes bounded parallel structure. NODE-33 carries Task/Recipe budget upper bounds; NODE-27 remains the authoritative cost/quota reservation service.
-
-The intended execution ordering is:
+V1 hard limits:
 
 ```text
-fan-out upper bound known
--> reserve safe upper bound / validate budget
--> mark eligible Tasks READY
--> claim Tasks
--> execute side effects through NODE-20/NODE-22/NODE-25
+max dynamic depth = 4
+max children per parent = 32
 ```
 
-TaskGraph scheduling does not create a second billing ledger.
-
-## 22. Dynamic Task expansion
-
-Agents may propose dynamic child work only through the TaskGraph boundary.
-
-V1 limits:
-
-```text
-max dynamic depth: 4
-max children per parent: 32
-```
-
-Additional rules:
+Rules:
 
 - parent must be RUNNING;
-- parent must explicitly allow dynamic children;
+- parent must allow dynamic children;
 - child budget cannot exceed parent budget;
 - child concurrency cannot widen parent concurrency;
 - child dynamic-child scope cannot widen parent scope;
-- Task count is atomically increased;
-- dynamic Task identity is deterministic;
-- a child cannot silently become a new authority boundary.
+- child has deterministic identity and `parent_task_id`;
+- Graph `task_count` grows atomically;
+- event is written to NODE-19 outbox.
 
-These rules prevent unbounded self-expansion by an Agent.
+The Postgres store exposes durable `add_dynamic_task`, so dynamic work is not an in-memory-only feature.
 
-## 23. Progress
+## 18. Parallel concurrency
 
-Task progress is only stored when a real denominator exists:
+NODE-32 fan-out metadata is materialized as:
+
+```text
+concurrency_group
+concurrency_limit
+```
+
+Before each claim the scheduler counts RUNNING Tasks in the same Graph/group. The limit therefore holds across scheduler replicas, not merely within one process.
+
+## 19. Budget boundary
+
+NODE-33 carries Recipe/Task budget upper bounds and constrains parallelism. It does **not** create a second billing ledger.
+
+The authoritative paid-operation admission is NODE-27:
+
+```text
+CostAccountingPort.reserve_provider_cost(...)
+LedgerBudgetGuard
+```
+
+NODE-27 performs durable provider-cost reservation before provider acceptance. This is the atomic protection against concurrent Tasks simultaneously spending the same remaining budget.
+
+Cross-node order for paid work is therefore:
+
+```text
+NODE-32 bounded workflow
+-> NODE-33 durable READY/claim/concurrency
+-> NODE-20 logical idempotency/reconciliation
+-> NODE-27 durable cost reservation
+-> NODE-22 / NODE-25 paid side effect
+```
+
+No TaskGraph code is allowed to bypass the durable cost/idempotency boundary.
+
+## 20. Progress
+
+Task progress uses only meaningful denominators:
 
 ```text
 progress_current
 progress_total
 ```
 
-Progress is monotonic for a running attempt.
+Project progress derives from durable Task states. The UI must not fabricate percentages from tokens, trace spans or elapsed time.
 
-Project-level progress is based on terminal durable Tasks, not token count, trace span count or guessed Agent percentages.
+## 21. NODE-19 outbox
 
-The product must not display fabricated progress such as "87%" when no meaningful denominator exists.
-
-## 24. Events and NODE-19 outbox
-
-NODE-33 writes events through the existing NODE-19 `outbox_events` schema:
+NODE-33 uses the existing canonical outbox columns:
 
 ```text
 event_name
@@ -440,7 +412,9 @@ payload_json
 publish_attempts
 ```
 
-Key Task events include:
+State and event writes are transactionally coupled where the Postgres store changes state.
+
+Events include:
 
 ```text
 task.ready
@@ -450,180 +424,140 @@ task.progress
 task.retry_scheduled
 task.succeeded
 task.failed
-task.cancel_requested
+task.skipped
 task.cancelled
 task.dynamic_created
+task_graph.completed
 ```
 
-Outbox writes occur in the same database transaction as the state mutation where implemented, preventing state/event split-brain.
+## 22. Restart and recovery
 
-## 25. Canonical Task columns
+`PostgresTaskGraphStore` provides:
 
-NODE-33 preserves legacy columns while adding exact execution metadata.
+- graph load;
+- Task/dependency readback;
+- attempt readback;
+- Timeline query;
+- claim;
+- heartbeat;
+- READY CAS;
+- completion/wait/failure;
+- wait resume;
+- retry scheduling;
+- lease reclaim;
+- durable dynamic child creation;
+- cancellation.
 
-Examples:
+`DurableTaskGraphScheduler` reconstructs `TaskSnapshot` rows, including `condition_expression`, and performs readiness before claim. A process restart therefore does not require an in-memory Agent plan to continue project execution.
 
-```text
-type                  # existing canonical Task type
-owner_agent_key       # existing compatibility owner for Agent tasks
-owner_key             # exact generic owner, e.g. AGENT:id@version or service owner
-budget_reserved       # existing accounting compatibility
-budget_limit_usd      # Task upper-bound policy
-input_json/output_json
-metadata_json
-output_schema
-state_version
-lease_owner/lease_expires_at/heartbeat_at
-retry_not_before
-wait_reason/external_ref
-cancellation_requested_at
-progress_current/progress_total
-dynamic_depth/dynamic_child_limit
-concurrency_group/concurrency_limit
-```
+## 23. Timeline
 
-The Postgres store is contract-tested against these canonical names to prevent schema drift.
+Timeline is directly queryable from durable Tasks/Attempts and includes:
 
-## 26. ORM metadata alignment
+- Task key / Recipe step;
+- type / exact owner;
+- state;
+- priority;
+- progress;
+- attempt count;
+- start/finish timestamps;
+- wait reason / external reference;
+- persisted attempt count.
 
-The API ORM exposes:
+## 24. ORM alignment
 
-- extended `Task`
-- `TaskGraphInstance`
-- `TaskAttemptRecord`
+API metadata includes:
 
-`lumi_api.persistence.models` imports the new models so Alembic metadata sees the NODE-33 schema.
+- extended `Task`;
+- `TaskGraphInstance`;
+- `TaskAttemptRecord`.
 
-This is required for `alembic check` to be meaningful.
+`lumi_api.persistence.models` imports the new models so `alembic check` can detect schema drift. `condition_expression` is present in migration, ORM and Postgres store.
 
-## 27. Restart and recovery
+## 25. Security boundary
 
-`PostgresTaskGraphStore` provides durable read/write primitives for:
+The TaskGraph runtime package imports no ambient provider/database/network authority such as:
 
-- graph load
-- Task list with dependencies
-- attempt list
-- direct Timeline query
-- claim
-- heartbeat
-- ready CAS
-- running completion/wait/failure
-- waiting resume
-- retry scheduling
-- lease reclaim
-- cancellation
+- asyncpg;
+- SQLAlchemy;
+- psycopg;
+- provider SDKs;
+- requests;
+- Docker/subprocess.
 
-A scheduler process may therefore restart and reconstruct runnable state from PostgreSQL without relying on in-memory Agent state.
+`PostgresTaskGraphStore` accepts an injected DB connection protocol. Credentials remain in trusted API/worker configuration, not Agent or Recipe definitions.
 
-## 28. Timeline query
+## 26. Validation gates
 
-The product Timeline is directly queryable from Tasks and Attempts.
+### `task-graph-contract`
 
-It includes fields such as:
+- compile runtime/tests/integrations;
+- revalidate NODE-32 Recipe Engine;
+- NODE-33 static contract;
+- dependency-light TaskGraph unit tests;
+- deterministic Recipe -> TaskGraph integration.
 
-- Task key / Recipe step
-- Task type / owner
-- state
-- priority
-- progress
-- attempt count
-- started / finished timestamps
-- wait reason / external reference
-- persisted attempt count
+### `task-graph-quality`
 
-LangSmith remains an observability/trace system, not the business Timeline database.
+- frozen workspace install;
+- pytest;
+- Ruff;
+- Pyright.
 
-## 29. Security boundary
+### `task-graph-postgres`
 
-The TaskGraph runtime package intentionally imports no:
+- start repository PostgreSQL infrastructure;
+- migrate to head;
+- `alembic check` ORM drift gate;
+- deterministic seed;
+- concurrent scheduler claim integration;
+- retry/logical-key/outbox/Timeline evidence;
+- attempt-history permission check;
+- downgrade/upgrade smoke.
 
-- asyncpg
-- SQLAlchemy
-- provider SDK
-- browser/network SDK
-- Docker/subprocess authority
+## 27. PostgreSQL acceptance race
 
-The Postgres adapter accepts an injected connection protocol.
-
-Database credentials stay in the API/worker process configuration, not in Agent definitions or Recipe files.
-
-## 30. Validation layers
-
-NODE-33 has three intended CI gates.
-
-### task-graph-contract
-
-- Python compile
-- NODE-32 contract revalidation
-- NODE-33 static contract
-- dependency-light TaskGraph unit tests
-- Recipe → TaskGraph deterministic integration
-
-### task-graph-quality
-
-- frozen workspace install
-- pytest
-- Ruff
-- Pyright
-
-### task-graph-postgres
-
-- start repository PostgreSQL infrastructure
-- migrate to head
-- Alembic ORM drift check
-- deterministic seed
-- concurrent scheduler Postgres integration
-- downgrade/upgrade smoke
-
-## 31. PostgreSQL acceptance race
-
-The dedicated integration isolates the `product-visuals` render fan-out and launches multiple scheduler claimers concurrently.
+The dedicated integration uses the real NODE-32 `product-visuals` Recipe and isolates its render fan-out for the DB race test. Multiple scheduler claimers run concurrently.
 
 Acceptance requires:
 
-- all eligible render Tasks claimed exactly once;
-- no duplicate Task IDs;
-- concurrency group upper bound respected;
-- retry creates attempt 2 for the same Task;
-- both attempts share the same logical operation key;
-- Timeline is queryable;
-- Task events exist in canonical outbox rows;
-- `lumi_app` cannot delete Task attempt history.
+- every eligible render Task claimed exactly once;
+- no duplicate Task ID;
+- concurrency upper bound respected;
+- retry produces attempt 2 for the same Task;
+- both attempts reuse the same logical operation key;
+- Timeline can be queried after persistence;
+- canonical outbox rows exist;
+- `lumi_app` cannot delete attempt history.
 
-## 32. Non-goals
+## 28. Release-blocking invariants
+
+1. Recipe provenance is frozen at Graph instantiation.
+2. There is one durable Task ledger, not a duplicate NODE-33 Task table.
+3. Dependency/join/condition rules run before READY.
+4. A READY Task can have at most one active worker claim.
+5. Scheduler replicas use `FOR UPDATE SKIP LOCKED` plus CAS.
+6. Lease expiry requires reconciliation, not blind paid retry.
+7. Retry reuses the same logical operation key.
+8. Attempt number is history, not idempotency identity.
+9. WAIT state survives restart and resume restores Graph RUNNING.
+10. Dynamic expansion is bounded and cannot widen authority/budget/concurrency.
+11. Paid admission remains NODE-27 durable reservation.
+12. Cancellation is cooperative for RUNNING work.
+13. Timeline is queryable without parsing traces.
+14. Migration, ORM and runtime use canonical existing schema names.
+15. NODE-33 is never marked COMPLETE until the required execution gates actually run green.
+
+## 29. Non-goals
 
 NODE-33 does not implement:
 
-- arbitrary Agent-created SQL;
-- a second provider/model retry system;
-- a second cost ledger;
 - prompt/context assembly;
 - vector retrieval;
-- LangSmith-as-database;
-- unbounded DAG mutation;
-- process-local-only scheduling as the production source of truth.
+- a second billing ledger;
+- a second provider retry engine;
+- arbitrary Agent SQL;
+- unbounded graph mutation;
+- trace-derived business state.
 
-Context assembly and retrieval are introduced in NODE-34.
-
-## 33. Operational invariants
-
-The following invariants are release blocking:
-
-1. Recipe provenance is frozen at Graph instantiation.
-2. A READY Task can be claimed by at most one active worker lease.
-3. Scheduler replicas use `FOR UPDATE SKIP LOCKED` plus state-version CAS.
-4. A stale lease cannot authorize blind repeat of a paid side effect.
-5. Retry reuses the same logical operation key.
-6. Attempt number is history, not idempotency identity.
-7. Dependency/condition business rules are evaluated before `READY`.
-8. Dynamic expansion cannot widen budget/concurrency/child scope.
-9. Cancellation is cooperative for RUNNING work.
-10. Task/Attempt/Outbox persistence uses the canonical existing database schema.
-11. Project Timeline is queryable without parsing traces.
-12. No NODE-33 status is marked complete until the required execution gates have actually run green.
-
-## 34. Handoff to NODE-34
-
-NODE-34 Context Engine may consume TaskGraph identity, Task outputs and provenance to construct bounded Agent context.
-
-It must not mutate Task history or bypass TaskGraph scheduling. Context is execution input; TaskGraph remains the durable project execution ledger.
+These boundaries are preserved for later nodes, beginning with NODE-34 Context Engine.
