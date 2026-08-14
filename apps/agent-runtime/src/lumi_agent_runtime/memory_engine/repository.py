@@ -12,16 +12,9 @@ from .errors import MemoryConflictError
 
 class MemoryRepository(Protocol):
     async def get(self, memory_id: UUID) -> MemoryRecord | None: ...
-    async def find_active_by_key(
-        self,
-        *,
-        organization_id: UUID,
-        scope_type: str,
-        scope_id: str,
-        kind: str,
-        semantic_key: str,
-    ) -> tuple[MemoryRecord, ...]: ...
+    async def find_active_by_key(self, *, organization_id: UUID, scope_type: str, scope_id: str, kind: str, semantic_key: str) -> tuple[MemoryRecord, ...]: ...
     async def list_active(self, *, organization_id: UUID) -> tuple[MemoryRecord, ...]: ...
+    async def list_records(self, *, organization_id: UUID) -> tuple[MemoryRecord, ...]: ...
     async def insert_record(self, record: MemoryRecord) -> MemoryRecord: ...
     async def update_record(self, record: MemoryRecord, *, expected_version: int) -> MemoryRecord: ...
     async def insert_candidate(self, candidate: MemoryCandidate, *, outcome: str, reason: str | None) -> None: ...
@@ -38,41 +31,19 @@ class InMemoryMemoryRepository:
         with self._lock:
             return self._records.get(memory_id)
 
-    async def find_active_by_key(
-        self,
-        *,
-        organization_id: UUID,
-        scope_type: str,
-        scope_id: str,
-        kind: str,
-        semantic_key: str,
-    ) -> tuple[MemoryRecord, ...]:
+    async def find_active_by_key(self, *, organization_id: UUID, scope_type: str, scope_id: str, kind: str, semantic_key: str) -> tuple[MemoryRecord, ...]:
         now = datetime.now(UTC)
         with self._lock:
-            return tuple(
-                item
-                for item in self._records.values()
-                if item.organization_id == organization_id
-                and item.scope_type.value == scope_type
-                and item.scope_id == scope_id
-                and item.kind.value == kind
-                and item.semantic_key == semantic_key
-                and item.status == MemoryStatus.ACTIVE
-                and item.deleted_at is None
-                and (item.expires_at is None or item.expires_at > now)
-            )
+            return tuple(item for item in self._records.values() if item.organization_id == organization_id and item.scope_type.value == scope_type and item.scope_id == scope_id and item.kind.value == kind and item.semantic_key == semantic_key and item.status == MemoryStatus.ACTIVE and item.deleted_at is None and (item.expires_at is None or item.expires_at > now))
 
     async def list_active(self, *, organization_id: UUID) -> tuple[MemoryRecord, ...]:
         now = datetime.now(UTC)
         with self._lock:
-            return tuple(
-                item
-                for item in self._records.values()
-                if item.organization_id == organization_id
-                and item.status == MemoryStatus.ACTIVE
-                and item.deleted_at is None
-                and (item.expires_at is None or item.expires_at > now)
-            )
+            return tuple(item for item in self._records.values() if item.organization_id == organization_id and item.status == MemoryStatus.ACTIVE and item.deleted_at is None and (item.expires_at is None or item.expires_at > now))
+
+    async def list_records(self, *, organization_id: UUID) -> tuple[MemoryRecord, ...]:
+        with self._lock:
+            return tuple(item for item in self._records.values() if item.organization_id == organization_id)
 
     async def insert_record(self, record: MemoryRecord) -> MemoryRecord:
         with self._lock:
@@ -100,12 +71,7 @@ class InMemoryMemoryRepository:
             current = self._records[memory_id]
             if current.version != expected_version:
                 raise MemoryConflictError("MEMORY_VERSION_CONFLICT")
-            updated = replace(
-                current,
-                status=MemoryStatus.DELETED,
-                deleted_at=deleted_at,
-                version=current.version + 1,
-            )
+            updated = replace(current, status=MemoryStatus.DELETED, deleted_at=deleted_at, version=current.version + 1)
             self._records[memory_id] = updated
             return updated
 
