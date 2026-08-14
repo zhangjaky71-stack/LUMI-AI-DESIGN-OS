@@ -8,6 +8,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     CHAR,
     CheckConstraint,
+    Computed,
     DateTime,
     ForeignKey,
     Index,
@@ -16,7 +17,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..base import Base, IdMixin, MutableTimestampMixin
@@ -145,6 +146,11 @@ class KnowledgeChunkModel(IdMixin, MutableTimestampMixin, Base):
             "document_id",
             "ordinal",
         ),
+        Index(
+            "ix_knowledge_chunks_fts",
+            "search_tsv",
+            postgresql_using="gin",
+        ),
     )
 
     organization_id: Mapped[UUID] = mapped_column(
@@ -164,6 +170,11 @@ class KnowledgeChunkModel(IdMixin, MutableTimestampMixin, Base):
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
     content_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    search_tsv: Mapped[Any] = mapped_column(
+        TSVECTOR,
+        Computed("to_tsvector('simple', text)", persisted=True),
+        nullable=False,
+    )
     token_estimate: Mapped[int] = mapped_column(Integer, nullable=False)
     locator_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     embedding_model: Mapped[str | None] = mapped_column(String(255))
