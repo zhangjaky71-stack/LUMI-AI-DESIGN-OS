@@ -42,11 +42,11 @@ Base: `node-44-identity-engine-release`
 | No biometric index | runtime/schema static gate | Implemented |
 | PostgreSQL/pgvector persistence | `0004_asset_intelligence.sql` | Implemented |
 | Shared conformance fixture | `node-45-conformance.json` | Implemented |
-| Python conformance tests | `test_asset_intelligence.py` | Implemented; hosted execution pending |
-| Static architecture validator | `validate_asset_intelligence.py` | Implemented; hosted execution pending |
-| Deterministic ranking benchmark | `benchmark_asset_intelligence.py` | Implemented; hosted measurement pending |
+| Python conformance tests | `test_asset_intelligence.py` | Implemented; hosted execution blocked |
+| Static architecture validator | `validate_asset_intelligence.py` | Implemented; hosted execution blocked |
+| Deterministic ranking benchmark | `benchmark_asset_intelligence.py` | Implemented; hosted execution blocked |
 | Runtime documentation | `ASSET-INTELLIGENCE-V1.md` | Implemented |
-| Dedicated four-stage CI | `.github/workflows/asset-intelligence.yml` | Implemented; hosted execution pending |
+| Dedicated four-stage CI | `.github/workflows/asset-intelligence.yml` | Implemented; hosted runner blocked |
 
 ## Frozen architecture assertions
 
@@ -93,9 +93,30 @@ Production model-quality evaluation must use approved real assets and the concre
 
 `scripts/benchmark_asset_intelligence.py` benchmarks only the dependency-free in-memory scoped ranking core. It intentionally excludes remote analyzer inference, queue delay, PostgreSQL/pgvector execution and network/storage latency. The node does not invent a production latency SLO where the baseline does not define one.
 
-## Hosted validation
+## Hosted validation evidence
 
-Completion requires these release gates to **actually execute green**:
+Initial release-head workflow:
+
+```text
+head_sha: 310ff6f8cfae9b55f9e62c5046aa7cea71a9c615
+workflow: Asset Intelligence
+run_id: 31796193934
+asset-intelligence-contract job_id: 94753731066
+conclusion: failure
+runner_id: 0
+steps: []
+asset-intelligence-quality: skipped
+asset-intelligence-integration: skipped
+asset-intelligence-benchmark: skipped
+```
+
+GitHub annotation:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+
+This is an external GitHub Actions account/billing blocker. No NODE-45 workflow step executed, so the run is **not evidence of pytest, Pyright, Ruff, static-validator, pgvector migration, integration, or benchmark failure**.
+
+Completion still requires these release gates to actually execute green:
 
 ```text
 asset-intelligence-contract
@@ -103,8 +124,6 @@ asset-intelligence-quality
 asset-intelligence-integration
 asset-intelligence-benchmark
 ```
-
-If GitHub Actions again returns a zero-step `runner_id=0` failure caused by account billing/spending limits, record it as an external CI blocker. Do not mark NODE-45 PASS or COMPLETE.
 
 ## Current decision
 
