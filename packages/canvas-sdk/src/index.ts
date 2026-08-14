@@ -5,6 +5,7 @@ export * from "./camera";
 export * from "./clipboard";
 export * from "./command-bus";
 export * from "./compiler";
+export * from "./compiler-benchmark";
 export * from "./compiler-cache";
 export * from "./compiler-dirty";
 export * from "./compiler-resolvers";
