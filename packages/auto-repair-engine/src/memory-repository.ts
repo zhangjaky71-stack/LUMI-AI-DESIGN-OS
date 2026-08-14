@@ -1,7 +1,6 @@
 import { canonicalSha256 } from "../../design-ir/src/index";
-import type { QualityResult } from "../../quality-engine/src/index";
 import type { RepairArtifactRepository } from "./ports";
-import type { PersistedRepairCandidate, RepairPlanItem, RepairSource } from "./types";
+import type { PersistedRepairCandidate, RepairAttemptRecord, RepairPlanItem } from "./types";
 
 export type MemoryCandidateStatus = "DRAFT" | "READY" | "REJECTED";
 
@@ -18,8 +17,8 @@ export interface MemoryRepairCandidateRecord {
   readonly rejection_reason_codes?: readonly string[];
 }
 
-function deterministicUuid(value: string): string {
-  const hash = canonicalSha256(value);
+async function deterministicUuid(value: string): Promise<string> {
+  const hash = await canonicalSha256(value);
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }
 
@@ -39,9 +38,10 @@ export class MemoryRepairArtifactRepository implements RepairArtifactRepository 
 
   async persistCandidate(input: Parameters<RepairArtifactRepository["persistCandidate"]>[0]): Promise<PersistedRepairCandidate> {
     this.events.push(`persist:${input.candidate_id}`);
-    if (this.candidates.has(input.candidate_id)) return this.candidates.get(input.candidate_id)!.candidate;
-    const artifactVersionId = deterministicUuid(`${input.candidate_id}:artifact`);
-    const designVersionId = deterministicUuid(`${input.candidate_id}:design`);
+    const existing = this.candidates.get(input.candidate_id);
+    if (existing) return existing.candidate;
+    const artifactVersionId = await deterministicUuid(`${input.candidate_id}:artifact`);
+    const designVersionId = await deterministicUuid(`${input.candidate_id}:design`);
     const candidate: PersistedRepairCandidate = {
       ...input.materialization,
       artifact_version_id: artifactVersionId,
@@ -69,24 +69,16 @@ export class MemoryRepairArtifactRepository implements RepairArtifactRepository 
 
   async rejectCandidate(candidate: PersistedRepairCandidate, reasonCodes: readonly string[]): Promise<void> {
     this.events.push(`reject:${candidate.artifact_version_id}`);
-    const entry = this.entryFor(candidate);
-    this.candidates.set(entryKey(this.candidates, entry), {
-      ...entry,
-      status: "REJECTED",
-      rejection_reason_codes: [...reasonCodes],
-    });
+    const [key, entry] = this.entryFor(candidate);
+    this.candidates.set(key, { ...entry, status: "REJECTED", rejection_reason_codes: [...reasonCodes] });
   }
 
   async promoteCandidate(input: Parameters<RepairArtifactRepository["promoteCandidate"]>[0]): Promise<void> {
     this.events.push(`promote:${input.candidate.artifact_version_id}:${input.target_status}`);
     const current = this.heads.get(input.candidate.branch_id);
     if (current !== input.expected_head) throw new Error("AUTO_REPAIR_BRANCH_HEAD_CAS_CONFLICT");
-    const entry = this.entryFor(input.candidate);
-    this.candidates.set(entryKey(this.candidates, entry), {
-      ...entry,
-      status: input.target_status,
-      quality_result_id: input.quality.quality_result_id,
-    });
+    const [key, entry] = this.entryFor(input.candidate);
+    this.candidates.set(key, { ...entry, status: input.target_status, quality_result_id: input.quality.quality_result_id });
     this.heads.set(input.candidate.branch_id, input.candidate.artifact_version_id);
   }
 
@@ -99,27 +91,23 @@ export class MemoryRepairArtifactRepository implements RepairArtifactRepository 
     return [...this.candidates.values()].find((entry) => entry.candidate.artifact_version_id === artifactVersionId);
   }
 
-  private entryFor(candidate: PersistedRepairCandidate): MemoryRepairCandidateRecord {
-    const entry = this.recordByArtifactVersion(candidate.artifact_version_id);
-    if (!entry) throw new Error("AUTO_REPAIR_CANDIDATE_NOT_FOUND");
-    return entry;
+  private entryFor(candidate: PersistedRepairCandidate): readonly [string, MemoryRepairCandidateRecord] {
+    for (const entry of this.candidates) {
+      if (entry[1].candidate.artifact_version_id === candidate.artifact_version_id) return entry;
+    }
+    throw new Error("AUTO_REPAIR_CANDIDATE_NOT_FOUND");
   }
 }
 
-function entryKey(entries: ReadonlyMap<string, MemoryRepairCandidateRecord>, target: MemoryRepairCandidateRecord): string {
-  for (const [key, value] of entries) if (value === target) return key;
-  throw new Error("AUTO_REPAIR_CANDIDATE_KEY_NOT_FOUND");
-}
-
 export class MemoryRepairAttemptRepository {
-  readonly records: import("./types").RepairAttemptRecord[] = [];
+  readonly records: RepairAttemptRecord[] = [];
   readonly events: string[];
 
   constructor(events: string[] = []) {
     this.events = events;
   }
 
-  async append(record: import("./types").RepairAttemptRecord): Promise<void> {
+  async append(record: RepairAttemptRecord): Promise<void> {
     this.events.push(`attempt:${record.iteration}:${record.disposition}`);
     this.records.push(structuredClone(record));
   }
