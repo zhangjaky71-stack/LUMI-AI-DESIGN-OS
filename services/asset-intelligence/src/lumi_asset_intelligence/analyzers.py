@@ -60,6 +60,10 @@ def validate_bundle_for_index(
         raise AnalyzerContractError("EMBEDDING_MODEL_MISMATCH")
     if embedding.model_version != index.embedding_model_version:
         raise AnalyzerContractError("EMBEDDING_MODEL_VERSION_MISMATCH")
+    if embedding.preprocessor_version != index.embedding_preprocessor_version:
+        raise AnalyzerContractError("EMBEDDING_PREPROCESSOR_VERSION_MISMATCH")
+    if embedding.registry_snapshot_id != index.registry_snapshot_id:
+        raise AnalyzerContractError("REGISTRY_SNAPSHOT_MISMATCH")
 
 
 def validate_embedding_dimensions(
