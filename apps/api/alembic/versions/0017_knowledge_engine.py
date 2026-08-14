@@ -22,6 +22,7 @@ UPGRADE_STATEMENTS = (
             REFERENCES organizations(id) ON DELETE CASCADE,
         project_id uuid REFERENCES projects(id) ON DELETE CASCADE,
         permission_scope varchar(32) NOT NULL,
+        scope_key varchar(512) NOT NULL,
         source_type varchar(32) NOT NULL,
         source_id varchar(1024) NOT NULL,
         source_version varchar(255) NOT NULL,
@@ -44,6 +45,7 @@ UPGRADE_STATEMENTS = (
         version integer NOT NULL DEFAULT 1,
         CONSTRAINT uq_knowledge_documents_source UNIQUE (
             organization_id,
+            scope_key,
             source_type,
             source_id,
             source_version,
@@ -53,8 +55,18 @@ UPGRADE_STATEMENTS = (
         CONSTRAINT ck_knowledge_documents_permission_scope CHECK (
             permission_scope IN ('PROJECT','ORGANIZATION')
         ),
-        CONSTRAINT ck_knowledge_documents_project_scope CHECK (
-            permission_scope <> 'PROJECT' OR project_id IS NOT NULL
+        CONSTRAINT ck_knowledge_documents_scope_key CHECK (
+            (
+                permission_scope='PROJECT'
+                AND project_id IS NOT NULL
+                AND scope_key='PROJECT:' || project_id::text
+            )
+            OR
+            (
+                permission_scope='ORGANIZATION'
+                AND project_id IS NULL
+                AND scope_key='ORGANIZATION'
+            )
         ),
         CONSTRAINT ck_knowledge_documents_source_type CHECK (
             source_type IN (
@@ -83,7 +95,7 @@ UPGRADE_STATEMENTS = (
     """
     CREATE INDEX ix_knowledge_documents_source_lookup
     ON knowledge_documents (
-        organization_id, source_type, source_id, status
+        organization_id, scope_key, source_type, source_id, status
     )
     """,
     """
