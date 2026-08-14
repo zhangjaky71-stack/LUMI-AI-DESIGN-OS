@@ -18,7 +18,8 @@ UPGRADE_STATEMENTS = (
     """
     CREATE TABLE memory_records (
         id uuid PRIMARY KEY,
-        organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        organization_id uuid NOT NULL
+            REFERENCES organizations(id) ON DELETE CASCADE,
         scope_type varchar(32) NOT NULL,
         scope_id varchar(512) NOT NULL,
         kind varchar(64) NOT NULL,
@@ -35,7 +36,8 @@ UPGRADE_STATEMENTS = (
         expires_at timestamptz,
         valid_from timestamptz,
         valid_to timestamptz,
-        supersedes_id uuid REFERENCES memory_records(id) ON DELETE RESTRICT,
+        supersedes_id uuid
+            REFERENCES memory_records(id) ON DELETE RESTRICT,
         retention_hold boolean NOT NULL DEFAULT false,
         deleted_at timestamptz,
         embedding_model varchar(255),
@@ -46,28 +48,73 @@ UPGRADE_STATEMENTS = (
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now(),
         version integer NOT NULL DEFAULT 1,
-        CONSTRAINT ck_memory_records_scope CHECK (scope_type IN ('SESSION','USER','PROJECT','BRAND','AGENT','ORGANIZATION')),
-        CONSTRAINT ck_memory_records_kind CHECK (kind IN ('PREFERENCE','FACT','DECISION','CONSTRAINT_PREFERENCE','WORKFLOW_LEARNING','EPISODIC_SUMMARY')),
-        CONSTRAINT ck_memory_records_status CHECK (status IN ('ACTIVE','PENDING_CONFIRMATION','SUPERSEDED','DELETED','EXPIRED','REJECTED')),
-        CONSTRAINT ck_memory_records_actor CHECK (created_by_type IN ('USER','AGENT','SYSTEM')),
-        CONSTRAINT ck_memory_records_confidence CHECK (confidence >= 0 AND confidence <= 1),
+        CONSTRAINT ck_memory_records_scope CHECK (
+            scope_type IN (
+                'SESSION','USER','PROJECT','BRAND','AGENT','ORGANIZATION'
+            )
+        ),
+        CONSTRAINT ck_memory_records_kind CHECK (
+            kind IN (
+                'PREFERENCE','FACT','DECISION','CONSTRAINT_PREFERENCE',
+                'WORKFLOW_LEARNING','EPISODIC_SUMMARY'
+            )
+        ),
+        CONSTRAINT ck_memory_records_status CHECK (
+            status IN (
+                'ACTIVE','PENDING_CONFIRMATION','SUPERSEDED',
+                'DELETED','EXPIRED','REJECTED'
+            )
+        ),
+        CONSTRAINT ck_memory_records_actor CHECK (
+            created_by_type IN ('USER','AGENT','SYSTEM')
+        ),
+        CONSTRAINT ck_memory_records_confidence CHECK (
+            confidence >= 0 AND confidence <= 1
+        ),
         CONSTRAINT ck_memory_records_version CHECK (version > 0),
-        CONSTRAINT ck_memory_records_content_hash CHECK (content_hash ~ '^[0-9a-f]{64}$'),
+        CONSTRAINT ck_memory_records_content_hash CHECK (
+            content_hash ~ '^[0-9a-f]{64}$'
+        ),
         CONSTRAINT ck_memory_records_embedding CHECK (
-            (embedding IS NULL AND embedding_model IS NULL AND embedding_version IS NULL AND embedding_dimensions IS NULL)
+            (
+                embedding IS NULL
+                AND embedding_model IS NULL
+                AND embedding_version IS NULL
+                AND embedding_dimensions IS NULL
+            )
             OR
-            (embedding IS NOT NULL AND embedding_model IS NOT NULL AND embedding_version IS NOT NULL AND embedding_dimensions > 0)
+            (
+                embedding IS NOT NULL
+                AND embedding_model IS NOT NULL
+                AND embedding_version IS NOT NULL
+                AND embedding_dimensions > 0
+            )
         )
     )
     """,
-    "CREATE INDEX ix_memory_records_org_scope ON memory_records (organization_id, scope_type, scope_id)",
-    "CREATE INDEX ix_memory_records_semantic_key ON memory_records (organization_id, scope_type, scope_id, kind, semantic_key)",
-    "CREATE INDEX ix_memory_records_active ON memory_records (organization_id, status, expires_at)",
-    "CREATE INDEX ix_memory_records_supersedes ON memory_records (supersedes_id)",
+    """
+    CREATE INDEX ix_memory_records_org_scope
+    ON memory_records (organization_id, scope_type, scope_id)
+    """,
+    """
+    CREATE INDEX ix_memory_records_semantic_key
+    ON memory_records (
+        organization_id, scope_type, scope_id, kind, semantic_key
+    )
+    """,
+    """
+    CREATE INDEX ix_memory_records_active
+    ON memory_records (organization_id, status, expires_at)
+    """,
+    """
+    CREATE INDEX ix_memory_records_supersedes
+    ON memory_records (supersedes_id)
+    """,
     """
     CREATE TABLE memory_candidates (
         id uuid PRIMARY KEY,
-        organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        organization_id uuid NOT NULL
+            REFERENCES organizations(id) ON DELETE CASCADE,
         scope_type varchar(32) NOT NULL,
         scope_id varchar(512) NOT NULL,
         kind varchar(64) NOT NULL,
@@ -88,18 +135,54 @@ UPGRADE_STATEMENTS = (
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now(),
         version integer NOT NULL DEFAULT 1,
-        CONSTRAINT ck_memory_candidates_scope CHECK (scope_type IN ('SESSION','USER','PROJECT','BRAND','AGENT','ORGANIZATION')),
-        CONSTRAINT ck_memory_candidates_kind CHECK (kind IN ('PREFERENCE','FACT','DECISION','CONSTRAINT_PREFERENCE','WORKFLOW_LEARNING','EPISODIC_SUMMARY')),
-        CONSTRAINT ck_memory_candidates_actor CHECK (created_by_type IN ('USER','AGENT','SYSTEM')),
-        CONSTRAINT ck_memory_candidates_confidence CHECK (confidence >= 0 AND confidence <= 1),
-        CONSTRAINT ck_memory_candidates_outcome CHECK (outcome IN ('WRITE','DEDUPLICATE_CONFIRM','REQUIRE_CONFIRMATION','BRAND_RULE_PROPOSAL')),
-        CONSTRAINT ck_memory_candidates_content_hash CHECK (content_hash ~ '^[0-9a-f]{64}$')
+        CONSTRAINT ck_memory_candidates_scope CHECK (
+            scope_type IN (
+                'SESSION','USER','PROJECT','BRAND','AGENT','ORGANIZATION'
+            )
+        ),
+        CONSTRAINT ck_memory_candidates_kind CHECK (
+            kind IN (
+                'PREFERENCE','FACT','DECISION','CONSTRAINT_PREFERENCE',
+                'WORKFLOW_LEARNING','EPISODIC_SUMMARY'
+            )
+        ),
+        CONSTRAINT ck_memory_candidates_actor CHECK (
+            created_by_type IN ('USER','AGENT','SYSTEM')
+        ),
+        CONSTRAINT ck_memory_candidates_confidence CHECK (
+            confidence >= 0 AND confidence <= 1
+        ),
+        CONSTRAINT ck_memory_candidates_outcome CHECK (
+            outcome IN (
+                'WRITE','DEDUPLICATE_CONFIRM','REQUIRE_CONFIRMATION',
+                'BRAND_RULE_PROPOSAL'
+            )
+        ),
+        CONSTRAINT ck_memory_candidates_content_hash CHECK (
+            content_hash ~ '^[0-9a-f]{64}$'
+        )
     )
     """,
-    "CREATE INDEX ix_memory_candidates_org_outcome ON memory_candidates (organization_id, outcome, created_at)",
-    "CREATE INDEX ix_memory_candidates_scope_key ON memory_candidates (organization_id, scope_type, scope_id, semantic_key)",
-    "GRANT SELECT, INSERT, UPDATE ON memory_records, memory_candidates TO lumi_app",
-    "REVOKE DELETE ON memory_records, memory_candidates FROM lumi_app",
+    """
+    CREATE INDEX ix_memory_candidates_org_outcome
+    ON memory_candidates (organization_id, outcome, created_at)
+    """,
+    """
+    CREATE INDEX ix_memory_candidates_scope_key
+    ON memory_candidates (
+        organization_id, scope_type, scope_id, semantic_key
+    )
+    """,
+    """
+    GRANT SELECT, INSERT, UPDATE
+    ON memory_records, memory_candidates
+    TO lumi_app
+    """,
+    """
+    REVOKE DELETE
+    ON memory_records, memory_candidates
+    FROM lumi_app
+    """,
 )
 
 DOWNGRADE_STATEMENTS = (
