@@ -42,6 +42,7 @@ jobs:
           scripts/integration_task_graph_postgres.py
           apps/api/alembic/versions/0015_task_graph_runtime.py
           apps/api/src/lumi_api/persistence/models/task_graph.py
+          apps/api/src/lumi_api/persistence/models/workflow.py
       - name: Revalidate NODE-32 Recipe Engine
         run: >-
           PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
@@ -100,6 +101,7 @@ jobs:
           scripts/integration_task_graph_postgres.py
           apps/api/alembic/versions/0015_task_graph_runtime.py
           apps/api/src/lumi_api/persistence/models/task_graph.py
+          apps/api/src/lumi_api/persistence/models/workflow.py
       - name: NODE-33 Pyright gate
         run: >-
           uv run pyright
