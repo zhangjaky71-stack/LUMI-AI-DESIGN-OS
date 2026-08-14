@@ -1,0 +1,17 @@
+{
+  "name": "visual-critic",
+  "version": "1.0.0",
+  "primary_metric": "gate_success",
+  "metrics": {
+    "gate_success": {"aggregation": "mean", "direction": "higher"},
+    "cost_usd": {"aggregation": "p95", "direction": "lower"},
+    "latency_ms": {"aggregation": "p95", "direction": "lower"}
+  },
+  "gate": {
+    "primary": {"metric": "gate_success", "max_regression": 0.0},
+    "guardrails": [
+      {"metric": "cost_usd", "comparison": "max_ratio", "value": 1.2},
+      {"metric": "latency_ms", "comparison": "max_ratio", "value": 1.2}
+    ]
+  }
+}
