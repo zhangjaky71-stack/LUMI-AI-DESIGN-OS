@@ -122,16 +122,7 @@ export class AutoRepairLoop {
       }
       attempted.add(item.fingerprint);
       if (item.kind === "MANUAL_REVIEW") {
-        return this.#result(
-          loopId,
-          "REVIEW_REQUIRED",
-          initial,
-          current,
-          iteration - 1,
-          spent,
-          attempts,
-          item.reason_codes.length ? item.reason_codes : ["MANUAL_REVIEW_REQUIRED"],
-        );
+        return this.#result(loopId, "REVIEW_REQUIRED", initial, current, iteration - 1, spent, attempts, item.reason_codes.length ? item.reason_codes : ["MANUAL_REVIEW_REQUIRED"]);
       }
 
       let reservation: BudgetReservation | null = null;
@@ -152,28 +143,29 @@ export class AutoRepairLoop {
         materialization = item.kind === "STRUCTURAL_DESIGN_OP"
           ? await executeStructuralRepair(item, current, this.#ports.structural_materializer)
           : await this.#executeGenerative(item, current, reservation);
-        if (reservation) await this.#ports.budget!.settle(reservation, materialization.actual_cost_usd);
-        spent = addUsd(spent, materialization.actual_cost_usd);
       } catch (error) {
         if (reservation) await this.#ports.budget!.release(reservation, "REPAIR_EXECUTION_FAILED");
-        lastReasons = [error instanceof Error ? error.message : "REPAIR_EXECUTION_FAILED"];
-        const record: RepairAttemptRecord = {
-          loop_id: loopId,
-          iteration,
-          plan_item_id: item.item_id,
-          action_kind: item.kind,
-          source_artifact_version_id: current.subject.artifact_version_id,
-          source_quality_result_id: current.quality.quality_result_id,
-          before_score: current.quality.overall_score,
-          cost_usd: "0",
-          disposition: "REJECTED",
-          reason_codes: lastReasons,
-          created_at: this.#now(),
-        };
+        const reasons = [error instanceof Error ? error.message : "REPAIR_EXECUTION_FAILED"];
+        const record = this.#attemptRecord(loopId, iteration, item, current, "0", "REJECTED", reasons);
         attempts.push(record);
         await this.#ports.attempts.append(record);
+        lastReasons = reasons;
         continue;
       }
+
+      if (reservation) {
+        try {
+          await this.#ports.budget!.settle(reservation, materialization.actual_cost_usd);
+        } catch {
+          spent = addUsd(spent, materialization.actual_cost_usd);
+          const reasons = ["AUTO_REPAIR_BUDGET_SETTLEMENT_UNCERTAIN"];
+          const record = this.#attemptRecord(loopId, iteration, item, current, materialization.actual_cost_usd, "REJECTED", reasons);
+          attempts.push(record);
+          await this.#ports.attempts.append(record);
+          return this.#result(loopId, "FAILED", initial, current, iteration, spent, attempts, reasons);
+        }
+      }
+      spent = addUsd(spent, materialization.actual_cost_usd);
 
       const candidateHash = await canonicalSha256({
         loop_id: loopId,
@@ -182,9 +174,8 @@ export class AutoRepairLoop {
         source: current.subject.artifact_version_id,
         content_hash: materialization.content_hash,
       });
-      const candidateId = `repair-candidate:${candidateHash}`;
       const candidate = await this.#ports.artifacts.persistCandidate({
-        candidate_id: candidateId,
+        candidate_id: `repair-candidate:${candidateHash}`,
         loop_id: loopId,
         iteration,
         item,
@@ -197,21 +188,11 @@ export class AutoRepairLoop {
       });
       const comparison = compareQuality(current.quality, quality, this.#options.policy);
       const record: RepairAttemptRecord = {
-        loop_id: loopId,
-        iteration,
-        plan_item_id: item.item_id,
-        action_kind: item.kind,
-        source_artifact_version_id: current.subject.artifact_version_id,
+        ...this.#attemptRecord(loopId, iteration, item, current, materialization.actual_cost_usd, comparison.disposition, comparison.reason_codes),
         candidate_artifact_version_id: candidate.artifact_version_id,
-        source_quality_result_id: current.quality.quality_result_id,
         candidate_quality_result_id: quality.quality_result_id,
-        before_score: current.quality.overall_score,
         after_score: quality.overall_score,
         score_gain: comparison.score_gain,
-        cost_usd: materialization.actual_cost_usd,
-        disposition: comparison.disposition,
-        reason_codes: comparison.reason_codes,
-        created_at: this.#now(),
       };
       attempts.push(record);
       await this.#ports.attempts.append(record);
@@ -226,12 +207,11 @@ export class AutoRepairLoop {
         continue;
       }
 
-      const targetStatus = comparison.disposition === "PROMOTED_READY" ? "READY" : "DRAFT";
       try {
         await this.#ports.artifacts.promoteCandidate({
           candidate,
           expected_head: current.expected_branch_head,
-          target_status: targetStatus,
+          target_status: comparison.disposition === "PROMOTED_READY" ? "READY" : "DRAFT",
           quality,
         });
       } catch (error) {
@@ -276,14 +256,34 @@ export class AutoRepairLoop {
     return null;
   }
 
-  async #executeGenerative(
-    item: RepairPlanItem,
-    source: RepairSource,
-    reservation: BudgetReservation | null,
-  ): Promise<CandidateMaterialization> {
+  async #executeGenerative(item: RepairPlanItem, source: RepairSource, reservation: BudgetReservation | null): Promise<CandidateMaterialization> {
     if (!this.#ports.generative) throw new AutoRepairError("AUTO_REPAIR_GENERATIVE_PORT_UNAVAILABLE");
     if (!reservation) throw new AutoRepairError("AUTO_REPAIR_PAID_REPAIR_WITHOUT_RESERVATION");
     return this.#ports.generative.execute(item, source, reservation.reservation_id);
+  }
+
+  #attemptRecord(
+    loopId: string,
+    iteration: number,
+    item: RepairPlanItem,
+    source: RepairSource,
+    cost: string,
+    disposition: RepairAttemptRecord["disposition"],
+    reasons: readonly string[],
+  ): RepairAttemptRecord {
+    return {
+      loop_id: loopId,
+      iteration,
+      plan_item_id: item.item_id,
+      action_kind: item.kind,
+      source_artifact_version_id: source.subject.artifact_version_id,
+      source_quality_result_id: source.quality.quality_result_id,
+      before_score: source.quality.overall_score,
+      cost_usd: cost,
+      disposition,
+      reason_codes: [...reasons],
+      created_at: this.#now(),
+    };
   }
 
   #result(
