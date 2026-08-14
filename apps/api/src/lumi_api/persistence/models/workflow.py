@@ -154,6 +154,7 @@ class Task(IdMixin, MutableTimestampMixin, Base):
     output_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     output_schema: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    condition_expression: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
