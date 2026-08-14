@@ -2,9 +2,9 @@ import type { CanvasSceneNode } from "./ir-scene";
 import type { Matrix2D } from "./matrix";
 import type { PixiDisplayHandle, PixiV8Bindings } from "./renderer";
 
-export interface PixiMatrixLike {}
+export type PixiMatrixLike = object;
 
-export interface PixiContainerLike extends PixiDisplayHandle {
+export interface PixiContainerLike {
   visible: boolean;
   label?: string;
   addChild(child: PixiContainerLike): unknown;
@@ -55,9 +55,7 @@ export interface PixiTextureResolver {
   textureForAsset(assetId: string): unknown | null;
 }
 
-interface ManagedPixiHandle extends PixiContainerLike {
-  readonly id: string;
-}
+interface ManagedPixiHandle extends PixiDisplayHandle, PixiContainerLike {}
 
 function managed<T extends PixiContainerLike>(object: T, id: string): T & ManagedPixiHandle {
   object.label = id;
@@ -71,7 +69,7 @@ function managed<T extends PixiContainerLike>(object: T, id: string): T & Manage
 }
 
 function asContainer(handle: PixiDisplayHandle): PixiContainerLike {
-  return handle as PixiContainerLike;
+  return handle as ManagedPixiHandle;
 }
 
 function numericFill(node: CanvasSceneNode): number {
@@ -82,22 +80,37 @@ function numericFill(node: CanvasSceneNode): number {
   return 0xb8b8b8;
 }
 
+function missingGraphic(runtime: PixiV8RuntimeModule, id: string): ManagedPixiHandle {
+  const graphics = managed(new runtime.Graphics(), id);
+  graphics.rect(0, 0, 64, 64).fill(0xd0d0d0);
+  if (graphics.stroke) graphics.stroke({ width: 1, color: 0x777777 });
+  return graphics;
+}
+
 export function createPixiV8Bindings(
   runtime: PixiV8RuntimeModule,
   host: PixiApplicationHost,
   textures: PixiTextureResolver,
 ): PixiV8Bindings {
+  const stage = managed(host.stage, "__lumi_canvas_stage__");
   const createGraphics = (id: string, node: CanvasSceneNode): ManagedPixiHandle => {
     const graphics = managed(new runtime.Graphics(), id);
     graphics
-      .rect(0, 0, Math.max(0, node.local_bounds.width), Math.max(0, node.local_bounds.height))
+      .rect(
+        0,
+        0,
+        Math.max(0, node.local_bounds.width),
+        Math.max(0, node.local_bounds.height),
+      )
       .fill(numericFill(node));
-    if (node.kind === "GUIDE" && graphics.stroke) graphics.stroke({ width: 1, color: numericFill(node) });
+    if (node.kind === "GUIDE" && graphics.stroke) {
+      graphics.stroke({ width: 1, color: numericFill(node) });
+    }
     return graphics;
   };
 
   return {
-    stage: host.stage,
+    stage,
     createContainer(id) {
       return managed(new runtime.Container(), id);
     },
@@ -106,22 +119,18 @@ export function createPixiV8Bindings(
     },
     createImage(id, assetId) {
       const texture = textures.textureForAsset(assetId);
-      if (texture === null) return createGraphics(id, { id, kind: "IMAGE", parent_id: null, children: [], depth: 0, paint_order: 0, visible: true, locked: false, local_matrix: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 }, world_matrix: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 }, local_bounds: { x: 0, y: 0, width: 64, height: 64 }, world_bounds: { x: 0, y: 0, width: 64, height: 64 }, render_key: "missing", metadata: {} });
-      return managed(runtime.Sprite.from(texture), id);
+      return texture === null ? missingGraphic(runtime, id) : managed(runtime.Sprite.from(texture), id);
     },
     createShape(id, node) {
       return createGraphics(id, node);
     },
     createVideoPoster(id, assetId) {
-      if (!assetId) return managed(new runtime.Container(), id);
+      if (!assetId) return missingGraphic(runtime, id);
       const texture = textures.textureForAsset(assetId);
-      return texture === null ? managed(new runtime.Container(), id) : managed(runtime.Sprite.from(texture), id);
+      return texture === null ? missingGraphic(runtime, id) : managed(runtime.Sprite.from(texture), id);
     },
     createPlaceholder(id) {
-      const graphics = managed(new runtime.Graphics(), id);
-      graphics.rect(0, 0, 64, 64).fill(0xd0d0d0);
-      if (graphics.stroke) graphics.stroke({ width: 1, color: 0x777777 });
-      return graphics;
+      return missingGraphic(runtime, id);
     },
     setLocalMatrix(handle, matrix: Matrix2D) {
       asContainer(handle).setFromMatrix(
@@ -132,14 +141,14 @@ export function createPixiV8Bindings(
       asContainer(handle).visible = visible;
     },
     setText(handle, content) {
-      const text = handle as PixiTextLike;
+      const text = handle as PixiTextLike & PixiDisplayHandle;
       if (typeof text.text === "string") text.text = content;
     },
     setAsset(handle, assetId) {
       if (!assetId) return;
       const texture = textures.textureForAsset(assetId);
       if (texture === null) return;
-      const sprite = handle as PixiSpriteLike;
+      const sprite = handle as PixiSpriteLike & PixiDisplayHandle;
       if ("texture" in sprite) sprite.texture = texture;
     },
     addChild(parent, child) {
