@@ -18,7 +18,10 @@
 | Nested affine transforms | `matrix.ts`, `ir-scene.ts` | IMPLEMENTED |
 | `rotation_deg` semantics | matrix/geometry compatibility fix | IMPLEMENTED |
 | Multi-frame scene | `frame_ids`, fit frame/all | IMPLEMENTED |
+| Ancestor visibility inheritance | scene projection + runtime regression | IMPLEMENTED |
+| Ancestor lock inheritance | scene projection + runtime regression | IMPLEMENTED |
 | Spatial culling/index | `spatial-index.ts` | IMPLEMENTED |
+| Visible ancestor closure during culling | `CanvasController.renderNow()` | IMPLEMENTED |
 | Topmost hit test/select-through | spatial + selection tests | IMPLEMENTED |
 | Multi-select/marquee | `selection.ts` | IMPLEMENTED |
 | Locked nodes selectable but not transformable | selection/runtime tests | IMPLEMENTED |
@@ -32,6 +35,10 @@
 | Grapheme-aware text | `Intl.Segmenter` test | IMPLEMENTED |
 | Authorized asset resolver | `resource-manager.ts` | IMPLEMENTED |
 | Progressive cache/reference lifecycle | resource/asset-cache tests | IMPLEMENTED |
+| Concurrent shared-texture ref counting | resource manager + asset residency tests | IMPLEMENTED |
+| Viewport/zoom-driven asset residency | `asset-residency.ts`, controller | IMPLEMENTED |
+| Live texture lookup after LRU eviction | ResourceManager `peek()` only | IMPLEMENTED |
+| Async asset race invalidation | request-token residency guard | IMPLEMENTED |
 | GPU object cleanup | loader destroy + renderer disposal | IMPLEMENTED |
 | Clipboard IR fragment | `clipboard.ts` | IMPLEMENTED |
 | Cross-project asset revalidation | clipboard asset policy | IMPLEMENTED |
@@ -42,6 +49,7 @@
 | Incremental dirty render | render key + renderer test | IMPLEMENTED |
 | Resized FRAME/SHAPE redraw | `redrawShape` binding + test | IMPLEMENTED |
 | IMAGE/VIDEO display sizing | `setDisplaySize` binding | IMPLEMENTED |
+| Renderer removal without double-disposal | reverse removal + `children:false` | IMPLEMENTED |
 | RAF batching | `CanvasController.scheduleRender()` | IMPLEMENTED |
 | Real PixiJS browser integration | `/canvas-engine` | IMPLEMENTED |
 | Browser interaction E2E | `apps/web/e2e/canvas-engine.spec.ts` | IMPLEMENTED; hosted execution pending |
@@ -90,6 +98,12 @@ CanvasTransformSession preview
 
 Undo and redo replay operations through the same validator. A newly active hard lock can therefore deny Undo.
 
+## Asset residency acceptance
+
+Viewport culling drives `CanvasAssetResidency`, which chooses `thumbnail`, `preview`, or `full` from zoom and requests the resource through the authorized `CanvasAssetResolver` boundary. Concurrent callers share one load while retaining independent references. Async completions use per-node request tokens so an obsolete request cannot revive an offscreen or superseded resource.
+
+`textureForAsset()` reads only `CanvasResourceManager.peek()` results. It does not keep a second stale texture map, so an LRU-evicted/destroyed GPU resource cannot remain reachable through the residency layer.
+
 ## Browser integration acceptance
 
 `/canvas-engine` initializes a real PixiJS v8 Application through the production `PixiV8RendererAdapter` and `CanvasController`.
@@ -114,10 +128,11 @@ Hosted headless requestAnimationFrame timing is not used to claim workstation 60
 ## Tests present
 
 - `canvas-spike.test.ts` — NODE-08 compatibility regression.
-- `runtime.test.ts` — IR projection, selection, constrained transforms.
+- `runtime.test.ts` — IR projection, inherited visibility/locking, selection, constrained transforms.
 - `command-bus.test.ts` — undo/redo and lock enforcement.
 - `text-resource.test.ts` — IME, graphemes, resource lifecycle, clipboard.
-- `renderer.test.ts` — dirty rendering, camera bridge, redraw/disposal.
+- `asset-residency.test.ts` — shared in-flight references and zoom-tier residency.
+- `renderer.test.ts` — dirty rendering, camera bridge, resize redraw/disposal.
 - `camera-snapping.test.ts` — DPR, camera roundtrip, snapping.
 - `diagnostics.test.ts` — malformed IR isolation.
 - `runtime-performance.test.ts` — 2k/10k synchronous budget.
