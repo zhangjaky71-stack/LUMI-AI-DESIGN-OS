@@ -248,7 +248,12 @@ export class CanvasController {
       payload: {},
       reason: "canvas-delete",
     };
-    const result = this.#commands.dispatch("delete", roots.length ? [op] : [], this.#constraints, overrides);
+    const result = this.#commands.dispatch(
+      "delete",
+      roots.length ? [op] : [],
+      this.#constraints,
+      overrides,
+    );
     if (result.accepted && roots.length) {
       this.selection.clear();
       this.#refreshScene();
@@ -270,6 +275,7 @@ export class CanvasController {
 
   renderNow(): RendererSyncResult | null {
     if (!this.#renderer) return null;
+    this.#renderer.setCamera(this.#camera);
     const visible = new Set(
       this.#spatial
         .query(viewportWorldRect(this.#camera, this.#viewport))
@@ -307,7 +313,10 @@ export class CanvasController {
       this.#scene.nodes.has(previousSelection.isolation_root_id)
     ) {
       this.selection.enterIsolation(previousSelection.isolation_root_id, this.#scene);
-      this.selection.set(previousSelection.ids.filter((id) => this.#scene.nodes.has(id)), previousSelection.primary_id);
+      this.selection.set(
+        previousSelection.ids.filter((id) => this.#scene.nodes.has(id)),
+        previousSelection.primary_id,
+      );
     }
     this.scheduleRender();
   }
