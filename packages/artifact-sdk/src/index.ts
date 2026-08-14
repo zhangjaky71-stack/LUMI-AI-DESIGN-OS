@@ -9,6 +9,7 @@ export * from "./export-memory";
 export * from "./export-pdf";
 export * from "./export-renderer";
 export * from "./export-security";
+export * from "./export-source-adapter";
 export * from "./export-svg";
 export * from "./export-worker-protocol";
 export * from "./export-zip";
