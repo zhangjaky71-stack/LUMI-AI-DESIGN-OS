@@ -83,6 +83,33 @@ The DB gate applies `0001 + 0009`, inserts an exact 93-point QualityResult and c
 
 The calibration gate recomputes metrics and runs NODE-05 baseline-vs-candidate comparison.
 
+## Hosted CI evidence — initial release HEAD
+
+Initial release HEAD: `8d500d7cf976e069173b60d7a9ee5ad4d9356d9b`
+
+Visual Critic workflow:
+
+```text
+run_id: 31820529421
+critic-contract job_id: 94832429909
+critic-contract conclusion: failure
+runner_id: 0
+steps: []
+critic-quality: skipped
+critic-integration: skipped
+critic-calibration: skipped
+critic-db: skipped
+critic-benchmark: skipped
+```
+
+GitHub check annotation:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+
+Interpretation: this is an account-level GitHub Actions billing/spending-limit blocker. The runner never started, so the architecture validator, TypeScript typecheck, unit/integration tests, calibration recomputation, NODE-05 gate, PostgreSQL migration test and benchmark were **not executed**. This is not an observed code/test failure and is not PASS.
+
+This evidence commit intentionally creates a new final release HEAD. The final-head hosted run is recorded in PR metadata/body only rather than creating another evidence commit, preventing a commit → workflow → evidence-commit loop.
+
 ## Completion policy
 
 This report does **not** mark NODE-50 PASS/COMPLETE merely because code/workflow files exist.
@@ -95,13 +122,14 @@ Production VLM auto-approval additionally requires a real human-labeled calibrat
 
 ```text
 implementation                         IMPLEMENTED
-static architecture gate               IMPLEMENTED / hosted execution pending
-TypeScript typecheck                    hosted execution pending
-unit/integration tests                  hosted execution pending
-calibration recomputation               hosted execution pending
-NODE-05 release gate                    hosted execution pending
-PostgreSQL migration/trigger            hosted execution pending
-2k-node scale harness                   hosted execution pending
+static architecture gate               not executed on hosted runner
+TypeScript typecheck                    not executed on hosted runner
+unit/integration tests                  not executed on hosted runner
+calibration recomputation               not executed on hosted runner
+NODE-05 release gate                    not executed on hosted runner
+PostgreSQL migration/trigger            not executed on hosted runner
+2k-node scale harness                   not executed on hosted runner
+hosted blocker                          GitHub billing/spending limit
 production human VLM calibration        pending before live auto-approval
 ```
 
