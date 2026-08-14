@@ -54,6 +54,10 @@ def upgrade() -> None:
         sa.Column("task_graph_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("recipe_step_id", sa.String(length=128), nullable=True),
         sa.Column("task_key", sa.String(length=255), nullable=True),
+        sa.Column("owner_key", sa.String(length=255), nullable=True),
+        sa.Column("budget_limit_usd", sa.Numeric(18, 6), nullable=True),
+        sa.Column("output_schema", sa.String(length=255), nullable=True),
+        sa.Column("metadata_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.Column("state_version", sa.Integer(), nullable=False, server_default="1"),
         sa.Column("lease_owner", sa.String(length=255), nullable=True),
         sa.Column("lease_expires_at", sa.DateTime(timezone=True), nullable=True),
@@ -82,6 +86,7 @@ def upgrade() -> None:
     op.create_check_constraint("ck_tasks_dynamic_depth", "tasks", "dynamic_depth >= 0 AND dynamic_depth <= 4")
     op.create_check_constraint("ck_tasks_dynamic_child_limit", "tasks", "dynamic_child_limit >= 0 AND dynamic_child_limit <= 32")
     op.create_check_constraint("ck_tasks_concurrency_limit", "tasks", "concurrency_limit IS NULL OR (concurrency_limit >= 1 AND concurrency_limit <= 32)")
+    op.create_check_constraint("ck_tasks_budget_limit_usd", "tasks", "budget_limit_usd IS NULL OR budget_limit_usd > 0")
     op.create_index(
         "uq_tasks_graph_task_key",
         "tasks",
@@ -115,8 +120,12 @@ def upgrade() -> None:
     op.create_index("ix_task_attempts_graph_created", "task_attempts", ["task_graph_id", "created_at"])
     op.create_index("ix_task_attempts_logical_operation", "task_attempts", ["logical_operation_key", "attempt_number"])
 
+    # 0002 grants broad default DML to future tables. Keep graph state mutable but
+    # non-deletable, and keep attempt history append-only for auditability.
+    op.execute("REVOKE DELETE ON task_graph_instances FROM lumi_app")
+    op.execute("REVOKE UPDATE, DELETE ON task_attempts FROM lumi_app")
     op.execute("GRANT SELECT, INSERT, UPDATE ON task_graph_instances TO lumi_app")
-    op.execute("GRANT SELECT, INSERT, UPDATE ON task_attempts TO lumi_app")
+    op.execute("GRANT SELECT, INSERT ON task_attempts TO lumi_app")
 
 
 def downgrade() -> None:
@@ -129,6 +138,7 @@ def downgrade() -> None:
     op.drop_index("ix_tasks_lease_reap", table_name="tasks")
     op.drop_index("ix_tasks_ready_claim", table_name="tasks")
     op.drop_index("uq_tasks_graph_task_key", table_name="tasks")
+    op.drop_constraint("ck_tasks_budget_limit_usd", "tasks", type_="check")
     op.drop_constraint("ck_tasks_concurrency_limit", "tasks", type_="check")
     op.drop_constraint("ck_tasks_dynamic_child_limit", "tasks", type_="check")
     op.drop_constraint("ck_tasks_dynamic_depth", "tasks", type_="check")
@@ -149,6 +159,10 @@ def downgrade() -> None:
         "lease_expires_at",
         "lease_owner",
         "state_version",
+        "metadata_json",
+        "output_schema",
+        "budget_limit_usd",
+        "owner_key",
         "task_key",
         "recipe_step_id",
         "task_graph_id",
