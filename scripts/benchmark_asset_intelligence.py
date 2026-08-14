@@ -103,8 +103,10 @@ def main() -> None:
         analyzer_version="benchmark-analyzer-v1",
         embedding_model_id="benchmark-embedding",
         embedding_model_version="v1",
+        embedding_preprocessor_version="v1",
         embedding_dimensions=8,
-        embedding_space_id="benchmark-embedding@v1:8d",
+        embedding_space_id="benchmark-embedding@v1:pre-v1:8d",
+        registry_snapshot_id="benchmark-registry-v1",
         state="ACTIVE",
         created_at="2026-08-14T00:00:00Z",
         activated_at="2026-08-14T00:00:01Z",
@@ -124,10 +126,6 @@ def main() -> None:
         durations_ms.append((time.perf_counter() - started) * 1000)
         if not hits:
             raise AssertionError("benchmark search returned no hits")
-        if any(hit.asset_id.endswith("0") for hit in hits):
-            # Tenant B records are inserted at every tenth source row. This is only a lightweight
-            # benchmark sanity check; tenant correctness is fully covered by conformance tests.
-            pass
 
     report = {
         "benchmark": "NODE-45 in-memory scoped ranking core",
