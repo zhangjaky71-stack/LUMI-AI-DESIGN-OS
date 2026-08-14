@@ -12,6 +12,7 @@ export * from "./matrix";
 export * from "./pixi-v8-bindings";
 export * from "./renderer";
 export * from "./resource-manager";
+export * from "./runtime-benchmark";
 export * from "./scene";
 export * from "./selection";
 export * from "./snapping";
