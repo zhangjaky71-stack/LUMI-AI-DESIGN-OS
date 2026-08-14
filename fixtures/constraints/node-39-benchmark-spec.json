@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "seed": 39001,
+  "profiles": {
+    "structure_lock_cases": 100,
+    "qr_variants": 50,
+    "protected_region_edits": 50,
+    "identity_cases": 50,
+    "compression_false_positive_cases": 20
+  },
+  "required_scenarios": [
+    "only_background",
+    "keep_product",
+    "keep_logo",
+    "keep_qr",
+    "change_title_size",
+    "resize_frame_without_distorting_logo",
+    "qr_payload_changed",
+    "qr_missing",
+    "protected_region_minor_compression",
+    "protected_region_content_change",
+    "identity_validator_unavailable",
+    "stale_constraint_snapshot",
+    "override_expired",
+    "equal_precedence_conflict"
+  ],
+  "notes": "The corpus is generated deterministically by scripts/build_constraint_benchmark_corpus.py. Identity rows define adapter expectations only; calibrated product/logo scoring is owned by NODE-44."
+}
