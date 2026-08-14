@@ -8,8 +8,10 @@
     "analyzer_version": "analyzer-bundle-v1",
     "embedding_model_id": "fixture-multimodal",
     "embedding_model_version": "2026-08-14",
+    "embedding_preprocessor_version": "fixture-pre-v1",
     "embedding_dimensions": 4,
-    "embedding_space_id": "fixture-multimodal@2026-08-14:4d",
+    "embedding_space_id": "fixture-multimodal@2026-08-14:fixture-pre-v1:4d:v1",
+    "registry_snapshot_id": "registry:00000000-0000-0000-0000-00000000000a:v1",
     "state": "ACTIVE"
   },
   "assets": [
