@@ -43,13 +43,14 @@ function nextSource(source: RepairSource, candidate: PersistedRepairCandidate, q
   };
 }
 
-function loopIdentity(source: RepairSource, policyId: string, policyVersion: string): string {
-  return `repair-loop:${canonicalSha256({
+async function loopIdentity(source: RepairSource, policyId: string, policyVersion: string): Promise<string> {
+  const hash = await canonicalSha256({
     artifact_version_id: source.subject.artifact_version_id,
     quality_result_id: source.quality.quality_result_id,
     policy_id: policyId,
     policy_version: policyVersion,
-  })}`;
+  });
+  return `repair-loop:${hash}`;
 }
 
 export class AutoRepairLoop {
@@ -75,7 +76,7 @@ export class AutoRepairLoop {
   }
 
   async run(initial: RepairSource): Promise<RepairLoopResult> {
-    const loopId = loopIdentity(initial, this.#options.policy.policy_id, this.#options.policy.version);
+    const loopId = await loopIdentity(initial, this.#options.policy.policy_id, this.#options.policy.version);
     if (!(await this.#ports.artifacts.isCurrentHead(initial.branch_id, initial.expected_branch_head))) {
       throw new AutoRepairStaleSourceError("AUTO_REPAIR_STALE_SOURCE");
     }
@@ -174,13 +175,14 @@ export class AutoRepairLoop {
         continue;
       }
 
-      const candidateId = `repair-candidate:${canonicalSha256({
+      const candidateHash = await canonicalSha256({
         loop_id: loopId,
         iteration,
         item: item.fingerprint,
         source: current.subject.artifact_version_id,
         content_hash: materialization.content_hash,
-      })}`;
+      });
+      const candidateId = `repair-candidate:${candidateHash}`;
       const candidate = await this.#ports.artifacts.persistCandidate({
         candidate_id: candidateId,
         loop_id: loopId,
