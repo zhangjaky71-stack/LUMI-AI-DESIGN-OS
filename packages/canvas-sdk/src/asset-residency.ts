@@ -19,15 +19,10 @@ function tierForZoom(zoom: number): AssetTier {
   return "full";
 }
 
-function key(assetId: string, tier: AssetTier): string {
-  return `${assetId}:${tier}`;
-}
-
 export class CanvasAssetResidency<T> implements CanvasAssetResidencyPort {
   readonly #manager: CanvasResourceManager<T>;
   readonly #desiredByNode = new Map<string, DesiredAsset>();
   readonly #requestTokenByNode = new Map<string, number>();
-  readonly #loaded = new Map<string, T>();
   #nextRequestToken = 0;
   #invalidate: (() => void) | null = null;
 
@@ -64,7 +59,7 @@ export class CanvasAssetResidency<T> implements CanvasAssetResidencyPort {
       this.#nextRequestToken += 1;
       const requestToken = this.#nextRequestToken;
       this.#requestTokenByNode.set(nodeId, requestToken);
-      void this.#manager.acquire(wanted.assetId, wanted.tier).then((resource) => {
+      void this.#manager.acquire(wanted.assetId, wanted.tier).then(() => {
         const stillWanted = this.#desiredByNode.get(nodeId);
         const stillCurrent = this.#requestTokenByNode.get(nodeId) === requestToken;
         if (
@@ -76,7 +71,6 @@ export class CanvasAssetResidency<T> implements CanvasAssetResidencyPort {
           this.#manager.release(wanted.assetId, wanted.tier);
           return;
         }
-        this.#loaded.set(key(wanted.assetId, wanted.tier), resource);
         this.#invalidate?.();
       });
     }
@@ -84,9 +78,9 @@ export class CanvasAssetResidency<T> implements CanvasAssetResidencyPort {
 
   textureForAsset(assetId: string): T | null {
     return (
-      this.#loaded.get(key(assetId, "full")) ??
-      this.#loaded.get(key(assetId, "preview")) ??
-      this.#loaded.get(key(assetId, "thumbnail")) ??
+      this.#manager.peek(assetId, "full") ??
+      this.#manager.peek(assetId, "preview") ??
+      this.#manager.peek(assetId, "thumbnail") ??
       null
     );
   }
@@ -97,7 +91,6 @@ export class CanvasAssetResidency<T> implements CanvasAssetResidencyPort {
     }
     this.#desiredByNode.clear();
     this.#requestTokenByNode.clear();
-    this.#loaded.clear();
     this.#manager.destroy();
     this.#invalidate = null;
   }
