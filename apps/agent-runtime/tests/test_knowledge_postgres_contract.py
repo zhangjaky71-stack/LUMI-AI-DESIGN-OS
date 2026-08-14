@@ -22,12 +22,15 @@ class KnowledgePostgresContractTests(unittest.TestCase):
         self.assertIn("CREATE TABLE knowledge_documents", text)
         self.assertIn("CREATE TABLE knowledge_chunks", text)
         self.assertIn("permission_scope", text)
+        self.assertIn("scope_key", text)
         self.assertIn("parser_version", text)
         self.assertIn("chunker_version", text)
         self.assertIn("index_version", text)
         self.assertIn("embedding_space_id", text)
         self.assertIn("source_updated_at", text)
         self.assertIn("REVOKE DELETE", text)
+        self.assertIn("scope_key='PROJECT:' || project_id::text", text)
+        self.assertIn("scope_key='ORGANIZATION'", text)
         for state in (
             "PENDING",
             "EXTRACTING",
@@ -46,6 +49,7 @@ class KnowledgePostgresContractTests(unittest.TestCase):
         self.assertIn('__tablename__ = "knowledge_documents"', text)
         self.assertIn('__tablename__ = "knowledge_chunks"', text)
         self.assertIn("permission_scope", text)
+        self.assertIn("scope_key", text)
         self.assertIn("index_version", text)
         self.assertIn("embedding_space_id", text)
         self.assertIn("source_updated_at", text)
@@ -53,6 +57,7 @@ class KnowledgePostgresContractTests(unittest.TestCase):
     def test_postgres_repository_is_sdk_neutral_and_transaction_safe(self) -> None:
         text = REPOSITORY.read_text(encoding="utf-8")
         self.assertIn("pg_advisory_xact_lock", text)
+        self.assertIn("scope_key", text)
         self.assertIn("FOR UPDATE", text)
         self.assertIn("version=version+1", text)
         self.assertIn("ON CONFLICT (document_id, ordinal) DO UPDATE", text)
