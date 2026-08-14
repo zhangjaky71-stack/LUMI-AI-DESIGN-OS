@@ -10,6 +10,17 @@ import type {
   PostflightReport,
 } from "./types";
 
+const FAIL_CLOSED_POSTFLIGHT_TYPES = new Set<string>([
+  "PROTECT_REGION",
+  "REQUIRE_SCANNABILITY",
+  "LOCK_IDENTITY",
+  "REQUIRE_IDENTITY_SCORE",
+  "REQUIRE_BRAND_COMPLIANCE",
+  "REQUIRE_CONTRAST",
+  "REQUIRE_TEXT_READABILITY",
+  "REQUIRE_RESOLUTION",
+]);
+
 function unavailable(constraint: DesignConstraint, validator: string): ConstraintViolation {
   return {
     constraint_id: constraint.id,
@@ -57,23 +68,12 @@ export class ConstraintPostflightRuntime {
     for (const constraint of context.constraints.filter((item) => item.active)) {
       if (isConstraintOverridden(context.document, constraint, context.overrides)) continue;
       const matching = this.evaluators.filter(
-        (evaluator) => evaluator.supports_postflight && evaluator.supported_types.includes(constraint.type),
+        (evaluator) =>
+          evaluator.supports_postflight &&
+          (evaluator.supported_types as readonly string[]).includes(constraint.type),
       );
       if (!matching.length) {
-        // Postflight-only or identity/quality hard requirements must fail closed when no validator exists.
-        if (
-          constraint.severity === "HARD" &&
-          [
-            "PROTECT_REGION",
-            "REQUIRE_SCANNABILITY",
-            "LOCK_IDENTITY",
-            "REQUIRE_IDENTITY_SCORE",
-            "REQUIRE_BRAND_COMPLIANCE",
-            "REQUIRE_CONTRAST",
-            "REQUIRE_TEXT_READABILITY",
-            "REQUIRE_RESOLUTION",
-          ].includes(constraint.type)
-        ) {
+        if (constraint.severity === "HARD" && FAIL_CLOSED_POSTFLIGHT_TYPES.has(constraint.type)) {
           unavailableValidators.add(`missing:${constraint.type}`);
           violations.push(unavailable(constraint, `missing:${constraint.type}`));
         }
