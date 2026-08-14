@@ -1,0 +1,11 @@
+{
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "standard",
+  "include": ["src", "tests"],
+  "extraPaths": [
+    "src",
+    "../model-gateway/src",
+    "../artifact-history/src",
+    "../asset-intelligence/src"
+  ]
+}
