@@ -74,6 +74,20 @@ def _required_capabilities(request: ModelRequest) -> tuple[Capability, ...]:
     return tuple(capabilities)
 
 
+def _provider_key_filter(request: ModelRequest, field: str) -> frozenset[str]:
+    raw = request.constraints.get(field)
+    if raw is None:
+        return frozenset()
+    if not isinstance(raw, list):
+        raise ValueError(f"MODEL_{field.upper()}_INVALID")
+    values: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str) or not item or len(item) > 512 or ":" not in item:
+            raise ValueError(f"MODEL_{field.upper()}_ENTRY_INVALID")
+        values.add(item)
+    return frozenset(values)
+
+
 class ModelRouter:
     def __init__(
         self,
@@ -158,6 +172,12 @@ class ModelRouter:
         missing = [capability.value for capability in required if capability not in descriptor.capabilities]
         if missing:
             reasons.append("ADDITIONAL_CAPABILITY_MISMATCH:" + ",".join(sorted(missing)))
+        allowed_keys = _provider_key_filter(request, "allowed_provider_keys")
+        excluded_keys = _provider_key_filter(request, "excluded_provider_keys")
+        if allowed_keys and descriptor.key not in allowed_keys:
+            reasons.append("REQUEST_PROVIDER_KEY_NOT_ALLOWED")
+        if descriptor.key in excluded_keys:
+            reasons.append("REQUEST_PROVIDER_KEY_EXCLUDED")
         if descriptor.quality_score < quality_threshold(request.quality_profile):
             reasons.append("QUALITY_BELOW_THRESHOLD")
         if not latency_allowed(request.latency_profile, descriptor.latency_class):
@@ -217,6 +237,8 @@ class ModelRouter:
         ]
         if _required_capabilities(request):
             reasons.append("ADDITIONAL_CAPABILITIES_MATCH")
+        if _provider_key_filter(request, "allowed_provider_keys"):
+            reasons.append("REQUEST_PROVIDER_ALLOWLIST_MATCH")
         preferred_provider = request.routing_hints.get("preferred_provider")
         preferred_model = request.routing_hints.get("preferred_model")
         if preferred_provider == descriptor.provider:
