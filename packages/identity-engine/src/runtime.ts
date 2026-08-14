@@ -102,6 +102,7 @@ async function snapshotId(
   selected: ReadonlyMap<string, IdentitySignalScore>,
 ): Promise<string> {
   const digest = await canonicalSha256({
+    organization_id: identity.organization_id,
     identity_id: identity.identity_id,
     reference_set_version: identity.version,
     threshold_profile_id: profile.profile_id,
@@ -173,6 +174,7 @@ export class IdentityValidationRuntime {
     const orderedScores = [...selected.values()].sort((a, b) => a.signal.localeCompare(b.signal));
     const validationSnapshotId = await snapshotId(input.identity, input.profile, this.provider, selected);
     const reportDigest = await canonicalSha256({
+      organization_id: input.identity.organization_id,
       identity_validation_snapshot_id: validationSnapshotId,
       artifact_id: input.candidate.artifact.artifact_id,
       artifact_version: input.candidate.artifact.version,
@@ -220,8 +222,11 @@ export async function identityValidationBatchSnapshotId(reports: readonly Identi
   if (!reports.length) throw new Error("IDENTITY_VALIDATION_BATCH_EMPTY");
   const organizations = new Set(reports.map((report) => report.organization_id));
   if (organizations.size !== 1) throw new Error("IDENTITY_VALIDATION_BATCH_TENANT_MISMATCH");
-  const digest = await canonicalSha256(
-    [...reports]
+  const organizationId = reports[0]?.organization_id;
+  if (!organizationId) throw new Error("IDENTITY_VALIDATION_BATCH_EMPTY");
+  const digest = await canonicalSha256({
+    organization_id: organizationId,
+    reports: [...reports]
       .sort((a, b) => a.identity_id.localeCompare(b.identity_id) || a.report_id.localeCompare(b.report_id))
       .map((report) => ({
         report_id: report.report_id,
@@ -230,6 +235,6 @@ export async function identityValidationBatchSnapshotId(reports: readonly Identi
         severity: report.severity,
         identity_validation_snapshot_id: report.identity_validation_snapshot_id,
       })),
-  );
+  });
   return `identity-batch:${digest}`;
 }
