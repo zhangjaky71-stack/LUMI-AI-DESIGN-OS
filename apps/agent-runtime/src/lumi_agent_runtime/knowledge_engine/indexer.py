@@ -24,7 +24,7 @@ class KnowledgeEmbeddingPort(Protocol):
 
 
 class KnowledgeIndexer:
-    """Indexes one already-extracted source using a repository transaction/lifetime."""
+    """Indexes one extracted source using a repository transaction/lifetime."""
 
     def __init__(
         self,
@@ -57,7 +57,35 @@ class KnowledgeIndexer:
                 if existing.metadata.get("index_request_hash") != request.semantic_hash:
                     raise ValueError("KNOWLEDGE_INDEX_VERSION_CONFIGURATION_CONFLICT")
                 return existing
-            raise ValueError("KNOWLEDGE_DOCUMENT_IDENTITY_CONFLICT")
+            if existing.status in {
+                KnowledgeStatus.PENDING,
+                KnowledgeStatus.EXTRACTING,
+                KnowledgeStatus.FAILED,
+            }:
+                document = await self._prepare_existing(existing, request)
+            else:
+                raise ValueError("KNOWLEDGE_DOCUMENT_IDENTITY_CONFLICT")
+        else:
+            document = KnowledgeDocument(
+                document_id=document_id,
+                organization_id=request.access.organization_id,
+                project_id=request.project_id,
+                source=request.source,
+                permission_scope=request.permission_scope,
+                trust=request.trust,
+                status=KnowledgeStatus.PENDING,
+                normalized_text=request.normalized_text,
+                parser_version=request.parser_version,
+                chunker_version=request.chunker_version,
+                index_version=request.index_version,
+                language=request.language,
+                embedding_space_id=request.embedding_space_id,
+                metadata={
+                    **request.metadata,
+                    "index_request_hash": request.semantic_hash,
+                },
+            )
+            document = await self.repository.insert_document(document)
 
         current_versions = await self.repository.find_ready_source_versions(
             organization_id=request.access.organization_id,
@@ -65,26 +93,6 @@ class KnowledgeIndexer:
             source_type=request.source.source_type.value,
             source_id=request.source.source_id,
         )
-        document = KnowledgeDocument(
-            document_id=document_id,
-            organization_id=request.access.organization_id,
-            project_id=request.project_id,
-            source=request.source,
-            permission_scope=request.permission_scope,
-            trust=request.trust,
-            status=KnowledgeStatus.PENDING,
-            normalized_text=request.normalized_text,
-            parser_version=request.parser_version,
-            chunker_version=request.chunker_version,
-            index_version=request.index_version,
-            language=request.language,
-            embedding_space_id=request.embedding_space_id,
-            metadata={
-                **request.metadata,
-                "index_request_hash": request.semantic_hash,
-            },
-        )
-        document = await self.repository.insert_document(document)
         document = await self._transition(document, KnowledgeStatus.CHUNKING)
 
         chunks = chunk_document(
@@ -128,6 +136,37 @@ class KnowledgeIndexer:
                 expected_version=old.version,
             )
         return ready
+
+    async def _prepare_existing(
+        self,
+        document: KnowledgeDocument,
+        request: KnowledgeIndexRequest,
+    ) -> KnowledgeDocument:
+        expected_ingest_hash = document.metadata.get("ingest_config_hash")
+        provided_ingest_hash = request.metadata.get("ingest_config_hash")
+        if expected_ingest_hash is not None and expected_ingest_hash != provided_ingest_hash:
+            raise ValueError("KNOWLEDGE_INGEST_CONFIGURATION_CONFLICT")
+        prepared = replace(
+            document,
+            project_id=request.project_id,
+            permission_scope=request.permission_scope,
+            trust=request.trust,
+            normalized_text=request.normalized_text,
+            parser_version=request.parser_version,
+            chunker_version=request.chunker_version,
+            index_version=request.index_version,
+            language=request.language,
+            embedding_space_id=request.embedding_space_id,
+            metadata={
+                **request.metadata,
+                "index_request_hash": request.semantic_hash,
+            },
+            version=document.version + 1,
+        )
+        return await self.repository.replace_document(
+            prepared,
+            expected_version=document.version,
+        )
 
     async def _transition(
         self,
