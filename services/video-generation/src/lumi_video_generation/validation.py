@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Mapping, Protocol, cast
 
-from .model import CompiledShot, RenderedVideo, ShotValidationReport, StoredVideoClip, ValidationFinding, VideoProbeResult, VideoTaskSpec, VideoTimeline
+from .model import CompiledShot, RenderedVideo, ShotValidationReport, StoredVideoClip, ValidationDecision, ValidationFinding, VideoProbeResult, VideoTaskSpec, VideoTimeline
 
 
 class IdentityContinuityPort(Protocol):
@@ -48,7 +48,7 @@ def _technical_findings(spec: VideoTaskSpec, shot: CompiledShot, probe: VideoPro
     return findings
 
 
-def _decision(findings: tuple[ValidationFinding, ...]) -> str:
+def _decision(findings: tuple[ValidationFinding, ...]) -> ValidationDecision:
     if any(item.severity == "HARD" and item.status != "PASS" for item in findings):
         return "REJECT"
     if any(item.status != "PASS" for item in findings):
@@ -114,7 +114,7 @@ class CompositeVideoValidator:
                 findings.extend(brand_findings)
         frozen = tuple(findings)
         return ShotValidationReport(
-            decision=cast(ValidationDecisionCompat, _decision(frozen)),
+            decision=_decision(frozen),
             findings=frozen,
             identity_validation_snapshot_id=identity_snapshot,
             brand_validation_snapshot_id=brand_snapshot,
@@ -147,7 +147,4 @@ class CompositeVideoValidator:
                 reason_code="VIDEO_FINAL_RESOLUTION_MISMATCH",
             ))
         frozen = tuple(findings)
-        return ShotValidationReport(decision=cast(ValidationDecisionCompat, _decision(frozen)), findings=frozen)
-
-
-from .model import ValidationDecision as ValidationDecisionCompat
+        return ShotValidationReport(decision=_decision(frozen), findings=frozen)
