@@ -158,6 +158,8 @@ CREATE TABLE IF NOT EXISTS identity_validation_reports (
     REFERENCES identity_reference_sets(organization_id, identity_id, version),
   FOREIGN KEY (organization_id, threshold_profile_id, threshold_profile_version)
     REFERENCES identity_threshold_profiles(organization_id, profile_id, version),
+  FOREIGN KEY (organization_id, artifact_version_id)
+    REFERENCES artifact_versions(organization_id, id),
   CHECK (NOT (status = 'PASS' AND identity_score IS NULL))
 );
 
@@ -169,7 +171,9 @@ CREATE TABLE IF NOT EXISTS identity_validation_batches (
     jsonb_typeof(report_ids) = 'array' AND jsonb_array_length(report_ids) > 0
   ),
   created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (organization_id, id)
+  UNIQUE (organization_id, id),
+  FOREIGN KEY (organization_id, artifact_version_id)
+    REFERENCES artifact_versions(organization_id, id)
 );
 
 ALTER TABLE artifact_versions
