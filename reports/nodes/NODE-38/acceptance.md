@@ -2,6 +2,8 @@
 
 > Status: **IMPLEMENTED / VALIDATING / not COMPLETE**  
 > Branch: `node-38-design-ir-runtime`  
+> Release branch: `node-38-design-ir-runtime-release`  
+> Draft PR: #38  
 > Base: `node-37-agent-team-release`
 
 ## Scope evidence
@@ -24,9 +26,9 @@
 | Semantic selector query | `query.ts`, `design_ir_document.py` | IMPLEMENTED |
 | Spatial adapter boundary | `query.ts`, `design_ir_document.py` | IMPLEMENTED |
 | Command history / undo / redo | `history.ts` + tests | IMPLEMENTED |
-| 2k nodes / 100 ops benchmark | `scripts/benchmark_design_ir_runtime.py` | IMPLEMENTED; hosted result pending |
+| 2k nodes / 100 ops benchmark | `scripts/benchmark_design_ir_runtime.py` | IMPLEMENTED; hosted result blocked |
 | Static contract validator | `scripts/validate_design_ir_runtime.py` | IMPLEMENTED |
-| Dedicated CI | `.github/workflows/design-ir-runtime.yml` | IMPLEMENTED; hosted execution pending |
+| Dedicated CI | `.github/workflows/design-ir-runtime.yml` | IMPLEMENTED; hosted runner blocked |
 
 ## Frozen-operation coverage
 
@@ -57,6 +59,22 @@ Required before marking COMPLETE:
 4. No contract drift is found against NODE-13/14/15.
 5. Release PR remains stack-compatible with `node-37-agent-team-release`.
 
+## Hosted CI evidence — 2026-08-14
+
+Draft PR #38 triggered `Design IR Runtime` workflow run `31781688458` for release head `4729c4632c76e56d8a9210d6075e7f73bf8550af`.
+
+Observed jobs:
+
+- `design-ir-contract`: **failure before runner start**; zero workflow steps executed; `runner_id=0`.
+- `design-ir-quality`: skipped because the contract dependency did not run successfully.
+- `design-ir-benchmark`: skipped because the quality dependency did not run successfully.
+
+GitHub check annotation:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased.
+
+This is an **external GitHub Actions account/billing/spending-limit blocker**. It is not evidence of a Design IR Runtime test, typecheck, Ruff, Pyright, conformance or benchmark failure because none of those steps started.
+
 ## Current disposition
 
-Repository implementation and validation artifacts are present. This report deliberately does **not** mark NODE-38 COMPLETE until the hosted GitHub gates actually execute successfully. If GitHub Actions is prevented from starting by the existing account billing/spending-limit condition, that condition must be recorded as an external blocker rather than reclassified as a code test failure.
+NODE-38 remains **IMPLEMENTED / VALIDATING / not COMPLETE**. The implementation, tests, fixture, validator, benchmark harness and CI definitions are committed. Completion is intentionally withheld until the hosted gates can actually execute and return green.
