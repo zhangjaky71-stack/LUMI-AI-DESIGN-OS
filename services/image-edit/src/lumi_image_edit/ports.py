@@ -34,6 +34,20 @@ class StoredEditedImage:
     height: int
     durable_asset_ref: str
 
+    def __post_init__(self) -> None:
+        if not self.storage_key or "://" in self.storage_key:
+            raise ValueError("IMAGE_EDIT_STORAGE_KEY_MUST_BE_DURABLE")
+        if len(self.checksum_sha256) != 64:
+            raise ValueError("IMAGE_EDIT_OUTPUT_CHECKSUM_INVALID")
+        if self.size_bytes <= 0:
+            raise ValueError("IMAGE_EDIT_OUTPUT_SIZE_INVALID")
+        if self.width <= 0 or self.height <= 0:
+            raise ValueError("IMAGE_EDIT_OUTPUT_DIMENSIONS_INVALID")
+        if not self.mime_type.startswith("image/"):
+            raise ValueError("IMAGE_EDIT_OUTPUT_MIME_INVALID")
+        if not self.durable_asset_ref or "://" in self.durable_asset_ref:
+            raise ValueError("IMAGE_EDIT_DURABLE_ASSET_REF_INVALID")
+
 
 @dataclass(frozen=True, slots=True)
 class ArtifactEditResult:
