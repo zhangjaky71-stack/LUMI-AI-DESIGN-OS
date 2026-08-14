@@ -16,6 +16,7 @@ from .instantiator import InstantiatedTaskGraph, instantiate_compiled_recipe
 from .lifecycle import recompute_graph, refresh_ready_tasks
 from .memory_store import InMemoryTaskGraphStore
 from .postgres_store import PostgresTaskGraphStore, TaskGraphDbConnection
+from .scheduler import DurableTaskGraphScheduler
 from .states import (
     TERMINAL_TASK_STATES,
     WAITING_TASK_STATES,
@@ -26,6 +27,7 @@ from .task_contracts import TaskAttempt, TaskSnapshot, logical_operation_key
 from .wait_progress import resume_waiting_task, update_progress, wait_task
 
 __all__ = [
+    "DurableTaskGraphScheduler",
     "InMemoryTaskGraphStore",
     "InstantiatedTaskGraph",
     "PostgresTaskGraphStore",
