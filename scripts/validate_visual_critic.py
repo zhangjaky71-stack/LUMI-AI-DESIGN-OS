@@ -13,6 +13,7 @@ REQUIRED = [
     "packages/quality-engine/src/profiles.ts",
     "packages/quality-engine/src/calibration.ts",
     "packages/quality-engine/src/artifact-adapter.ts",
+    "packages/quality-engine/src/observability.ts",
     "packages/quality-engine/src/quality-engine.test.ts",
     "packages/quality-engine/src/artifact-adapter.test.ts",
     "packages/quality-engine/src/calibration-fixture.test.ts",
@@ -50,6 +51,7 @@ def main() -> None:
     ports = read("packages/quality-engine/src/ports.ts")
     calibration = read("packages/quality-engine/src/calibration.ts")
     artifact = read("packages/quality-engine/src/artifact-adapter.ts")
+    observability = read("packages/quality-engine/src/observability.ts")
     migration = read("db/migrations/0009_visual_critic.sql")
     workflow = read(".github/workflows/visual-critic.yml")
 
@@ -88,20 +90,25 @@ def main() -> None:
 
     require("overall_score / 100" in artifact, "Artifact quality score must convert 0-100 to historical 0-1 scale")
     require(".transition(" not in artifact, "Quality adapter must not approve/reject ArtifactVersion")
-    require("content_hash" not in artifact or "content_hash" in read("packages/quality-engine/src/artifact-adapter.test.ts"), "Artifact content immutability evidence missing")
+    require("content_hash" in read("packages/quality-engine/src/artifact-adapter.test.ts"), "Artifact content immutability evidence missing")
+
+    require("prompt" not in observability.lower() or "no prompt" in observability.lower(), "observability projection must not expose prompt payload")
+    require("raw VLM" in observability or "raw" not in observability.lower(), "observability must avoid raw model output")
 
     for table in ["quality_profiles", "quality_grader_calibrations", "quality_results", "quality_dimension_results", "quality_violations", "quality_evidence"]:
         require(f"CREATE TABLE IF NOT EXISTS {table}" in migration, f"missing DB table {table}")
     require("NEW.overall_score / 100.0" in migration, "DB quality score normalization missing")
     require("UPDATE artifact_versions" in migration, "Artifact summary score sync missing")
     require("status IN ('PASS','PASS_WITH_WARNINGS','FAIL_REPAIRABLE','FAIL_HARD','REVIEW_REQUIRED')" in migration, "DB status domain mismatch")
+    for profile_id in ["quality:exploration", "quality:production-web", "quality:brand-strict", "quality:product-strict", "quality:print", "quality:social-fast"]:
+        require(profile_id in migration, f"built-in DB profile seed missing: {profile_id}")
 
     suite = json.loads(read("evals/datasets/visual-critic/suite.json"))
     cases = json.loads(read("evals/datasets/visual-critic/v1/cases.json"))["cases"]
     require(suite["name"] == "visual-critic", "NODE-05 suite name mismatch")
     require(len(cases) >= 8, "Visual Critic release-gate dataset needs at least 8 cases")
 
-    for job in ["critic-contract", "critic-quality", "critic-integration", "critic-calibration", "critic-benchmark"]:
+    for job in ["critic-contract", "critic-quality", "critic-integration", "critic-calibration", "critic-db", "critic-benchmark"]:
         require(f"{job}:" in workflow, f"missing CI job {job}")
 
     print("NODE-50 Visual Critic architecture validation: PASS")
