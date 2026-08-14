@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from .model import (
     AssetIndexRepository,
@@ -40,7 +41,7 @@ class AssetResolver:
                 request.scope.organization_id,
                 hit.asset_id,
             )
-            approval_state = "UNKNOWN"
+            approval_state: Literal["APPROVED", "REJECTED", "SELECTED", "UNKNOWN"] = "UNKNOWN"
             if signals:
                 latest = max(signals, key=lambda item: item.occurred_at)
                 approval_state = latest.signal
