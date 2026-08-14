@@ -281,6 +281,13 @@ export class CanvasController {
         .query(viewportWorldRect(this.#camera, this.#viewport))
         .map((node) => node.id),
     );
+    for (const id of [...visible]) {
+      let parentId = this.#scene.nodes.get(id)?.parent_id ?? null;
+      while (parentId) {
+        visible.add(parentId);
+        parentId = this.#scene.nodes.get(parentId)?.parent_id ?? null;
+      }
+    }
     return this.#renderer.sync(this.#scene, visible);
   }
 
