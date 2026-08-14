@@ -16,6 +16,7 @@ function semanticSpec(spec: ExportSpec): unknown {
     design_document_version_id: spec.design_document_version_id,
     filename_template: spec.filename_template,
     include_manifest: spec.include_manifest,
+    retention_seconds: spec.retention_seconds,
     variants: [...spec.variants]
       .map((variant) => ({
         variant_id: variant.variant_id,
@@ -40,12 +41,8 @@ function semanticSpec(spec: ExportSpec): unknown {
 }
 
 export async function exportFingerprint(source: ExportSourceSnapshot, spec: ExportSpec): Promise<string> {
-  if (source.artifact_version_id !== spec.artifact_version_id) {
-    throw new Error("EXPORT_SOURCE_ARTIFACT_VERSION_MISMATCH");
-  }
-  if (source.design_document_version_id !== spec.design_document_version_id) {
-    throw new Error("EXPORT_SOURCE_DESIGN_VERSION_MISMATCH");
-  }
+  if (source.artifact_version_id !== spec.artifact_version_id) throw new Error("EXPORT_SOURCE_ARTIFACT_VERSION_MISMATCH");
+  if (source.design_document_version_id !== spec.design_document_version_id) throw new Error("EXPORT_SOURCE_DESIGN_VERSION_MISMATCH");
   assertNoSensitiveExportMetadata(source.design_document, "$.design_document");
   assertNoSensitiveExportMetadata(source.rights_summary, "$.rights_summary");
   if (source.project_snapshot) assertNoSensitiveExportMetadata(source.project_snapshot, "$.project_snapshot");
@@ -65,9 +62,7 @@ export async function exportFingerprint(source: ExportSourceSnapshot, spec: Expo
   });
 }
 
-export async function exportManifestHash(
-  manifest: Omit<ExportManifest, "manifest_sha256">,
-): Promise<string> {
+export async function exportManifestHash(manifest: Omit<ExportManifest, "manifest_sha256">): Promise<string> {
   assertNoSensitiveExportMetadata(manifest, "$.manifest");
   return canonicalSha256(manifest);
 }
