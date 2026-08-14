@@ -12,6 +12,7 @@ class KnowledgeRepository(Protocol):
         self,
         *,
         organization_id: UUID,
+        scope_key: str,
         source_type: str,
         source_id: str,
     ) -> None: ...
@@ -22,6 +23,7 @@ class KnowledgeRepository(Protocol):
         self,
         *,
         organization_id: UUID,
+        scope_key: str,
         source_type: str,
         source_id: str,
     ) -> tuple[KnowledgeDocument, ...]: ...
@@ -65,10 +67,11 @@ class InMemoryKnowledgeRepository:
         self,
         *,
         organization_id: UUID,
+        scope_key: str,
         source_type: str,
         source_id: str,
     ) -> None:
-        del organization_id, source_type, source_id
+        del organization_id, scope_key, source_type, source_id
 
     async def get_document(self, document_id: UUID) -> KnowledgeDocument | None:
         return self._documents.get(document_id)
@@ -77,6 +80,7 @@ class InMemoryKnowledgeRepository:
         self,
         *,
         organization_id: UUID,
+        scope_key: str,
         source_type: str,
         source_id: str,
     ) -> tuple[KnowledgeDocument, ...]:
@@ -84,6 +88,7 @@ class InMemoryKnowledgeRepository:
             item
             for item in self._documents.values()
             if item.organization_id == organization_id
+            and item.scope_key == scope_key
             and item.source.source_type.value == source_type
             and item.source.source_id == source_id
             and item.status == KnowledgeStatus.READY
