@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from typing import Any
 from uuid import UUID, uuid5
@@ -124,6 +125,7 @@ def _chunk_text(
 def deterministic_document_id(
     namespace: UUID,
     *,
+    scope_key: str,
     source_type: str,
     source_id: str,
     source_version: str,
@@ -133,13 +135,12 @@ def deterministic_document_id(
     return uuid5(
         namespace,
         "knowledge:"
-        f"{source_type}:{source_id}:{source_version}:{source_hash}:{index_version}",
+        f"{scope_key}:{source_type}:{source_id}:{source_version}:"
+        f"{source_hash}:{index_version}",
     )
 
 
 def _locator_hash(locator: dict[str, Any]) -> str:
-    import json
-
     encoded = json.dumps(
         locator,
         ensure_ascii=False,
