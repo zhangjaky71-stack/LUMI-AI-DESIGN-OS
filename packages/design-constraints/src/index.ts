@@ -1,4 +1,5 @@
 export * from "./aggregator";
+export * from "./contrast";
 export * from "./engine";
 export * from "./evaluators";
 export * from "./media-evaluators";
