@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import unittest
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from uuid import UUID
 
 from lumi_agent_runtime.context_engine import (
