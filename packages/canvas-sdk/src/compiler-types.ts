@@ -24,6 +24,7 @@ export type CompileDiagnosticCode =
   | "FONT_MISSING"
   | "FONT_RESOLUTION_FAILED"
   | "STYLE_TOKEN_MISSING"
+  | "MASK_REFERENCE_MISSING"
   | "TEXT_MEASURE_FAILED"
   | "INCREMENTAL_FALLBACK"
   | "IR_DIAGNOSTIC";
@@ -198,7 +199,11 @@ export interface CompilerTextMeasurer {
     content: string,
     style: ResolvedCompilerStyle,
     font: ResolvedCompilerFont | null,
-  ): Promise<{ readonly width: number; readonly height: number; readonly baseline: number }>;
+  ): Promise<{
+    readonly width: number;
+    readonly height: number;
+    readonly baseline: number;
+  }>;
 }
 
 export interface CanvasCompilerOptions {
