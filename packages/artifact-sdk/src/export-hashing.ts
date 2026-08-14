@@ -1,6 +1,12 @@
 import { canonicalSha256, canonicalStringify } from "../../design-ir/src/index";
-import type { ExportFileRecord, ExportManifest, ExportSourceSnapshot, ExportSpec } from "./export-engine-types";
-import { assertNoSensitiveExportMetadata } from "./export-security";
+import type {
+  ExportFileRecord,
+  ExportManifest,
+  ExportManifestFile,
+  ExportSourceSnapshot,
+  ExportSpec,
+} from "./export-engine-types";
+import { assertNoEphemeralExportRefs, assertNoSensitiveExportMetadata } from "./export-security";
 
 function semanticSpec(spec: ExportSpec): unknown {
   return {
@@ -43,6 +49,7 @@ export async function exportFingerprint(source: ExportSourceSnapshot, spec: Expo
   assertNoSensitiveExportMetadata(source.design_document, "$.design_document");
   assertNoSensitiveExportMetadata(source.rights_summary, "$.rights_summary");
   if (source.project_snapshot) assertNoSensitiveExportMetadata(source.project_snapshot, "$.project_snapshot");
+  assertNoEphemeralExportRefs(source.render_plan, "$.render_plan");
   return canonicalSha256({
     export_engine: "1.0.0",
     source: {
@@ -68,7 +75,7 @@ export function canonicalExportJson(value: unknown): string {
   return canonicalStringify(value);
 }
 
-export function stableExportFiles(files: readonly ExportFileRecord[]): readonly unknown[] {
+export function stableExportFiles(files: readonly ExportFileRecord[]): readonly ExportManifestFile[] {
   return [...files]
     .sort((a, b) => a.filename.localeCompare(b.filename))
     .map((file) => ({
@@ -76,8 +83,8 @@ export function stableExportFiles(files: readonly ExportFileRecord[]): readonly 
       mime_type: file.mime_type,
       checksum_sha256: file.checksum_sha256,
       size_bytes: file.size_bytes,
-      width: file.width ?? null,
-      height: file.height ?? null,
-      page_count: file.page_count ?? null,
+      ...(file.width !== undefined ? { width: file.width } : {}),
+      ...(file.height !== undefined ? { height: file.height } : {}),
+      ...(file.page_count !== undefined ? { page_count: file.page_count } : {}),
     }));
 }
