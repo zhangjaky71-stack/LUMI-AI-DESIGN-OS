@@ -5,8 +5,8 @@ interface MatrixLike {
   readonly b: number;
   readonly c: number;
   readonly d: number;
-  readonly e: number;
-  readonly f: number;
+  readonly tx: number;
+  readonly ty: number;
 }
 
 interface BoundsLike {
@@ -90,8 +90,8 @@ function asMatrix(value: unknown): MatrixLike {
     b: finiteNumber(row.b, "MATRIX_B"),
     c: finiteNumber(row.c, "MATRIX_C"),
     d: finiteNumber(row.d, "MATRIX_D"),
-    e: finiteNumber(row.e, "MATRIX_E"),
-    f: finiteNumber(row.f, "MATRIX_F"),
+    tx: finiteNumber(row.tx, "MATRIX_TX"),
+    ty: finiteNumber(row.ty, "MATRIX_TY"),
   };
 }
 
@@ -179,7 +179,7 @@ function styleNumber(style: Readonly<Record<string, unknown>>, key: string, fall
 }
 
 function matrixAttr(matrix: MatrixLike): string {
-  return `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})`;
+  return `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.tx} ${matrix.ty})`;
 }
 
 function isDescendant(item: RenderItemLike, frameId: string, byId: ReadonlyMap<string, RenderItemLike>): boolean {
@@ -196,7 +196,7 @@ function isDescendant(item: RenderItemLike, frameId: string, byId: ReadonlyMap<s
 }
 
 function dataImageUri(value: string): string {
-  if (!/^data:image\/(?:png|jpeg|webp|svg\+xml);base64,[A-Za-z0-9+/=]+$/.test(value)) {
+  if (!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value)) {
     throw new Error("EXPORT_SVG_EXTERNAL_HREF_FORBIDDEN");
   }
   return value;
@@ -218,6 +218,15 @@ function itemStyle(item: RenderItemLike): string {
   return `fill="${escapeXml(fill)}" stroke="${escapeXml(stroke)}" stroke-width="${strokeWidth}" opacity="${opacity}"`;
 }
 
+function explicitPixels(value: number | undefined, unit: ExportVariant["unit"], dpi: number): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isFinite(value) || value <= 0) throw new Error("EXPORT_TARGET_DIMENSIONS_INVALID");
+  const pixels = unit === "MM" ? value / 25.4 * dpi : unit === "IN" ? value * dpi : value;
+  const rounded = Math.round(pixels);
+  if (!Number.isSafeInteger(rounded) || rounded <= 0 || rounded > 32768) throw new Error("EXPORT_TARGET_DIMENSIONS_INVALID");
+  return rounded;
+}
+
 export class SafeSvgRenderPlanSerializer {
   readonly #resources: ExportSvgResourceResolver;
 
@@ -231,8 +240,11 @@ export class SafeSvgRenderPlanSerializer {
     if (plan.document_id !== document.document_id || plan.document_id !== source.compiler_provenance.document_id) {
       throw new Error("EXPORT_SOURCE_DOCUMENT_IDENTITY_MISMATCH");
     }
-    if (source.compiler_provenance.compile_hash.length !== 64) throw new Error("EXPORT_COMPILER_HASH_REQUIRED");
+    if (!/^[0-9a-f]{64}$/.test(source.compiler_provenance.compile_hash)) throw new Error("EXPORT_COMPILER_HASH_REQUIRED");
     if (!variant.frame_ids.length) throw new Error("EXPORT_FRAME_IDS_REQUIRED");
+    const dpi = variant.dpi ?? 72;
+    if (!Number.isInteger(dpi) || dpi < 36 || dpi > 1200) throw new Error("EXPORT_DPI_INVALID");
+    const unit = variant.unit ?? "PX";
     const byId = new Map(plan.items.map((item) => [item.id, item] as const));
     const pages: SvgPage[] = [];
     for (const frameId of variant.frame_ids) {
@@ -243,9 +255,10 @@ export class SafeSvgRenderPlanSerializer {
       const sourceHeight = frame.world_bounds.height;
       if (sourceWidth <= 0 || sourceHeight <= 0) throw new Error("EXPORT_FRAME_DIMENSIONS_INVALID");
       const scale = variant.scale ?? 1;
-      const width = variant.width ?? Math.max(1, Math.round(sourceWidth * scale));
-      const height = variant.height ?? Math.max(1, Math.round(sourceHeight * scale));
-      if (width <= 0 || height <= 0) throw new Error("EXPORT_TARGET_DIMENSIONS_INVALID");
+      if (!Number.isFinite(scale) || scale <= 0 || scale > 16) throw new Error("EXPORT_SCALE_INVALID");
+      const width = explicitPixels(variant.width, unit, dpi) ?? Math.max(1, Math.round(sourceWidth * scale));
+      const height = explicitPixels(variant.height, unit, dpi) ?? Math.max(1, Math.round(sourceHeight * scale));
+      if (width > 32768 || height > 32768) throw new Error("EXPORT_TARGET_DIMENSIONS_INVALID");
       const selected = plan.items
         .filter((item) => item.visible && isDescendant(item, frameId, byId))
         .sort((a, b) => a.z_order - b.z_order);
@@ -305,7 +318,8 @@ export class SafeSvgRenderPlanSerializer {
       }
       const background = variant.transparent_background ? "" : `<rect x="${frame.world_bounds.x}" y="${frame.world_bounds.y}" width="${sourceWidth}" height="${sourceHeight}" fill="${escapeXml(safePaint(variant.background, "#ffffff"))}"/>`;
       const style = fontCss.length ? `<style>${fontCss.join("\n")}</style>` : "";
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${frame.world_bounds.x} ${frame.world_bounds.y} ${sourceWidth} ${sourceHeight}">${style}${background}${body.join("")}</svg>`;
+      const preserveAspectRatio = (variant.resize_mode ?? "SCALE") === "CROP" ? "xMidYMid slice" : "xMidYMid meet";
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${frame.world_bounds.x} ${frame.world_bounds.y} ${sourceWidth} ${sourceHeight}" preserveAspectRatio="${preserveAspectRatio}">${style}${background}${body.join("")}</svg>`;
       if (/\b(?:href|src)=["']https?:/i.test(svg) || /<script\b/i.test(svg)) throw new Error("EXPORT_SVG_SANITIZE_FAILED");
       pages.push({ frame_id: frameId, width, height, svg });
     }
