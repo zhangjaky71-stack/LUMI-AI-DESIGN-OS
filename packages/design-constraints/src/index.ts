@@ -6,4 +6,5 @@ export * from "./media-evaluators";
 export * from "./override";
 export * from "./postflight";
 export * from "./resolver";
+export * from "./snapshot";
 export * from "./types";
