@@ -63,17 +63,17 @@ class KnowledgeContextSource:
         request: ContextRequest,
     ) -> tuple[RetrievalCandidate, ...]:
         access = self.access_for_request(request)
+        query_embedding, query_embedding_space_id = _embedding_pair(
+            request.metadata.get("query_embedding"),
+            request.metadata.get("query_embedding_space_id"),
+        )
         results = await self.retriever.search(
             KnowledgeSearchQuery(
                 access=access,
                 text=request.query or request.purpose,
                 limit=request.retrieval_limit,
-                query_embedding=_query_embedding(
-                    request.metadata.get("query_embedding")
-                ),
-                query_embedding_space_id=_optional_text(
-                    request.metadata.get("query_embedding_space_id")
-                ),
+                query_embedding=query_embedding,
+                query_embedding_space_id=query_embedding_space_id,
                 expanded_queries=_expanded_queries(
                     request.metadata.get("knowledge_expanded_queries")
                 ),
@@ -154,6 +154,17 @@ class KnowledgeContextSource:
                 )
             )
         return tuple(output)
+
+
+def _embedding_pair(
+    embedding_value: object,
+    space_value: object,
+) -> tuple[tuple[float, ...] | None, str | None]:
+    embedding = _query_embedding(embedding_value)
+    space = _optional_text(space_value)
+    if embedding is None or space is None:
+        return None, None
+    return embedding, space
 
 
 def _query_embedding(value: object) -> tuple[float, ...] | None:
