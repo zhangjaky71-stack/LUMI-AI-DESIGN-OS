@@ -85,6 +85,7 @@ export interface CompilerInteractionFlags {
 
 export interface CompiledSceneNode extends CanvasSceneNode {
   readonly resolved_style: ResolvedCompilerStyle;
+  readonly style_versions: Readonly<Record<string, string>>;
   readonly resolved_text?: ResolvedCompilerText;
   readonly resolved_resource?: ResolvedCompilerResource;
   readonly interaction_flags: CompilerInteractionFlags;
@@ -104,6 +105,7 @@ export interface CanvasRenderPlanItem {
   readonly local_bounds: Rect;
   readonly world_bounds: Rect;
   readonly resolved_style: ResolvedCompilerStyle;
+  readonly style_versions: Readonly<Record<string, string>>;
   readonly resolved_text?: ResolvedCompilerText;
   readonly resolved_resource?: ResolvedCompilerResource;
   readonly interaction_flags: CompilerInteractionFlags;
@@ -187,6 +189,7 @@ export interface CompilerStyleResolver {
   ): {
     readonly style: ResolvedCompilerStyle;
     readonly missing_refs: readonly string[];
+    readonly versions: Readonly<Record<string, string>>;
   };
 }
 
