@@ -32,6 +32,7 @@ class ArtifactHistoryCandidateAdapter:
 
     def __init__(self, history: ArtifactHistory) -> None:
         self.history = history
+        self.generation_provenance_snapshots: dict[str, GenerationProvenanceSnapshot] = {}
 
     async def create_candidate(
         self,
@@ -47,6 +48,11 @@ class ArtifactHistoryCandidateAdapter:
         version_id = f"artifact-version:{candidate.candidate_id}"
         file_id = f"artifact-file:{candidate.candidate_id}"
         constraint_hash = constraint_snapshot_hash(spec)
+        snapshot_id = provenance.snapshot_id
+        existing_snapshot = self.generation_provenance_snapshots.get(snapshot_id)
+        if existing_snapshot is not None and existing_snapshot != provenance:
+            raise ValueError("GENERATION_PROVENANCE_SNAPSHOT_CONFLICT")
+        self.generation_provenance_snapshots[snapshot_id] = provenance
 
         existing = self.history.versions.get(version_id)
         if existing is not None:
@@ -108,7 +114,7 @@ class ArtifactHistoryCandidateAdapter:
                 width=stored.width,
                 height=stored.height,
                 metadata={
-                    "generation_provenance_snapshot_id": provenance.snapshot_id,
+                    "generation_provenance_snapshot_id": snapshot_id,
                     "prompt_compilation_ref": provenance.prompt_compilation_ref,
                     "routing_reason_codes": provenance.routing_reason_codes,
                     "seed": provenance.seed,
