@@ -1,6 +1,7 @@
 export * from "./compiler-bridge";
 export * from "./engine";
 export * from "./export";
+export * from "./export-artifact-adapter";
 export * from "./export-engine";
 export * from "./export-engine-types";
 export * from "./export-hashing";
@@ -9,6 +10,7 @@ export * from "./export-pdf";
 export * from "./export-renderer";
 export * from "./export-security";
 export * from "./export-svg";
+export * from "./export-worker-protocol";
 export * from "./export-zip";
 export * from "./gc";
 export * from "./hashing";
