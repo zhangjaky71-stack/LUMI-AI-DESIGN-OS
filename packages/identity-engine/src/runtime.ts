@@ -56,6 +56,13 @@ function validateReferences(identity: IdentityReferenceSet, references: readonly
   }
 }
 
+function validateCandidateTarget(input: IdentityValidationInput): void {
+  if (input.identity.type === "STYLE_REFERENCE") return;
+  if (input.candidate.target_region) return;
+  if (input.candidate.metadata?.target_detected === true || input.candidate.metadata?.whole_artifact_target === true) return;
+  throw new Error("IDENTITY_TARGET_REGION_UNAVAILABLE");
+}
+
 function selectSignalScores(scores: readonly IdentitySignalScore[]): Map<string, IdentitySignalScore> {
   const selected = new Map<string, IdentitySignalScore>();
   for (const row of scores) {
@@ -140,6 +147,7 @@ export class IdentityValidationRuntime {
     assertReferencePrivacy(input.identity, this.privacyPolicy);
     validateProfile(input.identity, input.profile, this.provider);
     validateReferences(input.identity, input.references);
+    validateCandidateTarget(input);
 
     const rawScores = await this.provider.score({
       identity: input.identity,
