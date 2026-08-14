@@ -15,7 +15,7 @@ function compilerIdentity(value: CompilerArtifactProvenance | undefined): unknow
 }
 
 export function artifactStableManifest(
-  version: Pick<ArtifactVersion, "artifact_id" | "schema_version" | "content_hash" | "constraint_snapshot_hash" | "brand_rule_set_version">,
+  version: Pick<ArtifactVersion, "artifact_id" | "schema_version" | "content_hash" | "constraint_snapshot_hash" | "brand_rule_set_version" | "identity_validation_snapshot_id">,
   provenance: ArtifactProvenance,
   files: readonly ArtifactFile[],
 ): unknown {
@@ -27,12 +27,21 @@ export function artifactStableManifest(
   ) {
     throw new Error("brand rule set version mismatch between ArtifactVersion and provenance");
   }
+  const identityValidationSnapshotId = provenance.identity_validation_snapshot_id ?? version.identity_validation_snapshot_id ?? null;
+  if (
+    provenance.identity_validation_snapshot_id !== undefined
+    && version.identity_validation_snapshot_id != null
+    && provenance.identity_validation_snapshot_id !== version.identity_validation_snapshot_id
+  ) {
+    throw new Error("identity validation snapshot mismatch between ArtifactVersion and provenance");
+  }
   return {
     artifact_id: version.artifact_id,
     schema_version: version.schema_version,
     content_hash: version.content_hash,
     constraint_snapshot_hash: version.constraint_snapshot_hash,
     ...(brandRuleSetVersion ? { brand_rule_set_version: brandRuleSetVersion } : {}),
+    ...(identityValidationSnapshotId ? { identity_validation_snapshot_id: identityValidationSnapshotId } : {}),
     compiler: compilerIdentity(provenance.compiler),
     code_git_sha: provenance.code_git_sha,
     prompt_hash: provenance.prompt_hash ?? null,
@@ -58,7 +67,7 @@ export function artifactStableManifest(
 }
 
 export async function artifactManifestSha256(
-  version: Pick<ArtifactVersion, "artifact_id" | "schema_version" | "content_hash" | "constraint_snapshot_hash" | "brand_rule_set_version">,
+  version: Pick<ArtifactVersion, "artifact_id" | "schema_version" | "content_hash" | "constraint_snapshot_hash" | "brand_rule_set_version" | "identity_validation_snapshot_id">,
   provenance: ArtifactProvenance,
   files: readonly ArtifactFile[],
 ): Promise<string> {
