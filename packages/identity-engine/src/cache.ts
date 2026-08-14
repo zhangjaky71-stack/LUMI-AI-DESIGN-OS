@@ -12,6 +12,7 @@ export interface IdentityCacheKeyInput {
 
 export async function identityCacheKey(input: IdentityCacheKeyInput): Promise<string> {
   const digest = await canonicalSha256({
+    organization_id: input.identity.organization_id,
     candidate_checksum_sha256: input.candidate_checksum_sha256,
     identity_id: input.identity.identity_id,
     reference_set_version: input.identity.version,
