@@ -108,6 +108,7 @@ function positionLock(version: number): CanvasConstraint {
 export default function CanvasEngineClient() {
   const hostRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<CanvasController | null>(null);
+  const decisionRef = useRef("NOT_READY");
   const [scriptReady, setScriptReady] = useState(false);
   const [ready, setReady] = useState(false);
   const [decision, setDecision] = useState("NOT_READY");
@@ -180,19 +181,19 @@ export default function CanvasEngineClient() {
               ? state.document.metadata.document_version
               : 0,
           camera_x: state.camera.x,
-          last_decision: decision,
+          last_decision: decisionRef.current,
         };
       };
       const publish = (nextDecision: string) => {
+        decisionRef.current = nextDecision;
         setDecision(nextDecision);
-        const state = readSnapshot();
-        const next = { ...state, last_decision: nextDecision };
+        const next = { ...readSnapshot(), last_decision: nextDecision };
         setSnapshot(next);
         return next;
       };
 
       window.__LUMI_CANVAS_ENGINE__ = {
-        snapshot: () => ({ ...readSnapshot(), last_decision: decision }),
+        snapshot: readSnapshot,
         moveShape(dx) {
           controller.setConstraints([]);
           controller.selection.set(["shape"]);
@@ -224,7 +225,8 @@ export default function CanvasEngineClient() {
 
     void initialize().catch((error: unknown) => {
       const message = error instanceof Error ? error.message : "Canvas initialization failed";
-      setDecision(`ERROR:${message}`);
+      decisionRef.current = `ERROR:${message}`;
+      setDecision(decisionRef.current);
     });
 
     return () => {
@@ -233,7 +235,7 @@ export default function CanvasEngineClient() {
       controllerRef.current?.destroy();
       controllerRef.current = null;
     };
-  }, [scriptReady, decision]);
+  }, [scriptReady]);
 
   return (
     <main style={{ minHeight: "100vh", background: "#0f0f0f", color: "white", padding: 24 }}>
@@ -241,20 +243,40 @@ export default function CanvasEngineClient() {
       <header style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>NODE-40 Canvas Engine</h1>
-          <p style={{ margin: "6px 0 0", opacity: 0.65 }}>Design IR → Constraint → PixiJS v8</p>
+          <p style={{ margin: "6px 0 0", opacity: 0.65 }}>
+            Design IR → Constraint → PixiJS v8
+          </p>
         </div>
         <div data-testid="canvas-engine-status">{ready ? "READY" : decision}</div>
       </header>
       <div
         ref={hostRef}
         data-testid="canvas-engine-host"
-        style={{ width: "100%", height: 620, border: "1px solid #333", borderRadius: 12, overflow: "hidden" }}
+        style={{
+          width: "100%",
+          height: 620,
+          border: "1px solid #333",
+          borderRadius: 12,
+          overflow: "hidden",
+        }}
       />
       <dl style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-        <div><dt>Shape X</dt><dd data-testid="shape-x">{snapshot.shape_x}</dd></div>
-        <div><dt>Version</dt><dd data-testid="document-version">{snapshot.document_version}</dd></div>
-        <div><dt>Camera X</dt><dd data-testid="camera-x">{snapshot.camera_x.toFixed(2)}</dd></div>
-        <div><dt>Decision</dt><dd data-testid="constraint-decision">{snapshot.last_decision}</dd></div>
+        <div>
+          <dt>Shape X</dt>
+          <dd data-testid="shape-x">{snapshot.shape_x}</dd>
+        </div>
+        <div>
+          <dt>Version</dt>
+          <dd data-testid="document-version">{snapshot.document_version}</dd>
+        </div>
+        <div>
+          <dt>Camera X</dt>
+          <dd data-testid="camera-x">{snapshot.camera_x.toFixed(2)}</dd>
+        </div>
+        <div>
+          <dt>Decision</dt>
+          <dd data-testid="constraint-decision">{snapshot.last_decision}</dd>
+        </div>
       </dl>
     </main>
   );
