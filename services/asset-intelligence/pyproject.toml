@@ -1,6 +1,7 @@
 [project]
 name = "lumi-asset-intelligence"
-version = "0.0.0"
+version = "1.0.0"
+description = "LUMI Asset Intelligence V1 semantic indexing and retrieval runtime"
 requires-python = "==3.12.*"
 dependencies = []
 
