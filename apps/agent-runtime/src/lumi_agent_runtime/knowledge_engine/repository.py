@@ -36,6 +36,18 @@ class KnowledgeRepository(Protocol):
         include_organization_scope: bool,
     ) -> tuple[KnowledgeChunk, ...]: ...
 
+    async def search_ready_chunks(
+        self,
+        *,
+        organization_id: UUID,
+        project_id: UUID | None,
+        include_organization_scope: bool,
+        query_texts: tuple[str, ...],
+        query_embedding: tuple[float, ...] | None,
+        query_embedding_space_id: str | None,
+        limit: int,
+    ) -> tuple[KnowledgeChunk, ...]: ...
+
     async def list_chunks(
         self,
         *,
@@ -114,6 +126,25 @@ class InMemoryKnowledgeRepository:
                 continue
             output.extend(self._chunks.get(document.document_id, ()))
         return tuple(output)
+
+    async def search_ready_chunks(
+        self,
+        *,
+        organization_id: UUID,
+        project_id: UUID | None,
+        include_organization_scope: bool,
+        query_texts: tuple[str, ...],
+        query_embedding: tuple[float, ...] | None,
+        query_embedding_space_id: str | None,
+        limit: int,
+    ) -> tuple[KnowledgeChunk, ...]:
+        del query_texts, query_embedding, query_embedding_space_id
+        chunks = await self.list_ready_chunks(
+            organization_id=organization_id,
+            project_id=project_id,
+            include_organization_scope=include_organization_scope,
+        )
+        return chunks[:limit]
 
     async def list_chunks(
         self,
