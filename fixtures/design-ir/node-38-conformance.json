@@ -1,0 +1,51 @@
+{
+  "document": {
+    "schema_version": "1.0",
+    "document_id": "fixture-doc",
+    "unit": "px",
+    "root_id": "root",
+    "nodes": {
+      "root": {
+        "id": "root",
+        "kind": "DOCUMENT_ROOT",
+        "parent_id": null,
+        "children": ["headline"]
+      },
+      "headline": {
+        "id": "headline",
+        "kind": "TEXT",
+        "parent_id": "root",
+        "children": [],
+        "content": "Hello",
+        "transform": { "x": 10, "y": 20, "width": 200, "height": 40 },
+        "style_refs": [],
+        "constraint_refs": ["safe-area"]
+      }
+    },
+    "resources": {},
+    "metadata": {
+      "document_version": 7,
+      "provenance": { "source": "fixture", "artifact_version_id": "av-1" }
+    }
+  },
+  "operations": [
+    {
+      "operation_id": "op-text",
+      "type": "SET_TEXT",
+      "target_ids": ["headline"],
+      "expected_document_version": 7,
+      "payload": { "content": "你好 LUMI" },
+      "reason": "cross-runtime fixture"
+    },
+    {
+      "operation_id": "op-move",
+      "type": "MOVE_NODE",
+      "target_ids": ["headline"],
+      "expected_document_version": 7,
+      "payload": { "dx": 5, "dy": -2 },
+      "reason": "cross-runtime fixture"
+    }
+  ],
+  "expected_input_sha256": "8c1d524744bf4fccdf8b5691d8b465f18e5b1dafd5e580861d180b3ac06997e7",
+  "expected_output_sha256": "0fbe1194b8695b9c5135e772a1a5c6c1f059176e1d72d0cdf360e923a92f156f"
+}
