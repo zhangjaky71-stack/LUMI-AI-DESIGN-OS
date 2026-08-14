@@ -35,6 +35,7 @@ from .identity import (
     Workspace,
     WorkspaceMember,
 )
+from .knowledge import KnowledgeChunkModel, KnowledgeDocumentModel
 from .memory import MemoryCandidateModel, MemoryRecordModel
 from .model_registry import (
     ModelBenchmarkScore,
@@ -118,6 +119,8 @@ __all__ = [
     "Generation",
     "IdempotencyOperation",
     "InboxEvent",
+    "KnowledgeChunkModel",
+    "KnowledgeDocumentModel",
     "MemoryCandidateModel",
     "MemoryRecordModel",
     "ModelBenchmarkScore",
