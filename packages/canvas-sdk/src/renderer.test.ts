@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { DesignDocument } from "../../design-ir/src/index";
 import { projectDesignDocument } from "./ir-scene";
-import { PixiV8RendererAdapter, type PixiDisplayHandle, type PixiV8Bindings } from "./renderer";
+import {
+  PixiV8RendererAdapter,
+  type PixiDisplayHandle,
+  type PixiV8Bindings,
+} from "./renderer";
 
 function documentFixture(content = "Hello"): DesignDocument {
   return {
@@ -49,6 +53,7 @@ function fakeBindings() {
     createVideoPoster: (id) => create(id),
     createPlaceholder: (id) => create(id),
     setLocalMatrix: vi.fn(),
+    setCamera: vi.fn(),
     setVisible: vi.fn(),
     setText: vi.fn(),
     setAsset: vi.fn(),
@@ -67,6 +72,8 @@ describe("PixiV8RendererAdapter", () => {
     const scene = projectDesignDocument(document);
     const { bindings } = fakeBindings();
     const adapter = new PixiV8RendererAdapter(bindings);
+    adapter.setCamera({ x: 20, y: 30, zoom: 2 });
+    expect(bindings.setCamera).toHaveBeenCalledWith({ x: 20, y: 30, zoom: 2 });
     const first = adapter.sync(scene, new Set(["frame", "text"]));
     expect(first.created).toBe(3);
     expect(first.updated).toBe(3);
@@ -82,7 +89,10 @@ describe("PixiV8RendererAdapter", () => {
     const { bindings } = fakeBindings();
     const adapter = new PixiV8RendererAdapter(bindings);
     adapter.sync(projectDesignDocument(documentFixture("Before")), new Set(["frame", "text"]));
-    const dirty = adapter.sync(projectDesignDocument(documentFixture("After")), new Set(["frame", "text"]));
+    const dirty = adapter.sync(
+      projectDesignDocument(documentFixture("After")),
+      new Set(["frame", "text"]),
+    );
     expect(dirty.updated).toBe(1);
 
     const withoutText = documentFixture("After");
