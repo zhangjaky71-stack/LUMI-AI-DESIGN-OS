@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping, Protocol
+from decimal import Decimal
+from typing import Protocol
 
 from .model import RenderedVideo, VideoTimeline
 
@@ -37,8 +38,22 @@ def _safe_path(path: str) -> str:
     return path
 
 
+def _audio_delay_ms(offset_seconds: Decimal) -> int:
+    if isinstance(offset_seconds, float) or not offset_seconds.is_finite() or offset_seconds < 0:
+        raise ValueError("VIDEO_AUDIO_OFFSET_INVALID")
+    return int(offset_seconds * Decimal("1000"))
+
+
+def _audio_gain(gain_db: Decimal) -> str:
+    if isinstance(gain_db, float) or not gain_db.is_finite():
+        raise ValueError("VIDEO_AUDIO_GAIN_INVALID")
+    if gain_db < Decimal("-96") or gain_db > Decimal("24"):
+        raise ValueError("VIDEO_AUDIO_GAIN_OUT_OF_RANGE")
+    return format(gain_db, "f")
+
+
 class FfmpegArgvCompiler:
-    """Compiles typed timeline data into argv. It never creates a shell command string."""
+    """Compile typed timeline data into argv only; no shell command is ever created."""
 
     def compile(self, timeline: VideoTimeline, resolver: SandboxPathResolver) -> FfmpegInvocation:
         if not timeline.clips:
@@ -56,6 +71,7 @@ class FfmpegArgvCompiler:
             argv.extend(("-i", path))
         for path in overlay_paths:
             argv.extend(("-i", path))
+
         clip_count = len(clip_paths)
         filter_parts: list[str] = []
         if clip_count == 1:
@@ -63,26 +79,50 @@ class FfmpegArgvCompiler:
         else:
             labels = "".join(f"[{index}:v]" for index in range(clip_count))
             filter_parts.append(f"{labels}concat=n={clip_count}:v=1:a=0[vbase]")
-        current = "vbase"
+
+        current_video = "vbase"
         overlay_input_start = clip_count + len(audio_paths)
         for index, overlay in enumerate(timeline.overlays):
             next_label = f"vov{index}"
             overlay_input = overlay_input_start + index
             filter_parts.append(
-                f"[{current}][{overlay_input}:v]overlay=x={overlay.x}:y={overlay.y}:enable='between(t,{format(overlay.start_seconds, 'f')},{format(overlay.end_seconds, 'f')})'[{next_label}]"
+                f"[{current_video}][{overlay_input}:v]overlay=x={overlay.x}:y={overlay.y}:"
+                f"enable='between(t,{format(overlay.start_seconds, 'f')},{format(overlay.end_seconds, 'f')})'"
+                f"[{next_label}]"
             )
-            current = next_label
-        argv.extend(("-filter_complex", ";".join(filter_parts), "-map", f"[{current}]"))
-        if audio_paths:
-            argv.extend(("-map", f"{clip_count}:a?"))
+            current_video = next_label
+
+        audio_labels: list[str] = []
+        for index, track in enumerate(timeline.audio_tracks):
+            input_index = clip_count + index
+            label = f"aud{index}"
+            delay_ms = _audio_delay_ms(track.offset_seconds)
+            gain = _audio_gain(track.gain_db)
+            filter_parts.append(
+                f"[{input_index}:a]volume={gain}dB,adelay={delay_ms}:all=1[{label}]"
+            )
+            audio_labels.append(label)
+        if len(audio_labels) == 1:
+            filter_parts.append(f"[{audio_labels[0]}]anull[aout]")
+        elif len(audio_labels) > 1:
+            sources = "".join(f"[{label}]" for label in audio_labels)
+            filter_parts.append(
+                f"{sources}amix=inputs={len(audio_labels)}:duration=longest:dropout_transition=0[aout]"
+            )
+
+        argv.extend(("-filter_complex", ";".join(filter_parts), "-map", f"[{current_video}]"))
+        if audio_labels:
+            argv.extend(("-map", "[aout]"))
+        total_duration = sum((clip.duration_seconds for clip in timeline.clips), Decimal("0"))
         argv.extend((
             "-r", str(timeline.output_spec.fps),
             "-s", f"{timeline.output_spec.width}x{timeline.output_spec.height}",
+            "-t", format(total_duration, "f"),
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
             "-movflags", "+faststart",
         ))
-        if audio_paths:
+        if audio_labels:
             argv.extend(("-c:a", "aac"))
         argv.append(output_path)
         return FfmpegInvocation(argv=tuple(argv), limits=SandboxLimits(), output_path=output_path)
