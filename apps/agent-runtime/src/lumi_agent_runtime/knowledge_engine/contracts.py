@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -19,10 +20,13 @@ class KnowledgeSourceType(StrEnum):
 
 class KnowledgeStatus(StrEnum):
     PENDING = "PENDING"
-    INDEXING = "INDEXING"
+    EXTRACTING = "EXTRACTING"
+    CHUNKING = "CHUNKING"
+    EMBEDDING = "EMBEDDING"
     READY = "READY"
-    SUPERSEDED = "SUPERSEDED"
     FAILED = "FAILED"
+    STALE = "STALE"
+    SUPERSEDED = "SUPERSEDED"
     DELETED = "DELETED"
 
 
@@ -31,6 +35,11 @@ class KnowledgeTrust(StrEnum):
     USER_CONTENT = "USER_CONTENT"
     EXTERNAL_UNTRUSTED = "EXTERNAL_UNTRUSTED"
     MODEL_GENERATED = "MODEL_GENERATED"
+
+
+class KnowledgePermissionScope(StrEnum):
+    PROJECT = "PROJECT"
+    ORGANIZATION = "ORGANIZATION"
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +58,8 @@ class KnowledgeSourceRef:
     content_hash: str
     title: str | None = None
     uri: str | None = None
+    observed_at: datetime | None = None
+    source_updated_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not self.source_id or not self.version:
@@ -58,18 +69,48 @@ class KnowledgeSourceRef:
 
 
 @dataclass(frozen=True, slots=True)
+class KnowledgeSegment:
+    text: str
+    page: int | None = None
+    section: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.text.strip():
+            raise ValueError("KNOWLEDGE_SEGMENT_TEXT_EMPTY")
+        if self.page is not None and self.page < 1:
+            raise ValueError("KNOWLEDGE_SEGMENT_PAGE_INVALID")
+
+
+@dataclass(frozen=True, slots=True)
 class KnowledgeDocument:
     document_id: UUID
     organization_id: UUID
     project_id: UUID | None
     source: KnowledgeSourceRef
+    permission_scope: KnowledgePermissionScope
     trust: KnowledgeTrust
     status: KnowledgeStatus
     normalized_text: str
+    parser_version: str
+    chunker_version: str
+    index_version: str
     language: str | None = None
+    embedding_space_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: datetime | None = None
+    updated_at: datetime | None = None
     version: int = 1
+
+    def __post_init__(self) -> None:
+        if not self.normalized_text.strip():
+            raise ValueError("KNOWLEDGE_DOCUMENT_TEXT_EMPTY")
+        if not self.parser_version or not self.chunker_version or not self.index_version:
+            raise ValueError("KNOWLEDGE_DOCUMENT_INDEX_IDENTITY_INVALID")
+        if self.permission_scope == KnowledgePermissionScope.PROJECT and self.project_id is None:
+            raise ValueError("KNOWLEDGE_PROJECT_SCOPE_REQUIRES_PROJECT")
+        if self.version < 1:
+            raise ValueError("KNOWLEDGE_DOCUMENT_VERSION_INVALID")
 
     @property
     def content_hash(self) -> str:
@@ -92,6 +133,7 @@ class KnowledgeChunk:
     embedding: tuple[float, ...] | None = None
     embedding_model: str | None = None
     embedding_version: str | None = None
+    embedding_space_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -99,10 +141,23 @@ class KnowledgeChunk:
             raise ValueError("KNOWLEDGE_CHUNK_INVALID")
         if hashlib.sha256(self.text.encode()).hexdigest() != self.content_hash:
             raise ValueError("KNOWLEDGE_CHUNK_HASH_MISMATCH")
-        if (self.embedding is None) != (self.embedding_model is None):
-            raise ValueError("KNOWLEDGE_CHUNK_EMBEDDING_IDENTITY_INVALID")
-        if self.embedding is not None and not self.embedding_version:
-            raise ValueError("KNOWLEDGE_CHUNK_EMBEDDING_VERSION_REQUIRED")
+        if self.embedding is None:
+            if any(
+                value is not None
+                for value in (
+                    self.embedding_model,
+                    self.embedding_version,
+                    self.embedding_space_id,
+                )
+            ):
+                raise ValueError("KNOWLEDGE_CHUNK_EMBEDDING_IDENTITY_INVALID")
+        else:
+            if not self.embedding_model or not self.embedding_version or not self.embedding_space_id:
+                raise ValueError("KNOWLEDGE_CHUNK_EMBEDDING_IDENTITY_INVALID")
+            if not self.embedding or len(self.embedding) > 8192:
+                raise ValueError("KNOWLEDGE_CHUNK_EMBEDDING_INVALID")
+            if any(not math.isfinite(float(value)) for value in self.embedding):
+                raise ValueError("KNOWLEDGE_CHUNK_EMBEDDING_INVALID")
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,11 +166,22 @@ class KnowledgeSearchQuery:
     text: str
     limit: int = 12
     query_embedding: tuple[float, ...] | None = None
+    query_embedding_space_id: str | None = None
     source_types: tuple[KnowledgeSourceType, ...] = ()
+    expanded_queries: tuple[str, ...] = ()
+    require_fresh: bool = False
+    max_source_age_seconds: int | None = None
+    now: datetime | None = None
 
     def __post_init__(self) -> None:
         if not self.text.strip() or not 1 <= self.limit <= 50:
             raise ValueError("KNOWLEDGE_SEARCH_QUERY_INVALID")
+        if (self.query_embedding is None) != (self.query_embedding_space_id is None):
+            raise ValueError("KNOWLEDGE_QUERY_EMBEDDING_IDENTITY_INVALID")
+        if self.max_source_age_seconds is not None and self.max_source_age_seconds < 1:
+            raise ValueError("KNOWLEDGE_FRESHNESS_WINDOW_INVALID")
+        if any(not item.strip() for item in self.expanded_queries):
+            raise ValueError("KNOWLEDGE_EXPANDED_QUERY_INVALID")
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +206,7 @@ class KnowledgeSearchResult:
     freshness_score: float
     authority_score: float
     citation: KnowledgeCitation
+    stale: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,9 +216,15 @@ class KnowledgeIndexRequest:
     trust: KnowledgeTrust
     normalized_text: str
     project_id: UUID | None
+    permission_scope: KnowledgePermissionScope = KnowledgePermissionScope.PROJECT
     language: str | None = None
+    parser_version: str = "native-text-v1"
+    chunker_version: str = "structure-window-v1"
+    index_version: str = "knowledge-v1"
+    embedding_space_id: str | None = None
     chunk_size_tokens: int = 450
     chunk_overlap_tokens: int = 60
+    segments: tuple[KnowledgeSegment, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -163,12 +236,20 @@ class KnowledgeIndexRequest:
             raise ValueError("KNOWLEDGE_CHUNK_OVERLAP_INVALID")
         if self.project_id is not None and self.access.project_id != self.project_id:
             raise ValueError("KNOWLEDGE_INDEX_PROJECT_SCOPE_DENIED")
+        if self.permission_scope == KnowledgePermissionScope.PROJECT:
+            if self.project_id is None or self.access.project_id != self.project_id:
+                raise ValueError("KNOWLEDGE_INDEX_PROJECT_SCOPE_DENIED")
+        elif "knowledge.organization.write" not in self.access.granted_permissions:
+            raise ValueError("KNOWLEDGE_INDEX_ORGANIZATION_SCOPE_DENIED")
+        if not self.parser_version or not self.chunker_version or not self.index_version:
+            raise ValueError("KNOWLEDGE_INDEX_VERSION_REQUIRED")
 
     @property
     def semantic_hash(self) -> str:
         payload = {
             "organization_id": str(self.access.organization_id),
             "project_id": str(self.project_id) if self.project_id else None,
+            "permission_scope": self.permission_scope.value,
             "source": {
                 "type": self.source.source_type.value,
                 "id": self.source.source_id,
@@ -176,12 +257,23 @@ class KnowledgeIndexRequest:
                 "hash": self.source.content_hash,
             },
             "trust": self.trust.value,
-            "normalized_text_hash": hashlib.sha256(
-                self.normalized_text.encode()
-            ).hexdigest(),
+            "normalized_text_hash": hashlib.sha256(self.normalized_text.encode()).hexdigest(),
             "language": self.language,
+            "parser_version": self.parser_version,
+            "chunker_version": self.chunker_version,
+            "index_version": self.index_version,
+            "embedding_space_id": self.embedding_space_id,
             "chunk_size_tokens": self.chunk_size_tokens,
             "chunk_overlap_tokens": self.chunk_overlap_tokens,
+            "segments": [
+                {
+                    "text_hash": hashlib.sha256(segment.text.encode()).hexdigest(),
+                    "page": segment.page,
+                    "section": segment.section,
+                    "metadata": segment.metadata,
+                }
+                for segment in self.segments
+            ],
             "metadata": self.metadata,
         }
         return hashlib.sha256(
