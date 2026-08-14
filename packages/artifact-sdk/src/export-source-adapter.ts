@@ -23,6 +23,25 @@ export interface ExportSourceMetadataPort {
   projectSnapshot?(args: { readonly organization_id: string; readonly project_id: string }): Promise<Readonly<Record<string, unknown>> | undefined>;
 }
 
+const EPHEMERAL_KEY = /(?:^|_)(?:uri|url)$/i;
+
+function durableClone(value: unknown, depth = 0): unknown {
+  if (depth > 32) throw new Error("EXPORT_SOURCE_SNAPSHOT_TOO_DEEP");
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) return value.map((item) => durableClone(item, depth + 1));
+  if (typeof value !== "object") throw new Error("EXPORT_SOURCE_SNAPSHOT_VALUE_UNSUPPORTED");
+  const output: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (EPHEMERAL_KEY.test(key)) continue;
+    output[key] = durableClone(child, depth + 1);
+  }
+  return output;
+}
+
+function durableDesignDocument(document: DesignDocument): DesignDocument {
+  return durableClone(document) as DesignDocument;
+}
+
 function durableRenderPlan(snapshot: CompiledSceneSnapshot): unknown {
   return {
     compiler_version: snapshot.render_plan.compiler_version,
@@ -130,7 +149,7 @@ export class ArtifactEngineExportSource implements ExportSourcePort {
       content_hash: version.content_hash,
       constraint_snapshot_hash: version.constraint_snapshot_hash,
       compiler_provenance: compilerProvenance,
-      design_document: structuredClone(document),
+      design_document: durableDesignDocument(document),
       render_plan: durableRenderPlan(snapshot),
       brand_rule_set_version: version.brand_rule_set_version ?? null,
       rights_summary: rightsSummary,
