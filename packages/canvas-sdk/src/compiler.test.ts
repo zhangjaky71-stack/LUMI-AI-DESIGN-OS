@@ -107,28 +107,40 @@ describe("NODE-41 full compiler", () => {
     expect(first.snapshot.provenance.document_version).toBe(9);
     expect(first.snapshot.provenance.resource_versions).toEqual({
       "asset-product": "asset-v7",
+      "style-frame": "style-1",
+      "style-title": "style-2",
     });
     expect(first.snapshot.provenance.font_versions).toEqual({
       "font-inter": "font-v4",
     });
-    expect(first.snapshot.provenance.compile_hash).toBe(second.snapshot.provenance.compile_hash);
+    expect(first.snapshot.provenance.compile_hash).toBe(
+      second.snapshot.provenance.compile_hash,
+    );
     expect(first.snapshot.render_plan.items.map((item) => item.id)).toEqual([
       "root",
       "frame",
       "title",
       "image",
     ]);
-    expect(first.snapshot.nodes.get("title")?.resolved_text?.metrics?.width).toBeGreaterThan(0);
+    expect(
+      first.snapshot.nodes.get("title")?.resolved_text?.metrics?.width,
+    ).toBeGreaterThan(0);
     expect(JSON.stringify(document)).toBe(before);
   });
 
   it("keeps compile hash stable when only an expiring URI changes but resource version is unchanged", async () => {
     const compiler = new CanvasCompiler();
-    const first = await compiler.fullCompile(fixture("https://signed.example/a?token=1"));
-    const second = await compiler.fullCompile(fixture("https://signed.example/a?token=2"));
+    const first = await compiler.fullCompile(
+      fixture("https://signed.example/a?token=1"),
+    );
+    const second = await compiler.fullCompile(
+      fixture("https://signed.example/a?token=2"),
+    );
     expect(first.ok && second.ok).toBe(true);
     if (!first.ok || !second.ok) return;
-    expect(first.snapshot.provenance.compile_hash).toBe(second.snapshot.provenance.compile_hash);
+    expect(first.snapshot.provenance.compile_hash).toBe(
+      second.snapshot.provenance.compile_hash,
+    );
   });
 
   it("emits missing resource diagnostics while preserving a renderable placeholder", async () => {
@@ -136,14 +148,20 @@ describe("NODE-41 full compiler", () => {
     const next: DesignDocument = {
       ...document,
       resources: Object.fromEntries(
-        Object.entries(document.resources).filter(([key]) => key !== "asset-product"),
+        Object.entries(document.resources).filter(
+          ([key]) => key !== "asset-product",
+        ),
       ),
     };
     const result = await new CanvasCompiler().fullCompile(next);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.snapshot.nodes.get("image")?.resolved_resource?.status).toBe("MISSING");
-    expect(result.diagnostics.some((item) => item.code === "RESOURCE_MISSING")).toBe(true);
+    expect(result.snapshot.nodes.get("image")?.resolved_resource?.status).toBe(
+      "MISSING",
+    );
+    expect(
+      result.diagnostics.some((item) => item.code === "RESOURCE_MISSING"),
+    ).toBe(true);
   });
 
   it("rejects globally invalid graph cycles", () => {
@@ -160,7 +178,9 @@ describe("NODE-41 full compiler", () => {
     };
     const result = new CanvasCompiler().compileStructure(cyclic);
     expect(result.ok).toBe(false);
-    expect(result.diagnostics.some((item) => item.source === "IR_GRAPH_CYCLE")).toBe(true);
+    expect(
+      result.diagnostics.some((item) => item.source === "IR_GRAPH_CYCLE"),
+    ).toBe(true);
   });
 
   it("turns custom renderer-unsupported nodes into explicit placeholders", () => {
@@ -185,7 +205,9 @@ describe("NODE-41 full compiler", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.snapshot.nodes.get(custom.id)?.placeholder).toBe(true);
-    expect(result.diagnostics.some((item) => item.code === "NODE_PLACEHOLDER")).toBe(true);
+    expect(
+      result.diagnostics.some((item) => item.code === "NODE_PLACEHOLDER"),
+    ).toBe(true);
   });
 });
 
@@ -207,8 +229,12 @@ describe("NODE-41 incremental compiler", () => {
     if (!incremental.ok || !full.ok || !("patch" in incremental)) return;
     expect(incremental.fallback_to_full).toBe(false);
     expect(incremental.dirty_node_ids).toContain("title");
-    expect(incremental.patch.upserted_nodes.map((node) => node.id)).toContain("title");
-    expect(incremental.snapshot.provenance.compile_hash).toBe(full.snapshot.provenance.compile_hash);
+    expect(incremental.patch.upserted_nodes.map((node) => node.id)).toContain(
+      "title",
+    );
+    expect(incremental.snapshot.provenance.compile_hash).toBe(
+      full.snapshot.provenance.compile_hash,
+    );
     expect(incremental.snapshot.render_plan).toEqual(full.snapshot.render_plan);
   });
 
@@ -251,7 +277,11 @@ describe("NODE-41 incremental compiler", () => {
 describe("NODE-41 resolver and cache boundaries", () => {
   it("accepts authorized async resource/font resolvers without changing compiler contracts", async () => {
     const assetResolver: CompilerAssetResolver = {
-      async resolveAsset(_document, assetId, variant): Promise<ResolvedCompilerResource> {
+      async resolveAsset(
+        _document,
+        assetId,
+        variant,
+      ): Promise<ResolvedCompilerResource> {
         return {
           asset_id: assetId,
           variant,
@@ -263,7 +293,10 @@ describe("NODE-41 resolver and cache boundaries", () => {
       },
     };
     const fontResolver: CompilerFontResolver = {
-      async resolveFont(_document, fontRef): Promise<ResolvedCompilerFont> {
+      async resolveFont(
+        _document,
+        fontRef,
+      ): Promise<ResolvedCompilerFont> {
         return {
           font_ref: fontRef,
           family: "Inter",
@@ -273,11 +306,21 @@ describe("NODE-41 resolver and cache boundaries", () => {
         };
       },
     };
-    const result = await new CanvasCompiler({ asset_resolver: assetResolver, font_resolver: fontResolver }).fullCompile(fixture());
+    const result = await new CanvasCompiler({
+      asset_resolver: assetResolver,
+      font_resolver: fontResolver,
+    }).fullCompile(fixture());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.snapshot.provenance.resource_versions["asset-product"]).toBe("authorized-v1");
-    expect(result.snapshot.provenance.font_versions["font-inter"]).toBe("authorized-font-v1");
+    expect(result.snapshot.provenance.resource_versions["asset-product"]).toBe(
+      "authorized-v1",
+    );
+    expect(result.snapshot.provenance.resource_versions["style-title"]).toBe(
+      "style-2",
+    );
+    expect(result.snapshot.provenance.font_versions["font-inter"]).toBe(
+      "authorized-font-v1",
+    );
   });
 
   it("provides stable document/compiler cache keys and bounded LRU storage", async () => {
