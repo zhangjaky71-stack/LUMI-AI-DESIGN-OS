@@ -21,16 +21,23 @@ UPGRADE_STATEMENTS = (
         organization_id uuid NOT NULL
             REFERENCES organizations(id) ON DELETE CASCADE,
         project_id uuid REFERENCES projects(id) ON DELETE CASCADE,
+        permission_scope varchar(32) NOT NULL,
         source_type varchar(32) NOT NULL,
         source_id varchar(1024) NOT NULL,
         source_version varchar(255) NOT NULL,
         source_hash varchar(128) NOT NULL,
         title varchar(512),
         source_uri text,
+        observed_at timestamptz,
+        source_updated_at timestamptz,
         trust varchar(32) NOT NULL,
         status varchar(32) NOT NULL,
         normalized_text text NOT NULL,
+        parser_version varchar(128) NOT NULL,
+        chunker_version varchar(128) NOT NULL,
+        index_version varchar(128) NOT NULL,
         language varchar(32),
+        embedding_space_id varchar(255),
         metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now(),
@@ -40,7 +47,14 @@ UPGRADE_STATEMENTS = (
             source_type,
             source_id,
             source_version,
-            source_hash
+            source_hash,
+            index_version
+        ),
+        CONSTRAINT ck_knowledge_documents_permission_scope CHECK (
+            permission_scope IN ('PROJECT','ORGANIZATION')
+        ),
+        CONSTRAINT ck_knowledge_documents_project_scope CHECK (
+            permission_scope <> 'PROJECT' OR project_id IS NOT NULL
         ),
         CONSTRAINT ck_knowledge_documents_source_type CHECK (
             source_type IN (
@@ -55,7 +69,8 @@ UPGRADE_STATEMENTS = (
         ),
         CONSTRAINT ck_knowledge_documents_status CHECK (
             status IN (
-                'PENDING','INDEXING','READY','SUPERSEDED','FAILED','DELETED'
+                'PENDING','EXTRACTING','CHUNKING','EMBEDDING','READY',
+                'FAILED','STALE','SUPERSEDED','DELETED'
             )
         ),
         CONSTRAINT ck_knowledge_documents_version CHECK (version > 0)
@@ -86,6 +101,7 @@ UPGRADE_STATEMENTS = (
         locator_json jsonb NOT NULL,
         embedding_model varchar(255),
         embedding_version varchar(100),
+        embedding_space_id varchar(255),
         embedding_dimensions integer,
         embedding vector,
         metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -105,6 +121,7 @@ UPGRADE_STATEMENTS = (
                 embedding IS NULL
                 AND embedding_model IS NULL
                 AND embedding_version IS NULL
+                AND embedding_space_id IS NULL
                 AND embedding_dimensions IS NULL
             )
             OR
@@ -112,6 +129,7 @@ UPGRADE_STATEMENTS = (
                 embedding IS NOT NULL
                 AND embedding_model IS NOT NULL
                 AND embedding_version IS NOT NULL
+                AND embedding_space_id IS NOT NULL
                 AND embedding_dimensions > 0
             )
         )
@@ -124,6 +142,11 @@ UPGRADE_STATEMENTS = (
     """
     CREATE INDEX ix_knowledge_chunks_document
     ON knowledge_chunks (document_id, ordinal)
+    """,
+    """
+    CREATE INDEX ix_knowledge_chunks_fts
+    ON knowledge_chunks
+    USING gin (to_tsvector('simple', text))
     """,
     """
     GRANT SELECT, INSERT, UPDATE
