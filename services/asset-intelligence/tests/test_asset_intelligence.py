@@ -57,8 +57,10 @@ def _index(org: str, *, index_id: str = INDEX_ID, version: str = "v1") -> AssetI
         analyzer_version="analyzer-bundle-v1",
         embedding_model_id="fixture-multimodal",
         embedding_model_version="2026-08-14",
+        embedding_preprocessor_version="fixture-pre-v1",
         embedding_dimensions=4,
-        embedding_space_id=f"fixture-multimodal@2026-08-14:4d:{version}",
+        embedding_space_id=f"fixture-multimodal@2026-08-14:fixture-pre-v1:4d:{version}",
+        registry_snapshot_id=f"registry:{org}:v1",
         state="ACTIVE",
         created_at="2026-08-14T09:00:00Z",
         activated_at="2026-08-14T09:05:00Z",
@@ -195,6 +197,7 @@ class FixtureQueryEmbedder:
     model_id = "fixture-multimodal"
     model_version = "2026-08-14"
     preprocessor_version = "fixture-pre-v1"
+    registry_snapshot_id = f"registry:{ORG_A}:v1"
 
     def embed_text(self, organization_id: str, text: str) -> tuple[float, ...]:
         assert organization_id == ORG_A
@@ -355,7 +358,7 @@ def test_reindex_requires_compare_and_audited_switch() -> None:
         index_id="asset-index:v2",
         version="v2",
         embedding_model_version="2026-09-01",
-        embedding_space_id="fixture-multimodal@2026-09-01:4d",
+        embedding_space_id="fixture-multimodal@2026-09-01:fixture-pre-v1:4d",
         state="BUILDING",
         activated_at=None,
     )
@@ -398,6 +401,7 @@ def test_identity_adapter_exposes_evidence_not_identity_score() -> None:
     evidence = identity_evidence_from_analysis(record)
     assert evidence.asset_version == "v1"
     assert evidence.embedding_model_version == "2026-08-14"
+    assert evidence.preprocessor_version == "fixture-pre-v1"
     assert not hasattr(evidence, "identity_score")
 
 
