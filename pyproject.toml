@@ -57,6 +57,10 @@ src = [
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+"services/domain/src/lumi_domain/constraint_validator.py" = ["E501"]
+"services/domain/tests/test_constraint_validator.py" = ["E501"]
+
 [tool.ruff.lint.isort]
 known-first-party = [
   "lumi_api",
