@@ -34,10 +34,11 @@ def require(condition: bool, message: str) -> None:
 
 def validate_fixture() -> None:
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    assets = fixture["references"]
     require(set(fixture["modes"]) == EXPECTED_MODES, "fixture generation mode drift")
     require(set(fixture["reference_roles"]) == EXPECTED_ROLES, "fixture reference role drift")
     require(
-        any(item.get("rights") == "UNKNOWN" for item in fixture["references"]),
+        any(item.get("rights") == "UNKNOWN" for item in assets),
         "fixture requires UNKNOWN-rights denial case",
     )
     profiles = set(fixture["quality_benchmark_profiles"])
@@ -69,6 +70,8 @@ def validate_python_contract() -> None:
     require("budget_limit_usd: Decimal" in model, "generation budget must use Decimal")
     require("operation_id" in pipeline and "semantic_hash" in pipeline, "operation idempotency missing")
     require("get_by_operation" in pipeline, "paid retry operation lookup missing")
+    require("get_by_semantic" not in pipeline, "creative requests must not auto-cache by semantic hash")
+    require("find_by_semantic" not in pipeline, "creative requests must not auto-cache by semantic hash")
     require("variant_operation_id=_variant_operation_id" in pipeline, "variant paid operation missing")
     require("save_pending" in pipeline and "resume_pending" in pipeline, "async resumability missing")
     require("validate_provider_image" in pipeline, "provider output integrity gate missing")
@@ -97,7 +100,6 @@ def validate_python_contract() -> None:
     require("lumi_model_gateway" in gateway, "NODE-46 must route provider calls through Model Gateway")
     require("Capability.IMAGE_EDIT" not in gateway, "NODE-47 image.edit boundary violated")
     require("Capability.IMAGE_MASK_EDIT" not in gateway, "NODE-47 mask-edit boundary violated")
-    require("semantic_hash" not in artifact or True, "creative content cache must not live in Artifact adapter")
 
 
 def validate_sql() -> None:
