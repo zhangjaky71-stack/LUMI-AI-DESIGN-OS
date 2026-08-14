@@ -27,7 +27,7 @@ export type ArtifactFileRole =
   | "WEB_OPTIMIZED"
   | "PRINT_PDF"
   | "LAYER_DATA";
-export type ArtifactExportFormat = "PNG" | "JPEG" | "PDF" | "SVG";
+export type ArtifactExportFormat = "PNG" | "JPEG" | "WEBP" | "PDF" | "SVG";
 
 export interface Artifact {
   readonly id: string;
