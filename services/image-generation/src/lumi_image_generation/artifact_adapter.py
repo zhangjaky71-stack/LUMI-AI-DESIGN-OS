@@ -12,6 +12,7 @@ from lumi_artifacts.model import (
     ProvenanceRecord,
 )
 
+from .hashing import constraint_snapshot_hash
 from .model import (
     GenerationCandidate,
     GenerationProvenanceSnapshot,
@@ -45,6 +46,7 @@ class ArtifactHistoryCandidateAdapter:
         branch_id = f"artifact-branch:{candidate.candidate_id}"
         version_id = f"artifact-version:{candidate.candidate_id}"
         file_id = f"artifact-file:{candidate.candidate_id}"
+        constraint_hash = constraint_snapshot_hash(spec)
 
         existing = self.history.versions.get(version_id)
         if existing is not None:
@@ -84,7 +86,7 @@ class ArtifactHistoryCandidateAdapter:
             version_number=1,
             status="DRAFT",
             content_hash=stored.checksum_sha256,
-            constraint_snapshot_hash=spec.hard_constraint_snapshot_hash,
+            constraint_snapshot_hash=constraint_hash,
             created_by_type="AGENT",
             created_by_id=spec.agent_run_id or spec.task_id,
             created_at=datetime.now(timezone.utc),
@@ -125,7 +127,7 @@ class ArtifactHistoryCandidateAdapter:
             ProvenanceRecord(
                 artifact_version_id=version_id,
                 organization_id=spec.organization_id,
-                constraint_snapshot_hash=spec.hard_constraint_snapshot_hash,
+                constraint_snapshot_hash=constraint_hash,
                 code_git_sha=spec.code_git_sha,
                 brand_rule_set_version=spec.brand_rule_set_version,
                 identity_validation_snapshot_id=validation.identity_validation_snapshot_id,
