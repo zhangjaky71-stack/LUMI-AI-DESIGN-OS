@@ -8,7 +8,9 @@ Base: `node-43-brand-rules-engine-release`
 
 | Requirement | Evidence | Engineering status |
 |---|---|---|
-| Versioned Product/Logo reference sets | `packages/identity-engine/src/types.ts`, `db/migrations/0003_identity_engine.sql` | Implemented |
+| Versioned Product/Logo reference sets | `types.ts`, `reference-set.ts`, `0003_identity_engine.sql` | Implemented |
+| `create_reference_set` governed API | `reference-set.ts` | Implemented |
+| Pairwise `compare(a,b,type)` API | `compare.ts` | Implemented |
 | Canonical asset/view versions pinned | TS/Python contracts + composite DB FKs | Implemented |
 | Multi-signal Logo validation | exact hash + OCR + structured perceptual/feature signals | Implemented |
 | Multi-signal Product validation | multimodal/shape/color/brand-region profile contract | Implemented |
@@ -23,16 +25,18 @@ Base: `node-43-brand-rules-engine-release`
 | HARD validator unavailable fail closed | adapter throws into existing NODE-39 postflight policy | Implemented |
 | Artifact approval identity gate | `artifact-gate.ts` | Implemented |
 | Exact identity snapshot provenance | Artifact SDK + Python Artifact history/export | Implemented |
+| Tenant-bound snapshot/cache hashes | runtime/cache + tenant regression | Implemented |
 | Legacy no-identity manifest hash preserved | conditional stable-manifest field + tests | Implemented |
 | Version-aware cache key | `cache.ts` | Implemented |
 | Face processing disabled by default | `privacy.ts`, Python policy | Implemented |
 | No persistent/cross-tenant face index | runtime policy + DB CHECK | Implemented |
 | Tenant/version persistence | `0003_identity_engine.sql` | Implemented |
+| Artifact report/batch FK integrity | tenant-aware FK to `artifact_versions` | Implemented |
 | TypeScript conformance tests | `packages/identity-engine/src/*.test.ts` | Implemented; hosted execution pending |
 | Python conformance tests | `services/identity-engine/tests/test_identity_engine.py` | Implemented; hosted execution pending |
 | Static contract validator | `scripts/validate_identity_engine.py` | Implemented; hosted execution pending |
 | Product/Logo local benchmark | `scripts/benchmark_identity_engine.py` | Implemented; hosted measurement pending |
-| Dedicated CI | `.github/workflows/identity-engine.yml` | To be published in this node |
+| Dedicated CI | `.github/workflows/identity-engine.yml` | Implemented; hosted execution pending |
 
 ## Frozen architecture assertions
 
@@ -43,9 +47,10 @@ Base: `node-43-brand-rules-engine-release`
 5. Product/Logo identity is never decided from one generic embedding score.
 6. Numeric thresholds are calibration-profile data, not prompt or constraint literals.
 7. Reference/profile/provider/preprocessor versions are preserved in every validation snapshot.
-8. Historical Artifact identity evidence is immutable and not reinterpreted by a newer model/profile.
-9. Face processing is opt-in and purpose/retention constrained; no persistent or cross-tenant face index exists in NODE-44.
-10. Raw embeddings/biometric templates are not placed into ArtifactVersion/provenance.
+8. Snapshot/cache/report hashes bind `organization_id`; cross-tenant logical-id collisions cannot share validation cache/evidence ids.
+9. Historical Artifact identity evidence is immutable and not reinterpreted by a newer model/profile.
+10. Face processing is opt-in and purpose/retention constrained; no persistent or cross-tenant face index exists in NODE-44.
+11. Raw embeddings/biometric templates are not placed into ArtifactVersion/provenance.
 
 ## Test cases implemented
 
@@ -62,7 +67,10 @@ Base: `node-43-brand-rules-engine-release`
 - ad-hoc numeric threshold rejection;
 - default face-processing denial;
 - deterministic batch snapshot;
-- cache invalidation on version changes;
+- tenant-bound cache/batch identity;
+- cache invalidation on calibration/model version changes;
+- governed reference-set publish;
+- pairwise multi-signal compare;
 - Artifact snapshot mismatch/approval failure;
 - legacy no-identity Artifact hash compatibility.
 
