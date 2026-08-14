@@ -11,8 +11,11 @@ REQUIRED_FILES = (
     "packages/brand-rules/src/extraction.ts",
     "packages/brand-rules/src/constraint-adapter.ts",
     "packages/brand-rules/src/artifact-gate.ts",
+    "packages/artifact-sdk/src/hashing.ts",
+    "packages/artifact-sdk/src/export.ts",
     "services/brand-rules/src/lumi_brand_rules/model.py",
     "services/brand-rules/src/lumi_brand_rules/runtime.py",
+    "services/artifact-history/src/lumi_artifacts/export_manifest.py",
     "db/migrations/0002_brand_rules.sql",
     "docs/runtime/BRAND-RULES-ENGINE-V1.md",
     "reports/nodes/NODE-43/acceptance.md",
@@ -69,6 +72,16 @@ def main() -> None:
         "BRAND_HARD_VIOLATION",
     )
     _require(
+        "packages/artifact-sdk/src/hashing.ts",
+        "brand_rule_set_version",
+        "brand rule set version mismatch between ArtifactVersion and provenance",
+        "...(brandRuleSetVersion ? { brand_rule_set_version: brandRuleSetVersion } : {})",
+    )
+    _require(
+        "packages/artifact-sdk/src/export.ts",
+        "brand_rule_set_version: brandRuleSetVersion",
+    )
+    _require(
         "db/migrations/0002_brand_rules.sql",
         "brand_profiles",
         "brand_token_sets",
@@ -83,6 +96,11 @@ def main() -> None:
         "services/artifact-history/src/lumi_artifacts/model.py",
         "brand_rule_set_version: str | None = None",
         "self.brand_rule_set_version",
+    )
+    _require(
+        "services/artifact-history/src/lumi_artifacts/export_manifest.py",
+        '"brand_rule_set_version"',
+        "brand rule set version mismatch between version and provenance",
     )
     print("NODE-43 Brand Rules Engine contract validation: OK")
 
