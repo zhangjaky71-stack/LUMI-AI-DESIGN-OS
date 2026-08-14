@@ -47,8 +47,13 @@ export function validateOverride(
 export function isConstraintOverridden(
   document: DesignDocument,
   constraint: DesignConstraint,
-  tokens: readonly ConstraintOverrideToken[] = [],
+  tokens: readonly ConstraintOverrideToken[] | undefined = [],
   now = new Date(),
 ): boolean {
-  return tokens.some((token) => validateOverride(document, constraint, token, now).valid);
+  return (tokens ?? []).some((token) => validateOverride(document, constraint, token, now).valid);
+}
+
+/** Pure lifecycle helper; persistence/audit storage remains outside this package. */
+export function consumeOverrideToken(token: ConstraintOverrideToken): ConstraintOverrideToken {
+  return token.one_time ? { ...token, consumed: true } : { ...token };
 }
