@@ -1,15 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
 from decimal import Decimal
 from statistics import median
 
-from lumi_image_generation.model import (
-    ImageGenerationSpec,
-    OutputRequirements,
-)
+from lumi_image_generation.model import ImageGenerationSpec, OutputRequirements
 from lumi_image_generation.pipeline import _candidate_id, _generation_id, _variant_operation_id
 from lumi_image_generation.prompt import compile_prompt
 from lumi_image_generation.variants import choose_variants
@@ -56,17 +54,18 @@ def build_spec(index: int) -> ImageGenerationSpec:
 def main() -> None:
     iterations = int(os.environ.get("LUMI_IMAGE_GENERATION_BENCHMARK_ITERATIONS", "5000"))
     durations_ms: list[float] = []
-    checksum = 0
+    digest = hashlib.sha256()
     for index in range(iterations):
         spec = build_spec(index)
         started = time.perf_counter()
         prompt = compile_prompt(spec)
         decision = choose_variants(spec, estimated_cost_per_variant_usd=Decimal("0.01"))
         generation_id = _generation_id(spec)
+        digest.update(generation_id.encode())
         for variant in range(1, decision.selected_count + 1):
-            checksum ^= hash(_candidate_id(generation_id, variant))
-            checksum ^= hash(_variant_operation_id(spec.operation_id, variant))
-        checksum ^= hash(prompt.prompt_hash)
+            digest.update(_candidate_id(generation_id, variant).encode())
+            digest.update(_variant_operation_id(spec.operation_id, variant).encode())
+        digest.update(prompt.prompt_hash.encode())
         durations_ms.append((time.perf_counter() - started) * 1000)
 
     report = {
@@ -75,7 +74,7 @@ def main() -> None:
         "median_ms": round(median(durations_ms), 4),
         "p95_ms": round(percentile(durations_ms, 0.95), 4),
         "max_ms": round(max(durations_ms), 4),
-        "checksum_nonzero": checksum != 0,
+        "deterministic_digest": digest.hexdigest(),
         "note": (
             "Excludes provider inference, Model Gateway network latency, object storage, "
             "postflight model validators and PostgreSQL. No production SLO is inferred."
