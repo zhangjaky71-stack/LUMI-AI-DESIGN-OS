@@ -10,9 +10,11 @@ import type {
   ExportSourceSnapshot,
   ExportSpec,
 } from "./export-engine-types";
+import type { StoredObjectStat } from "./types";
 
 async function sha256(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const copy = Uint8Array.from(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", copy.buffer);
   return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
@@ -63,21 +65,35 @@ export class StaticExportSource implements ExportSourcePort {
 
 export class InMemoryExportObjectStore implements ExportObjectStore {
   readonly objects = new Map<string, Uint8Array>();
+  readonly mimeTypes = new Map<string, string>();
   put_count = 0;
 
   async put(storageKey: string, payload: Uint8Array, mimeType: string): Promise<{ storage_key: string; checksum_sha256: string; size_bytes: number }> {
     if (!storageKey || storageKey.includes("://") || storageKey.includes("..")) throw new Error("EXPORT_STORAGE_KEY_UNSAFE");
     if (!mimeType) throw new Error("EXPORT_STORAGE_MIME_REQUIRED");
     this.put_count += 1;
-    const bytes = new Uint8Array(payload);
+    const bytes = Uint8Array.from(payload);
     this.objects.set(storageKey, bytes);
+    this.mimeTypes.set(storageKey, mimeType);
     return { storage_key: storageKey, checksum_sha256: await sha256(bytes), size_bytes: bytes.length };
   }
 
   async get(storageKey: string): Promise<Uint8Array> {
     const bytes = this.objects.get(storageKey);
     if (!bytes) throw new Error("EXPORT_STORAGE_OBJECT_NOT_FOUND");
-    return new Uint8Array(bytes);
+    return Uint8Array.from(bytes);
+  }
+
+  async stat(storageKey: string): Promise<StoredObjectStat | null> {
+    const bytes = this.objects.get(storageKey);
+    if (!bytes) return null;
+    const mimeType = this.mimeTypes.get(storageKey);
+    return {
+      storage_key: storageKey,
+      size_bytes: bytes.length,
+      checksum_sha256: await sha256(bytes),
+      ...(mimeType ? { mime_type: mimeType } : {}),
+    };
   }
 }
 
