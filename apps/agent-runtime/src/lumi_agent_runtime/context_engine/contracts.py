@@ -27,6 +27,7 @@ class ContextKind(StrEnum):
     ARTIFACT = "ARTIFACT"
     RESEARCH = "RESEARCH"
     MEMORY = "MEMORY"
+    KNOWLEDGE = "KNOWLEDGE"
     SKILL = "SKILL"
     TOOL_RESULT = "TOOL_RESULT"
 
