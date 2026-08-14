@@ -49,7 +49,7 @@ interface RenderEntry {
   readonly handle: PixiDisplayHandle;
   renderKey: string;
   parentId: string | null;
-  maskId: string | null;
+  boundMaskId: string | null;
 }
 
 const SHAPE_KINDS = new Set(["FRAME", "MASK", "SHAPE", "VECTOR_PATH", "GUIDE"]);
@@ -128,7 +128,7 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
       let entry = this.#entries.get(id);
       if (!entry) {
         const handle = createDisplay(this.#bindings, node);
-        entry = { handle, renderKey: "", parentId: null, maskId: null };
+        entry = { handle, renderKey: "", parentId: null, boundMaskId: null };
         this.#entries.set(id, entry);
         created += 1;
       }
@@ -169,11 +169,14 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
       const node = scene.nodes.get(id);
       const entry = this.#entries.get(id);
       if (!node || !entry) continue;
-      const nextMaskId = nodeMaskId(node);
-      if (entry.maskId === nextMaskId) continue;
-      const maskHandle = nextMaskId ? this.#entries.get(nextMaskId)?.handle ?? null : null;
+      const requestedMaskId = nodeMaskId(node);
+      const maskHandle = requestedMaskId
+        ? this.#entries.get(requestedMaskId)?.handle ?? null
+        : null;
+      const appliedMaskId = maskHandle ? requestedMaskId : null;
+      if (entry.boundMaskId === appliedMaskId) continue;
       this.#bindings.setMask(entry.handle, maskHandle);
-      entry.maskId = nextMaskId;
+      entry.boundMaskId = appliedMaskId;
     }
 
     return {
