@@ -57,6 +57,7 @@ def upgrade() -> None:
         sa.Column("owner_key", sa.String(length=255), nullable=True),
         sa.Column("budget_limit_usd", sa.Numeric(18, 6), nullable=True),
         sa.Column("output_schema", sa.String(length=255), nullable=True),
+        sa.Column("condition_expression", sa.String(length=1000), nullable=True),
         sa.Column("metadata_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.Column("state_version", sa.Integer(), nullable=False, server_default="1"),
         sa.Column("lease_owner", sa.String(length=255), nullable=True),
@@ -121,8 +122,6 @@ def upgrade() -> None:
     op.create_index("ix_task_attempts_graph_created", "task_attempts", ["task_graph_id", "created_at"])
     op.create_index("ix_task_attempts_logical_operation", "task_attempts", ["logical_operation_key", "attempt_number"])
 
-    # 0002 grants broad default DML to future tables. Graph state and an active
-    # attempt may update during execution, but neither durable history may be deleted.
     op.execute("REVOKE DELETE ON task_graph_instances FROM lumi_app")
     op.execute("REVOKE DELETE ON task_attempts FROM lumi_app")
     op.execute("GRANT SELECT, INSERT, UPDATE ON task_graph_instances TO lumi_app")
@@ -162,6 +161,7 @@ def downgrade() -> None:
         "lease_owner",
         "state_version",
         "metadata_json",
+        "condition_expression",
         "output_schema",
         "budget_limit_usd",
         "owner_key",
