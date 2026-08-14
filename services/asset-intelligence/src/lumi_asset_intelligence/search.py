@@ -88,6 +88,22 @@ def _approval_state(signals: tuple[UsageSignal, ...]) -> str:
     return latest.signal
 
 
+def _has_mode_evidence(
+    mode: str,
+    *,
+    lexical: float,
+    ocr: float,
+    semantic: float,
+) -> bool:
+    if mode == "TEXT":
+        return lexical > 0
+    if mode == "OCR":
+        return ocr > 0
+    if mode in {"SEMANTIC", "SIMILAR_TO"}:
+        return semantic > 0
+    return lexical > 0 or ocr > 0 or semantic > 0
+
+
 class AssetSearchEngine:
     def __init__(self, repository: AssetIndexRepository, profile: AssetRankingProfile) -> None:
         profile.validate()
@@ -145,6 +161,14 @@ class AssetSearchEngine:
             if semantic_vector is not None and record.embedding is not None:
                 semantic = max(0.0, cosine_similarity(semantic_vector, record.embedding))
 
+            if not _has_mode_evidence(
+                request.mode,
+                lexical=lexical,
+                ocr=ocr,
+                semantic=semantic,
+            ):
+                continue
+
             usage = _usage_score(signals, self._profile)
             weighted = (
                 semantic * self._profile.semantic_weight
@@ -173,8 +197,6 @@ class AssetSearchEngine:
                 why.append("previously selected/approved usage signal")
             elif usage < 0:
                 why.append("previous rejection signal lowered ranking")
-            if not why:
-                continue
 
             hits.append(
                 AssetSearchHit(
