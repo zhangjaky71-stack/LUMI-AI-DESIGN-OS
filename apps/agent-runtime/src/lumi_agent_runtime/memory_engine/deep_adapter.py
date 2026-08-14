@@ -3,10 +3,21 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from collections.abc import Iterable
 from typing import Any, Awaitable
 from uuid import UUID, uuid5
 
-from langgraph.store.base import BaseStore, GetOp, Item, ListNamespacesOp, PutOp, SearchItem, SearchOp
+from langgraph.store.base import (
+    BaseStore,
+    GetOp,
+    Item,
+    ListNamespacesOp,
+    Op,
+    PutOp,
+    Result,
+    SearchItem,
+    SearchOp,
+)
 
 from lumi_agent_runtime.deep_runtime.contracts import DeepAgentInvocationContext
 
@@ -46,8 +57,8 @@ class DeepAgentMemoryStore(BaseStore):
         self.scope_id = scope_id
         self.source_ref = source_ref
 
-    async def abatch(self, ops: list[Any]) -> list[Any]:
-        results: list[Any] = []
+    async def abatch(self, ops: Iterable[Op]) -> list[Result]:
+        results: list[Result] = []
         for op in ops:
             if isinstance(op, GetOp):
                 self._assert_namespace(op.namespace)
@@ -56,18 +67,18 @@ class DeepAgentMemoryStore(BaseStore):
                 self._assert_namespace(op.namespace)
                 if op.value is None:
                     await self._delete(op.key)
-                    results.append(None)
                 else:
                     await self._put(op.key, dict(op.value))
-                    results.append(None)
+                results.append(None)
             elif isinstance(op, SearchOp):
                 self._assert_namespace_prefix(op.namespace_prefix)
-                rows = await self._search(
-                    op.query or "memory",
-                    limit=op.limit,
-                    offset=op.offset,
+                results.append(
+                    await self._search(
+                        op.query or "memory",
+                        limit=op.limit,
+                        offset=op.offset,
+                    )
                 )
-                results.append(rows)
             elif isinstance(op, ListNamespacesOp):
                 results.append([_VIRTUAL_NAMESPACE])
             else:
@@ -76,7 +87,7 @@ class DeepAgentMemoryStore(BaseStore):
                 )
         return results
 
-    def batch(self, ops: list[Any]) -> list[Any]:
+    def batch(self, ops: Iterable[Op]) -> list[Result]:
         return _run_sync(self.abatch(ops))
 
     async def _get(self, key: str) -> Item | None:
@@ -264,7 +275,7 @@ def _value(record) -> dict[str, Any]:
     }
 
 
-def _run_sync(awaitable: Awaitable[Any]) -> Any:
+def _run_sync(awaitable: Awaitable[list[Result]]) -> list[Result]:
     try:
         asyncio.get_running_loop()
     except RuntimeError:
