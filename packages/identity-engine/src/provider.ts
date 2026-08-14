@@ -14,7 +14,7 @@ function clampScore(value: number): number {
 }
 
 function normalizedText(value: string): string {
-  return value.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ").trim();
+  return value.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 function tokenSimilarity(a: string, b: string): number {
@@ -65,11 +65,16 @@ function exactHashSignal(request: IdentitySignalRequest): IdentitySignalScore | 
   const candidateChecksum = typeof metadata?.checksum_sha256 === "string" ? metadata.checksum_sha256 : null;
   if (!candidateChecksum) return null;
   const matched = request.references.find((reference) => reference.checksum_sha256 === candidateChecksum);
+  const matchedViewId = matched
+    ? request.identity.reference_views.find(
+      (view) => view.asset_id === matched.asset_id && view.asset_version === matched.asset_version,
+    )?.view_id
+    : undefined;
   return {
     signal: "exact_hash",
     score: matched ? 100 : 0,
     confidence: 1,
-    ...(matched ? { reference_view_id: request.identity.reference_views.find((view) => view.asset_id === matched.asset_id)?.view_id } : {}),
+    ...(matchedViewId ? { reference_view_id: matchedViewId } : {}),
     evidence_refs: [evidence("HASH", `sha256:${candidateChecksum}`, matched ? "exact canonical asset match" : "no canonical checksum match")],
   };
 }
