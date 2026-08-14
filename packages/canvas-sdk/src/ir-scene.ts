@@ -1,6 +1,12 @@
 import type { DesignDocument, DesignNode, JsonValue } from "../../design-ir/src/index";
-import { canonicalSha256 } from "../../design-ir/src/index";
-import { IDENTITY_MATRIX, multiplyMatrix, transformToMatrix, transformedRectBounds, type Matrix2D } from "./matrix";
+import { canonicalStringify } from "../../design-ir/src/index";
+import {
+  IDENTITY_MATRIX,
+  multiplyMatrix,
+  transformToMatrix,
+  transformedRectBounds,
+  type Matrix2D,
+} from "./matrix";
 import type { Rect } from "./types";
 
 export const CANVAS_RENDERABLE_KINDS = [
@@ -19,7 +25,12 @@ export const CANVAS_RENDERABLE_KINDS = [
 
 export interface CanvasNodeDiagnostic {
   readonly node_id: string;
-  readonly code: "MISSING_PARENT" | "MISSING_CHILD" | "CYCLE" | "MALFORMED_TRANSFORM" | "UNSUPPORTED_KIND";
+  readonly code:
+    | "MISSING_PARENT"
+    | "MISSING_CHILD"
+    | "CYCLE"
+    | "MALFORMED_TRANSFORM"
+    | "UNSUPPORTED_KIND";
   readonly detail?: string;
 }
 
@@ -63,7 +74,7 @@ function safeDimensions(node: DesignNode): { width: number; height: number } {
 }
 
 function renderKey(node: DesignNode): string {
-  return canonicalSha256({
+  return canonicalStringify({
     id: node.id,
     kind: node.kind,
     visible: node.visible ?? true,
@@ -87,7 +98,9 @@ function diagnostic(
 }
 
 function isRenderable(node: DesignNode): boolean {
-  return CANVAS_RENDERABLE_KINDS.includes(node.kind as (typeof CANVAS_RENDERABLE_KINDS)[number]);
+  return CANVAS_RENDERABLE_KINDS.includes(
+    node.kind as (typeof CANVAS_RENDERABLE_KINDS)[number],
+  );
 }
 
 export function projectDesignDocument(document: DesignDocument): CanvasSceneSnapshot {
@@ -147,7 +160,12 @@ export function projectDesignDocument(document: DesignDocument): CanvasSceneSnap
         continue;
       }
       if (child.parent_id !== id) {
-        diagnostic(diagnostics, childId, "MISSING_PARENT", `declared=${child.parent_id ?? "null"}, expected=${id}`);
+        diagnostic(
+          diagnostics,
+          childId,
+          "MISSING_PARENT",
+          `declared=${child.parent_id ?? "null"}, expected=${id}`,
+        );
       }
       visit(childId, world, depth + 1);
     }
