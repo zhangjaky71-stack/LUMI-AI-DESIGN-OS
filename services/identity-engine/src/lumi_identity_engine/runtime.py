@@ -10,11 +10,12 @@ from .model import (
     IdentityEvidenceRef,
     IdentityPrivacyPolicy,
     IdentityReferenceSet,
+    IdentityScenario,
     IdentitySeverity,
     IdentitySignalRequest,
     IdentitySignalScore,
+    IdentityStatus,
     IdentityValidationReport,
-    IdentityScenario,
     ThresholdCalibrationProfile,
     VerifiedIdentityAsset,
 )
@@ -103,7 +104,11 @@ class StructuredIdentitySignalProvider:
                         IdentityEvidenceRef(
                             "HASH",
                             f"sha256:{checksum}",
-                            "exact canonical asset match" if matched else "no canonical checksum match",
+                            (
+                                "exact canonical asset match"
+                                if matched
+                                else "no canonical checksum match"
+                            ),
                         ),
                     ),
                 )
@@ -271,6 +276,8 @@ class IdentityValidationRuntime:
         if identity.identity_type in {"PRODUCT", "LOGO"} and len(selected) < 2:
             raise ValueError("IDENTITY_MULTI_SIGNAL_EVIDENCE_REQUIRED")
         identity_score, confidence = _aggregate(selected, profile)
+        status: IdentityStatus
+        reason: str | None
         if confidence < profile.minimum_confidence:
             status = "REVIEW"
             reason = "IDENTITY_CONFIDENCE_BELOW_MINIMUM"
@@ -286,6 +293,7 @@ class IdentityValidationRuntime:
 
         ordered_scores = tuple(selected[key] for key in sorted(selected))
         snapshot_payload = {
+            "organization_id": identity.organization_id,
             "identity_id": identity.identity_id,
             "reference_set_version": identity.version,
             "threshold_profile_id": profile.profile_id,
@@ -306,6 +314,7 @@ class IdentityValidationRuntime:
         }
         snapshot_id = f"identity-validation:{_canonical_hash(snapshot_payload)}"
         report_payload = {
+            "organization_id": identity.organization_id,
             "identity_validation_snapshot_id": snapshot_id,
             "artifact_id": candidate.artifact_id,
             "artifact_version": candidate.artifact_version,
@@ -323,10 +332,7 @@ class IdentityValidationRuntime:
         ]
         for row in ordered_scores:
             evidence.extend(row.evidence_refs)
-        deduped = {
-            (item.kind, item.ref, item.detail): item
-            for item in evidence
-        }
+        deduped = {(item.kind, item.ref, item.detail): item for item in evidence}
         return IdentityValidationReport(
             report_id=f"identity-report:{_canonical_hash(report_payload)}",
             organization_id=identity.organization_id,
@@ -348,7 +354,8 @@ class IdentityValidationRuntime:
             provider_version=self.provider.provider_version,
             preprocessor_version=self.provider.preprocessor_version,
             evidence_refs=tuple(
-                deduped[key] for key in sorted(deduped, key=lambda row: (row[0], row[1], row[2] or ""))
+                deduped[key]
+                for key in sorted(deduped, key=lambda row: (row[0], row[1], row[2] or ""))
             ),
             identity_validation_snapshot_id=snapshot_id,
             candidate_region=candidate.target_region,
@@ -361,16 +368,21 @@ def identity_validation_batch_snapshot_id(
 ) -> str:
     if not reports:
         raise ValueError("IDENTITY_VALIDATION_BATCH_EMPTY")
-    if len({report.organization_id for report in reports}) != 1:
+    organizations = {report.organization_id for report in reports}
+    if len(organizations) != 1:
         raise ValueError("IDENTITY_VALIDATION_BATCH_TENANT_MISMATCH")
-    payload = [
-        {
-            "report_id": report.report_id,
-            "identity_id": report.identity_id,
-            "status": report.status,
-            "severity": report.severity,
-            "identity_validation_snapshot_id": report.identity_validation_snapshot_id,
-        }
-        for report in sorted(reports, key=lambda row: (row.identity_id, row.report_id))
-    ]
+    organization_id = reports[0].organization_id
+    payload = {
+        "organization_id": organization_id,
+        "reports": [
+            {
+                "report_id": report.report_id,
+                "identity_id": report.identity_id,
+                "status": report.status,
+                "severity": report.severity,
+                "identity_validation_snapshot_id": report.identity_validation_snapshot_id,
+            }
+            for report in sorted(reports, key=lambda row: (row.identity_id, row.report_id))
+        ],
+    }
     return f"identity-batch:{_canonical_hash(payload)}"
