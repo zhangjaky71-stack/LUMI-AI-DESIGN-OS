@@ -14,11 +14,11 @@ def class_fields(path: Path, class_name: str) -> set[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == class_name:
-            fields: set[str] = set()
-            for child in node.body:
-                if isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name):
-                    fields.add(child.target.id)
-            return fields
+            return {
+                child.target.id
+                for child in node.body
+                if isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name)
+            }
     raise AssertionError(f"class not found: {class_name}")
 
 
@@ -38,43 +38,52 @@ class ContextPostgresContractTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, text)
 
-    def test_project_and_task_queries_are_tenant_scoped(self) -> None:
+    def test_project_task_asset_queries_are_tenant_scoped(self) -> None:
         text = SOURCE.read_text(encoding="utf-8")
-        for marker in (
-            "organization_id = $1 AND project_id = $2",
-            "p.id = $1 AND p.organization_id = $2",
-            "id = $1 AND organization_id = $2 AND project_id = $3",
-            "a.organization_id = $1 AND a.project_id = $2",
-        ):
-            self.assertIn(marker, text)
+        self.assertIn("organization_id", text)
+        self.assertIn("project_id", text)
+        self.assertIn("WHERE id = $1 AND organization_id = $2", text)
+        self.assertIn("a.organization_id = $1 AND a.project_id = $2", text)
+        self.assertIn("WHERE organization_id = $1 AND project_id = $2", text)
 
-    def test_adapter_reads_summaries_assets_artifacts_and_task_graph(self) -> None:
+    def test_adapter_reads_canonical_project_brand_task_asset_artifact_sources(self) -> None:
         text = SOURCE.read_text(encoding="utf-8")
         for marker in (
-            "FROM project_summaries",
-            "JOIN brand_rules",
+            "FROM projects",
+            "brief_json",
+            "brief_version",
+            "profile_json",
+            "tone_json",
+            "brand_rules",
             "FROM tasks",
-            "FROM task_dependencies",
+            "task_dependencies",
             "FROM assets",
+            "asset_metadata",
             "FROM artifacts",
-            "FROM asset_embeddings",
+            "asset_embeddings",
         ):
             self.assertIn(marker, text)
-        for forbidden in ("chat_history", "conversation_messages", "raw_chat", "messages table"):
+        for forbidden in ("project_summaries", "summary/source_digest", "chat_history", "conversation_messages", "raw_chat"):
             self.assertNotIn(forbidden, text)
 
     def test_embedding_query_uses_actual_asset_embedding_model_fields(self) -> None:
         text = SOURCE.read_text(encoding="utf-8")
         fields = class_fields(ASSET_MODEL, "AssetEmbedding")
         self.assertIn("embedding", fields)
-        self.assertIn("dims", fields)
+        self.assertIn("dimensions", fields)
         self.assertIn("e.embedding", text)
-        self.assertIn("e.dims", text)
+        self.assertIn("e.dimensions", text)
         self.assertIn("query_embedding", text)
+        self.assertNotIn("e.dims", text)
 
-    def test_project_summary_contract_matches_model(self) -> None:
-        fields = class_fields(PROJECT_MODEL, "ProjectSummary")
-        for field in ("organization_id", "project_id", "summary", "source_digest", "version"):
+    def test_project_contract_matches_model(self) -> None:
+        fields = class_fields(PROJECT_MODEL, "Project")
+        for field in ("organization_id", "brief_json", "brief_version", "settings_json", "brand_id", "deleted_at"):
+            self.assertIn(field, fields)
+
+    def test_asset_contract_matches_model(self) -> None:
+        fields = class_fields(ASSET_MODEL, "Asset")
+        for field in ("organization_id", "project_id", "original_name", "metadata_json", "status", "deleted_at"):
             self.assertIn(field, fields)
 
 
