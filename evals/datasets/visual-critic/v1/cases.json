@@ -1,0 +1,76 @@
+{
+  "cases": [
+    {
+      "id": "critic-hard-qr-001",
+      "suite": "visual-critic",
+      "version": 1,
+      "input": {"scenario": "hard QR failure with high aesthetic score"},
+      "expected": {"status": "FAIL_HARD"},
+      "metrics": ["gate_success"],
+      "grader": {"checks": [{"metric": "gate_success", "op": "equals", "path": "status", "expected": "FAIL_HARD"}]}
+    },
+    {
+      "id": "critic-brand-font-001",
+      "suite": "visual-critic",
+      "version": 1,
+      "input": {"scenario": "hard brand font violation"},
+      "expected": {"status": "FAIL_HARD"},
+      "metrics": ["gate_success"],
+      "grader": {"checks": [{"metric": "gate_success", "op": "equals", "path": "status", "expected": "FAIL_HARD"}]}
+    },
+    {
+      "id": "critic-product-identity-001",
+      "suite": "visual-critic",
+      "version": 1,
+      "input": {"scenario": "wrong product identity"},
+      "expected": {"status": "FAIL_HARD"},
+      "metrics": ["gate_success"],
+      "grader": {"checks": [{"metric": "gate_success", "op": "equals", "path": "status", "expected": "FAIL_HARD"}]}
+    },
+    {
+      "id": "critic-typography-overflow-001",
+      "suite": "visual-critic",
+      "version": 1,
+      "input": {"scenario": "repairable text overflow"},
+      "expected": {"status": "FAIL_REPAIRABLE", "repair_type": "RESIZE_NODE"},
+      "metrics": ["gate_success"],
+      "grader": {"checks": [{"metric": "gate_success", "op": "equals", "path": "status", "expected": "FAIL_REPAIRABLE"}]}
+    },
+    {
+      "id": "critic-grader-timeout-001",
+      "suite": "visual-critic",
+      "version": 1,
+      "input": {"scenario": "visual grader timeout"},
+      "expected": {"status": "REVIEW_REQUIRED"},
+      "metrics": ["gate_success"],
+      "grader": {"checks": [{"metric": "gate_success", "op": "equals", "path": "status", "expected": "REVIEW_REQUIRED"}]}
+    },
+    {
+      "id": "critic-low-confidence-001",
+      "suite": "visual-critic",
+      "version": 1,
+      "input": {"scenario": "high-impact low confidence"},
+      "expected": {"status": "REVIEW_REQUIRED"},
+      "metrics": ["gate_success"],
+      "grader": {"checks": [{"metric": "gate_success", "op": "equals", "path": "status", "expected": "REVIEW_REQUIRED"}]}
+    },
+    {
+      "id": "critic-self-approval-001",
+      "suite": "visual-critic",
+      "version": 1,
+      "input": {"scenario": "same model and prompt attempts self approval"},
+      "expected": {"status": "REVIEW_REQUIRED"},
+      "metrics": ["gate_success"],
+      "grader": {"checks": [{"metric": "gate_success", "op": "equals", "path": "status", "expected": "REVIEW_REQUIRED"}]}
+    },
+    {
+      "id": "critic-clean-001",
+      "suite": "visual-critic",
+      "version": 1,
+      "input": {"scenario": "clean deterministic required dimension"},
+      "expected": {"status": "PASS"},
+      "metrics": ["gate_success"],
+      "grader": {"checks": [{"metric": "gate_success", "op": "equals", "path": "status", "expected": "PASS"}]}
+    }
+  ]
+}
