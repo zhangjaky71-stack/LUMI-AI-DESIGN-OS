@@ -48,11 +48,18 @@ def source(name: str) -> MemorySourceRef:
     )
 
 
-def access(*, actor_type: MemoryActorType = MemoryActorType.AGENT) -> MemoryAccessContext:
+def access(
+    *,
+    actor_type: MemoryActorType = MemoryActorType.AGENT,
+) -> MemoryAccessContext:
     return MemoryAccessContext(
         organization_id=ORG_ID,
         actor_type=actor_type,
-        actor_id="node35-agent" if actor_type == MemoryActorType.AGENT else "node35-system",
+        actor_id=(
+            "node35-agent"
+            if actor_type == MemoryActorType.AGENT
+            else "node35-system"
+        ),
         project_id=PROJECT_ID,
         agent_key="creative-director",
         session_id="node35-session",
@@ -82,19 +89,29 @@ def candidate(
         created_by_id="node35-agent",
         explicit_remember=explicit,
         embedding=embedding,
-        embedding_model="node35-test-embedding" if embedding is not None else None,
+        embedding_model=(
+            "node35-test-embedding" if embedding is not None else None
+        ),
         embedding_version="1" if embedding is not None else None,
     )
 
 
 async def cleanup(admin: asyncpg.Connection) -> None:
     await admin.execute(
-        "DELETE FROM memory_candidates WHERE organization_id=$1 AND semantic_key LIKE $2",
+        "DELETE FROM memory_candidates "
+        "WHERE organization_id=$1 AND semantic_key LIKE $2",
         ORG_ID,
         f"{PREFIX}%",
     )
     await admin.execute(
-        "DELETE FROM memory_records WHERE organization_id=$1 AND semantic_key LIKE $2",
+        "UPDATE memory_records SET supersedes_id=NULL "
+        "WHERE organization_id=$1 AND semantic_key LIKE $2",
+        ORG_ID,
+        f"{PREFIX}%",
+    )
+    await admin.execute(
+        "DELETE FROM memory_records "
+        "WHERE organization_id=$1 AND semantic_key LIKE $2",
         ORG_ID,
         f"{PREFIX}%",
     )
@@ -102,14 +119,32 @@ async def cleanup(admin: asyncpg.Connection) -> None:
 
 async def main_async() -> None:
     admin = await asyncpg.connect(_dsn("MIGRATION_DATABASE_URL"))
-    service = TransactionalMemoryEngineService(PostgresMemoryRepository(runtime_connection))
+    service = TransactionalMemoryEngineService(
+        PostgresMemoryRepository(runtime_connection)
+    )
     try:
-        assert await admin.fetchval("SELECT count(*) FROM organizations WHERE id=$1", ORG_ID) == 1
-        assert await admin.fetchval("SELECT count(*) FROM projects WHERE id=$1", PROJECT_ID) == 1
+        assert await admin.fetchval(
+            "SELECT count(*) FROM organizations WHERE id=$1",
+            ORG_ID,
+        ) == 1
+        assert await admin.fetchval(
+            "SELECT count(*) FROM projects WHERE id=$1",
+            PROJECT_ID,
+        ) == 1
         await cleanup(admin)
 
-        same_a = candidate("race-a", "race", "Prefer restrained studio lighting", explicit=True)
-        same_b = candidate("race-b", "race", "Prefer restrained studio lighting", explicit=True)
+        same_a = candidate(
+            "race-a",
+            "race",
+            "Prefer restrained studio lighting",
+            explicit=True,
+        )
+        same_b = candidate(
+            "race-b",
+            "race",
+            "Prefer restrained studio lighting",
+            explicit=True,
+        )
         race = await asyncio.gather(
             service.remember(same_a, access=access()),
             service.remember(same_b, access=access()),
@@ -141,7 +176,12 @@ async def main_async() -> None:
         )
         assert conflict.outcome == MemoryCandidateOutcome.REQUIRE_CONFIRMATION
         replacement = await service.remember(
-            candidate("palette-new", "palette", "Use warm gray", explicit=True),
+            candidate(
+                "palette-new",
+                "palette",
+                "Use warm gray",
+                explicit=True,
+            ),
             access=access(),
         )
         assert replacement.outcome == MemoryCandidateOutcome.WRITE
@@ -162,12 +202,19 @@ async def main_async() -> None:
                 scope_types=(MemoryScope.PROJECT,),
             )
         )
-        assert any(row.record.semantic_key == f"{PREFIX}palette" for row in results)
+        assert any(
+            row.record.semantic_key == f"{PREFIX}palette" for row in results
+        )
         assert all(row.record.organization_id == ORG_ID for row in results)
         assert all(row.record.scope_id == str(PROJECT_ID) for row in results)
 
         deletable = await service.remember(
-            candidate("delete-me", "delete", "Temporary approved note", explicit=True),
+            candidate(
+                "delete-me",
+                "delete",
+                "Temporary approved note",
+                explicit=True,
+            ),
             access=access(),
         )
         assert deletable.record is not None
@@ -201,12 +248,17 @@ async def main_async() -> None:
         candidate_outcomes = {
             row["outcome"]
             for row in await admin.fetch(
-                "SELECT outcome FROM memory_candidates WHERE organization_id=$1 AND semantic_key LIKE $2",
+                "SELECT outcome FROM memory_candidates "
+                "WHERE organization_id=$1 AND semantic_key LIKE $2",
                 ORG_ID,
                 f"{PREFIX}%",
             )
         }
-        assert {"WRITE", "DEDUPLICATE_CONFIRM", "REQUIRE_CONFIRMATION"} <= candidate_outcomes
+        assert {
+            "WRITE",
+            "DEDUPLICATE_CONFIRM",
+            "REQUIRE_CONFIRMATION",
+        } <= candidate_outcomes
 
         runtime = await asyncpg.connect(_dsn("DATABASE_URL"))
         try:
@@ -218,7 +270,9 @@ async def main_async() -> None:
             except asyncpg.InsufficientPrivilegeError:
                 pass
             else:
-                raise AssertionError("lumi_app unexpectedly has DELETE on memory_records")
+                raise AssertionError(
+                    "lumi_app unexpectedly has DELETE on memory_records"
+                )
         finally:
             await runtime.close()
     finally:
