@@ -19,6 +19,12 @@ def build_export_manifest(
         raise ValueError("provenance/version mismatch")
     if provenance.organization_id != version.organization_id:
         raise ValueError("provenance tenant mismatch")
+    if (
+        provenance.brand_rule_set_version is not None
+        and version.brand_rule_set_version is not None
+        and provenance.brand_rule_set_version != version.brand_rule_set_version
+    ):
+        raise ValueError("brand rule set version mismatch between version and provenance")
 
     file_rows = tuple(file for file in files if file.artifact_version_id == version.id)
     rights_rows = tuple(right for right in rights if right.organization_id == version.organization_id)
@@ -53,5 +59,8 @@ def build_export_manifest(
             for file in sorted(file_rows, key=lambda item: item.id)
         ],
         "constraint_snapshot_hash": version.constraint_snapshot_hash,
+        "brand_rule_set_version": (
+            provenance.brand_rule_set_version or version.brand_rule_set_version
+        ),
         "code_git_sha": provenance.code_git_sha,
     }

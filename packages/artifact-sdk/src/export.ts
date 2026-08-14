@@ -31,6 +31,14 @@ export async function buildArtifactExportManifest(
 ): Promise<Readonly<Record<string, unknown>>> {
   if (version.id !== provenance.artifact_version_id) throw new Error("provenance/version mismatch");
   if (version.organization_id !== provenance.organization_id) throw new Error("provenance tenant mismatch");
+  if (
+    provenance.brand_rule_set_version !== undefined
+    && version.brand_rule_set_version != null
+    && provenance.brand_rule_set_version !== version.brand_rule_set_version
+  ) {
+    throw new Error("brand rule set version mismatch between ArtifactVersion and provenance");
+  }
+  const brandRuleSetVersion = provenance.brand_rule_set_version ?? version.brand_rule_set_version ?? null;
   return {
     schema_version: "1.0",
     artifact_version_id: version.id,
@@ -39,6 +47,7 @@ export async function buildArtifactExportManifest(
     status: version.status,
     content_hash: version.content_hash,
     constraint_snapshot_hash: version.constraint_snapshot_hash,
+    brand_rule_set_version: brandRuleSetVersion,
     compiler: provenance.compiler ?? null,
     code_git_sha: provenance.code_git_sha,
     files: [...files]

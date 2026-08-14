@@ -69,6 +69,7 @@ class ArtifactVersion:
     primary_file_id: str | None = None
     design_document_version_id: str | None = None
     quality_score: float | None = None
+    brand_rule_set_version: str | None = None
 
     def __post_init__(self) -> None:
         if self.version_number < 1:
@@ -77,6 +78,8 @@ class ArtifactVersion:
         _require_sha256(self.constraint_snapshot_hash, "constraint_snapshot_hash")
         if self.quality_score is not None and not 0 <= self.quality_score <= 1:
             raise ValueError("quality_score must be in [0,1]")
+        if self.brand_rule_set_version is not None and not self.brand_rule_set_version.strip():
+            raise ValueError("brand_rule_set_version cannot be blank")
 
     @property
     def immutable_content_identity(self) -> tuple[Any, ...]:
@@ -91,6 +94,7 @@ class ArtifactVersion:
             self.constraint_snapshot_hash,
             self.primary_file_id,
             self.design_document_version_id,
+            self.brand_rule_set_version,
             self.created_by_type,
             self.created_by_id,
             self.created_at,
@@ -142,6 +146,7 @@ class ProvenanceRecord:
     organization_id: str
     constraint_snapshot_hash: str
     code_git_sha: str
+    brand_rule_set_version: str | None = None
     agent_run_id: str | None = None
     task_id: str | None = None
     generation_id: str | None = None
@@ -162,6 +167,8 @@ class ProvenanceRecord:
             _require_sha256(self.prompt_hash, "prompt_hash")
         if not _GIT_SHA.fullmatch(self.code_git_sha):
             raise ValueError("code_git_sha must be lowercase 40-character git SHA")
+        if self.brand_rule_set_version is not None and not self.brand_rule_set_version.strip():
+            raise ValueError("brand_rule_set_version cannot be blank")
         object.__setattr__(self, "input_asset_ids", tuple(dict.fromkeys(self.input_asset_ids)))
         object.__setattr__(self, "input_artifact_version_ids", tuple(dict.fromkeys(self.input_artifact_version_ids)))
         object.__setattr__(self, "skill_versions", _freeze(self.skill_versions))

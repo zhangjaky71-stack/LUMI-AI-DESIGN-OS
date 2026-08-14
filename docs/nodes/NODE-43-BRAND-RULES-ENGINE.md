@@ -1,102 +1,46 @@
 # NODE-43 — Brand Rules Engine
 
 > Phase: 5 Design Intelligence  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **IMPLEMENTED / VALIDATING / not COMPLETE**  
 > Priority: P0/P1 CORE QUALITY  
-> Depends on: NODE-14, NODE-17, NODE-18, NODE-39  
-> Produces: Brand Token/Rule model、Brand Context、Compliance Validator、品牌指南提取提案
+> Depends on: NODE-14, NODE-17, NODE-18, NODE-34, NODE-39, NODE-42  
+> Produces: versioned Brand Profile/Tokens/Assets/Rules, pinned BrandContext, deterministic compliance, governed guide extraction, Constraint + Artifact approval integration
 
 ---
 
-## 1. 目标
+## 1. Goal
 
-让品牌一致性成为结构化规则，而不是 Prompt 里一句“保持品牌感”。系统要知道可用颜色、字体、Logo版本、安全区、语调、摄影风格和禁止事项。
+Turn brand knowledge into an executable, versioned system of record. Brand Rules Engine must prevent Agents from treating brand guidance as prompt-only prose while avoiding a second mutation/enforcement engine.
 
-## 2. Brand Model
+Frozen boundaries:
+
+- NODE-18 owns verified binary assets and font rights metadata.
+- NODE-38 owns Design IR and DesignOperation mutation protocol.
+- NODE-39 owns server-side hard-constraint enforcement.
+- NODE-34 owns context selection/packing; NODE-43 provides a pinned structured BrandContext.
+- NODE-42 owns ArtifactVersion and approval lifecycle; NODE-43 supplies exact brand version + compliance gate.
+
+## 2. Runtime model
+
+Implemented contracts live in `packages/brand-rules/src/types.ts`:
 
 ```text
 BrandProfile
 BrandTokenSet
 BrandAssetSet
 BrandRuleSet
+BrandRule
 BrandVoice
 BrandVisualReferenceSet
+BrandContext
+BrandDiagnostic
+BrandComplianceReport
+BrandGuideExtractionProposal
 ```
 
-## 3. Tokens
+Rule severities are `HARD | SOFT | ADVISORY` and preserve NODE-14 semantics.
 
-```text
-color.primary/secondary/accent/neutral
-font.display/body/cjk_fallback
-spacing scale
-radius/style tokens optional
-```
-
-Tokens有 stable id/version；Design IR node可 `brand_binding`。
-
-## 4. Logo Rules
-
-```text
-allowed_logo_assets
-minimum_size
-clear_space
-allowed_background classes
-monochrome variants
-forbidden stretch/rotate/recolor
-```
-
-Logo identity hard rule可接 NODE-44。
-
-## 5. Typography Rules
-
-```text
-allowed font assets
-fallbacks
-headline/body hierarchy
-minimum readable size per profile
-case/language rules
-```
-
-字体 rights 由 Asset metadata验证。
-
-## 6. Color Rules
-
-- allowed palettes；
-- token usage；
-- minimum contrast where required；
-- forbidden colors；
-- print/web profile differences。
-
-## 7. Voice
-
-结构化：
-
-```text
-tone attributes
-do/don't examples
-preferred vocabulary
-forbidden claims/terms
-locale variations
-```
-
-Voice是 copy agent context，不直接成为 Canvas style rule。
-
-## 8. Visual Style
-
-```text
-photography direction
-lighting
-composition
-background style
-texture
-illustration style
-reference assets
-negative references
-```
-
-很多属于 SOFT/ADVISORY，而不是强锁。
-
-## 9. Rule Sources
+Rule sources are frozen as:
 
 ```text
 USER_EXPLICIT
@@ -105,75 +49,205 @@ MANUAL_ADMIN
 INFERRED_PROPOSAL
 ```
 
-从 PDF Brand Guide 自动提取只能先生成 proposal，不能未经用户/管理员批准就把推断变 hard rule。
+## 3. Versioning
 
-## 10. Extraction Pipeline
+Every published BrandRuleSet points to exact `token_set_version` and `asset_set_version`. Compliance rejects stale/mismatched dependencies instead of silently evaluating a newer token/asset set.
+
+ArtifactVersion and Artifact provenance now carry `brand_rule_set_version`. Historical artifacts are therefore evaluated/explained against the brand version that was active when the candidate was produced.
+
+## 4. Brand tokens and assets
+
+P0 token model supports:
+
+- colors and semantic roles;
+- verified font asset ids and fallbacks;
+- spacing scale;
+- radius token extension point.
+
+P0 asset model supports:
+
+- logo assets;
+- font assets;
+- positive visual references;
+- negative visual references.
+
+Asset bytes, MIME verification, scanning, licensing and signed URLs remain NODE-18 responsibilities.
+
+## 5. Deterministic rule runtime
+
+`packages/brand-rules/src/runtime.ts` evaluates Design IR directly for rules that do not need a model:
 
 ```text
-brand guide asset
-→ Knowledge extraction
-→ Brand Agent structured proposal
-→ source page citations
+ALLOWED_COLOR_TOKENS
+FORBIDDEN_COLORS
+ALLOWED_FONT_ASSETS
+MIN_TEXT_SIZE
+REQUIRE_TOKEN_BINDING
+ALLOWED_LOGO_ASSETS
+LOGO_MIN_SIZE
+LOGO_CLEAR_SPACE
+LOGO_FORBID_ROTATION
+LOGO_FORBID_STRETCH
+LOGO_FORBID_RECOLOR
+ALLOWED_ASSETS
+SPACING_SCALE
+VOICE_FORBIDDEN_TERMS
+```
+
+The runtime also checks verified asset ids and font-rights availability when supplied by NODE-18 adapters.
+
+Deterministic evaluation is stable: rule order is priority-descending then rule id; nodes are id-sorted.
+
+## 6. Auto-fix boundary
+
+Brand Rules Engine never mutates Design IR directly. Repair suggestions are NODE-38 `DesignOperation[]` using the current document version:
+
+```text
+BrandDiagnostic
+  -> repair_operations[]
+  -> NODE-39 preflight
+  -> NODE-38 executor
+```
+
+This prevents brand auto-fix from bypassing user locks or other hard constraints.
+
+## 7. Brand Guide / PDF extraction governance
+
+Automated extraction is not an authority boundary.
+
+```text
+guide/pdf
+→ candidate + confidence + citation
+→ INFERRED_PROPOSAL
 → human review
-→ publish BrandRuleSet version
+→ APPROVED_GUIDE_EXTRACTION
+→ next rule-set draft
+→ publish
 ```
 
-## 11. Brand Context
+P0 invariants:
 
-Context Engine获取 compact BrandContext：
+- unreviewed candidate requires exact source citation;
+- `INFERRED_PROPOSAL` cannot be HARD;
+- human reviewer identity is required before approval;
+- a reviewer may intentionally promote an approved candidate to HARD;
+- a published BrandRuleSet cannot contain unreviewed inferred proposals.
+
+These invariants are repeated in TypeScript, Python and PostgreSQL.
+
+## 8. NODE-39 Constraint integration
+
+`BrandConstraintAdapter` implements the frozen `BrandComplianceValidator` interface for `REQUIRE_BRAND_COMPLIANCE` / `LOCK_BRAND`.
+
+It resolves an exact BrandEvaluationContext, maps diagnostics into NODE-39 `ConstraintViolation`, and returns `VALIDATION_UNAVAILABLE` if the brand repository/evaluator is unavailable. Hard brand validation therefore fails closed rather than becoming PASS because a validator crashed.
+
+## 9. NODE-34 Context integration
+
+`buildBrandContext()` accepts only a PUBLISHED rule set whose token/asset versions match. Output is always `pinned: true` and contains:
+
+- exact BrandRuleSet id/version;
+- active hard rules;
+- selected color/font/spacing tokens;
+- allowed asset ids;
+- voice summary;
+- visual reference ids.
+
+Approved brand facts therefore survive context compaction and invalidate naturally by version.
+
+## 10. NODE-42 Artifact approval integration
+
+`evaluateBrandApprovalGate()` denies approval when:
 
 ```text
-hard rules
-selected tokens
-allowed assets
-voice summary
-reference refs
-rule version
+brand_rule_set_version missing
+OR artifact/report brand version mismatch
+OR hard brand violations exist
 ```
 
-## 12. Compliance
+Approved historical artifacts are not overwritten when a newer BrandRuleSet publishes.
 
-结构化检查：
+## 11. Visual / semantic brand rules
 
-- fonts/color/logo geometry/token bindings。
+`VISUAL_STYLE_GUIDANCE`, photographic direction and semantic identity remain model-grader plugin territory. They are primarily SOFT/ADVISORY in NODE-43.
 
-视觉检查：
+NODE-43 does not claim deterministic logo/product identity from an LLM. NODE-44 Identity Engine owns similarity/identity scoring.
 
-- logo appearance；
-- image style similarity/advisory；
-- brand VLM grader。
+## 12. Python parity
 
-输出 violations + score；hard violations阻止 approval。
+`services/brand-rules` provides a dependency-free Python reference runtime with:
 
-## 13. Versioning
+- the same source/severity publication invariants;
+- deterministic compliance for high-value color/font/logo/binding/asset/voice rules;
+- BrandContext generation;
+- extraction proposal review;
+- version mismatch fail-closed behavior.
 
-AgentRun/ArtifactVersion记录 exact `brand_rule_set_version`。品牌更新不追溯修改历史作品。
+The service is intentionally standalone, matching `services/artifact-history`, so NODE-43 does not modify the frozen root uv workspace lock.
+
+## 13. Database
+
+`db/migrations/0002_brand_rules.sql` creates:
+
+```text
+brand_profiles
+brand_token_sets
+brand_asset_sets
+brand_rule_sets
+brand_rules
+brand_guide_extraction_proposals
+brand_guide_extraction_candidates
+```
+
+It also adds `brand_rule_set_version` to `artifact_versions` and `artifact_provenance`.
+
+Tenant-aware composite references, version uniqueness, inferred-HARD CHECK constraints, extraction citation constraints and publish guards are enforced at the database layer.
 
 ## 14. Tests
 
-- token binding；
-- forbidden color；
-- logo safe zone；
-- font unavailable；
-- extraction citation；
-- inferred rule cannot auto hard；
-- version snapshot。
+TypeScript tests cover:
 
-## 15. 验收标准
+- forbidden brand color;
+- font allowlist/rights boundary;
+- logo clear-space and rotation;
+- DesignOperation auto-fix contract;
+- pinned BrandContext;
+- inferred HARD rejection;
+- extraction citation + human promotion to HARD;
+- stale dependency version rejection;
+- Artifact approval brand-version mismatch;
+- NODE-39 adapter mapping and `VALIDATION_UNAVAILABLE` fail-closed behavior.
 
-- [ ] Brand Kit有机器结构。
-- [ ] BrandRuleSet版本化。
-- [ ] hard/soft区分。
-- [ ] guide extraction需审批。
-- [ ] Artifact可记录品牌规则版本。
-- [ ] Compliance 接 Constraint/Critic。
+Python tests mirror the high-value deterministic/governance cases.
 
-## 16. Definition of Done
+## 15. Benchmark
 
-```text
-brand rule runtime implemented
-+ rule fixtures/evals green
-+ BrandContext integration green
-```
+`scripts/benchmark_brand_rules_engine.py` constructs 2,000 Design IR nodes and 40 active rules, runs deterministic compliance five times and gates on median runtime (`1500 ms` hosted default).
 
-下一节点：NODE-44 Identity Engine。
+No benchmark number is claimed until hosted CI actually executes.
+
+## 16. CI
+
+`.github/workflows/brand-rules-engine.yml` defines:
+
+1. `brand-contract` — compile, architecture validator, TS typecheck.
+2. `brand-quality` — TS/Python tests, Ruff, Pyright.
+3. `brand-integration` — Constraint + Brand + Artifact boundary regression.
+4. `brand-benchmark` — 2k-node / 40-rule deterministic workload.
+
+## 17. Acceptance evidence
+
+- `packages/brand-rules/src/*`
+- `services/brand-rules/src/lumi_brand_rules/*`
+- `services/brand-rules/tests/test_brand_rules.py`
+- `db/migrations/0002_brand_rules.sql`
+- `scripts/validate_brand_rules_engine.py`
+- `scripts/benchmark_brand_rules_engine.py`
+- `docs/runtime/BRAND-RULES-ENGINE-V1.md`
+- `reports/nodes/NODE-43/acceptance.md`
+- `.github/workflows/brand-rules-engine.yml`
+
+## 18. Completion rule
+
+NODE-43 remains **IMPLEMENTED / VALIDATING / not COMPLETE** until all dedicated hosted gates actually execute green. Runner/billing failures are external validation blockers and must not be reported as code PASS or code failure.
+
+Next node: **NODE-44 — Identity Engine**.
