@@ -1,0 +1,131 @@
+name: Agent Team
+
+on:
+  pull_request:
+    paths:
+      - "agents/**/2.0.0/**"
+      - "config/agent-team/**"
+      - "config/agent-registry/bootstrap-dependencies.v1.json"
+      - "schemas/agent-outputs/team-task-result.schema.json"
+      - "evals/profiles/agents/agent-team-v1.json"
+      - "apps/agent-runtime/src/lumi_agent_runtime/agent_team/**"
+      - "apps/agent-runtime/tests/test_agent_team*.py"
+      - "scripts/integration_agent_team.py"
+      - "scripts/validate_agent_team_contract.py"
+      - "docs/runtime/AGENT-TEAM-V1.md"
+      - "reports/nodes/NODE-37/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  agent-team-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile NODE-37 runtime definitions and acceptance
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src:scripts
+          python -m compileall -q
+          apps/agent-runtime/src/lumi_agent_runtime/agent_team
+          apps/agent-runtime/tests/test_agent_team.py
+          apps/agent-runtime/tests/test_agent_team_flow.py
+          apps/agent-runtime/tests/test_agent_team_task_graph.py
+          scripts/integration_agent_team.py
+          scripts/validate_agent_team_contract.py
+      - name: Revalidate NODE-28 Agent Registry
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python scripts/validate_agent_registry_contract.py
+      - name: Revalidate NODE-29 Deep Agents Runtime
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python scripts/validate_deep_agent_runtime.py
+      - name: Revalidate NODE-31 Skill Runtime
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python scripts/validate_skill_runtime_contract.py
+      - name: Revalidate NODE-33 TaskGraph
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python scripts/validate_task_graph_contract.py
+      - name: Validate NODE-37 Agent Team
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python scripts/validate_agent_team_contract.py
+      - name: NODE-37 dependency-light unit tests
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python -m unittest discover
+          -s apps/agent-runtime/tests
+          -p 'test_agent_team*.py'
+
+  agent-team-quality:
+    needs: agent-team-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: NODE-37 pytest
+        run: >-
+          uv run pytest
+          apps/agent-runtime/tests/test_agent_team.py
+          apps/agent-runtime/tests/test_agent_team_flow.py
+          apps/agent-runtime/tests/test_agent_team_task_graph.py
+          -q
+      - name: NODE-37 Ruff gate
+        run: >-
+          uv run ruff check
+          apps/agent-runtime/src/lumi_agent_runtime/agent_team
+          apps/agent-runtime/tests/test_agent_team.py
+          apps/agent-runtime/tests/test_agent_team_flow.py
+          apps/agent-runtime/tests/test_agent_team_task_graph.py
+          scripts/integration_agent_team.py
+          scripts/validate_agent_team_contract.py
+      - name: NODE-37 Pyright gate
+        run: >-
+          uv run pyright
+          apps/agent-runtime/src/lumi_agent_runtime/agent_team
+          apps/agent-runtime/tests/test_agent_team.py
+          apps/agent-runtime/tests/test_agent_team_flow.py
+          apps/agent-runtime/tests/test_agent_team_task_graph.py
+
+  agent-team-e2e:
+    needs: agent-team-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: TaskGraph DAG contract tests
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          uv run pytest apps/agent-runtime/tests/test_agent_team_task_graph.py -q
+      - name: NODE-22 MockProvider six-specialist deterministic integration
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src:scripts
+          uv run python scripts/integration_agent_team.py
