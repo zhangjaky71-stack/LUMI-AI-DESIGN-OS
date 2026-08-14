@@ -59,8 +59,6 @@ export class CanvasResourceManager<T> {
     this.#inflight.set(key, pending);
     try {
       const entry = await pending;
-      entry.references += 1;
-      this.#cache.acquire(assetId, tier);
       return entry.resource;
     } finally {
       this.#inflight.delete(key);
@@ -106,10 +104,16 @@ export class CanvasResourceManager<T> {
     this.#inflight.clear();
   }
 
-  snapshot(): ReadonlyArray<{ readonly asset_id: string; readonly tier: AssetTier; readonly references: number }> {
+  snapshot(): ReadonlyArray<{
+    readonly asset_id: string;
+    readonly tier: AssetTier;
+    readonly references: number;
+  }> {
     return [...this.#resources.values()]
       .map((entry) => ({ asset_id: entry.assetId, tier: entry.tier, references: entry.references }))
-      .sort((left, right) => `${left.asset_id}:${left.tier}`.localeCompare(`${right.asset_id}:${right.tier}`));
+      .sort((left, right) =>
+        `${left.asset_id}:${left.tier}`.localeCompare(`${right.asset_id}:${right.tier}`),
+      );
   }
 
   async #load(assetId: string, tier: AssetTier): Promise<ResourceEntry<T>> {
@@ -123,10 +127,10 @@ export class CanvasResourceManager<T> {
       assetId,
       tier,
       resource,
-      references: 0,
+      references: 1,
     };
     this.#resources.set(entry.key, entry);
-    this.#cache.put(assetId, tier, Math.max(1, resolved.estimated_bytes));
+    this.#cache.put(assetId, tier, Math.max(1, resolved.estimated_bytes), 1);
     this.#collectEvicted();
     return entry;
   }
