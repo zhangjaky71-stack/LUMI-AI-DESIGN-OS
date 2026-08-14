@@ -2,152 +2,105 @@
 
 > Status: **IMPLEMENTED / VALIDATING / not COMPLETE**  
 > Branch: `node-40-canvas-engine`  
-> Base: `node-39-constraint-validator-release`
+> Release base: `node-39-constraint-validator-release`
 
-## Scope evidence
+## Implemented evidence
 
-| Requirement | Evidence | State |
+| Area | Evidence | State |
 | --- | --- | --- |
-| Design IR is source of truth | `packages/canvas-sdk/src/ir-scene.ts` | IMPLEMENTED |
-| No second canvas document protocol | production scene projects NODE-38 `DesignDocument` | IMPLEMENTED |
-| Pixi runtime is renderer-only | `renderer.ts`, `pixi-v8-bindings.ts` | IMPLEMENTED |
-| Infinite camera | `camera.ts`, `controller.ts` | IMPLEMENTED |
-| Camera applied to real Pixi stage | renderer `setCamera` + Pixi matrix binding | IMPLEMENTED |
-| World/screen conversion | `camera.ts` + camera tests | IMPLEMENTED |
-| High-DPI boundary | `physicalCanvasSize`, renderer resize contract | IMPLEMENTED |
-| Nested affine transforms | `matrix.ts`, `ir-scene.ts` | IMPLEMENTED |
-| `rotation_deg` semantics | matrix/geometry compatibility fix | IMPLEMENTED |
+| Design IR source of truth | `ir-scene.ts`, NODE-38 types/operations | IMPLEMENTED |
+| Renderer-only Pixi runtime | `renderer.ts`, `pixi-v8-bindings.ts` | IMPLEMENTED |
+| Infinite camera + DPR | `camera.ts`, `controller.ts` | IMPLEMENTED |
+| Nested affine / `rotation_deg` | `matrix.ts`, geometry regression | IMPLEMENTED |
 | Multi-frame scene | `frame_ids`, fit frame/all | IMPLEMENTED |
-| Ancestor visibility inheritance | scene projection + runtime regression | IMPLEMENTED |
-| Ancestor lock inheritance | scene projection + runtime regression | IMPLEMENTED |
-| Spatial culling/index | `spatial-index.ts` | IMPLEMENTED |
-| Visible ancestor closure during culling | `CanvasController.renderNow()` | IMPLEMENTED |
-| Topmost hit test/select-through | spatial + selection tests | IMPLEMENTED |
-| Multi-select/marquee | `selection.ts` | IMPLEMENTED |
-| Locked nodes selectable but not transformable | selection/runtime tests | IMPLEMENTED |
-| Group isolation | `selection.ts` ancestry gate | IMPLEMENTED |
-| Snapping | `snapping.ts`, camera-snapping tests | IMPLEMENTED |
-| Local drag/resize/rotate preview | `transform-session.ts` | IMPLEMENTED |
-| Pointer-up DesignOperation commit | transform/controller | IMPLEMENTED |
-| NODE-39 hard constraint rollback | runtime test + browser E2E | IMPLEMENTED |
+| Inherited visibility/locking | `ir-scene.ts`, `runtime.test.ts` | IMPLEMENTED |
+| Spatial culling + ancestor closure | `spatial-index.ts`, controller | IMPLEMENTED |
+| Hit test / select-through / marquee / isolation | `selection.ts` | IMPLEMENTED |
+| Snapping | `snapping.ts`, camera/snapping tests | IMPLEMENTED |
+| Local move/resize/rotate preview | `transform-session.ts` | IMPLEMENTED |
+| NODE-39 guarded pointer-up commit | transform/controller | IMPLEMENTED |
+| Hard-lock rollback | runtime test + browser E2E | IMPLEMENTED |
 | Constraint-aware undo/redo | `command-bus.ts` + tests | IMPLEMENTED |
-| DOM/IME-safe text contract | `text-edit.ts` + tests | IMPLEMENTED |
-| Grapheme-aware text | `Intl.Segmenter` test | IMPLEMENTED |
-| Authorized asset resolver | `resource-manager.ts` | IMPLEMENTED |
-| Progressive cache/reference lifecycle | resource/asset-cache tests | IMPLEMENTED |
-| Concurrent shared-texture ref counting | resource manager + asset residency tests | IMPLEMENTED |
-| Viewport/zoom-driven asset residency | `asset-residency.ts`, controller | IMPLEMENTED |
-| Live texture lookup after LRU eviction | ResourceManager `peek()` only | IMPLEMENTED |
-| Async asset race invalidation | request-token residency guard | IMPLEMENTED |
-| GPU object cleanup | loader destroy + renderer disposal | IMPLEMENTED |
-| Clipboard IR fragment | `clipboard.ts` | IMPLEMENTED |
+| IME-safe DOM text editing | `text-edit.ts` + tests | IMPLEMENTED |
+| Design IR clipboard | `clipboard.ts` | IMPLEMENTED |
 | Cross-project asset revalidation | clipboard asset policy | IMPLEMENTED |
-| Runtime/Pixi metadata stripping | clipboard test | IMPLEMENTED |
-| Keyboard P0 map | `keyboard.ts` | IMPLEMENTED |
-| Accessibility equivalent layers data | `selection.accessibleRows()` | IMPLEMENTED |
-| Malformed node isolation | scene diagnostics + test | IMPLEMENTED |
-| Incremental dirty render | render key + renderer test | IMPLEMENTED |
-| Resized FRAME/SHAPE redraw | `redrawShape` binding + test | IMPLEMENTED |
-| IMAGE/VIDEO display sizing | `setDisplaySize` binding | IMPLEMENTED |
-| Renderer removal without double-disposal | reverse removal + `children:false` | IMPLEMENTED |
-| RAF batching | `CanvasController.scheduleRender()` | IMPLEMENTED |
-| Real PixiJS browser integration | `/canvas-engine` | IMPLEMENTED |
-| Browser interaction E2E | `apps/web/e2e/canvas-engine.spec.ts` | IMPLEMENTED; hosted execution pending |
-| 2k runtime performance gate | `runtime-performance.test.ts` | IMPLEMENTED; hosted measurement pending |
-| 10k stress performance gate | same | IMPLEMENTED; hosted measurement pending |
-| Frozen 16.7ms synchronous budget | `runtime-benchmark.ts` | IMPLEMENTED |
-| Architecture validator | `scripts/validate_canvas_engine.py` | IMPLEMENTED |
-| Dedicated CI | `.github/workflows/canvas-engine.yml` | IMPLEMENTED; hosted execution pending |
+| Authorized resource manager | `resource-manager.ts` | IMPLEMENTED |
+| Shared in-flight texture refs | resource + residency tests | IMPLEMENTED |
+| Zoom/viewport asset residency | `asset-residency.ts`, controller | IMPLEMENTED |
+| Live-only texture lookup after LRU | `ResourceManager.peek()` | IMPLEMENTED |
+| Race-safe async asset invalidation | per-node request tokens | IMPLEMENTED |
+| Incremental dirty renderer | render key + renderer tests | IMPLEMENTED |
+| Shape resize redraw | `redrawShape` | IMPLEMENTED |
+| Image/video display sizing | `setDisplaySize` | IMPLEMENTED |
+| Safe renderer/GPU disposal | reverse removal + non-recursive destroy | IMPLEMENTED |
+| RAF batching | `scheduleRender()` | IMPLEMENTED |
+| Real Pixi browser harness | `/canvas-engine` | IMPLEMENTED |
+| Real browser interaction E2E | `apps/web/e2e/canvas-engine.spec.ts` | IMPLEMENTED; hosted execution blocked |
+| 2k + 10k perf gate | `runtime-performance.test.ts` | IMPLEMENTED; hosted execution blocked |
+| 16.7ms synchronous budget | `runtime-benchmark.ts` | IMPLEMENTED |
+| Static architecture guard | `scripts/validate_canvas_engine.py` | IMPLEMENTED |
+| Dedicated CI | `.github/workflows/canvas-engine.yml` | IMPLEMENTED |
 
 ## Runtime boundary
 
-Persisted state:
+Persisted state is `DesignDocument` + `DesignOperation` + Constraint/Artifact references. `CanvasSceneSnapshot`, camera, selection, spatial indexes, Pixi objects, textures, GPU handles and interaction previews are disposable runtime state. No Pixi object is written into Design IR.
 
-```text
-DesignDocument
-DesignOperation
-Constraint
-Artifact/Version references
-```
-
-Disposable runtime state:
-
-```text
-CanvasSceneSnapshot
-SpatialIndex
-Selection
-Camera
-Pixi Container/Graphics/Text/Sprite
-textures / GPU handles
-interaction previews
-```
-
-No Pixi object is written into Design IR.
-
-## Constraint acceptance
-
-The production transform path is:
+The production mutation path is:
 
 ```text
 CanvasTransformSession preview
 -> DesignOperation[]
 -> NODE-39 guardedExecute
--> ALLOW: update document + rebuild scene
--> DENY: keep original document + redraw original scene
+-> ALLOW: authoritative document + scene rebuild
+-> DENY: original document remains authoritative
 ```
 
-Undo and redo replay operations through the same validator. A newly active hard lock can therefore deny Undo.
+Undo/redo replay operations through the same constraint validator, so a newly active hard lock can deny Undo rather than being bypassed by snapshot restore.
 
-## Asset residency acceptance
+## Asset residency
 
-Viewport culling drives `CanvasAssetResidency`, which chooses `thumbnail`, `preview`, or `full` from zoom and requests the resource through the authorized `CanvasAssetResolver` boundary. Concurrent callers share one load while retaining independent references. Async completions use per-node request tokens so an obsolete request cannot revive an offscreen or superseded resource.
+Viewport culling drives `CanvasAssetResidency`. Zoom chooses `thumbnail`, `preview` or `full`; loads cross the authorized `CanvasAssetResolver` boundary. Concurrent consumers share one in-flight load while retaining independent reference counts. Async completion is protected by per-node request tokens. `textureForAsset()` reads only live `CanvasResourceManager.peek()` entries, so LRU-evicted/destroyed resources are not retained through a stale second map.
 
-`textureForAsset()` reads only `CanvasResourceManager.peek()` results. It does not keep a second stale texture map, so an LRU-evicted/destroyed GPU resource cannot remain reachable through the residency layer.
+## Browser integration
 
-## Browser integration acceptance
-
-`/canvas-engine` initializes a real PixiJS v8 Application through the production `PixiV8RendererAdapter` and `CanvasController`.
-
-The Playwright gate verifies:
-
-1. real canvas ready;
-2. shape move succeeds;
-3. Design IR document version increments;
-4. later HARD `LOCK_POSITION` rejects a move;
-5. rejected move leaves shape geometry and document version unchanged;
-6. camera pan changes camera state independently.
-
-The broader NODE-08 Pixi/IME/stress E2E remains available as regression evidence.
+`/canvas-engine` uses the production `CanvasController` + `PixiV8RendererAdapter`. The Playwright gate verifies a real Pixi canvas, an accepted move with Design IR version increment, a later HARD `LOCK_POSITION` rejection that preserves geometry/version, and independent camera pan.
 
 ## Performance policy
 
-NODE-08 synchronous renderer evidence established P95 6.5ms at 2k and 4.9ms at 10k for the technology-spike workload. NODE-40 freezes 16.7ms as the synchronous frame-work budget and adds a mixed Design IR scene/spatial-culling benchmark.
+NODE-08 recorded synchronous renderer P95 6.5ms at 2k and 4.9ms at 10k for the spike workload. NODE-40 freezes a **16.7ms synchronous frame-work budget** and adds a mixed Design IR scene/spatial-culling regression at 2k and 10k. Hosted headless rAF is not used to claim workstation 60fps.
 
-Hosted headless requestAnimationFrame timing is not used to claim workstation 60fps. Real Windows/macOS GPU certification remains a representative-hardware gate.
+## Hosted CI evidence
 
-## Tests present
+Initial release head: `ce3ce9c4bc34b13dd1e806c74b6a914c8a9d60b0`  
+Canvas Engine workflow run: `31786212548`
 
-- `canvas-spike.test.ts` — NODE-08 compatibility regression.
-- `runtime.test.ts` — IR projection, inherited visibility/locking, selection, constrained transforms.
-- `command-bus.test.ts` — undo/redo and lock enforcement.
-- `text-resource.test.ts` — IME, graphemes, resource lifecycle, clipboard.
-- `asset-residency.test.ts` — shared in-flight references and zoom-tier residency.
-- `renderer.test.ts` — dirty rendering, camera bridge, resize redraw/disposal.
-- `camera-snapping.test.ts` — DPR, camera roundtrip, snapping.
-- `diagnostics.test.ts` — malformed IR isolation.
-- `runtime-performance.test.ts` — 2k/10k synchronous budget.
-- `apps/web/e2e/canvas-engine.spec.ts` — real Pixi production browser gate.
+Observed jobs:
 
-## Acceptance gates before COMPLETE
+```text
+canvas-contract     failure (no steps executed)
+canvas-quality      skipped
+canvas-browser-e2e  skipped
+canvas-benchmark    skipped
+```
+
+GitHub check annotation for `canvas-contract`:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+
+This is an **external GitHub Actions account/billing blocker**. No NODE-40 contract, typecheck, unit test, browser E2E or benchmark step executed in this run, so it is not evidence of a code/test failure and it is not evidence of a pass.
+
+## Gates before COMPLETE
 
 1. Hosted `canvas-contract` executes green.
 2. Hosted `canvas-quality` executes Canvas SDK tests and web lint green.
 3. Hosted `canvas-browser-e2e` executes real Chromium/Pixi interaction green.
-4. Hosted `canvas-benchmark` records 2k and 10k P95 within 16.7ms.
+4. Hosted `canvas-benchmark` records 2k/10k P95 within 16.7ms.
 5. No Design IR / Constraint contract drift.
-6. No persisted Pixi runtime object.
-7. Release PR stays stack-compatible with `node-39-constraint-validator-release`.
+6. No persisted Pixi runtime objects.
+7. Release PR remains stack-compatible with `node-39-constraint-validator-release`.
 
 ## Current disposition
 
-Implementation, real browser harness, tests, performance harness, architecture validator, runtime documentation and CI definitions are present. NODE-40 is intentionally **not COMPLETE** until the hosted gates actually execute successfully. If the GitHub account billing/spending-limit condition prevents jobs from starting, it must be recorded as an external CI blocker rather than a code failure.
+**NODE-40 = IMPLEMENTED / VALIDATING / not COMPLETE.**
+
+Implementation and validation harnesses are present. Completion is intentionally withheld until hosted gates actually execute successfully.
