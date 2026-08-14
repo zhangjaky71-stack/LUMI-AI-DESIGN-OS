@@ -1,6 +1,7 @@
 export * from "./compiler-bridge";
 export * from "./engine";
 export * from "./export";
+export * from "./export-api";
 export * from "./export-artifact-adapter";
 export * from "./export-engine";
 export * from "./export-engine-types";
