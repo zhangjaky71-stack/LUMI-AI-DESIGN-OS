@@ -38,11 +38,13 @@ class KnowledgeIndexer:
     async def index(self, request: KnowledgeIndexRequest) -> KnowledgeDocument:
         await self.repository.acquire_source_lock(
             organization_id=request.access.organization_id,
+            scope_key=request.scope_key,
             source_type=request.source.source_type.value,
             source_id=request.source.source_id,
         )
         document_id = deterministic_document_id(
             request.access.organization_id,
+            scope_key=request.scope_key,
             source_type=request.source.source_type.value,
             source_id=request.source.source_id,
             source_version=request.source.version,
@@ -57,6 +59,7 @@ class KnowledgeIndexer:
 
         current_versions = await self.repository.find_ready_source_versions(
             organization_id=request.access.organization_id,
+            scope_key=request.scope_key,
             source_type=request.source.source_type.value,
             source_id=request.source.source_id,
         )
