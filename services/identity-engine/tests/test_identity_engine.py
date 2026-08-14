@@ -11,6 +11,7 @@ from lumi_identity_engine import (
     IdentityRegion,
     IdentityValidationRuntime,
     StructuredIdentitySignalProvider,
+    ThresholdCalibrationProfile,
     VerifiedIdentityAsset,
     build_calibration_profile,
     identity_validation_batch_snapshot_id,
@@ -21,22 +22,18 @@ H2 = "2" * 64
 
 
 def logo_samples() -> tuple[CalibrationSample, ...]:
-    rows = (
-        ("p1", "POSITIVE", 98.0),
-        ("p2", "POSITIVE", 96.0),
-        ("p3", "POSITIVE", 92.0),
-        ("n1", "NEGATIVE", 20.0),
-        ("n2", "NEGATIVE", 35.0),
-        ("m1", "NEAR_MISS", 70.0),
-        ("m2", "NEAR_MISS", 75.0),
-    )
-    return tuple(
-        CalibrationSample(sample_id, "LOGO", label, score, "STRICT_PRESERVE")
-        for sample_id, label, score in rows  # type: ignore[arg-type]
+    return (
+        CalibrationSample("p1", "LOGO", "POSITIVE", 98.0, "STRICT_PRESERVE"),
+        CalibrationSample("p2", "LOGO", "POSITIVE", 96.0, "STRICT_PRESERVE"),
+        CalibrationSample("p3", "LOGO", "POSITIVE", 92.0, "STRICT_PRESERVE"),
+        CalibrationSample("n1", "LOGO", "NEGATIVE", 20.0, "STRICT_PRESERVE"),
+        CalibrationSample("n2", "LOGO", "NEGATIVE", 35.0, "STRICT_PRESERVE"),
+        CalibrationSample("m1", "LOGO", "NEAR_MISS", 70.0, "STRICT_PRESERVE"),
+        CalibrationSample("m2", "LOGO", "NEAR_MISS", 75.0, "STRICT_PRESERVE"),
     )
 
 
-def profile():
+def profile() -> ThresholdCalibrationProfile:
     return build_calibration_profile(
         profile_id="logo-strict",
         organization_id="org-1",
@@ -46,7 +43,12 @@ def profile():
         model_bundle_version="fixture-model@1",
         preprocessor_version="prep@1",
         calibration_dataset_version="logo-cal@1",
-        signal_weights={"exact_hash": 0.25, "perceptual": 0.2, "feature": 0.2, "ocr_wordmark": 0.35},
+        signal_weights={
+            "exact_hash": 0.25,
+            "perceptual": 0.2,
+            "feature": 0.2,
+            "ocr_wordmark": 0.35,
+        },
         required_signals=("exact_hash", "perceptual", "feature", "ocr_wordmark"),
         review_margin=10,
         minimum_confidence=0.7,
@@ -56,12 +58,12 @@ def profile():
     )
 
 
-def identity(reference_type: str = "LOGO") -> IdentityReferenceSet:
+def identity() -> IdentityReferenceSet:
     active_profile = profile()
     return IdentityReferenceSet(
         identity_id="identity-logo",
         organization_id="org-1",
-        identity_type=reference_type,  # type: ignore[arg-type]
+        identity_type="LOGO",
         canonical_asset_ids=("asset-1",),
         reference_views=(IdentityReferenceView("front", "asset-1", "v1", "org-1"),),
         threshold_profile_id=active_profile.profile_id,
