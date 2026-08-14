@@ -3,6 +3,7 @@ import type { ExportArtifactPort, ExportFileRecord, ExportJob } from "./export-e
 import type { ArtifactFileRole, ArtifactObjectStore, ArtifactType } from "./types";
 
 const GIT_SHA = /^[0-9a-f]{40}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function artifactType(file: ExportFileRecord): ArtifactType {
   if (file.mime_type === "application/pdf") return "PDF";
@@ -18,21 +19,32 @@ function fileRole(file: ExportFileRecord): ArtifactFileRole {
   return "ORIGINAL";
 }
 
-function ids(job: ExportJob, file: ExportFileRecord): {
+async function deterministicUuid(seed: string): Promise<string> {
+  const input = new TextEncoder().encode(seed);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", input.buffer));
+  const bytes = digest.slice(0, 16);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+async function ids(job: ExportJob, file: ExportFileRecord): Promise<{
   artifact: string;
   branch: string;
   version: string;
   file: string;
   edge: string;
-} {
+}> {
   const base = `${job.export_fingerprint}:${file.variant_id}:${file.checksum_sha256}`;
-  return {
-    artifact: `artifact:export:${base}`,
-    branch: `artifact-branch:export:${base}`,
-    version: `artifact-version:export:${base}`,
-    file: `artifact-file:export:${base}`,
-    edge: `artifact-edge:export:${base}`,
-  };
+  const [artifact, branch, version, fileId, edge] = await Promise.all([
+    deterministicUuid(`artifact:${base}`),
+    deterministicUuid(`branch:${base}`),
+    deterministicUuid(`version:${base}`),
+    deterministicUuid(`file:${base}`),
+    deterministicUuid(`edge:${base}`),
+  ]);
+  return { artifact, branch, version, file: fileId, edge };
 }
 
 export class ArtifactEngineExportAdapter implements ExportArtifactPort {
@@ -50,33 +62,15 @@ export class ArtifactEngineExportAdapter implements ExportArtifactPort {
   async persistExport(args: Parameters<ExportArtifactPort["persistExport"]>[0]): Promise<void> {
     const { job, manifest } = args;
     const source = this.#engine.versions.get(job.source.artifact_version_id);
-    if (!source || source.organization_id !== job.organization_id || source.artifact_id !== job.source.artifact_id) {
-      throw new Error("EXPORT_SOURCE_ARTIFACT_VERSION_NOT_IN_HISTORY");
-    }
-    if (source.content_hash !== job.source.content_hash || source.constraint_snapshot_hash !== job.source.constraint_snapshot_hash) {
-      throw new Error("EXPORT_SOURCE_ARTIFACT_SNAPSHOT_MISMATCH");
-    }
+    if (!source || source.organization_id !== job.organization_id || source.artifact_id !== job.source.artifact_id) throw new Error("EXPORT_SOURCE_ARTIFACT_VERSION_NOT_IN_HISTORY");
+    if (source.content_hash !== job.source.content_hash || source.constraint_snapshot_hash !== job.source.constraint_snapshot_hash) throw new Error("EXPORT_SOURCE_ARTIFACT_SNAPSHOT_MISMATCH");
     const outputs = [...args.files, ...(job.manifest_file ? [job.manifest_file] : [])];
     for (const output of outputs) {
-      const identity = ids(job, output);
+      const identity = await ids(job, output);
+      if (![identity.artifact, identity.branch, identity.version, identity.file, identity.edge].every((value) => UUID.test(value))) throw new Error("EXPORT_ARTIFACT_UUID_INVALID");
       if (this.#engine.versions.has(identity.version)) continue;
-      this.#engine.addArtifact({
-        id: identity.artifact,
-        organization_id: job.organization_id,
-        project_id: job.project_id,
-        type: artifactType(output),
-        title: output.filename,
-        archived: false,
-      });
-      this.#engine.addBranch({
-        id: identity.branch,
-        organization_id: job.organization_id,
-        artifact_id: identity.artifact,
-        name: "main",
-        base_version_id: null,
-        head_version_id: null,
-        created_by: job.spec.requested_by,
-      });
+      this.#engine.addArtifact({ id: identity.artifact, organization_id: job.organization_id, project_id: job.project_id, type: artifactType(output), title: output.filename, archived: false });
+      this.#engine.addBranch({ id: identity.branch, organization_id: job.organization_id, artifact_id: identity.artifact, name: "main", base_version_id: null, head_version_id: null, created_by: job.spec.requested_by });
       this.#engine.addVersion({
         id: identity.version,
         organization_id: job.organization_id,
@@ -130,12 +124,7 @@ export class ArtifactEngineExportAdapter implements ExportArtifactPort {
         from_version_id: job.source.artifact_version_id,
         to_version_id: identity.version,
         type: "EXPORTED_FROM",
-        metadata: {
-          export_job_id: job.export_job_id,
-          variant_id: output.variant_id,
-          export_fingerprint: job.export_fingerprint,
-          manifest_sha256: manifest.manifest_sha256,
-        },
+        metadata: { export_job_id: job.export_job_id, variant_id: output.variant_id, export_fingerprint: job.export_fingerprint, manifest_sha256: manifest.manifest_sha256 },
       });
       this.#engine.transition(identity.version, "READY");
     }
