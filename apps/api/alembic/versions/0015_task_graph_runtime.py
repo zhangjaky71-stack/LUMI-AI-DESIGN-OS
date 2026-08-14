@@ -65,6 +65,7 @@ def upgrade() -> None:
         sa.Column("retry_not_before", sa.DateTime(timezone=True), nullable=True),
         sa.Column("wait_reason", sa.String(length=255), nullable=True),
         sa.Column("external_ref", sa.String(length=1024), nullable=True),
+        sa.Column("cancellation_requested_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("progress_current", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("progress_total", sa.Integer(), nullable=False, server_default="1"),
         sa.Column("dynamic_depth", sa.SmallInteger(), nullable=False, server_default="0"),
@@ -120,12 +121,12 @@ def upgrade() -> None:
     op.create_index("ix_task_attempts_graph_created", "task_attempts", ["task_graph_id", "created_at"])
     op.create_index("ix_task_attempts_logical_operation", "task_attempts", ["logical_operation_key", "attempt_number"])
 
-    # 0002 grants broad default DML to future tables. Keep graph state mutable but
-    # non-deletable, and keep attempt history append-only for auditability.
+    # 0002 grants broad default DML to future tables. Graph state and an active
+    # attempt may update during execution, but neither durable history may be deleted.
     op.execute("REVOKE DELETE ON task_graph_instances FROM lumi_app")
-    op.execute("REVOKE UPDATE, DELETE ON task_attempts FROM lumi_app")
+    op.execute("REVOKE DELETE ON task_attempts FROM lumi_app")
     op.execute("GRANT SELECT, INSERT, UPDATE ON task_graph_instances TO lumi_app")
-    op.execute("GRANT SELECT, INSERT ON task_attempts TO lumi_app")
+    op.execute("GRANT SELECT, INSERT, UPDATE ON task_attempts TO lumi_app")
 
 
 def downgrade() -> None:
@@ -152,6 +153,7 @@ def downgrade() -> None:
         "dynamic_depth",
         "progress_total",
         "progress_current",
+        "cancellation_requested_at",
         "external_ref",
         "wait_reason",
         "retry_not_before",
