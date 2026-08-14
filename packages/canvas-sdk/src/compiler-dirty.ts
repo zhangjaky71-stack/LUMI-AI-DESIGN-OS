@@ -80,7 +80,8 @@ export function planCompilerDirtyNodes(
   suppliedDiff?: SemanticDiff,
 ): CompilerDirtyPlan {
   const diff = suppliedDiff ?? semanticDiff(before, after);
-  if (!diff.changed) {
+  const resources = changedResources(before, after);
+  if (!diff.changed && resources.length === 0) {
     return {
       dirty_node_ids: [],
       removed_node_ids: [],
@@ -95,7 +96,7 @@ export function planCompilerDirtyNodes(
     return {
       dirty_node_ids: Object.keys(after.nodes).sort(),
       removed_node_ids: [...diff.removed_node_ids],
-      resource_ids: changedResources(before, after),
+      resource_ids: resources,
       requires_full_compile: true,
       reason: schemaChanged ? "schema-version-changed" : "root-changed",
     };
@@ -120,7 +121,6 @@ export function planCompilerDirtyNodes(
     if (parent && after.nodes[parent]) dirty.add(parent);
   }
 
-  const resources = changedResources(before, after);
   if (resources.length) {
     const resourceSet = new Set(resources);
     for (const id of Object.keys(after.nodes)) {
