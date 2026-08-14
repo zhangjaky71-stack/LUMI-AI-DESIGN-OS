@@ -1,3 +1,4 @@
+import type { CompiledSceneNode } from "./compiler-types";
 import type { CanvasNodeDiagnostic, CanvasSceneNode, CanvasSceneSnapshot } from "./ir-scene";
 import type { Matrix2D } from "./matrix";
 import type { CameraState } from "./types";
@@ -24,7 +25,7 @@ export interface PixiDisplayHandle {
 export interface PixiV8Bindings {
   readonly stage: PixiDisplayHandle;
   createContainer(id: string): PixiDisplayHandle;
-  createText(id: string, content: string): PixiDisplayHandle;
+  createText(id: string, content: string, node: CanvasSceneNode): PixiDisplayHandle;
   createImage(id: string, assetId: string): PixiDisplayHandle;
   createShape(id: string, node: CanvasSceneNode): PixiDisplayHandle;
   createVideoPoster(id: string, assetId: string | null): PixiDisplayHandle;
@@ -34,8 +35,9 @@ export interface PixiV8Bindings {
   redrawShape(handle: PixiDisplayHandle, node: CanvasSceneNode): void;
   setDisplaySize(handle: PixiDisplayHandle, width: number, height: number): void;
   setVisible(handle: PixiDisplayHandle, visible: boolean): void;
-  setText(handle: PixiDisplayHandle, content: string): void;
+  setText(handle: PixiDisplayHandle, content: string, node: CanvasSceneNode): void;
   setAsset(handle: PixiDisplayHandle, assetId: string | null): void;
+  setMask(handle: PixiDisplayHandle, mask: PixiDisplayHandle | null): void;
   addChild(parent: PixiDisplayHandle, child: PixiDisplayHandle): void;
   removeChild(parent: PixiDisplayHandle, child: PixiDisplayHandle): void;
   destroyDisplay(handle: PixiDisplayHandle): void;
@@ -47,9 +49,19 @@ interface RenderEntry {
   readonly handle: PixiDisplayHandle;
   renderKey: string;
   parentId: string | null;
+  maskId: string | null;
 }
 
 const SHAPE_KINDS = new Set(["FRAME", "MASK", "SHAPE", "VECTOR_PATH", "GUIDE"]);
+
+function compiledNode(node: CanvasSceneNode): CompiledSceneNode | null {
+  return "resolved_style" in node ? (node as CompiledSceneNode) : null;
+}
+
+function nodeMaskId(node: CanvasSceneNode): string | null {
+  const compiled = compiledNode(node);
+  return compiled?.mask_id ?? compiled?.clip_id ?? null;
+}
 
 function createDisplay(bindings: PixiV8Bindings, node: CanvasSceneNode): PixiDisplayHandle {
   switch (node.kind) {
@@ -65,7 +77,7 @@ function createDisplay(bindings: PixiV8Bindings, node: CanvasSceneNode): PixiDis
     case "GUIDE":
       return bindings.createShape(node.id, node);
     case "TEXT":
-      return bindings.createText(node.id, node.content ?? "");
+      return bindings.createText(node.id, node.content ?? "", node);
     case "IMAGE":
       return node.asset_id
         ? bindings.createImage(node.id, node.asset_id)
@@ -116,7 +128,7 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
       let entry = this.#entries.get(id);
       if (!entry) {
         const handle = createDisplay(this.#bindings, node);
-        entry = { handle, renderKey: "", parentId: null };
+        entry = { handle, renderKey: "", parentId: null, maskId: null };
         this.#entries.set(id, entry);
         created += 1;
       }
@@ -136,7 +148,7 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
       if (entry.renderKey !== node.render_key) {
         this.#bindings.setLocalMatrix(entry.handle, node.local_matrix);
         if (SHAPE_KINDS.has(node.kind)) this.#bindings.redrawShape(entry.handle, node);
-        if (node.kind === "TEXT") this.#bindings.setText(entry.handle, node.content ?? "");
+        if (node.kind === "TEXT") this.#bindings.setText(entry.handle, node.content ?? "", node);
         if (["IMAGE", "VIDEO"].includes(node.kind)) {
           this.#bindings.setAsset(entry.handle, node.asset_id ?? null);
           this.#bindings.setDisplaySize(
@@ -151,6 +163,17 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
       const visible =
         node.visible && (node.kind === "DOCUMENT_ROOT" || visibleIds.has(id));
       this.#bindings.setVisible(entry.handle, visible);
+    }
+
+    for (const id of scene.paint_order) {
+      const node = scene.nodes.get(id);
+      const entry = this.#entries.get(id);
+      if (!node || !entry) continue;
+      const nextMaskId = nodeMaskId(node);
+      if (entry.maskId === nextMaskId) continue;
+      const maskHandle = nextMaskId ? this.#entries.get(nextMaskId)?.handle ?? null : null;
+      this.#bindings.setMask(entry.handle, maskHandle);
+      entry.maskId = nextMaskId;
     }
 
     return {
