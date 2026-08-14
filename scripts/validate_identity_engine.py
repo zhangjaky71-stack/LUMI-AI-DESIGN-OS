@@ -23,6 +23,9 @@ REQUIRED_FILES = (
     "packages/identity-engine/src/types.ts",
     "packages/identity-engine/src/calibration.ts",
     "packages/identity-engine/src/runtime.ts",
+    "packages/identity-engine/src/reference-set.ts",
+    "packages/identity-engine/src/compare.ts",
+    "packages/identity-engine/src/cache.ts",
     "packages/identity-engine/src/constraint-adapter.ts",
     "packages/identity-engine/src/artifact-gate.ts",
     "services/identity-engine/src/lumi_identity_engine/model.py",
@@ -31,7 +34,9 @@ REQUIRED_FILES = (
     "db/migrations/0003_identity_engine.sql",
     "fixtures/identity/node-44-calibration.json",
     "docs/runtime/IDENTITY-ENGINE-V1.md",
+    "reports/nodes/NODE-44/calibration.md",
     "reports/nodes/NODE-44/acceptance.md",
+    ".github/workflows/identity-engine.yml",
 )
 
 
@@ -158,10 +163,28 @@ def main() -> None:
     )
     require(
         "packages/identity-engine/src/runtime.ts",
+        "organization_id: identity.organization_id",
         "IDENTITY_REQUIRED_SIGNAL_UNAVAILABLE",
         "IDENTITY_TARGET_REGION_UNAVAILABLE",
         "identity_validation_snapshot_id",
         "calibration_dataset_version",
+    )
+    require(
+        "packages/identity-engine/src/reference-set.ts",
+        "createIdentityReferenceSet",
+        "IDENTITY_REFERENCE_ASSET_NOT_READY",
+    )
+    require(
+        "packages/identity-engine/src/compare.ts",
+        "compareIdentityCandidates",
+        "IDENTITY_COMPARE_TENANT_MISMATCH",
+        "IDENTITY_MULTI_SIGNAL_EVIDENCE_REQUIRED",
+    )
+    require(
+        "packages/identity-engine/src/cache.ts",
+        "organization_id: input.identity.organization_id",
+        "provider_version",
+        "preprocessor_version",
     )
     require(
         "packages/identity-engine/src/constraint-adapter.ts",
@@ -176,11 +199,14 @@ def main() -> None:
     )
     require(
         "db/migrations/0003_identity_engine.sql",
-        "identity_threshold_profiles",
+        "profile_id uuid NOT NULL",
+        "identity_id uuid NOT NULL",
+        "UNIQUE (organization_id, profile_id, version)",
+        "UNIQUE (organization_id, identity_id, version)",
         "identity_calibration_samples",
-        "identity_reference_sets",
         "identity_validation_reports",
         "persistent_biometric_index = false",
+        "REFERENCES artifact_versions(organization_id, id)",
         "identity_validation_snapshot_id",
     )
     verify_fixture()
