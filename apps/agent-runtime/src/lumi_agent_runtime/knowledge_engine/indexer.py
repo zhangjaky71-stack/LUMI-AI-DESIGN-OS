@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from typing import Protocol
+from uuid import UUID
 
 from .chunking import chunk_document, deterministic_document_id
 from .contracts import (
@@ -142,7 +143,7 @@ class KnowledgeIndexer:
 def _validate_embedded_chunks(
     chunks: tuple[KnowledgeChunk, ...],
     *,
-    document_id,
+    document_id: UUID,
     embedding_space_id: str,
 ) -> None:
     if not chunks:
