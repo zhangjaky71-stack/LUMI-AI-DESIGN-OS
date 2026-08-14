@@ -55,13 +55,18 @@ export class CanvasResourceManager<T> {
       return existing.resource;
     }
 
-    const pending = this.#inflight.get(key) ?? this.#load(assetId, tier);
-    this.#inflight.set(key, pending);
+    const joined = this.#inflight.get(key);
+    const pending = joined ?? this.#load(assetId, tier);
+    if (!joined) this.#inflight.set(key, pending);
     try {
       const entry = await pending;
+      if (joined) {
+        entry.references += 1;
+        this.#cache.acquire(assetId, tier);
+      }
       return entry.resource;
     } finally {
-      this.#inflight.delete(key);
+      if (!joined) this.#inflight.delete(key);
     }
   }
 
@@ -110,7 +115,11 @@ export class CanvasResourceManager<T> {
     readonly references: number;
   }> {
     return [...this.#resources.values()]
-      .map((entry) => ({ asset_id: entry.assetId, tier: entry.tier, references: entry.references }))
+      .map((entry) => ({
+        asset_id: entry.assetId,
+        tier: entry.tier,
+        references: entry.references,
+      }))
       .sort((left, right) =>
         `${left.asset_id}:${left.tier}`.localeCompare(`${right.asset_id}:${right.tier}`),
       );
