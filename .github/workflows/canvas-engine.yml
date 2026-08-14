@@ -1,0 +1,96 @@
+name: Canvas Engine
+
+on:
+  pull_request:
+    paths:
+      - "packages/canvas-sdk/**"
+      - "packages/design-ir/**"
+      - "packages/design-constraints/**"
+      - "apps/web/src/app/canvas-engine/**"
+      - "apps/web/src/app/canvas-spike/**"
+      - "apps/web/e2e/canvas-engine.spec.ts"
+      - "apps/web/e2e/canvas-spike.spec.ts"
+      - "playwright.config.ts"
+      - "scripts/validate_canvas_engine.py"
+      - "docs/runtime/CANVAS-ENGINE-V1.md"
+      - "reports/nodes/NODE-40/**"
+      - ".github/workflows/canvas-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canvas-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Validate NODE-40 architecture boundaries
+        run: python scripts/validate_canvas_engine.py
+      - name: Typecheck Canvas SDK
+        run: pnpm --filter @lumi/canvas-sdk typecheck
+      - name: Typecheck web integration harness
+        run: pnpm --filter @lumi/web typecheck
+
+  canvas-quality:
+    needs: canvas-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run Canvas SDK interaction and lifecycle tests
+        run: pnpm --filter @lumi/canvas-sdk test
+      - name: Lint web integration
+        run: pnpm --filter @lumi/web lint
+
+  canvas-browser-e2e:
+    needs: canvas-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run production Canvas Engine Pixi integration E2E
+        run: pnpm exec playwright test apps/web/e2e/canvas-engine.spec.ts
+
+  canvas-benchmark:
+    needs: canvas-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run 2k and 10k synchronous frame-work budget gate
+        run: pnpm --filter @lumi/canvas-sdk exec vitest run src/runtime-performance.test.ts
