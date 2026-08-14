@@ -11,6 +11,7 @@ from .model import (
     AssetIndexVersion,
     AssetResolverCandidate,
     AssetSearchFilters,
+    AssetSearchHit,
     AssetSearchRequest,
     DuplicateEvidence,
     DuplicatePolicy,
@@ -52,7 +53,7 @@ class AssetIntelligenceService:
         index: AssetIndexVersion,
         *,
         query_embedder: QueryEmbeddingProvider | None = None,
-    ):
+    ) -> tuple[AssetSearchHit, ...]:
         prepared = request
         if request.mode in {"SEMANTIC", "HYBRID"} and request.query_embedding is None:
             if query_embedder is None:
