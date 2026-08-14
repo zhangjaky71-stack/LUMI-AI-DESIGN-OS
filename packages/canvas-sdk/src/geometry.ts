@@ -19,6 +19,7 @@ export function rectsIntersect(a: Rect, b: Rect): boolean {
   return right >= left && bottom >= top;
 }
 
+/** Spike compatibility helper. `rotation` is degrees to match Design IR `rotation_deg`. */
 export function nodeBounds(node: SpikeNode): Rect {
   if (node.rotation === 0) {
     return { x: node.x, y: node.y, width: node.width, height: node.height };
@@ -26,7 +27,7 @@ export function nodeBounds(node: SpikeNode): Rect {
 
   const cx = node.x + node.width / 2;
   const cy = node.y + node.height / 2;
-  const radians = node.rotation;
+  const radians = (node.rotation * Math.PI) / 180;
   const cosine = Math.cos(radians);
   const sine = Math.sin(radians);
   const corners = [
@@ -59,15 +60,11 @@ export function cullNodes(
   nodes: readonly SpikeNode[],
   viewportWorldRect: Rect,
 ): SpikeNode[] {
-  return nodes.filter((node) =>
-    rectsIntersect(nodeBounds(node), viewportWorldRect),
-  );
+  return nodes.filter((node) => rectsIntersect(nodeBounds(node), viewportWorldRect));
 }
 
 export function unionBounds(nodes: readonly SpikeNode[]): Rect | null {
-  if (nodes.length === 0) {
-    return null;
-  }
+  if (nodes.length === 0) return null;
   const bounds = nodes.map(nodeBounds);
   const minX = Math.min(...bounds.map((rect) => rect.x));
   const minY = Math.min(...bounds.map((rect) => rect.y));
