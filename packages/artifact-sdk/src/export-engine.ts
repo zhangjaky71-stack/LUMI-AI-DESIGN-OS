@@ -27,68 +27,44 @@ function exportJobId(organizationId: string, fingerprint: string): string {
 }
 
 function extension(format: ExportVariant["format"]): string {
-  return {
-    PNG: "png",
-    JPEG: "jpg",
-    WEBP: "webp",
-    SVG: "svg",
-    PDF: "pdf",
-    LUMI_PACKAGE: "lumi.zip",
-    ZIP: "zip",
-  }[format];
+  return { PNG: "png", JPEG: "jpg", WEBP: "webp", SVG: "svg", PDF: "pdf", LUMI_PACKAGE: "lumi.zip", ZIP: "zip" }[format];
 }
 
 function mime(format: ExportVariant["format"]): string {
-  return {
-    PNG: "image/png",
-    JPEG: "image/jpeg",
-    WEBP: "image/webp",
-    SVG: "image/svg+xml",
-    PDF: "application/pdf",
-    LUMI_PACKAGE: "application/zip",
-    ZIP: "application/zip",
-  }[format];
+  return { PNG: "image/png", JPEG: "image/jpeg", WEBP: "image/webp", SVG: "image/svg+xml", PDF: "application/pdf", LUMI_PACKAGE: "application/zip", ZIP: "application/zip" }[format];
 }
 
 function fileName(spec: ExportSpec, variant: ExportVariant): string {
   const base = sanitizeExportFilename(variant.filename ?? spec.filename_template, "export");
   const ext = extension(variant.format);
-  const lower = base.toLowerCase();
-  return lower.endsWith(`.${ext}`) ? base : `${base}.${ext}`;
+  return base.toLowerCase().endsWith(`.${ext}`) ? base : `${base}.${ext}`;
 }
 
 function validateSpec(spec: ExportSpec): void {
   if (!spec.organization_id || !spec.project_id || !spec.requested_by || !spec.operation_id) throw new Error("EXPORT_IDENTITY_REQUIRED");
   if (!spec.artifact_version_id || !spec.design_document_version_id) throw new Error("EXPORT_EXACT_VERSION_REQUIRED");
-  if (/latest|head|current/i.test(spec.artifact_version_id) || /latest|head|current/i.test(spec.design_document_version_id)) {
-    throw new Error("EXPORT_FLOATING_VERSION_FORBIDDEN");
-  }
+  if (/latest|head|current/i.test(spec.artifact_version_id) || /latest|head|current/i.test(spec.design_document_version_id)) throw new Error("EXPORT_FLOATING_VERSION_FORBIDDEN");
+  if (!spec.filename_template.trim()) throw new Error("EXPORT_FILENAME_TEMPLATE_REQUIRED");
   if (!spec.variants.length) throw new Error("EXPORT_VARIANTS_REQUIRED");
   if (new Set(spec.variants.map((variant) => variant.variant_id)).size !== spec.variants.length) throw new Error("EXPORT_VARIANT_ID_DUPLICATE");
-  if (!Number.isInteger(spec.retention_seconds) || spec.retention_seconds < 60 || spec.retention_seconds > 604800) {
-    throw new Error("EXPORT_RETENTION_INVALID");
-  }
+  if (!Number.isInteger(spec.retention_seconds) || spec.retention_seconds < 60 || spec.retention_seconds > 604800) throw new Error("EXPORT_RETENTION_INVALID");
   for (const variant of spec.variants) {
     if (!variant.variant_id) throw new Error("EXPORT_VARIANT_ID_REQUIRED");
     assertExportFormat(variant.format);
     assertExportProfile(variant.color_profile);
-    if (!variant.frame_ids.length && variant.format !== "LUMI_PACKAGE" && variant.format !== "ZIP") {
-      throw new Error("EXPORT_FRAME_IDS_REQUIRED");
-    }
-    if (variant.resize_mode === "CROP" && (variant.width === undefined || variant.height === undefined)) {
-      throw new Error("EXPORT_CROP_TARGET_DIMENSIONS_REQUIRED");
-    }
-    if (variant.quality !== undefined && (!Number.isInteger(variant.quality) || variant.quality < 1 || variant.quality > 100)) {
-      throw new Error("EXPORT_QUALITY_INVALID");
-    }
-    if (variant.dpi !== undefined && (!Number.isInteger(variant.dpi) || variant.dpi < 36 || variant.dpi > 1200)) {
-      throw new Error("EXPORT_DPI_INVALID");
-    }
+    if ((variant.bleed ?? 0) !== 0 || variant.crop_marks === true) throw new Error("EXPORT_PRINT_MARKS_NOT_IMPLEMENTED_V1");
+    if (!variant.frame_ids.length && variant.format !== "LUMI_PACKAGE" && variant.format !== "ZIP") throw new Error("EXPORT_FRAME_IDS_REQUIRED");
+    if (variant.resize_mode === "CROP" && (variant.width === undefined || variant.height === undefined)) throw new Error("EXPORT_CROP_TARGET_DIMENSIONS_REQUIRED");
+    for (const dimension of [variant.width, variant.height]) if (dimension !== undefined && (!Number.isFinite(dimension) || dimension <= 0)) throw new Error("EXPORT_TARGET_DIMENSIONS_INVALID");
+    if (variant.scale !== undefined && (!Number.isFinite(variant.scale) || variant.scale <= 0 || variant.scale > 16)) throw new Error("EXPORT_SCALE_INVALID");
+    if (variant.quality !== undefined && (!Number.isInteger(variant.quality) || variant.quality < 1 || variant.quality > 100)) throw new Error("EXPORT_QUALITY_INVALID");
+    if (variant.dpi !== undefined && (!Number.isInteger(variant.dpi) || variant.dpi < 36 || variant.dpi > 1200)) throw new Error("EXPORT_DPI_INVALID");
   }
 }
 
 async function bytesSha256(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const copy = Uint8Array.from(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", copy.buffer);
   return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
@@ -146,12 +122,7 @@ export class ExportEngine {
       return existing;
     }
     const source = await this.#source.resolveExactSnapshot(spec);
-    if (
-      source.organization_id !== spec.organization_id
-      || source.project_id !== spec.project_id
-      || source.artifact_version_id !== spec.artifact_version_id
-      || source.design_document_version_id !== spec.design_document_version_id
-    ) {
+    if (source.organization_id !== spec.organization_id || source.project_id !== spec.project_id || source.artifact_version_id !== spec.artifact_version_id || source.design_document_version_id !== spec.design_document_version_id) {
       throw new Error("EXPORT_SOURCE_SCOPE_OR_VERSION_MISMATCH");
     }
     const fingerprint = await exportFingerprint(source, spec);
@@ -159,26 +130,12 @@ export class ExportEngine {
     const reusable = await this.#jobs.findReadyByFingerprint(spec.organization_id, fingerprint, now);
     if (reusable) return reusable;
     const job: ExportJob = {
-      export_job_id: exportJobId(spec.organization_id, fingerprint),
-      organization_id: spec.organization_id,
-      project_id: spec.project_id,
-      operation_id: spec.operation_id,
-      export_fingerprint: fingerprint,
-      source,
-      spec,
-      status: "PENDING",
-      progress: 0,
-      files: [],
-      created_at: now,
-      expires_at: addSeconds(now, spec.retention_seconds),
+      export_job_id: exportJobId(spec.organization_id, fingerprint), organization_id: spec.organization_id, project_id: spec.project_id,
+      operation_id: spec.operation_id, export_fingerprint: fingerprint, source, spec, status: "PENDING", progress: 0, files: [],
+      created_at: now, expires_at: addSeconds(now, spec.retention_seconds),
     };
     await this.#jobs.save(job);
-    await this.#events.emit("export.created", {
-      export_job_id: job.export_job_id,
-      artifact_version_id: source.artifact_version_id,
-      design_document_version_id: source.design_document_version_id,
-      export_fingerprint: fingerprint,
-    });
+    await this.#events.emit("export.created", { export_job_id: job.export_job_id, artifact_version_id: source.artifact_version_id, design_document_version_id: source.design_document_version_id, export_fingerprint: fingerprint });
     return job;
   }
 
@@ -186,9 +143,7 @@ export class ExportEngine {
     const current = await this.#jobs.get(organizationId, exportJobIdValue);
     if (!current) throw new Error("EXPORT_JOB_NOT_FOUND");
     if (current.status === "READY" || current.status === "FAILED" || current.status === "EXPIRED") return current;
-    if (current.source.artifact_version_id !== current.spec.artifact_version_id || current.source.design_document_version_id !== current.spec.design_document_version_id) {
-      throw new Error("EXPORT_PINNED_SOURCE_CORRUPTED");
-    }
+    if (current.source.artifact_version_id !== current.spec.artifact_version_id || current.source.design_document_version_id !== current.spec.design_document_version_id) throw new Error("EXPORT_PINNED_SOURCE_CORRUPTED");
     let job: ExportJob = { ...current, status: "RENDERING", progress: 5 };
     await this.#jobs.save(job);
     await this.#events.emit("export.rendering", { export_job_id: job.export_job_id });
@@ -202,21 +157,12 @@ export class ExportEngine {
         const filename = fileName(job.spec, variant);
         const persisted = await this.#store.put(storageKey(job, variant, filename), payload.bytes, payload.mime_type);
         const localChecksum = await bytesSha256(payload.bytes);
-        if (persisted.checksum_sha256 !== localChecksum || persisted.size_bytes !== payload.bytes.length) {
-          throw new Error("EXPORT_STORAGE_CHECKSUM_MISMATCH");
-        }
+        if (persisted.checksum_sha256 !== localChecksum || persisted.size_bytes !== payload.bytes.length) throw new Error("EXPORT_STORAGE_CHECKSUM_MISMATCH");
         renderedFiles.push({
-          file_id: `export-file:${job.export_fingerprint}:${variant.variant_id}`,
-          variant_id: variant.variant_id,
-          storage_key: persisted.storage_key,
-          filename,
-          mime_type: payload.mime_type,
-          checksum_sha256: persisted.checksum_sha256,
-          size_bytes: persisted.size_bytes,
-          ...(payload.width !== undefined ? { width: payload.width } : {}),
-          ...(payload.height !== undefined ? { height: payload.height } : {}),
-          ...(payload.page_count !== undefined ? { page_count: payload.page_count } : {}),
-          ...(payload.metadata ? { metadata: payload.metadata } : {}),
+          file_id: `export-file:${job.export_fingerprint}:${variant.variant_id}`, variant_id: variant.variant_id, storage_key: persisted.storage_key,
+          filename, mime_type: payload.mime_type, checksum_sha256: persisted.checksum_sha256, size_bytes: persisted.size_bytes,
+          ...(payload.width !== undefined ? { width: payload.width } : {}), ...(payload.height !== undefined ? { height: payload.height } : {}),
+          ...(payload.page_count !== undefined ? { page_count: payload.page_count } : {}), ...(payload.metadata ? { metadata: payload.metadata } : {}),
         });
         job = { ...job, files: [...renderedFiles], progress: 10 + Math.round(((index + 1) / Math.max(regularVariants.length, 1)) * 55) };
         await this.#jobs.save(job);
@@ -225,24 +171,13 @@ export class ExportEngine {
       job = { ...job, status: "PACKAGING", progress: 70 };
       await this.#jobs.save(job);
       const manifestWithoutHash: Omit<ExportManifest, "manifest_sha256"> = {
-        schema_version: "1.0",
-        export_engine_version: EXPORT_ENGINE_VERSION,
-        export_job_id: job.export_job_id,
-        export_fingerprint: job.export_fingerprint,
-        organization_id: job.organization_id,
-        project_id: job.project_id,
-        artifact_id: job.source.artifact_id,
-        artifact_version_id: job.source.artifact_version_id,
-        design_document_version_id: job.source.design_document_version_id,
-        source_content_hash: job.source.content_hash,
-        compiler: job.source.compiler_provenance,
-        spec: semanticManifestSpec(job.spec),
-        files: stableExportFiles(renderedFiles) as ExportManifest["files"],
-        source_provenance_refs: [...job.source.source_provenance_refs].sort(),
-        brand_rule_set_version: job.source.brand_rule_set_version ?? null,
-        rights_summary: job.source.rights_summary,
-        model_refs: [...job.source.model_refs].sort(),
-        created_at: job.created_at,
+        schema_version: "1.0", export_engine_version: EXPORT_ENGINE_VERSION, export_job_id: job.export_job_id, export_fingerprint: job.export_fingerprint,
+        organization_id: job.organization_id, project_id: job.project_id, artifact_id: job.source.artifact_id,
+        artifact_version_id: job.source.artifact_version_id, design_document_version_id: job.source.design_document_version_id,
+        source_content_hash: job.source.content_hash, compiler: job.source.compiler_provenance, spec: semanticManifestSpec(job.spec),
+        files: stableExportFiles(renderedFiles), source_provenance_refs: [...job.source.source_provenance_refs].sort(),
+        brand_rule_set_version: job.source.brand_rule_set_version ?? null, rights_summary: job.source.rights_summary,
+        model_refs: [...job.source.model_refs].sort(), created_at: job.created_at,
       };
       const manifest: ExportManifest = { ...manifestWithoutHash, manifest_sha256: await exportManifestHash(manifestWithoutHash) };
       const manifestBytes = new TextEncoder().encode(canonicalExportJson(manifest));
@@ -252,15 +187,7 @@ export class ExportEngine {
         const filename = "manifest.json";
         const persisted = await this.#store.put(storageKey(job, variant, filename), manifestBytes, "application/json");
         if (persisted.checksum_sha256 !== await bytesSha256(manifestBytes)) throw new Error("EXPORT_MANIFEST_CHECKSUM_MISMATCH");
-        manifestFile = {
-          file_id: `export-file:${job.export_fingerprint}:manifest`,
-          variant_id: "manifest",
-          storage_key: persisted.storage_key,
-          filename,
-          mime_type: "application/json",
-          checksum_sha256: persisted.checksum_sha256,
-          size_bytes: persisted.size_bytes,
-        };
+        manifestFile = { file_id: `export-file:${job.export_fingerprint}:manifest`, variant_id: "manifest", storage_key: persisted.storage_key, filename, mime_type: "application/json", checksum_sha256: persisted.checksum_sha256, size_bytes: persisted.size_bytes };
       }
       const packageFiles: ExportFileRecord[] = [];
       for (const variant of job.spec.variants.filter((item) => item.format === "ZIP" || item.format === "LUMI_PACKAGE")) {
@@ -281,20 +208,12 @@ export class ExportEngine {
         const filename = fileName(job.spec, variant);
         const persisted = await this.#store.put(storageKey(job, variant, filename), packageBytes, "application/zip");
         if (persisted.checksum_sha256 !== await bytesSha256(packageBytes)) throw new Error("EXPORT_PACKAGE_CHECKSUM_MISMATCH");
-        packageFiles.push({
-          file_id: `export-file:${job.export_fingerprint}:${variant.variant_id}`,
-          variant_id: variant.variant_id,
-          storage_key: persisted.storage_key,
-          filename,
-          mime_type: "application/zip",
-          checksum_sha256: persisted.checksum_sha256,
-          size_bytes: persisted.size_bytes,
-        });
+        packageFiles.push({ file_id: `export-file:${job.export_fingerprint}:${variant.variant_id}`, variant_id: variant.variant_id, storage_key: persisted.storage_key, filename, mime_type: "application/zip", checksum_sha256: persisted.checksum_sha256, size_bytes: persisted.size_bytes });
       }
       const allFiles = [...renderedFiles, ...packageFiles];
       job = { ...job, status: "VALIDATING", progress: 90, files: allFiles, manifest, ...(manifestFile ? { manifest_file: manifestFile } : {}), ...(packageFiles[0] ? { package_file: packageFiles[0] } : {}) };
       await this.#jobs.save(job);
-      for (const file of allFiles) {
+      for (const file of [...allFiles, ...(manifestFile ? [manifestFile] : [])]) {
         const bytes = await this.#store.get(file.storage_key);
         if (await bytesSha256(bytes) !== file.checksum_sha256) throw new Error("EXPORT_READBACK_CHECKSUM_MISMATCH");
         if (file.mime_type === "application/zip") inspectZipEntries(bytes);
@@ -319,37 +238,20 @@ export class ExportDownloadService {
   readonly #signer: ExportDownloadSignerPort;
   readonly #now: () => string;
 
-  constructor(args: {
-    readonly jobs: ExportJobRepository;
-    readonly authorization: ExportAuthorizationPort;
-    readonly signer: ExportDownloadSignerPort;
-    readonly now?: () => string;
-  }) {
+  constructor(args: { readonly jobs: ExportJobRepository; readonly authorization: ExportAuthorizationPort; readonly signer: ExportDownloadSignerPort; readonly now?: () => string }) {
     this.#jobs = args.jobs;
     this.#authorization = args.authorization;
     this.#signer = args.signer;
     this.#now = args.now ?? (() => new Date().toISOString());
   }
 
-  async download(args: {
-    readonly organization_id: string;
-    readonly actor_id: string;
-    readonly export_job_id: string;
-    readonly file_id: string;
-    readonly expires_seconds?: number;
-  }): Promise<{ readonly url: string; readonly expires_at: string; readonly filename: string }> {
+  async download(args: { readonly organization_id: string; readonly actor_id: string; readonly export_job_id: string; readonly file_id: string; readonly expires_seconds?: number }): Promise<{ readonly url: string; readonly expires_at: string; readonly filename: string }> {
     const job = await this.#jobs.get(args.organization_id, args.export_job_id);
     if (!job || job.status !== "READY") throw new Error("EXPORT_DOWNLOAD_NOT_READY");
     if (job.expires_at <= this.#now()) throw new Error("EXPORT_DOWNLOAD_EXPIRED");
     const file = [...job.files, ...(job.manifest_file ? [job.manifest_file] : [])].find((item) => item.file_id === args.file_id);
     if (!file) throw new Error("EXPORT_DOWNLOAD_FILE_NOT_FOUND");
-    const allowed = await this.#authorization.canDownload({
-      organization_id: job.organization_id,
-      project_id: job.project_id,
-      actor_id: args.actor_id,
-      export_job_id: job.export_job_id,
-      file,
-    });
+    const allowed = await this.#authorization.canDownload({ organization_id: job.organization_id, project_id: job.project_id, actor_id: args.actor_id, export_job_id: job.export_job_id, file });
     if (!allowed) throw new Error("EXPORT_DOWNLOAD_FORBIDDEN");
     const ttl = args.expires_seconds ?? 300;
     if (!Number.isInteger(ttl) || ttl < 30 || ttl > 900) throw new Error("EXPORT_DOWNLOAD_TTL_INVALID");
