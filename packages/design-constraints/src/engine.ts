@@ -29,7 +29,7 @@ function conflictViolations(
       validator: "constraint-resolver",
       reason_code: "CONSTRAINT_CONFLICT",
       ...(conflict.target_ids[0] ? { target_id: conflict.target_ids[0] } : {}),
-      expected: conflict.constraint_ids,
+      expected: [...conflict.constraint_ids],
       repair_hint: { action: "resolve_constraint_conflict" },
     };
   });
@@ -97,7 +97,9 @@ export function preflightOperations(
   const violations: ConstraintViolation[] = [...initialViolations];
   for (const constraint of resolved.constraints) {
     if (isConstraintOverridden(document, constraint, options.overrides)) continue;
-    violations.push(...evaluateDeterministicConstraint(document, execution.document, constraint, tolerance));
+    violations.push(
+      ...evaluateDeterministicConstraint(document, execution.document, constraint, tolerance),
+    );
   }
   const aggregated = aggregateViolations(violations);
   const report: PreflightReport = {
