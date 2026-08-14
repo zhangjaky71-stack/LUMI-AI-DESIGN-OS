@@ -14,6 +14,7 @@ SEARCH_PATH = ROOT / "services/asset-intelligence/src/lumi_asset_intelligence/se
 REPOSITORY_PATH = ROOT / "services/asset-intelligence/src/lumi_asset_intelligence/repository.py"
 MODEL_PATH = ROOT / "services/asset-intelligence/src/lumi_asset_intelligence/model.py"
 INDEX_PATH = ROOT / "services/asset-intelligence/src/lumi_asset_intelligence/index_catalog.py"
+RESOLVER_PATH = ROOT / "services/asset-intelligence/src/lumi_asset_intelligence/resolver.py"
 
 
 def require(condition: bool, message: str) -> None:
@@ -32,11 +33,15 @@ def validate_fixture() -> None:
     checksums = [asset["checksum_sha256"] for asset in assets]
     require(len(checksums) != len(set(checksums)), "fixture must contain an exact duplicate")
 
-    dimensions = int(fixture["index"]["embedding_dimensions"])
+    index = fixture["index"]
+    dimensions = int(index["embedding_dimensions"])
     require(
         all(len(asset["embedding"]) == dimensions for asset in assets),
         "fixture embedding dimensions must match the index",
     )
+    require(bool(index.get("embedding_preprocessor_version")), "fixture preprocessor version missing")
+    require(bool(index.get("registry_snapshot_id")), "fixture registry snapshot missing")
+    require(bool(index.get("embedding_space_id")), "fixture embedding space id missing")
 
 
 def validate_contracts() -> None:
@@ -62,9 +67,16 @@ def validate_contracts() -> None:
         "asset_intelligence_embeddings",
         "asset_intelligence_duplicate_edges",
         "asset_intelligence_usage_signals",
+        "embedding_preprocessor_version text NOT NULL",
+        "registry_snapshot_id text NOT NULL",
+        "i.state = 'ACTIVE'",
         "organization_id = p_organization_id",
         "r.rights = ANY(p_allowed_rights)",
         "to_jsonb(p_permission_tags) @> r.permission_tags",
+        "e.embedding_space_id = i.embedding_space_id",
+        "e.embedding_model_id = i.embedding_model_id",
+        "e.embedding_model_version = i.embedding_model_version",
+        "e.preprocessor_version = i.embedding_preprocessor_version",
         "training_authorization_granted",
         "auto_delete boolean NOT NULL DEFAULT false CHECK (auto_delete = false)",
     )
@@ -75,6 +87,7 @@ def validate_contracts() -> None:
     repository = REPOSITORY_PATH.read_text(encoding="utf-8")
     model = MODEL_PATH.read_text(encoding="utf-8")
     index_runtime = INDEX_PATH.read_text(encoding="utf-8")
+    resolver = RESOLVER_PATH.read_text(encoding="utf-8")
 
     scoped_position = search.index("scoped_candidates")
     scoring_position = search.index("for record in candidates")
@@ -82,10 +95,12 @@ def validate_contracts() -> None:
     require("._records" not in search, "search engine may not bypass scoped repository retrieval")
     require("_scope_allows" in repository, "repository is missing pre-retrieval access filtering")
     require("filename" not in search.casefold(), "search ranking must not guess from filenames")
-    require("filename" not in (ROOT / "services/asset-intelligence/src/lumi_asset_intelligence/resolver.py").read_text(encoding="utf-8").casefold(), "resolver must not guess from filenames")
+    require("filename" not in resolver.casefold(), "resolver must not guess from filenames")
     require("commercial_use_allowed" in model, "commercial rights metadata missing")
     require("training_authorized" in model, "training authorization must be modeled separately")
     require("embedding_space_id" in model, "embedding space version pin missing")
+    require("embedding_preprocessor_version" in model, "embedding preprocessor pin missing")
+    require("registry_snapshot_id" in model, "registry snapshot pin missing")
     require("embedding_space_changed" in index_runtime, "reindex comparison missing space change evidence")
     require("persistent_biometric" not in migration.casefold(), "NODE-45 must not create biometric indexes")
 
