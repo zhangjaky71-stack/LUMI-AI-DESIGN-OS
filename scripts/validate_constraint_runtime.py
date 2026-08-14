@@ -13,6 +13,7 @@ from lumi_domain.constraint_validator import guarded_execute  # noqa: E402
 
 CONSTRAINT_SCHEMA = ROOT / "schemas/design-constraints/constraint.schema.json"
 VIOLATION_SCHEMA = ROOT / "schemas/design-constraints/violation.schema.json"
+COVERAGE_PATH = ROOT / "config/design-constraints/evaluator-coverage.v1.json"
 SPEC_PATH = ROOT / "fixtures/constraints/node-39-benchmark-spec.json"
 QR_FIXTURE = ROOT / "fixtures/constraints/qr-valid.png.base64"
 
@@ -89,6 +90,23 @@ def validate_schema_contracts() -> None:
         raise SystemExit("violation schema required fields drifted")
 
 
+def validate_coverage_registry() -> None:
+    registry = json.loads(COVERAGE_PATH.read_text())
+    coverage = registry["constraints"]
+    actual = set(coverage)
+    if actual != EXPECTED_TYPES:
+        missing = sorted(EXPECTED_TYPES - actual)
+        extra = sorted(actual - EXPECTED_TYPES)
+        raise SystemExit(f"evaluator coverage drift: missing={missing} extra={extra}")
+    uncovered = sorted(
+        constraint_type
+        for constraint_type, definition in coverage.items()
+        if definition.get("preflight") is None and definition.get("postflight") is None
+    )
+    if uncovered:
+        raise SystemExit(f"constraint types without evaluator contract: {uncovered}")
+
+
 def validate_fail_closed_preflight() -> None:
     operation = {
         "operation_id": "move-qr",
@@ -134,6 +152,7 @@ def validate_fixture() -> None:
 
 def main() -> None:
     validate_schema_contracts()
+    validate_coverage_registry()
     validate_fail_closed_preflight()
     validate_benchmark_spec()
     validate_fixture()
