@@ -59,6 +59,7 @@ function fakeBindings() {
     setVisible: vi.fn(),
     setText: vi.fn(),
     setAsset: vi.fn(),
+    setMask: vi.fn(),
     addChild: vi.fn(),
     removeChild: vi.fn(),
     destroyDisplay: vi.fn(),
@@ -97,7 +98,11 @@ describe("PixiV8RendererAdapter", () => {
       new Set(["frame", "text"]),
     );
     expect(dirty.updated).toBe(2);
-    expect(bindings.setText).toHaveBeenCalledWith(expect.anything(), "After");
+    expect(bindings.setText).toHaveBeenCalledWith(
+      expect.anything(),
+      "After",
+      expect.objectContaining({ id: "text" }),
+    );
     expect(bindings.redrawShape).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ id: "frame", local_bounds: expect.objectContaining({ width: 360 }) }),

@@ -13,7 +13,9 @@ import {
   zoomFromWheelDelta,
 } from "./camera";
 import { CanvasCommandBus, type CanvasCommandResult } from "./command-bus";
-import { projectDesignDocument, type CanvasSceneSnapshot } from "./ir-scene";
+import { CanvasCompiler } from "./compiler";
+import type { CanvasSceneCompilerPort } from "./compiler-types";
+import type { CanvasSceneSnapshot } from "./ir-scene";
 import type { CanvasRendererAdapter, RendererSyncResult } from "./renderer";
 import { CanvasSelectionModel, type SelectionMode, type SelectionSnapshot } from "./selection";
 import { CanvasSpatialIndex } from "./spatial-index";
@@ -26,6 +28,7 @@ export interface CanvasControllerOptions {
   readonly initial_viewport?: CanvasViewport;
   readonly renderer?: CanvasRendererAdapter;
   readonly asset_residency?: CanvasAssetResidencyPort;
+  readonly compiler?: CanvasSceneCompilerPort;
   readonly request_frame?: (callback: FrameRequestCallback) => number;
   readonly cancel_frame?: (id: number) => void;
 }
@@ -62,6 +65,7 @@ export class CanvasController {
   readonly #commands: CanvasCommandBus;
   readonly #renderer?: CanvasRendererAdapter;
   readonly #assetResidency?: CanvasAssetResidencyPort;
+  readonly #compiler: CanvasSceneCompilerPort;
   readonly #requestFrame: (callback: FrameRequestCallback) => number;
   readonly #cancelFrame: (id: number) => void;
   #constraints: readonly DesignConstraint[] = [];
@@ -72,7 +76,8 @@ export class CanvasController {
 
   constructor(document: DesignDocument, options: CanvasControllerOptions = {}) {
     this.#commands = new CanvasCommandBus(document);
-    this.#scene = projectDesignDocument(document);
+    this.#compiler = options.compiler ?? new CanvasCompiler();
+    this.#scene = this.#compileScene(document);
     this.#spatial.rebuild(this.#scene);
     this.#camera = options.initial_camera ?? { x: 0, y: 0, zoom: 1 };
     this.#viewport = options.initial_viewport ?? { width: 1280, height: 720 };
@@ -99,8 +104,10 @@ export class CanvasController {
   }
 
   replaceDocument(document: DesignDocument, clearHistory = true): void {
+    const compiled = this.#compileScene(document);
     this.#commands.replaceDocument(document, clearHistory);
-    this.#refreshScene();
+    this.#scene = compiled;
+    this.#rebuildDerivedState();
   }
 
   setViewport(viewport: CanvasViewport, devicePixelRatio = 1): void {
@@ -314,9 +321,21 @@ export class CanvasController {
     this.#renderer?.destroy();
   }
 
-  #refreshScene(): void {
+  #compileScene(document: DesignDocument): CanvasSceneSnapshot {
+    const result = this.#compiler.compileStructure(document);
+    if (!result.ok) {
+      const first = result.diagnostics[0];
+      throw new Error(
+        first
+          ? `CANVAS_COMPILE_FAILED: ${first.code} ${first.message}`
+          : "CANVAS_COMPILE_FAILED",
+      );
+    }
+    return result.snapshot;
+  }
+
+  #rebuildDerivedState(): void {
     const previousSelection = this.selection.snapshot();
-    this.#scene = projectDesignDocument(this.#commands.document);
     this.#spatial.rebuild(this.#scene);
     this.selection.set(
       previousSelection.ids.filter((id) => this.#scene.nodes.has(id)),
@@ -333,5 +352,10 @@ export class CanvasController {
       );
     }
     this.scheduleRender();
+  }
+
+  #refreshScene(): void {
+    this.#scene = this.#compileScene(this.#commands.document);
+    this.#rebuildDerivedState();
   }
 }
