@@ -8,6 +8,14 @@ from .contracts import KnowledgeChunk, KnowledgeDocument, KnowledgeStatus
 
 
 class KnowledgeRepository(Protocol):
+    async def acquire_source_lock(
+        self,
+        *,
+        organization_id: UUID,
+        source_type: str,
+        source_id: str,
+    ) -> None: ...
+
     async def get_document(self, document_id: UUID) -> KnowledgeDocument | None: ...
 
     async def find_ready_source_versions(
@@ -22,6 +30,12 @@ class KnowledgeRepository(Protocol):
         self,
         *,
         organization_id: UUID,
+    ) -> tuple[KnowledgeChunk, ...]: ...
+
+    async def list_chunks(
+        self,
+        *,
+        document_id: UUID,
     ) -> tuple[KnowledgeChunk, ...]: ...
 
     async def insert_document(self, document: KnowledgeDocument) -> KnowledgeDocument: ...
@@ -44,6 +58,15 @@ class InMemoryKnowledgeRepository:
     def __init__(self) -> None:
         self._documents: dict[UUID, KnowledgeDocument] = {}
         self._chunks: dict[UUID, tuple[KnowledgeChunk, ...]] = {}
+
+    async def acquire_source_lock(
+        self,
+        *,
+        organization_id: UUID,
+        source_type: str,
+        source_id: str,
+    ) -> None:
+        del organization_id, source_type, source_id
 
     async def get_document(self, document_id: UUID) -> KnowledgeDocument | None:
         return self._documents.get(document_id)
@@ -77,6 +100,13 @@ class InMemoryKnowledgeRepository:
             ):
                 output.extend(self._chunks.get(document.document_id, ()))
         return tuple(output)
+
+    async def list_chunks(
+        self,
+        *,
+        document_id: UUID,
+    ) -> tuple[KnowledgeChunk, ...]:
+        return self._chunks.get(document_id, ())
 
     async def insert_document(
         self,
