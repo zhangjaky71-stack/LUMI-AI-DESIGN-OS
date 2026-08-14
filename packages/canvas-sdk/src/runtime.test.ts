@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { DesignDocument } from "../../design-ir/src/index";
 import type { DesignConstraint } from "../../design-constraints/src/index";
 import { CanvasController } from "./controller";
-import { applyMatrix, transformToMatrix } from "./matrix";
 import { projectDesignDocument } from "./ir-scene";
+import { applyMatrix, transformToMatrix } from "./matrix";
 import { CanvasSelectionModel } from "./selection";
 import { CanvasSpatialIndex } from "./spatial-index";
 
@@ -87,6 +87,39 @@ describe("NODE-40 Design IR scene projection", () => {
     selection.marquee({ x: 100, y: 50, width: 400, height: 300 }, index);
     expect(selection.snapshot().ids).toContain("locked");
     expect(selection.transformableIds(scene)).not.toContain("locked");
+  });
+
+  it("inherits hidden and locked group state into descendants", () => {
+    const base = documentFixture();
+    const grouped: DesignDocument = {
+      ...base,
+      nodes: {
+        ...base.nodes,
+        "frame-a": {
+          ...base.nodes["frame-a"]!,
+          children: ["group"],
+        },
+        group: {
+          id: "group",
+          kind: "GROUP",
+          parent_id: "frame-a",
+          children: ["text"],
+          visible: false,
+          locked: true,
+          transform: { x: 0, y: 0, width: 0, height: 0 },
+        },
+        text: {
+          ...base.nodes.text!,
+          parent_id: "group",
+        },
+      },
+    };
+    const scene = projectDesignDocument(grouped);
+    expect(scene.nodes.get("text")?.visible).toBe(false);
+    expect(scene.nodes.get("text")?.locked).toBe(true);
+    const index = new CanvasSpatialIndex();
+    index.rebuild(scene);
+    expect(index.hitTest({ x: 120, y: 80 })).toEqual([]);
   });
 });
 
