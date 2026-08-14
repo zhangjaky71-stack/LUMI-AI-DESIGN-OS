@@ -57,18 +57,26 @@ def main() -> int:
         '"task_graph_instances"',
         '"task_attempts"',
         'op.add_column("tasks"',
+        'sa.Column("task_graph_id"',
+        'sa.Column("owner_key"',
+        'sa.Column("budget_limit_usd"',
+        'sa.Column("output_schema"',
+        'sa.Column("metadata_json"',
+        'sa.Column("cancellation_requested_at"',
         'sa.Column("logical_operation_key"',
         'sa.UniqueConstraint("task_id", "attempt_number"',
         '"ix_tasks_ready_claim"',
         '"ix_tasks_lease_reap"',
         '"ix_tasks_concurrency_group"',
+        'REVOKE DELETE ON task_attempts FROM lumi_app',
+        'GRANT SELECT, INSERT, UPDATE ON task_attempts TO lumi_app',
     )
     if 'op.create_table(\n        "tasks"' in migration:
         raise SystemExit("NODE-33 must reuse existing tasks ledger")
     if 'sa.UniqueConstraint("logical_operation_key"' in migration:
         raise SystemExit("logical operation key must be reusable across attempts")
 
-    require(
+    store = require(
         "apps/agent-runtime/src/lumi_agent_runtime/task_graph/postgres_store.py",
         "FOR UPDATE SKIP LOCKED",
         "LIMIT 1",
@@ -77,9 +85,62 @@ def main() -> int:
         "INSERT INTO task_attempts",
         "logical_operation_key",
         "INSERT INTO outbox_events",
+        "event_name, aggregate_type",
+        "aggregate_id, schema_version, payload_json, publish_attempts",
         "INSERT INTO tasks (",
+        "task_key, type, status, owner_agent_key, owner_key",
+        "input_json, output_json",
+        "budget_reserved, budget_limit_usd",
+        "output_schema, metadata_json",
         "INSERT INTO task_dependencies",
+        "id, organization_id, task_id, depends_on_task_id",
+        "TASK_ATTEMPT_FINISH_CONFLICT",
+        "TASK_ATTEMPT_RECLAIM_CONFLICT",
+        "provider_reconciliation_required",
+        "async def load_graph",
+        "async def list_tasks",
+        "async def list_attempts",
+        "async def timeline",
+        "async def heartbeat",
+        "async def finish_running",
+        "async def resume_waiting",
+        "async def schedule_retry",
+        "async def reclaim_expired",
+        "async def request_cancel",
     )
+    for forbidden in ("task_key, kind", "owner_agent,", "event_type"):
+        if forbidden in store:
+            raise SystemExit(f"NODE-33 store uses non-canonical schema marker: {forbidden}")
+    if store.count("AND status = 'RUNNING'") < 4:
+        raise SystemExit("NODE-33 attempt/lease lifecycle must be RUNNING guarded")
+
+    workflow = require(
+        "apps/api/src/lumi_api/persistence/models/workflow.py",
+        "task_graph_id:",
+        "owner_key:",
+        "budget_limit_usd:",
+        "output_schema:",
+        "metadata_json:",
+        "cancellation_requested_at:",
+        "lease_expires_at:",
+        "concurrency_limit:",
+    )
+    if "class Task(" not in workflow:
+        raise SystemExit("NODE-33 Task ORM missing")
+    require(
+        "apps/api/src/lumi_api/persistence/models/task_graph.py",
+        "class TaskGraphInstance",
+        "class TaskAttemptRecord",
+        '"task_graph_instances"',
+        '"task_attempts"',
+    )
+    require(
+        "apps/api/src/lumi_api/persistence/models/__init__.py",
+        "from .task_graph import TaskAttemptRecord, TaskGraphInstance",
+        '"TaskAttemptRecord"',
+        '"TaskGraphInstance"',
+    )
+
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/task_graph/claims.py",
         "provider_reconciliation_required",
