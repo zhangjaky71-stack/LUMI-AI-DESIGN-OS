@@ -125,8 +125,10 @@ class AssetIndexVersion:
     analyzer_version: str
     embedding_model_id: str
     embedding_model_version: str
+    embedding_preprocessor_version: str
     embedding_dimensions: int
     embedding_space_id: str
+    registry_snapshot_id: str
     state: IndexBuildState
     created_at: str
     activated_at: str | None = None
