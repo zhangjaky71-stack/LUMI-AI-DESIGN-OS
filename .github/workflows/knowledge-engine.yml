@@ -1,0 +1,154 @@
+name: Knowledge Engine
+
+on:
+  pull_request:
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/**"
+      - "apps/agent-runtime/src/lumi_agent_runtime/context_engine/contracts.py"
+      - "apps/agent-runtime/tests/test_knowledge_*.py"
+      - "apps/api/alembic/versions/0017_knowledge_engine.py"
+      - "apps/api/src/lumi_api/persistence/models/knowledge.py"
+      - "apps/api/src/lumi_api/persistence/models/__init__.py"
+      - "scripts/integration_knowledge_engine.py"
+      - "scripts/validate_knowledge_engine_contract.py"
+      - "docs/runtime/KNOWLEDGE-ENGINE-V1.md"
+      - "reports/nodes/NODE-36/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  knowledge-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile NODE-36 runtime and acceptance
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src:scripts
+          python -m compileall -q
+          apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine
+          apps/agent-runtime/src/lumi_agent_runtime/context_engine/contracts.py
+          apps/agent-runtime/tests/test_knowledge_engine.py
+          apps/agent-runtime/tests/test_knowledge_boundaries.py
+          apps/agent-runtime/tests/test_knowledge_scope_identity.py
+          apps/agent-runtime/tests/test_knowledge_postgres_contract.py
+          scripts/integration_knowledge_engine.py
+          scripts/validate_knowledge_engine_contract.py
+          apps/api/alembic/versions/0017_knowledge_engine.py
+          apps/api/src/lumi_api/persistence/models/knowledge.py
+      - name: Revalidate NODE-34 Context boundary
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python scripts/validate_context_engine_contract.py
+      - name: Revalidate NODE-35 Memory boundary
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python scripts/validate_memory_engine_contract.py
+      - name: Validate NODE-36 Knowledge contract
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python scripts/validate_knowledge_engine_contract.py
+      - name: NODE-36 dependency-light unit tests
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python -m unittest discover
+          -s apps/agent-runtime/tests
+          -p 'test_knowledge_*.py'
+
+  knowledge-quality:
+    needs: knowledge-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: NODE-36 pytest
+        run: >-
+          uv run pytest
+          apps/agent-runtime/tests/test_knowledge_engine.py
+          apps/agent-runtime/tests/test_knowledge_boundaries.py
+          apps/agent-runtime/tests/test_knowledge_scope_identity.py
+          apps/agent-runtime/tests/test_knowledge_postgres_contract.py
+          -q
+      - name: NODE-36 Ruff gate
+        run: >-
+          uv run ruff check
+          apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine
+          apps/agent-runtime/tests/test_knowledge_engine.py
+          apps/agent-runtime/tests/test_knowledge_boundaries.py
+          apps/agent-runtime/tests/test_knowledge_scope_identity.py
+          apps/agent-runtime/tests/test_knowledge_postgres_contract.py
+          scripts/integration_knowledge_engine.py
+          scripts/validate_knowledge_engine_contract.py
+          apps/api/alembic/versions/0017_knowledge_engine.py
+          apps/api/src/lumi_api/persistence/models/knowledge.py
+      - name: NODE-36 Pyright gate
+        run: >-
+          uv run pyright
+          apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine
+          apps/agent-runtime/tests/test_knowledge_engine.py
+          apps/agent-runtime/tests/test_knowledge_boundaries.py
+          apps/agent-runtime/tests/test_knowledge_scope_identity.py
+          apps/agent-runtime/tests/test_knowledge_postgres_contract.py
+
+  knowledge-postgres:
+    needs: knowledge-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Start local infrastructure
+        run: |
+          make infra-env
+          make infra-up
+      - name: Upgrade database to NODE-36 head
+        run: make db-upgrade
+      - name: Verify Alembic ORM metadata has no drift
+        run: bash scripts/db-local schema-check
+      - name: Verify NODE-36 ORM tables and FTS column
+        run: >-
+          uv run --package lumi-api python -c
+          "from lumi_api.persistence.base import Base; import lumi_api.persistence.models;
+          assert 'knowledge_documents' in Base.metadata.tables;
+          assert 'knowledge_chunks' in Base.metadata.tables;
+          assert 'scope_key' in Base.metadata.tables['knowledge_documents'].c;
+          assert 'search_tsv' in Base.metadata.tables['knowledge_chunks'].c;
+          assert 'embedding_space_id' in Base.metadata.tables['knowledge_chunks'].c"
+      - name: Seed deterministic project fixtures
+        run: make db-seed
+      - name: NODE-36 durable ingestion and hybrid retrieval integration
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src:scripts
+          uv run python scripts/integration_knowledge_engine.py
+      - name: Migration downgrade upgrade smoke
+        run: bash scripts/db-local downgrade-smoke
+      - name: Reset infrastructure
+        if: always()
+        run: CONFIRM=1 make infra-reset || true
