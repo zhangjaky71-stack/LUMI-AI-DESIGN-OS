@@ -192,6 +192,10 @@ class ModelGatewayVideoAdapter:
         request = self._request(spec, shot, continuity_refs, excluded_provider_keys)
         decision = await self.gateway.router.route(request)
         result = await self.gateway.invoke(request)
+        if result.status != ResultStatus.PENDING:
+            raise ValueError("VIDEO_PROVIDER_ASYNC_SUBMIT_REQUIRED")
+        if not result.provider_request_id:
+            raise ValueError("VIDEO_PROVIDER_JOB_ID_REQUIRED")
         matching = next(
             ((index, item) for index, item in enumerate(decision.candidates) if item.provider == result.provider and item.model == result.model),
             None,
