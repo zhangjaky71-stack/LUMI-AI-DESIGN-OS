@@ -53,6 +53,7 @@ def to_model_request(
     continuity_refs: tuple[str, ...],
     *,
     feature_registry: VideoFeatureRegistry | None = None,
+    excluded_provider_keys: tuple[str, ...] = (),
 ) -> ModelRequest:
     refs: list[str] = []
     if shot.shot.source_ref is not None:
@@ -83,6 +84,8 @@ def to_model_request(
     if allowed_keys:
         constraints["allowed_provider_keys"] = list(allowed_keys)
         constraints["video_feature_registry_snapshot_id"] = feature_registry.snapshot_id if feature_registry else None
+    if excluded_provider_keys:
+        constraints["excluded_provider_keys"] = list(dict.fromkeys(excluded_provider_keys))
     return ModelRequest(
         organization_id=_stable_uuid(spec.organization_id),
         project_id=_stable_uuid(spec.project_id),
@@ -137,11 +140,30 @@ class ModelGatewayVideoAdapter:
         self.gateway = gateway
         self.feature_registry = feature_registry
 
-    def _request(self, spec: VideoTaskSpec, shot: CompiledShot, continuity_refs: tuple[str, ...]) -> ModelRequest:
-        return to_model_request(spec, shot, continuity_refs, feature_registry=self.feature_registry)
+    def _request(
+        self,
+        spec: VideoTaskSpec,
+        shot: CompiledShot,
+        continuity_refs: tuple[str, ...],
+        excluded_provider_keys: tuple[str, ...] = (),
+    ) -> ModelRequest:
+        return to_model_request(
+            spec,
+            shot,
+            continuity_refs,
+            feature_registry=self.feature_registry,
+            excluded_provider_keys=excluded_provider_keys,
+        )
 
-    async def estimate(self, *, spec: VideoTaskSpec, shot: CompiledShot, continuity_refs: tuple[str, ...]) -> GatewayEstimate:
-        request = self._request(spec, shot, continuity_refs)
+    async def estimate(
+        self,
+        *,
+        spec: VideoTaskSpec,
+        shot: CompiledShot,
+        continuity_refs: tuple[str, ...],
+        excluded_provider_keys: tuple[str, ...] = (),
+    ) -> GatewayEstimate:
+        request = self._request(spec, shot, continuity_refs, excluded_provider_keys)
         decision = await self.gateway.router.route(request)
         candidate = decision.candidates[0]
         if candidate.estimate.amount_usd is None:
@@ -149,6 +171,8 @@ class ModelGatewayVideoAdapter:
         reasons = candidate.reason_codes
         if self.feature_registry is not None:
             reasons += (f"VIDEO_FEATURE_REGISTRY:{self.feature_registry.snapshot_id}",)
+        if excluded_provider_keys:
+            reasons += (f"VIDEO_EXCLUDED_PROVIDERS:{len(set(excluded_provider_keys))}",)
         return GatewayEstimate(
             amount_usd=candidate.estimate.amount_usd,
             provider=candidate.provider,
@@ -157,11 +181,21 @@ class ModelGatewayVideoAdapter:
             routing_reason_codes=reasons,
         )
 
-    async def submit(self, *, spec: VideoTaskSpec, shot: CompiledShot, continuity_refs: tuple[str, ...]) -> GatewayVideoResult:
-        request = self._request(spec, shot, continuity_refs)
+    async def submit(
+        self,
+        *,
+        spec: VideoTaskSpec,
+        shot: CompiledShot,
+        continuity_refs: tuple[str, ...],
+        excluded_provider_keys: tuple[str, ...] = (),
+    ) -> GatewayVideoResult:
+        request = self._request(spec, shot, continuity_refs, excluded_provider_keys)
         decision = await self.gateway.router.route(request)
         result = await self.gateway.invoke(request)
-        matching = next(((index, item) for index, item in enumerate(decision.candidates) if item.provider == result.provider and item.model == result.model), None)
+        matching = next(
+            ((index, item) for index, item in enumerate(decision.candidates) if item.provider == result.provider and item.model == result.model),
+            None,
+        )
         if matching is None:
             reasons = ("ROUTE_DECISION_CHANGED_DURING_INVOKE",)
         else:
@@ -169,6 +203,8 @@ class ModelGatewayVideoAdapter:
             reasons = item.reason_codes + ((f"FALLBACK_INDEX:{index}",) if index else ())
         if self.feature_registry is not None:
             reasons += (f"VIDEO_FEATURE_REGISTRY:{self.feature_registry.snapshot_id}",)
+        if excluded_provider_keys:
+            reasons += (f"VIDEO_EXCLUDED_PROVIDERS:{len(set(excluded_provider_keys))}",)
         return _normalize(result, reasons)
 
     async def poll(self, *, pending: ProviderJobRecord) -> GatewayVideoResult:
@@ -202,5 +238,13 @@ def request_hash(
     continuity_refs: tuple[str, ...],
     *,
     feature_registry: VideoFeatureRegistry | None = None,
+    excluded_provider_keys: tuple[str, ...] = (),
 ) -> str:
-    return hashlib.sha256(to_model_request(spec, shot, continuity_refs, feature_registry=feature_registry).semantic_hash.encode()).hexdigest()
+    request = to_model_request(
+        spec,
+        shot,
+        continuity_refs,
+        feature_registry=feature_registry,
+        excluded_provider_keys=excluded_provider_keys,
+    )
+    return hashlib.sha256(request.semantic_hash.encode()).hexdigest()
