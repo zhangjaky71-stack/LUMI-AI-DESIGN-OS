@@ -1,4 +1,4 @@
-import type { CompiledSceneSnapshot } from "../../canvas-sdk/src/index";
+import type { CompiledSceneSnapshot, CompileResult } from "../../canvas-sdk/src/index";
 import type { DesignDocument } from "../../design-ir/src/index";
 import { compilerProvenanceFromSnapshot } from "./compiler-bridge";
 import { ArtifactEngine } from "./engine";
@@ -13,7 +13,7 @@ export interface ExactDesignVersionPort {
 }
 
 export interface ExactExportCompilerPort {
-  fullCompile(document: DesignDocument, useCache?: boolean): Promise<CompiledSceneSnapshot>;
+  fullCompile(document: DesignDocument, useCache?: boolean): Promise<CompileResult>;
 }
 
 export interface ExportSourceMetadataPort {
@@ -40,7 +40,7 @@ function durableRenderPlan(snapshot: CompiledSceneSnapshot): unknown {
       ...(item.resolved_text ? {
         resolved_text: {
           content: item.resolved_text.content,
-          metrics: { ...item.resolved_text.metrics },
+          ...(item.resolved_text.metrics ? { metrics: { ...item.resolved_text.metrics } } : {}),
           ...(item.resolved_text.font ? {
             font: {
               family: item.resolved_text.font.family,
@@ -106,8 +106,13 @@ export class ArtifactEngineExportSource implements ExportSourcePort {
       design_document_version_id: spec.design_document_version_id,
     });
     const compiled = await this.#compiler.fullCompile(document, false);
-    const compilerProvenance = compilerProvenanceFromSnapshot(compiled);
-    if (compiled.document.document_id !== document.document_id || compilerProvenance.document_id !== document.document_id) {
+    if (!compiled.ok) {
+      const codes = compiled.diagnostics.map((item) => item.code).join(",");
+      throw new Error(`EXPORT_SOURCE_COMPILE_FAILED:${codes}`);
+    }
+    const snapshot = compiled.snapshot;
+    const compilerProvenance = compilerProvenanceFromSnapshot(snapshot);
+    if (snapshot.document_id !== document.document_id || compilerProvenance.document_id !== document.document_id) {
       throw new Error("EXPORT_COMPILER_DOCUMENT_IDENTITY_MISMATCH");
     }
     const rightsSummary = await this.#metadata.rightsSummary({ organization_id: spec.organization_id, artifact_version_id: version.id });
@@ -126,7 +131,7 @@ export class ArtifactEngineExportSource implements ExportSourcePort {
       constraint_snapshot_hash: version.constraint_snapshot_hash,
       compiler_provenance: compilerProvenance,
       design_document: structuredClone(document),
-      render_plan: durableRenderPlan(compiled),
+      render_plan: durableRenderPlan(snapshot),
       brand_rule_set_version: version.brand_rule_set_version ?? null,
       rights_summary: rightsSummary,
       model_refs: [...new Set(modelRefs)].sort(),
