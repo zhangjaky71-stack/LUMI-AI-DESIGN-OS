@@ -1,6 +1,7 @@
 import type {
   ExportArtifactPort,
   ExportAuthorizationPort,
+  ExportDownloadAuditPort,
   ExportDownloadSignerPort,
   ExportEventPort,
   ExportJob,
@@ -9,6 +10,7 @@ import type {
   ExportSourcePort,
   ExportSourceSnapshot,
   ExportSpec,
+  ExportValidationEvidencePort,
 } from "./export-engine-types";
 import type { StoredObjectStat } from "./types";
 
@@ -26,9 +28,9 @@ export class InMemoryExportJobRepository implements ExportJobRepository {
     return this.byOperation.get(`${organizationId}:${operationId}`) ?? null;
   }
 
-  async findReadyByFingerprint(organizationId: string, fingerprint: string, nowIso: string): Promise<ExportJob | null> {
+  async findReadyByFingerprint(organizationId: string, fingerprint: string, minimumExpiresAtIso: string): Promise<ExportJob | null> {
     for (const job of this.byId.values()) {
-      if (job.organization_id === organizationId && job.export_fingerprint === fingerprint && job.status === "READY" && job.expires_at > nowIso) return job;
+      if (job.organization_id === organizationId && job.export_fingerprint === fingerprint && job.status === "READY" && job.expires_at >= minimumExpiresAtIso) return job;
     }
     return null;
   }
@@ -88,47 +90,39 @@ export class InMemoryExportObjectStore implements ExportObjectStore {
     const bytes = this.objects.get(storageKey);
     if (!bytes) return null;
     const mimeType = this.mimeTypes.get(storageKey);
-    return {
-      storage_key: storageKey,
-      size_bytes: bytes.length,
-      checksum_sha256: await sha256(bytes),
-      ...(mimeType ? { mime_type: mimeType } : {}),
-    };
+    return { storage_key: storageKey, size_bytes: bytes.length, checksum_sha256: await sha256(bytes), ...(mimeType ? { mime_type: mimeType } : {}) };
   }
 }
 
 export class RecordingExportArtifacts implements ExportArtifactPort {
   readonly persisted: Array<Parameters<ExportArtifactPort["persistExport"]>[0]> = [];
-
-  async persistExport(args: Parameters<ExportArtifactPort["persistExport"]>[0]): Promise<void> {
-    this.persisted.push(args);
-  }
+  async persistExport(args: Parameters<ExportArtifactPort["persistExport"]>[0]): Promise<void> { this.persisted.push(args) }
 }
 
 export class RecordingExportEvents implements ExportEventPort {
   readonly events: Array<{ type: string; payload: Readonly<Record<string, unknown>> }> = [];
+  async emit(eventType: string, payload: Readonly<Record<string, unknown>>): Promise<void> { this.events.push({ type: eventType, payload }) }
+}
 
-  async emit(eventType: string, payload: Readonly<Record<string, unknown>>): Promise<void> {
-    this.events.push({ type: eventType, payload });
-  }
+export class RecordingExportValidationEvidence implements ExportValidationEvidencePort {
+  readonly records: Array<Parameters<ExportValidationEvidencePort["record"]>[0]> = [];
+  async record(args: Parameters<ExportValidationEvidencePort["record"]>[0]): Promise<void> { this.records.push(args) }
 }
 
 export class StaticExportAuthorization implements ExportAuthorizationPort {
   constructor(readonly allowed: boolean) {}
+  async canDownload(): Promise<boolean> { return this.allowed }
+}
 
-  async canDownload(): Promise<boolean> {
-    return this.allowed;
-  }
+export class RecordingExportDownloadAudit implements ExportDownloadAuditPort {
+  readonly records: Array<Parameters<ExportDownloadAuditPort["record"]>[0]> = [];
+  async record(args: Parameters<ExportDownloadAuditPort["record"]>[0]): Promise<void> { this.records.push(args) }
 }
 
 export class RecordingExportSigner implements ExportDownloadSignerPort {
   readonly calls: Array<{ storage_key: string; filename: string; expires_seconds: number }> = [];
-
   async sign(args: { readonly storage_key: string; readonly filename: string; readonly expires_seconds: number }): Promise<{ url: string; expires_at: string }> {
     this.calls.push({ ...args });
-    return {
-      url: `https://signed.invalid/${encodeURIComponent(args.storage_key)}?ttl=${args.expires_seconds}`,
-      expires_at: new Date(Date.parse("2030-01-01T00:00:00.000Z") + args.expires_seconds * 1000).toISOString(),
-    };
+    return { url: `https://signed.invalid/${encodeURIComponent(args.storage_key)}?ttl=${args.expires_seconds}`, expires_at: new Date(Date.parse("2030-01-01T00:00:00.000Z") + args.expires_seconds * 1000).toISOString() };
   }
 }
