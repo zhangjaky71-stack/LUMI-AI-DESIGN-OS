@@ -104,6 +104,9 @@ class MemoryCandidate:
     temporal_coexistence: bool = False
     proposed_at: datetime | None = None
     expires_at: datetime | None = None
+    embedding: tuple[float, ...] | None = None
+    embedding_model: str | None = None
+    embedding_version: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -117,6 +120,7 @@ class MemoryCandidate:
             raise ValueError("MEMORY_CONFIDENCE_INVALID")
         if not self.source_refs:
             raise ValueError("MEMORY_SOURCE_REF_REQUIRED")
+        _embedding_guard(self.embedding, self.embedding_model, self.embedding_version)
         _json_guard(self.content_structured, "$.content_structured")
         _json_guard(self.metadata, "$.metadata")
 
@@ -157,6 +161,9 @@ class MemoryRecord:
     version: int = 1
     retention_hold: bool = False
     deleted_at: datetime | None = None
+    embedding: tuple[float, ...] | None = None
+    embedding_model: str | None = None
+    embedding_version: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -164,6 +171,7 @@ class MemoryRecord:
             raise ValueError("MEMORY_RECORD_IDENTITY_INVALID")
         if not 0 <= self.confidence <= 1 or self.version < 1:
             raise ValueError("MEMORY_RECORD_VERSION_CONFIDENCE_INVALID")
+        _embedding_guard(self.embedding, self.embedding_model, self.embedding_version)
         _json_guard(self.content_structured, "$.content_structured")
         _json_guard(self.metadata, "$.metadata")
 
@@ -202,6 +210,8 @@ class MemorySearchQuery:
     def __post_init__(self) -> None:
         if not self.text or not 1 <= self.limit <= 50:
             raise ValueError("MEMORY_SEARCH_QUERY_INVALID")
+        if self.query_embedding is not None and not self.query_embedding:
+            raise ValueError("MEMORY_QUERY_EMBEDDING_INVALID")
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +223,21 @@ class MemorySearchResult:
     scope_score: float
     confidence_score: float
     freshness_score: float
+
+
+def _embedding_guard(
+    embedding: tuple[float, ...] | None,
+    model: str | None,
+    version: str | None,
+) -> None:
+    if embedding is None:
+        if model is not None or version is not None:
+            raise ValueError("MEMORY_EMBEDDING_METADATA_WITHOUT_VECTOR")
+        return
+    if not embedding or len(embedding) > 8192 or not model or not version:
+        raise ValueError("MEMORY_EMBEDDING_INVALID")
+    if any(not isinstance(item, (int, float)) for item in embedding):
+        raise ValueError("MEMORY_EMBEDDING_VALUE_INVALID")
 
 
 def _hash_payload(payload: dict[str, Any]) -> str:
