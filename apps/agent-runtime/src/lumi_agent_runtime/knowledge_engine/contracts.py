@@ -103,24 +103,25 @@ class KnowledgeDocument:
     version: int = 1
 
     def __post_init__(self) -> None:
-        if not self.normalized_text.strip():
+        if (
+            self.status
+            not in {
+                KnowledgeStatus.PENDING,
+                KnowledgeStatus.EXTRACTING,
+                KnowledgeStatus.FAILED,
+            }
+            and not self.normalized_text.strip()
+        ):
             raise ValueError("KNOWLEDGE_DOCUMENT_TEXT_EMPTY")
         if not self.parser_version or not self.chunker_version or not self.index_version:
             raise ValueError("KNOWLEDGE_DOCUMENT_INDEX_IDENTITY_INVALID")
-        if self.permission_scope == KnowledgePermissionScope.PROJECT:
-            if self.project_id is None:
-                raise ValueError("KNOWLEDGE_PROJECT_SCOPE_REQUIRES_PROJECT")
-        elif self.project_id is not None:
-            raise ValueError("KNOWLEDGE_ORGANIZATION_SCOPE_FORBIDS_PROJECT")
+        _validate_scope(self.permission_scope, self.project_id)
         if self.version < 1:
             raise ValueError("KNOWLEDGE_DOCUMENT_VERSION_INVALID")
 
     @property
     def scope_key(self) -> str:
-        if self.permission_scope == KnowledgePermissionScope.PROJECT:
-            assert self.project_id is not None
-            return f"PROJECT:{self.project_id}"
-        return "ORGANIZATION"
+        return _scope_key(self.permission_scope, self.project_id)
 
     @property
     def content_hash(self) -> str:
@@ -162,7 +163,13 @@ class KnowledgeChunk:
             ):
                 raise ValueError("KNOWLEDGE_CHUNK_EMBEDDING_IDENTITY_INVALID")
         else:
-            if not self.embedding_model or not self.embedding_version or not self.embedding_space_id:
+            if not all(
+                (
+                    self.embedding_model,
+                    self.embedding_version,
+                    self.embedding_space_id,
+                )
+            ):
                 raise ValueError("KNOWLEDGE_CHUNK_EMBEDDING_IDENTITY_INVALID")
             if not self.embedding or len(self.embedding) > 8192:
                 raise ValueError("KNOWLEDGE_CHUNK_EMBEDDING_INVALID")
@@ -222,6 +229,57 @@ class KnowledgeSearchResult:
 
 
 @dataclass(frozen=True, slots=True)
+class KnowledgeIngestRequest:
+    access: KnowledgeAccessContext
+    source: KnowledgeSourceRef
+    trust: KnowledgeTrust
+    project_id: UUID | None
+    permission_scope: KnowledgePermissionScope = KnowledgePermissionScope.PROJECT
+    chunker_version: str = "structure-window-v1"
+    index_version: str = "knowledge-v1"
+    embedding_space_id: str | None = None
+    chunk_size_tokens: int = 450
+    chunk_overlap_tokens: int = 60
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        _validate_index_scope(
+            access=self.access,
+            permission_scope=self.permission_scope,
+            project_id=self.project_id,
+        )
+        _validate_chunk_config(
+            chunk_size_tokens=self.chunk_size_tokens,
+            chunk_overlap_tokens=self.chunk_overlap_tokens,
+        )
+        if not self.chunker_version or not self.index_version:
+            raise ValueError("KNOWLEDGE_INGEST_VERSION_REQUIRED")
+
+    @property
+    def scope_key(self) -> str:
+        return _scope_key(self.permission_scope, self.project_id)
+
+    @property
+    def config_hash(self) -> str:
+        payload = {
+            "organization_id": str(self.access.organization_id),
+            "scope_key": self.scope_key,
+            "source_type": self.source.source_type.value,
+            "source_id": self.source.source_id,
+            "source_version": self.source.version,
+            "source_hash": self.source.content_hash,
+            "trust": self.trust.value,
+            "chunker_version": self.chunker_version,
+            "index_version": self.index_version,
+            "embedding_space_id": self.embedding_space_id,
+            "chunk_size_tokens": self.chunk_size_tokens,
+            "chunk_overlap_tokens": self.chunk_overlap_tokens,
+            "metadata": self.metadata,
+        }
+        return _hash_payload(payload)
+
+
+@dataclass(frozen=True, slots=True)
 class KnowledgeIndexRequest:
     access: KnowledgeAccessContext
     source: KnowledgeSourceRef
@@ -242,29 +300,21 @@ class KnowledgeIndexRequest:
     def __post_init__(self) -> None:
         if not self.normalized_text.strip():
             raise ValueError("KNOWLEDGE_INDEX_TEXT_EMPTY")
-        if not 100 <= self.chunk_size_tokens <= 2000:
-            raise ValueError("KNOWLEDGE_CHUNK_SIZE_INVALID")
-        if not 0 <= self.chunk_overlap_tokens < self.chunk_size_tokens:
-            raise ValueError("KNOWLEDGE_CHUNK_OVERLAP_INVALID")
-        if self.project_id is not None and self.access.project_id != self.project_id:
-            raise ValueError("KNOWLEDGE_INDEX_PROJECT_SCOPE_DENIED")
-        if self.permission_scope == KnowledgePermissionScope.PROJECT:
-            if self.project_id is None or self.access.project_id != self.project_id:
-                raise ValueError("KNOWLEDGE_INDEX_PROJECT_SCOPE_DENIED")
-        else:
-            if self.project_id is not None:
-                raise ValueError("KNOWLEDGE_INDEX_ORGANIZATION_PROJECT_FORBIDDEN")
-            if "knowledge.organization.write" not in self.access.granted_permissions:
-                raise ValueError("KNOWLEDGE_INDEX_ORGANIZATION_SCOPE_DENIED")
+        _validate_index_scope(
+            access=self.access,
+            permission_scope=self.permission_scope,
+            project_id=self.project_id,
+        )
+        _validate_chunk_config(
+            chunk_size_tokens=self.chunk_size_tokens,
+            chunk_overlap_tokens=self.chunk_overlap_tokens,
+        )
         if not self.parser_version or not self.chunker_version or not self.index_version:
             raise ValueError("KNOWLEDGE_INDEX_VERSION_REQUIRED")
 
     @property
     def scope_key(self) -> str:
-        if self.permission_scope == KnowledgePermissionScope.PROJECT:
-            assert self.project_id is not None
-            return f"PROJECT:{self.project_id}"
-        return "ORGANIZATION"
+        return _scope_key(self.permission_scope, self.project_id)
 
     @property
     def semantic_hash(self) -> str:
@@ -280,7 +330,9 @@ class KnowledgeIndexRequest:
                 "hash": self.source.content_hash,
             },
             "trust": self.trust.value,
-            "normalized_text_hash": hashlib.sha256(self.normalized_text.encode()).hexdigest(),
+            "normalized_text_hash": hashlib.sha256(
+                self.normalized_text.encode()
+            ).hexdigest(),
             "language": self.language,
             "parser_version": self.parser_version,
             "chunker_version": self.chunker_version,
@@ -299,11 +351,67 @@ class KnowledgeIndexRequest:
             ],
             "metadata": self.metadata,
         }
-        return hashlib.sha256(
-            json.dumps(
-                payload,
-                ensure_ascii=False,
-                sort_keys=True,
-                default=str,
-            ).encode()
-        ).hexdigest()
+        return _hash_payload(payload)
+
+
+def _validate_index_scope(
+    *,
+    access: KnowledgeAccessContext,
+    permission_scope: KnowledgePermissionScope,
+    project_id: UUID | None,
+) -> None:
+    if project_id is not None and access.project_id != project_id:
+        raise ValueError("KNOWLEDGE_INDEX_PROJECT_SCOPE_DENIED")
+    if permission_scope == KnowledgePermissionScope.PROJECT:
+        if project_id is None or access.project_id != project_id:
+            raise ValueError("KNOWLEDGE_INDEX_PROJECT_SCOPE_DENIED")
+        return
+    if project_id is not None:
+        raise ValueError("KNOWLEDGE_INDEX_ORGANIZATION_PROJECT_FORBIDDEN")
+    if "knowledge.organization.write" not in access.granted_permissions:
+        raise ValueError("KNOWLEDGE_INDEX_ORGANIZATION_SCOPE_DENIED")
+
+
+def _validate_scope(
+    permission_scope: KnowledgePermissionScope,
+    project_id: UUID | None,
+) -> None:
+    if permission_scope == KnowledgePermissionScope.PROJECT:
+        if project_id is None:
+            raise ValueError("KNOWLEDGE_PROJECT_SCOPE_REQUIRES_PROJECT")
+    elif project_id is not None:
+        raise ValueError("KNOWLEDGE_ORGANIZATION_SCOPE_FORBIDS_PROJECT")
+
+
+def _scope_key(
+    permission_scope: KnowledgePermissionScope,
+    project_id: UUID | None,
+) -> str:
+    _validate_scope(permission_scope, project_id)
+    if permission_scope == KnowledgePermissionScope.PROJECT:
+        assert project_id is not None
+        return f"PROJECT:{project_id}"
+    return "ORGANIZATION"
+
+
+def _validate_chunk_config(
+    *,
+    chunk_size_tokens: int,
+    chunk_overlap_tokens: int,
+) -> None:
+    if not 100 <= chunk_size_tokens <= 2000:
+        raise ValueError("KNOWLEDGE_CHUNK_SIZE_INVALID")
+    if not 0 <= chunk_overlap_tokens < chunk_size_tokens:
+        raise ValueError("KNOWLEDGE_CHUNK_OVERLAP_INVALID")
+
+
+def _hash_payload(payload: dict[str, Any]) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
