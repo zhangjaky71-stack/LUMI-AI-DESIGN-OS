@@ -1,8 +1,9 @@
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS identity_threshold_profiles (
-  id uuid PRIMARY KEY,
+  row_id uuid PRIMARY KEY,
   organization_id uuid NOT NULL,
+  profile_id uuid NOT NULL,
   identity_type text NOT NULL CHECK (
     identity_type IN ('PRODUCT','LOGO','CHARACTER','FACE','STYLE_REFERENCE')
   ),
@@ -24,8 +25,7 @@ CREATE TABLE IF NOT EXISTS identity_threshold_profiles (
   metrics jsonb NOT NULL CHECK (jsonb_typeof(metrics) = 'object'),
   created_at timestamptz NOT NULL DEFAULT now(),
   published_at timestamptz NULL,
-  UNIQUE (organization_id, id),
-  UNIQUE (organization_id, id, version),
+  UNIQUE (organization_id, profile_id, version),
   CHECK (
     identity_type NOT IN ('PRODUCT','LOGO')
     OR jsonb_array_length(required_signals) >= 2
@@ -44,10 +44,10 @@ CREATE TABLE IF NOT EXISTS identity_threshold_profiles (
 );
 
 CREATE TABLE IF NOT EXISTS identity_calibration_samples (
-  id uuid PRIMARY KEY,
+  row_id uuid PRIMARY KEY,
   organization_id uuid NOT NULL,
-  threshold_profile_id uuid NOT NULL,
-  threshold_profile_version text NOT NULL,
+  profile_id uuid NOT NULL,
+  profile_version text NOT NULL,
   calibration_dataset_version text NOT NULL,
   identity_type text NOT NULL CHECK (
     identity_type IN ('PRODUCT','LOGO','CHARACTER','FACE','STYLE_REFERENCE')
@@ -60,14 +60,15 @@ CREATE TABLE IF NOT EXISTS identity_calibration_samples (
   sample_asset_id uuid NULL,
   notes text NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (organization_id, threshold_profile_id, threshold_profile_version, id),
-  FOREIGN KEY (organization_id, threshold_profile_id, threshold_profile_version)
-    REFERENCES identity_threshold_profiles(organization_id, id, version)
+  UNIQUE (organization_id, profile_id, profile_version, row_id),
+  FOREIGN KEY (organization_id, profile_id, profile_version)
+    REFERENCES identity_threshold_profiles(organization_id, profile_id, version)
 );
 
 CREATE TABLE IF NOT EXISTS identity_reference_sets (
-  id uuid PRIMARY KEY,
+  row_id uuid PRIMARY KEY,
   organization_id uuid NOT NULL,
+  identity_id uuid NOT NULL,
   project_id uuid NULL,
   brand_profile_id uuid NULL,
   identity_type text NOT NULL CHECK (
@@ -87,10 +88,9 @@ CREATE TABLE IF NOT EXISTS identity_reference_sets (
   persistent_biometric_index boolean NOT NULL DEFAULT false CHECK (persistent_biometric_index = false),
   created_at timestamptz NOT NULL DEFAULT now(),
   published_at timestamptz NULL,
-  UNIQUE (organization_id, id),
-  UNIQUE (organization_id, id, version),
+  UNIQUE (organization_id, identity_id, version),
   FOREIGN KEY (organization_id, threshold_profile_id, threshold_profile_version)
-    REFERENCES identity_threshold_profiles(organization_id, id, version),
+    REFERENCES identity_threshold_profiles(organization_id, profile_id, version),
   CHECK (
     identity_type <> 'FACE'
     OR (
@@ -104,9 +104,9 @@ CREATE TABLE IF NOT EXISTS identity_reference_sets (
 );
 
 CREATE TABLE IF NOT EXISTS identity_reference_views (
-  id uuid PRIMARY KEY,
+  row_id uuid PRIMARY KEY,
   organization_id uuid NOT NULL,
-  reference_set_id uuid NOT NULL,
+  identity_id uuid NOT NULL,
   reference_set_version text NOT NULL,
   asset_id uuid NOT NULL,
   asset_version text NOT NULL CHECK (btrim(asset_version) <> ''),
@@ -117,9 +117,9 @@ CREATE TABLE IF NOT EXISTS identity_reference_views (
   ),
   notes text NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (organization_id, reference_set_id, reference_set_version, id),
-  FOREIGN KEY (organization_id, reference_set_id, reference_set_version)
-    REFERENCES identity_reference_sets(organization_id, id, version)
+  UNIQUE (organization_id, identity_id, reference_set_version, row_id),
+  FOREIGN KEY (organization_id, identity_id, reference_set_version)
+    REFERENCES identity_reference_sets(organization_id, identity_id, version)
 );
 
 CREATE TABLE IF NOT EXISTS identity_validation_reports (
@@ -155,9 +155,9 @@ CREATE TABLE IF NOT EXISTS identity_validation_reports (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (organization_id, id),
   FOREIGN KEY (organization_id, identity_id, reference_set_version)
-    REFERENCES identity_reference_sets(organization_id, id, version),
+    REFERENCES identity_reference_sets(organization_id, identity_id, version),
   FOREIGN KEY (organization_id, threshold_profile_id, threshold_profile_version)
-    REFERENCES identity_threshold_profiles(organization_id, id, version),
+    REFERENCES identity_threshold_profiles(organization_id, profile_id, version),
   CHECK (NOT (status = 'PASS' AND identity_score IS NULL))
 );
 
@@ -179,13 +179,17 @@ ALTER TABLE artifact_provenance
   ADD COLUMN IF NOT EXISTS identity_validation_snapshot_id text NULL;
 
 CREATE INDEX IF NOT EXISTS identity_profiles_lookup_idx
-  ON identity_threshold_profiles (organization_id, identity_type, scenario, status, created_at DESC);
+  ON identity_threshold_profiles (
+    organization_id, profile_id, identity_type, scenario, status, created_at DESC
+  );
 CREATE INDEX IF NOT EXISTS identity_calibration_profile_idx
   ON identity_calibration_samples (
-    organization_id, threshold_profile_id, threshold_profile_version, calibration_dataset_version
+    organization_id, profile_id, profile_version, calibration_dataset_version
   );
 CREATE INDEX IF NOT EXISTS identity_reference_scope_idx
-  ON identity_reference_sets (organization_id, project_id, brand_profile_id, identity_type, status);
+  ON identity_reference_sets (
+    organization_id, project_id, brand_profile_id, identity_type, status
+  );
 CREATE INDEX IF NOT EXISTS identity_reference_views_asset_idx
   ON identity_reference_views (organization_id, asset_id, asset_version);
 CREATE INDEX IF NOT EXISTS identity_reports_identity_idx
