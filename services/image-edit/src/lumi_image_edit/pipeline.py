@@ -94,9 +94,9 @@ class ImageEditPipeline:
                 raise ImageEditOperationConflict("IMAGE_EDIT_OPERATION_SEMANTIC_CONFLICT")
             return existing
 
-        if not spec.source.commercial_use_allowed and spec.intent.action not in {"STRUCTURAL_ONLY"}:
-            raise ValueError("IMAGE_EDIT_SOURCE_COMMERCIAL_RIGHTS_NOT_ALLOWED")
         plan = plan_edit(spec)
+        if plan.requires_provider and not spec.source.commercial_use_allowed:
+            raise ValueError("IMAGE_EDIT_SOURCE_COMMERCIAL_RIGHTS_NOT_ALLOWED")
         edit_id = _edit_id(spec)
         job = EditJob(
             edit_id=edit_id,
