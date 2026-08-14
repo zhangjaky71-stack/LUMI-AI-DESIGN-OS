@@ -31,11 +31,7 @@ class MemoryCandidatePipeline:
         observed_at = now or datetime.now(UTC)
         sensitivity = classify_candidate(candidate)
         if sensitivity.classification.value != "NONE":
-            await self.repository.insert_candidate(
-                candidate,
-                outcome=MemoryCandidateOutcome.REJECT_SENSITIVE.value,
-                reason=sensitivity.reason,
-            )
+            # Deliberately do not persist rejected sensitive content in the candidate table.
             return MemoryDecision(
                 MemoryCandidateOutcome.REJECT_SENSITIVE,
                 candidate.candidate_id,
@@ -44,11 +40,7 @@ class MemoryCandidatePipeline:
 
         policy = evaluate_write_policy(candidate, access)
         if not policy.allowed:
-            await self.repository.insert_candidate(
-                candidate,
-                outcome=policy.outcome.value,
-                reason=policy.reason,
-            )
+            # Cross-tenant/scope-spoofed content is not persisted as a candidate either.
             return MemoryDecision(policy.outcome, candidate.candidate_id, reason=policy.reason)
         if policy.outcome == MemoryCandidateOutcome.BRAND_RULE_PROPOSAL:
             await self.repository.insert_candidate(
@@ -73,6 +65,9 @@ class MemoryCandidatePipeline:
                 confidence=max(exact.confidence, confidence),
                 last_confirmed_at=observed_at,
                 source_refs=_merge_source_refs(exact.source_refs, candidate.source_refs),
+                embedding=candidate.embedding or exact.embedding,
+                embedding_model=candidate.embedding_model or exact.embedding_model,
+                embedding_version=candidate.embedding_version or exact.embedding_version,
                 version=exact.version + 1,
             )
             confirmed = await self.repository.update_record(confirmed, expected_version=exact.version)
@@ -89,7 +84,9 @@ class MemoryCandidatePipeline:
                 reason="MEMORY_EXACT_DUPLICATE_CONFIRMED",
             )
 
-        if existing and not candidate.temporal_coexistence and not (candidate.explicit_remember and confidence >= 0.9):
+        if existing and not candidate.temporal_coexistence and not (
+            candidate.explicit_remember and confidence >= 0.9
+        ):
             await self.repository.insert_candidate(
                 candidate,
                 outcome=MemoryCandidateOutcome.REQUIRE_CONFIRMATION.value,
@@ -131,6 +128,9 @@ class MemoryCandidatePipeline:
             expires_at=candidate.expires_at,
             valid_from=observed_at,
             supersedes_id=supersedes.memory_id if supersedes else None,
+            embedding=candidate.embedding,
+            embedding_model=candidate.embedding_model,
+            embedding_version=candidate.embedding_version,
             metadata={**candidate.metadata, "explicit_remember": candidate.explicit_remember},
         )
         record = await self.repository.insert_record(record)
