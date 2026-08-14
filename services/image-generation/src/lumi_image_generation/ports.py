@@ -42,6 +42,22 @@ class ArtifactCandidateResult:
     status: str
 
 
+@dataclass(frozen=True, slots=True)
+class PendingInvocationRecord:
+    organization_id: str
+    generation_id: str
+    candidate_id: str
+    variant_index: int
+    request: GatewayGenerationRequest
+    result: GatewayGenerationResult
+
+    def __post_init__(self) -> None:
+        if self.result.status != "PENDING":
+            raise ValueError("PENDING_INVOCATION_REQUIRES_PENDING_RESULT")
+        if not self.result.provider_request_id:
+            raise ValueError("PENDING_INVOCATION_PROVIDER_REQUEST_REQUIRED")
+
+
 class ReferenceAuthorizationPort(Protocol):
     def authorize(
         self,
@@ -134,3 +150,18 @@ class GenerationRepositoryPort(Protocol):
     def save(self, job: GenerationJob) -> None: ...
 
     def get(self, organization_id: str, generation_id: str) -> GenerationJob | None: ...
+
+    def save_spec(self, spec: ImageGenerationSpec) -> None: ...
+
+    def get_spec(self, organization_id: str, operation_id: str) -> ImageGenerationSpec | None: ...
+
+    def save_pending(self, record: PendingInvocationRecord) -> None: ...
+
+    def get_pending(
+        self,
+        organization_id: str,
+        generation_id: str,
+        candidate_id: str,
+    ) -> PendingInvocationRecord | None: ...
+
+    def delete_pending(self, organization_id: str, generation_id: str, candidate_id: str) -> None: ...
