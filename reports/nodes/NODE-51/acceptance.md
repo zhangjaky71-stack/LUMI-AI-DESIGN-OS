@@ -28,6 +28,7 @@ Base: `node-50-visual-critic-release@2991610c91a5ab58ae482a711d62cffee482c9bf`
 - paid repair requires `BudgetReservationPort`;
 - reserve occurs before `GenerativeRepairPort.execute`;
 - actual cost settles after execution;
+- if a paid side effect completes but ledger settlement becomes uncertain, the reservation is not released, known actual cost is counted conservatively and the loop stops FAILED;
 - no NODE-27 shadow ledger is created while NODE-27 remains spec-only.
 
 ### Artifact and concurrency
@@ -61,6 +62,7 @@ first repair improves but not passes       -> DRAFT head, bounded second repair
 second repair passes                       -> READY
 external/loop budget insufficient          -> BUDGET_EXHAUSTED / no paid call
 paid repair                                -> reserve before generate, settle actual
+paid side effect + settle uncertainty      -> FAILED / no reservation release / no promotion
 concurrent user branch move                -> STALE_SOURCE / user head preserved
 hard LOCK_TEXT                             -> no candidate persisted
 0.1 + 0.2 USD                              -> exact 0.3 via micros
@@ -80,6 +82,33 @@ hard LOCK_TEXT                             -> no candidate persisted
 
 The DB job applies `0001 + 0009 + 0010`, proves candidate insertion leaves source head unchanged, promotes a quality-approved candidate, and proves a simulated concurrent user head causes CAS failure while leaving the repair candidate DRAFT.
 
+## Hosted CI evidence — initial release HEAD
+
+Initial release HEAD: `e30a3adcbfc7d5cfb86961c69ab2fa1d2b5f08ca`
+
+Auto Repair workflow:
+
+```text
+run_id: 31822403990
+repair-contract job_id: 94838525887
+repair-contract conclusion: failure
+runner_id: 0
+steps: []
+repair-quality: skipped
+repair-integration: skipped
+repair-budget: skipped
+repair-db: skipped
+repair-benchmark: skipped
+```
+
+GitHub check annotation:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+
+Interpretation: the GitHub-hosted runner never started. Therefore the static architecture validator, TS6 typecheck, unit/integration tests, settlement test, NODE-05 release gate, PostgreSQL off-head/CAS test and 2k-node benchmark were **not executed**. This is an account-level validation blocker, not an observed code/test failure and not PASS.
+
+This evidence commit intentionally creates the final release candidate HEAD. The final-head run is recorded in PR metadata/body only to avoid a commit → workflow → evidence-commit loop.
+
 ## Completion policy
 
 Do not mark COMPLETE until the final release HEAD executes all required jobs green. If GitHub returns the known billing/spending annotation with runner id 0 and no steps, record it as an external validation blocker only.
@@ -88,13 +117,14 @@ Current:
 
 ```text
 implementation                       IMPLEMENTED
-static architecture validator        hosted execution pending
-TS6 typecheck                        hosted execution pending
-unit/integration tests               hosted execution pending
-budget ordering tests                hosted execution pending
-NODE-05 baseline/candidate gate       hosted execution pending
-PostgreSQL off-head/CAS test          hosted execution pending
-2k-node benchmark                    hosted execution pending
+static architecture validator        not executed on hosted runner
+TS6 typecheck                        not executed on hosted runner
+unit/integration tests               not executed on hosted runner
+budget ordering/settlement tests     not executed on hosted runner
+NODE-05 baseline/candidate gate       not executed on hosted runner
+PostgreSQL off-head/CAS test          not executed on hosted runner
+2k-node benchmark                    not executed on hosted runner
+hosted blocker                       GitHub billing/spending limit
 ```
 
 Overall: **IMPLEMENTED / VALIDATING / not COMPLETE**.
