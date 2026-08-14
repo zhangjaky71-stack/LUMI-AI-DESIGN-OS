@@ -17,6 +17,10 @@ export interface QrDecoder {
   decode(context: PostflightContext, constraint: DesignConstraint): Promise<QrDecodeResult>;
 }
 
+function evidence(value: string | undefined): Readonly<{ raw_evidence_ref?: string }> {
+  return value === undefined ? {} : { raw_evidence_ref: value };
+}
+
 export class QrScannabilityEvaluator implements PostflightEvaluator {
   readonly name = "qr-scannability";
   readonly supported_types = ["REQUIRE_SCANNABILITY"] as const;
@@ -25,7 +29,10 @@ export class QrScannabilityEvaluator implements PostflightEvaluator {
 
   constructor(private readonly decoder: QrDecoder) {}
 
-  async evaluate(context: PostflightContext, constraint: DesignConstraint): Promise<readonly ConstraintViolation[]> {
+  async evaluate(
+    context: PostflightContext,
+    constraint: DesignConstraint,
+  ): Promise<readonly ConstraintViolation[]> {
     const result = await this.decoder.decode(context, constraint);
     const expectedPayload =
       typeof constraint.parameters.payload === "string" ? constraint.parameters.payload : undefined;
@@ -37,7 +44,7 @@ export class QrScannabilityEvaluator implements PostflightEvaluator {
         severity: constraint.severity,
         validator: this.name,
         reason_code: "QR_NOT_DECODABLE",
-        raw_evidence_ref: result.evidence_ref,
+        ...evidence(result.evidence_ref),
         repair_hint: { action: "restore_qr_or_increase_size" },
       });
       return violations;
@@ -51,7 +58,7 @@ export class QrScannabilityEvaluator implements PostflightEvaluator {
         reason_code: "QR_PAYLOAD_CHANGED",
         expected: expectedPayload,
         actual: result.payload,
-        raw_evidence_ref: result.evidence_ref,
+        ...evidence(result.evidence_ref),
         repair_hint: { action: "restore_qr_payload" },
       });
     }
@@ -62,7 +69,7 @@ export class QrScannabilityEvaluator implements PostflightEvaluator {
         severity: constraint.severity,
         validator: this.name,
         reason_code: "QR_UNREADABLE_AT_EXPORT_SIZE",
-        raw_evidence_ref: result.evidence_ref,
+        ...evidence(result.evidence_ref),
         repair_hint: { action: "increase_qr_export_size" },
       });
     }
@@ -82,7 +89,7 @@ export class QrScannabilityEvaluator implements PostflightEvaluator {
         reason_code: "QR_QUIET_ZONE_TOO_SMALL",
         expected: minQuietZone,
         actual: result.quiet_zone_modules,
-        raw_evidence_ref: result.evidence_ref,
+        ...evidence(result.evidence_ref),
         repair_hint: { action: "increase_qr_quiet_zone" },
       });
     }
@@ -110,12 +117,25 @@ export class ProtectedRegionEvaluator implements PostflightEvaluator {
 
   constructor(private readonly comparator: ProtectedRegionComparator) {}
 
-  async evaluate(context: PostflightContext, constraint: DesignConstraint): Promise<readonly ConstraintViolation[]> {
+  async evaluate(
+    context: PostflightContext,
+    constraint: DesignConstraint,
+  ): Promise<readonly ConstraintViolation[]> {
     const signals = await this.comparator.compare(context, constraint);
-    const minSsim = typeof constraint.parameters.min_ssim === "number" ? constraint.parameters.min_ssim : 0.985;
-    const maxEdge = typeof constraint.parameters.max_edge_difference === "number" ? constraint.parameters.max_edge_difference : 0.04;
-    const maxDeltaE = typeof constraint.parameters.max_color_delta_e === "number" ? constraint.parameters.max_color_delta_e : 3;
-    const minEmbedding = typeof constraint.parameters.min_embedding_similarity === "number" ? constraint.parameters.min_embedding_similarity : undefined;
+    const minSsim =
+      typeof constraint.parameters.min_ssim === "number" ? constraint.parameters.min_ssim : 0.985;
+    const maxEdge =
+      typeof constraint.parameters.max_edge_difference === "number"
+        ? constraint.parameters.max_edge_difference
+        : 0.04;
+    const maxDeltaE =
+      typeof constraint.parameters.max_color_delta_e === "number"
+        ? constraint.parameters.max_color_delta_e
+        : 3;
+    const minEmbedding =
+      typeof constraint.parameters.min_embedding_similarity === "number"
+        ? constraint.parameters.min_embedding_similarity
+        : undefined;
     const failed =
       signals.ssim < minSsim ||
       signals.edge_difference > maxEdge ||
@@ -139,7 +159,7 @@ export class ProtectedRegionEvaluator implements PostflightEvaluator {
           color_delta_e: signals.color_delta_e,
           embedding_similarity: signals.embedding_similarity ?? null,
         },
-        raw_evidence_ref: signals.evidence_ref,
+        ...evidence(signals.evidence_ref),
         repair_hint: { action: "restore_protected_region" },
       },
     ];
@@ -152,11 +172,16 @@ export class ResolutionEvaluator implements PostflightEvaluator {
   readonly supports_preflight = false;
   readonly supports_postflight = true;
 
-  async evaluate(context: PostflightContext, constraint: DesignConstraint): Promise<readonly ConstraintViolation[]> {
+  async evaluate(
+    context: PostflightContext,
+    constraint: DesignConstraint,
+  ): Promise<readonly ConstraintViolation[]> {
     const width = context.after_ref.width ?? 0;
     const height = context.after_ref.height ?? 0;
-    const minWidth = typeof constraint.parameters.min_width === "number" ? constraint.parameters.min_width : 0;
-    const minHeight = typeof constraint.parameters.min_height === "number" ? constraint.parameters.min_height : 0;
+    const minWidth =
+      typeof constraint.parameters.min_width === "number" ? constraint.parameters.min_width : 0;
+    const minHeight =
+      typeof constraint.parameters.min_height === "number" ? constraint.parameters.min_height : 0;
     if (width >= minWidth && height >= minHeight) return [];
     return [
       {
