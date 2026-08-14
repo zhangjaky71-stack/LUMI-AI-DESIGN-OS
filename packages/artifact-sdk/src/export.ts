@@ -38,7 +38,15 @@ export async function buildArtifactExportManifest(
   ) {
     throw new Error("brand rule set version mismatch between ArtifactVersion and provenance");
   }
+  if (
+    provenance.identity_validation_snapshot_id !== undefined
+    && version.identity_validation_snapshot_id != null
+    && provenance.identity_validation_snapshot_id !== version.identity_validation_snapshot_id
+  ) {
+    throw new Error("identity validation snapshot mismatch between ArtifactVersion and provenance");
+  }
   const brandRuleSetVersion = provenance.brand_rule_set_version ?? version.brand_rule_set_version ?? null;
+  const identityValidationSnapshotId = provenance.identity_validation_snapshot_id ?? version.identity_validation_snapshot_id ?? null;
   return {
     schema_version: "1.0",
     artifact_version_id: version.id,
@@ -48,6 +56,7 @@ export async function buildArtifactExportManifest(
     content_hash: version.content_hash,
     constraint_snapshot_hash: version.constraint_snapshot_hash,
     brand_rule_set_version: brandRuleSetVersion,
+    identity_validation_snapshot_id: identityValidationSnapshotId,
     compiler: provenance.compiler ?? null,
     code_git_sha: provenance.code_git_sha,
     files: [...files]
