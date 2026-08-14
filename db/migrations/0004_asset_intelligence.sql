@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS asset_intelligence_index_versions (
   analyzer_version text NOT NULL CHECK (btrim(analyzer_version) <> ''),
   embedding_model_id text NOT NULL CHECK (btrim(embedding_model_id) <> ''),
   embedding_model_version text NOT NULL CHECK (btrim(embedding_model_version) <> ''),
+  embedding_preprocessor_version text NOT NULL CHECK (
+    btrim(embedding_preprocessor_version) <> ''
+  ),
   embedding_dimensions integer NOT NULL CHECK (embedding_dimensions > 0),
   embedding_space_id text NOT NULL CHECK (btrim(embedding_space_id) <> ''),
   registry_snapshot_id text NOT NULL CHECK (btrim(registry_snapshot_id) <> ''),
@@ -246,13 +249,18 @@ AS $$
     r.asset_id,
     r.asset_version,
     1 - (e.embedding <=> p_query_embedding) AS semantic_score
-  FROM asset_intelligence_analysis_records r
+  FROM asset_intelligence_index_versions i
+  JOIN asset_intelligence_analysis_records r
+    ON r.organization_id = i.organization_id
+   AND r.index_id = i.index_id
   JOIN asset_intelligence_embeddings e
     ON e.organization_id = r.organization_id
    AND e.analysis_id = r.analysis_id
    AND e.index_id = r.index_id
-  WHERE r.organization_id = p_organization_id
-    AND r.index_id = p_index_id
+  WHERE i.organization_id = p_organization_id
+    AND i.index_id = p_index_id
+    AND i.state = 'ACTIVE'
+    AND r.organization_id = p_organization_id
     AND r.state = 'READY'
     AND r.deleted_at IS NULL
     AND r.rights = ANY(p_allowed_rights)
@@ -260,7 +268,13 @@ AS $$
     AND (p_project_ids IS NULL OR r.project_id = ANY(p_project_ids))
     AND (p_brand_ids IS NULL OR r.brand_id = ANY(p_brand_ids))
     AND to_jsonb(p_permission_tags) @> r.permission_tags
+    AND e.embedding_space_id = i.embedding_space_id
+    AND e.embedding_model_id = i.embedding_model_id
+    AND e.embedding_model_version = i.embedding_model_version
+    AND e.preprocessor_version = i.embedding_preprocessor_version
+    AND e.embedding_dimensions = i.embedding_dimensions
     AND vector_dims(e.embedding) = vector_dims(p_query_embedding)
+    AND vector_dims(p_query_embedding) = i.embedding_dimensions
   ORDER BY e.embedding <=> p_query_embedding, r.asset_id
   LIMIT GREATEST(1, LEAST(p_limit, 200));
 $$;
