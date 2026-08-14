@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import datetime
 from typing import Any, AsyncIterator, Callable, Protocol
@@ -122,9 +123,13 @@ class PostgresMemoryRepositorySession:
             record.kind.value,
             record.semantic_key,
             record.content_hash,
-            record.content_structured,
+            json.dumps(record.content_structured, ensure_ascii=False, sort_keys=True),
             record.summary,
-            [_source_payload(ref) for ref in record.source_refs],
+            json.dumps(
+                [_source_payload(ref) for ref in record.source_refs],
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
             record.confidence,
             record.status.value,
             record.created_by_type.value,
@@ -140,7 +145,7 @@ class PostgresMemoryRepositorySession:
             record.embedding_version,
             len(record.embedding) if record.embedding is not None else None,
             _vector_literal(record.embedding),
-            record.metadata,
+            json.dumps(record.metadata, ensure_ascii=False, sort_keys=True, default=str),
             record.created_at,
             record.version,
         )
@@ -160,9 +165,13 @@ class PostgresMemoryRepositorySession:
             """,
             record.memory_id,
             record.content_hash,
-            record.content_structured,
+            json.dumps(record.content_structured, ensure_ascii=False, sort_keys=True),
             record.summary,
-            [_source_payload(ref) for ref in record.source_refs],
+            json.dumps(
+                [_source_payload(ref) for ref in record.source_refs],
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
             record.confidence,
             record.status.value,
             record.last_confirmed_at,
@@ -176,7 +185,7 @@ class PostgresMemoryRepositorySession:
             record.embedding_version,
             len(record.embedding) if record.embedding is not None else None,
             _vector_literal(record.embedding),
-            record.metadata,
+            json.dumps(record.metadata, ensure_ascii=False, sort_keys=True, default=str),
             expected_version,
         )
         if not result.endswith(" 1"):
@@ -202,9 +211,13 @@ class PostgresMemoryRepositorySession:
             candidate.kind.value,
             candidate.semantic_key,
             candidate.content_hash,
-            candidate.content_structured,
+            json.dumps(candidate.content_structured, ensure_ascii=False, sort_keys=True),
             candidate.summary,
-            [_source_payload(ref) for ref in candidate.source_refs],
+            json.dumps(
+                [_source_payload(ref) for ref in candidate.source_refs],
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
             candidate.confidence,
             candidate.created_by_type.value,
             candidate.created_by_id,
@@ -213,7 +226,7 @@ class PostgresMemoryRepositorySession:
             outcome,
             reason,
             candidate.expires_at,
-            candidate.metadata,
+            json.dumps(candidate.metadata, ensure_ascii=False, sort_keys=True, default=str),
         )
 
     async def soft_delete(self, memory_id: UUID, *, deleted_at: datetime, expected_version: int) -> MemoryRecord:
