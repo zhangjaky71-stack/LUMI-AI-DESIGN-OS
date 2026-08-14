@@ -45,6 +45,7 @@ export interface CanvasSceneNode {
   readonly locked: boolean;
   readonly local_matrix: Matrix2D;
   readonly world_matrix: Matrix2D;
+  readonly local_bounds: Rect;
   readonly world_bounds: Rect;
   readonly render_key: string;
   readonly asset_id?: string;
@@ -131,6 +132,7 @@ export function projectDesignDocument(document: DesignDocument): CanvasSceneSnap
     const local = transformToMatrix(node.transform ?? {});
     const world = multiplyMatrix(parentWorld, local);
     const dimensions = safeDimensions(node);
+    const localBounds: Rect = { x: 0, y: 0, width: dimensions.width, height: dimensions.height };
     const sceneNode: CanvasSceneNode = {
       id: node.id,
       kind: node.kind,
@@ -142,6 +144,7 @@ export function projectDesignDocument(document: DesignDocument): CanvasSceneSnap
       locked: node.locked ?? false,
       local_matrix: local,
       world_matrix: world,
+      local_bounds: localBounds,
       world_bounds: transformedRectBounds(world, dimensions.width, dimensions.height),
       render_key: renderKey(node),
       ...(typeof node.asset_id === "string" ? { asset_id: node.asset_id } : {}),
