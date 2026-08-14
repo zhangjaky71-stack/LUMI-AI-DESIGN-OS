@@ -1,3 +1,4 @@
+from .artifact_adapter import ArtifactHistoryVideoAdapter
 from .media_sandbox import FfmpegArgvCompiler, FfmpegInvocation, SandboxLimits, TypedFfmpegSandbox
 from .model import (
     AudioTrackSpec,
@@ -20,12 +21,14 @@ from .model import (
     VideoTaskSpec,
     VideoTimeline,
 )
-from .model_gateway_adapter import ModelGatewayVideoAdapter
+from .model_gateway_adapter import ModelGatewayVideoAdapter, VideoFeatureRegistry
+from .pipeline import VideoGenerationPipeline
 from .repository import InMemoryVideoRepository, VideoOperationConflict
-from .storyboard import compile_storyboard, shot_operation_id
+from .storyboard import compile_storyboard, retry_shot_operation_id, shot_operation_id
 from .validation import CompositeVideoValidator
 
 __all__ = [
+    "ArtifactHistoryVideoAdapter",
     "AudioTrackSpec",
     "CompiledShot",
     "CompiledStoryboard",
@@ -48,11 +51,14 @@ __all__ = [
     "SourceImageRef",
     "StoredVideoClip",
     "TypedFfmpegSandbox",
+    "VideoFeatureRegistry",
+    "VideoGenerationPipeline",
     "VideoJob",
     "VideoOperationConflict",
     "VideoProbeResult",
     "VideoTaskSpec",
     "VideoTimeline",
     "compile_storyboard",
+    "retry_shot_operation_id",
     "shot_operation_id",
 ]
