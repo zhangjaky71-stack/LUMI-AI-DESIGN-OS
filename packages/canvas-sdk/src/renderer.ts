@@ -1,5 +1,6 @@
 import type { CanvasNodeDiagnostic, CanvasSceneNode, CanvasSceneSnapshot } from "./ir-scene";
 import type { Matrix2D } from "./matrix";
+import type { CameraState } from "./types";
 
 export interface RendererSyncResult {
   readonly created: number;
@@ -11,6 +12,7 @@ export interface RendererSyncResult {
 
 export interface CanvasRendererAdapter {
   resize(widthCssPx: number, heightCssPx: number, devicePixelRatio: number): void;
+  setCamera(camera: CameraState): void;
   sync(scene: CanvasSceneSnapshot, visibleIds: ReadonlySet<string>): RendererSyncResult;
   destroy(): void;
 }
@@ -29,6 +31,7 @@ export interface PixiV8Bindings {
   createVideoPoster(id: string, assetId: string | null): PixiDisplayHandle;
   createPlaceholder(id: string, diagnostic: string): PixiDisplayHandle;
   setLocalMatrix(handle: PixiDisplayHandle, matrix: Matrix2D): void;
+  setCamera(camera: CameraState): void;
   setVisible(handle: PixiDisplayHandle, visible: boolean): void;
   setText(handle: PixiDisplayHandle, content: string): void;
   setAsset(handle: PixiDisplayHandle, assetId: string | null): void;
@@ -81,6 +84,10 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
 
   resize(widthCssPx: number, heightCssPx: number, devicePixelRatio: number): void {
     this.#bindings.resize(widthCssPx, heightCssPx, devicePixelRatio);
+  }
+
+  setCamera(camera: CameraState): void {
+    this.#bindings.setCamera(camera);
   }
 
   sync(scene: CanvasSceneSnapshot, visibleIds: ReadonlySet<string>): RendererSyncResult {
