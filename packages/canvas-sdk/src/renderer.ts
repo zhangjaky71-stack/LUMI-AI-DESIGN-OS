@@ -17,7 +17,6 @@ export interface CanvasRendererAdapter {
   destroy(): void;
 }
 
-/** PixiJS objects live only behind this adapter and never enter Design IR. */
 export interface PixiDisplayHandle {
   readonly id: string;
 }
@@ -32,6 +31,8 @@ export interface PixiV8Bindings {
   createPlaceholder(id: string, diagnostic: string): PixiDisplayHandle;
   setLocalMatrix(handle: PixiDisplayHandle, matrix: Matrix2D): void;
   setCamera(camera: CameraState): void;
+  redrawShape(handle: PixiDisplayHandle, node: CanvasSceneNode): void;
+  setDisplaySize(handle: PixiDisplayHandle, width: number, height: number): void;
   setVisible(handle: PixiDisplayHandle, visible: boolean): void;
   setText(handle: PixiDisplayHandle, content: string): void;
   setAsset(handle: PixiDisplayHandle, assetId: string | null): void;
@@ -47,6 +48,8 @@ interface RenderEntry {
   renderKey: string;
   parentId: string | null;
 }
+
+const SHAPE_KINDS = new Set(["FRAME", "MASK", "SHAPE", "VECTOR_PATH", "GUIDE"]);
 
 function createDisplay(bindings: PixiV8Bindings, node: CanvasSceneNode): PixiDisplayHandle {
   switch (node.kind) {
@@ -96,7 +99,7 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
     let removed = 0;
     const live = new Set(scene.paint_order);
 
-    for (const [id, entry] of this.#entries) {
+    for (const [id, entry] of [...this.#entries].reverse()) {
       if (live.has(id)) continue;
       const parent = entry.parentId
         ? this.#entries.get(entry.parentId)?.handle
@@ -132,9 +135,15 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
       }
       if (entry.renderKey !== node.render_key) {
         this.#bindings.setLocalMatrix(entry.handle, node.local_matrix);
+        if (SHAPE_KINDS.has(node.kind)) this.#bindings.redrawShape(entry.handle, node);
         if (node.kind === "TEXT") this.#bindings.setText(entry.handle, node.content ?? "");
         if (["IMAGE", "VIDEO"].includes(node.kind)) {
           this.#bindings.setAsset(entry.handle, node.asset_id ?? null);
+          this.#bindings.setDisplaySize(
+            entry.handle,
+            node.local_bounds.width,
+            node.local_bounds.height,
+          );
         }
         entry.renderKey = node.render_key;
         updated += 1;
@@ -154,7 +163,9 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
   }
 
   destroy(): void {
-    for (const entry of this.#entries.values()) this.#bindings.destroyDisplay(entry.handle);
+    for (const entry of [...this.#entries.values()].reverse()) {
+      this.#bindings.destroyDisplay(entry.handle);
+    }
     this.#entries.clear();
     this.#bindings.destroy();
   }
