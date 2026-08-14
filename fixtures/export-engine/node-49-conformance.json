@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "node": "NODE-49",
+  "formats": ["PNG", "JPEG", "WEBP", "SVG", "PDF", "ZIP", "LUMI_PACKAGE"],
+  "job_statuses": ["PENDING", "RENDERING", "PACKAGING", "VALIDATING", "READY", "FAILED", "EXPIRED"],
+  "resize_modes": ["SCALE", "CROP"],
+  "verified_color_profiles": ["SRGB"],
+  "fail_closed_profiles": ["DISPLAY_P3", "CMYK"],
+  "unsupported_claims": ["PSD", "DESIGN_ADAPTATION_IN_EXPORT"],
+  "case_matrix": [
+    { "category": "exact_source", "count": 8 },
+    { "category": "raster_formats", "count": 9 },
+    { "category": "svg_security", "count": 8 },
+    { "category": "pdf_validation", "count": 6 },
+    { "category": "zip_package_security", "count": 10 },
+    { "category": "artifact_lineage", "count": 5 },
+    { "category": "download_auth_retention", "count": 6 },
+    { "category": "idempotency_checksum", "count": 6 },
+    { "category": "print_fail_closed", "count": 4 }
+  ],
+  "synthetic_case_count": 62,
+  "notes": [
+    "Chromium PNG/JPEG/WebP smoke is executable evidence, not synthetic MIME relabeling.",
+    "CMYK, Display P3, bleed/crop marks and PSD are fail-closed until dedicated verified capability exists.",
+    "Export never performs design adaptation; layout adaptation must create a separate DesignVersion first."
+  ]
+}
