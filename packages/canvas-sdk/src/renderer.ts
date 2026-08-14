@@ -1,5 +1,5 @@
-import type { Matrix2D } from "./matrix";
 import type { CanvasNodeDiagnostic, CanvasSceneNode, CanvasSceneSnapshot } from "./ir-scene";
+import type { Matrix2D } from "./matrix";
 
 export interface RendererSyncResult {
   readonly created: number;
@@ -15,10 +15,7 @@ export interface CanvasRendererAdapter {
   destroy(): void;
 }
 
-/**
- * Structural PixiJS v8 bridge. The domain package intentionally does not import or persist Pixi types.
- * The web application supplies these bindings from its PixiJS runtime.
- */
+/** PixiJS objects live only behind this adapter and never enter Design IR. */
 export interface PixiDisplayHandle {
   readonly id: string;
 }
@@ -51,22 +48,22 @@ interface RenderEntry {
 function createDisplay(bindings: PixiV8Bindings, node: CanvasSceneNode): PixiDisplayHandle {
   switch (node.kind) {
     case "DOCUMENT_ROOT":
-    case "FRAME":
     case "GROUP":
-    case "MASK":
     case "COMPONENT":
     case "INSTANCE":
       return bindings.createContainer(node.id);
+    case "FRAME":
+    case "MASK":
+    case "SHAPE":
+    case "VECTOR_PATH":
+    case "GUIDE":
+      return bindings.createShape(node.id, node);
     case "TEXT":
       return bindings.createText(node.id, node.content ?? "");
     case "IMAGE":
       return node.asset_id
         ? bindings.createImage(node.id, node.asset_id)
         : bindings.createPlaceholder(node.id, "missing-image-asset");
-    case "SHAPE":
-    case "VECTOR_PATH":
-    case "GUIDE":
-      return bindings.createShape(node.id, node);
     case "VIDEO":
       return bindings.createVideoPoster(node.id, node.asset_id ?? null);
     default:
@@ -94,7 +91,9 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
 
     for (const [id, entry] of this.#entries) {
       if (live.has(id)) continue;
-      const parent = entry.parentId ? this.#entries.get(entry.parentId)?.handle : this.#bindings.stage;
+      const parent = entry.parentId
+        ? this.#entries.get(entry.parentId)?.handle
+        : this.#bindings.stage;
       if (parent) this.#bindings.removeChild(parent, entry.handle);
       this.#bindings.destroyDisplay(entry.handle);
       this.#entries.delete(id);
@@ -111,13 +110,16 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
         this.#entries.set(id, entry);
         created += 1;
       }
-      const nextParentId = node.parent_id && scene.nodes.has(node.parent_id) ? node.parent_id : null;
+      const nextParentId =
+        node.parent_id && scene.nodes.has(node.parent_id) ? node.parent_id : null;
       if (entry.parentId !== nextParentId) {
         const previousParent = entry.parentId
           ? this.#entries.get(entry.parentId)?.handle
           : this.#bindings.stage;
         if (previousParent) this.#bindings.removeChild(previousParent, entry.handle);
-        const nextParent = nextParentId ? this.#entries.get(nextParentId)?.handle : this.#bindings.stage;
+        const nextParent = nextParentId
+          ? this.#entries.get(nextParentId)?.handle
+          : this.#bindings.stage;
         if (nextParent) this.#bindings.addChild(nextParent, entry.handle);
         entry.parentId = nextParentId;
       }
@@ -130,7 +132,8 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
         entry.renderKey = node.render_key;
         updated += 1;
       }
-      const visible = node.visible && (node.kind === "DOCUMENT_ROOT" || visibleIds.has(id));
+      const visible =
+        node.visible && (node.kind === "DOCUMENT_ROOT" || visibleIds.has(id));
       this.#bindings.setVisible(entry.handle, visible);
     }
 
