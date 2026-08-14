@@ -10,6 +10,18 @@ CREATE TABLE IF NOT EXISTS quality_profiles (
   PRIMARY KEY (profile_id, version)
 );
 
+-- Built-in profiles are immutable by (profile_id, version). Detailed dimension
+-- thresholds/weights are also copied into every QualityResult dimension row, so a
+-- historical decision remains auditable even after a future profile version ships.
+INSERT INTO quality_profiles(profile_id, version, name, definition, status) VALUES
+  ('quality:exploration', '1.0.0', 'exploration', '{"runtime_ref":"@lumi/quality-engine/profiles","profile_version":"1.0.0"}'::jsonb, 'PUBLISHED'),
+  ('quality:production-web', '1.0.0', 'production-web', '{"runtime_ref":"@lumi/quality-engine/profiles","profile_version":"1.0.0"}'::jsonb, 'PUBLISHED'),
+  ('quality:brand-strict', '1.0.0', 'brand-strict', '{"runtime_ref":"@lumi/quality-engine/profiles","profile_version":"1.0.0"}'::jsonb, 'PUBLISHED'),
+  ('quality:product-strict', '1.0.0', 'product-strict', '{"runtime_ref":"@lumi/quality-engine/profiles","profile_version":"1.0.0"}'::jsonb, 'PUBLISHED'),
+  ('quality:print', '1.0.0', 'print', '{"runtime_ref":"@lumi/quality-engine/profiles","profile_version":"1.0.0"}'::jsonb, 'PUBLISHED'),
+  ('quality:social-fast', '1.0.0', 'social-fast', '{"runtime_ref":"@lumi/quality-engine/profiles","profile_version":"1.0.0"}'::jsonb, 'PUBLISHED')
+ON CONFLICT (profile_id, version) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS quality_grader_calibrations (
   grader_id text NOT NULL,
   grader_version text NOT NULL,
