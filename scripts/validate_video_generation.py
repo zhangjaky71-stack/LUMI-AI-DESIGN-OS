@@ -54,6 +54,7 @@ def main() -> None:
     require("WAITING_EXTERNAL" in model and "resume(" in pipeline, "long-running external wait state missing")
     require("await self.gateway.poll" in pipeline, "provider resume poll missing")
     require("asyncio.sleep" not in pipeline and "time.sleep" not in pipeline, "pipeline must never hold worker by sleeping")
+    require("VIDEO_PROVIDER_ASYNC_SUBMIT_REQUIRED" in gateway and "VIDEO_PROVIDER_JOB_ID_REQUIRED" in gateway, "production video provider async submit contract missing")
     require("quality_retry_limit" in model and "retry_shot_operation_id" in pipeline, "quality retry contract missing")
     require("excluded_provider_keys" in pipeline and "excluded_provider_keys" in gateway, "alternate-provider retry exclusion missing")
     require("allowed_provider_keys" in gateway and "VideoFeatureRegistry" in gateway, "provider feature allowlist missing")
