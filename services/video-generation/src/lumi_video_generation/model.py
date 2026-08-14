@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from decimal import Decimal
 from types import MappingProxyType
 from typing import Any, Literal, Mapping
@@ -32,14 +32,36 @@ def _decimal_text(value: Decimal) -> str:
     return format(value, "f")
 
 
+def _jsonable(value: object) -> object:
+    if is_dataclass(value) and not isinstance(value, type):
+        return _jsonable(asdict(value))
+    if isinstance(value, Mapping):
+        return {str(key): _jsonable(item) for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))}
+    if isinstance(value, (tuple, list)):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, Decimal):
+        return _decimal_text(value)
+    return value
+
+
 def _canonical_hash(value: object) -> str:
-    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode()
+    encoded = json.dumps(_jsonable(value), ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
 
 
 def _require_sha256(value: str, label: str) -> None:
     if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
         raise ValueError(f"{label}_INVALID")
+
+
+def _validate_aspect_ratio(value: str, width: int, height: int) -> None:
+    try:
+        left_text, right_text = value.split(":", 1)
+        left, right = int(left_text), int(right_text)
+    except (ValueError, AttributeError) as exc:
+        raise ValueError("VIDEO_ASPECT_RATIO_INVALID") from exc
+    if left <= 0 or right <= 0 or width * right != height * left:
+        raise ValueError("VIDEO_ASPECT_RATIO_DIMENSION_MISMATCH")
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +161,7 @@ class VideoTaskSpec:
     agent_run_id: str | None = None
     recipe_version: str | None = None
     allow_optional_shot_drop: bool = False
+    quality_retry_limit: int = 1
     negative_prompt: str | None = None
     seed: int | None = None
     metadata: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
@@ -150,6 +173,9 @@ class VideoTaskSpec:
             raise ValueError("VIDEO_BUDGET_INVALID")
         if self.width <= 0 or self.height <= 0 or self.fps <= 0:
             raise ValueError("VIDEO_OUTPUT_GEOMETRY_INVALID")
+        _validate_aspect_ratio(self.aspect_ratio, self.width, self.height)
+        if not 0 <= self.quality_retry_limit <= 2:
+            raise ValueError("VIDEO_QUALITY_RETRY_LIMIT_INVALID")
         if self.mode == "IMAGE_TO_VIDEO" and not self.source_images:
             raise ValueError("VIDEO_IMAGE_TO_VIDEO_SOURCE_REQUIRED")
         if self.mode == "STORYBOARD_MULTI_SHOT" and not self.shots:
@@ -169,17 +195,17 @@ class VideoTaskSpec:
             "task_id": self.task_id,
             "mode": self.mode,
             "prompt": self.prompt,
-            "duration_seconds": _decimal_text(self.duration_seconds),
+            "duration_seconds": self.duration_seconds,
             "aspect_ratio": self.aspect_ratio,
             "width": self.width,
             "height": self.height,
             "fps": self.fps,
-            "budget_limit_usd": _decimal_text(self.budget_limit_usd),
+            "budget_limit_usd": self.budget_limit_usd,
             "source_images": [(item.asset_id, item.asset_version, item.checksum_sha256) for item in self.source_images],
             "shots": [
                 {
                     "id": shot.shot_id,
-                    "duration": _decimal_text(shot.duration_seconds),
+                    "duration": shot.duration_seconds,
                     "prompt": shot.prompt,
                     "camera": shot.camera_motion,
                     "action": shot.subject_action,
@@ -190,10 +216,11 @@ class VideoTaskSpec:
                 }
                 for shot in self.shots
             ],
-            "audio": [(item.durable_ref, _decimal_text(item.offset_seconds), _decimal_text(item.gain_db)) for item in self.audio_tracks],
+            "audio": [(item.durable_ref, item.offset_seconds, item.gain_db) for item in self.audio_tracks],
             "brand": self.brand_rule_set_version,
             "identity": [(item.identity_id, item.reference_set_version, item.severity) for item in self.identity_requirements],
             "allow_optional_drop": self.allow_optional_shot_drop,
+            "quality_retry_limit": self.quality_retry_limit,
             "negative_prompt": self.negative_prompt,
             "seed": self.seed,
         })
@@ -263,6 +290,13 @@ class VideoProbeResult:
     tail_frame_ref: str | None
     has_audio: bool = False
 
+    def __post_init__(self) -> None:
+        for value in (self.fps, self.duration_seconds):
+            if isinstance(value, float) or not value.is_finite() or value <= 0:
+                raise ValueError("VIDEO_PROBE_DECIMAL_INVALID")
+        if self.width <= 0 or self.height <= 0:
+            raise ValueError("VIDEO_PROBE_GEOMETRY_INVALID")
+
 
 @dataclass(frozen=True, slots=True)
 class StoredVideoClip:
@@ -315,10 +349,13 @@ class ShotRuntime:
     ordinal: int
     paid_operation_id: str
     status: ShotStatus = "QUEUED"
+    attempt_count: int = 0
+    excluded_provider_keys: tuple[str, ...] = ()
     provider: str | None = None
     model: str | None = None
     provider_request_id: str | None = None
     clip_artifact_version_id: str | None = None
+    attempt_artifact_version_ids: tuple[str, ...] = ()
     clip: StoredVideoClip | None = None
     validation: ShotValidationReport | None = None
     error_code: str | None = None
@@ -346,6 +383,12 @@ class TimelineClip:
     durable_ref: str
     duration_seconds: Decimal
 
+    def __post_init__(self) -> None:
+        if not self.durable_ref or "://" in self.durable_ref:
+            raise ValueError("VIDEO_TIMELINE_CLIP_REF_INVALID")
+        if isinstance(self.duration_seconds, float) or not self.duration_seconds.is_finite() or self.duration_seconds <= 0:
+            raise ValueError("VIDEO_TIMELINE_DURATION_INVALID")
+
 
 @dataclass(frozen=True, slots=True)
 class TimelineOverlay:
@@ -355,12 +398,22 @@ class TimelineOverlay:
     x: int
     y: int
 
+    def __post_init__(self) -> None:
+        if not self.durable_ref or "://" in self.durable_ref:
+            raise ValueError("VIDEO_TIMELINE_OVERLAY_REF_INVALID")
+        if self.start_seconds < 0 or self.end_seconds <= self.start_seconds:
+            raise ValueError("VIDEO_TIMELINE_OVERLAY_RANGE_INVALID")
+
 
 @dataclass(frozen=True, slots=True)
 class TimelineAudioTrack:
     durable_ref: str
     offset_seconds: Decimal
     gain_db: Decimal
+
+    def __post_init__(self) -> None:
+        if not self.durable_ref or "://" in self.durable_ref:
+            raise ValueError("VIDEO_TIMELINE_AUDIO_REF_INVALID")
 
 
 @dataclass(frozen=True, slots=True)
@@ -397,6 +450,14 @@ class RenderedVideo:
     thumbnail_checksum_sha256: str | None = None
     subtitle_storage_key: str | None = None
     subtitle_checksum_sha256: str | None = None
+
+    def __post_init__(self) -> None:
+        for key in (self.thumbnail_storage_key, self.subtitle_storage_key):
+            if key is not None and (not key or "://" in key):
+                raise ValueError("VIDEO_AUX_STORAGE_KEY_INVALID")
+        for checksum in (self.thumbnail_checksum_sha256, self.subtitle_checksum_sha256):
+            if checksum is not None:
+                _require_sha256(checksum, "VIDEO_AUX_CHECKSUM")
 
 
 @dataclass(frozen=True, slots=True)
