@@ -35,22 +35,32 @@ export class DocumentCompilerStyleResolver implements CompilerStyleResolver {
   resolveStyle(
     document: DesignDocument,
     styleRefs: readonly string[],
-  ): { readonly style: ResolvedCompilerStyle; readonly missing_refs: readonly string[] } {
+  ): {
+    readonly style: ResolvedCompilerStyle;
+    readonly missing_refs: readonly string[];
+    readonly versions: Readonly<Record<string, string>>;
+  } {
     const style: Record<string, JsonValue> = {};
     const missing: string[] = [];
+    const versions: Record<string, string> = {};
     for (const ref of styleRefs) {
       const record = asRecord(document.resources[ref]);
       if (!record) {
         missing.push(ref);
         continue;
       }
+      versions[ref] = stringValue(record.version) ?? "unversioned";
       const token = asRecord(record.value) ?? asRecord(record.style) ?? record;
       for (const [key, value] of Object.entries(token)) {
-        if (["uri", "preview_uri", "full_uri", "thumbnail_uri"].includes(key)) continue;
+        if (["uri", "preview_uri", "full_uri", "thumbnail_uri", "version"].includes(key)) continue;
         style[key] = structuredClone(value);
       }
     }
-    return { style, missing_refs: missing };
+    return {
+      style,
+      missing_refs: missing,
+      versions: Object.fromEntries(Object.entries(versions).sort(([a], [b]) => a.localeCompare(b))),
+    };
   }
 }
 
