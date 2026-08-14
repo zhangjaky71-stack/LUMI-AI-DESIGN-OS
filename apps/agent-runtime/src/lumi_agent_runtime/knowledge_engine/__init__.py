@@ -15,6 +15,11 @@ from .contracts import (
     KnowledgeStatus,
     KnowledgeTrust,
 )
+from .extraction import (
+    KnowledgeExtractionPort,
+    KnowledgeExtractionResult,
+    extract_native_then_ocr,
+)
 from .indexer import KnowledgeEmbeddingPort, KnowledgeIndexer
 from .postgres_repository import (
     PostgresKnowledgeRepository,
@@ -32,6 +37,8 @@ __all__ = [
     "KnowledgeContextSource",
     "KnowledgeDocument",
     "KnowledgeEmbeddingPort",
+    "KnowledgeExtractionPort",
+    "KnowledgeExtractionResult",
     "KnowledgeIndexRequest",
     "KnowledgeIndexer",
     "KnowledgePermissionScope",
@@ -50,4 +57,5 @@ __all__ = [
     "TransactionalKnowledgeService",
     "chunk_document",
     "deterministic_document_id",
+    "extract_native_then_ocr",
 ]
