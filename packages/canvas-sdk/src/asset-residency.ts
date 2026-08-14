@@ -26,8 +26,9 @@ function key(assetId: string, tier: AssetTier): string {
 export class CanvasAssetResidency<T> implements CanvasAssetResidencyPort {
   readonly #manager: CanvasResourceManager<T>;
   readonly #desiredByNode = new Map<string, DesiredAsset>();
+  readonly #requestTokenByNode = new Map<string, number>();
   readonly #loaded = new Map<string, T>();
-  #generation = 0;
+  #nextRequestToken = 0;
   #invalidate: (() => void) | null = null;
 
   constructor(manager: CanvasResourceManager<T>) {
@@ -39,8 +40,6 @@ export class CanvasAssetResidency<T> implements CanvasAssetResidencyPort {
   }
 
   update(scene: CanvasSceneSnapshot, visibleIds: ReadonlySet<string>, zoom: number): void {
-    this.#generation += 1;
-    const generation = this.#generation;
     const next = new Map<string, DesiredAsset>();
     const tier = tierForZoom(zoom);
 
@@ -53,6 +52,7 @@ export class CanvasAssetResidency<T> implements CanvasAssetResidencyPort {
     for (const [nodeId, current] of this.#desiredByNode) {
       const wanted = next.get(nodeId);
       if (wanted && wanted.assetId === current.assetId && wanted.tier === current.tier) continue;
+      this.#requestTokenByNode.delete(nodeId);
       this.#manager.release(current.assetId, current.tier);
       this.#desiredByNode.delete(nodeId);
     }
@@ -61,10 +61,14 @@ export class CanvasAssetResidency<T> implements CanvasAssetResidencyPort {
       const current = this.#desiredByNode.get(nodeId);
       if (current && current.assetId === wanted.assetId && current.tier === wanted.tier) continue;
       this.#desiredByNode.set(nodeId, wanted);
+      this.#nextRequestToken += 1;
+      const requestToken = this.#nextRequestToken;
+      this.#requestTokenByNode.set(nodeId, requestToken);
       void this.#manager.acquire(wanted.assetId, wanted.tier).then((resource) => {
         const stillWanted = this.#desiredByNode.get(nodeId);
+        const stillCurrent = this.#requestTokenByNode.get(nodeId) === requestToken;
         if (
-          generation > this.#generation ||
+          !stillCurrent ||
           !stillWanted ||
           stillWanted.assetId !== wanted.assetId ||
           stillWanted.tier !== wanted.tier
@@ -92,6 +96,7 @@ export class CanvasAssetResidency<T> implements CanvasAssetResidencyPort {
       this.#manager.release(desired.assetId, desired.tier);
     }
     this.#desiredByNode.clear();
+    this.#requestTokenByNode.clear();
     this.#loaded.clear();
     this.#manager.destroy();
     this.#invalidate = null;
