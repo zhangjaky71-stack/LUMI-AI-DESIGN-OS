@@ -96,6 +96,12 @@ def main() -> int:
         '"aggregate"',
         '"determinism"',
     )
+    require(
+        "scripts/run_context_eval_report.py",
+        "write_report",
+        "compare_to_baseline",
+        "artifacts/context-eval/memory-retrieval-v1.json",
+    )
     long_eval = require(
         "scripts/integration_context_eval.py",
         "required-source-recall",
