@@ -1,4 +1,9 @@
-import { getDocumentVersion, type DesignDocument, type DesignNode, type DesignOperation } from "../../design-ir/src/index";
+import {
+  getDocumentVersion,
+  type DesignDocument,
+  type DesignNode,
+  type DesignOperation,
+} from "../../design-ir/src/index";
 
 export interface CanvasClipboardFragment {
   readonly format: "lumi-design-ir-fragment-v1";
@@ -9,7 +14,11 @@ export interface CanvasClipboardFragment {
 }
 
 export interface ClipboardAssetPolicy {
-  mapAssetId(assetId: string, sourceDocumentId: string, targetDocumentId: string): string | null;
+  mapAssetId(
+    assetId: string,
+    sourceDocumentId: string,
+    targetDocumentId: string,
+  ): string | null;
 }
 
 function descendants(document: DesignDocument, id: string, result: Set<string>): void {
@@ -23,7 +32,10 @@ function descendants(document: DesignDocument, id: string, result: Set<string>):
 function sanitizeNode(node: DesignNode): DesignNode {
   const metadata = Object.fromEntries(
     Object.entries(node.metadata ?? {}).filter(
-      ([key]) => !key.startsWith("runtime:") && !key.startsWith("pixi:") && !key.startsWith("ephemeral:"),
+      ([key]) =>
+        !key.startsWith("runtime:") &&
+        !key.startsWith("pixi:") &&
+        !key.startsWith("ephemeral:"),
     ),
   );
   return { ...structuredClone(node), metadata };
@@ -82,7 +94,9 @@ export function buildPasteOperations(
   assetPolicy: ClipboardAssetPolicy,
   offset = 24,
 ): DesignOperation[] {
-  if (!targetDocument.nodes[parentId]) throw new Error(`paste parent not found: ${parentId}`);
+  if (!targetDocument.nodes[parentId]) {
+    throw new Error(`paste parent not found: ${parentId}`);
+  }
   const version = getDocumentVersion(targetDocument);
   const idMap = new Map<string, string>();
   const taken = new Set(Object.keys(targetDocument.nodes));
@@ -103,7 +117,11 @@ export function buildPasteOperations(
     let current = fragment.nodes[id];
     let value = 0;
     const seen = new Set<string>();
-    while (current?.parent_id && fragment.nodes[current.parent_id] && !seen.has(current.parent_id)) {
+    while (
+      current?.parent_id &&
+      fragment.nodes[current.parent_id] &&
+      !seen.has(current.parent_id)
+    ) {
       seen.add(current.parent_id);
       value += 1;
       current = fragment.nodes[current.parent_id];
@@ -111,7 +129,9 @@ export function buildPasteOperations(
     return value;
   };
 
-  const ordered = Object.keys(fragment.nodes).sort((left, right) => depth(left) - depth(right) || left.localeCompare(right));
+  const ordered = Object.keys(fragment.nodes).sort(
+    (left, right) => depth(left) - depth(right) || left.localeCompare(right),
+  );
   const operations: DesignOperation[] = [];
   let index = 0;
   for (const sourceId of ordered) {
@@ -124,7 +144,11 @@ export function buildPasteOperations(
     const nextParentId = isFragmentRoot ? parentId : (mappedParent ?? parentId);
     const mappedAsset =
       typeof source.asset_id === "string"
-        ? assetPolicy.mapAssetId(source.asset_id, fragment.source_document_id, targetDocument.document_id)
+        ? assetPolicy.mapAssetId(
+            source.asset_id,
+            fragment.source_document_id,
+            targetDocument.document_id,
+          )
         : null;
     const transform = {
       ...(source.transform ?? {}),
@@ -139,12 +163,20 @@ export function buildPasteOperations(
       ...structuredClone(source),
       id: nextId,
       parent_id: nextParentId,
-      children: source.children.map((childId) => idMap.get(childId)).filter((id): id is string => Boolean(id)),
+      children: source.children
+        .map((childId) => idMap.get(childId))
+        .filter((id): id is string => Boolean(id)),
       transform,
       ...(typeof source.asset_id === "string"
         ? mappedAsset
           ? { asset_id: mappedAsset }
-          : { asset_id: source.asset_id, metadata: { ...(source.metadata ?? {}), "runtime:asset_access_revalidation_required": true } }
+          : {
+              asset_id: source.asset_id,
+              metadata: {
+                ...(source.metadata ?? {}),
+                asset_access_revalidation_required: true,
+              },
+            }
         : {}),
     };
     operations.push({
