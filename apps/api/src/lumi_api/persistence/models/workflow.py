@@ -12,8 +12,10 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    SmallInteger,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -77,10 +79,44 @@ class AgentRunStep(IdMixin, CreatedAtMixin, Base):
 class Task(IdMixin, MutableTimestampMixin, Base):
     __tablename__ = "tasks"
     __table_args__ = (
+        CheckConstraint("state_version > 0", name="state_version"),
+        CheckConstraint(
+            "progress_total > 0 AND progress_current >= 0 AND progress_current <= progress_total",
+            name="progress",
+        ),
+        CheckConstraint("dynamic_depth >= 0 AND dynamic_depth <= 4", name="dynamic_depth"),
+        CheckConstraint(
+            "dynamic_child_limit >= 0 AND dynamic_child_limit <= 32",
+            name="dynamic_child_limit",
+        ),
+        CheckConstraint(
+            "concurrency_limit IS NULL OR (concurrency_limit >= 1 AND concurrency_limit <= 32)",
+            name="concurrency_limit",
+        ),
+        CheckConstraint(
+            "budget_limit_usd IS NULL OR budget_limit_usd > 0",
+            name="budget_limit_usd",
+        ),
         Index("ix_tasks_org_project", "organization_id", "project_id"),
         Index("ix_tasks_project_status", "project_id", "status"),
         Index("ix_tasks_agent_run_created", "agent_run_id", "created_at"),
         Index("ix_tasks_schedule", "status", "priority", "created_at"),
+        Index(
+            "uq_tasks_graph_task_key",
+            "task_graph_id",
+            "task_key",
+            unique=True,
+            postgresql_where=text("task_graph_id IS NOT NULL AND task_key IS NOT NULL"),
+        ),
+        Index(
+            "ix_tasks_ready_claim",
+            "task_graph_id",
+            "status",
+            "retry_not_before",
+            "priority",
+        ),
+        Index("ix_tasks_lease_reap", "status", "lease_expires_at"),
+        Index("ix_tasks_concurrency_group", "task_graph_id", "concurrency_group", "status"),
     )
 
     organization_id: Mapped[UUID] = mapped_column(
@@ -103,17 +139,45 @@ class Task(IdMixin, MutableTimestampMixin, Base):
         ForeignKey("tasks.id", ondelete="SET NULL"),
         nullable=True,
     )
+    task_graph_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("task_graph_instances.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    recipe_step_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    task_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     type: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     owner_agent_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    owner_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     input_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     output_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    output_schema: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    condition_expression: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     budget_reserved: Mapped[Decimal] = mapped_column(
         Numeric(20, 8), nullable=False, default=Decimal("0")
     )
+    budget_limit_usd: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    state_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    lease_owner: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retry_not_before: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    wait_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    external_ref: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    cancellation_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    progress_current: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    progress_total: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    dynamic_depth: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    dynamic_child_limit: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    concurrency_group: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    concurrency_limit: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
