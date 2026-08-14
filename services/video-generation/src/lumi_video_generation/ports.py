@@ -32,8 +32,24 @@ class VideoRepositoryPort(Protocol):
 
 
 class VideoGatewayPort(Protocol):
-    async def estimate(self, *, spec: VideoTaskSpec, shot: CompiledShot, continuity_refs: tuple[str, ...]) -> GatewayEstimate: ...
-    async def submit(self, *, spec: VideoTaskSpec, shot: CompiledShot, continuity_refs: tuple[str, ...]) -> GatewayVideoResult: ...
+    async def estimate(
+        self,
+        *,
+        spec: VideoTaskSpec,
+        shot: CompiledShot,
+        continuity_refs: tuple[str, ...],
+        excluded_provider_keys: tuple[str, ...] = (),
+    ) -> GatewayEstimate: ...
+
+    async def submit(
+        self,
+        *,
+        spec: VideoTaskSpec,
+        shot: CompiledShot,
+        continuity_refs: tuple[str, ...],
+        excluded_provider_keys: tuple[str, ...] = (),
+    ) -> GatewayVideoResult: ...
+
     async def poll(self, *, pending: ProviderJobRecord) -> GatewayVideoResult: ...
     async def cancel(self, *, pending: ProviderJobRecord) -> GatewayVideoResult: ...
 
