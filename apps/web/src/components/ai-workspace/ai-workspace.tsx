@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShell } from "@/components/app-shell/shell-context";
+import { InfiniteCanvasProduct } from "@/components/infinite-canvas/infinite-canvas";
 import { applyWorkspaceEvent, isApprovalActionable } from "@/lib/ai-workspace/contracts";
 import { getAIWorkspaceGateway } from "@/lib/ai-workspace/workspace-gateway";
 import type {
@@ -12,6 +13,11 @@ import type {
   WorkspaceApproval,
   WorkspaceReducerState,
 } from "@/lib/ai-workspace/types";
+import type {
+  CanvasSelectionContext,
+  CanvasSyncState,
+  InfiniteCanvasBootstrap,
+} from "@/lib/infinite-canvas/types";
 import styles from "./ai-workspace.module.css";
 
 const RUN_LABEL: Readonly<Record<string, string>> = {
@@ -38,7 +44,12 @@ function money(microusd: string | null): string | null {
 export function AIWorkspace({
   projectId,
   bootstrap,
-}: Readonly<{ projectId: string; bootstrap: AIWorkspaceBootstrap }>) {
+  canvasBootstrap,
+}: Readonly<{
+  projectId: string;
+  bootstrap: AIWorkspaceBootstrap;
+  canvasBootstrap: InfiniteCanvasBootstrap;
+}>) {
   const { activeOrganization, api, queryCache } = useShell();
   const gateway = useMemo(() => getAIWorkspaceGateway(api, bootstrap), [api, bootstrap]);
   const [snapshot, setSnapshot] = useState<AIWorkspaceSnapshot | null>(null);
@@ -46,6 +57,8 @@ export function AIWorkspace({
   const [error, setError] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
+  const [canvasDocumentVersion, setCanvasDocumentVersion] = useState(0);
+  const [canvasSyncState, setCanvasSyncState] = useState<CanvasSyncState>("SAVED");
   const [selectedReferenceIds, setSelectedReferenceIds] = useState<string[]>([]);
   const [artifactReferenceIds, setArtifactReferenceIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -63,6 +76,7 @@ export function AIWorkspace({
     );
     reducerRef.current = { snapshot: next, seen_event_ids: [] };
     setSnapshot(next);
+    setCanvasDocumentVersion((current) => current || next.document.version);
     return next;
   }, [activeOrganization.id, gateway, projectId, queryCache]);
 
@@ -122,6 +136,10 @@ export function AIWorkspace({
 
   const startRun = async () => {
     if (!snapshot || !prompt.trim() || busy) return;
+    if (canvasSyncState !== "SAVED") {
+      setError(`Canvas 当前为 ${canvasSyncState}。请先完成 autosave / conflict 处理，再启动 AI Edit。`);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -129,7 +147,7 @@ export function AIWorkspace({
         project_id: projectId,
         prompt,
         selected_node_ids: selectedNodeIds,
-        document_version: snapshot.document.version,
+        document_version: canvasDocumentVersion || snapshot.document.version,
         reference_asset_ids: selectedReferenceIds,
         reference_artifact_version_ids: artifactReferenceIds,
       });
@@ -229,6 +247,7 @@ export function AIWorkspace({
       });
       reducerRef.current = { snapshot: next, seen_event_ids: reducerRef.current?.seen_event_ids ?? [] };
       setSnapshot(next);
+      setCanvasDocumentVersion(next.document.version);
     } catch (placementError) {
       setError(uiError(placementError));
       queryCache.clear();
@@ -236,12 +255,6 @@ export function AIWorkspace({
     } finally {
       setBusy(false);
     }
-  };
-
-  const toggleNode = (nodeId: string) => {
-    setSelectedNodeIds((current) =>
-      current.includes(nodeId) ? current.filter((value) => value !== nodeId) : [...current, nodeId],
-    );
   };
 
   const toggleReference = (assetId: string) => {
@@ -256,6 +269,18 @@ export function AIWorkspace({
     );
   };
 
+  const handleCanvasContext = useCallback((context: CanvasSelectionContext) => {
+    setSelectedNodeIds([...context.selected_node_ids]);
+    setCanvasDocumentVersion(context.document_version);
+    setCanvasSyncState(context.sync_state);
+  }, []);
+
+  const handleAIEdit = useCallback((nodeIds: readonly string[]) => {
+    setSelectedNodeIds([...nodeIds]);
+    setPrompt((current) => current || "针对当前选中对象进行 AI Edit：");
+    setMobilePanel("agent");
+  }, []);
+
   if (loading) return <div className={styles.loading}>正在加载 AI Workspace…</div>;
   if (!snapshot) {
     return (
@@ -267,6 +292,9 @@ export function AIWorkspace({
   }
 
   const selectedNodes = snapshot.document.selection_options.filter((node) => selectedNodeIds.includes(node.node_id));
+  const knownNodeIds = new Set(selectedNodes.map((node) => node.node_id));
+  const unknownSelectedNodeIds = selectedNodeIds.filter((nodeId) => !knownNodeIds.has(nodeId));
+  const effectiveDocumentVersion = canvasDocumentVersion || snapshot.document.version;
   const run = snapshot.run;
   const runLabel = run ? RUN_LABEL[run.status] ?? run.status : "待开始";
 
@@ -356,8 +384,10 @@ export function AIWorkspace({
       <div className={styles.composer}>
         <div className={styles.contextChips}>
           <span>{selectedNodeIds.length} selected</span>
-          <span>Document v{snapshot.document.version}</span>
+          <span>Document v{effectiveDocumentVersion}</span>
+          <span>Canvas {canvasSyncState}</span>
           {selectedNodes.map((node) => <span key={node.node_id}>{node.label}{node.locked_identity ? " · locked identity" : ""}</span>)}
+          {unknownSelectedNodeIds.map((nodeId) => <span key={nodeId}>{nodeId}</span>)}
           {selectedReferenceIds.length ? <span>{selectedReferenceIds.length} references</span> : null}
           {artifactReferenceIds.length ? <span>{artifactReferenceIds.length} artifact refs</span> : null}
         </div>
@@ -371,8 +401,15 @@ export function AIWorkspace({
           }}
         />
         <div className={styles.composerFooter}>
-          <span>⌘/Ctrl + Enter 发送 · 不展示内部推理</span>
-          <button type="button" className={styles.primary} onClick={() => void startRun()} disabled={!prompt.trim() || busy}>Send</button>
+          <span>⌘/Ctrl + Enter 发送 · Canvas 必须先完成保存 · 不展示内部推理</span>
+          <button
+            type="button"
+            className={styles.primary}
+            onClick={() => void startRun()}
+            disabled={!prompt.trim() || busy || canvasSyncState !== "SAVED"}
+          >
+            Send
+          </button>
         </div>
       </div>
     </section>
@@ -380,29 +417,14 @@ export function AIWorkspace({
 
   const canvasPanel = (
     <section className={styles.canvasPanel} aria-label="Canvas preview">
-      <div className={styles.panelHeader}>
-        <div><span className={styles.eyebrow}>CANVAS</span><h2>{snapshot.document.title}</h2></div>
-        <span>Document v{snapshot.document.version}</span>
-      </div>
-      <div className={styles.canvasStage}>
-        <div className={styles.artboard} style={{ aspectRatio: `${snapshot.document.width}/${snapshot.document.height}` }}>
-          <span className={styles.artboardLabel}>Summer / Product Launch</span>
-          {snapshot.document.selection_options.map((node, index) => (
-            <button
-              key={node.node_id}
-              type="button"
-              className={styles.canvasNode}
-              data-selected={selectedNodeIds.includes(node.node_id)}
-              style={{ top: `${18 + index * 23}%`, left: `${16 + (index % 2) * 18}%` }}
-              aria-pressed={selectedNodeIds.includes(node.node_id)}
-              onClick={() => toggleNode(node.node_id)}
-            >
-              {node.label}{node.locked_identity ? " · locked identity" : ""}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className={styles.canvasFooter}>NODE-54 提供选择、上下文和 Artifact placement；Infinite Canvas 编辑能力在 NODE-55。</div>
+      <InfiniteCanvasProduct
+        projectId={projectId}
+        bootstrap={canvasBootstrap}
+        references={snapshot.references}
+        artifacts={snapshot.artifacts}
+        onContextChange={handleCanvasContext}
+        onAIEdit={handleAIEdit}
+      />
     </section>
   );
 
@@ -411,10 +433,15 @@ export function AIWorkspace({
       <div className={styles.panelHeader}><div><span className={styles.eyebrow}>CONTEXT</span><h2>Inspector</h2></div></div>
       <section className={styles.inspectorSection}>
         <h3>Selection</h3>
-        <p>{selectedNodeIds.length} selected · Document v{snapshot.document.version}</p>
+        <p>{selectedNodeIds.length} selected · Document v{effectiveDocumentVersion} · {canvasSyncState}</p>
         {selectedNodes.map((node) => (
           <div key={node.node_id} className={styles.contextRow}>
             <strong>{node.label}</strong><span>{node.kind}{node.locked_identity ? " · locked identity" : ""}</span>
+          </div>
+        ))}
+        {unknownSelectedNodeIds.map((nodeId) => (
+          <div key={nodeId} className={styles.contextRow}>
+            <strong>{nodeId}</strong><span>Canvas node</span>
           </div>
         ))}
       </section>
@@ -435,8 +462,8 @@ export function AIWorkspace({
       </section>
       <section className={styles.inspectorSection}>
         <h3>Context transparency</h3>
-        <p>本次命令会明确携带选中 node IDs、Document version、READY reference IDs 与精确 ArtifactVersion IDs。</p>
-        <p className={styles.privacy}>界面只展示安全的计划/进展摘要，不会暴露 system prompt 或内部 chain-of-thought。</p>
+        <p>本次命令明确携带 CanvasController selection node IDs、已保存的 Document version、READY reference IDs 与精确 ArtifactVersion IDs。</p>
+        <p className={styles.privacy}>Canvas 未保存、离线或版本冲突时 Send 会被阻止；界面不会暴露 system prompt 或内部 chain-of-thought。</p>
       </section>
     </aside>
   );
@@ -447,7 +474,7 @@ export function AIWorkspace({
         <div>
           <Link href={`/app/projects/${encodeURIComponent(projectId)}`}>← Project Brief</Link>
           <h1>{snapshot.project_name}</h1>
-          <p>{snapshot.brand_name ?? "No Brand Kit"} · Chat + Canvas + Approval</p>
+          <p>{snapshot.brand_name ?? "No Brand Kit"} · Chat + Infinite Canvas + Approval</p>
         </div>
         {error ? <p role="alert" className={styles.error}>{error}</p> : null}
       </header>

@@ -4,7 +4,7 @@ const workspace = "/app/projects/project-summer-launch/workspace";
 
 async function startRun(page: Page) {
   await page.getByRole("button", { name: /Hero Product/ }).click();
-  await page.getByRole("button", { name: "Headline", exact: true }).click();
+  await page.getByRole("button", { name: /Headline/ }).click();
   await page
     .getByLabel("给 LUMI Agent 的指令")
     .fill("只改选中的标题与构图，产品身份保持不变，先给我一个可评审方向");
@@ -17,7 +17,7 @@ test.describe("NODE-54 AI Design Workspace", () => {
     await expect(page.getByRole("heading", { name: "夏季新品发布" })).toBeVisible();
     await expect(page.getByLabel("Canvas preview")).toBeVisible();
     await page.getByRole("button", { name: /Hero Product/ }).click();
-    await page.getByRole("button", { name: "Headline", exact: true }).click();
+    await page.getByRole("button", { name: /Headline/ }).click();
     await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
     await expect(page.getByText(/Document v7/).first()).toBeVisible();
     await expect(page.getByText(/Hero Product · locked identity/)).toBeVisible();

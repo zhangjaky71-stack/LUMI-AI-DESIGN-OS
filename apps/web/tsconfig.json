@@ -6,7 +6,8 @@
     "incremental": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@lumi/canvas-sdk": ["../../packages/canvas-sdk/src/index.ts"]
+      "@lumi/canvas-sdk": ["../../packages/canvas-sdk/src/index.ts"],
+      "@lumi/design-ir": ["../../packages/design-ir/src/index.ts"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
