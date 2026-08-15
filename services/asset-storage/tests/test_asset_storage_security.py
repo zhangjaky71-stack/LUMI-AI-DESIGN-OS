@@ -22,7 +22,12 @@ def test_arbitrary_html_is_not_accepted_as_media() -> None:
 
 
 def test_svg_xml_declaration_is_sniffed_but_active_content_is_rejected() -> None:
-    payload = b'<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    payload = (
+        b'<?xml version="1.0"?>'
+        b'<svg xmlns="http://www.w3.org/2000/svg">'
+        b"<script>alert(1)</script>"
+        b"</svg>"
+    )
     assert sniff_media_type(payload).mime_type == "image/svg+xml"
     with pytest.raises(ValueError, match="SVG_ACTIVE_CONTENT_REJECTED"):
         sanitize_svg(payload)
@@ -32,19 +37,26 @@ def test_svg_xml_declaration_is_sniffed_but_active_content_is_rejected() -> None
     "payload,error",
     [
         (
-            b'<svg xmlns="http://www.w3.org/2000/svg"><image href="https://evil.example/x.png"/></svg>',
+            b'<svg xmlns="http://www.w3.org/2000/svg">'
+            b'<image href="https://evil.example/x.png"/>'
+            b"</svg>",
             "SVG_DANGEROUS_REFERENCE|SVG_EXTERNAL_REFERENCE_REJECTED",
         ),
         (
-            b'<svg xmlns="http://www.w3.org/2000/svg"><rect onload="alert(1)"/></svg>',
+            b'<svg xmlns="http://www.w3.org/2000/svg">'
+            b'<rect onload="alert(1)"/>'
+            b"</svg>",
             "SVG_EVENT_HANDLER_REJECTED",
         ),
         (
-            b'<!DOCTYPE svg [<!ENTITY x SYSTEM "file:///etc/passwd">]><svg xmlns="http://www.w3.org/2000/svg">&x;</svg>',
+            b'<!DOCTYPE svg [<!ENTITY x SYSTEM "file:///etc/passwd">]>'
+            b'<svg xmlns="http://www.w3.org/2000/svg">&x;</svg>',
             "SVG_DTD_OR_ENTITY_REJECTED",
         ),
         (
-            b'<svg xmlns="http://www.w3.org/2000/svg"><style>@import url(https://evil.example/x.css)</style></svg>',
+            b'<svg xmlns="http://www.w3.org/2000/svg">'
+            b"<style>@import url(https://evil.example/x.css)</style>"
+            b"</svg>",
             "SVG_DANGEROUS_REFERENCE|SVG_DANGEROUS_STYLE",
         ),
     ],
@@ -55,7 +67,12 @@ def test_svg_rejects_active_or_external_content(payload: bytes, error: str) -> N
 
 
 def test_svg_allows_internal_fragment_reference() -> None:
-    payload = b'<svg xmlns="http://www.w3.org/2000/svg"><defs><path id="p" d="M0 0"/></defs><use href="#p"/></svg>'
+    payload = (
+        b'<svg xmlns="http://www.w3.org/2000/svg">'
+        b'<defs><path id="p" d="M0 0"/></defs>'
+        b'<use href="#p"/>'
+        b"</svg>"
+    )
     cleaned = sanitize_svg(payload)
     assert b"script" not in cleaned.lower()
     assert b"#p" in cleaned
