@@ -4,6 +4,8 @@ Status: **IMPLEMENTED / VALIDATING / NOT COMPLETE**
 
 ## Implementation evidence
 
+Implementation commit: `8bdca29afd5f9a7cb9b985ca1c98136eda6963e3`
+
 - formal PlanVersion/BillingAccount/Subscription/Credit/Pricing/Usage/Invoice/PaymentEvent domain implemented;
 - provider cost, customer usage, customer billing and credits remain separate truths;
 - immutable PlanVersion and exact subscription pinning;
@@ -37,7 +39,31 @@ Status: **IMPLEMENTED / VALIDATING / NOT COMPLETE**
 - production fixture-leak scan;
 - prior NODE-62 through NODE-54 regressions.
 
-These suites are **STAGED**, not observed PASS, until hosted runners execute them.
+These suites are **STAGED**, not observed PASS, because the hosted runner did not start.
+
+## Hosted pinned validation evidence
+
+Workflow: **Billing**  
+Run: `31872468443`  
+Run number: `1`  
+Head SHA: `8bdca29afd5f9a7cb9b985ca1c98136eda6963e3`
+
+| Job | Job/check ID | Result | Execution evidence |
+| --- | ---: | --- | --- |
+| `billing-contract` | `94983120575` | failure | `runner_id=0`, `runner_name=""`, `steps=[]` — runner never started |
+| `billing-build` | `94983127108` | skipped | dependency did not run |
+| `billing-db` | `94983127152` | skipped | dependency did not run |
+| `billing-quality` | `94983127170` | skipped | dependency did not run |
+| `billing-backend` | `94983127338` | skipped | dependency did not run |
+| `billing-browser-e2e` | `94983127549` | skipped | dependencies did not run |
+
+GitHub check annotation:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+
+Classification: **BLOCKED BEFORE RUNNER**.
+
+This is an account/platform validation blocker. It is **not** a NODE-63 code/test failure and it is **not** a PASS. No checkout, dependency install, validator, pyright, unit/API test, PostgreSQL migration, production build, or browser E2E step executed in this hosted run.
 
 ## Explicit production integration gates
 
@@ -68,5 +94,3 @@ The MockPaymentProvider and in-memory repository are deterministic development/t
 - [ ] production adapters connected;
 - [ ] real provider sandbox accepted;
 - [ ] hosted pinned validation observed green.
-
-Hosted evidence will be appended after the implementation commit triggers GitHub Actions.
