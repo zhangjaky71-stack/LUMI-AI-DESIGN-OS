@@ -14,7 +14,7 @@ export interface ApiRequestOptions {
 
 export interface PresignedPutOptions {
   readonly signal?: AbortSignal;
-  readonly headers?: Readonly<Record<string, string>>;
+  readonly headers?: Readonly<Record<string, string>> | undefined;
   readonly content_type?: string;
 }
 
