@@ -1,0 +1,64 @@
+.productCanvas { position: relative; height: 100%; min-height: 0; display: flex; flex-direction: column; background: #0c0e11; color: #eef0ec; overflow: hidden; }
+.topToolbar, .contextToolbar { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,.08); background: rgba(15,17,20,.97); z-index: 20; }
+.topToolbar { justify-content: space-between; }
+.contextToolbar { min-height: 36px; justify-content: center; color: #a9aca6; font-size: 10px; }
+.contextToolbar strong { color: #e9ebe7; margin-right: 4px; }
+.toolGroup { display: flex; align-items: center; gap: 5px; }
+.toolGroup button, .contextToolbar button, .conflictBar button, .frameNavigator button, .trayToggle { border: 1px solid rgba(255,255,255,.1); border-radius: 7px; background: #171a1e; color: #d9dcd6; min-height: 28px; padding: 5px 8px; font: inherit; font-size: 10px; cursor: pointer; }
+.toolGroup button[data-active="true"], .contextToolbar button:last-child { background: #eef0ec; color: #111316; border-color: transparent; }
+.toolGroup button:disabled, .contextToolbar button:disabled, .contextMenu button:disabled { opacity: .32; cursor: not-allowed; }
+.zoomLabel { min-width: 38px; text-align: center; color: #9b9e98; font-size: 10px; }
+.syncBadge { margin-left: 5px; padding: 5px 7px; border-radius: 999px; border: 1px solid rgba(255,255,255,.08); color: #9da19a; font-size: 9px; letter-spacing: .04em; }
+.syncBadge[data-state="DIRTY"], .syncBadge[data-state="SAVING"] { color: #d6b36e; }
+.syncBadge[data-state="CONFLICT"], .syncBadge[data-state="OFFLINE"] { color: #ff9e8d; }
+.syncBadge[data-state="SAVED"] { color: #9fc6a5; }
+.menuAnchor { position: relative; }
+.frameMenu { position: absolute; top: calc(100% + 7px); left: 0; width: 220px; padding: 6px; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; background: #13161a; box-shadow: 0 18px 60px rgba(0,0,0,.45); z-index: 80; }
+.frameMenu button { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 0; background: transparent; color: #e3e5e1; padding: 8px; border-radius: 7px; cursor: pointer; }
+.frameMenu button:hover { background: rgba(255,255,255,.06); }
+.frameMenu strong { font-size: 11px; }
+.frameMenu span { color: #777b74; font-size: 9px; }
+.conflictBar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid rgba(244,150,119,.25); background: rgba(104,45,29,.25); color: #ffc4b4; font-size: 10px; z-index: 18; }
+.conflictBar span { flex: 1; }
+.notice { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); max-width: min(520px,80%); z-index: 90; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; background: rgba(25,28,32,.95); color: #c6c9c3; padding: 7px 12px; font-size: 9px; box-shadow: 0 10px 36px rgba(0,0,0,.34); cursor: pointer; }
+.canvasBody { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.viewport { position: absolute; inset: 0; overflow: hidden; touch-action: none; user-select: none; cursor: default; background-color: #0b0d10; }
+.viewport[data-grid="true"] { background-image: radial-gradient(rgba(255,255,255,.07) 1px, transparent 1px); background-size: 20px 20px; }
+.viewport[data-tool="hand"] { cursor: grab; }
+.viewport[data-tool="hand"]:active { cursor: grabbing; }
+.world { position: absolute; inset: 0; transform-origin: 0 0; will-change: transform; }
+.sceneNode { position: absolute; box-sizing: border-box; border: 0; outline: none; overflow: visible; color: #181a1d; transform-origin: center; }
+.sceneNode[data-kind="FRAME"] { box-shadow: 0 18px 70px rgba(0,0,0,.42), 0 0 0 1px rgba(255,255,255,.12); overflow: hidden; }
+.sceneNode[data-kind="TEXT"] { background: transparent !important; overflow: hidden; }
+.sceneNode[data-kind="IMAGE"] { background: linear-gradient(145deg,#5f625f,#22262b 52%,#777871); overflow: hidden; }
+.sceneNode[data-kind="SHAPE"] { display: grid; place-items: center; }
+.sceneNode[data-selected="true"]::after { content: ""; position: absolute; inset: -3px; border: 2px solid #85adff; pointer-events: none; z-index: 12; }
+.sceneNode[data-locked="true"] { cursor: not-allowed; }
+.sceneNode:not([data-locked="true"]) { cursor: move; }
+.frameName { position: absolute; left: 8px; top: 8px; max-width: 260px; color: rgba(20,22,24,.58); font-size: 13px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.textNode { display: block; width: 100%; height: 100%; white-space: pre-wrap; overflow: hidden; font-family: Arial,Helvetica,sans-serif; font-weight: 650; letter-spacing: -.04em; line-height: .95; color: inherit; }
+.imageNode { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: rgba(255,255,255,.8); background: radial-gradient(circle at 65% 20%,rgba(255,255,255,.18),transparent 24%); }
+.imageNode b { font-size: 20px; letter-spacing: .12em; }
+.imageNode small { max-width: 70%; font-size: 13px; text-align: center; opacity: .7; }
+.shapeLabel { color: #f0f2ee; font-size: 22px; font-weight: 650; letter-spacing: .05em; }
+.lockBadge { position: absolute; right: 7px; top: 7px; padding: 3px 5px; border-radius: 5px; background: rgba(0,0,0,.66); color: #d7d9d5; font-size: 7px; letter-spacing: .1em; pointer-events: none; }
+.trayToggle { position: absolute; top: 12px; left: 12px; z-index: 42; background: rgba(19,22,26,.93); }
+.assetTray { position: absolute; top: 49px; left: 12px; width: 196px; max-height: calc(100% - 118px); overflow: auto; padding: 7px; border: 1px solid rgba(255,255,255,.09); border-radius: 11px; background: rgba(16,18,22,.94); box-shadow: 0 18px 50px rgba(0,0,0,.35); z-index: 40; backdrop-filter: blur(12px); }
+.trayHeader { display: flex; justify-content: space-between; padding: 4px 4px 8px; }
+.trayHeader strong { font-size: 10px; }
+.trayHeader span { color: #696d66; font-size: 8px; }
+.trayItem { display: flex; flex-direction: column; gap: 3px; margin-top: 5px; padding: 8px; border: 1px solid rgba(255,255,255,.07); border-radius: 8px; background: #121519; cursor: grab; }
+.trayItem[data-ready="false"] { opacity: .4; cursor: not-allowed; }
+.trayItem span { color: #6f756d; font-size: 7px; letter-spacing: .12em; }
+.trayItem strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.trayItem small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #737871; font-size: 8px; }
+.contextMenu { position: absolute; z-index: 100; width: 150px; padding: 5px; border: 1px solid rgba(255,255,255,.1); border-radius: 9px; background: #16191d; box-shadow: 0 16px 48px rgba(0,0,0,.5); }
+.contextMenu button { width: 100%; border: 0; border-radius: 6px; background: transparent; color: #dadcd7; padding: 7px 8px; text-align: left; font: inherit; font-size: 9px; cursor: pointer; }
+.contextMenu button:hover { background: rgba(255,255,255,.06); }
+.frameNavigator { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; gap: 4px; max-width: 70%; overflow-x: auto; padding: 5px; border: 1px solid rgba(255,255,255,.08); border-radius: 10px; background: rgba(15,17,20,.88); z-index: 35; backdrop-filter: blur(10px); }
+.frameNavigator button { white-space: nowrap; }
+.versionHud { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 7px; padding: 6px 8px; border-radius: 8px; background: rgba(13,15,18,.88); color: #6f746c; font-size: 8px; z-index: 34; }
+.loading { height: 100%; min-height: 520px; display: grid; place-items: center; background: #0b0d10; color: #767b73; font-size: 11px; }
+@media (max-width: 900px) { .topToolbar { overflow-x: auto; justify-content: flex-start; } .topToolbar .toolGroup:last-child { margin-left: auto; } .contextToolbar { justify-content: flex-start; overflow-x: auto; } .assetTray { width: 170px; } .versionHud { display: none; } .frameNavigator { max-width: 82%; } }
+@media (max-width: 560px) { .topToolbar { min-height: 38px; padding: 5px 7px; } .contextToolbar span:nth-of-type(n + 3) { display: none; } .assetTray { top: 44px; left: 7px; width: 155px; } .trayToggle { top: 8px; left: 7px; } .frameNavigator { left: 8px; transform: none; max-width: calc(100% - 16px); } .notice { top: 88px; max-width: 92%; border-radius: 10px; } .conflictBar { flex-wrap: wrap; } .conflictBar span { flex-basis: 100%; } }
+@media (prefers-reduced-motion: reduce) { .world, .sceneNode { transition: none !important; } }
