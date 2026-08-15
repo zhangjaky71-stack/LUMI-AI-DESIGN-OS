@@ -1,0 +1,150 @@
+name: NODE-10 Database Schema
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/persistence/**"
+      - "apps/api/migrations/**"
+      - "apps/api/alembic.ini"
+      - "tools/node10/**"
+      - "docs/database/**"
+      - "docs/nodes/NODE-10-DATABASE-SCHEMA.md"
+      - "reports/nodes/NODE-10/**"
+      - ".github/workflows/node-10-database-schema.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/src/lumi_api/persistence/**"
+      - "apps/api/migrations/**"
+      - "apps/api/alembic.ini"
+      - "tools/node10/**"
+      - "docs/database/**"
+      - "docs/nodes/NODE-10-DATABASE-SCHEMA.md"
+      - "reports/nodes/NODE-10/**"
+      - ".github/workflows/node-10-database-schema.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  SQLALCHEMY_VERSION: "2.0.51"
+  ALEMBIC_VERSION: "1.18.5"
+  ASYNCPG_VERSION: "0.31.0"
+  LUMI_DATABASE_MIGRATION_URL: "postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi"
+  LUMI_DATABASE_MIGRATION_URL_ASYNCPG: "postgresql://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi"
+  LUMI_DATABASE_APP_URL: "postgresql://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi"
+
+jobs:
+  database-schema:
+    name: database-schema
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Prepare local PostgreSQL environment
+        run: |
+          cp infra/compose/env.local.example infra/compose/.env
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml up -d --wait --wait-timeout 180 postgres
+
+      - name: Validate frozen schema and SQLAlchemy metadata
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            python tools/node10/validate_schema.py
+
+      - name: Upgrade to head
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+
+      - name: Load deterministic two-tenant fixture
+        run: |
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -v ON_ERROR_STOP=1 -U lumi_migration -d lumi \
+            < apps/api/migrations/seeds/p0_local_fixture.sql
+
+      - name: Validate RLS, tenancy, exact money, DAGs and immutability
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            python tools/node10/test_database_integration.py
+
+      - name: Downgrade to base
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic downgrade base
+
+      - name: Verify rollback removed P0 schema
+        run: |
+          result="$(docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c "SELECT to_regclass('public.projects') IS NULL")"
+          test "$result" = "t"
+
+      - name: Reapply migration after rollback
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+
+      - name: Reload fixture after reapply
+        run: |
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -v ON_ERROR_STOP=1 -U lumi_migration -d lumi \
+            < apps/api/migrations/seeds/p0_local_fixture.sql
+
+      - name: Re-run PostgreSQL invariants after reapply
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            python tools/node10/test_database_integration.py
+
+      - name: Capture diagnostics on failure
+        if: failure()
+        run: |
+          mkdir -p reports/nodes/NODE-10/runtime
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml ps \
+            > reports/nodes/NODE-10/runtime/compose-ps.txt 2>&1 || true
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml logs \
+            --no-color --tail=400 postgres \
+            > reports/nodes/NODE-10/runtime/postgres.log 2>&1 || true
+
+      - name: Upload NODE-10 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-10-database-schema-${{ github.run_id }}
+          path: reports/nodes/NODE-10/runtime
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml down --volumes --remove-orphans || true

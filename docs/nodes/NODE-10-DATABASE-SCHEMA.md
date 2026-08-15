@@ -1,32 +1,63 @@
 # NODE-10 — Database Schema
 
 > Phase: 1 Domain / Contract  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **VALIDATING**  
+> Implementation Status: **IMPLEMENTED / POSTGRESQL CI PENDING**  
+> Implementation Branch: `feat/node-10-database-schema`  
+> Branch Base: `feat/node-09-domain-model` (stacked; NODE-09 is not yet merged)  
+> Canonical Schema Contract: `docs/database/SCHEMA.md`  
+> Acceptance Report: `reports/nodes/NODE-10/acceptance.md`  
+> Implemented At: `2026-08-16`  
 > Priority: P0  
 > Depends on: NODE-09, NODE-03  
-> Produces: PostgreSQL schema、SQLAlchemy models、Alembic migrations、索引与租户隔离基础
+> Produces: PostgreSQL schema、SQLAlchemy mappings、Alembic migrations、RLS、索引、租户隔离与迁移验收
 
 ---
 
 ## 1. 目标
 
-把 Domain Model 映射到可迁移、可审计、支持并发和版本演进的 PostgreSQL schema。数据库是业务真相源；Agent checkpoint、Redis、Object Storage 均不能替代它。
+把 NODE-09 Domain Model 映射到可迁移、可审计、支持并发、租户隔离和版本演进的 PostgreSQL schema。数据库是业务真相源；Agent checkpoint、Redis、Object Storage 均不能替代它。
+
+NODE-10 只做 persistence contract / schema，不反向修改领域语义。
 
 ## 2. Persistence Baseline
 
-- PostgreSQL。
-- SQLAlchemy 2 async。
-- asyncpg driver。
-- Alembic migrations。
-- pgvector extension（P0 memory/knowledge/asset embeddings）。
-- UTC timestamptz。
-- JSONB 只用于扩展字段/快照，不用来逃避建模。
+```text
+PostgreSQL 17
+pgvector extension
+pgcrypto extension
+SQLAlchemy 2 async mappings
+asyncpg
+Alembic
+UTC timestamptz
+JSONB for versioned/evolving payload boundaries
+```
+
+NODE-10 专项 workflow 固定验证工具版本：
+
+```text
+SQLAlchemy 2.0.51
+Alembic 1.18.5
+asyncpg 0.31.0
+```
+
+当前 repository frozen lock 仍不加入这些 runtime dependency；NODE-11 API/application persistence integration 必须同时更新 `apps/api/pyproject.toml` 与 `uv.lock`，不能为了 NODE-10 绕过 frozen-install gate。
 
 ## 3. Schema 组织
 
-P0 使用单 logical DB、按表名前缀/ORM module 分 bounded context，避免过早多 schema 权限复杂度。生产可启用 PostgreSQL RLS 作为 defense-in-depth，但 API authorization 仍必须存在。
+P0 使用单 logical database / `public` schema，按 SQLAlchemy module 划分 bounded context，避免过早拆 PostgreSQL schemas。
 
-## 4. 核心表
+当前 P0：
+
+```text
+40 tables
+37 tenant-owned tables
+37 RLS policies
+```
+
+完整表清单见 `docs/database/SCHEMA.md`。
+
+## 4. Core Table Groups
 
 ### Identity / Tenant
 
@@ -36,7 +67,7 @@ organizations
 organization_members
 workspaces
 workspace_members
-sessions / auth_identities
+auth_identities
 ```
 
 ### Project / Brand
@@ -75,7 +106,7 @@ artifact_files
 artifact_provenance
 ```
 
-### Agent / Workflow
+### Agent / Workflow / Generation
 
 ```text
 agent_runs
@@ -83,6 +114,7 @@ agent_run_steps
 tasks
 task_dependencies
 approvals
+idempotency_operations
 generations
 provider_requests
 ```
@@ -92,134 +124,152 @@ provider_requests
 ```text
 cost_ledger
 usage_counters
-idempotency_operations
 outbox_events
 inbox_events
 audit_events
 ```
 
-Memory/Knowledge 表在 NODE-35/36 扩展。
+Memory/Knowledge persistence 在后续节点扩展，不在 NODE-10 提前混入。
 
-## 5. 通用列
+## 5. Common Persistence Columns
 
-大多数 mutable entity：
+大多数 mutable tenant entities：
 
 ```text
 id UUID PK
 organization_id UUID NOT NULL
 created_at timestamptz NOT NULL
 updated_at timestamptz NOT NULL
-version integer NOT NULL default 1
+version integer NOT NULL default 1 CHECK version >= 1
 ```
 
-需要 optimistic concurrency 的对象使用 `version`，更新 SQL 必须带 expected version。
+Immutable history 使用 `created_at`，不伪装成可修改 entity。
 
-Immutable ledger/event/history 表不需要 `updated_at`。
+NODE-09 的 UUIDv7 由 application 生成；数据库不使用 autoincrement business ID。
 
-## 6. Soft Delete
+## 6. Optimistic Concurrency
 
-默认不全局 soft delete。
+Mutable aggregate 更新必须携带 expected version：
 
-- Project/Asset 等用户可恢复对象：`deleted_at`。
-- Ledger/Audit/Event：不可 delete。
-- Ephemeral/derived cache：允许 hard delete。
+```sql
+UPDATE ...
+SET ..., version = version + 1
+WHERE id = :id
+  AND organization_id = :organization_id
+  AND version = :expected_version;
+```
 
-避免所有查询都隐式忘记 `deleted_at`。
+`UPDATE 0` 表示 stale state 或不可见 row；application/service 不能 blind overwrite。
 
-## 7. 关键表字段示例
+数据库 trigger 负责 `updated_at = now()`，不只依赖 ORM client-side behavior。
 
-### projects
+## 7. Soft Delete / Immutable History
+
+Soft delete：
 
 ```text
-id
-organization_id
-workspace_id
-name
-status
-brief_json
-brand_id nullable
-active_branch_id nullable
-settings_json
-created_by
-created_at
-updated_at
-version
+brands
+projects
+assets
+design_documents
+artifacts
 ```
 
-### tasks
+数据库禁止 UPDATE/DELETE：
 
 ```text
-id
-organization_id
-project_id
-parent_task_id nullable
-type
-status
-owner_agent_key
-input_json
-output_json
-priority
-attempt_count
-max_attempts
-budget_reserved
-started_at
-finished_at
-version
+cost_ledger
+audit_events
+inbox_events
+design_document_versions
+artifact_provenance
 ```
 
-### artifact_versions
+`artifact_versions`：
+
+- DELETE 永远拒绝；
+- pre-approval state 可以按状态机推进；
+- 一旦 `OLD.status = approved`，任何后续 UPDATE 拒绝；
+- 修订必须新建 ArtifactVersion。
+
+## 8. Exact Money / Usage
+
+禁止 `float` / `real` / `double precision` 持久化金额。
 
 ```text
-id
-organization_id
-artifact_id
-branch_id
-parent_version_id nullable
-version_number
-status
-content_hash
-metadata_json
-quality_score nullable
-created_by_type
-created_by_id
-created_at
+agent_runs.budget_amount       NUMERIC(20,8)
+tasks.budget_reserved          NUMERIC(20,8)
+cost_ledger.amount             NUMERIC(20,8)
+cost_ledger.quantity           NUMERIC(30,10)
+usage_counters.quantity        NUMERIC(30,10)
+artifact_versions.quality_score NUMERIC(8,5)
 ```
 
-### cost_ledger
+静态 schema validator 会直接拒绝 SQLAlchemy `Float` 和 frozen SQL 中的浮点 SQL type。
+
+## 9. Tenant Isolation
+
+### Tenant columns
+
+除以下 3 张 global/root table 外，全部 P0 table 必须有 non-null `organization_id`：
 
 ```text
-id
-organization_id
-project_id nullable
-task_id nullable
-agent_run_id nullable
-generation_id nullable
-provider
-model
-entry_type
-amount numeric(20,8)
-currency char(3)
-quantity numeric(30,10)
-unit
-provider_request_id nullable
-occurred_at
-metadata_json
+users
+organizations
+auth_identities
 ```
 
-金额禁止 float。
+### RLS
 
-## 8. Lineage Graph
+NODE-10 已把 RLS 提升为 P0 defense-in-depth，而不是推迟到 P1。
 
-`artifact_edges`：
+每个 tenant table：
+
+```sql
+USING (organization_id = lumi_current_organization_id())
+WITH CHECK (organization_id = lumi_current_organization_id())
+```
+
+`lumi_app` 受 RLS；`lumi_migration` 仅用于 schema/seed/migration，不用于 normal API request。
+
+API membership authorization 仍然必须存在，RLS 不替代授权。
+
+### Cross-tenant foreign references
+
+仅校验 row 自己的 `organization_id` 不够。例如 tenant B row 仍可能错误引用 tenant A workspace。
+
+NODE-10 增加 relationship trigger `lumi_enforce_same_tenant_fk()`。
+
+该函数使用：
 
 ```text
-from_artifact_version_id
-to_artifact_version_id
-edge_type
-metadata_json
+SECURITY DEFINER
+SET search_path = public, pg_temp
 ```
 
-edge types：
+因为普通 invoker trigger 会被 RLS 隐藏另一个 tenant 的 referenced row，从而漏掉 cross-tenant FK。Definer 函数只用于 migration-controlled reference inspection，并锁死 search path。
+
+DesignDocument 的 `head_version_id` 与 DesignDocumentVersion 的 `parent_version_id` 同样纳入 tenant guard。
+
+## 10. Task DAG
+
+`task_dependencies`：
+
+```text
+PK(task_id, depends_on_task_id)
+CHECK task_id <> depends_on_task_id
+same-tenant trigger
+recursive cycle-rejection trigger
+reverse dependency index
+```
+
+Domain service 仍先验证 DAG；DB trigger 防止 race/manual bypass。
+
+## 11. Artifact Lineage
+
+多父 lineage 由 `artifact_edges` 表达，不把单一 `parent_version_id` 锁死在 ArtifactVersion row 上。
+
+支持：
 
 ```text
 DERIVED_FROM
@@ -230,68 +280,107 @@ EXPORTED_FROM
 GENERATED_FROM_ASSET
 ```
 
-数据库约束 + service 检查防止自环；复杂环检测由 domain service 完成。
-
-## 9. Task DAG
-
-`task_dependencies` unique：
+DB 拒绝：
 
 ```text
-(task_id, depends_on_task_id)
+self edge
+duplicate typed edge
+cross-tenant endpoints
+recursive lineage cycle
 ```
 
-插入 dependency 前做 cycle detection。
+## 12. Design Document Versioning
 
-## 10. Embedding
+```text
+design_documents
+  └─ head_version_id
 
-NODE-07 选定 P0 embedding dimension 后生成 typed vector column。记录：
+design_document_versions
+  ├─ version_number
+  ├─ parent_version_id
+  ├─ content_json
+  └─ content_hash
+```
+
+Version rows immutable；root mutable pointer 指向 head。
+
+## 13. Generation / Provider / Idempotency
+
+`AgentRun`、`Generation`、`ProviderRequest` 保持分离：
+
+```text
+AgentRun = orchestration business run
+Generation = paid/idempotent model operation
+ProviderRequest = provider-native call/response identity
+```
+
+`idempotency_operations`：
+
+```text
+UNIQUE (organization_id, idempotency_key)
+request_hash
+operation_type
+status
+response_json
+expires_at
+```
+
+重复 tenant/key 的付费 side effect 在 DB 层被拒绝。
+
+## 14. Cost Ledger
+
+`cost_ledger` append-only：
+
+```text
+charge      => related_entry_id NULL
+reversal    => related_entry_id required
+adjustment  => related_entry_id required
+```
+
+同时使用：
+
+```text
+immutable DB trigger
++ lumi_app UPDATE/DELETE REVOKE
+```
+
+避免错误代码把历史账目“修正”为新金额。
+
+## 15. pgvector
+
+当前 `asset_embeddings.embedding` 使用 generic PostgreSQL `vector`，同时保存：
 
 ```text
 embedding_model
 embedding_version
+dimensions
 content_hash
-embedding vector(N)
 ```
 
-换 embedding model 时不要原地把旧 embedding 解释成新模型；新版本/新表或新 column/backfill。
+NODE-07 并没有冻结 production embedding dimension，因此 NODE-10 不伪造 `vector(N)`。后续模型/知识路由确定维度后再用 migration 增加 dimension/index contract。
 
-## 11. Index Strategy
+## 16. Index Strategy
 
-必须至少：
+已实现关键 query-driven indexes：
 
 ```text
 organization_id
-(project_id, created_at)
-(project_id, status)
+(organization_id, project status / created_at)
 (artifact_id, version_number)
-(task_id, status)
-(agent_run_id, created_at)
-(provider_request_id)
-(idempotency_key unique scoped)
+(project_id, task status / created_at)
+(project_id, agent_run created_at)
+provider_request_id
 (outbox published_at, created_at)
+(cost_ledger organization_id, occurred_at)
+artifact edge destination
+task reverse dependency
 ```
 
-JSONB 只有明确 query pattern 才加 GIN。
+JSONB 不无脑建立 GIN；等真实 query pattern 再加。
 
-## 12. Tenant Isolation
+## 17. Outbox / Inbox
 
-所有 repository 查询必须显式 tenant scoped：
-
-```sql
-WHERE organization_id = :organization_id
-```
-
-生产 P1 可启 RLS：
-
-```text
-app.current_organization_id
-```
-
-但绝不把 RLS 当唯一 authorization。
-
-## 13. Outbox / Inbox
-
-同一 DB transaction：
+同 transaction：
 
 ```text
 write domain rows
@@ -299,62 +388,147 @@ write domain rows
 COMMIT
 ```
 
-dispatcher 异步发布；consumer 将 event_id 写 `inbox_events` 防重复。
+`inbox_events(event_id, consumer)` 负责 consumer dedup，并作为 immutable processed history。
 
-## 14. Migration Rules
+NODE-10 dynamic integration test 会故意在 project + outbox 同 transaction 中抛错，然后验证两者都 rollback。
 
-- migration 永不手改已在生产执行的历史 revision。
-- Expand → migrate/backfill → switch → contract。
-- 大表 migration 避免长时间 exclusive lock。
-- destructive migration 必须有 backup/rollback plan。
-- seed 与 migration 分离。
+## 18. Frozen Migration Strategy
 
-## 15. Fixtures
-
-建立 deterministic seed：
+首版 revision：
 
 ```text
-1 org
-2 users
-1 brand
+20260816_0001
+```
+
+历史 revision 只读取自己的：
+
+```text
+20260816_0001_sql/up_01.sql ... up_08.sql
+20260816_0001_sql/down_01.sql ... down_02.sql
+```
+
+禁止 revision import 当前 `Base.metadata` / `persistence.models`。
+
+目的：未来 ORM 变化不会让历史 migration replay 产生不同 schema。
+
+## 19. Seed
+
+`apps/api/migrations/seeds/p0_local_fixture.sql` 提供 deterministic two-tenant fixture：
+
+```text
+2 organizations
+2 users + memberships
+2 workspaces
+2 brands
 2 projects
-sample assets
-sample DesignDocument
-sample task graph
-sample artifact lineage
+assets/files
+task DAG
+DesignDocument/version
+Artifact/branch/version
+idempotency operation
+generation
+exact Cost Ledger entry
 ```
 
-不包含版权不明素材。
+seed 与 migration 分离，不包含版权素材。
 
-## 16. 测试
+## 20. Tests
 
-- Alembic from empty → head。
-- downgrade 至少验证开发可回退的最近 revision。
-- unique/FK/check constraints。
-- tenant leak tests。
-- optimistic lock conflict。
-- ledger decimal precision。
-- outbox atomicity。
-- lineage/task cycle rejection。
+### Static schema validator
 
-## 17. 验收标准
+`tools/node10/validate_schema.py`：
 
-- [ ] 空 DB migration 到 head 成功。
-- [ ] Domain P0 entities 有 schema。
-- [ ] 所有租户表有 organization_id。
-- [ ] 金额 numeric，不使用 float。
-- [ ] Outbox/Inbox 已建模。
-- [ ] task/artifact graph 关系存在。
-- [ ] sample seeds 可重复执行。
-- [ ] tenant cross-read integration test 失败（按预期拒绝）。
+- exact 40-table inventory；
+- 37 tenant columns；
+- 37 RLS enable + 37 policies；
+- exact money；
+- PostgreSQL metadata compile；
+- frozen migration isolation；
+- pgvector/pgcrypto；
+- immutable safeguards；
+- tenant-reference guards；
+- Task DAG / Artifact lineage guards；
+- idempotency / outbox / inbox。
 
-## 18. Definition of Done
+本地 fallback 已记录：
 
 ```text
-schema + ORM + migrations committed
-+ empty-db migration green
-+ integration constraints green
-+ ERD generated
+LOCAL_SCHEMA_VALIDATION_PASS 40 37 94
+COMPILEALL_PASS
 ```
+
+见 `reports/nodes/NODE-10/local-schema-validation.txt`。
+
+### Real PostgreSQL integration
+
+`tools/node10/test_database_integration.py` 设计为验证 9 组真实 DB invariant：
+
+1. Alembic revision applied；
+2. tenant A/B RLS visibility；
+3. cross-tenant reference rejection；
+4. optimistic stale write；
+5. exact Decimal + duplicate idempotency；
+6. Task DAG cycle；
+7. Artifact lineage cycle；
+8. approved version + ledger immutability；
+9. Project/Outbox atomic rollback。
+
+### Migration lifecycle
+
+`.github/workflows/node-10-database-schema.yml`：
+
+```text
+start PostgreSQL 17/pgvector
+→ validate schema
+→ alembic upgrade head
+→ seed
+→ integration tests
+→ downgrade base
+→ verify schema absent
+→ upgrade head again
+→ seed again
+→ integration tests again
+```
+
+## 21. Acceptance Criteria
+
+- [x] Domain P0 entities have explicit persistence schema.
+- [x] 40-table P0 schema is frozen.
+- [x] 37 tenant tables have mandatory organization_id.
+- [x] RLS policies exist for all tenant tables.
+- [x] Cross-tenant reference guard exists and is RLS-safe.
+- [x] Money/usage uses NUMERIC, no persistence float.
+- [x] Outbox/Inbox modeled.
+- [x] Task/Artifact graphs modeled with DB cycle guards.
+- [x] Immutable Ledger/Version history safeguards implemented.
+- [x] Idempotency operation is tenant-scoped and unique.
+- [x] deterministic two-tenant seed exists.
+- [x] local deterministic schema validation passes.
+- [ ] Empty PostgreSQL migration to head passes in repository-hosted gate.
+- [ ] Dynamic tenant leak test passes (cross-read rejected).
+- [ ] Dynamic cross-tenant reference test passes (write rejected).
+- [ ] Dynamic optimistic lock / exact Decimal / idempotency tests pass.
+- [ ] Dynamic DAG/lineage/immutability/outbox tests pass.
+- [ ] Alembic downgrade → reapply test passes.
+- [ ] Repository CI/security gates pass.
+- [ ] NODE-09 base PR resolved and this stacked branch merged.
+- [ ] `docs/NODE-INDEX.md` updated to COMPLETE.
+
+## 22. Definition of Done
+
+```text
+schema + ORM mappings + frozen migrations
++ deterministic seed
++ RLS / same-tenant / exact money / concurrency
++ immutable history / idempotency / outbox
++ empty-db upgrade green
++ dynamic PostgreSQL invariants green
++ downgrade/reapply green
++ repository CI/security green
++ NODE-09 dependency merged
++ NODE-10 merged and index updated
+```
+
+当前状态：`VALIDATING`，不是 `COMPLETE`。
 
 下一节点：NODE-11 API Contract。
