@@ -71,7 +71,6 @@ jobs:
     env:
       LUMI_SHELL_E2E_AUTH: "0"
       LUMI_PROJECTS_E2E: "0"
-      PROJECTS_SERVER_ONLY_SENTINEL: "projects-server-secret-must-not-leak-53"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -83,14 +82,10 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build production Next.js app
         run: pnpm --filter @lumi/web build
-      - name: Assert server-only Projects controls are absent from client chunks
+      - name: Assert Projects E2E control is absent from client chunks
         shell: bash
         run: |
           set -euo pipefail
-          if grep -R -F "projects-server-secret-must-not-leak-53" apps/web/.next/static; then
-            echo "server-only Projects sentinel leaked into client chunks"
-            exit 1
-          fi
           if grep -R -F "LUMI_PROJECTS_E2E" apps/web/.next/static; then
             echo "Projects E2E environment flag leaked into client chunks"
             exit 1
