@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "contract_id": "lumi-staging-production-parity-v1",
+  "required_checks": [
+    {"id":"PARITY-IMAGE","requirement":"same immutable container image digests as release candidate","status":"PENDING","evidence_ref":""},
+    {"id":"PARITY-TOPOLOGY","requirement":"same deployment topology class and service boundaries","status":"PENDING","evidence_ref":""},
+    {"id":"PARITY-DB","requirement":"same PostgreSQL engine and major version","status":"PENDING","evidence_ref":""},
+    {"id":"PARITY-BROKER","requirement":"same broker interface and queue semantics","status":"PENDING","evidence_ref":""},
+    {"id":"PARITY-OBJECT","requirement":"same S3-compatible object interface and access-control semantics","status":"PENDING","evidence_ref":""},
+    {"id":"PARITY-MIGRATIONS","requirement":"same application migration set applied from the release candidate","status":"PENDING","evidence_ref":""},
+    {"id":"PARITY-AUTH","requirement":"same auth/session/security-header code path","status":"PENDING","evidence_ref":""},
+    {"id":"PARITY-AGENT","requirement":"same Agent Runtime, Tool Gateway and Model Gateway code/image identity","status":"PENDING","evidence_ref":""},
+    {"id":"PARITY-OBS","requirement":"production-class logs/metrics/traces interfaces enabled","status":"PENDING","evidence_ref":""},
+    {"id":"PARITY-SECRETS","requirement":"staging secrets are isolated and no local-only example credentials are used","status":"PENDING","evidence_ref":""}
+  ],
+  "forbidden": [
+    "production_customer_data",
+    "local_only_example_credentials",
+    "public_management_ports",
+    "unversioned_container_images",
+    "shared_production_secrets"
+  ]
+}

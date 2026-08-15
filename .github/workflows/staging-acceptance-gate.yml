@@ -1,0 +1,144 @@
+name: Staging Acceptance Gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Production-like staging API base URL (https://...)"
+        required: false
+        type: string
+      expected_version:
+        description: "Exact RC version expected from /version"
+        required: false
+        type: string
+      host_ack:
+        description: "Exact staging hostname acknowledgement"
+        required: false
+        type: string
+      evidence_path:
+        description: "Path under reports/staging-acceptance/ to completed evidence JSON"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-acceptance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Validate staging acceptance contract
+        run: python3 scripts/validate_staging_acceptance_contract.py
+      - name: Python syntax
+        run: |
+          python3 -m py_compile \
+            scripts/staging-acceptance-gate.py \
+            scripts/staging-preflight.py \
+            scripts/validate_staging_acceptance_contract.py
+      - name: JSON contract syntax
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          for path in [
+              Path('staging/acceptance/manifest-v1.json'),
+              Path('staging/acceptance/environment-parity-v1.json'),
+              Path('staging/acceptance/evidence-template.json'),
+          ]:
+              json.loads(path.read_text(encoding='utf-8'))
+              print(path)
+          PY
+
+  canonical-lock-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v6
+      - name: Frozen repository dependency sync
+        run: uv sync --frozen
+
+  remote-read-only-preflight:
+    if: github.event_name == 'workflow_dispatch' && inputs.base_url != '' && inputs.expected_version != '' && inputs.host_ack != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      LUMI_STAGING_BASE_URL: ${{ inputs.base_url }}
+      LUMI_STAGING_EXPECTED_VERSION: ${{ inputs.expected_version }}
+      LUMI_STAGING_HOST_ACK: ${{ inputs.host_ack }}
+      LUMI_STAGING_ENV_ACK: staging
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Probe staging without side effects
+        run: |
+          mkdir -p reports/staging-acceptance/runtime
+          python3 scripts/staging-preflight.py \
+            --base-url "$LUMI_STAGING_BASE_URL" \
+            --expected-version "$LUMI_STAGING_EXPECTED_VERSION" \
+            --output reports/staging-acceptance/runtime/preflight.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: staging-read-only-preflight
+          path: reports/staging-acceptance/runtime/preflight.json
+
+  acceptance-decision:
+    if: github.event_name == 'workflow_dispatch' && inputs.evidence_path != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      LUMI_STAGING_EVIDENCE_PATH: ${{ inputs.evidence_path }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Validate evidence path
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          raw = os.environ['LUMI_STAGING_EVIDENCE_PATH']
+          workspace = Path.cwd().resolve()
+          root = (workspace / 'reports' / 'staging-acceptance').resolve()
+          target = (workspace / raw).resolve()
+          if target.suffix != '.json' or root not in target.parents:
+              raise SystemExit('evidence_path must resolve to a JSON file below reports/staging-acceptance/')
+          if not target.is_file():
+              raise SystemExit('evidence_path does not exist')
+          print(target.relative_to(workspace))
+          PY
+      - name: Evaluate completed staging evidence
+        run: |
+          mkdir -p reports/staging-acceptance/runtime
+          python3 scripts/staging-acceptance-gate.py \
+            --evidence "$LUMI_STAGING_EVIDENCE_PATH" \
+            --output reports/staging-acceptance/runtime/decision.json \
+            --markdown reports/staging-acceptance/runtime/decision.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: staging-acceptance-decision
+          path: reports/staging-acceptance/runtime/
+
+  contract-gate:
+    if: always()
+    needs: [source-contract, canonical-lock-gate]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require source and frozen dependency gates
+        run: |
+          test "${{ needs.source-contract.result }}" = "success"
+          test "${{ needs.canonical-lock-gate.result }}" = "success"

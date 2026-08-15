@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "manifest_id": "lumi-staging-acceptance-v1",
+  "release_candidate": {
+    "git_sha": "PENDING",
+    "version": "PENDING",
+    "environment_id": "PENDING",
+    "base_url": "PENDING",
+    "container_image_set_ref": "PENDING",
+    "migration_head": "PENDING"
+  },
+  "data_policy": {
+    "production_customer_data_used": false,
+    "test_data_only": true,
+    "staging_secrets_isolated": "PENDING"
+  },
+  "test_accounts": {
+    "org_a_owner": "PENDING",
+    "org_a_editor": "PENDING",
+    "org_a_viewer": "PENDING",
+    "org_b_owner": "PENDING",
+    "platform_ops": "PENDING",
+    "billing_test_org": "PENDING"
+  },
+  "provider_modes": {
+    "mock_provider": "PENDING",
+    "provider_sandbox": "PENDING",
+    "production_candidate_quality_sample": "PENDING"
+  },
+  "environment_parity": {},
+  "scenario_results": {},
+  "open_issues": [],
+  "approvals": {
+    "engineering": "PENDING",
+    "security": "PENDING",
+    "product": "PENDING",
+    "release_owner": "PENDING"
+  }
+}
