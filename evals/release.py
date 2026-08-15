@@ -42,6 +42,21 @@ def _versions(raw: dict[str, Any], key: str) -> dict[str, str]:
 
 
 @dataclass(frozen=True)
+class BenchmarkProfileIdentity:
+    name: str
+    version: str
+
+    @classmethod
+    def from_dict(cls, suite: str, raw: Any) -> "BenchmarkProfileIdentity":
+        if not isinstance(raw, dict):
+            raise ReleaseGateError(f"benchmark_profiles.{suite} must be an object")
+        return cls(
+            name=_string(raw, "name"),
+            version=_string(raw, "version"),
+        )
+
+
+@dataclass(frozen=True)
 class ReleaseManifest:
     release_id: str
     role: str
@@ -55,8 +70,7 @@ class ReleaseManifest:
     constraint_policy_version: str
     context_policy_version: str
     suite_versions: dict[str, str]
-    benchmark_profile_name: str
-    benchmark_profile_version: str
+    benchmark_profiles: dict[str, BenchmarkProfileIdentity]
     evidence_mode: str
     source: str
 
@@ -78,6 +92,17 @@ class ReleaseManifest:
         source = _string(raw, "source")
         if source not in {"production", "candidate", "fixture"}:
             raise ReleaseGateError("source must be production, candidate, or fixture")
+        suite_versions = _versions(raw, "suite_versions")
+        profiles_raw = raw.get("benchmark_profiles")
+        if not isinstance(profiles_raw, dict) or not profiles_raw:
+            raise ReleaseGateError("benchmark_profiles must be a non-empty object")
+        benchmark_profiles = {
+            suite: BenchmarkProfileIdentity.from_dict(suite, profile)
+            for suite, profile in profiles_raw.items()
+            if isinstance(suite, str) and suite.strip()
+        }
+        if set(benchmark_profiles) != set(suite_versions):
+            raise ReleaseGateError("benchmark_profiles must pin exactly the same suites as suite_versions")
         return cls(
             release_id=_string(raw, "release_id"),
             role=role,
@@ -90,9 +115,8 @@ class ReleaseManifest:
             critic_version=_string(raw, "critic_version"),
             constraint_policy_version=_string(raw, "constraint_policy_version"),
             context_policy_version=_string(raw, "context_policy_version"),
-            suite_versions=_versions(raw, "suite_versions"),
-            benchmark_profile_name=_string(raw, "benchmark_profile_name"),
-            benchmark_profile_version=_string(raw, "benchmark_profile_version"),
+            suite_versions=suite_versions,
+            benchmark_profiles=benchmark_profiles,
             evidence_mode=evidence_mode,
             source=source,
         )
@@ -110,8 +134,10 @@ class ReleaseManifest:
             "constraint_policy_version": self.constraint_policy_version,
             "context_policy_version": self.context_policy_version,
             "suite_versions": self.suite_versions,
-            "benchmark_profile_name": self.benchmark_profile_name,
-            "benchmark_profile_version": self.benchmark_profile_version,
+            "benchmark_profiles": {
+                suite: {"name": profile.name, "version": profile.version}
+                for suite, profile in sorted(self.benchmark_profiles.items())
+            },
         }
         return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
@@ -127,7 +153,10 @@ def _validate_run_identity(manifest: ReleaseManifest, run: dict[str, Any], suite
     candidate = run.get("candidate")
     if not isinstance(candidate, dict):
         raise ReleaseGateError(f"run candidate identity missing for suite {suite}")
-    if candidate.get("name") != manifest.benchmark_profile_name or candidate.get("version") != manifest.benchmark_profile_version:
+    expected_profile = manifest.benchmark_profiles.get(suite)
+    if expected_profile is None:
+        raise ReleaseGateError(f"manifest does not pin benchmark profile for suite {suite}")
+    if candidate.get("name") != expected_profile.name or candidate.get("version") != expected_profile.version:
         raise ReleaseGateError(f"benchmark profile mismatch for suite {suite}")
 
 
