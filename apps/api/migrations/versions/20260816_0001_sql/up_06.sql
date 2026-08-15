@@ -6,13 +6,19 @@ FOR EACH ROW EXECUTE FUNCTION lumi_enforce_same_tenant_fk('asset_id', 'assets');
 
 CREATE TRIGGER trg_design_documents_same_tenant
 BEFORE INSERT OR UPDATE ON design_documents
-FOR EACH ROW EXECUTE FUNCTION lumi_enforce_same_tenant_fk('project_id', 'projects');
+FOR EACH ROW EXECUTE FUNCTION lumi_enforce_same_tenant_fk(
+  'project_id', 'projects',
+  'head_version_id', 'design_document_versions'
+);
 
 -- statement-breakpoint
 
 CREATE TRIGGER trg_design_document_versions_same_tenant
 BEFORE INSERT OR UPDATE ON design_document_versions
-FOR EACH ROW EXECUTE FUNCTION lumi_enforce_same_tenant_fk('design_document_id', 'design_documents');
+FOR EACH ROW EXECUTE FUNCTION lumi_enforce_same_tenant_fk(
+  'design_document_id', 'design_documents',
+  'parent_version_id', 'design_document_versions'
+);
 
 -- statement-breakpoint
 
