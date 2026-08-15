@@ -105,7 +105,10 @@ def assert_metadata_contract() -> None:
     assert isinstance(tables["tasks"].columns["budget_reserved"].type, Numeric)
 
     emitted: list[str] = []
-    engine = create_mock_engine("postgresql://", lambda sql, *_args, **_kwargs: emitted.append(str(sql)))
+    engine = create_mock_engine(
+        "postgresql://",
+        lambda sql, *_args, **_kwargs: emitted.append(str(sql)),
+    )
     Base.metadata.create_all(engine)
     assert emitted, "SQLAlchemy metadata must compile for PostgreSQL"
 
@@ -114,9 +117,9 @@ def assert_frozen_snapshot_contract(snapshot: str) -> None:
     created = set(re.findall(r"(?im)^CREATE TABLE ([a-z0-9_]+)\s*\(", snapshot))
     assert created == EXPECTED_TABLES
 
-    assert len(re.findall(r"(?im)^ALTER TABLE .* ENABLE ROW LEVEL SECURITY;", snapshot)) == len(
-        TENANT_TABLES
-    )
+    assert len(
+        re.findall(r"(?im)^ALTER TABLE .* ENABLE ROW LEVEL SECURITY;", snapshot)
+    ) == len(TENANT_TABLES)
     assert len(re.findall(r"(?im)^CREATE POLICY tenant_isolation_", snapshot)) == len(
         TENANT_TABLES
     )
@@ -134,6 +137,9 @@ def assert_frozen_snapshot_contract(snapshot: str) -> None:
         "trg_task_dependencies_no_cycle",
         "trg_artifact_edges_no_cycle",
         "lumi_enforce_same_tenant_fk",
+        "SECURITY DEFINER SET search_path = public, pg_temp",
+        "'head_version_id', 'design_document_versions'",
+        "'parent_version_id', 'design_document_versions'",
         "uq_idempotency_org_key",
         "outbox_events",
         "inbox_events",
@@ -160,7 +166,8 @@ def main() -> None:
     print(
         "NODE-10 schema validation PASS: "
         f"{len(EXPECTED_TABLES)} tables, {len(TENANT_TABLES)} tenant tables, "
-        "exact money, frozen migration, RLS, DAG/lineage, immutability, outbox/idempotency"
+        "exact money, frozen migration, RLS, DAG/lineage, immutability, "
+        "tenant-reference guards, outbox/idempotency"
     )
 
 
