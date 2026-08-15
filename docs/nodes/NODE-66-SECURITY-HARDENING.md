@@ -10,7 +10,7 @@
 > Pull Request: `#66 — NODE-66: Security hardening and threat model`  
 > Release Evidence: `docs/security/NODE-66-RELEASE-EVIDENCE.md`  
 > Threat Model: `docs/security/THREAT-MODEL.md`  
-> Implementation State: Source controls and release workflows are implemented; executable acceptance is blocked because GitHub Actions cannot currently allocate runners due to account billing/spending-limit status. This node is **not COMPLETE** until the security gates execute and pass.
+> Implementation State: Source controls and release workflows are implemented. Executable acceptance remains blocked by two known conditions: GitHub Actions cannot currently allocate runners due to account billing/spending-limit status, and NODE-66 review discovered that the checked-in `uv.lock` is stale relative to current Python workspace manifests. The Security Release Gate now requires `uv lock --check` before frozen installation. This node is **not COMPLETE** until the lock is regenerated/reviewed and the security gates execute and pass.
 
 ---
 
@@ -117,146 +117,86 @@ Browser/Tool/MCP/Sandbox egress必须重新验证redirect和解析IP。
 
 图像/视频处理运行在worker/sandbox，不以高权限执行。
 
+当前生产链已确认：上传完成后进入 `asset.validation.requested`；Worker 下载对象到临时工作区，校验真实大小/SHA-256，执行 MIME sniff 与声明 MIME 对比，运行恶意文件扫描，然后进入媒体解析。SVG 必须经过 `sanitize_svg` 后才生成 sanitized derivative；NODE-66 同时冻结低层 Asset Storage fixtures 与 Worker Media 生产路径回归测试。
+
 ## 8. Sandbox
 
-重新执行 NODE-21 escape suite，并增加：
+必须验证：
 
-- kernel/container breakout assumptions；
-- seccomp/AppArmor/runtime policy（部署平台支持时）；
-- readonly root FS where possible；
-- no Docker socket；
-- no host mounts；
-- egress deny；
-- package install policy；
-- resource quotas。
+- 默认无网络；
+- allowlist 不允许 loopback/private/link-local/metadata；
+- 无 Docker socket / host mounts；
+- workspace path scope；
+- input read-only；
+- zip-slip/archive symlink；
+- CPU/内存/PID/时间/输出预算；
+- 命令与日志 secrets redaction；
+- escape corpus。
 
-Production sandbox failure视为高危。
+NODE-21 的 production-equivalent sandbox security/escape suite 必须在正式生产发布前重新执行。
 
-## 9. Secrets
+## 9. Supply Chain / Dependency Integrity
 
--云Secret Manager；
-- workload identity/IAM优先；
--不把长期key进repo/image/client；
-- provider keys仅Gateway；
-- secret scan历史；
-- rotation runbook；
--日志redaction。
+NODE-66 将依赖锁本身视为安全边界：
 
-## 10. Supply Chain
+- `uv.lock` 必须与所有 Python workspace manifest 一致；
+- Security Release Gate 在安装前执行 `uv lock --check`；
+- 随后只允许 `uv sync --all-packages --frozen`；
+- Python 依赖通过 `pip-audit`；
+- Node 生产依赖通过 `pnpm audit --prod --audit-level high`；
+- PR 使用 Dependency Review；
+- Trivy 扫描 Critical/High vulnerability/misconfiguration/secret；
+- Gitleaks 扫描仓库历史；
+- Bandit 对 `apps services packages` 做 High severity SAST；
+- CodeQL 按 private repository entitlement/policy 启用，生产 sign-off 不允许静默缺少等价 SAST 证据。
 
-CI：
+NODE-66 审查已发现现有 `uv.lock` 落后于当前 `lumi-api` / `lumi-worker-media` 等 manifest，因此当前状态为 STOP SHIP，必须先由 pinned uv `0.11.28` 正常重新生成并 review lock diff，不能手工伪造 lock 通过检查。
 
-```text
-dependency lockfiles
-SCA/dependency review
-CodeQL/SAST
-container vulnerability scan
-SBOM SPDX/CycloneDX
-base image pin/digest
-signature/provenance optional
-```
+## 10. DAST
 
-高危/关键CVEs按policy阻断，例外必须有expiry/owner。
+`.github/workflows/security-dast.yml` 提供 guarded OWASP ZAP baseline：
 
-## 11. Browser Security
+- 只接受绝对 HTTPS staging URL；
+- 拒绝 URL userinfo；
+- 解析 DNS 后拒绝 loopback/private/link-local/reserved/multicast/unspecified；
+- 防止把 DAST workflow 变成内部网探测器；
+- ZAP 告警使 action fail；
+- 生产验收必须保留实际 staging run 的报告 artifact。
 
-- CSP；
-- frame-ancestors；
-- X-Content-Type-Options；
-- Referrer-Policy；
-- Permissions-Policy；
-- safe HTML/SVG sanitization；
-- no dangerouslySetInnerHTML for untrusted content without sanitizer。
+## 11. Release Gate
 
-## 12. API Abuse
-
-- rate limits by actor/org/IP profile；
-- body/file limits；
-- pagination maximum；
-- expensive query limits；
-- generation concurrency；
-- Graph/task dynamic expansion limits；
-- denial-of-wallet budget controls。
-
-## 13. Model/Tool Abuse
-
-- content/safety provider policy adapter；
-- tool-risk tiers；
-- destructive write HITL；
-- output schema validation；
-- tool-call recursion/depth limits；
-- model fallback不得绕安全blocked result。
-
-## 14. Admin Security
-
-- strong MFA requirement when supported；
-- separate roles；
-- break-glass；
-- audit；
-- no default content access；
-- privileged action confirmation；
-- session shorter TTL。
-
-## 15. Security Tooling
-
-P0 CI/periodic：
+Security Release Gate 至少包含：
 
 ```text
-SAST
-SCA
-secret scan
-container scan
-IaC scan
-DAST against staging
-API authorization tests
-custom Agent red-team evals
+lock freshness
+→ frozen dependency install
+→ tenant/BOLA/auth security corpus
+→ Tool Gateway SSRF corpus
+→ MCP error sanitization
+→ Sandbox contract/security corpus
+→ Agent Context prompt-injection corpus
+→ approval bridge
+→ Asset Storage MIME/SVG corpus
+→ Worker Media production validation security corpus
+→ pip-audit / pnpm audit
+→ Bandit / CodeQL-equivalent SAST
+→ Gitleaks / Trivy / dependency review
 ```
 
-工具品牌可替换，结果格式和gate固定。
+默认安全阈值：
 
-## 16. Severity / Release Gate
+- Critical = 0；
+- High = 0；
+- stale dependency lock = STOP SHIP；
+- cross-tenant leak / sandbox escape / usable secret leak / payment bypass or repeated paid side effect = STOP SHIP。
 
-```text
-Critical: 0 open
-High: 0 open unless formally accepted with short expiry (production launch default deny)
-Medium: owner + due date
-Low: tracked
-```
+## 12. 当前验收状态
 
-任何cross-tenant data leak、remote code escape、secret exposure、payment bypass、repeat paid-side-effect critical bug = STOP SHIP。
+Source-side 实现和文档已落入 PR #66，但当前不允许 Ready/Merge：
 
-## 17. Penetration / Red Team
+1. GitHub Actions runner 因账户 Billing / spending-limit 状态未启动任何执行步骤；
+2. `uv.lock` 已被确认与 manifest 漂移，必须重生成并 review；
+3. 之后必须取得最新 HEAD 的绿色 Security Release Gate；
+4. Production 还需 production-equivalent Sandbox escape verification、Staging DAST、secret rotation exercise、Admin MFA/privileged control verification、独立 penetration test 与 Platform/Security sign-off。
 
-上线前至少内部系统化red-team；有真实商业发布/企业客户前安排独立第三方渗透测试预算。测试范围包含AI特有数据exfiltration/tool misuse。
-
-## 18. 验收标准
-
-- [ ] Threat model覆盖所有trust boundary。
-- [ ] cross-tenant/BOLA corpus全绿。
-- [ ] prompt injection/SSRF fixtures全绿。
-- [ ] sandbox escape suite全绿。
-- [ ] SAST/SCA/container/IaC scans接CI。
-- [ ] Critical/High release gate满足。
-- [ ] secrets不在repo/client/log。
-- [ ] Security runbooks完成。
-
-### 18.1 当前验收执行状态 — 2026-08-15
-
-源代码、Threat Model、Release Evidence、安全回归集合、SAST/SCA/Secret/IaC 门禁以及受保护的 Staging DAST workflow 已提交到 PR #66。现有 Tool Gateway SSRF、Agent Context prompt-injection、Sandbox、Auth/Tenant、Approval 与 Asset Storage 安全能力已经按 canonical owner 收敛到统一 Release Gate。
-
-但当前 GitHub Actions job 在 runner 启动前即被平台拒绝，原因是账户 recent payments failed / Actions spending limit needs to be increased。由于测试步骤没有执行，上述验收项不能被标记为 PASS，也不能据此判定代码 FAIL。
-
-恢复 Actions runner 后必须在 PR 最新 HEAD 上重新执行 `.github/workflows/security-release-gate.yml`；之后还必须执行 production-equivalent NODE-21 sandbox escape verification、对真实 Staging HTTPS URL 执行 `.github/workflows/security-dast.yml`，并完成生产环境控制与独立渗透测试签署。
-
-## 19. Definition of Done
-
-```text
-security threat model signed off
-+ automated security suite green
-+ no release-blocking findings
-+ residual risks documented
-```
-
-当前 DoD：**NOT MET / RELEASE BLOCKED**。
-
-下一节点：NODE-67 Observability。NODE-67 可以继续工程实现，但不得把 NODE-66 视为 Production Security PASS；NODE-71/72/73 的上线验收必须回收并验证 NODE-66 的全部未完成安全证据。
+完整证据与 transition rule 见 `docs/security/NODE-66-RELEASE-EVIDENCE.md`。
