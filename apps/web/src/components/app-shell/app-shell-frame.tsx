@@ -32,8 +32,8 @@ export function AppShellFrame({
   const closeRef = useRef<HTMLButtonElement>(null);
 
   const openCommandPalette = useCallback(() => {
-    setCommandPaletteOpen(true);
-  }, [setCommandPaletteOpen]);
+    if (flags.commandPalette) setCommandPaletteOpen(true);
+  }, [flags.commandPalette, setCommandPaletteOpen]);
 
   const closeCommandPalette = useCallback(() => {
     setCommandPaletteOpen(false);
@@ -46,7 +46,11 @@ export function AppShellFrame({
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (
+        flags.commandPalette &&
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "k"
+      ) {
         event.preventDefault();
         openCommandPalette();
       } else if (event.key === "Escape" && commandPaletteOpen) {
@@ -57,7 +61,12 @@ export function AppShellFrame({
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [closeCommandPalette, commandPaletteOpen, openCommandPalette]);
+  }, [
+    closeCommandPalette,
+    commandPaletteOpen,
+    flags.commandPalette,
+    openCommandPalette,
+  ]);
 
   const trapDialogFocus = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Tab") return;
@@ -160,7 +169,7 @@ export function AppShellFrame({
         </main>
       </div>
 
-      {commandPaletteOpen ? (
+      {flags.commandPalette && commandPaletteOpen ? (
         <div className="command-backdrop">
           <div
             className="command-dialog"
