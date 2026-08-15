@@ -175,7 +175,7 @@ For API canary failure, ECS should automatically roll back before full promotion
 3. Confirm DB remains backward compatible.
 4. Apply previous app image digests; do **not** blindly restore DB snapshot for an application-only rollback.
 5. Verify ECS steady state and read-only smoke.
-6. If DB corruption/schema recovery is actually required, use NODE-67 recovery procedures and treat it as an incident, not a routine app rollback.
+6. If DB corruption/schema recovery is actually required, use NODE-68 recovery procedures and treat it as an incident, not a routine app rollback.
 
 A real rollback drill in Staging/Production-equivalent infrastructure is required before NODE-72 can be called complete.
 
