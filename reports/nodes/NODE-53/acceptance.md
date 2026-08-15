@@ -119,7 +119,7 @@ projects-security
 projects-browser-e2e
 ```
 
-The production build additionally fails if `.next/static` contains the Projects server-only E2E flag name or server sentinel.
+The production build additionally fails if `.next/static` contains the actually used server-side `LUMI_PROJECTS_E2E` control name.
 
 ## Local validation limits
 
