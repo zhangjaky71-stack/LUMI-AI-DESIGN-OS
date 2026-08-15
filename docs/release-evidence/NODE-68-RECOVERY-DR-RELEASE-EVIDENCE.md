@@ -29,7 +29,7 @@ This document does **not** claim release readiness. No production or production-
 | Bad deploy rollback procedure | DOCUMENTED | DRILL PENDING |
 | Provider outage procedure | DOCUMENTED | DRILL PENDING |
 | Security incident recovery procedure | DOCUMENTED | DRILL PENDING |
-| Recovery Contract CI | IMPLEMENTED | RUNNER EXECUTION PENDING |
+| Recovery Contract CI | IMPLEMENTED | BLOCKED BEFORE RUNNER START |
 
 ## 3. Safety invariants frozen in source
 
@@ -113,7 +113,22 @@ The following remain **STOP SHIP**:
 
 ## 7. Known external validation blocker
 
-Recent NODE-66/NODE-67 GitHub Actions runs did not receive runners because of the repository/account Billing / spending-limit condition. Those runs showed no executed steps, so they are platform-blocked rather than evidence of code-test failure.
+PR #68 triggered Recovery Contract run `31882646744` against head `4b7a07e29801a887da985e636d1cf0ada15fc3ed`.
+
+Observed facts:
+
+```text
+job: source-contract
+conclusion: failure
+runner_id: 0
+steps: []
+job runtime: approximately 4 seconds
+annotation: job was not started because recent account payments failed or the spending limit needs to be increased
+```
+
+Therefore this run is **not a code-test failure**. No checkout, Python validator, shell syntax check, or Compose render step executed. The manual destructive drill was correctly skipped on the pull-request event.
+
+This reproduces the same account Billing / spending-limit blocker previously observed on NODE-66/NODE-67. Re-running without fixing the account condition would not create new engineering evidence.
 
 NODE-68 must remain Draft / RELEASE BLOCKED until a runner actually executes its Recovery Contract and the required production-like drills above are recorded.
 
@@ -147,6 +162,7 @@ NODE-72 must freeze the production provider-specific implementation for:
 ```text
 SOURCE BASELINE: IMPLEMENTED
 LOCAL DR HARNESS: READY TO EXECUTE
+RECOVERY CONTRACT RUN: BLOCKED BEFORE RUNNER START (BILLING)
 PRODUCTION-LIKE RESTORE EVIDENCE: MISSING
 PRODUCTION RPO/RTO EVIDENCE: MISSING
 NODE-68 RELEASE STATUS: BLOCKED
