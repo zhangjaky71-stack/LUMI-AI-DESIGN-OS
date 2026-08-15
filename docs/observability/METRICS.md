@@ -132,7 +132,7 @@ traceid
 organizationid
 ```
 
-Worker correlation helper exists in `apps/worker-media/src/lumi_worker_media/observability.py`. Until the consumer execution path binds that helper and exports queue metrics, this area is **IN PROGRESS**, not LIVE.
+Worker correlation helper exists in `apps/worker-media/src/lumi_worker_media/observability.py` and the consumer binds/resets it around handler execution.
 
 Target metrics:
 
@@ -145,6 +145,8 @@ lumi_queue_lag_seconds{event_type}
 ```
 
 High-cardinality message/event IDs remain trace/log refs.
+
+State: CORRELATION PATH IMPLEMENTED / QUEUE METRIC EXPORTERS PENDING.
 
 ## 6. Quality signals
 
@@ -211,3 +213,47 @@ Collector redaction removes known credential/content attributes before backend e
 ## 10. Dashboard truthfulness policy
 
 A dashboard panel may be provisioned before its producer only if it is explicitly marked as pending/no-data and is not used as acceptance evidence. NODE-67 acceptance requires producer + transport + backend query + dashboard/alert validation for each claimed LIVE domain.
+
+## 11. Browser/frontend signals — source producer implemented
+
+Canonical source:
+
+```text
+apps/web/src/lib/observability/browser.ts
+apps/web/src/components/BrowserObservability.tsx
+apps/web/src/app/api/telemetry/browser/route.ts
+```
+
+Bounded event kinds:
+
+```text
+route_error
+runtime_error
+canvas_error
+api_failure
+web_vital
+```
+
+Bounded Web Vital names:
+
+```text
+ttfb_ms
+lcp_ms
+cls
+inp_ms
+```
+
+Browser telemetry may include only normalized route template/path, bounded numeric value, HTTP status class, safe request/correlation IDs and fixed/bounded error codes. It must not include error message/stack, query strings, prompt/output, Canvas content/screenshot, request/response body, Authorization/Cookie, signed URL or user file contents.
+
+Sampling baseline:
+
+```text
+errors/API failures: 100%
+Web Vitals/performance: 10%
+```
+
+The same-origin Next.js intake re-sanitizes events, caps request bytes and rejects cross-site submissions before emitting structured server logs. `observedFetch` can project `X-Request-ID` / `X-Correlation-ID` from failed API responses into the browser error record without copying response bodies.
+
+State: SOURCE PRODUCER + SAME-ORIGIN INTAKE IMPLEMENTED / EXECUTION VALIDATION AND BACKEND AGGREGATION PENDING.
+
+A future Prometheus/OTel browser aggregate must use only bounded labels such as event kind, Web Vital name, route template and status class. Request/correlation IDs remain trace/log references and must never become metric labels.
