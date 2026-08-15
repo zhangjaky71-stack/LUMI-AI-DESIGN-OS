@@ -108,7 +108,7 @@ Performance, AI Regression, Staging Acceptance and Production Deployment decisio
 
 ### Negative contract drills
 
-`scripts/validate_final_acceptance_contract.py` creates an isolated temporary fixture and proves the gate behavior for:
+`scripts/validate_final_acceptance_contract.py` creates isolated temporary fixtures under the Final Acceptance and Production Deployment report roots and proves the gate behavior for:
 
 - clean fully-evidenced contract fixture accepts;
 - P0 FAIL blocks;
@@ -125,7 +125,7 @@ Performance, AI Regression, Staging Acceptance and Production Deployment decisio
 - Production deployment RC substitution blocks;
 - final acceptance evidence SHA substitution blocks.
 
-The fixture is explicitly contract-only and is deleted after validation. It is not production evidence.
+The fixtures are explicitly contract-only and are deleted after validation. They are not production evidence.
 
 ### Evidence skeleton generator
 
@@ -149,6 +149,38 @@ status = NOT_RUN
 - final contract job requiring source and canonical dependency gates.
 
 The canonical dependency gate intentionally preserves the inherited root `uv.lock` freshness blocker rather than bypassing it.
+
+### Direct hosted CI evidence
+
+The first PR-triggered NODE-73 run is:
+
+```text
+workflow: Final Product Acceptance Gate
+run_id: 31893111809
+head_sha: eeaf4275739b19d3a583c110788d48aa55c988e2
+canonical-lock-gate job: 95032233251
+source-contract job: 95032233259
+final-decision job: 95032233499 (skipped by design on pull_request)
+contract-gate job: 95032239971
+```
+
+`source-contract`, `canonical-lock-gate`, and `contract-gate` completed with `conclusion=failure`, but each showed no executed steps and no assigned hosted runner. In particular:
+
+```text
+source-contract: runner_id=0, steps=[]
+canonical-lock-gate: runner_id=0, steps=[]
+```
+
+The GitHub annotations for both critical jobs explicitly state:
+
+```text
+The job was not started because recent account payments have failed
+or your spending limit needs to be increased.
+```
+
+Therefore **the NODE-73 Python source contract did not execute and `uv sync --frozen` did not execute in this run**. This is direct NODE-73 evidence of an external GitHub Billing/spending-limit runner-start blocker. It is not evidence that the Final Gate code passed, and it is not evidence that the Final Gate code or dependency lock failed at runtime.
+
+The jobs still require an actual runner and green execution after the external condition is corrected. Re-running the same commit while the Billing condition is unchanged adds no validation value.
 
 ## 3. Evidence package implemented
 
@@ -300,7 +332,7 @@ At source-gate implementation time:
 5. Platform-wide daily provider-dollar hard stop is not yet proven as durable runtime enforcement.
 6. Production Sandbox egress isolation remains unresolved.
 7. The root canonical dependency lock freshness blocker remains unresolved.
-8. Recent readiness-node GitHub Actions have been blocked before runner start by the repository/account Billing/spending-limit condition.
+8. NODE-73 hosted run `31893111809` was blocked before runner start by the account Billing/spending-limit condition; neither the Python source contract nor the canonical dependency sync executed.
 9. NODE-73 has not yet produced a real final evidence package for any Production release.
 
 Any one of these is sufficient to prevent PRODUCT ACCEPTED status when it maps to a P0 release requirement.
