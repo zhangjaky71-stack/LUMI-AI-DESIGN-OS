@@ -144,7 +144,29 @@ shell-security
 shell-browser-e2e
 ```
 
-Hosted CI evidence will be recorded after the release branch/PR triggers the workflow.
+### Initial release HEAD evidence
+
+Initial release HEAD: `e68d6c9569d3e31b86130e1446fa56c05c99e5b1`
+
+```text
+App Shell run_id:                 31855597482
+shell-contract job_id:            94939650769
+shell-contract conclusion:        failure
+shell-contract runner_id:         0
+shell-contract steps:             []
+shell-quality:                    skipped
+shell-security:                   skipped
+shell-build:                      skipped
+shell-browser-e2e:                skipped
+```
+
+GitHub check annotation:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+
+Interpretation: this is the same account-level GitHub Actions billing/spending-limit blocker seen on earlier nodes. The runner never started, so the App Shell architecture validator, pinned TypeScript 6.0.3 typecheck, lint, Vitest suite, Prettier check, production Next build, client-bundle leak scan and Playwright browser smoke were **not executed**. This is not an observed code/test failure and is not PASS.
+
+This evidence commit intentionally creates a new final release HEAD. The final-head hosted run is recorded in PR metadata/body only rather than creating another evidence commit, preventing a commit → workflow → evidence-commit loop.
 
 ## Completion policy
 
@@ -155,13 +177,14 @@ Current:
 ```text
 App Shell implementation                  IMPLEMENTED
 strict pure-TS boundary audit              passed with available local TS 5.8
-static architecture/security gate         hosted execution pending
-TS6 target typecheck                       hosted execution pending
-lint/unit tests                           hosted execution pending
-production Next build/client leak scan     hosted execution pending
-Playwright route/auth/a11y/offline smoke   hosted execution pending
+static architecture/security gate         not executed on hosted runner
+TS6 target typecheck                       not executed on hosted runner
+lint/unit/Prettier tests                   not executed on hosted runner
+production Next build/client leak scan     not executed on hosted runner
+Playwright route/auth/a11y/offline smoke   not executed on hosted runner
+hosted blocker                             GitHub billing/spending limit
 NODE-16 production session adapter         pending upstream implementation
-NODE-11 generated client                  pending upstream implementation
+NODE-11 generated client                   pending upstream implementation
 ```
 
 Local pure TypeScript validation used the available TypeScript 5.8 compiler with `strict`, `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` to audit the shell's framework-independent core. It found and led to a fix for the optional unauthorized-handler field. This is useful evidence but is **not** a substitute for the repository's pinned TypeScript 6.0.3 hosted gate.
