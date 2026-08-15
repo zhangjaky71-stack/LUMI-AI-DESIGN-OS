@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${LUMI_PERF_DATABASE_URL:?Set LUMI_PERF_DATABASE_URL to the authorized benchmark database}"
+if [[ "${LUMI_PERF_TARGET_ACK:-}" != "1" ]]; then
+  echo "STOP: set LUMI_PERF_TARGET_ACK=1 only after confirming the database is authorized for performance inspection" >&2
+  exit 2
+fi
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+sql="$repo_root/infra/perf/sql/performance_snapshot.sql"
+: "${LUMI_PERF_DB_OUTPUT:=$repo_root/perf/results/db-snapshot.txt}"
+mkdir -p "$(dirname "$LUMI_PERF_DB_OUTPUT")"
+
+PGAPPNAME=lumi-node69-perf-snapshot \
+  psql -X --no-psqlrc --set=ON_ERROR_STOP=1 "$LUMI_PERF_DATABASE_URL" --file "$sql" >"$LUMI_PERF_DB_OUTPUT"
+
+echo "[perf-db] read-only snapshot written to $LUMI_PERF_DB_OUTPUT"

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "kind": "target",
+  "measured": false,
+  "latency_ms": {
+    "api_cached_metadata_p95_max": 300,
+    "api_ordinary_p95_max": 800,
+    "enqueue_p95_max": 500,
+    "sse_platform_propagation_p95_max": 1000,
+    "local_interaction_p95_max": 100
+  },
+  "canvas": {
+    "fps_target_min": 50,
+    "fps_target_preferred": 60,
+    "memory_growth_mb_per_cycle_max": 0
+  },
+  "launch_concurrency": {
+    "connected_users_max": 100,
+    "ai_generations_max": 20,
+    "media_jobs_max": 10,
+    "sse_connections_min": 100
+  },
+  "notes": [
+    "Targets are release objectives, not achieved measurements.",
+    "Provider generation latency is excluded from LUMI platform-overhead budgets.",
+    "Memory leak acceptance requires repeated-cycle/long-session evidence, not a single snapshot."
+  ]
+}
