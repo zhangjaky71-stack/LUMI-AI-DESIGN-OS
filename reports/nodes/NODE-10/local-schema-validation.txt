@@ -1,0 +1,41 @@
+NODE-10 local deterministic schema validation
+Date: 2026-08-16
+Available validation container: Python 3.13.5
+Available SQLAlchemy: 2.0.50
+Docker/PostgreSQL runtime in validation container: unavailable
+
+Validation performed against the NODE-10 persistence/snapshot mirror:
+
+- imported SQLAlchemy metadata
+- compiled metadata with the PostgreSQL dialect via create_mock_engine
+- checked table inventory
+- checked tenant column coverage
+- checked exact numeric persistence
+- checked frozen SQL snapshot inventory
+- checked RLS statement/policy counts
+- checked pgvector/pgcrypto declarations
+- checked immutable-history safeguards
+- checked Task DAG and Artifact lineage cycle safeguards
+- checked RLS-safe SECURITY DEFINER tenant-reference guard with fixed search_path
+- checked DesignDocument head-version and parent-version tenant reference coverage
+- Python compileall for persistence package
+
+Observed output:
+
+LOCAL_SCHEMA_VALIDATION_PASS 40 37 94
+COMPILEALL_PASS
+
+Interpretation:
+
+- 40 P0 tables are present.
+- 37 tables are tenant-scoped with mandatory organization_id.
+- 37 RLS enable statements and 37 tenant policies are present in the frozen migration.
+- 94 SQLAlchemy DDL elements were emitted by the local PostgreSQL mock compilation.
+- no SQLAlchemy Float persistence column was accepted by the validator.
+
+Qualification:
+
+- The local environment has SQLAlchemy 2.0.50, while the dedicated NODE-10 workflow pins SQLAlchemy 2.0.51.
+- The repository contract uses Python 3.12.*, while the fallback container exposes Python 3.13.5.
+- Docker/PostgreSQL is unavailable in the fallback container, so dynamic migration, RLS, rollback/reapply, trigger and asyncpg tests are NOT claimed as passed locally.
+- Those dynamic checks are implemented in `.github/workflows/node-10-database-schema.yml` and `tools/node10/test_database_integration.py` and remain mandatory before NODE-10 can become COMPLETE.
