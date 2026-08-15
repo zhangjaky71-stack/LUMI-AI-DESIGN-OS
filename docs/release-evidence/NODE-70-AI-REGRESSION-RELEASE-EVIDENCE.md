@@ -11,10 +11,12 @@ NODE-70 now has a versioned, fail-closed AI release-control source baseline. Thi
 ## Implemented source baseline
 
 - Existing NODE-05 deterministic benchmark harness reused rather than duplicated.
-- `ReleaseManifest` pins exact Git SHA, Agent, prompt hash, Skills, Recipe, routing policy, Critic, Constraint policy, Context policy, suite versions, and benchmark profile.
+- `ReleaseManifest` pins exact Git SHA, Agent, prompt hash, Skills, Recipe, routing policy, Critic, Constraint policy, Context policy, suite versions, and **per-suite** benchmark profiles.
+- `smoke`, `auto-repair`, and `visual-critic` each pin their own exact baseline/candidate profile name and version; one global response-profile identity is not reused incorrectly across suites.
 - Floating release identities (`latest`, `main`, `dev`, `unknown`, `*`) are rejected.
 - Deterministic release fingerprints and decision IDs.
 - Blocking executable suites: `smoke`, `auto-repair`, `visual-critic`.
+- Source validator constructs and evaluates all three blocking suite pairs, not smoke only.
 - Per-case critical guardrails prevent an aggregate score from hiding one critical failure.
 - Zero-tolerance critical metrics include safety/constraint failures and unsafe paid/repair side effects where those metrics are present.
 - Production `release` mode rejects fixture evidence.
@@ -36,13 +38,36 @@ The repository already contains executable benchmark suites and deterministic fi
 
 This distinction prevents a specification-only dataset from being falsely reported as an executed green suite.
 
+## Direct GitHub Actions evidence
+
+Draft PR #70 created from implementation head `72c1589808335d4dd82e675c5ba7e3377fb12036` triggered:
+
+```text
+workflow: AI Regression Release Gate
+run_id: 31885332003
+source-contract job_id: 95013694756
+canonical-eval-tests job_id: 95013694779
+```
+
+Both key jobs were reported as `failure`, but GitHub returned an empty step list for each job. Their check-run annotations explicitly state:
+
+```text
+The job was not started because recent account payments have failed or your spending limit needs to be increased.
+```
+
+Therefore this workflow produced **no execution result for NODE-70 code**: checkout, source validator, frozen dependency sync and pytest did not run. The failure is classified as an external GitHub Billing/spending-limit blocker, not as a passing or failing AI regression evaluation.
+
+The `live-provider-preflight` job was `skipped` on the Pull Request event by design because paid/live provider authorization is manual-only.
+
 ## Direct source contract expectations
 
 `python3 scripts/validate_ai_release_contract.py` must prove all of the following once CI can execute:
 
-- the required executable suites can be loaded and contain cases;
-- a clean fixture comparison passes contract mode;
-- one critical case failure blocks even when aggregate critical score is left unchanged;
+- all required executable suites can be loaded and contain cases;
+- baseline/candidate manifests pin exactly the suite set required by release policy;
+- each suite's response profile matches its own pinned manifest identity;
+- clean fixtures for all blocking executable suites pass contract mode;
+- one critical case failure blocks the full release even when the aggregate critical score is deliberately left unchanged;
 - fixture evidence cannot pass production release mode;
 - shadow is side-effect free;
 - canary can advance only inside guardrails;
@@ -53,10 +78,11 @@ This distinction prevents a specification-only dataset from being falsely report
 
 - [ ] NODE-70 `source-contract` actually executes on a GitHub runner.
 - [ ] Frozen `canonical-eval-tests` execute and pass.
+- [ ] GitHub Billing/spending-limit condition is resolved so hosted jobs can start.
 - [ ] Root `uv.lock` freshness blocker inherited from NODE-66 is resolved.
 - [ ] Exact current production baseline manifest is captured from a real deployed production configuration.
 - [ ] Candidate manifest is captured from the exact candidate build/configuration.
-- [ ] Baseline and candidate reports exist for `smoke`, `auto-repair`, and `visual-critic` using the exact pinned versions.
+- [ ] Baseline and candidate reports exist for `smoke`, `auto-repair`, and `visual-critic` using the exact pinned versions/profiles.
 - [ ] Product parity acceptance evidence is executed and reviewed.
 - [ ] Model/provider benchmark is executed under explicit budget and has sufficient statistical evidence.
 - [ ] Agent security red-team evidence passes with zero critical failure.
@@ -84,14 +110,16 @@ This distinction prevents a specification-only dataset from being falsely report
 
 ```text
 RELEASE MANIFEST CONTRACT: IMPLEMENTED
+PER-SUITE BENCHMARK PROFILE PINNING: IMPLEMENTED
 PER-CASE CRITICAL GATE: IMPLEMENTED
-EXECUTABLE SUITE GATE: IMPLEMENTED
+EXECUTABLE SUITE GATE: IMPLEMENTED (SOURCE; NOT EXECUTED ON HOSTED RUNNER)
 STATISTICAL HELPERS: IMPLEMENTED
 SUPPLEMENTAL EVIDENCE CONTRACT: IMPLEMENTED
 SHADOW CONTRACT: IMPLEMENTED
 CANARY/ROLLBACK STATE MACHINE: IMPLEMENTED
 LIVE PROVIDER BUDGET PREFLIGHT: IMPLEMENTED
 ARCHIVAL RELEASE CLI: IMPLEMENTED
+GITHUB HOSTED EXECUTION: BLOCKED BEFORE RUNNER START
 REAL PRODUCTION BASELINE: MISSING
 REAL CANDIDATE RELEASE REPORT: MISSING
 HUMAN/SHADOW/CANARY RUNTIME EVIDENCE: MISSING
