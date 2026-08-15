@@ -1,0 +1,30 @@
+NODE-08 local deterministic validation
+Date: 2026-08-16
+Runtime available in validation container: Node.js v22.16.0
+Command: node --test apps/web/public/canvas-spike/engine.test.mjs
+
+TAP version 13
+# Subtest: world/screen coordinate round trip is stable
+ok 1 - world/screen coordinate round trip is stable
+# Subtest: zoom-to-cursor preserves the world anchor and clamps zoom
+ok 2 - zoom-to-cursor preserves the world anchor and clamps zoom
+# Subtest: marquee and culling use renderer-independent node bounds
+ok 3 - marquee and culling use renderer-independent node bounds
+# Subtest: selection transforms do not mutate the persisted spike nodes
+ok 4 - selection transforms do not mutate the persisted spike nodes
+# Subtest: selection bounds and fit-camera support large scenes
+ok 5 - selection bounds and fit-camera support large scenes
+# Subtest: undo/redo command stack restores applied mutations
+ok 6 - undo/redo command stack restores applied mutations
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+
+Note:
+- The repository contract pins Node 24 for CI. This local fallback used Node 22 only because GitHub-hosted Actions were blocked before runner allocation by account billing/spending-limit status.
+- Browser/Pixi performance acceptance is intentionally NOT marked passed from this local deterministic test.
