@@ -1,0 +1,183 @@
+name: Observability Contract
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/observability/**"
+      - "apps/api/tests/test_observability.py"
+      - "apps/agent-runtime/src/lumi_agent_runtime/observability.py"
+      - "apps/agent-runtime/tests/test_observability.py"
+      - "apps/worker-media/src/lumi_worker_media/observability.py"
+      - "apps/worker-media/src/lumi_worker_media/event_runtime.py"
+      - "apps/worker-media/tests/test_event_runtime.py"
+      - "apps/web/src/lib/observability/**"
+      - "apps/web/src/components/BrowserObservability.tsx"
+      - "apps/web/src/app/api/telemetry/browser/**"
+      - "apps/web/src/app/canvas-engine/CanvasEngineClient.tsx"
+      - "apps/web/src/app/layout.tsx"
+      - "apps/web/src/app/app/**/error.tsx"
+      - "services/model-gateway/src/lumi_model_gateway/telemetry.py"
+      - "services/model-gateway/src/lumi_model_gateway/gateway.py"
+      - "services/model-gateway/tests/test_observability.py"
+      - "infra/observability/**"
+      - "infra/compose/docker-compose.observability.yml"
+      - "scripts/observability-smoke"
+      - "scripts/observability-synthetic"
+      - ".github/workflows/observability-synthetic.yml"
+      - "Makefile"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/observability-contract.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/**"
+      - "services/model-gateway/**"
+      - "infra/observability/**"
+      - "infra/compose/docker-compose.observability.yml"
+      - "scripts/observability-*"
+      - "pyproject.toml"
+      - "uv.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: observability-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24"
+  PNPM_VERSION: "11.4.0"
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Verify Python lock matches workspace manifests
+        run: uv lock --check
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Observability regression tests
+        run: |
+          uv run pytest \
+            apps/api/tests/test_observability.py \
+            apps/agent-runtime/tests/test_observability.py \
+            apps/worker-media/tests/test_event_runtime.py \
+            services/model-gateway/tests/test_observability.py
+      - name: Format and lint observability changes
+        run: |
+          uv run ruff format --check \
+            apps/api/src/lumi_api/observability \
+            apps/api/tests/test_observability.py \
+            apps/agent-runtime/src/lumi_agent_runtime/observability.py \
+            apps/agent-runtime/tests/test_observability.py \
+            apps/worker-media/src/lumi_worker_media/observability.py \
+            apps/worker-media/src/lumi_worker_media/event_runtime.py \
+            apps/worker-media/tests/test_event_runtime.py \
+            services/model-gateway/src/lumi_model_gateway/telemetry.py \
+            services/model-gateway/src/lumi_model_gateway/gateway.py \
+            services/model-gateway/tests/test_observability.py
+          uv run ruff check \
+            apps/api/src/lumi_api/observability \
+            apps/api/tests/test_observability.py \
+            apps/agent-runtime/src/lumi_agent_runtime/observability.py \
+            apps/agent-runtime/tests/test_observability.py \
+            apps/worker-media/src/lumi_worker_media/observability.py \
+            apps/worker-media/src/lumi_worker_media/event_runtime.py \
+            apps/worker-media/tests/test_event_runtime.py \
+            services/model-gateway/src/lumi_model_gateway/telemetry.py \
+            services/model-gateway/src/lumi_model_gateway/gateway.py \
+            services/model-gateway/tests/test_observability.py
+
+  frontend-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+      - name: Browser observability privacy tests
+        run: |
+          pnpm --filter @lumi/web exec vitest run \
+            src/lib/observability/browser.test.ts \
+            src/app/api/telemetry/browser/route.test.ts
+      - name: Web typecheck
+        run: pnpm --filter @lumi/web typecheck
+      - name: Web lint
+        run: pnpm --filter @lumi/web lint
+
+  local-stack-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Create local-only compose environment
+        run: cp infra/compose/env.local.example infra/compose/.env
+      - name: Validate composed model
+        run: |
+          docker compose \
+            --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml \
+            -f infra/compose/docker-compose.observability.yml \
+            config --quiet
+      - name: Validate Grafana dashboard JSON
+        run: python3 -m json.tool infra/observability/grafana/dashboards/operational-overview.json >/dev/null
+      - name: Start observability backends
+        run: |
+          docker compose \
+            --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml \
+            -f infra/compose/docker-compose.observability.yml \
+            up -d prometheus tempo loki otel-collector grafana
+      - name: Readiness smoke
+        run: bash scripts/observability-smoke
+      - name: Validate Prometheus config and rules
+        run: |
+          docker compose \
+            --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml \
+            -f infra/compose/docker-compose.observability.yml \
+            exec -T prometheus promtool check config /etc/prometheus/prometheus.yml
+          docker compose \
+            --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml \
+            -f infra/compose/docker-compose.observability.yml \
+            exec -T prometheus promtool check rules /etc/prometheus/lumi-rules.yml
+      - name: Backend logs on failure
+        if: failure()
+        run: |
+          docker compose \
+            --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml \
+            -f infra/compose/docker-compose.observability.yml \
+            logs --tail=250 prometheus tempo loki otel-collector grafana
+      - name: Stop stack
+        if: always()
+        run: |
+          docker compose \
+            --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml \
+            -f infra/compose/docker-compose.observability.yml \
+            down --volumes --remove-orphans

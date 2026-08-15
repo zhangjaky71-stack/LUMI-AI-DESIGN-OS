@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
+
+import { reportRouteError } from "../../lib/observability/browser";
+
 export default function AppError({
   error,
   reset,
@@ -8,6 +12,10 @@ export default function AppError({
   reset: () => void;
 }) {
   const requestId = error.digest ?? "unavailable";
+
+  useEffect(() => {
+    reportRouteError(error.digest ?? "workspace_route_boundary");
+  }, [error.digest]);
 
   return (
     <section className="route-error" role="alert">

@@ -10,6 +10,7 @@ from lumi_api.auth.canonical_router import create_auth_router
 from lumi_api.auth.notifications import RejectingAuthNotificationPort
 from lumi_api.auth.smtp_notifications import SmtpAuthNotificationPort
 from lumi_api.config import get_settings
+from lumi_api.observability import ObservabilityConfig, apply_observability
 from lumi_api.persistence.session import create_engine
 from lumi_api.security import SecurityConfig, apply_security_hardening
 
@@ -49,6 +50,10 @@ app = FastAPI(
 apply_security_hardening(
     app,
     SecurityConfig(production=settings.lumi_env == "production"),
+)
+apply_observability(
+    app,
+    ObservabilityConfig(service_name="lumi-auth-api", environment=settings.lumi_env),
 )
 app.include_router(
     create_auth_router(

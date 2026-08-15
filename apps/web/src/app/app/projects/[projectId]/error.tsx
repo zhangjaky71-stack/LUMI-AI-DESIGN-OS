@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
+
+import { reportRouteError } from "../../../../lib/observability/browser";
+
 export default function ProjectWorkspaceError({
   error,
   reset,
@@ -7,6 +11,10 @@ export default function ProjectWorkspaceError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    reportRouteError(error.digest ?? "project_route_boundary");
+  }, [error.digest]);
+
   return (
     <section className="route-error" role="alert">
       <p className="eyebrow">PROJECT ERROR</p>

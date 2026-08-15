@@ -34,7 +34,7 @@ from .ports import (
     Sleeper,
 )
 from .routing import ModelRouter
-from .telemetry import NullCostTelemetrySink
+from .telemetry import NullCostTelemetrySink, ResilientCostTelemetrySink
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,7 +88,7 @@ class ModelGateway:
         self.paid_guard = paid_guard
         self.paid_stream_guard = paid_stream_guard
         self.budget_guard = budget_guard or RequestBudgetGuard()
-        self.telemetry = telemetry or NullCostTelemetrySink()
+        self.telemetry = ResilientCostTelemetrySink(telemetry or NullCostTelemetrySink())
         self.retry_policy = retry_policy or RetryPolicy()
         self.sleeper = sleeper or AsyncioSleeper()
 
