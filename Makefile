@@ -3,9 +3,11 @@ SHELL := /usr/bin/env bash
 COMPOSE_DIR := infra/compose
 COMPOSE_ENV := $(COMPOSE_DIR)/.env
 COMPOSE_FILE := $(COMPOSE_DIR)/docker-compose.yml
+OBS_COMPOSE_FILE := $(COMPOSE_DIR)/docker-compose.observability.yml
 COMPOSE := docker compose --env-file $(COMPOSE_ENV) -f $(COMPOSE_FILE)
+OBS_COMPOSE := docker compose --env-file $(COMPOSE_ENV) -f $(COMPOSE_FILE) -f $(OBS_COMPOSE_FILE)
 
-.PHONY: bootstrap dev dev-web dev-admin dev-api dev-agent dev-worker lint typecheck test format-check check verify-scaffold ci-contracts ci-local eval-smoke eval eval-live eval-report product-parity-validate model-provider-validate model-gateway-contract capability-registry-contract capability-registry-seed tool-gateway-contract mcp-integration-contract cost-ledger-contract sandbox-contract sandbox-e2e infra-env infra-up infra-status infra-down infra-reset infra-logs doctor infra-smoke infra-persistence db-upgrade db-downgrade-one db-current db-seed
+.PHONY: bootstrap dev dev-web dev-admin dev-api dev-agent dev-worker lint typecheck test format-check check verify-scaffold ci-contracts ci-local eval-smoke eval eval-live eval-report product-parity-validate model-provider-validate model-gateway-contract capability-registry-contract capability-registry-seed tool-gateway-contract mcp-integration-contract cost-ledger-contract sandbox-contract sandbox-e2e infra-env infra-up infra-status infra-down infra-reset infra-logs doctor infra-smoke infra-persistence observability-up observability-status observability-smoke observability-logs observability-down db-upgrade db-downgrade-one db-current db-seed
 
 bootstrap:
 	corepack enable
@@ -150,6 +152,22 @@ infra-persistence: infra-env
 
 infra-logs: infra-env
 	$(COMPOSE) logs --tail=200 -f
+
+observability-up: infra-up
+	$(OBS_COMPOSE) up -d prometheus tempo loki otel-collector grafana
+
+observability-status: infra-env
+	$(OBS_COMPOSE) ps prometheus tempo loki otel-collector grafana
+
+observability-smoke: infra-env
+	bash scripts/observability-smoke
+
+observability-logs: infra-env
+	$(OBS_COMPOSE) logs --tail=200 -f prometheus tempo loki otel-collector grafana
+
+observability-down: infra-env
+	$(OBS_COMPOSE) stop prometheus tempo loki otel-collector grafana
+	$(OBS_COMPOSE) rm -f prometheus tempo loki otel-collector grafana
 
 db-upgrade: infra-env
 	bash scripts/db-local upgrade
