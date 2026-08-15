@@ -227,7 +227,7 @@ infra/iac/environments/staging/
 infra/iac/environments/production/
 production/deployment/manifest-template.json
 .github/workflows/production-iac-contract.yml
-.github/workflows/deploy-staging.yml
+.github/workflows/deploy-staging-infrastructure.yml
 .github/workflows/deploy-production.yml
 scripts/production-deployment-gate.py
 scripts/validate_production_deployment_contract.py
