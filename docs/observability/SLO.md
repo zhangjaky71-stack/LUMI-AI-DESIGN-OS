@@ -23,6 +23,8 @@ No SLO is declared PASS until its production/staging signal has been observed an
 | Cross-tenant isolation | confirmed tenant boundary violations | 0 | continuous | Security invariant inherited from NODE-66 |
 | Telemetry pipeline | critical collector/export path availability | >= 99.90% | rolling 30d | Telemetry outage must not fail product operations |
 
+Browser Web Vitals (TTFB/LCP/CLS/INP), route-error rate and Canvas-error rate are currently **diagnostic SLIs**, not production SLOs. They may become user-experience SLOs only after browser telemetry is queryable in the chosen backend, sampling bias is understood, route cardinality/privacy are reviewed, and thresholds are validated against real LUMI traffic/device mix.
+
 ## 3. Error budget
 
 For a 99.90% target over a rolling 30-day window, the availability error budget is 0.10%, equivalent to **43 minutes 12 seconds** of bad time if measured purely as time. Request-based SLOs consume budget by bad eligible requests rather than wall-clock time.
@@ -50,11 +52,12 @@ Recommended production classes:
 
 1. Never put `organization_id`, `user_id`, `project_id`, `run_id`, raw URL or prompt text into metric labels.
 2. Use normalized route templates such as `/projects/{project_id}`.
-3. Keep tenant/run identifiers in trace attributes or privacy-safe structured log references.
+3. Keep tenant/run/request/correlation identifiers in trace attributes or privacy-safe structured log references.
 4. Separate business failures from client errors and cancellations.
 5. Provider/model SLI labels must come from bounded registry values.
 6. Retry/fallback metrics count attempts and final request outcomes separately.
 7. Missing series is not silently interpreted as zero success/failure; dashboards must expose no-data state.
+8. Browser SLI aggregation must correct for configured sampling and must not promote request/correlation IDs to metric labels.
 
 ## 6. Activation gates
 
@@ -73,5 +76,6 @@ Current NODE-67 source status:
 - Core HTTP request count/duration: IMPLEMENTED, execution validation pending.
 - Collector/exporter health: CONFIGURED, execution validation pending.
 - Provider/model projection: IMPLEMENTED, exporter wiring pending OTel SDK/lockfile work.
-- Queue/worker/realtime: trace IDs already exist in event envelopes; worker execution-context and metric producer integration remains in progress.
+- Queue/worker/realtime: trace IDs exist in event envelopes and Worker execution-context binding/reset is implemented; queue/realtime metric exporters remain pending.
+- Browser frontend: route/runtime/Canvas errors plus sampled Web Vitals source producer and same-origin intake are implemented; backend aggregation/query remains pending.
 - Quality/cost/business SLO signals: contracts/design remain to be connected to canonical engines before activation.
