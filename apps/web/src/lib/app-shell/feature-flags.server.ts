@@ -1,5 +1,9 @@
 import { DEFAULT_PUBLIC_FEATURE_FLAGS } from "./feature-flags";
-import type { PublicFeatureFlagName, PublicFeatureFlags } from "./types";
+import {
+  PUBLIC_FEATURE_FLAG_NAMES,
+  type PublicFeatureFlagName,
+  type PublicFeatureFlags,
+} from "./types";
 
 const ENV_KEYS: Readonly<Record<PublicFeatureFlagName, string>> = {
   projects: "LUMI_FEATURE_PROJECTS",
@@ -10,11 +14,18 @@ const ENV_KEYS: Readonly<Record<PublicFeatureFlagName, string>> = {
   commandPalette: "LUMI_FEATURE_COMMAND_PALETTE",
 };
 
-export function getServerPublicFeatureFlags(env: NodeJS.ProcessEnv = process.env): PublicFeatureFlags {
-  const entries = Object.entries(ENV_KEYS).map(([flag, envKey]) => {
-    const raw = env[envKey];
-    const fallback = DEFAULT_PUBLIC_FEATURE_FLAGS[flag as PublicFeatureFlagName];
-    return [flag, raw === undefined ? fallback : raw !== "0" && raw.toLowerCase() !== "false"];
+export function getServerPublicFeatureFlags(
+  env: NodeJS.ProcessEnv = process.env,
+): PublicFeatureFlags {
+  const entries = PUBLIC_FEATURE_FLAG_NAMES.map((flag) => {
+    const raw = env[ENV_KEYS[flag]];
+    const fallback = DEFAULT_PUBLIC_FEATURE_FLAGS[flag];
+    const enabled =
+      raw === undefined
+        ? fallback
+        : raw !== "0" && raw.toLowerCase() !== "false";
+    return [flag, enabled] as const;
   });
+
   return Object.freeze(Object.fromEntries(entries)) as PublicFeatureFlags;
 }

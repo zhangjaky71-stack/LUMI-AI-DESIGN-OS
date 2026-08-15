@@ -7,6 +7,7 @@ describe("OrgScopedQueryCache", () => {
     cache.set(["projects"], ["a"]);
     expect(cache.key(["projects"])).toBe('["org-a","projects"]');
     expect(cache.get(["projects"])).toEqual(["a"]);
+
     cache.switchOrganization("org-b");
     expect(cache.key(["projects"])).toBe('["org-b","projects"]');
     expect(cache.get(["projects"])).toBeUndefined();
@@ -14,9 +15,18 @@ describe("OrgScopedQueryCache", () => {
 
   it("aborts old in-flight queries before accepting a new organization", async () => {
     const cache = new OrgScopedQueryCache("org-a");
-    const pending = cache.fetchQuery(["projects"], (signal) => new Promise<string>((_resolve, reject) => {
-      signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
-    }));
+    const pending = cache.fetchQuery(
+      ["projects"],
+      (signal) =>
+        new Promise<string>((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => reject(new Error("aborted")),
+            { once: true },
+          );
+        }),
+    );
+
     cache.switchOrganization("org-b");
     await expect(pending).rejects.toThrow("aborted");
     expect(cache.organizationId).toBe("org-b");

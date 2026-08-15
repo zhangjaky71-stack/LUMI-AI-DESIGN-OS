@@ -8,14 +8,22 @@ export type TelemetryScalar = string | number | boolean | null;
 export type TelemetryProperties = Readonly<Record<string, TelemetryScalar>>;
 
 export interface TelemetryAdapter {
-  emit(event: TelemetryEventName, properties: TelemetryProperties): void | Promise<void>;
+  emit(
+    event: TelemetryEventName,
+    properties: TelemetryProperties,
+  ): void | Promise<void>;
 }
 
-const SENSITIVE_KEY = /(prompt|image|asset.?url|token|secret|password|authorization|cookie|email|content)/i;
+const SENSITIVE_KEY =
+  /(prompt|image|asset.?url|token|secret|password|authorization|cookie|email|content)/i;
 
-export function sanitizeTelemetryProperties(properties: TelemetryProperties): TelemetryProperties {
+export function sanitizeTelemetryProperties(
+  properties: TelemetryProperties,
+): TelemetryProperties {
   for (const key of Object.keys(properties)) {
-    if (SENSITIVE_KEY.test(key)) throw new Error(`TELEMETRY_SENSITIVE_PROPERTY_FORBIDDEN:${key}`);
+    if (SENSITIVE_KEY.test(key)) {
+      throw new Error(`TELEMETRY_SENSITIVE_PROPERTY_FORBIDDEN:${key}`);
+    }
   }
   return Object.freeze({ ...properties });
 }
@@ -31,7 +39,10 @@ export class SafeTelemetry {
     this.#adapter = adapter;
   }
 
-  emit(event: TelemetryEventName, properties: TelemetryProperties = {}): void {
+  emit(
+    event: TelemetryEventName,
+    properties: TelemetryProperties = {},
+  ): void {
     void this.#adapter.emit(event, sanitizeTelemetryProperties(properties));
   }
 }

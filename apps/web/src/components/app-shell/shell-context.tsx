@@ -1,11 +1,16 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { LumiApiClient } from "@/lib/app-shell/api-client";
 import { OrgScopedQueryCache } from "@/lib/app-shell/query-cache";
 import { SafeTelemetry } from "@/lib/app-shell/telemetry";
-import type { PublicFeatureFlags, ShellBootstrap, ShellOrganization, ShellSession } from "@/lib/app-shell/types";
+import type {
+  PublicFeatureFlags,
+  ShellBootstrap,
+  ShellOrganization,
+  ShellSession,
+} from "@/lib/app-shell/types";
 
 interface ShellContextValue {
   readonly session: ShellSession;
@@ -20,24 +25,32 @@ interface ShellContextValue {
 
 const ShellContext = createContext<ShellContextValue | null>(null);
 
-export function ShellProviders({ bootstrap, children }: Readonly<{ bootstrap: ShellBootstrap; children: React.ReactNode }>) {
+export function ShellProviders({
+  bootstrap,
+  children,
+}: Readonly<{ bootstrap: ShellBootstrap; children: React.ReactNode }>) {
   const [session, setSession] = useState(bootstrap.session);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [queryCache] = useState(
+    () => new OrgScopedQueryCache(bootstrap.session.active_organization_id),
+  );
+  const [telemetry] = useState(() => new SafeTelemetry());
   const router = useRouter();
   const pathname = usePathname();
-  const telemetryRef = useRef(new SafeTelemetry());
-  const queryCacheRef = useRef<OrgScopedQueryCache | null>(null);
-  if (queryCacheRef.current === null) queryCacheRef.current = new OrgScopedQueryCache(session.active_organization_id);
-  const queryCache = queryCacheRef.current;
 
   const api = useMemo(
-    () => new LumiApiClient({ context: () => ({ organization_id: session.active_organization_id }) }),
+    () =>
+      new LumiApiClient({
+        context: () => ({
+          organization_id: session.active_organization_id,
+        }),
+      }),
     [session.active_organization_id],
   );
 
   useEffect(() => {
-    telemetryRef.current.emit("page.viewed", { path: pathname });
-  }, [pathname]);
+    telemetry.emit("page.viewed", { path: pathname });
+  }, [pathname, telemetry]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -47,20 +60,34 @@ export function ShellProviders({ bootstrap, children }: Readonly<{ bootstrap: Sh
       }
       if (event.key === "Escape") setCommandPaletteOpen(false);
     };
+
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const activeOrganization = session.organizations.find((organization) => organization.id === session.active_organization_id);
-  if (!activeOrganization) throw new Error("SHELL_ACTIVE_ORGANIZATION_MISSING");
+  const activeOrganization = session.organizations.find(
+    (organization) => organization.id === session.active_organization_id,
+  );
+  if (!activeOrganization) {
+    throw new Error("SHELL_ACTIVE_ORGANIZATION_MISSING");
+  }
 
   const switchOrganization = (organizationId: string) => {
     if (organizationId === session.active_organization_id) return;
-    const next = session.organizations.find((organization) => organization.id === organizationId);
+
+    const next = session.organizations.find(
+      (organization) => organization.id === organizationId,
+    );
     if (!next) return;
+
     queryCache.switchOrganization(organizationId);
-    setSession((current) => ({ ...current, active_organization_id: organizationId }));
-    telemetryRef.current.emit("organization.switched", { organization_id: organizationId });
+    setSession((current) => ({
+      ...current,
+      active_organization_id: organizationId,
+    }));
+    telemetry.emit("organization.switched", {
+      organization_id: organizationId,
+    });
     router.push("/app/projects");
   };
 

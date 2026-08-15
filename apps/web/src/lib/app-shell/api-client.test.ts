@@ -1,20 +1,35 @@
 import { describe, expect, it } from "vitest";
 import { LumiApiClient, LumiApiError } from "./api-client";
 
-function response(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
+function response(
+  body: unknown,
+  status = 200,
+  headers: Record<string, string> = {},
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json", ...headers },
+  });
 }
 
 describe("LumiApiClient", () => {
   it("surfaces stable Problem Details codes instead of parsing messages", async () => {
-    const transport: typeof fetch = async () => response({
-      type: "https://errors.lumi.dev/project/not-found",
-      title: "Project not found",
-      status: 404,
-      code: "PROJECT_NOT_FOUND",
-      request_id: "req-server",
-    }, 404);
-    const client = new LumiApiClient({ base_url: "https://api.test/v1", transport });
+    const transport: typeof fetch = async () =>
+      response(
+        {
+          type: "https://errors.lumi.dev/project/not-found",
+          title: "Project not found",
+          status: 404,
+          code: "PROJECT_NOT_FOUND",
+          request_id: "req-server",
+        },
+        404,
+      );
+    const client = new LumiApiClient({
+      base_url: "https://api.test/v1",
+      transport,
+    });
+
     try {
       await client.get("/projects/missing");
       throw new Error("expected request to fail");
@@ -29,10 +44,18 @@ describe("LumiApiClient", () => {
     let calls = 0;
     const transport: typeof fetch = async () => {
       calls += 1;
-      return calls < 3 ? response({ code: "TEMP" }, 503) : response({ items: ["ok"] });
+      return calls < 3
+        ? response({ code: "TEMP" }, 503)
+        : response({ items: ["ok"] });
     };
-    const client = new LumiApiClient({ base_url: "https://api.test/v1", transport });
-    await expect(client.get<{ items: string[] }>("/projects")).resolves.toEqual({ items: ["ok"] });
+    const client = new LumiApiClient({
+      base_url: "https://api.test/v1",
+      transport,
+    });
+
+    await expect(
+      client.get<{ items: string[] }>("/projects"),
+    ).resolves.toEqual({ items: ["ok"] });
     expect(calls).toBe(3);
   });
 
@@ -47,9 +70,17 @@ describe("LumiApiClient", () => {
     const client = new LumiApiClient({
       base_url: "https://api.test/v1",
       transport,
-      context: () => ({ organization_id: "org-1", csrf_token: "csrf-test" }),
+      context: () => ({
+        organization_id: "org-1",
+        csrf_token: "csrf-test",
+      }),
     });
-    await client.post("/projects", { title: "Poster" }, { idempotency_key: "idem-1", if_match: "v7" });
+
+    await client.post(
+      "/projects",
+      { title: "Poster" },
+      { idempotency_key: "idem-1", if_match: "v7" },
+    );
     expect(calls).toBe(1);
     expect(captured.get("x-lumi-organization-id")).toBe("org-1");
     expect(captured.get("x-csrf-token")).toBe("csrf-test");

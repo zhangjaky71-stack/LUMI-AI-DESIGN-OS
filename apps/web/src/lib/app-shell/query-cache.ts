@@ -34,8 +34,16 @@ export class OrgScopedQueryCache {
     return entry.value;
   }
 
-  set<T>(parts: readonly QueryKeyPart[], value: T, ttlMs = 30_000, now = Date.now()): void {
-    this.#cache.set(this.key(parts), { value, expires_at: now + ttlMs });
+  set<T>(
+    parts: readonly QueryKeyPart[],
+    value: T,
+    ttlMs = 30_000,
+    now = Date.now(),
+  ): void {
+    this.#cache.set(this.key(parts), {
+      value,
+      expires_at: now + ttlMs,
+    });
   }
 
   async fetchQuery<T>(
@@ -45,12 +53,19 @@ export class OrgScopedQueryCache {
   ): Promise<T> {
     const cached = this.get<T>(parts);
     if (cached !== undefined) return cached;
+
     const organizationAtStart = this.#organizationId;
     const controller = new AbortController();
     this.#controllers.add(controller);
+
     try {
       const value = await loader(controller.signal);
-      if (this.#organizationId === organizationAtStart && !controller.signal.aborted) this.set(parts, value, ttlMs);
+      if (
+        this.#organizationId === organizationAtStart &&
+        !controller.signal.aborted
+      ) {
+        this.set(parts, value, ttlMs);
+      }
       return value;
     } finally {
       this.#controllers.delete(controller);
@@ -58,8 +73,11 @@ export class OrgScopedQueryCache {
   }
 
   switchOrganization(nextOrganizationId: string): void {
-    if (!nextOrganizationId) throw new Error("QUERY_CACHE_ORGANIZATION_REQUIRED");
+    if (!nextOrganizationId) {
+      throw new Error("QUERY_CACHE_ORGANIZATION_REQUIRED");
+    }
     if (nextOrganizationId === this.#organizationId) return;
+
     this.abortInFlight();
     this.#cache.clear();
     this.#organizationId = nextOrganizationId;
@@ -70,7 +88,9 @@ export class OrgScopedQueryCache {
   }
 
   abortInFlight(): void {
-    for (const controller of this.#controllers) controller.abort("organization-switch");
+    for (const controller of this.#controllers) {
+      controller.abort("organization-switch");
+    }
     this.#controllers.clear();
   }
 }

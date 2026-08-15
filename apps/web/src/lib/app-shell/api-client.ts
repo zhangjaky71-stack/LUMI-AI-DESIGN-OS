@@ -23,7 +23,9 @@ export class LumiApiError extends Error {
 }
 
 function requestId(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
   return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
@@ -38,13 +40,17 @@ function isProblemDetails(value: unknown): value is ProblemDetails {
   );
 }
 
-async function parseProblem(response: Response, fallbackRequestId: string): Promise<ProblemDetails> {
+async function parseProblem(
+  response: Response,
+  fallbackRequestId: string,
+): Promise<ProblemDetails> {
   let value: unknown;
   try {
     value = await response.json();
   } catch {
     value = null;
   }
+
   if (isProblemDetails(value)) return value;
   return {
     type: "about:blank",
@@ -62,11 +68,13 @@ export class LumiApiClient {
   readonly #transport: typeof fetch;
   readonly #context: () => ApiClientContext;
 
-  constructor(options: {
-    readonly base_url?: string;
-    readonly transport?: typeof fetch;
-    readonly context?: () => ApiClientContext;
-  } = {}) {
+  constructor(
+    options: {
+      readonly base_url?: string;
+      readonly transport?: typeof fetch;
+      readonly context?: () => ApiClientContext;
+    } = {},
+  ) {
     this.#baseUrl = options.base_url ?? "/api/v1";
     this.#transport = options.transport ?? globalThis.fetch.bind(globalThis);
     this.#context = options.context ?? (() => ({}));
@@ -76,26 +84,45 @@ export class LumiApiClient {
     return this.#request<T>("GET", path, undefined, options);
   }
 
-  post<TResponse, TBody>(path: string, body: TBody, options: ApiRequestOptions = {}): Promise<TResponse> {
+  post<TResponse, TBody>(
+    path: string,
+    body: TBody,
+    options: ApiRequestOptions = {},
+  ): Promise<TResponse> {
     return this.#request<TResponse>("POST", path, body, options);
   }
 
-  patch<TResponse, TBody>(path: string, body: TBody, options: ApiRequestOptions = {}): Promise<TResponse> {
+  patch<TResponse, TBody>(
+    path: string,
+    body: TBody,
+    options: ApiRequestOptions = {},
+  ): Promise<TResponse> {
     return this.#request<TResponse>("PATCH", path, body, options);
   }
 
-  async #request<T>(method: "GET" | "POST" | "PATCH", path: string, body: unknown, options: ApiRequestOptions): Promise<T> {
+  async #request<T>(
+    method: "GET" | "POST" | "PATCH",
+    path: string,
+    body: unknown,
+    options: ApiRequestOptions,
+  ): Promise<T> {
     const context = this.#context();
     const id = requestId();
     const headers = new Headers(options.headers);
     headers.set("accept", "application/json");
     headers.set("x-request-id", id);
-    if (context.organization_id) headers.set("x-lumi-organization-id", context.organization_id);
+    if (context.organization_id) {
+      headers.set("x-lumi-organization-id", context.organization_id);
+    }
     if (options.if_match) headers.set("if-match", options.if_match);
-    if (options.idempotency_key) headers.set("idempotency-key", options.idempotency_key);
+    if (options.idempotency_key) {
+      headers.set("idempotency-key", options.idempotency_key);
+    }
     if (method !== "GET") {
       headers.set("content-type", "application/json");
-      if (context.csrf_token) headers.set("x-csrf-token", context.csrf_token);
+      if (context.csrf_token) {
+        headers.set("x-csrf-token", context.csrf_token);
+      }
     }
 
     const attempts = method === "GET" ? 3 : 1;
@@ -114,7 +141,13 @@ export class LumiApiClient {
           if (response.status === 204) return undefined as T;
           return (await response.json()) as T;
         }
-        if (method === "GET" && RETRYABLE_STATUS.has(response.status) && attempt + 1 < attempts) continue;
+        if (
+          method === "GET" &&
+          RETRYABLE_STATUS.has(response.status) &&
+          attempt + 1 < attempts
+        ) {
+          continue;
+        }
         throw new LumiApiError(await parseProblem(response, id));
       } catch (error) {
         if (error instanceof LumiApiError) throw error;
@@ -123,13 +156,16 @@ export class LumiApiClient {
         if (method !== "GET" || attempt + 1 >= attempts) break;
       }
     }
+
     const problem: ProblemDetails = {
       type: "https://errors.lumi.dev/network/unavailable",
       title: "Network unavailable",
       status: 503,
       code: "NETWORK_UNAVAILABLE",
       request_id: id,
-      ...(lastNetworkError instanceof Error ? { detail: lastNetworkError.name } : {}),
+      ...(lastNetworkError instanceof Error
+        ? { detail: lastNetworkError.name }
+        : {}),
     };
     throw new LumiApiError(problem);
   }

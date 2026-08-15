@@ -1,4 +1,9 @@
-export type OrganizationRole = "OWNER" | "ADMIN" | "EDITOR" | "VIEWER" | "BILLING";
+export type OrganizationRole =
+  | "OWNER"
+  | "ADMIN"
+  | "EDITOR"
+  | "VIEWER"
+  | "BILLING";
 
 export interface ShellUser {
   readonly id: string;
@@ -40,8 +45,11 @@ export const PUBLIC_FEATURE_FLAG_NAMES = [
   "commandPalette",
 ] as const;
 
-export type PublicFeatureFlagName = (typeof PUBLIC_FEATURE_FLAG_NAMES)[number];
-export type PublicFeatureFlags = Readonly<Record<PublicFeatureFlagName, boolean>>;
+export type PublicFeatureFlagName =
+  (typeof PUBLIC_FEATURE_FLAG_NAMES)[number];
+export type PublicFeatureFlags = Readonly<
+  Record<PublicFeatureFlagName, boolean>
+>;
 
 export interface ShellBootstrap {
   readonly session: ShellSession;
