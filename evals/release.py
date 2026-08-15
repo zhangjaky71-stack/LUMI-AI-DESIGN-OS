@@ -163,12 +163,45 @@ def _supplemental_checks(policy: dict[str, Any], evidence: dict[str, Any] | None
     required = policy.get("required_supplemental_evidence", [])
     if not isinstance(required, list) or not all(isinstance(item, str) and item for item in required):
         raise ReleaseGateError("policy.required_supplemental_evidence must be a string array")
+    statistical = policy.get("statistical_evidence", [])
+    if not isinstance(statistical, list) or not all(isinstance(item, str) and item for item in statistical):
+        raise ReleaseGateError("policy.statistical_evidence must be a string array")
+    minimum_sample = policy.get("minimum_statistical_sample_size", 1)
+    if not isinstance(minimum_sample, int) or isinstance(minimum_sample, bool) or minimum_sample < 1:
+        raise ReleaseGateError("minimum_statistical_sample_size must be an integer >= 1")
+
     supplied = evidence or {}
     checks: list[dict[str, Any]] = []
     for name in required:
         item = supplied.get(name)
-        passed = isinstance(item, dict) and item.get("status") == "PASS" and isinstance(item.get("evidence_ref"), str) and bool(item["evidence_ref"].strip())
-        checks.append({"name": name, "passed": passed, "evidence_ref": item.get("evidence_ref") if isinstance(item, dict) else None})
+        has_ref = isinstance(item, dict) and isinstance(item.get("evidence_ref"), str) and bool(item["evidence_ref"].strip())
+        passed = isinstance(item, dict) and item.get("status") == "PASS" and has_ref
+        statistical_ok = True
+        sample_size = None
+        confidence_method = None
+        if name in statistical:
+            if isinstance(item, dict):
+                sample_size = item.get("sample_size")
+                confidence_method = item.get("confidence_method")
+            statistical_ok = (
+                isinstance(sample_size, int)
+                and not isinstance(sample_size, bool)
+                and sample_size >= minimum_sample
+                and isinstance(confidence_method, str)
+                and bool(confidence_method.strip())
+            )
+            passed = passed and statistical_ok
+        checks.append(
+            {
+                "name": name,
+                "passed": passed,
+                "evidence_ref": item.get("evidence_ref") if isinstance(item, dict) else None,
+                "statistical_required": name in statistical,
+                "sample_size": sample_size,
+                "confidence_method": confidence_method,
+                "statistical_passed": statistical_ok,
+            }
+        )
     return checks
 
 
