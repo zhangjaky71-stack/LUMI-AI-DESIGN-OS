@@ -1,7 +1,8 @@
 # NODE-09 — Acceptance Evidence
 
-> Status: VALIDATING  
+> Status: **BLOCKED_EXTERNAL / VALIDATING**  
 > Branch: `feat/node-09-domain-model`  
+> Pull Request: `#75`  
 > Node: Domain Model  
 > Date: 2026-08-16
 
@@ -42,7 +43,7 @@ Python 3.13.5
 COMPILEALL_PASS
 ```
 
-Repository CI remains pinned to Python 3.12.*. Local fallback evidence is therefore supplementary and cannot replace the repository Ruff/Pyright/Pytest gates.
+Repository CI remains pinned to Python 3.12.*. Local fallback evidence is supplementary and cannot replace repository Ruff/Pyright/Pytest gates.
 
 ## Executable contract
 
@@ -75,11 +76,41 @@ docs/domain/DOMAIN-MODEL.md
 
 The domain package is intentionally free of ORM, HTTP, provider SDK, queue, storage and LangGraph dependencies. Repository and service protocols point outward so NODE-10/NODE-11 adapters depend on the domain rather than redefining it.
 
-## CI evidence
+## GitHub Actions evidence
 
-Pending the first NODE-09 pull-request run.
+PR `#75` head `097f21f89b3dddfdf6e646fc6418ad254b531ed5` triggered:
 
-The repository currently has an account-level GitHub Actions billing/spending-limit block observed on PR #74. NODE-09 will record its own workflow result after its PR is opened. A pre-runner billing failure will be classified `BLOCKED_EXTERNAL` rather than a code failure, but NODE-09 will not be marked COMPLETE until the actual Python/front-end/contracts/integration/security gates can run successfully.
+```text
+CI                 31896616875  FAILURE before runner allocation
+Secret Scan        31896616861  FAILURE before runner allocation
+Dependency Review  31896616864  FAILURE before useful execution
+CodeQL             31896616880  SKIPPED
+```
+
+Repository CI job `changes` (`95040793392`) completed in roughly three seconds with:
+
+```text
+runner_id = 0
+steps = []
+```
+
+GitHub annotation:
+
+```text
+The job was not started because recent account payments have failed
+or your spending limit needs to be increased. Please check the
+'Billing & plans' section in your settings.
+```
+
+This is the same account-level platform condition independently observed by NODE-08, but this report records NODE-09's own run/job evidence. It is classified under `docs/IMPLEMENTATION-PROTOCOL.md` as `BLOCKED_EXTERNAL`, not as a domain code/test failure.
+
+Required recovery after GitHub billing/spending-limit access is restored:
+
+1. re-run PR `#75` checks;
+2. require repository Python Ruff/Pyright/Pytest under Python 3.12.* green;
+3. require contracts/integration/security gates green;
+4. address any real code failure rather than bypassing a gate;
+5. only then merge PR #75, update `docs/NODE-INDEX.md`, and mark NODE-09 `COMPLETE`.
 
 ## Acceptance checklist
 
@@ -91,10 +122,10 @@ The repository currently has an account-level GitHub Actions billing/spending-li
 - [x] Domain package contains no ORM/HTTP/provider/LangGraph implementation dependency.
 - [x] Local deterministic domain tests pass: 13/13.
 - [x] Local compileall passes.
-- [ ] Repository Ruff format/lint passes.
-- [ ] Repository Pyright passes.
-- [ ] Repository Pytest passes under Python 3.12.*.
-- [ ] Repository contract/integration/security gates pass.
+- [ ] Repository Ruff format/lint passes — `BLOCKED_EXTERNAL`.
+- [ ] Repository Pyright passes — `BLOCKED_EXTERNAL`.
+- [ ] Repository Pytest passes under Python 3.12.* — `BLOCKED_EXTERNAL`.
+- [ ] Repository contract/integration/security gates pass — `BLOCKED_EXTERNAL`.
 - [ ] Pull request merged and NODE index updated.
 
-NODE-09 remains `VALIDATING`, not `COMPLETE`, until repository-hosted validation is green.
+NODE-09 is implemented but remains **`BLOCKED_EXTERNAL / VALIDATING`**, not `COMPLETE`.
