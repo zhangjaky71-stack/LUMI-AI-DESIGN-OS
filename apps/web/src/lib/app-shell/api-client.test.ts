@@ -59,7 +59,24 @@ describe("LumiApiClient", () => {
     expect(calls).toBe(3);
   });
 
-  it("adds tenant, csrf, idempotency and concurrency headers to mutations without retry", async () => {
+  it("never retries a mutation after a transient response", async () => {
+    let calls = 0;
+    const transport: typeof fetch = async () => {
+      calls += 1;
+      return response({ code: "TEMP" }, 503);
+    };
+    const client = new LumiApiClient({
+      base_url: "https://api.test/v1",
+      transport,
+    });
+
+    await expect(
+      client.post("/projects", { title: "Poster" }, { idempotency_key: "i-1" }),
+    ).rejects.toBeInstanceOf(LumiApiError);
+    expect(calls).toBe(1);
+  });
+
+  it("adds tenant, csrf, idempotency and concurrency headers to mutations", async () => {
     let calls = 0;
     let captured = new Headers();
     const transport: typeof fetch = async (_input, init) => {
