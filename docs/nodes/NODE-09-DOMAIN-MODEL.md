@@ -1,7 +1,12 @@
 # NODE-09 — Domain Model
 
 > Phase: 1 Domain / Contract  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **VALIDATING**  
+> Implementation Status: **IMPLEMENTED / REPOSITORY CI PENDING**  
+> Implementation Branch: `feat/node-09-domain-model`  
+> Acceptance Report: `reports/nodes/NODE-09/acceptance.md`  
+> Canonical Domain Contract: `docs/domain/DOMAIN-MODEL.md`  
+> Implemented At: `2026-08-16`  
 > Priority: P0  
 > Depends on: NODE-01, NODE-06  
 > Produces: 领域边界、聚合、实体、值对象、状态机和跨域规则
@@ -11,6 +16,8 @@
 ## 1. 目标
 
 在写数据库和 API 前定义“系统里到底有什么”。Domain Model 是数据库、API、事件、Agent State 与前端 UI 的共同语义基础，但不等于 ORM model。
+
+当前实现采用纯 Python domain skeleton，放在 `apps/api/src/lumi_api/domain/`；该包只依赖 Python 标准库，不依赖 FastAPI、SQLAlchemy、Pydantic、LangGraph/LangChain、provider SDK、queue 或 object-storage SDK。
 
 ## 2. Bounded Contexts
 
@@ -31,6 +38,8 @@ Audit / Governance
 
 跨 context 只能通过明确 ID/contract/event 连接，禁止 import 对方 ORM 内部实现形成循环依赖。
 
+详细 ownership map 已冻结在 `docs/domain/DOMAIN-MODEL.md`。
+
 ## 3. ID 策略
 
 业务对象统一使用 application-generated UUIDv7（或经 ADR 批准的等价可排序 128-bit ID）。
@@ -41,6 +50,8 @@ Audit / Governance
 - `id` 全局唯一。
 - 日志、事件、Trace 使用同一 ID 可关联。
 - provider-native id 另存，不替代 domain id。
+
+当前实现 `lumi_api.domain.ids.new_uuid7()` 在 Python 3.12 尚无 stdlib `uuid7()` 的前提下，按 RFC UUIDv7 位布局生成 48-bit Unix 毫秒时间戳 + 随机位，并有 version/variant/time-order 测试。
 
 ## 4. 核心 Aggregate
 
@@ -56,7 +67,7 @@ Organization
 └─ settings
 ```
 
-所有真实业务对象必须可追溯 `organization_id`。
+所有真实租户业务对象必须可追溯 `organization_id`。Organization 自身的 `id` 即 tenant identity，因此不再重复存自己的 `organization_id`。
 
 ### Workspace
 
@@ -81,8 +92,8 @@ Project
 
 ```text
 DRAFT → ACTIVE → ARCHIVED
-          ↓
-        PAUSED
+          ↕
+        PAUSED ─→ ARCHIVED
 ```
 
 ### Brand
@@ -90,15 +101,11 @@ DRAFT → ACTIVE → ARCHIVED
 ```text
 Brand
 ├─ profile
-├─ palettes
-├─ typography
-├─ logos
-├─ tone
-├─ visual_rules
+├─ rules
 └─ forbidden_rules
 ```
 
-Brand Memory 与 Brand Rules 不是同一对象：Memory 是知识；Rules 是机器约束。
+Brand Memory 与 Brand Rules 不是同一对象：Memory 是经验/知识；Rules 是机器可执行约束。
 
 ### Asset
 
@@ -106,17 +113,16 @@ Brand Memory 与 Brand Rules 不是同一对象：Memory 是知识；Rules 是�
 
 ```text
 Asset
-├─ storage object
-├─ media metadata
+├─ StorageRef(bucket/key/checksum/owner)
+├─ MimeType
 ├─ source
-├─ rights
-├─ semantic metadata
-└─ derived previews
+├─ RightsPolicy
+└─ semantic metadata
 ```
 
 ### DesignDocument
 
-一个结构化可编辑设计文档，内容由 Design IR 表达。
+一个结构化可编辑设计文档，未来内容由 Design IR 表达；不等于 Pixi/Konva/Fabric runtime object。
 
 ### Artifact
 
@@ -124,15 +130,15 @@ Asset
 
 ### ArtifactVersion / Branch
 
-管理 lineage、fork、compare、restore。
+管理 lineage、fork、compare、restore。Approved version 是不可变历史，后续修改创建新 version。
 
 ### AgentRun
 
-一次 Agent runtime 执行实例。
+一次 Agent runtime 的业务执行记录。
 
 ```text
 AgentRun
-├─ project
+├─ project_id
 ├─ thread_id
 ├─ graph_version
 ├─ agent_config_version
@@ -142,21 +148,23 @@ AgentRun
 └─ trace refs
 ```
 
+LangGraph checkpoint 是执行实现，不拥有 AgentRun/Project 业务生命周期真相。
+
 ### Task
 
-项目工作 DAG 中的可调度单元。
+项目工作 DAG 中的可调度单元；dependency graph 必须无环。
 
 ### Generation
 
-一次外部 AI 模型生成/编辑请求的领域记录；与 AgentRun 分离。
+一次外部 AI 模型生成/编辑请求的领域记录；与 AgentRun 分离，并必须携带 `OperationIdentity` / idempotency key。
 
 ### CostEntry
 
-不可变 Ledger entry，记录 provider cost/customer usage。
+不可变 Ledger entry，记录 provider cost/customer usage。调整通过 reversal/adjustment 新 entry 表达，不改旧 entry 金额。
 
 ## 5. Value Objects
 
-必须定义：
+当前已实现：
 
 ```text
 Money(amount_decimal, currency)
@@ -173,57 +181,72 @@ VersionRef
 Usage
 Budget
 RightsPolicy
+OperationIdentity
 ```
 
-Money 永远不用 float。
+核心约束：
+
+- Money 永远不用 float，只接受 `Decimal`。
+- StorageRef 必须包含 SHA-256 checksum 与 owner organization。
+- Budget soft/hard limit 必须同币种，且 `soft <= hard`。
+- 几何值必须 finite。
+- MimeType/Color 在构造时规范化/验证。
 
 ## 6. 关键区别
 
-### Asset vs Artifact
+### Asset vs Artifact vs DesignDocument
 
 - Asset：作为输入、素材或外部资源。
-- Artifact：系统任务产生或版本化管理的成果。
-- 同一个文件可通过 lineage 由 Asset 派生 Artifact，但 domain role 不混淆。
+- DesignDocument：结构化、可编辑的设计语义。
+- Artifact：系统任务产生或版本化管理的可交付成果。
+- ArtifactVersion：某个 Artifact 的不可变版本历史。
+
+同一个物理文件可通过 lineage 从 Asset 派生到 Artifact，但 domain role 不混淆。
 
 ### Project State vs LangGraph State
 
 - Project State：业务真相。
 - LangGraph State：执行上下文/checkpoint。
 - LangGraph 不拥有 Project 生命周期真相。
+- Domain package 不 import LangGraph。
 
 ### Memory vs Knowledge
 
 - Memory：用户/项目/Agent 的经验性持续信息。
 - Knowledge：可检索资料库和外部/上传事实来源。
+- Brand Rules：可执行约束，不等于 Memory/Knowledge。
 
 ## 7. 状态机
+
+### Project
+
+```text
+DRAFT → ACTIVE → ARCHIVED
+          ↕
+        PAUSED ─→ ARCHIVED
+```
 
 ### AgentRun
 
 ```text
 PENDING
 → RUNNING
-→ WAITING_USER
-→ RUNNING
+→ WAITING_USER → RUNNING
+→ PAUSED → RUNNING
 → SUCCEEDED
 
 RUNNING → FAILED
-RUNNING → CANCEL_REQUESTED → CANCELLED
-RUNNING → PAUSED → RUNNING
+RUNNING/WAITING_USER/PAUSED → CANCEL_REQUESTED → CANCELLED
 ```
 
 ### Task
 
 ```text
-PENDING
-→ READY
-→ RUNNING
-→ SUCCEEDED
-
-RUNNING → WAITING_USER
-RUNNING → WAITING_DEPENDENCY
-RUNNING → FAILED
-PENDING/RUNNING → CANCELLED
+PENDING → READY → RUNNING → SUCCEEDED
+   └→ CANCELLED      ├→ WAITING_USER → READY
+                     ├→ WAITING_DEPENDENCY → READY
+                     ├→ FAILED
+                     └→ CANCELLED
 ```
 
 ### ArtifactVersion
@@ -234,24 +257,36 @@ DRAFT → READY → APPROVED
   └──────→ REJECTED
 ```
 
-不要删除历史 approved version；创建新 version。
+`APPROVED` / `REJECTED` 为 terminal；不要删除或原地覆盖 approved version。
+
+### Generation
+
+```text
+PENDING → RUNNING → COMPLETED
+   └→ CANCELLED    ├→ FAILED
+                   └→ CANCELLED
+```
+
+Provider-native error/state 不直接写成 domain status。
 
 ## 8. Domain Invariants
 
-1. 任何 Project/Asset/Artifact/Task 必须属于一个 Organization。
-2. 用户访问对象前必须通过 tenant membership。
-3. Artifact parent 不能形成环。
+1. Workspace/Project/Brand/Asset/DesignDocument/Branch/Artifact/ArtifactVersion/AgentRun/Task/Generation/CostEntry 必须有 `organization_id`。
+2. 用户访问对象前必须通过 tenant membership；通过 `AccessPolicyService` 边界实施。
+3. Artifact parent lineage 不能形成环。
 4. Task dependency graph 不能形成环。
 5. Cost Ledger entry 创建后不原地修改金额，调整用 reversal/adjustment entry。
 6. Approved version 不被原地覆盖。
-7. Hard Constraint 不能在没有 override audit 的情况下被忽略。
+7. Hard Constraint 不能在没有 override audit 的情况下被忽略；具体 engine 到 NODE-14。
 8. Paid side effect 必须有 operation/idempotency identity。
 9. Storage object 必须有 checksum 和 ownership metadata。
 10. Provider error 不直接成为 domain status；先 normalize。
+11. Cross-tenant object composition 必须由 `require_same_organization(...)` 拒绝。
+12. Domain package 不允许依赖 ORM/HTTP/Agent/provider implementation package。
 
 ## 9. Domain Services
 
-预定义服务边界：
+已定义协议边界：
 
 ```text
 ProjectService
@@ -269,7 +304,7 @@ AccessPolicyService
 
 ## 10. Repository Interfaces
 
-Domain 依赖 abstract repository，而非 SQLAlchemy Session：
+Domain 依赖 abstract repository Protocol，而非 SQLAlchemy Session：
 
 ```text
 ProjectRepository
@@ -280,11 +315,11 @@ AgentRunRepository
 CostLedgerRepository
 ```
 
-P0 不做教条式完整 DDD，但要保持 domain rule 与 persistence 解耦。
+NODE-10/11 的 persistence/application adapters 必须依赖这些 domain contract，而不是让 ORM model 反向定义 domain。
 
 ## 11. Domain Events
 
-候选：
+候选事件名保持冻结：
 
 ```text
 project.created
@@ -298,31 +333,77 @@ generation.completed
 cost.recorded
 ```
 
-事件 envelope 到 NODE-12 定义。
+事件 envelope 到 NODE-12 定义；NODE-09 不提前耦合 broker/event implementation。
 
 ## 12. 输出
 
-- `docs/domain/DOMAIN-MODEL.md`
-- `packages`/Python domain types skeleton
-- state transition tests
-- entity relationship diagram
+已实现：
 
-## 13. 验收标准
+```text
+docs/domain/DOMAIN-MODEL.md
+apps/api/src/lumi_api/domain/
+├─ __init__.py
+├─ entities.py
+├─ errors.py
+├─ ids.py
+├─ invariants.py
+├─ repositories.py
+├─ services.py
+├─ states.py
+└─ value_objects.py
 
-- [ ] 所有 P0 业务对象有唯一职责。
-- [ ] Asset/Artifact/DesignDocument/Version 区分清楚。
-- [ ] LangGraph State 与 Domain State 分离。
-- [ ] 状态机与不变量有测试表达。
-- [ ] organization_id 贯穿所有租户业务对象。
-- [ ] 不含 ORM/HTTP provider 细节污染 domain。
+apps/api/tests/test_domain_model.py
+reports/nodes/NODE-09/acceptance.md
+reports/nodes/NODE-09/local-domain-test.txt
+```
 
-## 14. Definition of Done
+ER diagram、bounded contexts、NODE-10 translation contract 均在 `docs/domain/DOMAIN-MODEL.md`。
+
+## 13. 测试
+
+本地 deterministic fallback：
+
+```bash
+PYTHONPATH=. pytest -q
+python -m compileall -q lumi_api tests
+```
+
+当前记录：
+
+```text
+13 passed
+COMPILEALL_PASS
+```
+
+测试覆盖 UUIDv7、Money、状态机、tenant ownership、DAG/lineage 防环、approved version/cost ledger immutability、Generation normalized state、所有 tenant P0 entity 的 organization_id，以及 domain package 的 forbidden dependency scan。
+
+Repository CI 仍必须在其固定 Python 3.12.* 环境执行 Ruff/Pyright/Pytest；本地 fallback 不能替代正式门禁。
+
+## 14. 验收标准
+
+- [x] 所有 P0 业务对象有唯一职责。
+- [x] Asset/Artifact/DesignDocument/Version 区分清楚。
+- [x] LangGraph State 与 Domain State 分离。
+- [x] 状态机与不变量有测试表达。
+- [x] organization_id 贯穿所有租户业务对象。
+- [x] 不含 ORM/HTTP/provider/LangGraph implementation 细节污染 domain。
+- [x] 本地 deterministic tests 13/13 PASS。
+- [ ] Repository Python/contract/security CI PASS。
+- [ ] Pull Request merged。
+- [ ] `docs/NODE-INDEX.md` 更新为 COMPLETE。
+
+## 15. Definition of Done
 
 ```text
 domain glossary frozen
 + aggregates/state machines documented
 + invariants testable
 + bounded contexts mapped
++ repository CI green
++ PR merged
++ NODE index updated
 ```
+
+当前状态为 `VALIDATING`，不是 `COMPLETE`。
 
 下一节点：NODE-10 Database Schema。
