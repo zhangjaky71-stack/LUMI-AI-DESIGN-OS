@@ -1,0 +1,78 @@
+name: Production IaC Contract
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-iac-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Validate deployment and infrastructure contracts
+        run: |
+          python3 scripts/validate_production_deployment_contract.py
+          python3 scripts/validate_production_iac_contract.py
+      - name: Python syntax
+        run: |
+          python3 -m py_compile \
+            scripts/production-deployment-gate.py \
+            scripts/validate_production_deployment_contract.py \
+            scripts/validate_production_iac_contract.py
+      - name: Shell syntax
+        run: |
+          bash -n scripts/create-predeploy-rds-snapshot.sh
+          bash -n scripts/ecs-run-one-shot-task.sh
+      - name: Deployment manifest JSON syntax
+        run: python3 -m json.tool production/deployment/manifest-template.json >/dev/null
+
+  terraform-static:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+      - name: Terraform format
+        run: terraform fmt -check -recursive infra/iac
+      - name: Terraform validate roots without backend or AWS credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          roots=(
+            infra/iac/bootstrap
+            infra/iac/environments/staging/core
+            infra/iac/environments/staging/migration
+            infra/iac/environments/staging/app
+            infra/iac/environments/production/core
+            infra/iac/environments/production/migration
+            infra/iac/environments/production/app
+          )
+          for root in "${roots[@]}"; do
+            echo "==> $root"
+            terraform -chdir="$root" init -backend=false -input=false
+            terraform -chdir="$root" validate
+          done
+
+  contract-gate:
+    if: always()
+    needs: [source-contract, terraform-static]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require source and Terraform validation
+        run: |
+          test "${{ needs.source-contract.result }}" = "success"
+          test "${{ needs.terraform-static.result }}" = "success"
