@@ -1,5 +1,7 @@
-from dataclasses import FrozenInstanceError
+import ast
+from dataclasses import FrozenInstanceError, fields
 from decimal import Decimal
+from pathlib import Path
 from uuid import UUID
 
 import pytest
@@ -7,16 +9,21 @@ import pytest
 from lumi_api.domain import (
     AgentRun,
     AgentRunStatus,
+    Artifact,
     ArtifactVersion,
     ArtifactVersionStatus,
     Asset,
+    Branch,
+    Brand,
     Budget,
     CostEntry,
     CostEntryKind,
+    DesignDocument,
     Generation,
     GenerationStatus,
     InvariantViolation,
     InvalidTransition,
+    MimeType,
     ModelRef,
     Money,
     OperationIdentity,
@@ -28,6 +35,7 @@ from lumi_api.domain import (
     Task,
     TaskStatus,
     Usage,
+    Workspace,
     new_uuid7,
     require_artifact_lineage_acyclic,
     require_same_organization,
@@ -123,7 +131,7 @@ def test_asset_storage_ownership_is_tenant_scoped() -> None:
     asset = Asset(
         organization_id=uid(1),
         storage=storage,
-        mime_type="image/png",
+        mime_type=MimeType("image/png"),
         source="upload",
         rights=rights,
     )
@@ -133,7 +141,7 @@ def test_asset_storage_ownership_is_tenant_scoped() -> None:
         Asset(
             organization_id=uid(9),
             storage=storage,
-            mime_type="image/png",
+            mime_type=MimeType("image/png"),
             source="upload",
             rights=rights,
         )
@@ -204,3 +212,47 @@ def test_generation_uses_domain_status_not_provider_error_strings() -> None:
     assert completed.status is GenerationStatus.COMPLETED
     with pytest.raises(InvalidTransition):
         completed.transition(GenerationStatus.FAILED)
+
+
+def test_every_tenant_owned_p0_entity_exposes_organization_id() -> None:
+    tenant_types = (
+        Workspace,
+        Project,
+        Brand,
+        Asset,
+        DesignDocument,
+        Branch,
+        Artifact,
+        ArtifactVersion,
+        AgentRun,
+        Task,
+        Generation,
+        CostEntry,
+    )
+    for entity_type in tenant_types:
+        assert "organization_id" in {item.name for item in fields(entity_type)}
+
+
+def test_domain_package_has_no_framework_or_provider_sdk_imports() -> None:
+    domain_root = Path(__file__).parents[1] / "src" / "lumi_api" / "domain"
+    forbidden = {
+        "fastapi",
+        "sqlalchemy",
+        "pydantic",
+        "langgraph",
+        "langchain",
+        "openai",
+        "anthropic",
+        "boto3",
+    }
+    discovered: set[str] = set()
+
+    for path in domain_root.glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                discovered.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                discovered.add(node.module.split(".")[0])
+
+    assert discovered.isdisjoint(forbidden)
