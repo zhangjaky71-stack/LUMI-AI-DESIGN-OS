@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${LUMI_RECOVERY_DATABASE_URL:?Set LUMI_RECOVERY_DATABASE_URL to the isolated restored database}"
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+sql_file="$repo_root/infra/recovery/sql/verify_restored_database.sql"
+output="$(mktemp)"
+trap 'rm -f "$output"' EXIT
+
+if [[ "${LUMI_RECOVERY_DATABASE_URL}" != postgresql://* && "${LUMI_RECOVERY_DATABASE_URL}" != postgres://* ]]; then
+  echo "recovery database URL must use postgresql:// or postgres://" >&2
+  exit 2
+fi
+
+if [[ ! -f "$sql_file" ]]; then
+  echo "missing recovery verification SQL: $sql_file" >&2
+  exit 2
+fi
+
+echo "[recovery] running read-only post-restore invariants"
+PGAPPNAME=lumi-node68-recovery-verify \
+  psql -X --no-psqlrc --set=ON_ERROR_STOP=1 --tuples-only --no-align --field-separator='|' \
+  "$LUMI_RECOVERY_DATABASE_URL" --file "$sql_file" | tee "$output"
+
+if awk -F'|' '$1 == "INVARIANT" && ($3 + 0) > 0 { print; bad=1 } END { exit bad ? 0 : 1 }' "$output" >/tmp/lumi-recovery-invariant-failures.$$; then
+  echo "[recovery] STOP SHIP: restored database invariant violations detected" >&2
+  cat /tmp/lumi-recovery-invariant-failures.$$ >&2
+  rm -f /tmp/lumi-recovery-invariant-failures.$$
+  exit 1
+fi
+rm -f /tmp/lumi-recovery-invariant-failures.$$
+
+echo "[recovery] database hard invariants PASS"
+echo "[recovery] WORKLOAD rows above require planner/runbook classification; they are not auto-mutated."
