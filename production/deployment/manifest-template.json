@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "deployment_id": "PENDING",
+  "environment": "production",
+  "release_candidate": {
+    "git_sha": "PENDING",
+    "version": "PENDING",
+    "migration_head": "PENDING",
+    "staging_acceptance_decision_id": "PENDING",
+    "staging_acceptance_path": "PENDING"
+  },
+  "aws": {
+    "account_id": "PENDING",
+    "region": "PENDING",
+    "production_role_arn": "PENDING"
+  },
+  "edge": {
+    "domain": "PENDING",
+    "certificate_arn": "PENDING",
+    "waf_enabled": true,
+    "https_only": true
+  },
+  "images": {
+    "api": "PENDING",
+    "agent-runtime": "PENDING",
+    "model-gateway": "PENDING",
+    "tool-gateway": "PENDING",
+    "worker-media": "PENDING",
+    "sandbox-runtime": "PENDING"
+  },
+  "first_day_limits": {
+    "max_org_concurrent_agent_runs": 4,
+    "max_org_concurrent_generations": 4,
+    "max_org_concurrent_video_jobs": 1,
+    "daily_provider_spend_usd": 250,
+    "invite_rate_per_hour": 20
+  },
+  "rollback": {
+    "previous_deployment_id": "PENDING",
+    "previous_manifest_ref": "PENDING",
+    "database_backward_compatible": false
+  },
+  "external_dependencies": {
+    "dns": "PENDING",
+    "email_domain": "PENDING",
+    "billing_provider": "PENDING",
+    "model_provider": "PENDING",
+    "support_on_call": "PENDING"
+  },
+  "approvals": {
+    "staging_acceptance": "PENDING",
+    "engineering": "PENDING",
+    "security": "PENDING",
+    "release_owner": "PENDING"
+  }
+}
