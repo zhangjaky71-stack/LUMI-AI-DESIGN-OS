@@ -2,20 +2,20 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 <terraform-app-dir> <deployment-id> <output-json>" >&2
+  echo "usage: $0 <terraform-migration-dir> <deployment-id> <output-json>" >&2
   exit 64
 }
 
 [[ $# -eq 3 ]] || usage
-APP_DIR="$1"
+MIGRATION_DIR="$1"
 DEPLOYMENT_ID="$2"
 OUTPUT_JSON="$3"
 
 [[ "$DEPLOYMENT_ID" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "invalid deployment id" >&2; exit 64; }
 mkdir -p "$(dirname "$OUTPUT_JSON")"
 
-TASK_DEFINITION="$(terraform -chdir="$APP_DIR" output -raw migration_task_definition_arn)"
-NETWORK_JSON="$(terraform -chdir="$APP_DIR" output -json migration_network)"
+TASK_DEFINITION="$(terraform -chdir="$MIGRATION_DIR" output -raw migration_task_definition_arn)"
+NETWORK_JSON="$(terraform -chdir="$MIGRATION_DIR" output -json migration_network)"
 CLUSTER_ARN="$(jq -r '.cluster_arn' <<<"$NETWORK_JSON")"
 SECURITY_GROUP="$(jq -r '.security_group_id' <<<"$NETWORK_JSON")"
 SUBNETS_CSV="$(jq -r '.private_subnet_ids | join(",")' <<<"$NETWORK_JSON")"
