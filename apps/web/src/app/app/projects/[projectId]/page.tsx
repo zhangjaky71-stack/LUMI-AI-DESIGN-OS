@@ -1,17 +1,13 @@
-import { ShellSection } from "@/components/app-shell/shell-section";
+import { ProjectDetail } from "@/components/projects/project-detail";
+import { getProjectsBootstrap } from "@/lib/projects/projects-server";
+
+export const dynamic = "force-dynamic";
 
 export default async function ProjectPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ projectId: string }>;
-}) {
+}>) {
   const { projectId } = await params;
-
-  return (
-    <ShellSection
-      eyebrow="PROJECT WORKSPACE"
-      title={`项目 ${projectId}`}
-      description="项目级 Agent Workspace、Infinite Canvas 与版本面板会在后续前端节点接入。"
-    />
-  );
+  return <ProjectDetail projectId={projectId} bootstrap={getProjectsBootstrap()} />;
 }

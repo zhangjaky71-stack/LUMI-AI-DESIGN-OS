@@ -12,6 +12,12 @@ export interface ApiRequestOptions {
   readonly if_match?: string;
 }
 
+export interface PresignedPutOptions {
+  readonly signal?: AbortSignal;
+  readonly headers?: Readonly<Record<string, string>> | undefined;
+  readonly content_type?: string;
+}
+
 export type UnauthorizedHandler = (
   problem: ProblemDetails,
 ) => void | Promise<void>;
@@ -105,6 +111,69 @@ export class LumiApiClient {
     options: ApiRequestOptions = {},
   ): Promise<TResponse> {
     return this.#request<TResponse>("PATCH", path, body, options);
+  }
+
+  async putPresignedObject(
+    url: string,
+    body: Blob,
+    options: PresignedPutOptions = {},
+  ): Promise<void> {
+    const id = requestId();
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new LumiApiError({
+        type: "https://errors.lumi.dev/upload/invalid-presigned-url",
+        title: "Invalid upload URL",
+        status: 400,
+        code: "UPLOAD_PRESIGNED_URL_INVALID",
+        request_id: id,
+      });
+    }
+
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      throw new LumiApiError({
+        type: "https://errors.lumi.dev/upload/invalid-presigned-url",
+        title: "Invalid upload URL",
+        status: 400,
+        code: "UPLOAD_PRESIGNED_URL_PROTOCOL_FORBIDDEN",
+        request_id: id,
+      });
+    }
+
+    const headers = new Headers(options.headers);
+    if (options.content_type) headers.set("content-type", options.content_type);
+
+    let response: Response;
+    try {
+      response = await this.#transport(parsed.toString(), {
+        method: "PUT",
+        body,
+        credentials: "omit",
+        headers,
+        ...(options.signal ? { signal: options.signal } : {}),
+      });
+    } catch (error) {
+      if (options.signal?.aborted) throw error;
+      throw new LumiApiError({
+        type: "https://errors.lumi.dev/upload/object-store-unavailable",
+        title: "Upload unavailable",
+        status: 503,
+        code: "UPLOAD_OBJECT_STORE_UNAVAILABLE",
+        request_id: id,
+      });
+    }
+
+    if (!response.ok) {
+      throw new LumiApiError({
+        type: "https://errors.lumi.dev/upload/object-put-failed",
+        title: "Upload failed",
+        status: response.status,
+        code: "UPLOAD_OBJECT_PUT_FAILED",
+        request_id: response.headers.get("x-request-id") ?? id,
+      });
+    }
   }
 
   async #request<T>(
