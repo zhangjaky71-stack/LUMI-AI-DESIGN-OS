@@ -65,7 +65,25 @@ ai-workspace-browser-e2e
 
 The browser job also reruns NODE-53 Projects and NODE-52 App Shell scenarios.
 
-Hosted run evidence will be appended after the Draft PR starts the workflow. A runner that never starts is neither PASS nor an observed code/test failure.
+## Hosted run evidence — 2026-08-15
+
+Draft PR #54 triggered AI Workspace run `31860047798` against implementation SHA `6f7f9506fbb747ccc2f7938e8a1b6a762dc3e238`.
+
+Observed result:
+
+```text
+ai-workspace-contract     failure before runner start
+steps                     []
+runner_id                 0
+ai-workspace-quality      skipped
+ai-workspace-build        skipped
+ai-workspace-security     skipped
+ai-workspace-browser-e2e  skipped
+```
+
+GitHub's check annotation states that the job was not started because recent account payments failed or the account spending limit must be increased. Therefore this run provides no TypeScript, lint, unit, build, security or browser execution evidence and must not be classified as a code/test failure or as a PASS.
+
+The same commit also caused CI, Secret Scan, Dependency Review, App Shell and Projects UI workflows to report failure at the platform level; NODE-54 acceptance remains blocked on actual runner execution.
 
 ## Production dependency truth
 
@@ -85,7 +103,7 @@ Approval stale protection       IMPLEMENTED
 mobile focused UX               IMPLEMENTED
 static architecture gate        PASS on candidate tree
 strict compatibility typecheck  PASS with local TS 5.8.3 only
-pinned hosted gates             PENDING
+pinned hosted gates             BLOCKED BEFORE RUNNER START (billing/spend limit)
 production runtime integration  UPSTREAM DEPENDENCY
 ```
 
