@@ -15,6 +15,7 @@ from lumi_api.config import get_settings
 from lumi_api.persistence.session import create_engine
 from lumi_api.projects.gateway import ProjectCoreGateway
 from lumi_api.projects.security import get_secure_project_context
+from lumi_api.security import SecurityConfig, apply_security_hardening
 
 settings = get_settings()
 engine = create_engine()
@@ -51,6 +52,10 @@ app.router.lifespan_context = lifespan
 app.state.project_session_factory = session_factory
 app.state.project_allowed_origins = _origins()
 app.dependency_overrides[get_request_context] = get_secure_project_context
+apply_security_hardening(
+    app,
+    SecurityConfig(production=settings.lumi_env == "production", allowed_origins=tuple(_origins())),
+)
 app.include_router(
     create_auth_router(
         session_factory=session_factory,
