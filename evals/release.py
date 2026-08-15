@@ -146,14 +146,29 @@ def _critical_case_checks(run: dict[str, Any], metrics: dict[str, float]) -> lis
             value = scores[metric]
             if not isinstance(value, (int, float)) or isinstance(value, bool):
                 raise ReleaseGateError(f"critical metric {metric} must be numeric")
-            checks.append({
-                "suite": run.get("suite"),
-                "case_id": case.get("case_id"),
-                "metric": metric,
-                "value": float(value),
-                "maximum": float(maximum),
-                "passed": float(value) <= float(maximum),
-            })
+            checks.append(
+                {
+                    "suite": run.get("suite"),
+                    "case_id": case.get("case_id"),
+                    "metric": metric,
+                    "value": float(value),
+                    "maximum": float(maximum),
+                    "passed": float(value) <= float(maximum),
+                }
+            )
+    return checks
+
+
+def _supplemental_checks(policy: dict[str, Any], evidence: dict[str, Any] | None) -> list[dict[str, Any]]:
+    required = policy.get("required_supplemental_evidence", [])
+    if not isinstance(required, list) or not all(isinstance(item, str) and item for item in required):
+        raise ReleaseGateError("policy.required_supplemental_evidence must be a string array")
+    supplied = evidence or {}
+    checks: list[dict[str, Any]] = []
+    for name in required:
+        item = supplied.get(name)
+        passed = isinstance(item, dict) and item.get("status") == "PASS" and isinstance(item.get("evidence_ref"), str) and bool(item["evidence_ref"].strip())
+        checks.append({"name": name, "passed": passed, "evidence_ref": item.get("evidence_ref") if isinstance(item, dict) else None})
     return checks
 
 
@@ -164,6 +179,7 @@ def evaluate_release(
     suite_pairs: dict[str, tuple[SuiteDefinition, dict[str, Any], dict[str, Any]]],
     *,
     mode: str = "contract",
+    supplemental_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if mode not in {"contract", "release"}:
         raise ReleaseGateError("mode must be contract or release")
@@ -198,15 +214,18 @@ def evaluate_release(
         suite_results.append(gate)
         critical_checks.extend(_critical_case_checks(candidate_run, critical_metrics))
 
+    supplemental_checks = _supplemental_checks(policy, supplemental_evidence) if mode == "release" else []
     critical_passed = all(check["passed"] for check in critical_checks)
     suites_passed = all(item["passed"] for item in suite_results)
-    passed = critical_passed and suites_passed
+    supplemental_passed = all(check["passed"] for check in supplemental_checks)
+    passed = critical_passed and suites_passed and supplemental_passed
     decision_payload = {
         "baseline_fingerprint": baseline_manifest.fingerprint(),
         "candidate_fingerprint": candidate_manifest.fingerprint(),
         "mode": mode,
         "suite_results": suite_results,
         "critical_case_checks": critical_checks,
+        "supplemental_checks": supplemental_checks,
         "passed": passed,
     }
     decision_id = hashlib.sha256(json.dumps(decision_payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:24]
