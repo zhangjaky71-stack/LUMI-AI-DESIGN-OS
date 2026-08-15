@@ -127,7 +127,34 @@ Internal/headless services use rolling ECS deployments with circuit-breaker roll
 - backend-disabled `terraform init` + `terraform validate` for bootstrap, Staging core/migration/app and Production core/migration/app;
 - final contract job requiring both source and Terraform validation to succeed.
 
-This workflow still needs to **actually execute on a GitHub runner** before it can be counted as validation evidence.
+### 3.1 Direct hosted CI evidence
+
+The first NODE-72 PR run is:
+
+```text
+workflow: Production IaC Contract
+run_id: 31892439606
+head_sha: 62a4a236b07866f2c0d866e6b9e47b57b51162b5
+source-contract job: 95030619472
+terraform-static job: 95030619515
+contract-gate job: 95030625526
+```
+
+All three jobs completed with `conclusion=failure`, but each had:
+
+```text
+runner_id=0
+steps=[]
+```
+
+The `source-contract` and `terraform-static` GitHub check annotations both state:
+
+```text
+The job was not started because recent account payments have failed
+or your spending limit needs to be increased.
+```
+
+Therefore **no NODE-72 validator or Terraform command ran on GitHub-hosted CI in this run**. The failure is classified as an external GitHub Billing/spending-limit runner-start blocker, not as a source-contract or Terraform failure. This direct evidence does not waive validation; the jobs still need to execute green after runner access is restored.
 
 ## 4. Runtime evidence required before PASS
 
@@ -215,7 +242,7 @@ All boxes remain intentionally unchecked until real evidence exists.
 6. Sandbox production egress isolation remains to be hardened/reviewed.
 7. A platform-wide daily provider-dollar hard stop is not yet proven as a durable runtime control.
 8. NODE-68/69/70/71 Production-like runtime evidence remains incomplete.
-9. GitHub Actions on preceding readiness nodes has been blocked before runner start by the account Billing/spending-limit condition; NODE-72 must collect its **own** runner evidence rather than infer PASS or failure from those nodes.
+9. NODE-72 hosted CI run `31892439606` was blocked before runner start by the account Billing/spending-limit condition; it is not a green validation and should not be repeatedly rerun until the external condition changes.
 
 ## 6. Evidence locations
 
