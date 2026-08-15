@@ -4,6 +4,8 @@ Status: **IMPLEMENTED / VALIDATING / NOT COMPLETE**
 
 ## Implementation evidence
 
+Implementation commit: `629fdac0dae23dda7af765541e24d4e23a8853d7`
+
 - formal Approval domain object and lifecycle implemented;
 - seven canonical approval types and statuses implemented;
 - exact `{subject_type, subject_id, subject_version}` binding; floating latest/head/current rejected;
@@ -35,7 +37,31 @@ Status: **IMPLEMENTED / VALIDATING / NOT COMPLETE**
 - Approval Center browser E2E and NODE-61 through NODE-54 regressions;
 - production build deterministic-fixture leakage scan.
 
-These suites are **STAGED**, not observed PASS, until hosted runners execute them.
+These suites are **STAGED**, not observed PASS, because the hosted runner did not start.
+
+## Hosted pinned validation evidence
+
+Workflow: **Approval Engine**  
+Run: `31871263014`  
+Run number: `1`  
+Head SHA: `629fdac0dae23dda7af765541e24d4e23a8853d7`
+
+| Job | Job/check ID | Result | Execution evidence |
+| --- | ---: | --- | --- |
+| `approval-contract` | `94980145069` | failure | `runner_id=0`, `runner_name=""`, `steps=[]` — runner never started |
+| `approval-backend` | `94980151942` | skipped | dependency did not run |
+| `approval-db` | `94980151943` | skipped | dependency did not run |
+| `approval-build` | `94980151955` | skipped | dependency did not run |
+| `approval-quality` | `94980151966` | skipped | dependency did not run |
+| `approval-browser-e2e` | `94980152343` | skipped | dependencies did not run |
+
+GitHub check annotation:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+
+Classification: **BLOCKED BEFORE RUNNER**.
+
+This is an account/platform validation blocker. It is **not** a NODE-62 code/test failure and it is **not** a PASS. No checkout, dependency install, validator, typecheck, unit/API test, PostgreSQL migration, production build, or browser E2E step executed in this hosted run.
 
 ## Explicit production integration gates
 
@@ -64,5 +90,3 @@ The in-memory repository, subject/run adapters and deterministic browser gateway
 - [x] unit/API/DB/browser validation staged;
 - [ ] production adapters connected;
 - [ ] hosted pinned validation observed green.
-
-Hosted evidence will be appended after the implementation commit triggers GitHub Actions.
