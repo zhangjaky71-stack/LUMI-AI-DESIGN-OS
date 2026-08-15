@@ -14,10 +14,16 @@ export default async function ProjectPage({
   return (
     <div className={workspaceStyles.projectWithWorkspaceEntry}>
       <div className={workspaceStyles.workspaceEntry}>
-        <span>自然语言 + Canvas + Approval</span>
-        <Link href={`/app/projects/${encodeURIComponent(projectId)}/workspace`}>
-          进入 AI Workspace →
-        </Link>
+        <span>自然语言 + Canvas + Approval + immutable history</span>
+        <div>
+          <Link href={`/app/projects/${encodeURIComponent(projectId)}/workspace`}>
+            进入 AI Workspace →
+          </Link>
+          {" · "}
+          <Link href={`/app/projects/${encodeURIComponent(projectId)}/versions`}>
+            Versions →
+          </Link>
+        </div>
       </div>
       <ProjectDetail projectId={projectId} bootstrap={getProjectsBootstrap()} />
     </div>
