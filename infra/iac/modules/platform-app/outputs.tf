@@ -5,5 +5,3 @@ output "alb_arn" { value = module.compute.alb_arn }
 output "alb_dns_name" { value = module.compute.alb_dns_name }
 output "waf_web_acl_arn" { value = module.edge.waf_web_acl_arn }
 output "application_fqdn" { value = module.edge.application_fqdn }
-output "migration_task_definition_arn" { value = module.compute.migration_task_definition_arn }
-output "migration_network" { value = module.compute.migration_network }
