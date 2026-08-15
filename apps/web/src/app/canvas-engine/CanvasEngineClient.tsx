@@ -11,6 +11,7 @@ import {
   type PixiContainerLike,
   type PixiV8RuntimeModule,
 } from "@lumi/canvas-sdk";
+import { reportCanvasError } from "../../lib/observability/browser";
 import { PIXI_CDN_URL } from "../canvas-spike/pixi-runtime";
 
 type CanvasDocument = ConstructorParameters<typeof CanvasController>[0];
@@ -224,6 +225,7 @@ export default function CanvasEngineClient() {
     };
 
     void initialize().catch((error: unknown) => {
+      reportCanvasError("canvas_initialization_failed");
       const message = error instanceof Error ? error.message : "Canvas initialization failed";
       decisionRef.current = `ERROR:${message}`;
       setDecision(decisionRef.current);
