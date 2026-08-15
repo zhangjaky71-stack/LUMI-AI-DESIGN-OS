@@ -1,0 +1,77 @@
+name: Performance Contract
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Validate workload and evidence contract
+        run: python3 scripts/validate_performance_contract.py
+      - name: Python syntax
+        run: python3 -m py_compile scripts/validate_performance_contract.py scripts/perf-mock-provider.py scripts/perf-http-load.py scripts/perf-evaluate.py
+      - name: Shell syntax
+        run: bash -n scripts/perf-db-snapshot
+      - name: JSON syntax
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          for path in Path('perf').rglob('*.json'):
+              json.loads(path.read_text(encoding='utf-8'))
+              print(path)
+          PY
+
+  deterministic-local-smoke:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Start loopback deterministic provider
+        run: |
+          mkdir -p perf/results
+          python3 scripts/perf-mock-provider.py --port 18081 >perf/results/mock-provider.log 2>&1 &
+          echo $! > perf/results/mock-provider.pid
+          for i in $(seq 1 30); do
+            curl --fail --silent --show-error http://127.0.0.1:18081/healthz >/dev/null && exit 0
+            sleep 1
+          done
+          exit 1
+      - name: Run bounded loopback HTTP smoke
+        run: |
+          python3 scripts/perf-http-load.py \
+            --url http://127.0.0.1:18081/healthz \
+            --concurrency 20 \
+            --requests 200 \
+            --output perf/results/http-smoke.json
+          python3 scripts/perf-evaluate.py perf/results/http-smoke.json --p95-target-ms 500 --max-error-rate 0
+      - name: Stop mock provider
+        if: always()
+        run: |
+          if [ -f perf/results/mock-provider.pid ]; then kill "$(cat perf/results/mock-provider.pid)" || true; fi
+      - name: Upload raw smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-69-performance-smoke-${{ github.run_id }}
+          path: perf/results/
+          if-no-files-found: warn
+          retention-days: 30
