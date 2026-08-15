@@ -1,0 +1,93 @@
+name: Security DAST
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: Public HTTPS staging URL to scan
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      target_url:
+        description: Public HTTPS staging URL to scan
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  zap-baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate DAST target boundary
+        env:
+          TARGET_URL: ${{ inputs.target_url }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import ipaddress
+          import os
+          import socket
+          from urllib.parse import urlsplit
+
+          target = os.environ["TARGET_URL"].strip()
+          parsed = urlsplit(target)
+          if parsed.scheme != "https" or not parsed.hostname:
+              raise SystemExit("DAST target must be an absolute HTTPS URL")
+          if parsed.username or parsed.password:
+              raise SystemExit("DAST target must not contain URL userinfo")
+
+          host = parsed.hostname.rstrip(".").lower()
+          blocked_names = {
+              "localhost",
+              "localhost.localdomain",
+              "metadata.google.internal",
+              "host.docker.internal",
+          }
+          if host in blocked_names or host.endswith(".localhost"):
+              raise SystemExit("DAST target may not be a local or metadata hostname")
+
+          try:
+              addresses = {str(ipaddress.ip_address(host))}
+          except ValueError:
+              addresses = {
+                  result[4][0]
+                  for result in socket.getaddrinfo(
+                      host,
+                      parsed.port or 443,
+                      type=socket.SOCK_STREAM,
+                  )
+              }
+
+          if not addresses:
+              raise SystemExit("DAST target did not resolve")
+
+          for address in addresses:
+              ip = ipaddress.ip_address(address)
+              if any(
+                  (
+                      ip.is_loopback,
+                      ip.is_private,
+                      ip.is_link_local,
+                      ip.is_multicast,
+                      ip.is_reserved,
+                      ip.is_unspecified,
+                  )
+              ):
+                  raise SystemExit(
+                      f"DAST target resolved to a forbidden network address: {address}"
+                  )
+
+          print(f"Validated public staging target: {target}")
+          PY
+      - name: OWASP ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          target: ${{ inputs.target_url }}
+          fail_action: true
+          allow_issue_writing: false
+          artifact_name: zap-dast-${{ github.run_id }}

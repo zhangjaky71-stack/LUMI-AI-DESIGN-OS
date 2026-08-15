@@ -2,7 +2,7 @@
 
 > Architecture Baseline: **LUMI AI Design OS — Architecture V2**  
 > Documentation Status: **NODE-00～NODE-73 ALL SPECIFIED**  
-> Implementation Status: **NODE-08 engineering COMPLETE; next engineering node is NODE-09**  
+> Current Engineering Focus: **NODE-66 source IMPLEMENTED / BLOCKED_EXTERNAL; next engineering node is NODE-67**  
 > Rule: **SPECIFIED ≠ IMPLEMENTED**. 每个工程 Node 必须完成代码、测试、验收和 GitHub 提交后才能改为 `COMPLETE`。
 
 ---
@@ -152,7 +152,7 @@ BLOCKED_TECHNICAL  # 技术故障
 
 | Node | 文档 | 状态 | 主要产物 |
 |---|---|---|---|
-| NODE-66 | [Security Hardening](nodes/NODE-66-SECURITY-HARDENING.md) | SPECIFIED | Threat Model/SAST/DAST/Agent red-team |
+| NODE-66 | [Security Hardening](nodes/NODE-66-SECURITY-HARDENING.md) | **IMPLEMENTED / BLOCKED_EXTERNAL** | Threat Model/SAST/SCA/Secret/IaC/DAST/Agent security；GitHub Actions Billing gate pending |
 | NODE-67 | [Observability](nodes/NODE-67-OBSERVABILITY.md) | SPECIFIED | OTel/LangSmith/Dashboard/SLO/Alerts |
 | NODE-68 | [Recovery & DR](nodes/NODE-68-RECOVERY-DR.md) | SPECIFIED | Backup/PITR/Run恢复/DR演练 |
 | NODE-69 | [Performance & Scalability](nodes/NODE-69-PERFORMANCE-SCALABILITY.md) | SPECIFIED | Load/Soak/Capacity/Autoscaling |

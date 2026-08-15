@@ -11,6 +11,7 @@ from lumi_api.auth.notifications import RejectingAuthNotificationPort
 from lumi_api.auth.smtp_notifications import SmtpAuthNotificationPort
 from lumi_api.config import get_settings
 from lumi_api.persistence.session import create_engine
+from lumi_api.security import SecurityConfig, apply_security_hardening
 
 settings = get_settings()
 engine = create_engine()
@@ -44,6 +45,10 @@ app = FastAPI(
     title="LUMI Auth/Tenant Runtime",
     version=settings.lumi_version,
     lifespan=lifespan,
+)
+apply_security_hardening(
+    app,
+    SecurityConfig(production=settings.lumi_env == "production"),
 )
 app.include_router(
     create_auth_router(
