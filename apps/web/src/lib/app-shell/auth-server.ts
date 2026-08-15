@@ -7,30 +7,60 @@ export interface ShellSessionAdapter {
   getSession(): Promise<ShellSession | null>;
 }
 
-const E2E_SESSION: ShellSession = {
-  session_id: "e2e-shell-session",
-  user: {
-    id: "user-e2e",
-    display_name: "Design Operator",
-    email_hint: "d•••@example.test",
-  },
-  organizations: [
-    {
-      id: "org-lumi",
-      name: "LUMI Studio",
-      slug: "lumi-studio",
-      role: "OWNER",
+function e2eSession(): ShellSession {
+  const platformAdmin =
+    process.env.LUMI_ADMIN_E2E === "1"
+      ? {
+          actor_id: "platform-admin-e2e",
+          roles: [
+            "OPS",
+            "BILLING_ADMIN",
+            "MODEL_ADMIN",
+            "SECURITY_AUDITOR",
+            "PRIVACY_ADMIN",
+          ] as const,
+          permissions: [
+            "admin.user.read",
+            "admin.user.manage_limited",
+            "admin.billing.read",
+            "admin.billing.adjust",
+            "admin.provider.read",
+            "admin.provider.manage",
+            "admin.queue.read",
+            "admin.queue.requeue",
+            "admin.agent_registry.manage",
+            "admin.skill_registry.manage",
+            "admin.audit.read",
+            "admin.privacy.execute",
+          ] as const,
+        }
+      : undefined;
+  return {
+    session_id: "e2e-shell-session",
+    user: {
+      id: "user-e2e",
+      display_name: "Design Operator",
+      email_hint: "d•••@example.test",
     },
-    {
-      id: "org-northstar",
-      name: "Northstar Lab",
-      slug: "northstar-lab",
-      role: "EDITOR",
-    },
-  ],
-  active_organization_id: "org-lumi",
-  recent_auth_at: "2026-08-15T00:00:00.000Z",
-};
+    organizations: [
+      {
+        id: "org-lumi",
+        name: "LUMI Studio",
+        slug: "lumi-studio",
+        role: "OWNER",
+      },
+      {
+        id: "org-northstar",
+        name: "Northstar Lab",
+        slug: "northstar-lab",
+        role: "EDITOR",
+      },
+    ],
+    active_organization_id: "org-lumi",
+    recent_auth_at: "2026-08-15T00:00:00.000Z",
+    ...(platformAdmin ? { platform_admin: platformAdmin } : {}),
+  };
+}
 
 class DeferredNode16SessionAdapter implements ShellSessionAdapter {
   async getSession(): Promise<ShellSession | null> {
@@ -39,7 +69,7 @@ class DeferredNode16SessionAdapter implements ShellSessionAdapter {
 
     const cookieStore = await cookies();
     if (cookieStore.get("lumi_e2e_anon")?.value === "1") return null;
-    return E2E_SESSION;
+    return e2eSession();
   }
 }
 

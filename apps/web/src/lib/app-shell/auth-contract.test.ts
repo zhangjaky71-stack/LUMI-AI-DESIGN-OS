@@ -26,6 +26,29 @@ describe("shell session contract", () => {
     ).toThrow("SHELL_SESSION_ACTIVE_ORGANIZATION_INVALID");
   });
 
+  it("validates a platform admin principal separately from tenant roles", () => {
+    const platform = assertShellSession({
+      ...base,
+      platform_admin: {
+        actor_id: "platform-1",
+        roles: ["OPS" as const],
+        permissions: ["admin.provider.read"],
+      },
+    });
+    expect(platform.platform_admin?.actor_id).toBe("platform-1");
+    expect(platform.organizations[0]?.role).toBe("OWNER");
+    expect(() =>
+      assertShellSession({
+        ...base,
+        platform_admin: {
+          actor_id: "platform-1",
+          roles: [],
+          permissions: [],
+        },
+      }),
+    ).toThrow("SHELL_PLATFORM_ADMIN_INVALID");
+  });
+
   it("exposes a bounded recent-auth hint without inventing authorization", () => {
     const now = Date.parse("2026-08-15T00:04:00.000Z");
     expect(hasRecentAuthentication(base, 5 * 60_000, now)).toBe(true);

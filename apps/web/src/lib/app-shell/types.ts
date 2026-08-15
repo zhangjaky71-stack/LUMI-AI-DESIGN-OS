@@ -5,6 +5,21 @@ export type OrganizationRole =
   | "VIEWER"
   | "BILLING";
 
+export type PlatformAdminRole =
+  | "SUPPORT_READ"
+  | "SUPPORT_WRITE_LIMITED"
+  | "BILLING_ADMIN"
+  | "OPS"
+  | "MODEL_ADMIN"
+  | "SECURITY_AUDITOR"
+  | "PRIVACY_ADMIN";
+
+export interface PlatformAdminPrincipal {
+  readonly actor_id: string;
+  readonly roles: readonly PlatformAdminRole[];
+  readonly permissions: readonly string[];
+}
+
 export interface ShellUser {
   readonly id: string;
   readonly display_name: string;
@@ -24,6 +39,7 @@ export interface ShellSession {
   readonly organizations: readonly ShellOrganization[];
   readonly active_organization_id: string;
   readonly recent_auth_at?: string;
+  readonly platform_admin?: PlatformAdminPrincipal;
 }
 
 export interface ProblemDetails {
