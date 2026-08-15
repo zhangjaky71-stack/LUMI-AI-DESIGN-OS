@@ -48,21 +48,6 @@ variable "services" {
   }
 }
 
-variable "migration_task" {
-  description = "One-shot Alembic migration task. It is registered by Terraform but never run automatically by ECS service reconciliation."
-  type = object({
-    image               = string
-    migration_secret_arn = string
-    cpu                 = optional(number, 1024)
-    memory              = optional(number, 2048)
-    command             = optional(list(string), ["alembic", "-c", "apps/api/alembic.ini", "upgrade", "head"])
-  })
-  validation {
-    condition     = can(regex("^[^\\s@]+@sha256:[0-9a-f]{64}$", var.migration_task.image)) && length(var.migration_task.migration_secret_arn) > 10
-    error_message = "Migration image must use immutable digest and migration_secret_arn must be set."
-  }
-}
-
 variable "tags" {
   type    = map(string)
   default = {}
