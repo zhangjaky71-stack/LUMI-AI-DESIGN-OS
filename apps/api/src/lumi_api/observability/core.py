@@ -122,11 +122,7 @@ def parse_traceparent(value: str | None) -> tuple[str, str] | None:
 
 
 def active_otel_trace_id() -> str | None:
-    """Return the active OpenTelemetry trace id when the API package is installed.
-
-    OpenTelemetry remains optional at import time so frozen installs stay reproducible.
-    Production images must install/configure the SDK before NODE-67 can be signed off.
-    """
+    """Return an active OTel trace ID without creating a hard SDK dependency."""
 
     try:
         trace_module = importlib.import_module("opentelemetry.trace")
@@ -135,7 +131,8 @@ def active_otel_trace_id() -> str | None:
         if not span_context.is_valid:
             return None
         return f"{span_context.trace_id:032x}"
-    except (ImportError, AttributeError, TypeError, ValueError):
+    except Exception:
+        # Observability discovery/configuration must never fail a business request.
         return None
 
 
@@ -204,11 +201,10 @@ def _safe_scalar(value: Any) -> Any:
 
 
 class BoundedMetrics:
-    """Small in-process metric surface with an intentionally bounded label vocabulary.
+    """In-process metrics with a deliberately bounded label vocabulary.
 
-    This is the application-facing compatibility layer for NODE-67. The Collector is
-    the vendor boundary. Tenant/user/project/run IDs are deliberately forbidden as
-    metric labels and remain trace/log references instead.
+    Tenant/user/project/run identifiers belong in traces or safe log references, not
+    metric labels. This keeps cardinality and accidental tenant disclosure bounded.
     """
 
     def __init__(self) -> None:
@@ -248,7 +244,14 @@ class BoundedMetrics:
                     buckets[index] += 1
             self._histograms[key] = (count + 1, total + value, buckets)
 
-    def observe_http(self, *, method: str, route: str, status_code: int, duration: float) -> None:
+    def observe_http(
+        self,
+        *,
+        method: str,
+        route: str,
+        status_code: int,
+        duration: float,
+    ) -> None:
         labels = {
             "method": method.upper()[:16],
             "route": _bounded_route(route),
@@ -297,11 +300,12 @@ def _bounded_route(route: str) -> str:
     return cleaned
 
 
+def _escape_label_value(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+
+
 def _format_labels(labels: tuple[tuple[str, str], ...]) -> str:
     if not labels:
         return ""
-    encoded = ",".join(
-        f'{key}="{value.replace(chr(92), chr(92) * 2).replace(chr(34), chr(92) + chr(34))}"'
-        for key, value in labels
-    )
+    encoded = ",".join(f'{key}="{_escape_label_value(value)}"' for key, value in labels)
     return "{" + encoded + "}"
