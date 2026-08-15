@@ -1,0 +1,184 @@
+name: Audit Governance
+
+on:
+  pull_request:
+    paths:
+      - "services/project-core/src/lumi_project_core/governance.py"
+      - "services/project-core/tests/test_governance.py"
+      - "apps/api/src/lumi_api/governance_router.py"
+      - "apps/api/tests/test_governance_router.py"
+      - "db/migrations/0014_audit_governance.sql"
+      - "apps/web/src/app/app/settings/**"
+      - "apps/web/src/components/governance/**"
+      - "apps/web/src/lib/governance/**"
+      - "apps/web/e2e/governance.spec.ts"
+      - "scripts/validate_governance.py"
+      - "docs/nodes/NODE-65-AUDIT-GOVERNANCE.md"
+      - "docs/runtime/AUDIT-GOVERNANCE-V1.md"
+      - "reports/nodes/NODE-65/**"
+      - ".github/workflows/audit-governance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  governance-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - uses: astral-sh/setup-uv@v7
+        with: { version: "0.10.9" }
+      - run: uv sync --frozen
+      - name: Validate architecture chain through NODE-65
+        run: |
+          python scripts/validate_app_shell.py
+          python scripts/validate_projects_ui.py
+          python scripts/validate_ai_workspace.py
+          python scripts/validate_infinite_canvas.py
+          python scripts/validate_layers_inspector.py
+          python scripts/validate_agent_timeline.py
+          python scripts/validate_brand_kit_ui.py
+          python scripts/validate_versions_ui.py
+          python scripts/validate_export_engine.py
+          python scripts/validate_export_ui.py
+          python scripts/validate_collaboration.py
+          python scripts/validate_approval_engine.py
+          python scripts/validate_billing.py
+          python scripts/validate_admin_console.py
+          python scripts/validate_governance.py
+      - name: Typecheck governance backend
+        run: uv run pyright services/project-core/src/lumi_project_core/governance.py apps/api/src/lumi_api/governance_router.py
+      - name: Typecheck web
+        run: pnpm --filter @lumi/web typecheck
+
+  governance-backend:
+    needs: governance-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - uses: astral-sh/setup-uv@v7
+        with: { version: "0.10.9" }
+      - run: uv sync --frozen
+      - run: uv run pytest services/project-core/tests/test_governance.py apps/api/tests/test_governance_router.py
+      - run: uv run ruff check --select F,B services/project-core/src/lumi_project_core/governance.py services/project-core/tests/test_governance.py apps/api/src/lumi_api/governance_router.py apps/api/tests/test_governance_router.py
+
+  governance-db:
+    needs: governance-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: lumi, POSTGRES_PASSWORD: lumi, POSTGRES_DB: lumi }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U lumi -d lumi"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Apply Audit Governance migration
+        env: { PGPASSWORD: lumi }
+        run: psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0014_audit_governance.sql
+      - name: Verify governance schema and append-only enforcement
+        env: { PGPASSWORD: lumi }
+        run: |
+          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.tables where table_name in ('audit_events','governance_retention_policies','governance_legal_hold_events','governance_deletion_events','governance_audit_export_jobs');\")" = "5"
+          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from governance_retention_policies where version=1;\")" = "7"
+          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.columns where table_name in ('audit_events','governance_audit_export_jobs') and column_name in ('password','api_key','session_secret','authorization','card_number','cvc','cvv','signed_url');\")" = "0"
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -c "insert into audit_events(event_id,actor_type,actor_id,action,resource_type,resource_id,result,reason_code,retention_class,retention_policy_version,occurred_at,event_hash) values ('audit-db-65','SERVICE','db-test','TEST','TEST','test','SUCCESS','TEST','SECURITY_AUDIT',1,now(),repeat('a',64));"
+          if psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -c "update audit_events set action='MUTATED' where event_id='audit-db-65';"; then
+            echo 'audit_events UPDATE unexpectedly succeeded' >&2
+            exit 1
+          fi
+          if psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -c "delete from audit_events where event_id='audit-db-65';"; then
+            echo 'audit_events DELETE unexpectedly succeeded' >&2
+            exit 1
+          fi
+
+  governance-quality:
+    needs: governance-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lumi/web exec vitest run src/lib/governance
+      - run: pnpm --filter @lumi/web exec vitest run src/lib/admin-console src/lib/billing src/lib/approval-ui src/lib/collaboration
+      - run: pnpm --filter @lumi/web lint
+
+  governance-build:
+    needs: governance-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    env:
+      LUMI_SHELL_E2E_AUTH: "0"
+      LUMI_PROJECTS_E2E: "0"
+      LUMI_AI_WORKSPACE_E2E: "0"
+      LUMI_INFINITE_CANVAS_E2E: "0"
+      LUMI_BRAND_KIT_E2E: "0"
+      LUMI_VERSIONS_E2E: "0"
+      LUMI_EXPORT_UI_E2E: "0"
+      LUMI_COLLABORATION_E2E: "0"
+      LUMI_APPROVAL_E2E: "0"
+      LUMI_BILLING_E2E: "0"
+      LUMI_ADMIN_E2E: "0"
+      LUMI_GOVERNANCE_E2E: "0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lumi/web build
+      - name: Assert deterministic Governance fixture absent from production client chunks
+        run: |
+          if grep -R --line-number --fixed-strings 'node65_governance_fixture_v1' apps/web/.next/static 2>/dev/null; then
+            echo 'NODE-65 deterministic Governance fixture leaked into production client chunks.' >&2
+            exit 1
+          fi
+          if grep -R --line-number --fixed-strings 'audit-node65-4' apps/web/.next/static 2>/dev/null; then
+            echo 'NODE-65 deterministic Audit fixture data leaked into production client chunks.' >&2
+            exit 1
+          fi
+
+  governance-browser-e2e:
+    needs: [governance-backend, governance-db, governance-quality, governance-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      LUMI_SHELL_E2E_AUTH: "1"
+      LUMI_PROJECTS_E2E: "1"
+      LUMI_AI_WORKSPACE_E2E: "1"
+      LUMI_INFINITE_CANVAS_E2E: "1"
+      LUMI_BRAND_KIT_E2E: "1"
+      LUMI_VERSIONS_E2E: "1"
+      LUMI_EXPORT_UI_E2E: "1"
+      LUMI_COLLABORATION_E2E: "1"
+      LUMI_APPROVAL_E2E: "1"
+      LUMI_BILLING_E2E: "1"
+      LUMI_ADMIN_E2E: "1"
+      LUMI_GOVERNANCE_E2E: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec playwright test apps/web/e2e/governance.spec.ts
+      - name: Prior-node browser regressions
+        run: pnpm exec playwright test apps/web/e2e/admin-console.spec.ts apps/web/e2e/billing.spec.ts apps/web/e2e/approval-ui.spec.ts apps/web/e2e/collaboration.spec.ts apps/web/e2e/export-ui.spec.ts apps/web/e2e/versions-ui.spec.ts apps/web/e2e/brand-kit.spec.ts apps/web/e2e/agent-timeline.spec.ts apps/web/e2e/layers-inspector.spec.ts apps/web/e2e/infinite-canvas.spec.ts apps/web/e2e/ai-workspace.spec.ts
