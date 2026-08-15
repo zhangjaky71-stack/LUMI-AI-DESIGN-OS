@@ -18,6 +18,13 @@
     "canary",
     "rollback_drill"
   ],
+  "statistical_evidence": [
+    "model_provider_benchmark",
+    "human_pairwise_visual",
+    "shadow",
+    "canary"
+  ],
+  "minimum_statistical_sample_size": 20,
   "canary_stages": ["internal", "5", "25", "50", "100"],
   "max_cost_ratio_vs_baseline": 1.2,
   "max_latency_ratio_vs_baseline": 1.2,
