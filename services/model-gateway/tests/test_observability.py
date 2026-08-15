@@ -70,8 +70,8 @@ def test_model_projection_keeps_tenant_ids_out_of_metric_labels() -> None:
     }
     assert "organization_id" not in projection.metric_labels
     assert "project_id" not in projection.metric_labels
-    assert projection.trace_attributes["lumi.organization_id"].endswith("0002")
-    assert projection.trace_attributes["lumi.project_id"].endswith("0004")
+    assert str(projection.trace_attributes["lumi.organization_id"]).endswith("0002")
+    assert str(projection.trace_attributes["lumi.project_id"]).endswith("0004")
     assert projection.latency_seconds == 0.25
     assert projection.cost_usd == Decimal("0.0123")
 
