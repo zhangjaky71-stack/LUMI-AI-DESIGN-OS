@@ -118,6 +118,16 @@ def create_production_app(settings: Settings | None = None) -> FastAPI:
     async def health_live() -> dict[str, str]:
         return {"status": "ok", "service": "lumi-production-api"}
 
+    @app.get("/version", tags=["meta"])
+    async def version() -> dict[str, str]:
+        # This endpoint remains readable even when readiness is red so operators
+        # can identify exactly which incomplete RC is deployed.
+        return {
+            "service": "api",
+            "status": "ok",
+            "version": resolved.lumi_version,
+        }
+
     @app.get("/health/capabilities", tags=["health"])
     async def health_capabilities():
         snapshot = registry.snapshot()
