@@ -1,0 +1,152 @@
+name: Admin Console
+
+on:
+  pull_request:
+    paths:
+      - "services/project-core/src/lumi_project_core/admin_console.py"
+      - "services/project-core/tests/test_admin_console.py"
+      - "apps/api/src/lumi_api/admin_router.py"
+      - "apps/api/tests/test_admin_router.py"
+      - "apps/web/src/app/app/admin/**"
+      - "apps/web/src/components/admin-console/**"
+      - "apps/web/src/lib/admin-console/**"
+      - "apps/web/src/lib/app-shell/types.ts"
+      - "apps/web/src/lib/app-shell/auth-server.ts"
+      - "apps/web/src/lib/app-shell/auth-contract.ts"
+      - "apps/web/src/lib/app-shell/auth-contract.test.ts"
+      - "apps/web/src/components/app-shell/app-shell-frame.tsx"
+      - "apps/web/e2e/admin-console.spec.ts"
+      - "scripts/validate_admin_console.py"
+      - "docs/nodes/NODE-64-ADMIN-CONSOLE.md"
+      - "docs/runtime/ADMIN-CONSOLE-V1.md"
+      - "reports/nodes/NODE-64/**"
+      - ".github/workflows/admin-console.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admin-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - uses: astral-sh/setup-uv@v7
+        with: { version: "0.10.9" }
+      - run: uv sync --frozen
+      - name: Validate architecture chain through NODE-64
+        run: |
+          python scripts/validate_app_shell.py
+          python scripts/validate_projects_ui.py
+          python scripts/validate_ai_workspace.py
+          python scripts/validate_infinite_canvas.py
+          python scripts/validate_layers_inspector.py
+          python scripts/validate_agent_timeline.py
+          python scripts/validate_brand_kit_ui.py
+          python scripts/validate_versions_ui.py
+          python scripts/validate_export_engine.py
+          python scripts/validate_export_ui.py
+          python scripts/validate_collaboration.py
+          python scripts/validate_approval_engine.py
+          python scripts/validate_billing.py
+          python scripts/validate_admin_console.py
+      - name: Typecheck admin backend
+        run: uv run pyright services/project-core/src/lumi_project_core/admin_console.py apps/api/src/lumi_api/admin_router.py
+      - name: Typecheck web
+        run: pnpm --filter @lumi/web typecheck
+
+  admin-backend:
+    needs: admin-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - uses: astral-sh/setup-uv@v7
+        with: { version: "0.10.9" }
+      - run: uv sync --frozen
+      - run: uv run pytest services/project-core/tests/test_admin_console.py apps/api/tests/test_admin_router.py
+      - run: uv run ruff check --select F,B services/project-core/src/lumi_project_core/admin_console.py services/project-core/tests/test_admin_console.py apps/api/src/lumi_api/admin_router.py apps/api/tests/test_admin_router.py
+
+  admin-quality:
+    needs: admin-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lumi/web exec vitest run src/lib/admin-console src/lib/app-shell/auth-contract.test.ts
+      - run: pnpm --filter @lumi/web exec vitest run src/lib/billing src/lib/approval-ui src/lib/collaboration
+      - run: pnpm --filter @lumi/web lint
+
+  admin-build:
+    needs: admin-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    env:
+      LUMI_SHELL_E2E_AUTH: "0"
+      LUMI_PROJECTS_E2E: "0"
+      LUMI_AI_WORKSPACE_E2E: "0"
+      LUMI_INFINITE_CANVAS_E2E: "0"
+      LUMI_BRAND_KIT_E2E: "0"
+      LUMI_VERSIONS_E2E: "0"
+      LUMI_EXPORT_UI_E2E: "0"
+      LUMI_COLLABORATION_E2E: "0"
+      LUMI_APPROVAL_E2E: "0"
+      LUMI_BILLING_E2E: "0"
+      LUMI_ADMIN_E2E: "0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lumi/web build
+      - name: Assert deterministic Admin fixture absent from production client chunks
+        run: |
+          if grep -R --line-number --fixed-strings 'node64_admin_fixture_v1' apps/web/.next/static 2>/dev/null; then
+            echo 'NODE-64 deterministic Admin fixture leaked into production client chunks.' >&2
+            exit 1
+          fi
+          if grep -R --line-number --fixed-strings 'user-support-64' apps/web/.next/static 2>/dev/null; then
+            echo 'NODE-64 deterministic Admin fixture data leaked into production client chunks.' >&2
+            exit 1
+          fi
+
+  admin-browser-e2e:
+    needs: [admin-backend, admin-quality, admin-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      LUMI_SHELL_E2E_AUTH: "1"
+      LUMI_PROJECTS_E2E: "1"
+      LUMI_AI_WORKSPACE_E2E: "1"
+      LUMI_INFINITE_CANVAS_E2E: "1"
+      LUMI_BRAND_KIT_E2E: "1"
+      LUMI_VERSIONS_E2E: "1"
+      LUMI_EXPORT_UI_E2E: "1"
+      LUMI_COLLABORATION_E2E: "1"
+      LUMI_APPROVAL_E2E: "1"
+      LUMI_BILLING_E2E: "1"
+      LUMI_ADMIN_E2E: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec playwright test apps/web/e2e/admin-console.spec.ts
+      - name: Prior-node browser regressions
+        run: pnpm exec playwright test apps/web/e2e/billing.spec.ts apps/web/e2e/approval-ui.spec.ts apps/web/e2e/collaboration.spec.ts apps/web/e2e/export-ui.spec.ts apps/web/e2e/versions-ui.spec.ts apps/web/e2e/brand-kit.spec.ts apps/web/e2e/agent-timeline.spec.ts apps/web/e2e/layers-inspector.spec.ts apps/web/e2e/infinite-canvas.spec.ts apps/web/e2e/ai-workspace.spec.ts

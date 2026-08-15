@@ -14,6 +14,14 @@ export function assertShellSession(session: ShellSession): ShellSession {
   ) {
     throw new Error("SHELL_SESSION_ACTIVE_ORGANIZATION_INVALID");
   }
+  if (
+    session.platform_admin &&
+    (!session.platform_admin.actor_id ||
+      !session.platform_admin.roles.length ||
+      !session.platform_admin.permissions.length)
+  ) {
+    throw new Error("SHELL_PLATFORM_ADMIN_INVALID");
+  }
   return session;
 }
 
