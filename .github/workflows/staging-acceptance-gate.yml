@@ -73,6 +73,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
+      LUMI_STAGING_BASE_URL: ${{ inputs.base_url }}
+      LUMI_STAGING_EXPECTED_VERSION: ${{ inputs.expected_version }}
       LUMI_STAGING_HOST_ACK: ${{ inputs.host_ack }}
       LUMI_STAGING_ENV_ACK: staging
     steps:
@@ -84,8 +86,8 @@ jobs:
         run: |
           mkdir -p reports/staging-acceptance/runtime
           python3 scripts/staging-preflight.py \
-            --base-url "${{ inputs.base_url }}" \
-            --expected-version "${{ inputs.expected_version }}" \
+            --base-url "$LUMI_STAGING_BASE_URL" \
+            --expected-version "$LUMI_STAGING_EXPECTED_VERSION" \
             --output reports/staging-acceptance/runtime/preflight.json
       - uses: actions/upload-artifact@v4
         with:
@@ -96,6 +98,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.evidence_path != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      LUMI_STAGING_EVIDENCE_PATH: ${{ inputs.evidence_path }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -103,10 +107,10 @@ jobs:
           python-version: "3.12"
       - name: Evaluate completed staging evidence
         run: |
-          test -f "${{ inputs.evidence_path }}"
+          test -f "$LUMI_STAGING_EVIDENCE_PATH"
           mkdir -p reports/staging-acceptance/runtime
           python3 scripts/staging-acceptance-gate.py \
-            --evidence "${{ inputs.evidence_path }}" \
+            --evidence "$LUMI_STAGING_EVIDENCE_PATH" \
             --output reports/staging-acceptance/runtime/decision.json \
             --markdown reports/staging-acceptance/runtime/decision.md
       - uses: actions/upload-artifact@v4
