@@ -39,6 +39,7 @@ jobs:
         run: |
           python3 -m json.tool final/acceptance/manifest-v1.json >/dev/null
           python3 -m json.tool final/acceptance/release-manifest-template.json >/dev/null
+          python3 -m json.tool final/acceptance/upstream-decision-template.json >/dev/null
           python3 -m py_compile \
             scripts/final-acceptance-gate.py \
             scripts/create-final-acceptance-evidence.py \
