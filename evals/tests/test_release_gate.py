@@ -6,7 +6,14 @@ from pathlib import Path
 import pytest
 
 from evals.release import ReleaseGateError, ReleaseManifest, evaluate_release
-from evals.release_control import RolloutError, RolloutState, advance_canary, rollback, validate_shadow_plan
+from evals.release_control import (
+    RolloutError,
+    RolloutState,
+    advance_canary,
+    canary_action,
+    rollback,
+    validate_shadow_plan,
+)
 from evals.runner import load_json, load_suite, run_suite
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -138,14 +145,20 @@ def test_canary_progression_and_rollback_are_config_only() -> None:
 
 def test_canary_refuses_quality_regression() -> None:
     state = RolloutState("agent@1.0.0", "agent@1.1.0", "agent@1.0.0")
-    with pytest.raises(RolloutError, match="quality regression"):
-        advance_canary(
-            state,
-            {
-                "release_gate_passed": True,
-                "critical_failures": 0,
-                "error_ratio_vs_baseline": 1.0,
-                "cost_ratio_vs_baseline": 1.0,
-                "quality_delta": -0.05,
-            },
-        )
+    observation = {
+        "release_gate_passed": True,
+        "critical_failures": 0,
+        "error_ratio_vs_baseline": 1.0,
+        "cost_ratio_vs_baseline": 1.0,
+        "quality_delta": -0.05,
+    }
+    assert canary_action(observation) == {"action": "ROLLBACK", "reason": "quality_regression"}
+    with pytest.raises(RolloutError, match="quality_regression"):
+        advance_canary(state, observation)
+
+
+def test_provider_failure_forces_rollback_action() -> None:
+    assert canary_action({"provider_failure": True}) == {
+        "action": "ROLLBACK",
+        "reason": "provider_failure",
+    }
