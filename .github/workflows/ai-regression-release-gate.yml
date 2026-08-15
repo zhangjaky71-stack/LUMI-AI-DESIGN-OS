@@ -1,0 +1,96 @@
+name: AI Regression Release Gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Live eval suite preflight"
+        required: true
+        default: "smoke"
+        type: string
+      budget_usd:
+        description: "Maximum live eval spend for this manual run"
+        required: true
+        default: "5"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-regression-release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Validate AI release contract
+        run: python3 scripts/validate_ai_release_contract.py
+      - name: Python syntax
+        run: |
+          python3 -m py_compile \
+            evals/release.py \
+            evals/release_control.py \
+            evals/live.py \
+            scripts/validate_ai_release_contract.py \
+            scripts/ai-release-gate.py
+      - name: JSON syntax
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          for path in [
+              Path('evals/release/policy-v1.json'),
+              Path('evals/release/supplemental-evidence-template.json'),
+              Path('evals/fixtures/releases/baseline-manifest.json'),
+              Path('evals/fixtures/releases/candidate-manifest.json'),
+          ]:
+              json.loads(path.read_text(encoding='utf-8'))
+              print(path)
+          PY
+
+  canonical-eval-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v6
+      - name: Frozen dependency sync
+        run: uv sync --frozen
+      - name: Run benchmark and release-gate tests
+        run: uv run pytest -q evals/tests/test_harness.py evals/tests/test_release_gate.py
+
+  live-provider-preflight:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      LUMI_LIVE_EVAL_ENABLED: "1"
+      LUMI_LIVE_EVAL_API_KEY: ${{ secrets.LUMI_LIVE_EVAL_API_KEY }}
+      LUMI_LIVE_EVAL_BUDGET_USD: ${{ inputs.budget_usd }}
+      LUMI_LIVE_EVAL_SUITE_ACK: ${{ inputs.suite }}
+      LUMI_LIVE_EVAL_SIDE_EFFECT_MODE: "none"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Live provider authorization preflight only
+        run: python3 -m evals.cli live --suite "${{ inputs.suite }}"
+
+  release-gate:
+    if: always()
+    needs: [source-contract, canonical-eval-tests]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require source and canonical tests
+        run: |
+          test "${{ needs.source-contract.result }}" = "success"
+          test "${{ needs.canonical-eval-tests.result }}" = "success"
