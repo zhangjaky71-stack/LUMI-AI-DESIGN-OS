@@ -13,6 +13,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 GATE_PATH = ROOT / "scripts" / "final-acceptance-gate.py"
 FIXTURE_ROOT = ROOT / "reports" / "final-acceptance" / "_node73-contract-fixture"
+PROD_FIXTURE_ROOT = ROOT / "reports" / "production-deployments" / "_node73-contract-fixture"
 
 
 def load_gate() -> ModuleType:
@@ -89,7 +90,7 @@ def make_fixture(matrix: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]
         upstream_paths[name] = path
         upstream_specs[name] = {"path": repo_path(path), "sha256": sha(path)}
 
-    deployment_manifest = FIXTURE_ROOT / "production" / "manifest.json"
+    deployment_manifest = PROD_FIXTURE_ROOT / "manifest.json"
     write_json(deployment_manifest, {
         "schema_version": 1,
         "deployment_id": "prod-contract-001",
@@ -143,8 +144,9 @@ def main() -> int:
     require(len({item["id"] for item in matrix["scenarios"]}) == len(matrix["scenarios"]), "duplicate scenario id")
     require(all(item["priority"] in {"P0", "P1", "P2"} for item in matrix["scenarios"]), "invalid priority")
 
-    if FIXTURE_ROOT.exists():
-        shutil.rmtree(FIXTURE_ROOT)
+    for root in (FIXTURE_ROOT, PROD_FIXTURE_ROOT):
+        if root.exists():
+            shutil.rmtree(root)
     try:
         clean_release, clean_evidence, evidence_path, upstream_paths = make_fixture(matrix)
         clean = evaluate_case(gate, matrix, copy.deepcopy(clean_release), copy.deepcopy(clean_evidence), evidence_path)
@@ -259,8 +261,9 @@ def main() -> int:
         }, indent=2, sort_keys=True))
         return 0
     finally:
-        if FIXTURE_ROOT.exists():
-            shutil.rmtree(FIXTURE_ROOT)
+        for root in (FIXTURE_ROOT, PROD_FIXTURE_ROOT):
+            if root.exists():
+                shutil.rmtree(root)
 
 
 if __name__ == "__main__":
