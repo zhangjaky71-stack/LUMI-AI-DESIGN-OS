@@ -213,6 +213,8 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
       completed_at: null,
       selected_node_ids: safe.selected_node_ids,
       document_version: safe.document_version,
+      brand_rule_set_version:
+        safe.brand_rule_set_version ?? this.#snapshot.brand_binding?.resolved_rule_set_version ?? null,
       tasks: [
         { task_id: `${runId}:brief`, label: "理解 Brief", status: "RUNNING", retryable: false },
         { task_id: `${runId}:visual`, label: "生成视觉方向", status: "PENDING", retryable: true },
@@ -246,7 +248,9 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
 
   async stopRun(organizationId: string, input: RunControlInput, signal?: AbortSignal) {
     const run = this.#requireRun(organizationId, input, signal);
-    if (!["RUNNING", "PAUSED", "QUEUED"].includes(run.status)) throw workspaceProblem("RUN_NOT_CANCELABLE");
+    if (!["RUNNING", "PAUSED", "QUEUED"].includes(run.status)) {
+      throw workspaceProblem("RUN_NOT_CANCELABLE");
+    }
     return this.#replaceRun({
       ...run,
       version: run.version + 1,
@@ -263,7 +267,9 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
   async retryTask(organizationId: string, input: RetryTaskInput, signal?: AbortSignal) {
     const run = this.#requireRun(organizationId, input, signal);
     const target = run.tasks.find((task) => task.task_id === input.task_id);
-    if (!target || target.status !== "FAILED" || !target.retryable) throw workspaceProblem("TASK_NOT_RETRYABLE");
+    if (!target || target.status !== "FAILED" || !target.retryable) {
+      throw workspaceProblem("TASK_NOT_RETRYABLE");
+    }
     return this.#replaceRun({
       ...run,
       version: run.version + 1,
@@ -282,7 +288,11 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
     if (input.approval_id === this.#staleApprovalId) throw workspaceProblem("APPROVAL_STALE");
     const safe = validateApprovalDecision(input, approval, this.#snapshot.run);
     const state: WorkspaceApproval["state"] =
-      safe.decision === "APPROVE" ? "APPROVED" : safe.decision === "REJECT" ? "REJECTED" : "CHANGES_REQUESTED";
+      safe.decision === "APPROVE"
+        ? "APPROVED"
+        : safe.decision === "REJECT"
+          ? "REJECTED"
+          : "CHANGES_REQUESTED";
     this.#snapshot = {
       ...this.#snapshot,
       approvals: this.#snapshot.approvals.map((value) =>
@@ -307,10 +317,15 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
 
   async placeArtifact(organizationId: string, input: PlaceArtifactInput, signal?: AbortSignal) {
     this.#assertScope(organizationId, input.project_id, signal);
-    if (input.document_id !== this.#snapshot.document.document_id) throw workspaceProblem("DOCUMENT_NOT_FOUND", 404);
-    if (input.expected_document_version !== this.#snapshot.document.version) throw workspaceProblem("DOCUMENT_VERSION_CONFLICT");
+    if (input.document_id !== this.#snapshot.document.document_id) {
+      throw workspaceProblem("DOCUMENT_NOT_FOUND", 404);
+    }
+    if (input.expected_document_version !== this.#snapshot.document.version) {
+      throw workspaceProblem("DOCUMENT_VERSION_CONFLICT");
+    }
     const artifact = this.#snapshot.artifacts.find(
-      (value) => value.artifact_id === input.artifact_id && value.version_id === input.artifact_version_id,
+      (value) =>
+        value.artifact_id === input.artifact_id && value.version_id === input.artifact_version_id,
     );
     if (!artifact) throw workspaceProblem("ARTIFACT_VERSION_NOT_FOUND", 404);
     this.#snapshot = {
@@ -376,23 +391,48 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
     });
     const events: WorkspaceEvent[] = [
       {
-        id: `${runId}:1`, sequence: 1, run_id: runId, type: "message.created",
+        id: `${runId}:1`,
+        sequence: 1,
+        run_id: runId,
+        type: "message.created",
         message: status(`${runId}:message:1`, "正在分析 Brief、Brand Kit 与选中对象。", 28),
       },
       {
-        id: `${runId}:2`, sequence: 2, run_id: runId, type: "message.created",
+        id: `${runId}:2`,
+        sequence: 2,
+        run_id: runId,
+        type: "message.created",
         message: status(`${runId}:message:2`, "已锁定产品身份约束，正在生成视觉方向。", 29),
       },
       {
-        id: `${runId}:3`, sequence: 3, run_id: runId, type: "artifact.created", artifact,
-        message: { ...status(`${runId}:message:3`, "已生成可评审的主视觉 Artifact v1。", 31), kind: "ARTIFACT", artifact_version_id: artifact.version_id },
+        id: `${runId}:3`,
+        sequence: 3,
+        run_id: runId,
+        type: "artifact.created",
+        artifact,
+        message: {
+          ...status(`${runId}:message:3`, "已生成可评审的主视觉 Artifact v1。", 31),
+          kind: "ARTIFACT",
+          artifact_version_id: artifact.version_id,
+        },
       },
       {
-        id: `${runId}:4`, sequence: 4, run_id: runId, type: "approval.required", approval,
-        message: { ...status(`${runId}:message:4`, approval.description, 32), kind: "APPROVAL", approval_id: approval.approval_id },
+        id: `${runId}:4`,
+        sequence: 4,
+        run_id: runId,
+        type: "approval.required",
+        approval,
+        message: {
+          ...status(`${runId}:message:4`, approval.description, 32),
+          kind: "APPROVAL",
+          approval_id: approval.approval_id,
+        },
       },
       {
-        id: `${runId}:5`, sequence: 5, run_id: runId, type: "run.status",
+        id: `${runId}:5`,
+        sequence: 5,
+        run_id: runId,
+        type: "run.status",
         run: { ...run, status: "PAUSED", last_event_id: `${runId}:5` },
       },
     ];
@@ -419,22 +459,33 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
     } else if (event.type === "artifact.created") {
       this.#snapshot = {
         ...this.#snapshot,
-        artifacts: this.#snapshot.artifacts.some((value) => value.version_id === event.artifact.version_id)
-          ? this.#snapshot.artifacts : [...this.#snapshot.artifacts, event.artifact],
+        artifacts: this.#snapshot.artifacts.some(
+          (value) => value.version_id === event.artifact.version_id,
+        )
+          ? this.#snapshot.artifacts
+          : [...this.#snapshot.artifacts, event.artifact],
         messages: this.#snapshot.messages.some((value) => value.id === event.message.id)
-          ? this.#snapshot.messages : [...this.#snapshot.messages, event.message],
+          ? this.#snapshot.messages
+          : [...this.#snapshot.messages, event.message],
       };
     } else {
       this.#snapshot = {
         ...this.#snapshot,
-        approvals: this.#snapshot.approvals.some((value) => value.approval_id === event.approval.approval_id)
-          ? this.#snapshot.approvals : [...this.#snapshot.approvals, event.approval],
+        approvals: this.#snapshot.approvals.some(
+          (value) => value.approval_id === event.approval.approval_id,
+        )
+          ? this.#snapshot.approvals
+          : [...this.#snapshot.approvals, event.approval],
         messages: this.#snapshot.messages.some((value) => value.id === event.message.id)
-          ? this.#snapshot.messages : [...this.#snapshot.messages, event.message],
+          ? this.#snapshot.messages
+          : [...this.#snapshot.messages, event.message],
       };
     }
     if (this.#snapshot.run?.run_id === event.run_id) {
-      this.#snapshot = { ...this.#snapshot, run: { ...this.#snapshot.run, last_event_id: event.id } };
+      this.#snapshot = {
+        ...this.#snapshot,
+        run: { ...this.#snapshot.run, last_event_id: event.id },
+      };
     }
   }
 
@@ -443,7 +494,11 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
     return clone(run);
   }
 
-  #requireRun(organizationId: string, input: RunControlInput, signal?: AbortSignal): AgentRunSnapshot {
+  #requireRun(
+    organizationId: string,
+    input: RunControlInput,
+    signal?: AbortSignal,
+  ): AgentRunSnapshot {
     this.#assertScope(organizationId, this.#snapshot.project_id, signal);
     const run = this.#snapshot.run;
     if (!run || run.run_id !== input.run_id) throw workspaceProblem("RUN_NOT_FOUND", 404);
@@ -460,7 +515,10 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
   }
 }
 
-export function getAIWorkspaceGateway(api: LumiApiClient, bootstrap: AIWorkspaceBootstrap): AIWorkspaceGateway {
+export function getAIWorkspaceGateway(
+  api: LumiApiClient,
+  bootstrap: AIWorkspaceBootstrap,
+): AIWorkspaceGateway {
   if (bootstrap.mode !== "e2e") return new HttpAIWorkspaceGateway(api);
   if (!bootstrap.seed) throw new Error("AI_WORKSPACE_E2E_SEED_REQUIRED");
   return new DeterministicAIWorkspaceGateway(bootstrap.seed);

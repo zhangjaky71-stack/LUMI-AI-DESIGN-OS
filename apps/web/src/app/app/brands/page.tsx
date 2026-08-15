@@ -1,11 +1,8 @@
-import { ShellSection } from "@/components/app-shell/shell-section";
+import { BrandKitProduct } from "@/components/brand-kit/brand-kit";
+import { getBrandKitBootstrap } from "@/lib/brand-kit/brand-kit-server";
+
+export const dynamic = "force-dynamic";
 
 export default function BrandsPage() {
-  return (
-    <ShellSection
-      eyebrow="BRAND SYSTEM"
-      title="品牌"
-      description="管理品牌规则、视觉资产与可复用设计约束。"
-    />
-  );
+  return <BrandKitProduct bootstrap={getBrandKitBootstrap()} />;
 }

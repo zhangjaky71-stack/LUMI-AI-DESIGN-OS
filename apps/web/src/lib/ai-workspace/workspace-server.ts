@@ -130,17 +130,28 @@ function seed(projectId: string): DeterministicWorkspaceSeed {
     expires_at: "2026-08-14T00:00:00.000Z",
   };
   const run = seededRun(projectId);
+  const hasLumiBrand = projectId === "project-summer-launch" || projectId === "project-store-signage";
   const snapshot: AIWorkspaceSnapshot = {
     project_id: projectId,
     project_name:
       projectId === "project-summer-launch"
         ? "夏季新品发布"
-        : projectId === "project-agent-retry"
-          ? "Agent Retry Timeline"
-          : projectId === "project-agent-cancelled"
-            ? "Cancelled Run Timeline"
-            : "AI Design Project",
-    brand_name: projectId === "project-summer-launch" ? "LUMI Coffee" : null,
+        : projectId === "project-store-signage"
+          ? "门店导视更新"
+          : projectId === "project-agent-retry"
+            ? "Agent Retry Timeline"
+            : projectId === "project-agent-cancelled"
+              ? "Cancelled Run Timeline"
+              : "AI Design Project",
+    brand_name: hasLumiBrand ? "LUMI Coffee" : null,
+    brand_binding: hasLumiBrand
+      ? {
+          brand_profile_id: "brand-lumi-coffee",
+          brand_name: "LUMI Coffee",
+          policy: projectId === "project-store-signage" ? "PINNED" : "CURRENT_PUBLISHED",
+          resolved_rule_set_version: "1.0.0",
+        }
+      : null,
     document: {
       document_id: `document:${projectId}`,
       version: 7,
@@ -185,10 +196,12 @@ function seed(projectId: string): DeterministicWorkspaceSeed {
         { warning_code: "PROVIDER_FALLBACK" },
       ),
       ...(run?.status === "FAILED"
-        ? [message("message-retry-error", "ERROR", "视觉方向生成失败；可以从失败任务安全重试。", {
-            run_id: run.run_id,
-            warning_code: "PROVIDER_TIMEOUT",
-          })]
+        ? [
+            message("message-retry-error", "ERROR", "视觉方向生成失败；可以从失败任务安全重试。", {
+              run_id: run.run_id,
+              warning_code: "PROVIDER_TIMEOUT",
+            }),
+          ]
         : []),
       message("message-stale-approval", "APPROVAL", staleApproval.description, {
         run_id: staleApproval.run_id,

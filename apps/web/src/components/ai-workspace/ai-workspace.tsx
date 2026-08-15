@@ -20,7 +20,7 @@ import type {
   CanvasSyncState,
   InfiniteCanvasBootstrap,
 } from "@/lib/infinite-canvas/types";
-import type { CanvasEditorApi, CanvasEditorState } from "@/lib/layers-inspector/types";
+import type { CanvasEditorApi, CanvasEditorState, LayerTreeNode } from "@/lib/layers-inspector/types";
 import styles from "./ai-workspace.module.css";
 
 const RUN_LABEL: Readonly<Record<string, string>> = {
@@ -38,14 +38,22 @@ function uiError(error: unknown): string {
   return "AI Workspace 操作失败，请重试。";
 }
 
+function containsLayer(layers: readonly LayerTreeNode[], nodeId: string): boolean {
+  return layers.some((layer) => layer.id === nodeId || containsLayer(layer.children, nodeId));
+}
+
 export function AIWorkspace({
   projectId,
   bootstrap,
   canvasBootstrap,
+  focusNodeId = null,
+  requestedBrandRuleVersion = null,
 }: Readonly<{
   projectId: string;
   bootstrap: AIWorkspaceBootstrap;
   canvasBootstrap: InfiniteCanvasBootstrap;
+  focusNodeId?: string | null;
+  requestedBrandRuleVersion?: string | null;
 }>) {
   const { activeOrganization, api, queryCache } = useShell();
   const gateway = useMemo(() => getAIWorkspaceGateway(api, bootstrap), [api, bootstrap]);
@@ -66,6 +74,7 @@ export function AIWorkspace({
   const streamAbortRef = useRef<AbortController | null>(null);
   const reducerRef = useRef<WorkspaceReducerState | null>(null);
   const canvasEditorRef = useRef<CanvasEditorApi | null>(null);
+  const focusAppliedRef = useRef(false);
 
   const refreshCanonical = useCallback(async () => {
     const next = await queryCache.fetchQuery(
@@ -149,6 +158,7 @@ export function AIWorkspace({
         document_version: canvasDocumentVersion || snapshot.document.version,
         reference_asset_ids: selectedReferenceIds,
         reference_artifact_version_ids: artifactReferenceIds,
+        brand_rule_set_version: snapshot.brand_binding?.resolved_rule_set_version ?? null,
       });
       setPrompt("");
       reducerRef.current = { snapshot: next, seen_event_ids: [] };
@@ -220,7 +230,8 @@ export function AIWorkspace({
         run_id: approval.run_id,
         expected_run_version: approval.expected_run_version,
         decision,
-        request_changes_note: decision === "REQUEST_CHANGES" ? approvalNotes[approval.approval_id] ?? null : null,
+        request_changes_note:
+          decision === "REQUEST_CHANGES" ? approvalNotes[approval.approval_id] ?? null : null,
       });
       reducerRef.current = { snapshot: next, seen_event_ids: reducerRef.current?.seen_event_ids ?? [] };
       setSnapshot(next);
@@ -265,7 +276,9 @@ export function AIWorkspace({
 
   const toggleArtifactReference = (versionId: string) => {
     setArtifactReferenceIds((current) =>
-      current.includes(versionId) ? current.filter((value) => value !== versionId) : [...current, versionId],
+      current.includes(versionId)
+        ? current.filter((value) => value !== versionId)
+        : [...current, versionId],
     );
   };
 
@@ -293,6 +306,19 @@ export function AIWorkspace({
     canvasEditorRef.current?.fitSelection();
   }, []);
 
+  useEffect(() => {
+    if (!focusNodeId || focusAppliedRef.current || !canvasEditorState) return;
+    if (!containsLayer(canvasEditorState.layers, focusNodeId)) {
+      setError(`Brand compliance 指向的 Canvas node 不存在：${focusNodeId}`);
+      focusAppliedRef.current = true;
+      return;
+    }
+    canvasEditorRef.current?.select([focusNodeId], focusNodeId);
+    canvasEditorRef.current?.fitSelection();
+    setMobilePanel("canvas");
+    focusAppliedRef.current = true;
+  }, [canvasEditorState, focusNodeId]);
+
   if (loading) return <div className={styles.loading}>正在加载 AI Workspace…</div>;
   if (!snapshot) {
     return (
@@ -303,27 +329,51 @@ export function AIWorkspace({
     );
   }
 
-  const selectedNodes = snapshot.document.selection_options.filter((node) => selectedNodeIds.includes(node.node_id));
+  const selectedNodes = snapshot.document.selection_options.filter((node) =>
+    selectedNodeIds.includes(node.node_id),
+  );
   const knownNodeIds = new Set(selectedNodes.map((node) => node.node_id));
   const unknownSelectedNodeIds = selectedNodeIds.filter((nodeId) => !knownNodeIds.has(nodeId));
   const effectiveDocumentVersion = canvasDocumentVersion || snapshot.document.version;
   const run = snapshot.run;
   const runLabel = run ? RUN_LABEL[run.status] ?? run.status : "待开始";
+  const resolvedBrandVersion = snapshot.brand_binding?.resolved_rule_set_version ?? null;
+  const effectiveRunBrandVersion = run?.brand_rule_set_version ?? resolvedBrandVersion;
 
   const agentPanel = (
     <section className={styles.agentPanel} aria-label="Agent 对话与运行">
       <div className={styles.panelHeader}>
-        <div><span className={styles.eyebrow}>LUMI AGENT</span><h2>Design Copilot</h2></div>
-        <span className={styles.connection} data-state={streamState}>{streamState === "offline" ? "Offline" : streamState === "reconnecting" ? "Reconnecting" : "Live"}</span>
+        <div>
+          <span className={styles.eyebrow}>LUMI AGENT</span>
+          <h2>Design Copilot</h2>
+        </div>
+        <span className={styles.connection} data-state={streamState}>
+          {streamState === "offline"
+            ? "Offline"
+            : streamState === "reconnecting"
+              ? "Reconnecting"
+              : "Live"}
+        </span>
       </div>
 
       <div className={styles.runBar}>
         <strong>{runLabel}</strong>
         {run ? <span>Run v{run.version}</span> : null}
+        {effectiveRunBrandVersion ? (
+          <span>
+            Brand v{effectiveRunBrandVersion}{run?.brand_rule_set_version ? " · frozen" : " · next Run"}
+          </span>
+        ) : null}
         <div className={styles.runActions}>
-          {run?.status === "RUNNING" ? <button type="button" onClick={() => void updateRun("pause")} disabled={busy}>暂停</button> : null}
-          {run?.status === "PAUSED" ? <button type="button" onClick={() => void updateRun("resume")} disabled={busy}>Resume</button> : null}
-          {run && ["RUNNING", "PAUSED", "QUEUED"].includes(run.status) ? <button type="button" onClick={() => void updateRun("stop")} disabled={busy}>Stop</button> : null}
+          {run?.status === "RUNNING" ? (
+            <button type="button" onClick={() => void updateRun("pause")} disabled={busy}>暂停</button>
+          ) : null}
+          {run?.status === "PAUSED" ? (
+            <button type="button" onClick={() => void updateRun("resume")} disabled={busy}>Resume</button>
+          ) : null}
+          {run && ["RUNNING", "PAUSED", "QUEUED"].includes(run.status) ? (
+            <button type="button" onClick={() => void updateRun("stop")} disabled={busy}>Stop</button>
+          ) : null}
         </div>
       </div>
 
@@ -332,7 +382,9 @@ export function AIWorkspace({
         busy={busy}
         artifactReferenceIds={artifactReferenceIds}
         approvalNotes={approvalNotes}
-        onApprovalNoteChange={(approvalId, note) => setApprovalNotes((current) => ({ ...current, [approvalId]: note }))}
+        onApprovalNoteChange={(approvalId, note) =>
+          setApprovalNotes((current) => ({ ...current, [approvalId]: note }))
+        }
         onDecideApproval={(approval, decision) => void decideApproval(approval, decision)}
         onPlaceArtifact={(artifactId, versionId) => void placeArtifact(artifactId, versionId)}
         onToggleArtifactReference={toggleArtifactReference}
@@ -345,7 +397,17 @@ export function AIWorkspace({
           <span>{selectedNodeIds.length} selected</span>
           <span>Document v{effectiveDocumentVersion}</span>
           <span>Canvas {canvasSyncState}</span>
-          {selectedNodes.map((node) => <span key={node.node_id}>{node.label}{node.locked_identity ? " · locked identity" : ""}</span>)}
+          {effectiveRunBrandVersion ? (
+            <span>
+              Brand v{effectiveRunBrandVersion}{run?.brand_rule_set_version ? " · frozen" : ""}
+            </span>
+          ) : null}
+          {requestedBrandRuleVersion ? <span>Compliance source v{requestedBrandRuleVersion}</span> : null}
+          {selectedNodes.map((node) => (
+            <span key={node.node_id}>
+              {node.label}{node.locked_identity ? " · locked identity" : ""}
+            </span>
+          ))}
           {unknownSelectedNodeIds.map((nodeId) => <span key={nodeId}>{nodeId}</span>)}
           {selectedReferenceIds.length ? <span>{selectedReferenceIds.length} references</span> : null}
           {artifactReferenceIds.length ? <span>{artifactReferenceIds.length} artifact refs</span> : null}
@@ -393,7 +455,9 @@ export function AIWorkspace({
     <LayersInspector
       state={canvasEditorState}
       editorRef={canvasEditorRef}
-      brandName={snapshot.brand_name}
+      brandName={snapshot.brand_binding
+        ? `${snapshot.brand_binding.brand_name} · v${resolvedBrandVersion ?? "unpublished"}`
+        : snapshot.brand_name}
       references={snapshot.references}
       selectedReferenceIds={selectedReferenceIds}
       onToggleReference={toggleReference}
@@ -407,7 +471,12 @@ export function AIWorkspace({
         <div>
           <Link href={`/app/projects/${encodeURIComponent(projectId)}`}>← Project Brief</Link>
           <h1>{snapshot.project_name}</h1>
-          <p>{snapshot.brand_name ?? "No Brand Kit"} · Timeline + Infinite Canvas + Layers / Inspector</p>
+          <p>
+            {snapshot.brand_name ?? "No Brand Kit"}
+            {resolvedBrandVersion ? ` · BrandRuleSet v${resolvedBrandVersion}` : ""}
+            {requestedBrandRuleVersion ? ` · reviewing compliance v${requestedBrandRuleVersion}` : ""}
+            {" · Timeline + Infinite Canvas + Layers / Inspector"}
+          </p>
         </div>
         {error ? <p role="alert" className={styles.error}>{error}</p> : null}
       </header>

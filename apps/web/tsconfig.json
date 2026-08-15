@@ -6,6 +6,7 @@
     "incremental": true,
     "paths": {
       "@/*": ["./src/*"],
+      "@lumi/brand-rules": ["../../packages/brand-rules/src/index.ts"],
       "@lumi/canvas-sdk": ["../../packages/canvas-sdk/src/index.ts"],
       "@lumi/design-ir": ["../../packages/design-ir/src/index.ts"]
     }
