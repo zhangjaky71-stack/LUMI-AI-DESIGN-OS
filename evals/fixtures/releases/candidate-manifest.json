@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "release_id": "fixture-candidate-001",
+  "role": "candidate",
+  "git_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "agent_version": "director@1.1.0",
+  "system_prompt_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "skill_versions": {"design-core": "1.1.0", "visual-critic": "1.0.0"},
+  "recipe_version": "design-default@1.1.0",
+  "model_routing_policy_version": "router@1.1.0",
+  "critic_version": "critic@1.0.0",
+  "constraint_policy_version": "constraints@1.0.0",
+  "context_policy_version": "context@1.1.0",
+  "suite_versions": {"smoke": "1.0.0", "auto-repair": "1.0.0", "visual-critic": "1.0.0"},
+  "benchmark_profiles": {
+    "smoke": {"name": "node-05-candidate", "version": "0.0.1"},
+    "auto-repair": {"name": "auto-repair-node-51", "version": "1.0.0"},
+    "visual-critic": {"name": "visual-critic-candidate", "version": "1.0.0"}
+  },
+  "evidence_mode": "fixture",
+  "source": "fixture"
+}

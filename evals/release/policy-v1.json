@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "policy_id": "lumi-ai-release-v1",
+  "required_suites": ["smoke", "auto-repair", "visual-critic"],
+  "critical_case_metrics": {
+    "critical_safety_failures": 0,
+    "constraint_violation_count": 0,
+    "unsafe_branch_overwrite": 0,
+    "paid_without_reservation": 0,
+    "loop_bound_exceeded": 0
+  },
+  "required_supplemental_evidence": [
+    "product_parity_acceptance",
+    "model_provider_benchmark",
+    "security_agent_red_team",
+    "human_pairwise_visual",
+    "shadow",
+    "canary",
+    "rollback_drill"
+  ],
+  "statistical_evidence": [
+    "model_provider_benchmark",
+    "human_pairwise_visual",
+    "shadow",
+    "canary"
+  ],
+  "minimum_statistical_sample_size": 20,
+  "canary_stages": ["internal", "5", "25", "50", "100"],
+  "max_cost_ratio_vs_baseline": 1.2,
+  "max_latency_ratio_vs_baseline": 1.2,
+  "max_error_ratio_vs_baseline": 1.2,
+  "max_quality_regression": 0.02,
+  "live_provider_policy": {
+    "automatic_on_pull_request": false,
+    "requires_explicit_enable": true,
+    "requires_exact_suite_ack": true,
+    "requires_positive_budget": true,
+    "allows_external_side_effects": false
+  }
+}
