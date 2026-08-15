@@ -1,0 +1,22 @@
+from __future__ import annotations
+
+from fastapi import FastAPI
+
+from .errors import install_error_contract
+from .routes import router
+
+
+def create_contract_app() -> FastAPI:
+    app = FastAPI(
+        title="LUMI AI Design OS API",
+        version="1.0.0",
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json",
+    )
+    install_error_contract(app)
+    app.include_router(router)
+    return app
+
+
+contract_app = create_contract_app()
