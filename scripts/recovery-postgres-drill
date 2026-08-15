@@ -24,6 +24,7 @@ set +a
 
 compose=(
   docker compose
+  --profile recovery
   --env-file "$env_file"
   -f "$base_compose"
   -f "$recovery_compose"
@@ -56,7 +57,7 @@ wait_healthy() {
 }
 
 cleanup_restore() {
-  "${compose[@]}" --profile recovery rm -sf postgres-restore >/dev/null 2>&1 || true
+  "${compose[@]}" rm -sf postgres-restore >/dev/null 2>&1 || true
 }
 trap cleanup_restore EXIT INT TERM
 
@@ -81,7 +82,7 @@ INSERT INTO lumi_node68_recovery_probe(probe_key, probe_value) VALUES ('$base_ke
 "
 
 echo "[recovery] taking and verifying base backup"
-"${compose[@]}" --profile recovery run --rm postgres-backup
+"${compose[@]}" run --rm postgres-backup
 
 psql_primary --command "INSERT INTO lumi_node68_recovery_probe(probe_key, probe_value) VALUES ('$before_key', 'must-survive-pitr');"
 psql_primary --tuples-only --no-align --command "SELECT pg_create_restore_point('$restore_point');" >/dev/null
@@ -117,7 +118,7 @@ archive_latency_seconds=$(( $(date +%s) - archive_started_epoch ))
 echo "[recovery] starting isolated PITR target=$restore_point"
 export LUMI_RECOVERY_TARGET_NAME="$restore_point"
 restore_started_epoch="$(date +%s)"
-"${compose[@]}" --profile recovery up -d --build --force-recreate postgres-restore
+"${compose[@]}" up -d --build --force-recreate postgres-restore
 wait_healthy postgres-restore
 
 base_count="$(psql_restore --tuples-only --no-align --command "SELECT count(*) FROM lumi_node68_recovery_probe WHERE probe_key='$base_key';" | tr -d '[:space:]')"
