@@ -1,6 +1,10 @@
+import type { Metadata } from "next";
 import "./globals.css";
 
-export const metadata = { title: "LUMI AI Design OS" };
+export const metadata: Metadata = {
+  title: { default: "LUMI AI Design OS", template: "%s · LUMI" },
+  description: "AI-native design operating system",
+};
 
 export default function RootLayout({
   children,
