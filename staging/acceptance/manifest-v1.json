@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "manifest_id": "lumi-staging-acceptance-v1",
+  "allowed_statuses": ["PASS", "FAIL", "BLOCKED_EXTERNAL", "NOT_RUN"],
+  "exit_policy": {
+    "p0_requires_pass": true,
+    "critical_high_failures_allowed": 0,
+    "blocked_external_never_counts_as_pass": true
+  },
+  "scenarios": [
+    {"id":"ENV-01","category":"environment","title":"RC image and version parity","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"ENV-02","category":"environment","title":"Topology, DB, broker, object, migrations and security parity","priority":"P0","severity":"high","external_dependency":false},
+    {"id":"ACC-01","category":"accounts","title":"Org A/B, ops and billing test-account isolation matrix","priority":"P0","severity":"high","external_dependency":false},
+    {"id":"E2E-01","category":"golden_e2e","title":"Boutique coffee brand end-to-end project","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"E2E-02","category":"golden_e2e","title":"Precision edit preserves product, logo and QR invariants","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"RES-01","category":"resilience","title":"Agent Runtime restart and resume","priority":"P0","severity":"high","external_dependency":false},
+    {"id":"RES-02","category":"resilience","title":"Worker restart and queued-job recovery","priority":"P0","severity":"high","external_dependency":false},
+    {"id":"RES-03","category":"resilience","title":"Provider 429/5xx retry, reconciliation and user state","priority":"P0","severity":"high","external_dependency":false},
+    {"id":"RES-04","category":"resilience","title":"Redis restart with correctness-preserving degradation","priority":"P0","severity":"high","external_dependency":false},
+    {"id":"RES-05","category":"resilience","title":"Duplicate event/webhook and SSE reconnect idempotency","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"RES-06","category":"resilience","title":"DB failover or isolated restore rehearsal","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"SEC-01","category":"security","title":"Cross-tenant object and ID access is denied","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"SEC-02","category":"security","title":"Unauthorized asset signed URL access is denied","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"SEC-03","category":"security","title":"Malicious SVG/upload parser corpus is contained","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"SEC-04","category":"security","title":"Indirect prompt injection remains untrusted data","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"SEC-05","category":"security","title":"SSRF metadata/private target corpus is denied","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"SEC-06","category":"security","title":"Sandbox traversal/escape corpus is denied","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"SEC-07","category":"security","title":"Unauthorized admin and expired approval are denied","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"BILL-01","category":"billing","title":"Cost ledger, budget block, credits and webhook idempotency reconcile","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"PERF-01","category":"performance","title":"NODE-69 launch profile measured on identified staging RC","priority":"P0","severity":"high","external_dependency":false},
+    {"id":"AI-01","category":"ai_release","title":"Production-candidate model quality acceptance","priority":"P0","severity":"high","external_dependency":true},
+    {"id":"AI-02","category":"ai_release","title":"NODE-70 release decision uses real baseline/candidate evidence","priority":"P0","severity":"critical","external_dependency":true},
+    {"id":"BROWSER-01","category":"browser","title":"Chrome primary create/edit/export flow","priority":"P0","severity":"high","external_dependency":false},
+    {"id":"BROWSER-02","category":"browser","title":"Edge primary create/edit/export flow","priority":"P0","severity":"high","external_dependency":false},
+    {"id":"BROWSER-03","category":"browser","title":"Safari core view/edit flow","priority":"P1","severity":"medium","external_dependency":true},
+    {"id":"I18N-01","category":"browser","title":"Chinese IME, fonts, upload and download behavior","priority":"P0","severity":"high","external_dependency":false},
+    {"id":"DATA-01","category":"data_lifecycle","title":"Project archive and restore","priority":"P0","severity":"high","external_dependency":false},
+    {"id":"DATA-02","category":"data_lifecycle","title":"Asset/vector deletion, retention, audit and export expiry","priority":"P0","severity":"high","external_dependency":false},
+    {"id":"DATA-03","category":"data_lifecycle","title":"Backup restore integrity and workload checks","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"OBS-01","category":"observability","title":"Request/Agent/Tool/Model/Worker evidence correlates across logs metrics traces","priority":"P0","severity":"high","external_dependency":false}
+  ]
+}
