@@ -187,7 +187,7 @@ BEGIN
   END LOOP;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 -- statement-breakpoint
 
