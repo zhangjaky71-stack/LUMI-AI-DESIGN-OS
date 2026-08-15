@@ -14,6 +14,7 @@ import urllib.parse
 import urllib.request
 
 MAX_RESPONSE_BYTES = 128 * 1024
+MAX_REQUESTS = 100_000
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -71,6 +72,25 @@ def one_request(opener: urllib.request.OpenerDirector, url: str, method: str, bo
     return ok, (time.perf_counter() - started) * 1000, status
 
 
+def run_bounded(opener: urllib.request.OpenerDirector, url: str, method: str, body: bytes | None, timeout: float, concurrency: int, total: int) -> list[tuple[bool, float, int]]:
+    results: list[tuple[bool, float, int]] = []
+    submitted = 0
+    max_in_flight = min(total, max(concurrency, concurrency * 2))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
+        pending: set[concurrent.futures.Future[tuple[bool, float, int]]] = set()
+        while submitted < max_in_flight:
+            pending.add(pool.submit(one_request, opener, url, method, body, timeout))
+            submitted += 1
+        while pending:
+            done, pending = concurrent.futures.wait(pending, return_when=concurrent.futures.FIRST_COMPLETED)
+            for future in done:
+                results.append(future.result())
+                if submitted < total:
+                    pending.add(pool.submit(one_request, opener, url, method, body, timeout))
+                    submitted += 1
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", required=True)
@@ -83,8 +103,8 @@ def main() -> int:
     args = parser.parse_args()
     if not 1 <= args.concurrency <= 512:
         parser.error("concurrency must be 1..512")
-    if not 1 <= args.requests <= 1_000_000:
-        parser.error("requests must be 1..1,000,000")
+    if not 1 <= args.requests <= MAX_REQUESTS:
+        parser.error(f"requests must be 1..{MAX_REQUESTS}")
     if not 0.1 <= args.timeout <= 60:
         parser.error("timeout must be 0.1..60 seconds")
     url = validate_target(args.url)
@@ -94,11 +114,7 @@ def main() -> int:
     opener = urllib.request.build_opener(NoRedirect())
     started_wall = time.time()
     started = time.perf_counter()
-    results: list[tuple[bool, float, int]] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency) as pool:
-        futures = [pool.submit(one_request, opener, url, args.method, body, args.timeout) for _ in range(args.requests)]
-        for future in concurrent.futures.as_completed(futures):
-            results.append(future.result())
+    results = run_bounded(opener, url, args.method, body, args.timeout, args.concurrency, args.requests)
     elapsed = max(time.perf_counter() - started, 1e-9)
     latencies = [r[1] for r in results]
     errors = sum(1 for ok, _, _ in results if not ok)
