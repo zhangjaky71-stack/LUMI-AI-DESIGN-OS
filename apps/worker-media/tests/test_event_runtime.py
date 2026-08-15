@@ -77,7 +77,7 @@ def test_event_consumer_binds_and_resets_correlation(monkeypatch: pytest.MonkeyP
         assert dsn == "postgresql://test"
         return FakeConnection()
 
-    async def handler(connection: object, event: dict[str, Any]) -> None:
+    async def handler(connection: Any, event: dict[str, Any]) -> None:
         del connection
         context = current_worker_correlation()
         assert context is not None
@@ -97,11 +97,11 @@ def test_worker_correlation_is_reset_when_connection_fails(
 ) -> None:
     envelope = _record(trace_id="c" * 32).envelope()
 
-    async def fail_connect(dsn: str) -> object:
+    async def fail_connect(dsn: str) -> Any:
         del dsn
         raise RuntimeError("database unavailable")
 
-    async def handler(connection: object, event: dict[str, Any]) -> None:
+    async def handler(connection: Any, event: dict[str, Any]) -> None:
         del connection, event
 
     monkeypatch.setattr("lumi_worker_media.event_runtime.asyncpg.connect", fail_connect)
