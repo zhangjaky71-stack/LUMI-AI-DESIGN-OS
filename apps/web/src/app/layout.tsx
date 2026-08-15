@@ -6,7 +6,9 @@ export const metadata: Metadata = {
   description: "AI-native design operating system",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="zh-CN">
       <body>{children}</body>

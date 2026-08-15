@@ -8,7 +8,9 @@ export default function SignupPage() {
   return (
     <main className="auth-page">
       <Link className="brand-lockup auth-brand" href="/">
-        <span className="brand-mark" aria-hidden="true">L</span>
+        <span className="brand-mark" aria-hidden="true">
+          L
+        </span>
         <span>LUMI</span>
       </Link>
       <section className="auth-card">

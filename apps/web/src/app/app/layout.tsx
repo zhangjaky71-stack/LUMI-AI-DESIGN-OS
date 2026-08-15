@@ -5,9 +5,15 @@ import { getServerPublicFeatureFlags } from "@/lib/app-shell/feature-flags.serve
 
 export const dynamic = "force-dynamic";
 
-export default async function ProductLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function ProductLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   const session = await requireShellSession();
-  const bootstrap = { session, public_flags: getServerPublicFeatureFlags() } as const;
+  const bootstrap = {
+    session,
+    public_flags: getServerPublicFeatureFlags(),
+  } as const;
+
   return (
     <ShellProviders bootstrap={bootstrap}>
       <AppShellFrame>{children}</AppShellFrame>

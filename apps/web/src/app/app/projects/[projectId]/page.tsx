@@ -1,7 +1,12 @@
 import { ShellSection } from "@/components/app-shell/shell-section";
 
-export default async function ProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
+export default async function ProjectPage({
+  params,
+}: {
+  params: Promise<{ projectId: string }>;
+}) {
   const { projectId } = await params;
+
   return (
     <ShellSection
       eyebrow="PROJECT WORKSPACE"
