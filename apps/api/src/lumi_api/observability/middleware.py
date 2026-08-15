@@ -35,7 +35,7 @@ def apply_observability(
         async def metrics_endpoint() -> PlainTextResponse:
             return PlainTextResponse(
                 registry.render_prometheus(),
-                media_type="text/plain; version=0.0.4; charset=utf-8",
+                media_type="text/plain; version=0.0.4",
             )
 
         app.add_api_route(
@@ -63,37 +63,39 @@ def apply_observability(
             response.headers.setdefault("traceparent", context.traceparent)
             return response
         except Exception as exc:
-            _emit(
-                config,
-                "ERROR",
-                "http.request.failed",
-                {
-                    "error_type": type(exc).__name__,
-                    "method": request.method,
-                    "route": _route_template(request),
-                },
-            )
+            if request.url.path != config.metrics_path:
+                _emit(
+                    config,
+                    "ERROR",
+                    "http.request.failed",
+                    {
+                        "error_type": type(exc).__name__,
+                        "method": request.method,
+                        "route": _route_template(request),
+                    },
+                )
             raise
         finally:
-            duration = max(perf_counter() - started, 0.0)
-            route = _route_template(request)
-            registry.observe_http(
-                method=request.method,
-                route=route,
-                status_code=status_code,
-                duration=duration,
-            )
-            _emit(
-                config,
-                "INFO" if status_code < 500 else "ERROR",
-                "http.request.completed",
-                {
-                    "duration_ms": round(duration * 1000, 3),
-                    "method": request.method,
-                    "route": route,
-                    "status_code": status_code,
-                },
-            )
+            if request.url.path != config.metrics_path:
+                duration = max(perf_counter() - started, 0.0)
+                route = _route_template(request)
+                registry.observe_http(
+                    method=request.method,
+                    route=route,
+                    status_code=status_code,
+                    duration=duration,
+                )
+                _emit(
+                    config,
+                    "INFO" if status_code < 500 else "ERROR",
+                    "http.request.completed",
+                    {
+                        "duration_ms": round(duration * 1000, 3),
+                        "method": request.method,
+                        "route": route,
+                        "status_code": status_code,
+                    },
+                )
             reset_correlation(token)
 
     return registry
