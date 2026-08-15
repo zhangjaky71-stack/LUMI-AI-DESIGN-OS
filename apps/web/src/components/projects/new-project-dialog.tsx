@@ -16,11 +16,19 @@ import type {
   ProjectsBootstrap,
   ReferenceRole,
   StagedReference,
+  UploadUiStatus,
 } from "@/lib/projects/types";
 import { REFERENCE_ROLE_LABELS } from "@/lib/projects/types";
 import styles from "./projects.module.css";
 
-const DELIVERABLES = ["主视觉", "社交媒体视觉", "产品图", "海报", "Banner", "品牌物料"] as const;
+const DELIVERABLES = [
+  "主视觉",
+  "社交媒体视觉",
+  "产品图",
+  "海报",
+  "Banner",
+  "品牌物料",
+] as const;
 
 interface NewProjectDialogProps {
   readonly open: boolean;
@@ -39,6 +47,14 @@ function updateStaged(
   return items.map((item) =>
     item.client_id === clientId ? { ...item, ...patch } : item,
   );
+}
+
+function uiStatusForScan(
+  scanStatus: "QUEUED" | "SCANNING" | "READY" | "REJECTED",
+): UploadUiStatus {
+  if (scanStatus === "READY") return "READY";
+  if (scanStatus === "REJECTED") return "FAILED";
+  return "SCANNING";
 }
 
 export function NewProjectDialog({
@@ -152,7 +168,7 @@ export function NewProjectDialog({
           setReferences((current) =>
             updateStaged(current, item.client_id, {
               asset_id: reference.asset_id,
-              ui_status: reference.scan_status === "READY" ? "READY" : "FAILED",
+              ui_status: uiStatusForScan(reference.scan_status),
               progress: 100,
               failure_code: reference.failure_code,
             }),
@@ -196,7 +212,11 @@ export function NewProjectDialog({
           <div>
             <p className={styles.eyebrow}>NEW PROJECT</p>
             <h2 id="new-project-title">
-              {step === 1 ? "你想做什么？" : step === 2 ? "补充一点上下文" : "项目已创建"}
+              {step === 1
+                ? "你想做什么？"
+                : step === 2
+                  ? "补充一点上下文"
+                  : "项目已创建"}
             </h2>
           </div>
           <button
@@ -224,6 +244,7 @@ export function NewProjectDialog({
               placeholder="例如：为新品冷萃咖啡做一套高级极简的夏季发布视觉，主色黑白并带一点暖黄。"
               maxLength={4_000}
             />
+
             <div className={styles.fieldGrid}>
               <div>
                 <label className={styles.fieldLabel} htmlFor="project-name">
@@ -238,8 +259,11 @@ export function NewProjectDialog({
                   maxLength={120}
                 />
               </div>
+
               <div>
-                <span className={styles.fieldLabel}>参考文件 <span>可选</span></span>
+                <span className={styles.fieldLabel}>
+                  参考文件 <span>可选</span>
+                </span>
                 <button
                   type="button"
                   className={styles.dropZone}
@@ -259,7 +283,9 @@ export function NewProjectDialog({
                   multiple
                   accept="image/*,video/*,application/pdf,.svg,.ttf,.otf,.woff2"
                   onChange={(event) => {
-                    if (event.target.files) appendFiles([...event.target.files]);
+                    if (event.target.files) {
+                      appendFiles([...event.target.files]);
+                    }
                     event.target.value = "";
                   }}
                 />
@@ -267,12 +293,17 @@ export function NewProjectDialog({
             </div>
 
             {references.length > 0 ? (
-              <div className={styles.referenceList} aria-label="待上传参考文件">
+              <div
+                className={styles.referenceList}
+                aria-label="待上传参考文件"
+              >
                 {references.map((item) => (
                   <div key={item.client_id} className={styles.referenceRow}>
                     <div className={styles.referenceName}>
                       <strong>{item.file.name}</strong>
-                      <span>{Math.max(1, Math.round(item.file.size / 1024))} KB</span>
+                      <span>
+                        {Math.max(1, Math.round(item.file.size / 1024))} KB
+                      </span>
                     </div>
                     <select
                       aria-label={`${item.file.name} 参考类型`}
@@ -285,18 +316,26 @@ export function NewProjectDialog({
                         )
                       }
                     >
-                      {(Object.entries(REFERENCE_ROLE_LABELS) as [ReferenceRole, string][]).map(
-                        ([role, label]) => (
-                          <option key={role} value={role}>{label}</option>
-                        ),
-                      )}
+                      {(
+                        Object.entries(REFERENCE_ROLE_LABELS) as [
+                          ReferenceRole,
+                          string,
+                        ][]
+                      ).map(([role, label]) => (
+                        <option key={role} value={role}>
+                          {label}
+                        </option>
+                      ))}
                     </select>
                     <button
                       type="button"
                       className={styles.textButton}
                       onClick={() =>
                         setReferences((current) =>
-                          current.filter((reference) => reference.client_id !== item.client_id),
+                          current.filter(
+                            (reference) =>
+                              reference.client_id !== item.client_id,
+                          ),
                         )
                       }
                     >
@@ -309,7 +348,8 @@ export function NewProjectDialog({
 
             {bootstrap.mode === "http" ? (
               <p className={styles.dependencyNote}>
-                当前环境尚未连接 NODE-17/18 写端；提交时会以真实 API 结果为准，不会在浏览器伪造成功。
+                当前环境尚未连接 NODE-17/18
+                写端；提交时会以真实 API 结果为准，不会在浏览器伪造成功。
               </p>
             ) : null}
           </div>
@@ -319,7 +359,9 @@ export function NewProjectDialog({
           <div className={styles.dialogBody}>
             <div className={styles.fieldGrid}>
               <div>
-                <label className={styles.fieldLabel} htmlFor="project-brand">Brand Kit</label>
+                <label className={styles.fieldLabel} htmlFor="project-brand">
+                  Brand Kit
+                </label>
                 <select
                   id="project-brand"
                   className={styles.textInput}
@@ -328,12 +370,16 @@ export function NewProjectDialog({
                 >
                   <option value="">暂不绑定</option>
                   {bootstrap.brand_options.map((brand) => (
-                    <option key={brand.id} value={brand.id}>{brand.name}</option>
+                    <option key={brand.id} value={brand.id}>
+                      {brand.name}
+                    </option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className={styles.fieldLabel} htmlFor="project-locale">语言 / Locale</label>
+                <label className={styles.fieldLabel} htmlFor="project-locale">
+                  语言 / Locale
+                </label>
                 <select
                   id="project-locale"
                   className={styles.textInput}
@@ -348,10 +394,16 @@ export function NewProjectDialog({
             </div>
 
             <fieldset className={styles.fieldset}>
-              <legend>计划交付物 <span>可选</span></legend>
+              <legend>
+                计划交付物 <span>可选</span>
+              </legend>
               <div className={styles.choiceGrid}>
                 {DELIVERABLES.map((item) => (
-                  <label key={item} className={styles.choicePill} data-selected={deliverables.includes(item)}>
+                  <label
+                    key={item}
+                    className={styles.choicePill}
+                    data-selected={deliverables.includes(item)}
+                  >
                     <input
                       type="checkbox"
                       checked={deliverables.includes(item)}
@@ -367,7 +419,12 @@ export function NewProjectDialog({
               <summary>高级设置</summary>
               <div className={styles.fieldGrid}>
                 <div>
-                  <label className={styles.fieldLabel} htmlFor="quality-profile">质量策略</label>
+                  <label
+                    className={styles.fieldLabel}
+                    htmlFor="quality-profile"
+                  >
+                    质量策略
+                  </label>
                   <select
                     id="quality-profile"
                     className={styles.textInput}
@@ -381,7 +438,12 @@ export function NewProjectDialog({
                   </select>
                 </div>
                 <div>
-                  <label className={styles.fieldLabel} htmlFor="project-budget">预算上限（USD）</label>
+                  <label
+                    className={styles.fieldLabel}
+                    htmlFor="project-budget"
+                  >
+                    预算上限（USD）
+                  </label>
                   <input
                     id="project-budget"
                     inputMode="decimal"
@@ -399,12 +461,18 @@ export function NewProjectDialog({
         {step === 3 && created ? (
           <div className={styles.dialogBody}>
             <div className={styles.successPanel}>
-              <span className={styles.successMark} aria-hidden="true">✓</span>
+              <span className={styles.successMark} aria-hidden="true">
+                ✓
+              </span>
               <div>
                 <h3>{created.summary.name}</h3>
-                <p>Project 已由真实 Gateway 确认创建。Structured Brief v{created.brief_version} 已建立。</p>
+                <p>
+                  Project 已由真实 Gateway 确认创建。Structured Brief v
+                  {created.brief_version} 已建立。
+                </p>
               </div>
             </div>
+
             {references.length > 0 ? (
               <div className={styles.uploadResults}>
                 {references.map((item) => (
@@ -424,39 +492,78 @@ export function NewProjectDialog({
           </div>
         ) : null}
 
-        {error ? <p className={styles.formError} role="alert">{error}</p> : null}
+        {error ? (
+          <p className={styles.formError} role="alert">
+            {error}
+          </p>
+        ) : null}
 
         <footer className={styles.dialogFooter}>
           {step === 1 ? (
             <>
-              <button type="button" className={styles.secondaryButton} onClick={onClose}>取消</button>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={onClose}
+              >
+                取消
+              </button>
               <div className={styles.footerActions}>
-                <button type="button" className={styles.secondaryButton} onClick={() => setStep(2)}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setStep(2)}
+                >
                   下一步
                 </button>
-                <button type="button" className={styles.primaryButton} onClick={() => void submit()} disabled={busy}>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => void submit()}
+                  disabled={busy}
+                >
                   {busy ? "创建中…" : "直接开始"}
                 </button>
               </div>
             </>
           ) : null}
+
           {step === 2 ? (
             <>
-              <button type="button" className={styles.secondaryButton} onClick={() => setStep(1)} disabled={busy}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setStep(1)}
+                disabled={busy}
+              >
                 上一步
               </button>
-              <button type="button" className={styles.primaryButton} onClick={() => void submit()} disabled={busy}>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => void submit()}
+                disabled={busy}
+              >
                 {busy ? "创建与上传中…" : "创建项目"}
               </button>
             </>
           ) : null}
+
           {step === 3 && created ? (
             <>
-              <button type="button" className={styles.secondaryButton} onClick={onClose}>留在项目列表</button>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={onClose}
+              >
+                留在项目列表
+              </button>
               <button
                 type="button"
                 className={styles.primaryButton}
-                onClick={() => router.push(`/app/projects/${created.summary.id}`)}
+                onClick={() =>
+                  router.push(`/app/projects/${created.summary.id}`)
+                }
               >
                 进入项目
               </button>
