@@ -1,0 +1,6 @@
+# Copy to a secure CI-generated file; do not commit account-specific values.
+bucket         = "REPLACE_WITH_TERRAFORM_STATE_BUCKET"
+key            = "lumi/staging/core/terraform.tfstate"
+region         = "REPLACE_WITH_AWS_REGION"
+encrypt        = true
+use_lockfile   = true
