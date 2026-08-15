@@ -12,7 +12,8 @@ on:
       - "apps/worker-media/tests/test_event_runtime.py"
       - "apps/web/src/lib/observability/**"
       - "apps/web/src/components/BrowserObservability.tsx"
-      - "apps/web/src/app/api/telemetry/browser/route.ts"
+      - "apps/web/src/app/api/telemetry/browser/**"
+      - "apps/web/src/app/canvas-engine/CanvasEngineClient.tsx"
       - "apps/web/src/app/layout.tsx"
       - "apps/web/src/app/app/**/error.tsx"
       - "services/model-gateway/src/lumi_model_gateway/telemetry.py"
@@ -21,6 +22,8 @@ on:
       - "infra/observability/**"
       - "infra/compose/docker-compose.observability.yml"
       - "scripts/observability-smoke"
+      - "scripts/observability-synthetic"
+      - ".github/workflows/observability-synthetic.yml"
       - "Makefile"
       - "pyproject.toml"
       - "uv.lock"
@@ -32,6 +35,7 @@ on:
       - "services/model-gateway/**"
       - "infra/observability/**"
       - "infra/compose/docker-compose.observability.yml"
+      - "scripts/observability-*"
       - "pyproject.toml"
       - "uv.lock"
   workflow_dispatch:
@@ -115,7 +119,10 @@ jobs:
       - name: Frozen install
         run: pnpm install --frozen-lockfile
       - name: Browser observability privacy tests
-        run: pnpm --filter @lumi/web exec vitest run src/lib/observability/browser.test.ts
+        run: |
+          pnpm --filter @lumi/web exec vitest run \
+            src/lib/observability/browser.test.ts \
+            src/app/api/telemetry/browser/route.test.ts
       - name: Web typecheck
         run: pnpm --filter @lumi/web typecheck
       - name: Web lint
