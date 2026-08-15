@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import pytest
 
 from lumi_api.observability import (
     BoundedMetrics,
@@ -84,7 +84,12 @@ def test_metric_labels_reject_high_cardinality_dimensions() -> None:
 
 def test_metrics_render_bounded_http_series() -> None:
     metrics = BoundedMetrics()
-    metrics.observe_http(method="GET", route="/projects/{project_id}", status_code=200, duration=0.2)
+    metrics.observe_http(
+        method="GET",
+        route="/projects/{project_id}",
+        status_code=200,
+        duration=0.2,
+    )
     rendered = metrics.render_prometheus()
     assert "lumi_http_requests_total" in rendered
     assert 'route="/projects/{project_id}"' in rendered
@@ -121,9 +126,12 @@ def test_middleware_adds_correlation_headers_and_metrics() -> None:
     metrics_response = client.get("/internal/metrics")
     assert metrics_response.status_code == 200
     assert "lumi_http_requests_total" in metrics_response.text
+    assert metrics.render_prometheus() == rendered
 
 
-def test_telemetry_logging_failure_cannot_break_business_path(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_telemetry_logging_failure_cannot_break_business_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     app = FastAPI()
     apply_observability(
         app,
@@ -134,7 +142,7 @@ def test_telemetry_logging_failure_cannot_break_business_path(monkeypatch: pytes
     def ok() -> dict[str, bool]:
         return {"ok": True}
 
-    def explode(*args, **kwargs):  # type: ignore[no-untyped-def]
+    def explode(*args: object, **kwargs: object) -> None:
         del args, kwargs
         raise RuntimeError("telemetry backend unavailable")
 
