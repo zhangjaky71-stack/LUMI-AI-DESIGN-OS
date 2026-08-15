@@ -35,13 +35,19 @@ Expected result: the base-backup row and restore-point-before row exist in the i
 3. Select the latest known-good base backup and WAL range that satisfies the target recovery point.
 4. Restore into a new isolated database/cluster. For a managed PostgreSQL service, use its PITR mechanism; for self-managed PostgreSQL, use a verified base backup plus `restore_command`/recovery target semantics equivalent to the NODE-68 drill.
 5. Start the restored database with no public application traffic.
-6. Use the matching schema/application release and run the read-only verifier:
+6. Use the matching schema/application release and run the read-only verifier. **Only set the isolation acknowledgement after independently confirming the endpoint is the restored destination, not the primary:**
 
 ```bash
 export LUMI_RECOVERY_DATABASE_URL='postgresql://...isolated-restore...'
+export LUMI_RECOVERY_VERIFY_ISOLATED=1
+# If the isolated service legitimately listens on PostgreSQL's default port 5432,
+# require the second acknowledgement below after checking host/account/cluster ID.
+export LUMI_RECOVERY_ALLOW_PRIMARY_PORT=1
 bash scripts/recovery-db-verify
 bash scripts/recovery-workload-report
 ```
+
+For the local NODE-68 restore endpoint on port `55432`, `LUMI_RECOVERY_ALLOW_PRIMARY_PORT` is not required.
 
 7. Verify manually in addition to automated invariants:
    - Alembic/schema version is the intended version.
