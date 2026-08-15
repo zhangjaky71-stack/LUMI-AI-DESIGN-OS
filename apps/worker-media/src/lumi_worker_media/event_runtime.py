@@ -11,6 +11,7 @@ import asyncpg
 from kombu import Connection, Producer
 from lumi_domain import new_uuid7
 
+from .observability import bind_event_correlation, reset_event_correlation
 from .queue_contracts import ErrorCategory, classify_error
 from .topology import DOMAIN_EXCHANGE, domain_queue
 
@@ -144,30 +145,34 @@ class EventConsumerRuntime:
 
     async def process(self, envelope: dict[str, Any], handler: EventHandler) -> str:
         validate_event_envelope(envelope)
-        event_id = UUID(envelope["id"])
-        organization_id = UUID(envelope["organizationid"])
-        connection = await asyncpg.connect(self.dsn)
+        correlation_token = bind_event_correlation(envelope)
         try:
-            async with connection.transaction():
-                inserted = await connection.fetchval(
-                    """
-                    INSERT INTO inbox_events (
-                        id, organization_id, event_id, consumer, processed_at, created_at
-                    ) VALUES ($1, $2, $3, $4, now(), now())
-                    ON CONFLICT (consumer, event_id) DO NOTHING
-                    RETURNING event_id
-                    """,
-                    new_uuid7(),
-                    organization_id,
-                    event_id,
-                    self.consumer,
-                )
-                if inserted is None:
-                    return "DUPLICATE"
-                await handler(connection, envelope)
-            return "PROCESSED"
+            event_id = UUID(envelope["id"])
+            organization_id = UUID(envelope["organizationid"])
+            connection = await asyncpg.connect(self.dsn)
+            try:
+                async with connection.transaction():
+                    inserted = await connection.fetchval(
+                        """
+                        INSERT INTO inbox_events (
+                            id, organization_id, event_id, consumer, processed_at, created_at
+                        ) VALUES ($1, $2, $3, $4, now(), now())
+                        ON CONFLICT (consumer, event_id) DO NOTHING
+                        RETURNING event_id
+                        """,
+                        new_uuid7(),
+                        organization_id,
+                        event_id,
+                        self.consumer,
+                    )
+                    if inserted is None:
+                        return "DUPLICATE"
+                    await handler(connection, envelope)
+                return "PROCESSED"
+            finally:
+                await connection.close()
         finally:
-            await connection.close()
+            reset_event_correlation(correlation_token)
 
 
 class DeadLetterStore:
