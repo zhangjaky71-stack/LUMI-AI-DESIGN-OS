@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+: "${LUMI_RECOVERY_DATABASE_URL:?Set LUMI_RECOVERY_DATABASE_URL to the database being reconciled}"
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+sql_file="$repo_root/infra/recovery/sql/recovery_workload.sql"
+args=(
+  -X --no-psqlrc
+  --set=ON_ERROR_STOP=1
+  --tuples-only --no-align --field-separator='|'
+  "$LUMI_RECOVERY_DATABASE_URL"
+)
+
+if [[ "${LUMI_RECOVERY_INCLUDE_IDS:-0}" == "1" ]]; then
+  args+=(--set=include_ids=1)
+  echo "[recovery] WARNING: item IDs/checkpoint/provider refs will be printed; handle output as operationally sensitive." >&2
+else
+  echo "[recovery] counts only; set LUMI_RECOVERY_INCLUDE_IDS=1 for bounded reconciliation rows." >&2
+fi
+
+PGAPPNAME=lumi-node68-recovery-inventory psql "${args[@]}" --file "$sql_file"

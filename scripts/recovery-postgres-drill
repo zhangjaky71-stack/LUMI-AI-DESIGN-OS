@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+env_file="${LUMI_COMPOSE_ENV_FILE:-$repo_root/infra/compose/.env}"
+base_compose="$repo_root/infra/compose/docker-compose.yml"
+recovery_compose="$repo_root/infra/compose/docker-compose.recovery.yml"
+
+if [[ ! -f "$env_file" ]]; then
+  echo "missing compose environment: $env_file" >&2
+  echo "create it from infra/compose/env.local.example (or set LUMI_COMPOSE_ENV_FILE)" >&2
+  exit 2
+fi
+
+set -a
+# The repository local compose env is a shell-compatible KEY=VALUE file.
+# shellcheck disable=SC1090
+source "$env_file"
+set +a
+
+: "${POSTGRES_SUPERUSER:?POSTGRES_SUPERUSER is required}"
+: "${POSTGRES_SUPERUSER_PASSWORD:?POSTGRES_SUPERUSER_PASSWORD is required}"
+: "${POSTGRES_DB:?POSTGRES_DB is required}"
+
+compose=(
+  docker compose
+  --profile recovery
+  --env-file "$env_file"
+  -f "$base_compose"
+  -f "$recovery_compose"
+)
+
+psql_primary() {
+  "${compose[@]}" exec -T postgres \
+    psql -X --set=ON_ERROR_STOP=1 --username "$POSTGRES_SUPERUSER" --dbname "$POSTGRES_DB" "$@"
+}
+
+psql_restore() {
+  "${compose[@]}" exec -T postgres-restore \
+    psql -X --set=ON_ERROR_STOP=1 --username "$POSTGRES_SUPERUSER" --dbname "$POSTGRES_DB" "$@"
+}
+
+wait_healthy() {
+  local service="$1"
+  local deadline=$((SECONDS + 180))
+  while (( SECONDS < deadline )); do
+    if "${compose[@]}" ps --status running --services | grep -qx "$service"; then
+      if "${compose[@]}" exec -T "$service" pg_isready -U "$POSTGRES_SUPERUSER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
+        return 0
+      fi
+    fi
+    sleep 2
+  done
+  echo "service did not become ready: $service" >&2
+  "${compose[@]}" logs --tail=200 "$service" >&2 || true
+  return 1
+}
+
+base_key=""
+before_key=""
+after_key=""
+cleanup() {
+  "${compose[@]}" rm -sf postgres-restore >/dev/null 2>&1 || true
+  if [[ -n "${base_key:-}" ]]; then
+    psql_primary --command \
+      "DELETE FROM lumi_node68_recovery_probe WHERE probe_key IN ('$base_key', '$before_key', '$after_key');" \
+      >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT INT TERM
+
+echo "[recovery] starting PostgreSQL with continuous WAL archiving"
+"${compose[@]}" up -d --build postgres
+wait_healthy postgres
+
+drill_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+restore_point="node68_${drill_id//[^A-Za-z0-9_]/_}"
+base_key="base-$drill_id"
+before_key="before-$drill_id"
+after_key="after-$drill_id"
+
+psql_primary --command "
+CREATE TABLE IF NOT EXISTS lumi_node68_recovery_probe (
+  probe_key text PRIMARY KEY,
+  probe_value text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO lumi_node68_recovery_probe(probe_key, probe_value) VALUES ('$base_key', 'base-backup');
+"
+
+echo "[recovery] taking and verifying base backup"
+"${compose[@]}" run --rm postgres-backup
+
+psql_primary --command "INSERT INTO lumi_node68_recovery_probe(probe_key, probe_value) VALUES ('$before_key', 'must-survive-pitr');"
+psql_primary --tuples-only --no-align --command "SELECT pg_create_restore_point('$restore_point');" >/dev/null
+psql_primary --command "INSERT INTO lumi_node68_recovery_probe(probe_key, probe_value) VALUES ('$after_key', 'must-not-survive-pitr');"
+
+archived_before="$(psql_primary --tuples-only --no-align --command "SELECT archived_count FROM pg_stat_archiver;" | tr -d '[:space:]')"
+archive_started_epoch="$(date +%s)"
+psql_primary --tuples-only --no-align --command "SELECT pg_switch_wal();" >/dev/null
+
+archive_deadline=$((SECONDS + 120))
+while (( SECONDS < archive_deadline )); do
+  status="$(psql_primary --tuples-only --no-align --field-separator='|' --command "SELECT archived_count, failed_count FROM pg_stat_archiver;" | tr -d '[:space:]')"
+  archived_now="${status%%|*}"
+  failed_now="${status##*|}"
+  if [[ "$failed_now" != "0" ]]; then
+    echo "WAL archiver reported failures: $failed_now" >&2
+    exit 1
+  fi
+  if [[ "$archived_now" =~ ^[0-9]+$ && "$archived_before" =~ ^[0-9]+$ ]] && (( archived_now > archived_before )); then
+    break
+  fi
+  sleep 1
+done
+
+status="$(psql_primary --tuples-only --no-align --field-separator='|' --command "SELECT archived_count, failed_count FROM pg_stat_archiver;" | tr -d '[:space:]')"
+archived_now="${status%%|*}"
+if ! [[ "$archived_now" =~ ^[0-9]+$ && "$archived_before" =~ ^[0-9]+$ ]] || (( archived_now <= archived_before )); then
+  echo "timed out waiting for a new WAL segment to archive" >&2
+  exit 1
+fi
+archive_latency_seconds=$(( $(date +%s) - archive_started_epoch ))
+
+echo "[recovery] starting isolated PITR target=$restore_point"
+export LUMI_RECOVERY_TARGET_NAME="$restore_point"
+restore_started_epoch="$(date +%s)"
+"${compose[@]}" up -d --build --force-recreate postgres-restore
+wait_healthy postgres-restore
+
+base_count="$(psql_restore --tuples-only --no-align --command "SELECT count(*) FROM lumi_node68_recovery_probe WHERE probe_key='$base_key';" | tr -d '[:space:]')"
+before_count="$(psql_restore --tuples-only --no-align --command "SELECT count(*) FROM lumi_node68_recovery_probe WHERE probe_key='$before_key';" | tr -d '[:space:]')"
+after_count="$(psql_restore --tuples-only --no-align --command "SELECT count(*) FROM lumi_node68_recovery_probe WHERE probe_key='$after_key';" | tr -d '[:space:]')"
+
+if [[ "$base_count" != "1" || "$before_count" != "1" || "$after_count" != "0" ]]; then
+  echo "PITR verification failed: base=$base_count before=$before_count after=$after_count" >&2
+  exit 1
+fi
+
+restore_rto_seconds=$(( $(date +%s) - restore_started_epoch ))
+printf '[recovery] PITR PASS restore_point=%s wal_archive_latency_seconds=%s restore_rto_seconds=%s\n' \
+  "$restore_point" "$archive_latency_seconds" "$restore_rto_seconds"
+printf '[recovery] NOTE: these are local drill timings, not production RPO/RTO evidence.\n'

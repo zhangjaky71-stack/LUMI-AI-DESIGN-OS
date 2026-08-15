@@ -4,10 +4,12 @@ COMPOSE_DIR := infra/compose
 COMPOSE_ENV := $(COMPOSE_DIR)/.env
 COMPOSE_FILE := $(COMPOSE_DIR)/docker-compose.yml
 OBS_COMPOSE_FILE := $(COMPOSE_DIR)/docker-compose.observability.yml
+RECOVERY_COMPOSE_FILE := $(COMPOSE_DIR)/docker-compose.recovery.yml
 COMPOSE := docker compose --env-file $(COMPOSE_ENV) -f $(COMPOSE_FILE)
 OBS_COMPOSE := docker compose --env-file $(COMPOSE_ENV) -f $(COMPOSE_FILE) -f $(OBS_COMPOSE_FILE)
+RECOVERY_COMPOSE := docker compose --env-file $(COMPOSE_ENV) -f $(COMPOSE_FILE) -f $(RECOVERY_COMPOSE_FILE)
 
-.PHONY: bootstrap dev dev-web dev-admin dev-api dev-agent dev-worker lint typecheck test format-check check verify-scaffold ci-contracts ci-local eval-smoke eval eval-live eval-report product-parity-validate model-provider-validate model-gateway-contract capability-registry-contract capability-registry-seed tool-gateway-contract mcp-integration-contract cost-ledger-contract sandbox-contract sandbox-e2e infra-env infra-up infra-status infra-down infra-reset infra-logs doctor infra-smoke infra-persistence observability-up observability-status observability-smoke observability-logs observability-down db-upgrade db-downgrade-one db-current db-seed
+.PHONY: bootstrap dev dev-web dev-admin dev-api dev-agent dev-worker lint typecheck test format-check check verify-scaffold ci-contracts ci-local eval-smoke eval eval-live eval-report product-parity-validate model-provider-validate model-gateway-contract capability-registry-contract capability-registry-seed tool-gateway-contract mcp-integration-contract cost-ledger-contract sandbox-contract sandbox-e2e infra-env infra-up infra-status infra-down infra-reset infra-logs doctor infra-smoke infra-persistence observability-up observability-status observability-smoke observability-logs observability-down recovery-postgres-drill recovery-object-drill recovery-db-verify recovery-workload recovery-drill recovery-down db-upgrade db-downgrade-one db-current db-seed
 
 bootstrap:
 	corepack enable
@@ -168,6 +170,26 @@ observability-logs: infra-env
 observability-down: infra-env
 	$(OBS_COMPOSE) stop prometheus tempo loki otel-collector grafana
 	$(OBS_COMPOSE) rm -f prometheus tempo loki otel-collector grafana
+
+recovery-postgres-drill: infra-env
+	bash scripts/recovery-postgres-drill
+
+recovery-object-drill: infra-env
+	$(RECOVERY_COMPOSE) --profile recovery up -d --build minio
+	$(RECOVERY_COMPOSE) run --rm minio-init
+	$(RECOVERY_COMPOSE) --profile recovery run --rm object-recovery-drill
+
+recovery-db-verify:
+	bash scripts/recovery-db-verify
+
+recovery-workload:
+	bash scripts/recovery-workload-report
+
+recovery-drill: recovery-postgres-drill recovery-object-drill
+	@echo "[recovery] local PITR + object recovery drills PASS; this is not production RPO/RTO evidence"
+
+recovery-down: infra-env
+	$(RECOVERY_COMPOSE) --profile recovery down --remove-orphans
 
 db-upgrade: infra-env
 	bash scripts/db-local upgrade

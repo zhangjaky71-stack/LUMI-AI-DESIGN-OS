@@ -1,0 +1,70 @@
+name: Recovery Contract
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recovery-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Recovery fail-closed contract
+        run: python3 scripts/validate_recovery_contract.py
+      - name: Shell syntax
+        run: |
+          bash -n \
+            scripts/recovery-postgres-drill \
+            scripts/recovery-db-verify \
+            scripts/recovery-workload-report \
+            infra/docker/postgres-recovery/backup.sh \
+            infra/docker/postgres-recovery/primary-entrypoint.sh \
+            infra/docker/postgres-recovery/restore-entrypoint.sh
+      - name: Recovery compose renders
+        run: |
+          cp infra/compose/env.local.example infra/compose/.env
+          docker compose \
+            --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml \
+            -f infra/compose/docker-compose.recovery.yml \
+            config --quiet
+
+  local-destructive-drill:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - name: Prepare isolated local environment
+        run: cp infra/compose/env.local.example infra/compose/.env
+      - name: PostgreSQL PITR and object-version recovery drill
+        run: |
+          set -o pipefail
+          make recovery-drill 2>&1 | tee recovery-drill.log
+      - name: Upload drill log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-68-recovery-drill-${{ github.run_id }}
+          path: recovery-drill.log
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Cleanup local recovery infrastructure
+        if: always()
+        run: |
+          docker compose \
+            --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml \
+            -f infra/compose/docker-compose.recovery.yml \
+            --profile recovery down --volumes --remove-orphans || true
