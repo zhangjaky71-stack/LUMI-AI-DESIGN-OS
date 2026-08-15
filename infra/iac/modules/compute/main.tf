@@ -389,6 +389,7 @@ resource "aws_ecs_service" "service" {
 
   enable_execute_command = false
   propagate_tags         = "SERVICE"
+  wait_for_steady_state  = true
 
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
