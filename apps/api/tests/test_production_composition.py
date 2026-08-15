@@ -44,6 +44,7 @@ def test_production_composition_installs_real_project_gateway_and_auth_routes() 
     assert "/health/live" in paths
     assert "/health/ready" in paths
     assert "/health/capabilities" in paths
+    assert "/version" in paths
 
 
 def test_development_requires_only_real_core_capabilities() -> None:
@@ -80,14 +81,22 @@ def test_staging_and_production_fail_closed_until_full_launch_capabilities_exist
         }.issubset(missing)
 
 
-def test_capability_endpoint_is_machine_readable_without_touching_database() -> None:
+def test_capability_and_version_endpoints_are_readable_without_database_probe() -> None:
     app = create_production_app(settings("production"))
     with TestClient(app) as client:
-        response = client.get("/health/capabilities")
+        capability_response = client.get("/health/capabilities")
+        version_response = client.get("/version")
 
-    assert response.status_code == 200
-    payload = response.json()
+    assert capability_response.status_code == 200
+    payload = capability_response.json()
     assert payload["ready"] is False
     assert payload["environment"] == "production"
     assert "generation" in payload["missing_required"]
     assert "billing" in payload["missing_required"]
+
+    assert version_response.status_code == 200
+    assert version_response.json() == {
+        "service": "api",
+        "status": "ok",
+        "version": "runtime-contract",
+    }
