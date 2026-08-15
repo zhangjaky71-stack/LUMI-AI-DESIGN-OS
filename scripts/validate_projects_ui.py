@@ -84,7 +84,7 @@ for marker in [
 
 if "putPresignedObject" not in gateway:
     errors.append("reference upload must use the isolated presigned upload transport")
-if "credentials: \"omit\"" not in api_client:
+if 'credentials: "omit"' not in api_client:
     errors.append("presigned object PUT must omit session credentials")
 if "UPLOAD_PRESIGNED_URL_PROTOCOL_FORBIDDEN" not in api_client:
     errors.append("presigned object PUT must reject non-http protocols")
@@ -113,10 +113,12 @@ if "BriefVersion" not in detail or "brief_version" not in detail:
     errors.append("Project detail must expose BriefVersion semantics")
 if "archiveProject" not in dashboard or "restoreProject" not in dashboard:
     errors.append("Project dashboard must expose safe archive/restore lifecycle")
-if "confirm" in dashboard.lower() and "确认归档" not in dashboard:
+if "确认归档" not in dashboard or 'role="alertdialog"' not in dashboard:
     errors.append("archive confirmation must be explicit product UI")
-if "永久删除" in dashboard or "永久删除" in new_project:
-    errors.append("NODE-53 must not surface destructive permanent-delete UX")
+if "deleteProject" in dashboard or "deleteProject" in new_project:
+    errors.append("NODE-53 must not implement permanent-delete project commands")
+if re.search(r">\s*永久删除\s*<", dashboard + new_project):
+    errors.append("NODE-53 must not surface a permanent-delete action control")
 
 for marker in [
     "ProjectStatus",
