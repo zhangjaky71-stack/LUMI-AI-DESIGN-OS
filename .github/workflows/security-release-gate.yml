@@ -37,6 +37,8 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
           cache-dependency-glob: uv.lock
+      - name: Verify Python lock matches workspace manifests
+        run: uv lock --check
       - name: Frozen Python install
         run: uv sync --all-packages --frozen
       - name: Canonical security regression corpus
@@ -50,11 +52,9 @@ jobs:
             services/tool-gateway/tests/test_mcp_error_sanitization.py \
             services/sandbox-runtime/tests/test_sandbox_contracts.py \
             apps/agent-runtime/tests/test_context_engine.py \
-            apps/agent-runtime/tests/test_approval_bridge.py
-      - name: Asset Storage MIME and SVG security corpus
-        env:
-          PYTHONPATH: services/asset-storage/src
-        run: uv run pytest services/asset-storage/tests/test_asset_storage_security.py
+            apps/agent-runtime/tests/test_approval_bridge.py \
+            services/asset-storage/tests/test_asset_storage_security.py \
+            apps/worker-media/tests/test_asset_validation_security.py
       - name: Python dependency audit
         run: |
           uv export --all-packages --frozen --no-dev --format requirements-txt > /tmp/requirements.txt
