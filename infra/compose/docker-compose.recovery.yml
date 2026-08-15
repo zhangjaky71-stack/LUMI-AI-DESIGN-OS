@@ -1,0 +1,84 @@
+x-postgres-recovery-image: &postgres-recovery-image
+  image: lumi/postgres-recovery:${POSTGRES_RECOVERY_TAG:-pg17}
+  build:
+    context: ../docker/postgres-recovery
+    dockerfile: Dockerfile
+    args:
+      POSTGRES_IMAGE: ${POSTGRES_IMAGE}
+
+services:
+  postgres:
+    <<: *postgres-recovery-image
+    environment:
+      LUMI_WAL_ARCHIVE_DIR: /var/lib/postgresql/wal-archive
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_timeout=${POSTGRES_ARCHIVE_TIMEOUT:-60s}
+      - -c
+      - "archive_command=test ! -f /var/lib/postgresql/wal-archive/%f && cp %p /var/lib/postgresql/wal-archive/%f"
+      - -c
+      - hba_file=/etc/postgresql/recovery-pg_hba.conf
+    volumes:
+      - postgres_wal_archive:/var/lib/postgresql/wal-archive
+
+  postgres-backup:
+    <<: *postgres-recovery-image
+    profiles: ["recovery"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["lumi-postgres-backup"]
+    environment:
+      POSTGRES_SUPERUSER: ${POSTGRES_SUPERUSER}
+      POSTGRES_SUPERUSER_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      LUMI_POSTGRES_SOURCE_HOST: postgres
+      LUMI_POSTGRES_SOURCE_PORT: "5432"
+      LUMI_BASE_BACKUP_DIR: /backup
+    volumes:
+      - postgres_base_backup:/backup
+    networks: [lumi_local]
+
+  postgres-restore:
+    <<: *postgres-recovery-image
+    profiles: ["recovery"]
+    restart: "no"
+    entrypoint: ["lumi-postgres-restore-entrypoint"]
+    command:
+      - postgres
+      - -c
+      - hba_file=/etc/postgresql/recovery-pg_hba.conf
+    environment:
+      POSTGRES_USER: ${POSTGRES_SUPERUSER}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      LUMI_RECOVERY_ISOLATED: "1"
+      LUMI_RECOVERY_TARGET_NAME: ${LUMI_RECOVERY_TARGET_NAME:-}
+      LUMI_BASE_BACKUP_DIR: /backup
+      LUMI_WAL_ARCHIVE_DIR: /var/lib/postgresql/wal-archive
+    ports:
+      - "${POSTGRES_RESTORE_PORT:-55432}:5432"
+    volumes:
+      - postgres_restore_data:/var/lib/postgresql/data
+      - postgres_base_backup:/backup:ro
+      - postgres_wal_archive:/var/lib/postgresql/wal-archive:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+    networks: [lumi_local]
+
+volumes:
+  postgres_wal_archive:
+    name: lumi_postgres_wal_archive
+  postgres_base_backup:
+    name: lumi_postgres_base_backup
+  postgres_restore_data:
+    name: lumi_postgres_restore_data
