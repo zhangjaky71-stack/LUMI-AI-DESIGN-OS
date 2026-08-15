@@ -34,23 +34,32 @@ def validate_shadow_plan(plan: dict[str, Any]) -> None:
         raise RolloutError("shadow plan requires authorized/de-identified input policy")
 
 
+def canary_action(observation: dict[str, Any]) -> dict[str, str]:
+    if observation.get("provider_failure") is True:
+        return {"action": "ROLLBACK", "reason": "provider_failure"}
+    if observation.get("release_gate_passed") is not True:
+        return {"action": "ROLLBACK", "reason": "release_gate_not_green"}
+    critical = observation.get("critical_failures", 0)
+    if not isinstance(critical, (int, float)) or float(critical) != 0:
+        return {"action": "ROLLBACK", "reason": "critical_failure"}
+    error_ratio = observation.get("error_ratio_vs_baseline", 1.0)
+    if not isinstance(error_ratio, (int, float)) or float(error_ratio) > 1.2:
+        return {"action": "ROLLBACK", "reason": "error_regression"}
+    cost_ratio = observation.get("cost_ratio_vs_baseline", 1.0)
+    if not isinstance(cost_ratio, (int, float)) or float(cost_ratio) > 1.2:
+        return {"action": "ROLLBACK", "reason": "cost_regression"}
+    quality_delta = observation.get("quality_delta", 0.0)
+    if not isinstance(quality_delta, (int, float)) or float(quality_delta) < -0.02:
+        return {"action": "ROLLBACK", "reason": "quality_regression"}
+    return {"action": "CONTINUE", "reason": "within_guardrails"}
+
+
 def advance_canary(state: RolloutState, observation: dict[str, Any]) -> RolloutState:
     if state.status not in {"shadow", "canary"}:
         raise RolloutError(f"cannot advance rollout from status {state.status}")
-    if observation.get("release_gate_passed") is not True:
-        raise RolloutError("release gate must pass before canary advancement")
-    critical = observation.get("critical_failures", 0)
-    if not isinstance(critical, (int, float)) or critical != 0:
-        raise RolloutError("critical failures must remain zero")
-    error_ratio = observation.get("error_ratio_vs_baseline", 1.0)
-    cost_ratio = observation.get("cost_ratio_vs_baseline", 1.0)
-    quality_delta = observation.get("quality_delta", 0.0)
-    if not isinstance(error_ratio, (int, float)) or float(error_ratio) > 1.2:
-        raise RolloutError("error ratio exceeds canary guardrail")
-    if not isinstance(cost_ratio, (int, float)) or float(cost_ratio) > 1.2:
-        raise RolloutError("cost ratio exceeds canary guardrail")
-    if not isinstance(quality_delta, (int, float)) or float(quality_delta) < -0.02:
-        raise RolloutError("quality regression exceeds canary tolerance")
+    action = canary_action(observation)
+    if action["action"] != "CONTINUE":
+        raise RolloutError(f"canary requires rollback: {action['reason']}")
 
     try:
         index = CANARY_STAGES.index(state.stage)
