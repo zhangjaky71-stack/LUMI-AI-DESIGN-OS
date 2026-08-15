@@ -178,8 +178,26 @@ def validate_upstream_gates(manifest: dict[str, Any], matrix: dict[str, Any]) ->
         except (OSError, json.JSONDecodeError, FinalAcceptanceError) as exc:
             blockers.append(f"upstream gate {name} decision invalid: {exc}")
             continue
+        if not present(decision.get("decision_id")):
+            blockers.append(f"upstream gate {name} lacks a concrete decision_id")
         if decision.get("passed") is not True:
             blockers.append(f"upstream gate {name} is not passed=true")
+
+        refs = decision.get("evidence_refs")
+        if not isinstance(refs, list) or not refs:
+            blockers.append(f"upstream gate {name} must contain frozen evidence_refs")
+        else:
+            for index, ref in enumerate(refs):
+                if not isinstance(ref, dict):
+                    blockers.append(f"upstream gate {name} evidence_refs[{index}] must be an object")
+                    continue
+                verify_frozen_file(
+                    ref,
+                    label=f"upstream gate {name}.evidence_refs[{index}]",
+                    allowed_prefixes=("reports/", "docs/", "evals/", "staging/", "production/"),
+                    blockers=blockers,
+                )
+
         if name in IDENTITY_GATES:
             actual_rc = rc_identity(decision)
             if any(value is None for value in actual_rc):
