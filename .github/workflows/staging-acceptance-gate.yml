@@ -17,7 +17,7 @@ on:
         required: false
         type: string
       evidence_path:
-        description: "Repository path to completed staging acceptance evidence JSON"
+        description: "Path under reports/staging-acceptance/ to completed evidence JSON"
         required: false
         type: string
 
@@ -105,9 +105,23 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Validate evidence path
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          raw = os.environ['LUMI_STAGING_EVIDENCE_PATH']
+          workspace = Path.cwd().resolve()
+          root = (workspace / 'reports' / 'staging-acceptance').resolve()
+          target = (workspace / raw).resolve()
+          if target.suffix != '.json' or root not in target.parents:
+              raise SystemExit('evidence_path must resolve to a JSON file below reports/staging-acceptance/')
+          if not target.is_file():
+              raise SystemExit('evidence_path does not exist')
+          print(target.relative_to(workspace))
+          PY
       - name: Evaluate completed staging evidence
         run: |
-          test -f "$LUMI_STAGING_EVIDENCE_PATH"
           mkdir -p reports/staging-acceptance/runtime
           python3 scripts/staging-acceptance-gate.py \
             --evidence "$LUMI_STAGING_EVIDENCE_PATH" \
