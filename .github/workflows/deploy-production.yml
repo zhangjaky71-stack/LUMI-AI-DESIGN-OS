@@ -251,9 +251,12 @@ jobs:
           root=infra/iac/environments/production/app
           /tmp/init-root.sh "$root" lumi/production/app/terraform.tfstate
           terraform -chdir="$root" plan -input=false -out=tfplan
-      - name: Apply production application reviewed plan
+      - name: Apply production application and wait for canary/rolling steady state
         if: inputs.operation == 'deploy-release'
         run: terraform -chdir=infra/iac/environments/production/app apply -input=false -auto-approve tfplan
+      - name: Capture and verify ECS deployment state
+        if: inputs.operation == 'deploy-release'
+        run: bash scripts/capture-ecs-deployment-state.sh infra/iac/environments/production/app reports/production-deployments/runtime/ecs-deployment-state.json
       - name: Read-only production smoke
         if: inputs.operation == 'deploy-release'
         run: |
