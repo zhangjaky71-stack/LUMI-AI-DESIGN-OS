@@ -23,6 +23,7 @@ from .states import (
 )
 from .value_objects import (
     Budget,
+    MimeType,
     ModelRef,
     Money,
     OperationIdentity,
@@ -112,7 +113,7 @@ class Brand:
 class Asset:
     organization_id: UUID
     storage: StorageRef
-    mime_type: str
+    mime_type: MimeType
     source: str
     rights: RightsPolicy
     semantic_metadata: Mapping[str, str] = field(default_factory=dict)
@@ -121,8 +122,8 @@ class Asset:
     def __post_init__(self) -> None:
         if self.storage.owner_organization_id != self.organization_id:
             raise InvariantViolation("asset storage ownership must match organization")
-        if not self.mime_type.strip() or not self.source.strip():
-            raise InvariantViolation("asset mime_type/source are required")
+        if not self.source.strip():
+            raise InvariantViolation("asset source is required")
         object.__setattr__(
             self,
             "semantic_metadata",
