@@ -1,0 +1,9 @@
+{
+  "product_parity_acceptance": {"status": "PENDING", "evidence_ref": ""},
+  "model_provider_benchmark": {"status": "PENDING", "evidence_ref": ""},
+  "security_agent_red_team": {"status": "PENDING", "evidence_ref": ""},
+  "human_pairwise_visual": {"status": "PENDING", "evidence_ref": ""},
+  "shadow": {"status": "PENDING", "evidence_ref": ""},
+  "canary": {"status": "PENDING", "evidence_ref": ""},
+  "rollback_drill": {"status": "PENDING", "evidence_ref": ""}
+}
