@@ -41,9 +41,12 @@ def main() -> int:
     production_app = text("infra/iac/environments/production/app/main.tf")
     production_core_vars = text("infra/iac/environments/production/core/variables.tf")
     alembic_env = text("apps/api/alembic/env.py")
+    production_workflow = text(".github/workflows/deploy-production.yml")
+    ecs_evidence = text("scripts/capture-ecs-deployment-state.sh")
 
     require("assign_public_ip = false" in compute, "ECS services must not receive public IPs")
     require("internal           = false" in compute, "public ALB contract missing")
+    require("wait_for_steady_state  = true" in compute, "Terraform must wait for ECS steady state")
     require("deployment_circuit_breaker" in compute and "rollback = true" in compute, "rolling-service rollback missing")
     require('strategy             = "CANARY"' in compute, "public ECS canary strategy missing")
     require("canary_percent" in compute and "canary_bake_time_in_minutes" in compute, "canary percentage/bake configuration missing")
@@ -68,6 +71,8 @@ def main() -> int:
     require("assign_public_ip = true" not in network + compute + migration, "public task IP configuration detected")
     require("migration_task" not in production_app, "migration must remain a separate Terraform stack from app services")
     require("length(var.availability_zones) == 3" in production_core_vars, "production must require three availability zones")
+    require("capture-ecs-deployment-state.sh" in production_workflow, "production workflow must archive ECS steady-state evidence")
+    require("running_count == .desired_count" in ecs_evidence and "pending_count == 0" in ecs_evidence, "ECS evidence script must verify counts")
 
     version_files = [ROOT / "infra/iac/bootstrap/versions.tf", *ROOT.glob("infra/iac/environments/**/versions.tf")]
     for version_file in version_files:
