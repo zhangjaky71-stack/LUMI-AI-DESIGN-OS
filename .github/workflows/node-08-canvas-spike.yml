@@ -1,0 +1,79 @@
+name: NODE-08 Canvas Spike
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/public/canvas-spike/**"
+      - "apps/web/e2e/canvas-spike.spec.ts"
+      - ".github/workflows/node-08-canvas-spike.yml"
+      - "docs/nodes/NODE-08-CANVAS-TECHNOLOGY-SPIKE.md"
+      - "docs/adr/**"
+      - "reports/nodes/NODE-08/**"
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/public/canvas-spike/**"
+      - "apps/web/e2e/canvas-spike.spec.ts"
+      - ".github/workflows/node-08-canvas-spike.yml"
+      - "docs/nodes/NODE-08-CANVAS-TECHNOLOGY-SPIKE.md"
+      - "docs/adr/**"
+      - "reports/nodes/NODE-08/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  PNPM_VERSION: "11.4.0"
+
+jobs:
+  canvas-spike:
+    name: canvas-spike
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+          pnpm --version
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+      - name: Deterministic canvas engine tests
+        run: node --test apps/web/public/canvas-spike/engine.test.mjs
+      - name: Install Chromium for browser acceptance
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run canvas interaction and performance acceptance
+        run: |
+          mkdir -p reports/nodes/NODE-08/runtime
+          pnpm exec playwright test apps/web/e2e/canvas-spike.spec.ts --reporter=line
+      - name: Publish measured benchmark to workflow summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f reports/nodes/NODE-08/runtime/browser-benchmark.json ]; then
+            {
+              echo "## NODE-08 measured browser benchmark"
+              echo
+              echo '```json'
+              cat reports/nodes/NODE-08/runtime/browser-benchmark.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload canvas spike evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-08-canvas-spike-${{ github.run_id }}
+          path: |
+            reports/nodes/NODE-08/runtime
+            playwright-report
+            test-results
+          if-no-files-found: warn
+          retention-days: 14
