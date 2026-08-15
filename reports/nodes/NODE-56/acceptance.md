@@ -59,6 +59,8 @@ DELETE_NODE group
 
 The zero-rotation boundary prevents incorrect flattening of arbitrary transformed groups.
 
+The existing Canvas SDK semantic history path supports inversion of `CREATE_NODE`, `DELETE_NODE`, `REORDER_NODE` and `REPARENT_NODE`, so NODE-56 hierarchy edits remain compatible with semantic undo/redo rather than bypassing history.
+
 ## Unit coverage staged
 
 - layer hierarchy ordering;
@@ -80,7 +82,7 @@ The zero-rotation boundary prevents incorrect flattening of arbitrary transforme
 - Brand/reference Context regression;
 - focused mobile Inspector.
 
-NODE-55 Infinite Canvas and NODE-54 AI Workspace browser suites remain regression dependencies.
+NODE-55 Infinite Canvas and NODE-54 AI Workspace browser suites remain regression dependencies. Their selectors were tightened where NODE-56 introduces duplicate visible layer labels/counts so the regressions continue to assert the intended Canvas or Agent surface rather than relying on ambiguous global text matches.
 
 ## Static validation definition
 
@@ -103,11 +105,26 @@ layers-inspector-browser-e2e
 
 The workflow uses the repository-pinned Node 24 / pnpm 11.4.0 / TypeScript 6.0.3 toolchain and reruns the upstream Canvas/AI Workspace regression chain.
 
-## Known hosted infrastructure blocker
+## Hosted run evidence — 2026-08-15
 
-NODE-53, NODE-54 and NODE-55 GitHub Actions were observed failing before a runner started because recent account payments failed or the repository/account spending limit needed to be increased.
+Draft PR #56 triggered Layers Inspector workflow run `31861676871` against implementation SHA `6221ee204633b289a5a1d9b1f610c1e658c738d1`.
 
-NODE-56 must be evaluated the same way: if its first job has no executed steps and receives the same GitHub billing annotation, that is a hosted execution blocker, not a code/test failure or a PASS.
+Observed result:
+
+```text
+layers-inspector-contract     failure before runner start
+steps                         []
+runner_id                     0
+layers-inspector-quality      skipped
+layers-inspector-build        skipped
+layers-inspector-browser-e2e  skipped
+```
+
+GitHub check-run `94956064484` attached an annotation stating that the job was not started because recent account payments failed or the account spending limit must be increased.
+
+Therefore this run provides **no execution evidence** for the staged static validator, TypeScript, lint, unit tests, Canvas SDK regressions, production build or Playwright. It must not be classified as either a code/test failure or a PASS.
+
+Other workflows attached to the same commit also showed the same repository/account-level Actions condition or remained queued behind it. NODE-56 acceptance remains blocked on actual hosted runner execution.
 
 ## Production dependency truth
 
@@ -129,9 +146,9 @@ Appearance Inspector            IMPLEMENTED
 Typography Inspector            IMPLEMENTED
 Group / Ungroup                 IMPLEMENTED (safe V1)
 NODE-55 autosave integration    IMPLEMENTED
-unit/browser coverage           STAGED
-static architecture gate        STAGED
-pinned hosted gates             PENDING EXECUTION
+unit/browser coverage           STAGED / NOT EXECUTED BY HOSTED RUNNER
+static architecture gate        STAGED / NOT EXECUTED BY HOSTED RUNNER
+pinned hosted gates             BLOCKED BEFORE RUNNER START (billing/spend limit)
 canonical Canvas backend        UPSTREAM DEPENDENCY
 font/style production model     UPSTREAM DEPENDENCY
 ```
