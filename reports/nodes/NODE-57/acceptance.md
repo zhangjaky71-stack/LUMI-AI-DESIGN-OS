@@ -108,9 +108,27 @@ Pinned environment follows the repository product chain: Ubuntu 24.04, Node 24, 
 
 ## Hosted evidence
 
-Not recorded yet. The workflow must be observed after the Draft PR is created.
+Implementation SHA: `19bfc014daea2a7014948b6c525cd236671170d2`  
+Workflow: `Agent Timeline`  
+Run ID: `31863193541`
 
-Previous NODE-53 through NODE-56 workflows were blocked before runner start by GitHub account payment/spending-limit state. NODE-57 must be judged independently from its actual run evidence; the same platform annotation, if observed, is not a PASS and is not a code/test failure.
+Observed jobs:
+
+```text
+agent-timeline-contract     failure before runner start
+agent-timeline-build        skipped
+agent-timeline-quality      skipped
+agent-timeline-browser-e2e  skipped
+```
+
+The first job check/run id is `94959951593`. GitHub returned no executed steps and annotated the check with:
+
+```text
+The job was not started because recent account payments have failed
+or your spending limit needs to be increased.
+```
+
+Therefore the pinned static/typecheck/unit/lint/build/Playwright gates **did not execute**. This is a GitHub hosted billing/spending-limit blocker. It is not a PASS and it is not evidence of a code/test failure.
 
 ## Production dependency truth
 
@@ -134,9 +152,9 @@ sticky Approval                     IMPLEMENTED
 ArtifactVersion actions             IMPLEMENTED
 cost summary                        IMPLEMENTED
 filters                             IMPLEMENTED
-unit/browser coverage               STAGED
-static architecture gate            STAGED
-hosted pinned gates                 PENDING EXECUTION
+unit/browser coverage               STAGED / NOT HOSTED-RUN
+static architecture gate            STAGED / NOT HOSTED-RUN
+hosted pinned gates                 BLOCKED BEFORE RUNNER START
 production observability coverage   BACKEND INTEGRATION DEPENDENCY
 exact Canvas artifact-node jump     INTEGRATION DEPENDENCY
 ```
