@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "gate_name": "PENDING",
+  "decision_id": "PENDING",
+  "passed": false,
+  "release_candidate": {
+    "git_sha": "PENDING",
+    "version": "PENDING",
+    "migration_head": "PENDING"
+  },
+  "evidence_refs": [
+    {
+      "path": "PENDING",
+      "sha256": "PENDING"
+    }
+  ],
+  "blockers": [
+    "PENDING"
+  ]
+}

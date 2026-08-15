@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "manifest_id": "lumi-final-acceptance-v1",
+  "final_statuses": ["PASS", "FAIL", "BLOCKED_EXTERNAL", "DEFERRED_NON_CRITICAL"],
+  "exit_policy": {
+    "p0_requires_pass": true,
+    "critical_high_failures_allowed": 0,
+    "blocked_external_p0_allowed": 0,
+    "deferred_p0_allowed": 0,
+    "unresolved_release_blockers_allowed": 0,
+    "all_upstream_gates_require_pass": true,
+    "all_final_approvals_require_approved": true
+  },
+  "required_upstream_gates": [
+    "security",
+    "recovery",
+    "performance",
+    "ai_regression",
+    "staging_acceptance",
+    "production_deployment"
+  ],
+  "scenarios": [
+    {"id":"GATE-SEC","category":"upstream_gate","title":"NODE-66 security release gate is PASS with no unresolved Critical/High blocker","priority":"P0","severity":"critical"},
+    {"id":"GATE-REC","category":"upstream_gate","title":"NODE-68 recovery and restore evidence is PASS","priority":"P0","severity":"critical"},
+    {"id":"GATE-PERF","category":"upstream_gate","title":"NODE-69 launch-profile performance and capacity evidence is PASS","priority":"P0","severity":"high"},
+    {"id":"GATE-AI","category":"upstream_gate","title":"NODE-70 AI regression release decision is PASS for the exact RC","priority":"P0","severity":"critical"},
+    {"id":"GATE-STAGING","category":"upstream_gate","title":"NODE-71 production-like Staging acceptance decision is PASS for the exact RC","priority":"P0","severity":"critical"},
+    {"id":"GATE-PROD","category":"upstream_gate","title":"NODE-72 production deployment, canary, smoke and rollback decision is PASS","priority":"P0","severity":"critical"},
+
+    {"id":"ARCH-01","category":"architecture","title":"LangGraph lifecycle, Deep Agent autonomy, Gateway boundaries and business truth ownership match Architecture V2","priority":"P0","severity":"high"},
+    {"id":"ARCH-02","category":"architecture","title":"Design IR, constraints, immutable Artifact Versions and Agent checkpoints remain separate governed concerns","priority":"P0","severity":"high"},
+    {"id":"ARCH-03","category":"architecture","title":"Any material architecture deviation has an approved ADR","priority":"P1","severity":"medium"},
+
+    {"id":"JOURNEY-A","category":"golden_journey","title":"Zero-to-Brand completes research, strategy, approval, brand kit, editable design, QA/repair and multi-format export","priority":"P0","severity":"critical"},
+    {"id":"JOURNEY-B","category":"golden_journey","title":"Precision local edit preserves product, logo and QR invariants while structurally editing background and title","priority":"P0","severity":"critical"},
+    {"id":"JOURNEY-C","category":"golden_journey","title":"Approved design adapts to 1:1, 4:5, 9:16 and 16:9 without naive stretching and preserves constraints","priority":"P0","severity":"high"},
+    {"id":"JOURNEY-D","category":"golden_journey","title":"Worker restart, provider timeout, duplicate request and SSE reconnect recover without duplicate paid generation or corrupt artifact","priority":"P0","severity":"critical"},
+
+    {"id":"AGENT-01","category":"agent_intelligence","title":"Agent run can pause, approve, resume and recover from checkpoint with versioned graph identity","priority":"P0","severity":"critical"},
+    {"id":"AGENT-02","category":"agent_intelligence","title":"Prompt injection remains untrusted data and cannot widen tool authority","priority":"P0","severity":"critical"},
+    {"id":"AGENT-03","category":"agent_intelligence","title":"Provider/tool/model routing preserves idempotency, budget and authorization boundaries","priority":"P0","severity":"critical"},
+
+    {"id":"DESIGN-01","category":"design_intelligence","title":"Hard deterministic constraints pass for critical design cases","priority":"P0","severity":"critical"},
+    {"id":"DESIGN-02","category":"design_intelligence","title":"Brand, identity and visual critic quality meets the frozen release threshold","priority":"P0","severity":"high"},
+    {"id":"DESIGN-03","category":"design_intelligence","title":"Canvas output remains structurally editable with Layers/Inspector/Versions rather than image-only output","priority":"P0","severity":"critical"},
+
+    {"id":"SEC-01","category":"security","title":"Cross-tenant leak, sandbox escape, secret exposure and payment replay critical corpus reports zero release blocker","priority":"P0","severity":"critical"},
+    {"id":"SEC-02","category":"security","title":"SSRF metadata/private targets, malicious upload/SVG and unauthorized admin corpus remain blocked","priority":"P0","severity":"critical"},
+
+    {"id":"REL-01","category":"reliability","title":"Queue redelivery, provider fallback/reconciliation and run resume preserve correctness and paid-side-effect idempotency","priority":"P0","severity":"critical"},
+    {"id":"REL-02","category":"reliability","title":"Bad deploy rollback and service restart evidence is complete","priority":"P0","severity":"high"},
+
+    {"id":"DATA-01","category":"data_provenance","title":"Final Artifact provenance resolves source assets, parents, model/provider, agent/recipe/skills, prompt/template hash, constraints, brand rules and quality","priority":"P0","severity":"high"},
+    {"id":"DATA-02","category":"data_provenance","title":"Rights metadata, creator/time and git/runtime identity are present for final artifacts","priority":"P0","severity":"high"},
+    {"id":"DATA-03","category":"data_provenance","title":"Archive/delete/retention/audit lifecycle behavior matches governance policy","priority":"P0","severity":"high"},
+
+    {"id":"COST-01","category":"cost_billing","title":"Sampled provider request to Generation/Operation/Cost Ledger/AgentRun/Billing chain reconciles without unexplained large other","priority":"P0","severity":"critical"},
+    {"id":"COST-02","category":"cost_billing","title":"Budget, credit, concurrency and platform-wide provider-spend controls are enforced at durable runtime boundaries","priority":"P0","severity":"critical"},
+
+    {"id":"FE-01","category":"frontend","title":"Projects, AI Workspace, Canvas, Layers/Inspector, Timeline, Brand Kit, Versions/Compare, Export and Approval have no P0 dead end","priority":"P0","severity":"critical"},
+    {"id":"FE-02","category":"frontend","title":"Billing and Team surfaces match the frozen release scope and do not expose placeholder functionality","priority":"P0","severity":"high"},
+    {"id":"BROWSER-01","category":"frontend","title":"Chrome and Edge primary create/edit/export journeys pass; Chinese IME/font/upload/download behavior is verified","priority":"P0","severity":"high"},
+    {"id":"BROWSER-02","category":"frontend","title":"Safari core view/edit flow is validated or deferred with non-critical gap metadata","priority":"P1","severity":"medium"},
+
+    {"id":"PERF-01","category":"performance","title":"NODE-69 launch profile meets frozen API/SSE/DB/Queue/Canvas thresholds without P0 capacity blocker","priority":"P0","severity":"high"},
+    {"id":"PERF-02","category":"performance","title":"Autoscaling/capacity and media isolation evidence supports first production operating envelope","priority":"P0","severity":"high"},
+
+    {"id":"REC-01","category":"recovery","title":"Database restore/PITR and object recovery drills complete with integrity checks","priority":"P0","severity":"critical"},
+    {"id":"REC-02","category":"recovery","title":"Agent/task/broker reconciliation after recovery avoids ambiguous paid-side-effect retry","priority":"P0","severity":"critical"},
+
+    {"id":"OBS-01","category":"observability","title":"Request/Agent/Tool/Model/Worker logs, metrics and traces correlate for production incidents","priority":"P0","severity":"high"},
+    {"id":"OBS-02","category":"observability","title":"SLO dashboards and actionable alerts are live and tested","priority":"P0","severity":"high"},
+
+    {"id":"PROD-01","category":"production_operations","title":"Real HTTPS/domain, production DB/storage/broker/secrets/WAF/observability and backups are live","priority":"P0","severity":"critical"},
+    {"id":"PROD-02","category":"production_operations","title":"Exact Staging-accepted immutable image digests deployed through controlled production workflow and canary","priority":"P0","severity":"critical"},
+    {"id":"PROD-03","category":"production_operations","title":"Production smoke, canary/alarm rollback, post-promotion rollback and operational runbooks are evidenced","priority":"P0","severity":"critical"},
+    {"id":"PROD-04","category":"production_operations","title":"Provider quotas, billing webhook, support/admin and on-call ownership are ready or release-scoped off","priority":"P0","severity":"high"},
+
+    {"id":"DOC-01","category":"documentation","title":"Architecture, NODE specs, ADRs, API/events/schemas, DB/migrations, threat model, benchmarks and runbooks are present","priority":"P0","severity":"high"},
+    {"id":"DOC-02","category":"documentation","title":"Operator guide and user/admin basics match the actual release behavior","priority":"P1","severity":"medium"},
+
+    {"id":"OPS-01","category":"operational_handoff","title":"On-call, incident escalation, support/admin ownership and first-day watch are assigned","priority":"P0","severity":"high"},
+    {"id":"OPS-02","category":"operational_handoff","title":"Ongoing provider/cost/quality, security/dependency, DR and capacity review cadence is owned","priority":"P0","severity":"high"}
+  ]
+}

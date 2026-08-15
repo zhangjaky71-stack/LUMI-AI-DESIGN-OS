@@ -1,0 +1,117 @@
+name: Final Product Acceptance Gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_manifest_path:
+        description: "Frozen release-manifest.json under reports/final-acceptance/<release>/"
+        required: false
+        type: string
+      acceptance_evidence_path:
+        description: "Frozen acceptance-evidence.json under reports/final-acceptance/<release>/"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: final-acceptance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  RELEASE_MANIFEST_INPUT: ${{ inputs.release_manifest_path }}
+  ACCEPTANCE_EVIDENCE_INPUT: ${{ inputs.acceptance_evidence_path }}
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Validate final acceptance contract
+        run: python3 scripts/validate_final_acceptance_contract.py
+      - name: Validate JSON and Python syntax
+        run: |
+          python3 -m json.tool final/acceptance/manifest-v1.json >/dev/null
+          python3 -m json.tool final/acceptance/release-manifest-template.json >/dev/null
+          python3 -m json.tool final/acceptance/upstream-decision-template.json >/dev/null
+          python3 -m py_compile \
+            scripts/final-acceptance-gate.py \
+            scripts/create-final-acceptance-evidence.py \
+            scripts/validate_final_acceptance_contract.py
+
+  canonical-lock-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v6
+      - name: Require canonical frozen dependency graph
+        run: uv sync --frozen
+
+  final-decision:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_manifest_path != '' && inputs.acceptance_evidence_path != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Resolve and constrain frozen acceptance paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path.cwd().resolve()
+          allowed = (root / 'reports' / 'final-acceptance').resolve()
+          release = (root / os.environ['RELEASE_MANIFEST_INPUT']).resolve()
+          evidence = (root / os.environ['ACCEPTANCE_EVIDENCE_INPUT']).resolve()
+          try:
+              release.relative_to(allowed)
+              evidence.relative_to(allowed)
+          except ValueError as exc:
+              raise SystemExit('final acceptance input escapes reports/final-acceptance/') from exc
+          if release.name != 'release-manifest.json' or evidence.name != 'acceptance-evidence.json':
+              raise SystemExit('expected release-manifest.json and acceptance-evidence.json')
+          if not release.is_file() or not evidence.is_file():
+              raise SystemExit('final acceptance input file is missing')
+          if release.parent != evidence.parent:
+              raise SystemExit('release manifest and acceptance evidence must be in the same release directory')
+          output = release.parent / 'final-decision.json'
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'FINAL_RELEASE={release.relative_to(root).as_posix()}\n')
+              fh.write(f'FINAL_EVIDENCE={evidence.relative_to(root).as_posix()}\n')
+              fh.write(f'FINAL_OUTPUT={output.relative_to(root).as_posix()}\n')
+          PY
+      - name: Evaluate final product acceptance
+        run: |
+          python3 scripts/final-acceptance-gate.py \
+            --release "$FINAL_RELEASE" \
+            --evidence "$FINAL_EVIDENCE" \
+            --output "$FINAL_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: final-acceptance-${{ github.run_id }}
+          path: reports/final-acceptance/**/final-decision.json
+          if-no-files-found: error
+          retention-days: 180
+
+  contract-gate:
+    if: always()
+    needs: [source-contract, canonical-lock-gate]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require source contract and canonical dependency graph
+        run: |
+          test "${{ needs.source-contract.result }}" = "success"
+          test "${{ needs.canonical-lock-gate.result }}" = "success"
