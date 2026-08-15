@@ -1,0 +1,36 @@
+NODE-09 local domain validation
+Date: 2026-08-16
+Available validation container: Python 3.13.5
+Repository CI contract: Python 3.12.*
+
+Commands executed against the standalone mirror of the branch domain package:
+
+PYTHONPATH=. pytest -q
+python -m compileall -q lumi_api tests
+
+Result:
+
+.............                                                            [100%]
+13 passed in 0.07s
+COMPILEALL_PASS
+
+Coverage expressed by the 13 tests:
+- RFC UUIDv7 version/variant/time ordering
+- Decimal-only Money and currency isolation
+- Project state transitions and terminal archive
+- AgentRun waiting/resume/success transitions
+- Task state transitions
+- ArtifactVersion approval immutability
+- Asset StorageRef tenant ownership and MimeType value object
+- cross-tenant relationship rejection
+- Task DAG cycle rejection
+- Artifact lineage cycle rejection
+- immutable CostEntry and adjustment/reversal linkage
+- normalized Generation lifecycle
+- organization_id presence on all tenant-owned P0 entities
+- forbidden framework/provider SDK import scan for the domain package
+
+Important qualification:
+- This local fallback validates deterministic domain behavior and import purity.
+- The repository is pinned to Python 3.12.*; Python 3.12 Ruff/Pyright/Pytest CI remains mandatory before NODE-09 can be marked COMPLETE.
+- GitHub-hosted Actions were already blocked at the account level on PR #74 before runner allocation because GitHub reported recent payment failure or an Actions spending-limit issue. NODE-09 will still open its own PR and record its own CI result rather than assuming success.
