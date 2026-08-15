@@ -70,9 +70,7 @@ locals {
       min_capacity  = 3
       max_capacity  = 12
       environment = merge(local.common_environment, { LUMI_ROLE = "model-gateway" })
-      secret_arns = {
-        LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"]
-      }
+      secret_arns = { LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"] }
       s3_bucket_arns         = []
       autoscale_metric_name  = "ModelGatewayInflight"
       autoscale_target_value = 50
@@ -135,22 +133,18 @@ locals {
 module "platform_app" {
   source = "../../../modules/platform-app"
 
-  project                   = local.project
-  environment               = local.environment
-  vpc_id                    = local.core.vpc_id
-  public_subnet_ids         = local.core.public_subnet_ids
-  private_subnet_ids        = local.core.private_subnet_ids
-  app_security_group_id     = local.core.app_security_group_id
-  alb_security_group_id     = local.core.alb_security_group_id
-  certificate_arn           = var.certificate_arn
-  kms_key_arn               = local.core.kms_key_arn
-  domain_name               = var.domain_name
-  hosted_zone_id            = var.hosted_zone_id
-  services                  = local.services
-  migration_task = {
-    image                = var.api_image
-    migration_secret_arn = local.secret_arns["database/migration"]
-  }
+  project                    = local.project
+  environment                = local.environment
+  vpc_id                     = local.core.vpc_id
+  public_subnet_ids          = local.core.public_subnet_ids
+  private_subnet_ids         = local.core.private_subnet_ids
+  app_security_group_id      = local.core.app_security_group_id
+  alb_security_group_id      = local.core.alb_security_group_id
+  certificate_arn            = var.certificate_arn
+  kms_key_arn                = local.core.kms_key_arn
+  domain_name                = var.domain_name
+  hosted_zone_id             = var.hosted_zone_id
+  services                   = local.services
   waf_rate_limit_requests_per_5m = var.waf_rate_limit_requests_per_5m
   tags = {
     Owner       = "platform"
