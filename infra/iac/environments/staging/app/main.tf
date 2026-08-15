@@ -28,6 +28,7 @@ locals {
       desired_count     = 2
       min_capacity      = 2
       max_capacity      = 6
+      container_port    = 8000
       publicly_routed   = true
       health_check_path = "/health/ready"
       environment = merge(local.common_environment, { LUMI_ROLE = "api" })
