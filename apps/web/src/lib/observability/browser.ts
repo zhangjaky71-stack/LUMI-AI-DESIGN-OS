@@ -79,10 +79,12 @@ export function sanitizeBrowserTelemetry(input: unknown): BrowserTelemetryEvent 
     event.statusClass = raw.statusClass;
   }
   if (typeof raw.requestId === "string") {
-    event.requestId = safeTelemetryRef(raw.requestId);
+    const requestId = safeTelemetryRef(raw.requestId);
+    if (requestId) event.requestId = requestId;
   }
   if (typeof raw.correlationId === "string") {
-    event.correlationId = safeTelemetryRef(raw.correlationId);
+    const correlationId = safeTelemetryRef(raw.correlationId);
+    if (correlationId) event.correlationId = correlationId;
   }
   if (typeof raw.errorCode === "string") {
     const code = raw.errorCode.trim().toLowerCase();
@@ -125,22 +127,24 @@ export function emitBrowserTelemetry(
 }
 
 export function reportRouteError(errorCode?: string, route = currentRoute()): boolean {
+  const safeCode = safeErrorCode(errorCode);
   return emitBrowserTelemetry({
     version: 1,
     kind: "route_error",
     name: "react_route_error",
     route,
-    errorCode: safeErrorCode(errorCode),
+    ...(safeCode ? { errorCode: safeCode } : {}),
   });
 }
 
 export function reportCanvasError(errorCode?: string, route = currentRoute()): boolean {
+  const safeCode = safeErrorCode(errorCode);
   return emitBrowserTelemetry({
     version: 1,
     kind: "canvas_error",
     name: "canvas_runtime_error",
     route,
-    errorCode: safeErrorCode(errorCode),
+    ...(safeCode ? { errorCode: safeCode } : {}),
   });
 }
 
@@ -159,14 +163,14 @@ export async function observedFetch(
   if (!response.ok) {
     const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
     const target = input instanceof Request ? input.url : String(input);
+    const refs = responseCorrelation(response);
     emitBrowserTelemetry({
       version: 1,
       kind: "api_failure",
       name: `api_${method.toLowerCase()}_failed`,
       route: target,
       statusClass: `${Math.floor(response.status / 100)}xx`,
-      requestId: safeTelemetryRef(response.headers.get("x-request-id")),
-      correlationId: safeTelemetryRef(response.headers.get("x-correlation-id")),
+      ...refs,
     });
   }
   return response;
@@ -176,9 +180,11 @@ export function responseCorrelation(response: Response): {
   requestId?: string;
   correlationId?: string;
 } {
+  const requestId = safeTelemetryRef(response.headers.get("x-request-id"));
+  const correlationId = safeTelemetryRef(response.headers.get("x-correlation-id"));
   return {
-    requestId: safeTelemetryRef(response.headers.get("x-request-id")),
-    correlationId: safeTelemetryRef(response.headers.get("x-correlation-id")),
+    ...(requestId ? { requestId } : {}),
+    ...(correlationId ? { correlationId } : {}),
   };
 }
 
