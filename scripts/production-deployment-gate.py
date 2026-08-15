@@ -80,6 +80,19 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
             value = images.get(name)
             require(isinstance(value, str) and bool(DIGEST_IMAGE.fullmatch(value)), f"image {name} must use immutable @sha256 digest", blockers)
 
+    rollout = manifest.get("rollout")
+    expected_rollout = {
+        "public_api_strategy": "ECS_CANARY",
+        "public_api_canary_percent": 5,
+        "public_api_canary_bake_minutes": 10,
+        "public_api_alarm_rollback": True,
+        "internal_service_strategy": "ROLLING_CIRCUIT_BREAKER",
+    }
+    if not isinstance(rollout, dict):
+        blockers.append("rollout object missing")
+    else:
+        require(rollout == expected_rollout, "rollout must match the versioned NODE-72 ECS canary/rolling policy", blockers)
+
     limits = manifest.get("first_day_limits")
     required_limits = {
         "max_org_concurrent_agent_runs",
@@ -157,6 +170,7 @@ def evaluate(manifest: dict[str, Any], decision: dict[str, Any], acceptance_path
         "release_candidate": manifest.get("release_candidate", {}),
         "aws": manifest.get("aws", {}),
         "images": manifest.get("images", {}),
+        "rollout": manifest.get("rollout", {}),
         "staging_acceptance_decision_id": decision.get("decision_id"),
         "passed": not blockers,
         "blockers": sorted(set(blockers)),
