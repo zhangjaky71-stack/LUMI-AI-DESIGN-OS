@@ -38,7 +38,9 @@ body="$(mktemp)"
 trap 'rm -f "$headers" "$body"' EXIT
 
 echo "[synthetic] homepage"
-curl --fail --silent --show-error --location --max-time 12 --output /dev/null "$WEB_URL/"
+# Deliberately do not follow redirects: a compromised public target must not turn the
+# GitHub runner into a redirect-based internal-network probe.
+curl --fail --silent --show-error --max-time 12 --output /dev/null "$WEB_URL/"
 
 echo "[synthetic] API readiness + correlation headers"
 curl --fail --silent --show-error --max-time 12 --dump-header "$headers" --output "$body" "$API_URL/health/ready"
