@@ -37,13 +37,21 @@ def main() -> int:
     secrets = text("infra/iac/modules/secrets/main.tf")
     migration = text("infra/iac/modules/migration-runner/main.tf")
     bootstrap = text("infra/iac/bootstrap/main.tf")
+    staging_app = text("infra/iac/environments/staging/app/main.tf")
     production_app = text("infra/iac/environments/production/app/main.tf")
     production_core_vars = text("infra/iac/environments/production/core/variables.tf")
     alembic_env = text("apps/api/alembic/env.py")
 
     require("assign_public_ip = false" in compute, "ECS services must not receive public IPs")
     require("internal           = false" in compute, "public ALB contract missing")
-    require("deployment_circuit_breaker" in compute and "rollback = true" in compute, "ECS automatic deployment rollback missing")
+    require("deployment_circuit_breaker" in compute and "rollback = true" in compute, "rolling-service rollback missing")
+    require('strategy             = "CANARY"' in compute, "public ECS canary strategy missing")
+    require("canary_percent" in compute and "canary_bake_time_in_minutes" in compute, "canary percentage/bake configuration missing")
+    require("public_alternate" in compute and "advanced_configuration" in compute, "alternate target group canary routing missing")
+    require("AmazonECSInfrastructureRolePolicyForLoadBalancers" in compute, "ECS load-balancer infrastructure role missing")
+    require("public_canary_5xx" in compute and "public_canary_unhealthy" in compute, "canary rollback alarms missing")
+    require("from_port       = 8000" in network and "to_port         = 8000" in network, "ALB-to-API security group port must be 8000")
+    require("container_port    = 8000" in staging_app and "container_port    = 8000" in production_app, "API container port must match lumi_api CLI port 8000")
     require("publicly_accessible = false" in data, "RDS must be private")
     require("multi_az" in data, "RDS Multi-AZ contract missing")
     require("transit_encryption_enabled = true" in data, "Redis transit encryption missing")
@@ -60,6 +68,12 @@ def main() -> int:
     require("assign_public_ip = true" not in network + compute + migration, "public task IP configuration detected")
     require("migration_task" not in production_app, "migration must remain a separate Terraform stack from app services")
     require("length(var.availability_zones) == 3" in production_core_vars, "production must require three availability zones")
+
+    version_files = [ROOT / "infra/iac/bootstrap/versions.tf", *ROOT.glob("infra/iac/environments/**/versions.tf")]
+    for version_file in version_files:
+        body = version_file.read_text(encoding="utf-8")
+        require('version = "= 6.55.0"' in body, f"AWS provider is not exactly pinned in {version_file.relative_to(ROOT)}")
+        require('required_version = ">= 1.14.6, < 1.15.0"' in body, f"Terraform CLI contract is not pinned in {version_file.relative_to(ROOT)}")
 
     for example in ROOT.glob("infra/iac/environments/**/terraform.tfvars.example"):
         body = example.read_text(encoding="utf-8").lower()
