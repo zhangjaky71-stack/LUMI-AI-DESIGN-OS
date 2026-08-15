@@ -76,11 +76,11 @@ jobs:
         with:
           fetch-depth: 0
       - name: Repository secret scan
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: IaC and filesystem vulnerability scan
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.34.0
         with:
           scan-type: fs
           scan-ref: .
