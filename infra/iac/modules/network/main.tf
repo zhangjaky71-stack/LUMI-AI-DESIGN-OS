@@ -163,10 +163,10 @@ resource "aws_security_group" "app" {
   vpc_id      = aws_vpc.this.id
 
   ingress {
-    description     = "ALB to application HTTP"
+    description     = "ALB to LUMI API HTTP"
     protocol        = "tcp"
-    from_port       = 8080
-    to_port         = 8080
+    from_port       = 8000
+    to_port         = 8000
     security_groups = [aws_security_group.alb.id]
   }
 
