@@ -12,6 +12,10 @@ export interface ApiRequestOptions {
   readonly if_match?: string;
 }
 
+export type UnauthorizedHandler = (
+  problem: ProblemDetails,
+) => void | Promise<void>;
+
 export class LumiApiError extends Error {
   readonly problem: ProblemDetails;
 
@@ -67,17 +71,20 @@ export class LumiApiClient {
   readonly #baseUrl: string;
   readonly #transport: typeof fetch;
   readonly #context: () => ApiClientContext;
+  readonly #onUnauthorized?: UnauthorizedHandler;
 
   constructor(
     options: {
       readonly base_url?: string;
       readonly transport?: typeof fetch;
       readonly context?: () => ApiClientContext;
+      readonly on_unauthorized?: UnauthorizedHandler;
     } = {},
   ) {
     this.#baseUrl = options.base_url ?? "/api/v1";
     this.#transport = options.transport ?? globalThis.fetch.bind(globalThis);
     this.#context = options.context ?? (() => ({}));
+    this.#onUnauthorized = options.on_unauthorized;
   }
 
   get<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
@@ -148,7 +155,14 @@ export class LumiApiClient {
         ) {
           continue;
         }
-        throw new LumiApiError(await parseProblem(response, id));
+
+        const problem = await parseProblem(response, id);
+        if (response.status === 401 && this.#onUnauthorized) {
+          void Promise.resolve(this.#onUnauthorized(problem)).catch(
+            () => undefined,
+          );
+        }
+        throw new LumiApiError(problem);
       } catch (error) {
         if (error instanceof LumiApiError) throw error;
         if (options.signal?.aborted) throw error;

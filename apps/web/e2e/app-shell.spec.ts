@@ -67,4 +67,23 @@ test.describe("NODE-52 App Shell", () => {
     ).toBeVisible();
     await expect(page.getByRole("link", { name: "品牌" })).toBeVisible();
   });
+
+  test("offline state is visible without replacing the loaded shell", async ({
+    page,
+  }) => {
+    await page.goto("/app/projects");
+    await page.context().setOffline(true);
+    await expect(page.getByText("当前处于离线状态")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "项目" })).toBeVisible();
+  });
+
+  test("invite entry does not trust client-side membership state", async ({
+    page,
+  }) => {
+    await page.goto("/invite/accept");
+    await expect(
+      page.getByRole("heading", { name: "接受组织邀请" }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "前往登录" })).toBeVisible();
+  });
 });

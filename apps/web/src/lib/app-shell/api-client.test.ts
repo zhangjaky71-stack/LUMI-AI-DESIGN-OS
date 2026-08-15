@@ -76,6 +76,29 @@ describe("LumiApiClient", () => {
     expect(calls).toBe(1);
   });
 
+  it("routes 401 through the session-expiry hook exactly once", async () => {
+    let expired = 0;
+    const client = new LumiApiClient({
+      base_url: "https://api.test/v1",
+      transport: async () =>
+        response(
+          {
+            type: "https://errors.lumi.dev/auth/session-expired",
+            title: "Session expired",
+            status: 401,
+            code: "SESSION_EXPIRED",
+          },
+          401,
+        ),
+      on_unauthorized: () => {
+        expired += 1;
+      },
+    });
+
+    await expect(client.get("/projects")).rejects.toBeInstanceOf(LumiApiError);
+    expect(expired).toBe(1);
+  });
+
   it("adds tenant, csrf, idempotency and concurrency headers to mutations", async () => {
     let calls = 0;
     let captured = new Headers();

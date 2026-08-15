@@ -13,6 +13,7 @@ REQUIRED = [
     "apps/web/src/app/layout.tsx",
     "apps/web/src/app/login/page.tsx",
     "apps/web/src/app/signup/page.tsx",
+    "apps/web/src/app/invite/accept/page.tsx",
     "apps/web/src/app/app/layout.tsx",
     "apps/web/src/app/app/projects/page.tsx",
     "apps/web/src/app/app/projects/[projectId]/page.tsx",
@@ -50,11 +51,13 @@ def read(rel: str) -> str:
 root_layout = read("apps/web/src/app/layout.tsx")
 app_layout = read("apps/web/src/app/app/layout.tsx")
 auth_server = read("apps/web/src/lib/app-shell/auth-server.ts")
+auth_contract = read("apps/web/src/lib/app-shell/auth-contract.ts")
 api_client = read("apps/web/src/lib/app-shell/api-client.ts")
 query_cache = read("apps/web/src/lib/app-shell/query-cache.ts")
 telemetry = read("apps/web/src/lib/app-shell/telemetry.ts")
 globals_css = read("apps/web/src/app/globals.css")
 shell_frame = read("apps/web/src/components/app-shell/app-shell-frame.tsx")
+shell_context = read("apps/web/src/components/app-shell/shell-context.tsx")
 
 if '"use client"' in root_layout or "'use client'" in root_layout:
     errors.append("root layout must remain a Server Component")
@@ -64,6 +67,8 @@ if "LUMI_SHELL_E2E_AUTH" not in auth_server or "return null" not in auth_server:
     errors.append("auth adapter must be explicit E2E-only and fail closed when NODE-16 is unavailable")
 if 'process.env.NODE_ENV === "production"' not in auth_server:
     errors.append("deterministic test auth must be impossible in production mode")
+if "hasRecentAuthentication" not in auth_contract:
+    errors.append("shell must expose a bounded recent-auth hint for sensitive future actions")
 
 for marker in [
     "/api/v1",
@@ -72,11 +77,14 @@ for marker in [
     "x-csrf-token",
     "idempotency-key",
     "if-match",
+    "on_unauthorized",
 ]:
     if marker not in api_client:
         errors.append(f"API client missing contract marker: {marker}")
 if 'method === "GET" ? 3 : 1' not in api_client:
     errors.append("API retry policy must be GET-only")
+if "session-expired" not in shell_context:
+    errors.append("401 session expiry must route through the shell session boundary")
 if "[this.#organizationId, ...parts]" not in query_cache or "abortInFlight" not in query_cache:
     errors.append("query cache must key by organization and abort old in-flight work")
 if "QUERY_SCOPE_CHANGED" not in query_cache:
@@ -85,6 +93,8 @@ if "TELEMETRY_SENSITIVE_PROPERTY_FORBIDDEN" not in telemetry:
     errors.append("telemetry adapter must reject sensitive fields")
 if 'aria-label="主导航"' not in shell_frame or 'aria-current={active ? "page" : undefined}' not in shell_frame:
     errors.append("primary navigation must have an accessible name and active-page semantics")
+if "useSyncExternalStore" not in shell_frame or "当前处于离线状态" not in shell_frame:
+    errors.append("shell must provide an SSR-safe offline state")
 
 for marker in [
     "--ui-bg",

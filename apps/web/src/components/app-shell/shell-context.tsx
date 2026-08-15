@@ -44,8 +44,13 @@ export function ShellProviders({
         context: () => ({
           organization_id: session.active_organization_id,
         }),
+        on_unauthorized: () => {
+          queryCache.abortInFlight();
+          queryCache.clear();
+          router.replace("/login?reason=session-expired");
+        },
       }),
-    [session.active_organization_id],
+    [queryCache, router, session.active_organization_id],
   );
 
   useEffect(() => {

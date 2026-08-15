@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import styles from "./app-shell-frame.module.css";
 import { useShell } from "./shell-context";
 
 const NAVIGATION = [
@@ -15,10 +16,32 @@ const NAVIGATION = [
   { href: "/app/settings", label: "设置", flag: null },
 ] as const;
 
+function subscribeOnlineStatus(onStoreChange: () => void): () => void {
+  window.addEventListener("online", onStoreChange);
+  window.addEventListener("offline", onStoreChange);
+  return () => {
+    window.removeEventListener("online", onStoreChange);
+    window.removeEventListener("offline", onStoreChange);
+  };
+}
+
+function getOnlineSnapshot(): boolean {
+  return navigator.onLine;
+}
+
+function getServerOnlineSnapshot(): boolean {
+  return true;
+}
+
 export function AppShellFrame({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
+  const online = useSyncExternalStore(
+    subscribeOnlineStatus,
+    getOnlineSnapshot,
+    getServerOnlineSnapshot,
+  );
   const {
     session,
     activeOrganization,
@@ -164,6 +187,11 @@ export function AppShellFrame({
             </div>
           </div>
         </header>
+        {!online ? (
+          <div className={styles.offlineBanner} role="status">
+            当前处于离线状态。已加载内容可继续查看，网络恢复后再重试服务端操作。
+          </div>
+        ) : null}
         <main id="main-content" className="lumi-main" tabIndex={-1}>
           {children}
         </main>

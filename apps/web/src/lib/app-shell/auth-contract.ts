@@ -16,3 +16,19 @@ export function assertShellSession(session: ShellSession): ShellSession {
   }
   return session;
 }
+
+export function hasRecentAuthentication(
+  session: ShellSession,
+  maxAgeMs: number,
+  nowMs = Date.now(),
+): boolean {
+  if (!Number.isFinite(maxAgeMs) || maxAgeMs < 0) {
+    throw new Error("RECENT_AUTH_MAX_AGE_INVALID");
+  }
+  if (!session.recent_auth_at) return false;
+
+  const authenticatedAt = Date.parse(session.recent_auth_at);
+  if (!Number.isFinite(authenticatedAt)) return false;
+  const age = nowMs - authenticatedAt;
+  return age >= 0 && age <= maxAgeMs;
+}
