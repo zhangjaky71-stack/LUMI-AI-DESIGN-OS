@@ -121,6 +121,28 @@ projects-browser-e2e
 
 The production build additionally fails if `.next/static` contains the actually used server-side `LUMI_PROJECTS_E2E` control name.
 
+### Initial release HEAD hosted evidence
+
+Head: `aa045bbd6e90eafd8c22b0f17e638cf06941da67`
+
+```text
+Projects UI run          31856888056
+projects-contract job    94943247983
+conclusion               failure
+runner_id                0
+steps                    []
+projects-quality         skipped
+projects-build           skipped
+projects-security        skipped
+projects-browser-e2e     skipped
+```
+
+GitHub annotation:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+
+No NODE-53 TypeScript, static validator, lint, unit test, production build, security scan or Playwright step executed in that hosted run. This is an external account-level runner blocker, not an observed code/test failure and not PASS.
+
 ## Local validation limits
 
 Current local environment still does not match repository requirements:
@@ -157,11 +179,11 @@ Projects product UI                   IMPLEMENTED
 New Project / reference UX            IMPLEMENTED
 Structured Brief / BriefVersion UX    IMPLEMENTED
 lifecycle / conflict UX               IMPLEMENTED
-static architecture gate              hosted execution pending
-TS6 typecheck                         hosted execution pending
-lint/unit/format                      hosted execution pending
-production Next build/security scan   hosted execution pending
-Projects Playwright E2E               hosted execution pending
+static architecture gate              hosted runner blocked before execution
+TS6 typecheck                         hosted runner blocked before execution
+lint/unit/format                      hosted runner blocked before execution
+production Next build/security scan   hosted runner blocked before execution
+Projects Playwright E2E               hosted runner blocked before execution
 NODE-17/18/11 production adapters     pending upstream implementation
 ```
 
