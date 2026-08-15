@@ -54,7 +54,7 @@ app.state.project_allowed_origins = _origins()
 app.dependency_overrides[get_request_context] = get_secure_project_context
 apply_security_hardening(
     app,
-    SecurityConfig(production=settings.lumi_env == "production", allowed_origins=tuple(_origins())),
+    SecurityConfig(production=settings.lumi_env == "production"),
 )
 app.include_router(
     create_auth_router(
