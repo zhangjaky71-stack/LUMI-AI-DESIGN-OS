@@ -1,0 +1,110 @@
+name: App Shell
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/src/app/**"
+      - "apps/web/src/components/app-shell/**"
+      - "apps/web/src/components/auth/**"
+      - "apps/web/src/lib/app-shell/**"
+      - "apps/web/e2e/app-shell.spec.ts"
+      - "scripts/validate_app_shell.py"
+      - "docs/runtime/APP-SHELL-V1.md"
+      - "docs/nodes/NODE-52-APP-SHELL.md"
+      - "reports/nodes/NODE-52/**"
+      - ".github/workflows/app-shell.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shell-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Validate NODE-52 architecture boundaries
+        run: python scripts/validate_app_shell.py
+      - name: Typecheck web App Shell
+        run: pnpm --filter @lumi/web typecheck
+
+  shell-quality:
+    needs: shell-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Lint web
+        run: pnpm --filter @lumi/web lint
+      - name: Run App Shell unit tests
+        run: pnpm --filter @lumi/web exec vitest run src/lib/app-shell
+      - name: Check App Shell formatting
+        run: pnpm exec prettier --check "apps/web/src/app/**/*.{ts,tsx,css}" "apps/web/src/components/**/*.{ts,tsx}" "apps/web/src/lib/app-shell/**/*.{ts,tsx}" "apps/web/e2e/app-shell.spec.ts"
+
+  shell-build:
+    needs: shell-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    env:
+      LUMI_SHELL_E2E_AUTH: "0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Build production Next.js app
+        run: pnpm --filter @lumi/web build
+
+  shell-security:
+    needs: shell-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run client boundary and secret-name scan
+        run: python scripts/validate_app_shell.py
+
+  shell-browser-e2e:
+    needs: [shell-quality, shell-build, shell-security]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      LUMI_SHELL_E2E_AUTH: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run App Shell auth/navigation/accessibility smoke
+        run: pnpm exec playwright test apps/web/e2e/app-shell.spec.ts
