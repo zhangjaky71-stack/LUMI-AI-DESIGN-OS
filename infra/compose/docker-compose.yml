@@ -103,12 +103,13 @@ services:
       - |
         set -eu
         mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" >/dev/null
-        mc mb --ignore-existing "local/$${MINIO_BUCKET_ASSETS}"
-        mc mb --ignore-existing "local/$${MINIO_BUCKET_EXPORTS}"
-        mc mb --ignore-existing "local/$${MINIO_BUCKET_SANDBOX}"
-        mc stat "local/$${MINIO_BUCKET_ASSETS}" >/dev/null
-        mc stat "local/$${MINIO_BUCKET_EXPORTS}" >/dev/null
-        mc stat "local/$${MINIO_BUCKET_SANDBOX}" >/dev/null
+        for bucket in "$${MINIO_BUCKET_ASSETS}" "$${MINIO_BUCKET_EXPORTS}" "$${MINIO_BUCKET_SANDBOX}"; do
+          mc mb --ignore-existing "local/$${bucket}"
+          # NODE-68: ordinary DELETE now creates a recoverable DeleteMarker and
+          # overwrites create immutable previous versions. Hard version deletes remain privileged/destructive.
+          mc version enable "local/$${bucket}"
+          mc stat "local/$${bucket}" >/dev/null
+        done
     networks: [lumi_local]
 
   mailpit:
