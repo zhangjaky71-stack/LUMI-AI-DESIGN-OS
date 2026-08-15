@@ -36,6 +36,7 @@ jobs:
           bash -n scripts/check-aws-secret-versions.sh
           bash -n scripts/create-predeploy-rds-snapshot.sh
           bash -n scripts/ecs-run-one-shot-task.sh
+          bash -n scripts/capture-ecs-deployment-state.sh
       - name: Deployment manifest JSON syntax
         run: python3 -m json.tool production/deployment/manifest-template.json >/dev/null
 
