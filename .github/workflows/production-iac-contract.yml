@@ -28,10 +28,12 @@ jobs:
         run: |
           python3 -m py_compile \
             scripts/production-deployment-gate.py \
+            scripts/production-read-only-smoke.py \
             scripts/validate_production_deployment_contract.py \
             scripts/validate_production_iac_contract.py
       - name: Shell syntax
         run: |
+          bash -n scripts/check-aws-secret-versions.sh
           bash -n scripts/create-predeploy-rds-snapshot.sh
           bash -n scripts/ecs-run-one-shot-task.sh
       - name: Deployment manifest JSON syntax
