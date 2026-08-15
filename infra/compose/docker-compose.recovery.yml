@@ -75,6 +75,64 @@ services:
       start_period: 10s
     networks: [lumi_local]
 
+  object-recovery-drill:
+    image: ${MINIO_MC_IMAGE}
+    profiles: ["recovery"]
+    restart: "no"
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET_ASSETS: ${MINIO_BUCKET_ASSETS}
+      MINIO_RECOVERY_BUCKET: ${MINIO_RECOVERY_BUCKET:-}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" >/dev/null
+        bucket="$${MINIO_RECOVERY_BUCKET:-$${MINIO_BUCKET_ASSETS}}"
+        mc version enable "local/$${bucket}" >/dev/null
+        drill_id="node68-$$(date +%s)-$$"
+        prefix="_node68-drill/$${drill_id}"
+        object="local/$${bucket}/$${prefix}/probe.txt"
+        cleanup() {
+          mc rm --recursive --force --versions "local/$${bucket}/$${prefix}/" >/dev/null 2>&1 || true
+        }
+        trap cleanup EXIT INT TERM
+
+        v1="node68-v1-$${drill_id}"
+        v2="node68-v2-$${drill_id}"
+        printf '%s' "$${v1}" > /tmp/node68-v1
+        printf '%s' "$${v2}" > /tmp/node68-v2
+        mc cp /tmp/node68-v1 "$${object}" >/dev/null
+        sleep 2
+        rewind_at="$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        sleep 2
+        mc cp /tmp/node68-v2 "$${object}" >/dev/null
+        mc rm "$${object}" >/dev/null
+
+        if mc stat "$${object}" >/dev/null 2>&1; then
+          echo "object drill expected current object to be hidden by DeleteMarker" >&2
+          exit 1
+        fi
+
+        recovered="$$(mc cat --rewind "$${rewind_at}" "$${object}")"
+        if [ "$${recovered}" != "$${v1}" ]; then
+          echo "object drill rewind did not recover v1" >&2
+          exit 1
+        fi
+        printf '%s' "$${recovered}" > /tmp/node68-recovered
+        mc cp /tmp/node68-recovered "$${object}" >/dev/null
+        current="$$(mc cat "$${object}")"
+        if [ "$${current}" != "$${v1}" ]; then
+          echo "object drill restored current version mismatch" >&2
+          exit 1
+        fi
+        echo "[recovery] object version/delete/recover drill PASS ($${bucket}/$${prefix})"
+    networks: [lumi_local]
+
 volumes:
   postgres_wal_archive:
     name: lumi_postgres_wal_archive
