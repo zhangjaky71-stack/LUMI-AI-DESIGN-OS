@@ -1,0 +1,54 @@
+.inspector { height: 100%; min-height: 0; display: flex; flex-direction: column; background: #0f1113; color: #eceeea; overflow: hidden; }
+.header { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 13px; border-bottom: 1px solid rgba(255,255,255,.07); }
+.header span { color: #73776f; font-size: 8px; letter-spacing: .12em; text-transform: uppercase; }
+.header h2 { margin: 3px 0 0; font-size: 13px; font-weight: 620; }
+.version { white-space: nowrap; }
+.tabs { display: grid; grid-template-columns: repeat(3,1fr); gap: 4px; padding: 6px; border-bottom: 1px solid rgba(255,255,255,.065); }
+.tabs button { border: 0; border-radius: 6px; background: transparent; color: #72766f; padding: 7px; text-transform: capitalize; font-size: 9px; cursor: pointer; }
+.tabs button[data-active="true"] { background: #1b1e22; color: #f0f1ed; }
+.layersPane, .designPane, .contextPane { flex: 1; min-height: 0; overflow: auto; }
+.layerTools { position: sticky; top: 0; z-index: 10; display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 5px; padding: 8px; background: rgba(15,17,19,.97); border-bottom: 1px solid rgba(255,255,255,.05); }
+.layerTools input, .stackField input, .stackField textarea, .stackField select, .field input { min-width: 0; box-sizing: border-box; border: 1px solid rgba(255,255,255,.09); border-radius: 6px; background: #0b0d0f; color: #e7e9e4; padding: 6px 7px; font: inherit; font-size: 9px; }
+.layerTools button, .actionGrid button, .layerOrder button, .toggleRow button, .danger { border: 1px solid rgba(255,255,255,.09); border-radius: 6px; background: #171a1e; color: #d9dcd6; padding: 6px 8px; font: inherit; font-size: 9px; cursor: pointer; }
+.layerTools button:disabled, .actionGrid button:disabled, .layerOrder button:disabled, .danger:disabled { opacity: .34; cursor: not-allowed; }
+.layerList { padding: 4px 0 28px; }
+.layerBranch { min-width: 0; }
+.layerRow { min-height: 30px; display: grid; grid-template-columns: 18px minmax(0,1fr) 24px 24px; align-items: center; gap: 2px; padding-right: 6px; border-left: 2px solid transparent; }
+.layerRow:hover { background: rgba(255,255,255,.035); }
+.layerRow[data-layer-selected="true"] { background: rgba(106,147,231,.13); border-left-color: #85adff; }
+.layerRow[data-primary="true"] { box-shadow: inset 0 0 0 1px rgba(133,173,255,.08); }
+.disclosure, .iconButton { border: 0; background: transparent; color: #6f746c; padding: 2px; cursor: pointer; font-size: 10px; }
+.disclosure:disabled { opacity: .3; cursor: default; }
+.layerMain { min-width: 0; display: flex; align-items: center; gap: 6px; border: 0; background: transparent; color: #dadcd8; padding: 4px 2px; text-align: left; cursor: default; }
+.kindGlyph { width: 14px; flex: 0 0 14px; color: #747971; font-size: 9px; text-align: center; }
+.layerName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.layerMain input { width: 100%; min-width: 0; border: 1px solid #638ee8; border-radius: 4px; background: #090b0d; color: #f0f1ed; padding: 3px 5px; font-size: 9px; }
+.iconButton:hover { color: #e3e5e1; }
+.layerFooter { position: sticky; bottom: 0; display: flex; justify-content: space-between; padding: 7px 9px; border-top: 1px solid rgba(255,255,255,.06); background: rgba(15,17,19,.97); color: #6f736c; font-size: 8px; }
+.section { padding: 12px; border-bottom: 1px solid rgba(255,255,255,.06); }
+.sectionTitle { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+.sectionTitle strong { font-size: 10px; font-weight: 600; }
+.sectionTitle span { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #70756d; font-size: 8px; }
+.stackField { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; color: #777b74; font-size: 8px; }
+.stackField input, .stackField select { width: 100%; }
+.stackField textarea { width: 100%; min-height: 72px; resize: vertical; line-height: 1.45; }
+.fieldGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+.field { display: grid; grid-template-columns: 34px minmax(0,1fr); align-items: center; gap: 5px; color: #777b74; font-size: 8px; }
+.field input { width: 100%; }
+.actionGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 5px; margin-top: 9px; }
+.actionGrid button:last-child { background: #eceee9; color: #111316; border-color: transparent; }
+.layerOrder, .toggleRow { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.toggleRow button[data-active="true"] { background: #272b31; border-color: rgba(133,173,255,.28); color: #eef2fb; }
+.colorField { display: grid; grid-template-columns: 42px 34px minmax(0,1fr); gap: 6px; align-items: center; margin-top: 9px; color: #777b74; font-size: 8px; }
+.colorField input { width: 32px; height: 24px; padding: 0; border: 1px solid rgba(255,255,255,.1); background: transparent; }
+.colorField code { overflow: hidden; text-overflow: ellipsis; color: #969a93; font-size: 8px; }
+.metaLine { margin: 6px 0; color: #858981; font-size: 9px; line-height: 1.45; word-break: break-word; }
+.danger { width: 100%; margin-top: 8px; color: #ffad9e; border-color: rgba(255,120,100,.18); }
+.referenceRow { display: flex; align-items: flex-start; gap: 7px; padding: 7px 0; cursor: pointer; }
+.referenceRow span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.referenceRow strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.referenceRow small { color: #70756e; font-size: 8px; }
+.privacy { margin-top: 9px; padding: 8px; border: 1px solid rgba(255,255,255,.06); border-radius: 7px; background: #0a0c0e; color: #7e827a; font-size: 9px; line-height: 1.5; }
+.empty { padding: 22px 14px; color: #777b74; font-size: 9px; line-height: 1.5; }
+@media (max-width: 1180px) { .inspector { min-height: 620px; } }
+@media (max-width: 760px) { .inspector { min-height: calc(100vh - 150px); } .fieldGrid { grid-template-columns: repeat(2,minmax(0,1fr)); } }

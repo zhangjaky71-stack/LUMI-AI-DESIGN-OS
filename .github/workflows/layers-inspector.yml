@@ -1,0 +1,120 @@
+name: Layers Inspector
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/src/components/ai-workspace/**"
+      - "apps/web/src/components/infinite-canvas/**"
+      - "apps/web/src/components/layers-inspector/**"
+      - "apps/web/src/lib/layers-inspector/**"
+      - "apps/web/e2e/ai-workspace.spec.ts"
+      - "apps/web/e2e/infinite-canvas.spec.ts"
+      - "apps/web/e2e/layers-inspector.spec.ts"
+      - "scripts/validate_layers_inspector.py"
+      - "docs/nodes/NODE-56-LAYERS-INSPECTOR-UI.md"
+      - "docs/runtime/LAYERS-INSPECTOR-V1.md"
+      - "reports/nodes/NODE-56/**"
+      - ".github/workflows/layers-inspector.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  layers-inspector-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Validate frontend architecture chain
+        run: |
+          python scripts/validate_app_shell.py
+          python scripts/validate_projects_ui.py
+          python scripts/validate_ai_workspace.py
+          python scripts/validate_infinite_canvas.py
+          python scripts/validate_layers_inspector.py
+      - name: Typecheck editor stack
+        run: |
+          pnpm --filter @lumi/design-ir typecheck
+          pnpm --filter @lumi/canvas-sdk typecheck
+          pnpm --filter @lumi/web typecheck
+
+  layers-inspector-quality:
+    needs: layers-inspector-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Lint web product
+        run: pnpm --filter @lumi/web lint
+      - name: Run Layers / Inspector units
+        run: pnpm --filter @lumi/web exec vitest run src/lib/layers-inspector
+      - name: Run Infinite Canvas regression units
+        run: pnpm --filter @lumi/web exec vitest run src/lib/infinite-canvas
+      - name: Run Canvas SDK regressions
+        run: pnpm --filter @lumi/canvas-sdk test
+      - name: Check NODE-56 formatting
+        run: pnpm exec prettier --check "apps/web/src/components/layers-inspector/**/*.{ts,tsx,css}" "apps/web/src/lib/layers-inspector/**/*.{ts,tsx}" "apps/web/e2e/layers-inspector.spec.ts" "apps/web/src/components/infinite-canvas/infinite-canvas.tsx" "apps/web/src/components/ai-workspace/ai-workspace.tsx"
+
+  layers-inspector-build:
+    needs: layers-inspector-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    env:
+      LUMI_SHELL_E2E_AUTH: "0"
+      LUMI_PROJECTS_E2E: "0"
+      LUMI_AI_WORKSPACE_E2E: "0"
+      LUMI_INFINITE_CANVAS_E2E: "0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Build production Next.js app
+        run: pnpm --filter @lumi/web build
+
+  layers-inspector-browser-e2e:
+    needs: [layers-inspector-quality, layers-inspector-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 32
+    env:
+      LUMI_SHELL_E2E_AUTH: "1"
+      LUMI_PROJECTS_E2E: "1"
+      LUMI_AI_WORKSPACE_E2E: "1"
+      LUMI_INFINITE_CANVAS_E2E: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run NODE-56 browser scenarios
+        run: pnpm exec playwright test apps/web/e2e/layers-inspector.spec.ts
+      - name: Re-run NODE-55 and NODE-54 browser regressions
+        run: pnpm exec playwright test apps/web/e2e/infinite-canvas.spec.ts apps/web/e2e/ai-workspace.spec.ts
