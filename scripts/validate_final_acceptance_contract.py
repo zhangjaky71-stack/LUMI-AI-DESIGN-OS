@@ -53,13 +53,14 @@ def rc() -> dict[str, str]:
 def make_fixture(matrix: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], Path, dict[str, Path]]:
     evidence_atom = FIXTURE_ROOT / "evidence" / "contract-proof.json"
     write_json(evidence_atom, {"schema_version": 1, "kind": "NODE-73-CONTRACT-FIXTURE", "passed": True})
+    evidence_ref = {"path": repo_path(evidence_atom), "sha256": sha(evidence_atom)}
 
     items = []
     for scenario in matrix["scenarios"]:
         items.append({
             "id": scenario["id"],
             "status": "PASS",
-            "evidence_refs": [{"path": repo_path(evidence_atom), "sha256": sha(evidence_atom)}],
+            "evidence_refs": [copy.deepcopy(evidence_ref)],
             "notes": "Contract fixture only; not production evidence.",
         })
     evidence = {
@@ -75,7 +76,13 @@ def make_fixture(matrix: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]
     upstream_specs: dict[str, dict[str, str]] = {}
     for name in matrix["required_upstream_gates"]:
         path = FIXTURE_ROOT / "upstream" / f"{name}.json"
-        payload: dict[str, Any] = {"schema_version": 1, "passed": True, "decision_id": f"{name}-contract"}
+        payload: dict[str, Any] = {
+            "schema_version": 1,
+            "passed": True,
+            "decision_id": f"{name}-contract",
+            "evidence_refs": [copy.deepcopy(evidence_ref)],
+            "blockers": [],
+        }
         if name in {"performance", "ai_regression", "staging_acceptance", "production_deployment"}:
             payload["release_candidate"] = rc()
         write_json(path, payload)
@@ -132,7 +139,7 @@ def evaluate_case(gate: ModuleType, matrix: dict[str, Any], release: dict[str, A
 def main() -> int:
     gate = load_gate()
     matrix = json.loads((ROOT / "final" / "acceptance" / "manifest-v1.json").read_text(encoding="utf-8"))
-    require(len(matrix.get("scenarios", [])) >= 40, "final matrix unexpectedly small")
+    require(len(matrix.get("scenarios", [])) == 46, "final matrix must contain exactly 46 scenarios")
     require(len({item["id"] for item in matrix["scenarios"]}) == len(matrix["scenarios"]), "duplicate scenario id")
     require(all(item["priority"] in {"P0", "P1", "P2"} for item in matrix["scenarios"]), "invalid priority")
 
@@ -186,7 +193,6 @@ def main() -> int:
         approval_missing["approvals"]["security"] = "PENDING"
         require(evaluate_case(gate, matrix, approval_missing, copy.deepcopy(clean_evidence), evidence_path)["accepted"] is False, "missing approval must block")
 
-        # Mutate an upstream decision, re-freeze the hash, and prove passed=false is independently blocking.
         security_path = upstream_paths["security"]
         security_payload = json.loads(security_path.read_text(encoding="utf-8"))
         security_payload["passed"] = False
@@ -195,6 +201,14 @@ def main() -> int:
         upstream_false["upstream_gates"]["security"]["sha256"] = sha(security_path)
         require(evaluate_case(gate, matrix, upstream_false, copy.deepcopy(clean_evidence), evidence_path)["accepted"] is False, "upstream passed=false must block")
         security_payload["passed"] = True
+        write_json(security_path, security_payload)
+
+        upstream_no_refs_payload = copy.deepcopy(security_payload)
+        upstream_no_refs_payload["evidence_refs"] = []
+        write_json(security_path, upstream_no_refs_payload)
+        upstream_no_refs = copy.deepcopy(clean_release)
+        upstream_no_refs["upstream_gates"]["security"]["sha256"] = sha(security_path)
+        require(evaluate_case(gate, matrix, upstream_no_refs, copy.deepcopy(clean_evidence), evidence_path)["accepted"] is False, "upstream decision without evidence refs must block")
         write_json(security_path, security_payload)
 
         upstream_hash_bad = copy.deepcopy(clean_release)
@@ -236,6 +250,7 @@ def main() -> int:
                 "open_release_blocker_blocked": True,
                 "missing_approval_blocked": True,
                 "upstream_false_blocked": True,
+                "upstream_missing_evidence_blocked": True,
                 "upstream_hash_swap_blocked": True,
                 "upstream_rc_swap_blocked": True,
                 "production_rc_swap_blocked": True,
