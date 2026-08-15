@@ -3,8 +3,9 @@ import { expect, test, type Page } from "@playwright/test";
 const workspace = "/app/projects/project-summer-launch/workspace";
 
 async function startRun(page: Page) {
-  await page.getByRole("button", { name: /Hero Product/ }).click();
-  await page.getByRole("button", { name: /Headline/ }).click();
+  const canvas = page.getByLabel("Canvas preview");
+  await canvas.getByRole("button", { name: "Hero Product", exact: true }).click();
+  await canvas.getByRole("button", { name: "Headline", exact: true }).click({ modifiers: ["Shift"] });
   await page
     .getByLabel("给 LUMI Agent 的指令")
     .fill("只改选中的标题与构图，产品身份保持不变，先给我一个可评审方向");
@@ -15,12 +16,14 @@ test.describe("NODE-54 AI Design Workspace", () => {
   test("chat and Canvas share one project workspace with explicit selection context", async ({ page }) => {
     await page.goto(workspace);
     await expect(page.getByRole("heading", { name: "夏季新品发布" })).toBeVisible();
-    await expect(page.getByLabel("Canvas preview")).toBeVisible();
-    await page.getByRole("button", { name: /Hero Product/ }).click();
-    await page.getByRole("button", { name: /Headline/ }).click();
-    await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
-    await expect(page.getByText(/Document v7/).first()).toBeVisible();
-    await expect(page.getByText(/Hero Product · locked identity/)).toBeVisible();
+    const canvas = page.getByLabel("Canvas preview");
+    const agent = page.getByLabel("Agent 对话与运行");
+    await expect(canvas).toBeVisible();
+    await canvas.getByRole("button", { name: "Hero Product", exact: true }).click();
+    await canvas.getByRole("button", { name: "Headline", exact: true }).click({ modifiers: ["Shift"] });
+    await expect(agent.getByText("2 selected", { exact: true })).toBeVisible();
+    await expect(agent.getByText(/Document v7/).first()).toBeVisible();
+    await expect(agent.getByText(/Hero Product · locked identity/)).toBeVisible();
   });
 
   test("streamed run deduplicates events and ends on an actionable approval", async ({ page }) => {
@@ -59,14 +62,16 @@ test.describe("NODE-54 AI Design Workspace", () => {
     await startRun(page);
     await expect(page.getByRole("heading", { name: "夏季新品主视觉方向 A" })).toBeVisible();
     await page.getByRole("button", { name: "放到 Canvas", exact: true }).click();
-    await expect(page.getByText("Document v8").first()).toBeVisible();
+    await expect(page.getByLabel("Agent 对话与运行").getByText("Document v8").first()).toBeVisible();
     await expect(page.getByText(/已将 夏季新品主视觉方向 A v1 放到 Canvas/)).toBeVisible();
   });
 
   test("provider fallback warning is explicit without exposing internal reasoning", async ({ page }) => {
     await page.goto(workspace);
     await expect(page.getByText(/主图像 Provider 当前处于降级状态/)).toBeVisible();
-    await expect(page.getByText(/不会暴露 system prompt 或内部 chain-of-thought/)).toBeVisible();
+    const inspector = page.getByLabel("Layers 与 Inspector");
+    await inspector.getByRole("button", { name: "context", exact: true }).click();
+    await expect(inspector.getByText(/private chain-of-thought/i)).toBeVisible();
     await expect(page.getByText(/reasoning trace/i)).toHaveCount(0);
   });
 
@@ -76,7 +81,7 @@ test.describe("NODE-54 AI Design Workspace", () => {
     await expect(page.getByRole("button", { name: "Agent", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Canvas", exact: true }).click();
     await expect(page.getByLabel("Canvas preview")).toBeVisible();
-    await page.getByRole("button", { name: "Context", exact: true }).click();
-    await expect(page.getByLabel("Inspector 与 Context")).toBeVisible();
+    await page.getByRole("button", { name: "Inspector", exact: true }).click();
+    await expect(page.getByLabel("Layers 与 Inspector")).toBeVisible();
   });
 });

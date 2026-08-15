@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShell } from "@/components/app-shell/shell-context";
 import { InfiniteCanvasProduct } from "@/components/infinite-canvas/infinite-canvas";
+import { LayersInspector } from "@/components/layers-inspector/layers-inspector";
 import { applyWorkspaceEvent, isApprovalActionable } from "@/lib/ai-workspace/contracts";
 import { getAIWorkspaceGateway } from "@/lib/ai-workspace/workspace-gateway";
 import type {
@@ -18,6 +19,7 @@ import type {
   CanvasSyncState,
   InfiniteCanvasBootstrap,
 } from "@/lib/infinite-canvas/types";
+import type { CanvasEditorApi, CanvasEditorState } from "@/lib/layers-inspector/types";
 import styles from "./ai-workspace.module.css";
 
 const RUN_LABEL: Readonly<Record<string, string>> = {
@@ -59,6 +61,7 @@ export function AIWorkspace({
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [canvasDocumentVersion, setCanvasDocumentVersion] = useState(0);
   const [canvasSyncState, setCanvasSyncState] = useState<CanvasSyncState>("SAVED");
+  const [canvasEditorState, setCanvasEditorState] = useState<CanvasEditorState | null>(null);
   const [selectedReferenceIds, setSelectedReferenceIds] = useState<string[]>([]);
   const [artifactReferenceIds, setArtifactReferenceIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -67,6 +70,7 @@ export function AIWorkspace({
   const [approvalNotes, setApprovalNotes] = useState<Record<string, string>>({});
   const streamAbortRef = useRef<AbortController | null>(null);
   const reducerRef = useRef<WorkspaceReducerState | null>(null);
+  const canvasEditorRef = useRef<CanvasEditorApi | null>(null);
 
   const refreshCanonical = useCallback(async () => {
     const next = await queryCache.fetchQuery(
@@ -275,6 +279,10 @@ export function AIWorkspace({
     setCanvasSyncState(context.sync_state);
   }, []);
 
+  const handleEditorState = useCallback((state: CanvasEditorState) => {
+    setCanvasEditorState(state);
+  }, []);
+
   const handleAIEdit = useCallback((nodeIds: readonly string[]) => {
     setSelectedNodeIds([...nodeIds]);
     setPrompt((current) => current || "针对当前选中对象进行 AI Edit：");
@@ -422,50 +430,24 @@ export function AIWorkspace({
         bootstrap={canvasBootstrap}
         references={snapshot.references}
         artifacts={snapshot.artifacts}
+        editorRef={canvasEditorRef}
         onContextChange={handleCanvasContext}
+        onEditorStateChange={handleEditorState}
         onAIEdit={handleAIEdit}
       />
     </section>
   );
 
   const contextPanel = (
-    <aside className={styles.contextPanel} aria-label="Inspector 与 Context">
-      <div className={styles.panelHeader}><div><span className={styles.eyebrow}>CONTEXT</span><h2>Inspector</h2></div></div>
-      <section className={styles.inspectorSection}>
-        <h3>Selection</h3>
-        <p>{selectedNodeIds.length} selected · Document v{effectiveDocumentVersion} · {canvasSyncState}</p>
-        {selectedNodes.map((node) => (
-          <div key={node.node_id} className={styles.contextRow}>
-            <strong>{node.label}</strong><span>{node.kind}{node.locked_identity ? " · locked identity" : ""}</span>
-          </div>
-        ))}
-        {unknownSelectedNodeIds.map((nodeId) => (
-          <div key={nodeId} className={styles.contextRow}>
-            <strong>{nodeId}</strong><span>Canvas node</span>
-          </div>
-        ))}
-      </section>
-      <section className={styles.inspectorSection}>
-        <h3>Project context</h3>
-        <p>Brand Kit: {snapshot.brand_name ?? "未绑定"}</p>
-        {snapshot.references.map((reference) => (
-          <label key={reference.id} className={styles.referenceRow}>
-            <input
-              type="checkbox"
-              checked={selectedReferenceIds.includes(reference.asset_id)}
-              onChange={() => toggleReference(reference.asset_id)}
-              disabled={reference.scan_status !== "READY"}
-            />
-            <span><strong>{reference.file_name}</strong><small>{reference.role} · {reference.scan_status}</small></span>
-          </label>
-        ))}
-      </section>
-      <section className={styles.inspectorSection}>
-        <h3>Context transparency</h3>
-        <p>本次命令明确携带 CanvasController selection node IDs、已保存的 Document version、READY reference IDs 与精确 ArtifactVersion IDs。</p>
-        <p className={styles.privacy}>Canvas 未保存、离线或版本冲突时 Send 会被阻止；界面不会暴露 system prompt 或内部 chain-of-thought。</p>
-      </section>
-    </aside>
+    <LayersInspector
+      state={canvasEditorState}
+      editorRef={canvasEditorRef}
+      brandName={snapshot.brand_name}
+      references={snapshot.references}
+      selectedReferenceIds={selectedReferenceIds}
+      onToggleReference={toggleReference}
+      onAIEdit={handleAIEdit}
+    />
   );
 
   return (
@@ -474,7 +456,7 @@ export function AIWorkspace({
         <div>
           <Link href={`/app/projects/${encodeURIComponent(projectId)}`}>← Project Brief</Link>
           <h1>{snapshot.project_name}</h1>
-          <p>{snapshot.brand_name ?? "No Brand Kit"} · Chat + Infinite Canvas + Approval</p>
+          <p>{snapshot.brand_name ?? "No Brand Kit"} · Chat + Infinite Canvas + Layers / Inspector</p>
         </div>
         {error ? <p role="alert" className={styles.error}>{error}</p> : null}
       </header>
@@ -482,7 +464,7 @@ export function AIWorkspace({
       <nav className={styles.mobileTabs} aria-label="移动工作区面板">
         <button type="button" data-active={mobilePanel === "agent"} onClick={() => setMobilePanel("agent")}>Agent</button>
         <button type="button" data-active={mobilePanel === "canvas"} onClick={() => setMobilePanel("canvas")}>Canvas</button>
-        <button type="button" data-active={mobilePanel === "context"} onClick={() => setMobilePanel("context")}>Context</button>
+        <button type="button" data-active={mobilePanel === "context"} onClick={() => setMobilePanel("context")}>Inspector</button>
       </nav>
 
       <main className={styles.desktopGrid}>

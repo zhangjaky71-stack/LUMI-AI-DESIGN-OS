@@ -40,6 +40,23 @@ import type {
   FramePreset,
   InfiniteCanvasBootstrap,
 } from "@/lib/infinite-canvas/types";
+import { buildCanvasEditorState } from "@/lib/layers-inspector/model";
+import {
+  groupOperations,
+  moveLayerOperation,
+  propertyOperation,
+  renameOperation,
+  textOperations,
+  transformOperations,
+  ungroupOperations,
+} from "@/lib/layers-inspector/operations";
+import type {
+  CanvasEditorApi,
+  CanvasEditorRef,
+  CanvasEditorState,
+  InspectorTextPatch,
+  InspectorTransformPatch,
+} from "@/lib/layers-inspector/types";
 import styles from "./infinite-canvas.module.css";
 
 const PRESETS: readonly FramePreset[] = [
@@ -83,7 +100,9 @@ interface Props {
   readonly bootstrap: InfiniteCanvasBootstrap;
   readonly references: readonly ProjectReference[];
   readonly artifacts: readonly WorkspaceArtifact[];
+  readonly editorRef: CanvasEditorRef;
   readonly onContextChange: (context: CanvasSelectionContext) => void;
+  readonly onEditorStateChange: (state: CanvasEditorState) => void;
   readonly onAIEdit: (nodeIds: readonly string[]) => void;
 }
 
@@ -182,7 +201,9 @@ export function InfiniteCanvasProduct({
   bootstrap,
   references,
   artifacts,
+  editorRef,
   onContextChange,
+  onEditorStateChange,
   onAIEdit,
 }: Props) {
   const { activeOrganization, api } = useShell();
@@ -218,6 +239,15 @@ export function InfiniteCanvasProduct({
     if (controllerRef.current) setRuntime(controllerRef.current.snapshot());
   }, []);
 
+  const emitEditorState = useCallback(
+    (state: CanvasSyncState) => {
+      const snapshot = controllerRef.current?.snapshot();
+      if (!snapshot) return;
+      onEditorStateChange(buildCanvasEditorState(snapshot, serverVersionRef.current, state));
+    },
+    [onEditorStateChange],
+  );
+
   const emitContext = useCallback(
     (state: CanvasSyncState) => {
       const snapshot = controllerRef.current?.snapshot();
@@ -226,8 +256,9 @@ export function InfiniteCanvasProduct({
         document_version: serverVersionRef.current,
         sync_state: state,
       });
+      emitEditorState(state);
     },
-    [onContextChange],
+    [emitEditorState, onContextChange],
   );
 
   const flushPending = useCallback(async () => {
@@ -340,7 +371,7 @@ export function InfiniteCanvasProduct({
         setPendingCount(0);
         setSyncState("SAVED");
         setRuntime(controller.snapshot());
-        onContextChange({ selected_node_ids: [], document_version: serverVersionRef.current, sync_state: "SAVED" });
+        emitContext("SAVED");
       })
       .catch((error) => setNotice(`Canvas load failed: ${errorMessage(error)}`))
       .finally(() => {
@@ -348,11 +379,12 @@ export function InfiniteCanvasProduct({
       });
     return () => {
       cancelled = true;
+      editorRef.current = null;
       controllerRef.current?.destroy();
       controllerRef.current = null;
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [activeOrganization.id, gateway, onContextChange, projectId]);
+  }, [activeOrganization.id, editorRef, emitContext, gateway, projectId]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -603,6 +635,84 @@ export function InfiniteCanvasProduct({
     }));
     if (applyLocalOperations("delete", operations)) updateSelection([]);
   };
+
+  const setProperty = useCallback(
+    (label: string, nodeIds: readonly string[], path: string, value: unknown): boolean => {
+      const document = controllerRef.current?.snapshot().document;
+      if (!document || !nodeIds.length) return false;
+      return applyLocalOperations(label, [propertyOperation(document, nodeIds, path, value, label)]);
+    },
+    [applyLocalOperations],
+  );
+
+  const renameNode = (nodeId: string, name: string): boolean => {
+    const document = controllerRef.current?.snapshot().document;
+    if (!document || !name.trim()) return false;
+    return applyLocalOperations("inspector-rename", [renameOperation(document, nodeId, name)]);
+  };
+
+  const setTransform = (nodeId: string, patch: InspectorTransformPatch): boolean => {
+    const document = controllerRef.current?.snapshot().document;
+    if (!document) return false;
+    return applyLocalOperations("inspector-transform", transformOperations(document, nodeId, patch));
+  };
+
+  const setText = (nodeId: string, patch: InspectorTextPatch): boolean => {
+    const document = controllerRef.current?.snapshot().document;
+    if (!document) return false;
+    return applyLocalOperations("inspector-text", textOperations(document, nodeId, patch));
+  };
+
+  const moveLayer = (nodeId: string, direction: "up" | "down"): boolean => {
+    const document = controllerRef.current?.snapshot().document;
+    if (!document) return false;
+    const op = moveLayerOperation(document, nodeId, direction);
+    return op ? applyLocalOperations(`layers-${direction}`, [op]) : false;
+  };
+
+  const groupSelection = (): boolean => {
+    const controller = controllerRef.current;
+    if (!controller) return false;
+    const snapshot = controller.snapshot();
+    const result = groupOperations(snapshot.document, snapshot.selection.ids);
+    if (!result || !applyLocalOperations("layers-group", result.operations)) return false;
+    updateSelection([result.group_id], result.group_id);
+    return true;
+  };
+
+  const ungroupSelection = (): boolean => {
+    const controller = controllerRef.current;
+    if (!controller) return false;
+    const snapshot = controller.snapshot();
+    const groupId = snapshot.selection.primary_id ?? snapshot.selection.ids[0];
+    if (!groupId) return false;
+    const result = ungroupOperations(snapshot.document, groupId);
+    if (!result || !applyLocalOperations("layers-ungroup", result.operations)) return false;
+    updateSelection(result.selected_ids, result.selected_ids[0] ?? null);
+    return true;
+  };
+
+  const editorApi: CanvasEditorApi = {
+    select: (ids, primaryId) => updateSelection(ids, primaryId ?? ids[0] ?? null),
+    renameNode,
+    setVisibility: (nodeIds, visible) => setProperty("layers-visible", nodeIds, "visible", visible),
+    setLocked: (nodeIds, locked) => setProperty("layers-lock", nodeIds, "locked", locked),
+    setOpacity: (nodeIds, opacity) => setProperty("inspector-opacity", nodeIds, "opacity", Math.max(0, Math.min(1, opacity))),
+    setBlendMode: (nodeIds, blendMode) => setProperty("inspector-blend", nodeIds, "blend_mode", blendMode),
+    setFill: (nodeId, fill) => setProperty("inspector-fill", [nodeId], "metadata.fill", fill),
+    setTransform,
+    setText,
+    moveLayer,
+    groupSelection,
+    ungroupSelection,
+    duplicateSelection: () => duplicate(),
+    deleteSelection: removeSelection,
+    fitSelection: () => {
+      controllerRef.current?.fitSelection(72);
+      syncRuntime();
+    },
+  };
+  editorRef.current = editorApi;
 
   const undo = () => {
     const controller = controllerRef.current;
@@ -930,6 +1040,9 @@ export function InfiniteCanvasProduct({
               const dragging = draggingIds.has(node.id);
               const fill = metaString(node, "fill");
               const fontSize = metaNumber(node, "font_size");
+              const lineHeight = metaNumber(node, "line_height");
+              const letterSpacing = metaNumber(node, "letter_spacing");
+              const textAlign = metaString(node, "text_align");
               const label = metaString(node, "label");
               const fillStyle = fill
                 ? node.kind === "TEXT"
@@ -953,6 +1066,8 @@ export function InfiniteCanvasProduct({
                     width: Math.max(1, node.world_bounds.width),
                     height: Math.max(1, node.world_bounds.height),
                     zIndex: node.paint_order + 1,
+                    opacity: documentNode?.opacity ?? 1,
+                    mixBlendMode: (documentNode?.blend_mode ?? "normal") as React.CSSProperties["mixBlendMode"],
                     ...fillStyle,
                     ...(dragging ? { transform: `translate(${dragDelta.x / runtime.camera.zoom}px, ${dragDelta.y / runtime.camera.zoom}px)` } : {}),
                   }}
@@ -973,7 +1088,19 @@ export function InfiniteCanvasProduct({
                   }}
                 >
                   {node.kind === "FRAME" ? <span className={styles.frameName}>{documentNode?.name ?? node.id}</span> : null}
-                  {node.kind === "TEXT" ? <span className={styles.textNode} style={fontSize ? { fontSize } : undefined}>{node.content}</span> : null}
+                  {node.kind === "TEXT" ? (
+                    <span
+                      className={styles.textNode}
+                      style={{
+                        ...(fontSize ? { fontSize } : {}),
+                        ...(lineHeight ? { lineHeight } : {}),
+                        ...(letterSpacing !== null ? { letterSpacing } : {}),
+                        ...(textAlign === "left" || textAlign === "center" || textAlign === "right" ? { textAlign } : {}),
+                      }}
+                    >
+                      {node.content}
+                    </span>
+                  ) : null}
                   {node.kind === "IMAGE" ? <span className={styles.imageNode}><b>{node.asset_id ? "ASSET" : "ARTIFACT"}</b><small>{documentNode?.name ?? node.id}</small></span> : null}
                   {node.kind === "SHAPE" && label ? <span className={styles.shapeLabel}>{label}</span> : null}
                   {node.locked ? <span className={styles.lockBadge}>LOCK</span> : null}
