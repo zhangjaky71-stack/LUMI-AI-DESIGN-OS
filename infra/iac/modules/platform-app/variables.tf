@@ -28,5 +28,14 @@ variable "services" {
     autoscale_target_value   = number
   }))
 }
+variable "migration_task" {
+  type = object({
+    image                = string
+    migration_secret_arn = string
+    cpu                  = optional(number, 1024)
+    memory               = optional(number, 2048)
+    command              = optional(list(string), ["alembic", "-c", "apps/api/alembic.ini", "upgrade", "head"])
+  })
+}
 variable "waf_rate_limit_requests_per_5m" { type = number, default = 2000 }
 variable "tags" { type = map(string), default = {} }
