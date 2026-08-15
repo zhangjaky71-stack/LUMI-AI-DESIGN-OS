@@ -162,7 +162,47 @@ pnpm 11.4.0
 Python 3.12
 ```
 
-Hosted evidence is intentionally pending until the Draft PR triggers GitHub Actions. Previous frontend nodes have been blocked before runner start by the account payment/spending-limit state; if NODE-59 receives the same `steps=null` annotation, it must be recorded as a platform blocker, not PASS and not a code/test failure.
+## Hosted evidence
+
+Implementation SHA:
+
+```text
+6d393e82d013728376fc9319cc8f6b415d1bbfb0
+```
+
+Versions UI workflow:
+
+```text
+run id: 31866209073
+run number: 1
+status: completed
+conclusion: failure
+```
+
+Jobs observed:
+
+```text
+versions-contract       94967606694  failure  steps=null
+versions-build                        skipped  steps=null
+versions-quality                      skipped  steps=null
+versions-browser-e2e                  skipped  steps=null
+```
+
+GitHub check annotation for `versions-contract` states:
+
+```text
+The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+```
+
+Therefore the GitHub-hosted runner did **not** start. NODE-59's static validator, TypeScript checks, unit tests, lint, production build and Playwright scenarios did not execute on hosted infrastructure.
+
+Correct classification:
+
+```text
+hosted pinned gates = BLOCKED BEFORE RUNNER
+```
+
+This is a GitHub account billing/spending-limit platform blocker. It is **not** a code/test failure and it is **not** a PASS.
 
 ## Production dependencies
 
@@ -194,7 +234,7 @@ provenance permission handling        IMPLEMENTED
 concurrent-head notice                IMPLEMENTED
 unit/browser coverage                 STAGED
 static architecture gate              STAGED
-hosted pinned gates                   PENDING EXECUTION
+hosted pinned gates                   BLOCKED BEFORE RUNNER
 production NODE-42 services           INTEGRATION DEPENDENCY
 ```
 
