@@ -1,0 +1,32 @@
+NODE-13 local executable validation
+Date: 2026-08-16
+Branch: feat/node-13-design-ir
+Pull Request: #79
+
+Validation was executed from a fresh shallow clone of the NODE-13 branch.
+
+Commands completed with zero exit status:
+
+1. uv sync --all-packages --frozen
+2. PYTHONPATH=apps/api/src uv run python tools/node13/validate_design_ir.py
+3. PYTHONPATH=apps/api/src uv run pytest -q apps/api/tests/test_design_ir_contract.py
+4. PYTHONPATH=apps/api/src uv run python tools/node13/export_design_schemas.py
+5. parsed both generated *.schema.json files with Python json
+6. uv run ruff check apps/api/src/lumi_api/design_ir apps/api/tests/test_design_ir_contract.py tools/node13
+7. uv run pyright apps/api/src/lumi_api/design_ir apps/api/tests/test_design_ir_contract.py tools/node13
+8. created and verified /tmp/NODE13_PASS only after all validation commands succeeded
+
+Validated properties include:
+
+- frozen workspace dependencies are internally consistent for the NODE-13 branch;
+- Design IR deterministic validator executes successfully;
+- executable Scene Graph / operation tests pass locally;
+- Design IR and DesignOperationBatch JSON Schema export succeeds;
+- exactly two generated schema files parse as valid JSON;
+- NODE-13 Python files pass Ruff;
+- NODE-13 Python files/tests/tools pass Pyright;
+- no local runtime failure was observed in the NODE-13 validation sequence.
+
+Qualification:
+
+This is local executable evidence only. It does not replace GitHub-hosted repository CI/security checks or the dedicated `.github/workflows/node-13-design-ir.yml` result. NODE-13 remains VALIDATING until its hosted gates and stacked dependency chain are resolved.
