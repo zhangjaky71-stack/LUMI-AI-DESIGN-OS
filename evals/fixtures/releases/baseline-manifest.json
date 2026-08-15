@@ -12,8 +12,11 @@
   "constraint_policy_version": "constraints@1.0.0",
   "context_policy_version": "context@1.0.0",
   "suite_versions": {"smoke": "1.0.0", "auto-repair": "1.0.0", "visual-critic": "1.0.0"},
-  "benchmark_profile_name": "production-baseline",
-  "benchmark_profile_version": "0.0.1",
+  "benchmark_profiles": {
+    "smoke": {"name": "production-baseline", "version": "0.0.1"},
+    "auto-repair": {"name": "pre-node-51-baseline", "version": "1.0.0"},
+    "visual-critic": {"name": "visual-critic-baseline", "version": "1.0.0"}
+  },
   "evidence_mode": "fixture",
   "source": "fixture"
 }
