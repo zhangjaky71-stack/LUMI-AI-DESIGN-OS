@@ -104,7 +104,7 @@ Brand v1.0.0 · next Run
 Brand v1.0.0 · frozen
 ```
 
-The UI does not claim an active Run hot-updates after Brand publish.
+The UI does not claim an active Run hot-updates after Brand publish. Production remains responsible for authoritatively resolving and validating the Project Brand version at Run creation.
 
 ## Compliance truth
 
@@ -115,7 +115,7 @@ artifact_version_id
 brand_rule_set_version
 ```
 
-The deterministic report includes a HARD forbidden-color diagnostic on `node-offer` and a SOFT voice diagnostic on `node-headline`. Unknown historical rule versions fail with `BRAND_RULE_VERSION_STALE` instead of falling back to latest.
+The deterministic report includes a HARD forbidden-color diagnostic on `node-offer` and a SOFT voice diagnostic on `node-headline`. Canonical decisions are `PASS / PASS_WITH_WARNINGS / FAIL`. Unknown historical rule versions fail with `BRAND_RULE_VERSION_STALE` instead of falling back to latest.
 
 Compliance links preserve exact rule version and node:
 
@@ -187,9 +187,35 @@ The contract job runs the entire frontend architecture validator chain and typec
 
 ## Hosted evidence
 
-Not recorded yet. Hosted evidence must be read after the Draft PR is opened.
+Implementation SHA:
 
-Previous NODE-53 through NODE-57 GitHub Actions were blocked before runner start by the repository account payment/spending-limit state. If NODE-58 receives the same annotation with `steps=null`, it must be recorded as a platform blocker — not as test PASS and not as a code/test failure.
+```text
+c6ffd62d09a64a4cf839f6971895a65e8602060d
+```
+
+Brand Kit UI workflow:
+
+```text
+run id: 31864299478
+run number: 1
+```
+
+Jobs observed:
+
+```text
+brand-kit-contract       94962777284  failure  steps=null
+brand-kit-quality                     skipped  steps=null
+brand-kit-build                       skipped  steps=null
+brand-kit-browser-e2e                 skipped  steps=null
+```
+
+GitHub check annotation for `brand-kit-contract` states:
+
+```text
+The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+```
+
+Therefore the runner did **not** start and none of NODE-58's static/typecheck/unit/lint/build/browser gates executed on GitHub-hosted infrastructure. This is an account billing/spending-limit platform blocker. It is **not** a code/test failure and it is **not** a PASS.
 
 ## Production dependency truth
 
@@ -225,7 +251,7 @@ compliance preview                    IMPLEMENTED
 compliance → Canvas node              IMPLEMENTED
 unit/browser coverage                 STAGED
 static architecture gate              STAGED
-hosted pinned gates                   PENDING EXECUTION
+hosted pinned gates                   BLOCKED BEFORE RUNNER
 production Brand APIs/workers         INTEGRATION DEPENDENCY
 ```
 
