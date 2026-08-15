@@ -46,6 +46,13 @@ export interface CanvasDocumentSummary {
   readonly selection_options: readonly CanvasSelectionOption[];
 }
 
+export interface WorkspaceBrandBinding {
+  readonly brand_profile_id: string;
+  readonly brand_name: string;
+  readonly policy: "CURRENT_PUBLISHED" | "PINNED";
+  readonly resolved_rule_set_version: string | null;
+}
+
 export interface WorkspaceArtifact {
   readonly artifact_id: string;
   readonly version_id: string;
@@ -132,6 +139,7 @@ export interface AgentRunSnapshot {
   readonly selected_node_ids: readonly string[];
   readonly document_version: number;
   readonly tasks: readonly AgentTaskSummary[];
+  readonly brand_rule_set_version?: string | null;
   readonly safe_summary?: string | null;
   readonly cost_summary?: AgentCostSummary | null;
 }
@@ -140,6 +148,7 @@ export interface AIWorkspaceSnapshot {
   readonly project_id: string;
   readonly project_name: string;
   readonly brand_name: string | null;
+  readonly brand_binding?: WorkspaceBrandBinding | null;
   readonly document: CanvasDocumentSummary;
   readonly references: readonly ProjectReference[];
   readonly run: AgentRunSnapshot | null;
@@ -155,6 +164,7 @@ export interface StartRunInput {
   readonly document_version: number;
   readonly reference_asset_ids: readonly string[];
   readonly reference_artifact_version_ids: readonly string[];
+  readonly brand_rule_set_version?: string | null;
 }
 
 export interface RunControlInput {
