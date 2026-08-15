@@ -40,7 +40,7 @@ resource "aws_service_discovery_service" "this" {
   name = each.key
 
   dns_config {
-    namespace_id = aws_service_discovery_private_dns_namespace.this.id
+    namespace_id   = aws_service_discovery_private_dns_namespace.this.id
     routing_policy = "MULTIVALUE"
     dns_records {
       ttl  = 10
@@ -176,7 +176,31 @@ resource "aws_lb" "this" {
 resource "aws_lb_target_group" "public" {
   for_each = local.public_services
 
-  name        = substr("${local.name}-${each.key}", 0, 32)
+  name        = substr("${local.name}-${each.key}-blue", 0, 32)
+  port        = each.value.container_port
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    enabled             = true
+    path                = each.value.health_check_path
+    protocol            = "HTTP"
+    matcher             = "200-399"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    interval            = 30
+    timeout             = 5
+  }
+
+  deregistration_delay = 30
+  tags                 = local.tags
+}
+
+resource "aws_lb_target_group" "public_alternate" {
+  for_each = local.public_services
+
+  name        = substr("${local.name}-${each.key}-green", 0, 32)
   port        = each.value.container_port
   protocol    = "HTTP"
   target_type = "ip"
@@ -205,9 +229,96 @@ resource "aws_lb_listener" "https" {
   certificate_arn   = var.certificate_arn
 
   default_action {
-    type             = "forward"
-    target_group_arn = values(aws_lb_target_group.public)[0].arn
+    type = "fixed-response"
+    fixed_response {
+      content_type = "application/json"
+      message_body = "{\"detail\":\"not found\"}"
+      status_code  = "404"
+    }
   }
+}
+
+resource "aws_lb_listener_rule" "public" {
+  for_each = local.public_services
+
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.public[each.key].arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/*"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "ecs_load_balancer_assume" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["ecs.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "ecs_load_balancer" {
+  name               = "${local.name}-ecs-lb"
+  assume_role_policy = data.aws_iam_policy_document.ecs_load_balancer_assume.json
+  tags               = local.tags
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_load_balancer" {
+  role       = aws_iam_role.ecs_load_balancer.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonECSInfrastructureRolePolicyForLoadBalancers"
+}
+
+resource "aws_cloudwatch_metric_alarm" "public_canary_5xx" {
+  for_each = local.public_services
+
+  alarm_name          = "${local.name}-${each.key}-canary-5xx"
+  alarm_description   = "Rollback public ECS canary when the green target group emits repeated 5xx responses."
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 2
+  metric_name         = "HTTPCode_Target_5XX_Count"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60
+  statistic           = "Sum"
+  threshold           = 5
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    LoadBalancer = aws_lb.this.arn_suffix
+    TargetGroup  = aws_lb_target_group.public_alternate[each.key].arn_suffix
+  }
+
+  tags = local.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "public_canary_unhealthy" {
+  for_each = local.public_services
+
+  alarm_name          = "${local.name}-${each.key}-canary-unhealthy"
+  alarm_description   = "Rollback public ECS canary when the green target group remains unhealthy."
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 2
+  metric_name         = "UnHealthyHostCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60
+  statistic           = "Maximum"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    LoadBalancer = aws_lb.this.arn_suffix
+    TargetGroup  = aws_lb_target_group.public_alternate[each.key].arn_suffix
+  }
+
+  tags = local.tags
 }
 
 resource "aws_ecs_task_definition" "service" {
@@ -282,9 +393,38 @@ resource "aws_ecs_service" "service" {
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
 
-  deployment_circuit_breaker {
-    enable   = true
-    rollback = true
+  deployment_controller {
+    type = "ECS"
+  }
+
+  dynamic "deployment_circuit_breaker" {
+    for_each = each.value.publicly_routed ? [] : [1]
+    content {
+      enable   = true
+      rollback = true
+    }
+  }
+
+  dynamic "deployment_configuration" {
+    for_each = each.value.publicly_routed ? [1] : []
+    content {
+      strategy             = "CANARY"
+      bake_time_in_minutes = var.public_canary_bake_time_minutes
+
+      canary_configuration {
+        canary_percent              = var.public_canary_percent
+        canary_bake_time_in_minutes = var.public_canary_bake_time_minutes
+      }
+
+      alarms {
+        alarm_names = [
+          aws_cloudwatch_metric_alarm.public_canary_5xx[each.key].alarm_name,
+          aws_cloudwatch_metric_alarm.public_canary_unhealthy[each.key].alarm_name,
+        ]
+        enable   = true
+        rollback = true
+      }
+    }
   }
 
   network_configuration {
@@ -303,10 +443,19 @@ resource "aws_ecs_service" "service" {
       target_group_arn = aws_lb_target_group.public[each.key].arn
       container_name   = each.key
       container_port   = each.value.container_port
+
+      advanced_configuration {
+        alternate_target_group_arn = aws_lb_target_group.public_alternate[each.key].arn
+        production_listener_rule   = aws_lb_listener_rule.public[each.key].arn
+        role_arn                   = aws_iam_role.ecs_load_balancer.arn
+      }
     }
   }
 
-  depends_on = [aws_lb_listener.https]
+  depends_on = [
+    aws_lb_listener_rule.public,
+    aws_iam_role_policy_attachment.ecs_load_balancer,
+  ]
 
   lifecycle {
     ignore_changes = [desired_count]
