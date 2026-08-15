@@ -11,7 +11,6 @@ module "compute" {
   certificate_arn           = var.certificate_arn
   kms_key_arn               = var.kms_key_arn
   services                  = var.services
-  migration_task            = var.migration_task
   tags                      = var.tags
 }
 
