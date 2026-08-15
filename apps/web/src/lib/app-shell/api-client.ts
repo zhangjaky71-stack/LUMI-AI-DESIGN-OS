@@ -123,13 +123,14 @@ export class LumiApiClient {
         if (method !== "GET" || attempt + 1 >= attempts) break;
       }
     }
-    throw new LumiApiError({
+    const problem: ProblemDetails = {
       type: "https://errors.lumi.dev/network/unavailable",
       title: "Network unavailable",
       status: 503,
       code: "NETWORK_UNAVAILABLE",
       request_id: id,
-      detail: lastNetworkError instanceof Error ? lastNetworkError.name : undefined,
-    });
+      ...(lastNetworkError instanceof Error ? { detail: lastNetworkError.name } : {}),
+    };
+    throw new LumiApiError(problem);
   }
 }
