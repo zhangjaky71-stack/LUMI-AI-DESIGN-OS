@@ -38,6 +38,7 @@ jobs:
           python3 -m py_compile \
             evals/release.py \
             evals/release_control.py \
+            evals/statistics.py \
             evals/live.py \
             scripts/validate_ai_release_contract.py \
             scripts/ai-release-gate.py
@@ -65,7 +66,11 @@ jobs:
       - name: Frozen dependency sync
         run: uv sync --frozen
       - name: Run benchmark and release-gate tests
-        run: uv run pytest -q evals/tests/test_harness.py evals/tests/test_release_gate.py
+        run: |
+          uv run pytest -q \
+            evals/tests/test_harness.py \
+            evals/tests/test_release_gate.py \
+            evals/tests/test_statistics.py
 
   live-provider-preflight:
     if: github.event_name == 'workflow_dispatch'
