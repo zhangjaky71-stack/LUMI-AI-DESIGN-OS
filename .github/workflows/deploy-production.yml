@@ -1,0 +1,275 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Production operation"
+        required: true
+        type: choice
+        options:
+          - plan-core
+          - apply-core
+          - plan-release
+          - deploy-release
+      manifest_path:
+        description: "Completed manifest under reports/production-deployments/<deployment-id>/manifest.json"
+        required: true
+        type: string
+      acceptance_decision_path:
+        description: "NODE-71 passed decision under reports/staging-acceptance/.../decision.json"
+        required: true
+        type: string
+      deploy_ack:
+        description: "For mutations: DEPLOY_PRODUCTION:<deployment-id>"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  OPERATION: ${{ inputs.operation }}
+  MANIFEST_PATH_INPUT: ${{ inputs.manifest_path }}
+  ACCEPTANCE_PATH_INPUT: ${{ inputs.acceptance_decision_path }}
+  DEPLOY_ACK: ${{ inputs.deploy_ack }}
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      deployment_id: ${{ steps.release.outputs.deployment_id }}
+      version: ${{ steps.release.outputs.version }}
+      account_id: ${{ steps.release.outputs.account_id }}
+      region: ${{ steps.release.outputs.region }}
+      production_role_arn: ${{ steps.release.outputs.production_role_arn }}
+      domain: ${{ steps.release.outputs.domain }}
+      certificate_arn: ${{ steps.release.outputs.certificate_arn }}
+      api_image: ${{ steps.release.outputs.api_image }}
+      agent_runtime_image: ${{ steps.release.outputs.agent_runtime_image }}
+      model_gateway_image: ${{ steps.release.outputs.model_gateway_image }}
+      tool_gateway_image: ${{ steps.release.outputs.tool_gateway_image }}
+      worker_media_image: ${{ steps.release.outputs.worker_media_image }}
+      sandbox_runtime_image: ${{ steps.release.outputs.sandbox_runtime_image }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Resolve and constrain evidence paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path.cwd().resolve()
+          manifest = (root / os.environ['MANIFEST_PATH_INPUT']).resolve()
+          acceptance = (root / os.environ['ACCEPTANCE_PATH_INPUT']).resolve()
+          prod_root = (root / 'reports/production-deployments').resolve()
+          staging_root = (root / 'reports/staging-acceptance').resolve()
+          try:
+              manifest.relative_to(prod_root)
+              acceptance.relative_to(staging_root)
+          except ValueError as exc:
+              raise SystemExit('deployment/acceptance evidence path escapes its allowed archive root') from exc
+          if manifest.name != 'manifest.json' or acceptance.name != 'decision.json':
+              raise SystemExit('manifest must be manifest.json and staging acceptance must be decision.json')
+          if not manifest.is_file() or not acceptance.is_file():
+              raise SystemExit('required deployment evidence file is missing')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'MANIFEST_PATH={manifest.relative_to(root).as_posix()}\n')
+              fh.write(f'ACCEPTANCE_PATH={acceptance.relative_to(root).as_posix()}\n')
+          PY
+      - name: Require exact NODE-71 accepted release candidate
+        run: |
+          mkdir -p reports/production-deployments/runtime
+          python3 scripts/production-deployment-gate.py \
+            --manifest "$MANIFEST_PATH" \
+            --acceptance-decision "$ACCEPTANCE_PATH" \
+            --output reports/production-deployments/runtime/deployment-gate.json
+      - name: Export immutable release metadata
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          emit() { printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"; }
+          emit deployment_id "$(jq -r '.deployment_id' "$MANIFEST_PATH")"
+          emit version "$(jq -r '.release_candidate.version' "$MANIFEST_PATH")"
+          emit account_id "$(jq -r '.aws.account_id' "$MANIFEST_PATH")"
+          emit region "$(jq -r '.aws.region' "$MANIFEST_PATH")"
+          emit production_role_arn "$(jq -r '.aws.production_role_arn' "$MANIFEST_PATH")"
+          emit domain "$(jq -r '.edge.domain' "$MANIFEST_PATH")"
+          emit certificate_arn "$(jq -r '.edge.certificate_arn' "$MANIFEST_PATH")"
+          emit api_image "$(jq -r '.images.api' "$MANIFEST_PATH")"
+          emit agent_runtime_image "$(jq -r '.images["agent-runtime"]' "$MANIFEST_PATH")"
+          emit model_gateway_image "$(jq -r '.images["model-gateway"]' "$MANIFEST_PATH")"
+          emit tool_gateway_image "$(jq -r '.images["tool-gateway"]' "$MANIFEST_PATH")"
+          emit worker_media_image "$(jq -r '.images["worker-media"]' "$MANIFEST_PATH")"
+          emit sandbox_runtime_image "$(jq -r '.images["sandbox-runtime"]' "$MANIFEST_PATH")"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-deployment-gate-${{ github.run_id }}
+          path: reports/production-deployments/runtime/deployment-gate.json
+          retention-days: 90
+
+  production:
+    needs: [release-gate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    environment: production
+    env:
+      AWS_REGION: ${{ needs.release-gate.outputs.region }}
+      DEPLOYMENT_ID: ${{ needs.release-gate.outputs.deployment_id }}
+      RELEASE_VERSION: ${{ needs.release-gate.outputs.version }}
+      RELEASE_DOMAIN: ${{ needs.release-gate.outputs.domain }}
+      MANIFEST_ROLE_ARN: ${{ needs.release-gate.outputs.production_role_arn }}
+      TF_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+      TF_VAR_account_id: ${{ needs.release-gate.outputs.account_id }}
+      TF_VAR_region: ${{ needs.release-gate.outputs.region }}
+      TF_VAR_availability_zones: ${{ vars.AWS_AVAILABILITY_ZONES_JSON }}
+      TF_VAR_postgres_engine_version: ${{ vars.POSTGRES_ENGINE_VERSION }}
+      TF_VAR_redis_engine_version: ${{ vars.REDIS_ENGINE_VERSION }}
+      TF_VAR_rabbitmq_engine_version: ${{ vars.RABBITMQ_ENGINE_VERSION }}
+      TF_VAR_rabbitmq_instance_type: ${{ vars.RABBITMQ_INSTANCE_TYPE }}
+      TF_VAR_redis_auth_token: ${{ secrets.REDIS_AUTH_TOKEN }}
+      TF_VAR_rabbitmq_username: ${{ secrets.RABBITMQ_USERNAME }}
+      TF_VAR_rabbitmq_password: ${{ secrets.RABBITMQ_PASSWORD }}
+      TF_VAR_core_state_bucket: ${{ vars.TERRAFORM_STATE_BUCKET }}
+      TF_VAR_certificate_arn: ${{ needs.release-gate.outputs.certificate_arn }}
+      TF_VAR_domain_name: ${{ needs.release-gate.outputs.domain }}
+      TF_VAR_hosted_zone_id: ${{ vars.ROUTE53_HOSTED_ZONE_ID }}
+      TF_VAR_api_image: ${{ needs.release-gate.outputs.api_image }}
+      TF_VAR_agent_runtime_image: ${{ needs.release-gate.outputs.agent_runtime_image }}
+      TF_VAR_model_gateway_image: ${{ needs.release-gate.outputs.model_gateway_image }}
+      TF_VAR_tool_gateway_image: ${{ needs.release-gate.outputs.tool_gateway_image }}
+      TF_VAR_worker_media_image: ${{ needs.release-gate.outputs.worker_media_image }}
+      TF_VAR_sandbox_runtime_image: ${{ needs.release-gate.outputs.sandbox_runtime_image }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+      - name: Require protected environment configuration and exact deploy role
+        shell: bash
+        env:
+          ENVIRONMENT_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          test -n "$TF_STATE_BUCKET"
+          test -n "$ENVIRONMENT_DEPLOY_ROLE_ARN"
+          test "$ENVIRONMENT_DEPLOY_ROLE_ARN" = "$MANIFEST_ROLE_ARN"
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          aws-region: ${{ needs.release-gate.outputs.region }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: lumi-production-${{ github.run_id }}
+      - name: Verify AWS account identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(aws sts get-caller-identity --query Account --output text)"
+          test "$actual" = "$TF_VAR_account_id"
+      - name: Require explicit acknowledgement for mutations
+        if: inputs.operation == 'apply-core' || inputs.operation == 'deploy-release'
+        shell: bash
+        run: test "$DEPLOY_ACK" = "DEPLOY_PRODUCTION:${DEPLOYMENT_ID}"
+      - name: Prepare encrypted state backend helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/production-deployments/runtime
+          cat > /tmp/init-root.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          root="$1"; key="$2"
+          cat > /tmp/backend.hcl <<BACKEND
+          bucket       = "$TF_STATE_BUCKET"
+          key          = "$key"
+          region       = "$AWS_REGION"
+          encrypt      = true
+          use_lockfile = true
+          BACKEND
+          terraform -chdir="$root" init -input=false -backend-config=/tmp/backend.hcl
+          EOF
+          chmod +x /tmp/init-root.sh
+      - name: Plan production core
+        if: inputs.operation == 'plan-core' || inputs.operation == 'apply-core'
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=infra/iac/environments/production/core
+          /tmp/init-root.sh "$root" lumi/production/core/terraform.tfstate
+          terraform -chdir="$root" plan -input=false -out=tfplan
+      - name: Apply reviewed production core plan
+        if: inputs.operation == 'apply-core'
+        run: terraform -chdir=infra/iac/environments/production/core apply -input=false -auto-approve tfplan
+      - name: Plan production release stacks
+        if: inputs.operation == 'plan-release'
+        shell: bash
+        run: |
+          set -euo pipefail
+          migration=infra/iac/environments/production/migration
+          app=infra/iac/environments/production/app
+          /tmp/init-root.sh "$migration" lumi/production/migration/terraform.tfstate
+          terraform -chdir="$migration" plan -input=false -out=tfplan
+          /tmp/init-root.sh "$app" lumi/production/app/terraform.tfstate
+          terraform -chdir="$app" plan -input=false -out=tfplan
+      - name: Verify all required production secret values exist
+        if: inputs.operation == 'deploy-release'
+        run: bash scripts/check-aws-secret-versions.sh production reports/production-deployments/runtime/secrets-ready.json
+      - name: Initialize production core for safety outputs
+        if: inputs.operation == 'deploy-release'
+        run: /tmp/init-root.sh infra/iac/environments/production/core lumi/production/core/terraform.tfstate
+      - name: Create and wait for pre-deployment RDS snapshot
+        if: inputs.operation == 'deploy-release'
+        run: bash scripts/create-predeploy-rds-snapshot.sh infra/iac/environments/production/core "$DEPLOYMENT_ID" reports/production-deployments/runtime/predeploy-snapshot.json
+      - name: Register migration task from accepted API image
+        if: inputs.operation == 'deploy-release'
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=infra/iac/environments/production/migration
+          /tmp/init-root.sh "$root" lumi/production/migration/terraform.tfstate
+          terraform -chdir="$root" plan -input=false -out=tfplan
+          terraform -chdir="$root" apply -input=false -auto-approve tfplan
+      - name: Run Alembic migration once and require exit zero
+        if: inputs.operation == 'deploy-release'
+        run: bash scripts/ecs-run-one-shot-task.sh infra/iac/environments/production/migration "$DEPLOYMENT_ID" reports/production-deployments/runtime/migration.json
+      - name: Plan production application after successful migration
+        if: inputs.operation == 'deploy-release'
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=infra/iac/environments/production/app
+          /tmp/init-root.sh "$root" lumi/production/app/terraform.tfstate
+          terraform -chdir="$root" plan -input=false -out=tfplan
+      - name: Apply production application and wait for canary/rolling steady state
+        if: inputs.operation == 'deploy-release'
+        run: terraform -chdir=infra/iac/environments/production/app apply -input=false -auto-approve tfplan
+      - name: Capture and verify ECS deployment state
+        if: inputs.operation == 'deploy-release'
+        run: bash scripts/capture-ecs-deployment-state.sh infra/iac/environments/production/app reports/production-deployments/runtime/ecs-deployment-state.json
+      - name: Read-only production smoke
+        if: inputs.operation == 'deploy-release'
+        run: |
+          python3 scripts/production-read-only-smoke.py \
+            --base-url "https://${RELEASE_DOMAIN}" \
+            --expected-version "$RELEASE_VERSION" \
+            --expected-host "$RELEASE_DOMAIN" \
+            --output reports/production-deployments/runtime/production-smoke.json
+      - name: Archive runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-deployment-${{ needs.release-gate.outputs.deployment_id }}-${{ github.run_id }}
+          path: reports/production-deployments/runtime/
+          if-no-files-found: warn
+          retention-days: 90

@@ -4,7 +4,7 @@ import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import Connection, pool
+from sqlalchemy import Connection, pool, text
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from lumi_api.config import get_settings
@@ -17,6 +17,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+MIGRATION_ADVISORY_LOCK_ID = 7_204_726_001
 
 
 def migration_url() -> str:
@@ -43,14 +44,27 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(
-        connection=connection,
-        target_metadata=target_metadata,
-        compare_type=True,
-        compare_server_default=False,
-    )
-    with context.begin_transaction():
-        context.run_migrations()
+    acquired = connection.execute(
+        text("SELECT pg_try_advisory_lock(:lock_id)"),
+        {"lock_id": MIGRATION_ADVISORY_LOCK_ID},
+    ).scalar_one()
+    if acquired is not True:
+        raise RuntimeError("another LUMI database migration is already running")
+
+    try:
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            compare_server_default=False,
+        )
+        with context.begin_transaction():
+            context.run_migrations()
+    finally:
+        connection.execute(
+            text("SELECT pg_advisory_unlock(:lock_id)"),
+            {"lock_id": MIGRATION_ADVISORY_LOCK_ID},
+        )
 
 
 async def run_async_migrations() -> None:
