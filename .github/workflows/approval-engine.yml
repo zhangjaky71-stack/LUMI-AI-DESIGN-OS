@@ -1,0 +1,166 @@
+name: Approval Engine
+
+on:
+  pull_request:
+    paths:
+      - "services/project-core/src/lumi_project_core/approval.py"
+      - "services/project-core/tests/test_approval.py"
+      - "apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/approval_bridge.py"
+      - "apps/agent-runtime/tests/test_approval_bridge.py"
+      - "apps/api/src/lumi_api/approval_router.py"
+      - "apps/api/tests/test_approval_router.py"
+      - "db/migrations/0012_approval_engine.sql"
+      - "apps/web/src/app/app/projects/**/approvals/**"
+      - "apps/web/src/app/app/projects/**/page.tsx"
+      - "apps/web/src/components/approval-ui/**"
+      - "apps/web/src/lib/approval-ui/**"
+      - "apps/web/e2e/approval-ui.spec.ts"
+      - "scripts/validate_approval_engine.py"
+      - "docs/nodes/NODE-62-APPROVAL-ENGINE.md"
+      - "docs/runtime/APPROVAL-ENGINE-V1.md"
+      - "reports/nodes/NODE-62/**"
+      - ".github/workflows/approval-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  approval-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install Node workspace
+        run: pnpm install --frozen-lockfile
+      - uses: astral-sh/setup-uv@v7
+        with: { version: "0.10.9" }
+      - name: Sync locked Python workspace
+        run: uv sync --frozen
+      - name: Validate architecture chain through NODE-62
+        run: |
+          python scripts/validate_collaboration.py
+          python scripts/validate_approval_engine.py
+      - name: Typecheck Approval backend and bridge
+        run: uv run pyright services/project-core/src/lumi_project_core/approval.py apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/approval_bridge.py apps/api/src/lumi_api/approval_router.py
+      - name: Typecheck web
+        run: pnpm --filter @lumi/web typecheck
+
+  approval-backend:
+    needs: approval-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - uses: astral-sh/setup-uv@v7
+        with: { version: "0.10.9" }
+      - run: uv sync --frozen
+      - name: Run Approval domain, API and Graph bridge tests
+        run: uv run pytest services/project-core/tests/test_approval.py apps/api/tests/test_approval_router.py apps/agent-runtime/tests/test_approval_bridge.py
+      - name: Correctness lint
+        run: uv run ruff check --select F,B services/project-core/src/lumi_project_core/approval.py services/project-core/tests/test_approval.py apps/api/src/lumi_api/approval_router.py apps/api/tests/test_approval_router.py apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/approval_bridge.py apps/agent-runtime/tests/test_approval_bridge.py
+
+  approval-db:
+    needs: approval-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: lumi, POSTGRES_PASSWORD: lumi, POSTGRES_DB: lumi }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U lumi -d lumi"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Apply collaboration + Approval schemas
+        env: { PGPASSWORD: lumi }
+        run: |
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0001_artifact_engine.sql
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0011_collaboration.sql
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0012_approval_engine.sql
+      - name: Verify Approval durable schema
+        env: { PGPASSWORD: lumi }
+        run: |
+          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.tables where table_name in ('approvals','approval_decisions','approval_change_requests','approval_audit_events');\")" = "4"
+          psql -h 127.0.0.1 -U lumi -d lumi -Atc "select data_type from information_schema.columns where table_name='approvals' and column_name='required_roles';" | grep -qx jsonb
+          psql -h 127.0.0.1 -U lumi -d lumi -Atc "select count(*) from pg_constraint where conrelid='approval_change_requests'::regclass and contype='f';" | grep -qx 2
+
+  approval-quality:
+    needs: approval-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Run Approval frontend units
+        run: pnpm --filter @lumi/web exec vitest run src/lib/approval-ui
+      - name: Re-run dependent frontend units
+        run: pnpm --filter @lumi/web exec vitest run src/lib/collaboration src/lib/ai-workspace
+      - run: pnpm --filter @lumi/web lint
+
+  approval-build:
+    needs: approval-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    env:
+      LUMI_SHELL_E2E_AUTH: "0"
+      LUMI_PROJECTS_E2E: "0"
+      LUMI_AI_WORKSPACE_E2E: "0"
+      LUMI_INFINITE_CANVAS_E2E: "0"
+      LUMI_BRAND_KIT_E2E: "0"
+      LUMI_VERSIONS_E2E: "0"
+      LUMI_EXPORT_UI_E2E: "0"
+      LUMI_COLLABORATION_E2E: "0"
+      LUMI_APPROVAL_E2E: "0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lumi/web build
+      - name: Assert Approval deterministic fixture absent from production chunks
+        run: |
+          if grep -R --line-number --fixed-strings 'approval-e2e-run-62' apps/web/.next/static 2>/dev/null; then
+            echo 'NODE-62 deterministic approval fixture leaked into production client chunks.' >&2
+            exit 1
+          fi
+
+  approval-browser-e2e:
+    needs: [approval-backend, approval-db, approval-quality, approval-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      LUMI_SHELL_E2E_AUTH: "1"
+      LUMI_PROJECTS_E2E: "1"
+      LUMI_AI_WORKSPACE_E2E: "1"
+      LUMI_INFINITE_CANVAS_E2E: "1"
+      LUMI_BRAND_KIT_E2E: "1"
+      LUMI_VERSIONS_E2E: "1"
+      LUMI_EXPORT_UI_E2E: "1"
+      LUMI_COLLABORATION_E2E: "1"
+      LUMI_APPROVAL_E2E: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Run NODE-62 Approval browser scenarios
+        run: pnpm exec playwright test apps/web/e2e/approval-ui.spec.ts
+      - name: Re-run NODE-61 through NODE-54 browser regressions
+        run: pnpm exec playwright test apps/web/e2e/collaboration.spec.ts apps/web/e2e/export-ui.spec.ts apps/web/e2e/versions-ui.spec.ts apps/web/e2e/brand-kit.spec.ts apps/web/e2e/agent-timeline.spec.ts apps/web/e2e/layers-inspector.spec.ts apps/web/e2e/infinite-canvas.spec.ts apps/web/e2e/ai-workspace.spec.ts
