@@ -71,7 +71,7 @@ export class LumiApiClient {
   readonly #baseUrl: string;
   readonly #transport: typeof fetch;
   readonly #context: () => ApiClientContext;
-  readonly #onUnauthorized?: UnauthorizedHandler;
+  readonly #onUnauthorized: UnauthorizedHandler | undefined;
 
   constructor(
     options: {
