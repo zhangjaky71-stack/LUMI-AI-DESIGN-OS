@@ -4,11 +4,14 @@ Status: **IMPLEMENTED / VALIDATING / NOT COMPLETE**
 
 ## Implementation evidence
 
+- implementation commit: `c7113344e01a3e28c0f8aac1425bb87175f12c3a`;
 - append-only `AuditEvent` domain with organization-scoped hash chaining;
 - correction-by-new-event only; no ordinary Audit update/delete API;
 - USER / PLATFORM_ADMIN / AGENT / SERVICE actor identity;
 - Agent audit fails closed without exact agent version + Run + Task + human initiator;
 - organization audit query forced to its tenant; Platform Security cross-org is a separate permission path;
+- Audit read and Audit export are separate permissions;
+- server-authoritative Governance capability projection drives browser affordances;
 - cursor pagination and time/actor/action/resource/result/trace filters;
 - field-level redaction for secrets, credentials, card values, prompt/content, IP and presigned URL query material;
 - bounded safe change summary with changed fields, version refs and semantic diff ref;
@@ -39,7 +42,32 @@ Status: **IMPLEMENTED / VALIDATING / NOT COMPLETE**
 - PostgreSQL append-only schema gate;
 - prior NODE-64 through NODE-54 regressions.
 
-These suites are **STAGED**, not observed PASS, until hosted runners actually execute them.
+These suites are **STAGED**, not observed PASS, because the hosted runner did not start.
+
+## Hosted validation evidence
+
+Implementation SHA: `c7113344e01a3e28c0f8aac1425bb87175f12c3a`
+
+Audit Governance workflow:
+
+- run: `31874914451` (#1);
+- `governance-contract` job/check: `94989100667` — **failure before runner**;
+- `runner_id=0`;
+- `runner_name=""`;
+- `steps=[]`;
+- `governance-db` / `94989109340`: skipped;
+- `governance-quality` / `94989109430`: skipped;
+- `governance-build` / `94989109484`: skipped;
+- `governance-browser-e2e` / `94989109565`: skipped;
+- `governance-backend` / `94989109568`: skipped.
+
+GitHub annotation:
+
+> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+
+Classification: **BLOCKED BEFORE RUNNER**.
+
+No checkout, dependency install, static validator, Pyright, pytest, Ruff, PostgreSQL migration/schema test, TypeScript/Vitest/lint, Next build, fixture-leak scan or Playwright step executed. Therefore the staged gates are neither observed PASS nor observed code/test failure.
 
 ## Explicit production integration gates
 
@@ -51,6 +79,7 @@ These suites are **STAGED**, not observed PASS, until hosted runners actually ex
 - [ ] real search/vector deletion adapter bound;
 - [ ] background retention/deletion/export workers deployed;
 - [ ] production Platform Security actor resolver + organization governance permission resolver deployed;
+- [ ] public deletion idempotency keys are organization-namespaced in the production API adapter;
 - [ ] external WORM/KMS/storage-retention policy enabled where required;
 - [ ] applicable legal/contractual retention + data-subject policy reviewed before launch;
 - [ ] hosted pinned validation observed green.
@@ -72,5 +101,3 @@ The deterministic repository, resource adapters, browser fixture and in-memory e
 - [ ] production adapters/workers deployed;
 - [ ] legal/contractual policy review complete;
 - [ ] hosted pinned validation observed green.
-
-Hosted evidence will be appended after the implementation commit triggers GitHub Actions.
