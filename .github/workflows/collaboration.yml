@@ -1,0 +1,205 @@
+name: Collaboration
+
+on:
+  pull_request:
+    paths:
+      - "services/project-core/src/lumi_project_core/collaboration.py"
+      - "services/project-core/tests/test_collaboration.py"
+      - "apps/api/src/lumi_api/collaboration_router.py"
+      - "apps/api/tests/test_collaboration_router.py"
+      - "db/migrations/0011_collaboration.sql"
+      - "apps/web/src/app/app/projects/**/collaboration/**"
+      - "apps/web/src/app/app/projects/**/page.tsx"
+      - "apps/web/src/components/collaboration/**"
+      - "apps/web/src/lib/collaboration/**"
+      - "apps/web/e2e/collaboration.spec.ts"
+      - "scripts/validate_collaboration.py"
+      - "docs/nodes/NODE-61-COLLABORATION.md"
+      - "docs/runtime/COLLABORATION-V1.md"
+      - "reports/nodes/NODE-61/**"
+      - ".github/workflows/collaboration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collaboration-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install Node workspace
+        run: pnpm install --frozen-lockfile
+      - name: Install Python workspace
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.9"
+      - name: Sync locked Python workspace
+        run: uv sync --frozen
+      - name: Validate architecture chain through NODE-61
+        run: |
+          python scripts/validate_app_shell.py
+          python scripts/validate_projects_ui.py
+          python scripts/validate_ai_workspace.py
+          python scripts/validate_infinite_canvas.py
+          python scripts/validate_layers_inspector.py
+          python scripts/validate_agent_timeline.py
+          python scripts/validate_brand_kit_ui.py
+          python scripts/validate_versions_ui.py
+          python scripts/validate_export_engine.py
+          python scripts/validate_export_ui.py
+          python scripts/validate_collaboration.py
+      - name: Typecheck collaboration backend
+        run: uv run pyright services/project-core/src/lumi_project_core/collaboration.py apps/api/src/lumi_api/collaboration_router.py
+      - name: Typecheck web product
+        run: pnpm --filter @lumi/web typecheck
+
+  collaboration-backend:
+    needs: collaboration-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.9"
+      - name: Sync locked Python workspace
+        run: uv sync --frozen
+      - name: Run collaboration engine and transport tests
+        run: uv run pytest services/project-core/tests/test_collaboration.py apps/api/tests/test_collaboration_router.py
+      - name: Check collaboration backend for correctness-class lint issues
+        run: >-
+          uv run ruff check --select F,B
+          services/project-core/src/lumi_project_core/collaboration.py
+          services/project-core/tests/test_collaboration.py
+          apps/api/src/lumi_api/collaboration_router.py
+          apps/api/tests/test_collaboration_router.py
+
+  collaboration-db:
+    needs: collaboration-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: lumi
+          POSTGRES_PASSWORD: lumi
+          POSTGRES_DB: lumi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lumi -d lumi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Apply Artifact and Collaboration migrations
+        env:
+          PGPASSWORD: lumi
+        run: |
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0001_artifact_engine.sql
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0011_collaboration.sql
+      - name: Verify durable collaboration schema and ephemeral presence boundary
+        env:
+          PGPASSWORD: lumi
+        run: |
+          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.tables where table_name in ('collaboration_threads','collaboration_comments','collaboration_operation_commits','collaboration_audit_events','collaboration_notifications');\")" = "5"
+          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.tables where table_name like 'collaboration%presence%';\")" = "0"
+          psql -h 127.0.0.1 -U lumi -d lumi -Atc "select data_type from information_schema.columns where table_name='collaboration_threads' and column_name='anchor';" | grep -qx jsonb
+
+  collaboration-quality:
+    needs: collaboration-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run NODE-61 frontend units
+        run: pnpm --filter @lumi/web exec vitest run src/lib/collaboration
+      - name: Run dependent frontend unit regressions
+        run: |
+          pnpm --filter @lumi/web exec vitest run src/lib/export-ui
+          pnpm --filter @lumi/web exec vitest run src/lib/versions-ui
+          pnpm --filter @lumi/web exec vitest run src/lib/brand-kit
+      - name: Lint web product
+        run: pnpm --filter @lumi/web lint
+
+  collaboration-build:
+    needs: collaboration-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    env:
+      LUMI_SHELL_E2E_AUTH: "0"
+      LUMI_PROJECTS_E2E: "0"
+      LUMI_AI_WORKSPACE_E2E: "0"
+      LUMI_INFINITE_CANVAS_E2E: "0"
+      LUMI_BRAND_KIT_E2E: "0"
+      LUMI_VERSIONS_E2E: "0"
+      LUMI_EXPORT_UI_E2E: "0"
+      LUMI_COLLABORATION_E2E: "0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Build production Next.js app
+        run: pnpm --filter @lumi/web build
+      - name: Assert deterministic collaboration fixture is absent from client chunks
+        run: |
+          if grep -R --line-number --fixed-strings 'collaboration-e2e-agent-run-61' apps/web/.next/static 2>/dev/null; then
+            echo 'NODE-61 deterministic fixture leaked into production client chunks.' >&2
+            exit 1
+          fi
+
+  collaboration-browser-e2e:
+    needs: [collaboration-backend, collaboration-db, collaboration-quality, collaboration-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      LUMI_SHELL_E2E_AUTH: "1"
+      LUMI_PROJECTS_E2E: "1"
+      LUMI_AI_WORKSPACE_E2E: "1"
+      LUMI_INFINITE_CANVAS_E2E: "1"
+      LUMI_BRAND_KIT_E2E: "1"
+      LUMI_VERSIONS_E2E: "1"
+      LUMI_EXPORT_UI_E2E: "1"
+      LUMI_COLLABORATION_E2E: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run NODE-61 multi-user browser scenarios
+        run: pnpm exec playwright test apps/web/e2e/collaboration.spec.ts
+      - name: Re-run NODE-60 through NODE-54 browser regressions
+        run: pnpm exec playwright test apps/web/e2e/export-ui.spec.ts apps/web/e2e/versions-ui.spec.ts apps/web/e2e/brand-kit.spec.ts apps/web/e2e/agent-timeline.spec.ts apps/web/e2e/layers-inspector.spec.ts apps/web/e2e/infinite-canvas.spec.ts apps/web/e2e/ai-workspace.spec.ts
