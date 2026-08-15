@@ -73,10 +73,126 @@ resource "aws_s3_bucket_policy" "terraform_state" {
   policy = data.aws_iam_policy_document.terraform_state.json
 }
 
+data "aws_caller_identity" "current" {}
+
+locals {
+  deployment_roles = {
+    staging = {
+      subject = "repo:${var.github_repository}:environment:staging"
+    }
+    production = {
+      subject = "repo:${var.github_repository}:environment:production"
+    }
+  }
+}
+
+data "aws_iam_policy_document" "github_assume" {
+  for_each = local.deployment_roles
+
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [var.github_oidc_provider_arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = [each.value.subject]
+    }
+  }
+}
+
+resource "aws_iam_role" "github_deploy" {
+  for_each = local.deployment_roles
+
+  name                 = "lumi-${each.key}-github-deploy"
+  assume_role_policy   = data.aws_iam_policy_document.github_assume[each.key].json
+  max_session_duration = 3600
+}
+
+data "aws_iam_policy_document" "github_state" {
+  statement {
+    sid       = "StateBucketMetadata"
+    actions   = ["s3:GetBucketLocation", "s3:ListBucket"]
+    resources = [aws_s3_bucket.terraform_state.arn]
+  }
+  statement {
+    sid = "StateObjectAndLockAccess"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+    ]
+    resources = ["${aws_s3_bucket.terraform_state.arn}/*"]
+  }
+  statement {
+    sid = "StateKmsAccess"
+    actions = [
+      "kms:Decrypt",
+      "kms:Encrypt",
+      "kms:GenerateDataKey",
+      "kms:DescribeKey",
+    ]
+    resources = [aws_kms_key.terraform_state.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "github_state" {
+  for_each = aws_iam_role.github_deploy
+  name     = "terraform-state"
+  role     = each.value.id
+  policy   = data.aws_iam_policy_document.github_state.json
+}
+
+# This is a bootstrap provisioning role, not an application runtime role. It is
+# restricted by GitHub Environment OIDC subject and only includes AWS services
+# managed by NODE-72. Runtime ECS task roles remain service-specific/minimal.
+data "aws_iam_policy_document" "github_platform_provisioner" {
+  statement {
+    sid = "ProvisionLumiPlatform"
+    actions = [
+      "ec2:*",
+      "ecs:*",
+      "elasticloadbalancing:*",
+      "application-autoscaling:*",
+      "rds:*",
+      "elasticache:*",
+      "mq:*",
+      "s3:*",
+      "kms:*",
+      "secretsmanager:*",
+      "logs:*",
+      "cloudwatch:*",
+      "servicediscovery:*",
+      "route53:*",
+      "wafv2:*",
+      "iam:*",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "github_platform_provisioner" {
+  for_each = aws_iam_role.github_deploy
+  name     = "lumi-platform-provisioner"
+  role     = each.value.id
+  policy   = data.aws_iam_policy_document.github_platform_provisioner.json
+}
+
 output "state_bucket" {
   value = aws_s3_bucket.terraform_state.bucket
 }
 
 output "state_kms_key_arn" {
   value = aws_kms_key.terraform_state.arn
+}
+
+output "github_deploy_role_arns" {
+  value = { for environment, role in aws_iam_role.github_deploy : environment => role.arn }
 }
