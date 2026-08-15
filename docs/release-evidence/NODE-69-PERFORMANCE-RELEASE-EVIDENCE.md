@@ -27,7 +27,23 @@ The performance harness source baseline is implemented. This is **not** a claim 
 
 NODE-67 browser telemetry already captures TTFB/LCP/INP/CLS plus API/Canvas/route/runtime failures with normalized, bounded labels. NODE-69 treats these as browser diagnostics; it does not stream high-frequency frame samples into general telemetry.
 
-NODE-68/earlier worker architecture already routes media work to dedicated worker queues; production capacity still requires an actual isolation load test.
+Earlier worker architecture already routes media work to dedicated worker queues; production capacity still requires an actual isolation load test.
+
+## Direct CI evidence
+
+PR #69 head `138c813d52cdeb172628cb58ad91cec81ced12aa` triggered Performance Contract run `31883343538`.
+
+Observed:
+
+```text
+source-contract: completed / failure
+job id: 95008865704
+steps: []
+deterministic-local-smoke: skipped (expected for pull_request)
+annotation: job was not started because recent account payments failed or the spending limit needs to be increased
+```
+
+No checkout, validator, syntax check, or benchmark executed. This is an external GitHub Billing/spending-limit blocker, **not** a performance-test failure. Re-running without fixing Billing would add no engineering evidence.
 
 ## Release blockers
 
@@ -61,6 +77,7 @@ TARGET BUDGETS FROZEN: YES (TARGETS ONLY)
 DETERMINISTIC MOCK/LOAD TOOLING: IMPLEMENTED
 DB SNAPSHOT TOOLING: IMPLEMENTED
 AUTOSCALING SIGNAL MODEL: DEFINED
+PERFORMANCE CONTRACT RUN: BLOCKED BEFORE RUNNER START (BILLING)
 LAUNCH TARGET EXECUTED: NO
 CANVAS/SOAK/FAILURE DATA: MISSING
 MEASURED CAPACITY/COST: MISSING
