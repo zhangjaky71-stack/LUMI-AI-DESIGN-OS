@@ -43,6 +43,9 @@ export class SafeTelemetry {
     event: TelemetryEventName,
     properties: TelemetryProperties = {},
   ): void {
-    void this.#adapter.emit(event, sanitizeTelemetryProperties(properties));
+    const safeProperties = sanitizeTelemetryProperties(properties);
+    void Promise.resolve(this.#adapter.emit(event, safeProperties)).catch(
+      () => undefined,
+    );
   }
 }
