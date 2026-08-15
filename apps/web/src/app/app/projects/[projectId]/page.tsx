@@ -16,21 +16,11 @@ export default async function ProjectPage({
       <div className={workspaceStyles.workspaceEntry}>
         <span>自然语言 + Canvas + Approval + immutable history + governed export + collaboration</span>
         <div>
-          <Link href={`/app/projects/${encodeURIComponent(projectId)}/workspace`}>
-            进入 AI Workspace →
-          </Link>
-          {" · "}
-          <Link href={`/app/projects/${encodeURIComponent(projectId)}/versions`}>
-            Versions →
-          </Link>
-          {" · "}
-          <Link href={`/app/projects/${encodeURIComponent(projectId)}/export`}>
-            Export →
-          </Link>
-          {" · "}
-          <Link href={`/app/projects/${encodeURIComponent(projectId)}/collaboration`}>
-            Collaboration →
-          </Link>
+          <Link href={`/app/projects/${encodeURIComponent(projectId)}/workspace`}>进入 AI Workspace →</Link>
+          {" · "}<Link href={`/app/projects/${encodeURIComponent(projectId)}/versions`}>Versions →</Link>
+          {" · "}<Link href={`/app/projects/${encodeURIComponent(projectId)}/export`}>Export →</Link>
+          {" · "}<Link href={`/app/projects/${encodeURIComponent(projectId)}/collaboration`}>Collaboration →</Link>
+          {" · "}<Link href={`/app/projects/${encodeURIComponent(projectId)}/approvals`}>Approvals →</Link>
         </div>
       </div>
       <ProjectDetail projectId={projectId} bootstrap={getProjectsBootstrap()} />
