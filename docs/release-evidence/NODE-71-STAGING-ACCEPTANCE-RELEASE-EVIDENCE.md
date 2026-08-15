@@ -36,6 +36,7 @@ Therefore NODE-71 does **not** report `staging RC deployed` as complete. Environ
 - Dependency-free `scripts/validate_staging_acceptance_contract.py` with negative drills.
 - Staging Acceptance Gate workflow with source contract, frozen lock gate, manual remote preflight, manual evidence decision and artifact output.
 - workflow-dispatch values are passed through environment variables rather than interpolated into shell source.
+- workflow evidence path is constrained below `reports/staging-acceptance/`.
 - Detailed execution plan and evidence archive contract under `docs/staging/` and `reports/staging-acceptance/`.
 
 ## Acceptance coverage
@@ -58,6 +59,27 @@ Project/archive/data retention/vector/audit/export expiry
 Backup restore
 Observability correlation
 ```
+
+## Direct GitHub Actions evidence
+
+Draft PR #71 implementation head `7092219e3be891eae37179a842e41d21c842d4c9` triggered:
+
+```text
+workflow: Staging Acceptance Gate
+run_id: 31885688773
+source-contract job_id: 95014547302
+canonical-lock-gate job_id: 95014547313
+```
+
+Both key jobs were reported as `failure`, but GitHub returned an empty executed-step list for each. Their check-run annotations explicitly state:
+
+```text
+The job was not started because recent account payments have failed or your spending limit needs to be increased.
+```
+
+Therefore no NODE-71 code executed on a GitHub hosted runner: checkout, acceptance contract drills and frozen dependency sync never started. This is an external GitHub Billing/spending-limit blocker, not a Staging acceptance test result.
+
+`remote-read-only-preflight` and `acceptance-decision` were `skipped` on the Pull Request event by design because both require explicit manual Staging inputs/evidence.
 
 ## Contract drills
 
@@ -112,6 +134,7 @@ FAIL-CLOSED RC EVALUATOR: IMPLEMENTED
 READ-ONLY REMOTE PREFLIGHT: IMPLEMENTED
 NEGATIVE CONTRACT DRILLS: IMPLEMENTED
 STAGING ACCEPTANCE WORKFLOW: IMPLEMENTED
+HOSTED CI EXECUTION: BLOCKED BEFORE RUNNER START
 REAL STAGING ENVIRONMENT: MISSING
 REAL RC DEPLOYMENT: MISSING
 REAL GOLDEN E2E EVIDENCE: MISSING
