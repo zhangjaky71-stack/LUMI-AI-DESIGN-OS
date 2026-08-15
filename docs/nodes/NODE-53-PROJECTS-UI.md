@@ -1,20 +1,83 @@
 # NODE-53 — Projects & New Project UX
 
 > Phase: 7 Frontend Product  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **IMPLEMENTED / VALIDATING / not COMPLETE**  
 > Priority: P0  
 > Depends on: NODE-17, NODE-18, NODE-52  
-> Produces: Project Dashboard、创建/Brief、文件/参考输入、筛选/归档/恢复
+> Produces: Project Dashboard、轻量 New Project、reference upload UX、Structured Brief / BriefVersion、archive/restore
 
----
+## 1. Implemented outcome
 
-## 1. 目标
+NODE-53 replaces the `/app/projects` placeholder with the first real product workflow on top of NODE-52 App Shell.
 
-让用户从产品首页真正开始设计项目，而不是只能通过API。New Project flow必须支持“用户只说一句话也能开始”，同时允许上传参考、绑定Brand、指定deliverables。
+Implemented surfaces:
 
-## 2. Project Dashboard
+- `/app/projects` Project Dashboard;
+- `/app/projects/[projectId]` Project detail / Structured Brief;
+- two-step New Project flow;
+- staged reference upload UX;
+- project search/filter/sort/cursor pagination;
+- grid/list view;
+- recent projects;
+- optimistic rename with VERSION_CONFLICT rollback;
+- archive confirmation / restore;
+- BriefVersion editing/history;
+- responsive/mobile Project UI;
+- deterministic E2E backend isolated from production.
 
-卡片/列表展示：
+Primary implementation:
+
+- `apps/web/src/components/projects/projects-dashboard.tsx`
+- `apps/web/src/components/projects/new-project-dialog.tsx`
+- `apps/web/src/components/projects/project-detail.tsx`
+- `apps/web/src/components/projects/projects.module.css`
+- `apps/web/src/lib/projects/types.ts`
+- `apps/web/src/lib/projects/projects-gateway.ts`
+- `apps/web/src/lib/projects/projects-server.ts`
+- `apps/web/e2e/projects.spec.ts`
+- `scripts/validate_projects_ui.py`
+- `.github/workflows/projects-ui.yml`
+
+## 2. Minimal create rule
+
+A user can start with one natural-language sentence. Technical parameters are not required.
+
+Step 1:
+
+```text
+intent                    required
+project name              optional
+references                optional
+```
+
+Step 2 is optional context:
+
+```text
+Brand Kit
+Deliverables
+Locale
+Quality Profile
+Budget
+```
+
+The `直接开始` action skips Step 2.
+
+## 3. Upstream dependency truth
+
+NODE-17 Project Core and the canonical NODE-18 project-scoped upload flow are still specification-only. NODE-53 therefore does not invent a production database or claim a working backend.
+
+Runtime split:
+
+```text
+production/default -> HttpProjectsGateway -> /api/v1 contracts
+non-production + LUMI_PROJECTS_E2E=1 -> DeterministicProjectsGateway
+```
+
+The deterministic gateway is a browser/E2E test backend only. `projects-server.ts` explicitly prevents this mode in `NODE_ENV=production`.
+
+## 4. Project list
+
+Project cards expose the frozen summary projection:
 
 ```text
 preview
@@ -22,109 +85,138 @@ name
 status
 last activity
 brand
-active Agent run
+active run count
 artifact count
 ```
 
-支持search、status、workspace/brand过滤、cursor pagination。
-
-## 3. New Project Flow
-
-P0采用轻量两步，不做十屏表单：
+Supported query dimensions:
 
 ```text
-Step 1: 你想做什么？
-- natural language prompt
-- attachments/references
-
-Step 2: optional context
-- Brand Kit
-- deliverables
-- locale
-- budget/quality profile advanced
+name search
+status
+workspace
+brand
+sort
+cursor pagination
 ```
 
-用户可以直接“开始”，Brief Agent后续结构化。
+Every request is already organization-scoped by NODE-52 `LumiApiClient` + `OrgScopedQueryCache`.
 
-## 4. Attachments
+## 5. Project creation and references
 
-使用 NODE-18 direct upload：
+Creation never displays success until the gateway confirms the Project.
 
-- drag/drop；
-- progress；
-- type/size错误；
-- upload完成后asset状态 SCANNING/READY；
--不可用资产明确提示。
+Reference flow:
 
-## 5. References
+```text
+local file stage
+→ create Project
+→ POST /assets/uploads
+→ isolated presigned object PUT
+→ complete upload
+→ SCANNING / READY / REJECTED surfaced explicitly
+```
 
-附件可标：
+The object PUT is implemented inside `LumiApiClient.putPresignedObject()` so components do not bypass the API/network boundary. It uses `credentials: omit` and never forwards organization/session/CSRF/Authorization headers to object storage.
+
+The current HTTP adapter intentionally treats NODE-17/18 request/response DTOs as provisional until those upstream nodes produce canonical handlers/generated client contracts.
+
+## 6. Reference classification
+
+Supported UI roles:
 
 ```text
 product
 logo
-style reference
-content reference
-brand guide
+style_reference
+content_reference
+brand_guide
 other
 ```
 
-未知允许Agent分类，但用户显式分类优先。
+Explicit user classification is preserved. Scanner rejection remains visible as `REJECTED`/failure code and is never mapped to READY.
 
-## 6. Brief View
+## 7. Structured Brief
 
-创建后展示 Agent生成的Structured Brief：
+Project detail shows:
 
-- objective；
-- audience；
-- deliverables；
-- constraints；
-- assumptions。
+- objective;
+- audience;
+- deliverables;
+- constraints;
+- assumptions;
+- locale;
+- reference state;
+- brief history.
 
-允许编辑；显著编辑产生BriefVersion。
-
-## 7. Archive / Restore
-
-归档需确认；不显示“永久删除”除非后续数据删除功能明确。Restore恢复Project但不自动重启历史AgentRun。
-
-## 8. Optimistic UI
-
-轻量rename/status可以optimistic + version conflict rollback；创建Project/上传不可假成功。
-
-## 9. Empty States
-
-新用户引导给真实示例意图：品牌、海报、产品图、社媒等，但不强迫模板。
-
-## 10. Accessibility / Responsive
-
-Desktop优先；Project dashboard在tablet/mobile可用。新建上传区域keyboard可操作。
-
-## 11. Tests
-
-- create minimal prompt；
-- upload refs；
-- failed scanning；
-- brand attach；
-- rename conflict；
-- archive/restore；
-- org switch；
-- pagination/filter。
-
-## 12. 验收标准
-
-- [ ] 一句话可创建Project。
-- [ ] reference direct upload。
-- [ ] Structured Brief可查看/编辑。
-- [ ] Project list/search/filter稳定。
-- [ ] archive/restore安全。
-- [ ] 不要求用户先填写复杂技术参数。
-
-## 13. Definition of Done
+Editing uses optimistic-concurrency inputs:
 
 ```text
-project dashboard + creation E2E green
-+ upload integration green
-+ brief version UX green
+expected_project_version
+expected_brief_version
 ```
+
+A successful significant edit creates a new `BriefVersion`; history is not mutated in place.
+
+## 8. Rename / archive / restore
+
+Rename is optimistic in the UI but rollback-safe. A `VERSION_CONFLICT` restores the previous name, clears scoped query state and reloads canonical data.
+
+Archive is explicit and confirmed. NODE-53 does not expose permanent delete.
+
+Restore changes Project lifecycle only. It does not restart historical Agent Runs.
+
+## 9. Upload/security boundary
+
+NODE-53 adds one backward-compatible App Shell API capability:
+
+`LumiApiClient.putPresignedObject()`
+
+Safety rules:
+
+- URL must parse;
+- only `http:` / `https:`;
+- `credentials: omit`;
+- only upload-specific headers supplied by the upload contract;
+- tenant/session/CSRF/authorization headers are not forwarded;
+- upload failure remains failure.
+
+## 10. Tests
+
+Unit/contract coverage includes:
+
+- cursor pagination;
+- organization isolation;
+- one-sentence create;
+- Brand attachment;
+- VERSION_CONFLICT;
+- archive/restore;
+- rejected file scan;
+- BriefVersion history;
+- presigned upload credential isolation;
+- non-http upload URL rejection.
+
+Browser coverage includes:
+
+- search + load more;
+- org switch;
+- minimal project create;
+- failed scanning;
+- Brand + deliverable context;
+- rename conflict rollback;
+- archive/restore;
+- BriefVersion editing.
+
+## 11. Definition of Done
+
+```text
+Projects UI implementation committed
++ hosted contract/type/lint/unit/build/security/E2E gates green
++ NODE-17 production Project Core connected
++ NODE-18 production upload lifecycle connected
++ NODE-11 canonical generated client replaces provisional HTTP DTO adapter
+```
+
+Until those conditions are true, NODE-53 remains **IMPLEMENTED / VALIDATING / not COMPLETE**.
 
 下一节点：NODE-54 AI Workspace。
