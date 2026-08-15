@@ -56,10 +56,18 @@ wait_healthy() {
   return 1
 }
 
-cleanup_restore() {
+base_key=""
+before_key=""
+after_key=""
+cleanup() {
   "${compose[@]}" rm -sf postgres-restore >/dev/null 2>&1 || true
+  if [[ -n "${base_key:-}" ]]; then
+    psql_primary --command \
+      "DELETE FROM lumi_node68_recovery_probe WHERE probe_key IN ('$base_key', '$before_key', '$after_key');" \
+      >/dev/null 2>&1 || true
+  fi
 }
-trap cleanup_restore EXIT INT TERM
+trap cleanup EXIT INT TERM
 
 echo "[recovery] starting PostgreSQL with continuous WAL archiving"
 "${compose[@]}" up -d --build postgres
@@ -77,7 +85,6 @@ CREATE TABLE IF NOT EXISTS lumi_node68_recovery_probe (
   probe_value text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-DELETE FROM lumi_node68_recovery_probe;
 INSERT INTO lumi_node68_recovery_probe(probe_key, probe_value) VALUES ('$base_key', 'base-backup');
 "
 
