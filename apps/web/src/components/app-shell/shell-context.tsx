@@ -52,19 +52,6 @@ export function ShellProviders({
     telemetry.emit("page.viewed", { path: pathname });
   }, [pathname, telemetry]);
 
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setCommandPaletteOpen(true);
-      }
-      if (event.key === "Escape") setCommandPaletteOpen(false);
-    };
-
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
-
   const activeOrganization = session.organizations.find(
     (organization) => organization.id === session.active_organization_id,
   );

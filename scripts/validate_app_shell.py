@@ -46,6 +46,7 @@ def read(rel: str) -> str:
     path = ROOT / rel
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
+
 root_layout = read("apps/web/src/app/layout.tsx")
 app_layout = read("apps/web/src/app/app/layout.tsx")
 auth_server = read("apps/web/src/lib/app-shell/auth-server.ts")
@@ -53,6 +54,7 @@ api_client = read("apps/web/src/lib/app-shell/api-client.ts")
 query_cache = read("apps/web/src/lib/app-shell/query-cache.ts")
 telemetry = read("apps/web/src/lib/app-shell/telemetry.ts")
 globals_css = read("apps/web/src/app/globals.css")
+shell_frame = read("apps/web/src/components/app-shell/app-shell-frame.tsx")
 
 if '"use client"' in root_layout or "'use client'" in root_layout:
     errors.append("root layout must remain a Server Component")
@@ -60,17 +62,39 @@ if "requireShellSession" not in app_layout or 'dynamic = "force-dynamic"' not in
     errors.append("/app layout must use server-side session boundary and dynamic rendering")
 if "LUMI_SHELL_E2E_AUTH" not in auth_server or "return null" not in auth_server:
     errors.append("auth adapter must be explicit E2E-only and fail closed when NODE-16 is unavailable")
+if 'process.env.NODE_ENV === "production"' not in auth_server:
+    errors.append("deterministic test auth must be impossible in production mode")
 
-for marker in ["/api/v1", "x-request-id", "x-lumi-organization-id", "x-csrf-token", "idempotency-key", "if-match"]:
+for marker in [
+    "/api/v1",
+    "x-request-id",
+    "x-lumi-organization-id",
+    "x-csrf-token",
+    "idempotency-key",
+    "if-match",
+]:
     if marker not in api_client:
         errors.append(f"API client missing contract marker: {marker}")
 if 'method === "GET" ? 3 : 1' not in api_client:
     errors.append("API retry policy must be GET-only")
 if "[this.#organizationId, ...parts]" not in query_cache or "abortInFlight" not in query_cache:
     errors.append("query cache must key by organization and abort old in-flight work")
+if "QUERY_SCOPE_CHANGED" not in query_cache:
+    errors.append("query cache must reject stale results from loaders that ignore abort")
 if "TELEMETRY_SENSITIVE_PROPERTY_FORBIDDEN" not in telemetry:
     errors.append("telemetry adapter must reject sensitive fields")
-for marker in ["--ui-bg", "--space-4", "--radius-md", "--shadow-float", "--z-dialog", "--motion-base", "prefers-reduced-motion"]:
+if 'aria-label="主导航"' not in shell_frame or 'aria-current={active ? "page" : undefined}' not in shell_frame:
+    errors.append("primary navigation must have an accessible name and active-page semantics")
+
+for marker in [
+    "--ui-bg",
+    "--space-4",
+    "--radius-md",
+    "--shadow-float",
+    "--z-dialog",
+    "--motion-base",
+    "prefers-reduced-motion",
+]:
     if marker not in globals_css:
         errors.append(f"UI token/accessibility marker missing: {marker}")
 
@@ -91,16 +115,25 @@ for path in WEB.rglob("*"):
     ):
         errors.append(f"client imports server-only shell module: {path.relative_to(ROOT)}")
     if "localStorage" in text or "sessionStorage" in text:
-        errors.append(f"business/session truth must not live in browser storage: {path.relative_to(ROOT)}")
+        errors.append(
+            f"business/session truth must not live in browser storage: {path.relative_to(ROOT)}"
+        )
 
-secret_pattern = re.compile(r"NEXT_PUBLIC_[A-Z0-9_]*(SECRET|PASSWORD|PRIVATE|TOKEN|API_KEY|SERVICE_KEY)")
+secret_pattern = re.compile(
+    r"NEXT_PUBLIC_[A-Z0-9_]*(SECRET|PASSWORD|PRIVATE|TOKEN|API_KEY|SERVICE_KEY)"
+)
 for path in (ROOT / "apps" / "web").rglob("*"):
     if path.is_file() and path.suffix in {".ts", ".tsx", ".js", ".mjs", ".json"}:
         text = path.read_text(encoding="utf-8")
         if secret_pattern.search(text):
-            errors.append(f"client-visible secret-like environment variable: {path.relative_to(ROOT)}")
+            errors.append(
+                f"client-visible secret-like environment variable: {path.relative_to(ROOT)}"
+            )
 
-for rel in ["apps/web/src/app/app/error.tsx", "apps/web/src/app/app/projects/[projectId]/error.tsx"]:
+for rel in [
+    "apps/web/src/app/app/error.tsx",
+    "apps/web/src/app/app/projects/[projectId]/error.tsx",
+]:
     text = read(rel)
     if "error.stack" in text or "error.message" in text:
         errors.append(f"error boundary leaks internal exception text: {rel}")

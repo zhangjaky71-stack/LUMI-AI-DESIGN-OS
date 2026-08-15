@@ -61,11 +61,12 @@ export class OrgScopedQueryCache {
     try {
       const value = await loader(controller.signal);
       if (
-        this.#organizationId === organizationAtStart &&
-        !controller.signal.aborted
+        this.#organizationId !== organizationAtStart ||
+        controller.signal.aborted
       ) {
-        this.set(parts, value, ttlMs);
+        throw new Error("QUERY_SCOPE_CHANGED");
       }
+      this.set(parts, value, ttlMs);
       return value;
     } finally {
       this.#controllers.delete(controller);

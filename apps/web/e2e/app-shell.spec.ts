@@ -56,5 +56,15 @@ test.describe("NODE-52 App Shell", () => {
     await expect(
       page.getByRole("dialog", { name: "命令面板" }),
     ).toHaveCount(0);
+    await expect(page.getByLabel("打开命令面板")).toBeFocused();
+  });
+
+  test("mobile viewport keeps primary navigation reachable", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/app/projects");
+    await expect(
+      page.getByRole("navigation", { name: "主导航" }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "品牌" })).toBeVisible();
   });
 });

@@ -31,4 +31,22 @@ describe("OrgScopedQueryCache", () => {
     await expect(pending).rejects.toThrow("aborted");
     expect(cache.organizationId).toBe("org-b");
   });
+
+  it("rejects a stale result even when a loader ignores AbortSignal", async () => {
+    const cache = new OrgScopedQueryCache("org-a");
+    let resolveLoader!: (value: string) => void;
+    const pending = cache.fetchQuery(
+      ["projects"],
+      () =>
+        new Promise<string>((resolve) => {
+          resolveLoader = resolve;
+        }),
+    );
+
+    cache.switchOrganization("org-b");
+    resolveLoader("stale-org-a-value");
+
+    await expect(pending).rejects.toThrow("QUERY_SCOPE_CHANGED");
+    expect(cache.get(["projects"])).toBeUndefined();
+  });
 });

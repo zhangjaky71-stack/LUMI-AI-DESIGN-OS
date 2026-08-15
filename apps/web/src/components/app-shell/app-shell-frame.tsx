@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useShell } from "./shell-context";
 
 const NAVIGATION = [
@@ -26,14 +27,39 @@ export function AppShellFrame({
     commandPaletteOpen,
     setCommandPaletteOpen,
   } = useShell();
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+
+  const openCommandPalette = useCallback(() => {
+    setCommandPaletteOpen(true);
+  }, [setCommandPaletteOpen]);
+
+  const closeCommandPalette = useCallback(() => {
+    setCommandPaletteOpen(false);
+    requestAnimationFrame(() => triggerRef.current?.focus());
+  }, [setCommandPaletteOpen]);
 
   useEffect(() => {
     if (commandPaletteOpen) inputRef.current?.focus();
   }, [commandPaletteOpen]);
 
-  const trapDialogFocus = (event: React.KeyboardEvent<HTMLDivElement>) => {
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        openCommandPalette();
+      } else if (event.key === "Escape" && commandPaletteOpen) {
+        event.preventDefault();
+        closeCommandPalette();
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [closeCommandPalette, commandPaletteOpen, openCommandPalette]);
+
+  const trapDialogFocus = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Tab") return;
     if (event.shiftKey && document.activeElement === inputRef.current) {
       event.preventDefault();
@@ -52,14 +78,14 @@ export function AppShellFrame({
       <a className="skip-link" href="#main-content">
         跳到主要内容
       </a>
-      <aside className="lumi-sidebar" aria-label="主导航">
-        <div className="brand-lockup" aria-label="LUMI AI Design OS">
+      <aside className="lumi-sidebar" aria-label="产品导航栏">
+        <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true">
             L
           </span>
           <span>LUMI</span>
         </div>
-        <nav className="nav-stack">
+        <nav className="nav-stack" aria-label="主导航">
           {NAVIGATION.filter(
             (item) => item.flag === null || flags[item.flag],
           ).map((item) => {
@@ -108,10 +134,13 @@ export function AppShellFrame({
           <div className="topbar-actions">
             {flags.commandPalette ? (
               <button
+                ref={triggerRef}
                 className="command-trigger"
                 type="button"
-                onClick={() => setCommandPaletteOpen(true)}
+                onClick={openCommandPalette}
                 aria-label="打开命令面板"
+                aria-haspopup="dialog"
+                aria-expanded={commandPaletteOpen}
               >
                 搜索
                 <kbd>⌘K</kbd>
@@ -132,17 +161,12 @@ export function AppShellFrame({
       </div>
 
       {commandPaletteOpen ? (
-        <div
-          className="command-backdrop"
-          role="presentation"
-          onMouseDown={() => setCommandPaletteOpen(false)}
-        >
+        <div className="command-backdrop">
           <div
             className="command-dialog"
             role="dialog"
             aria-modal="true"
             aria-label="命令面板"
-            onMouseDown={(event) => event.stopPropagation()}
             onKeyDown={trapDialogFocus}
           >
             <div className="command-row">
@@ -154,7 +178,7 @@ export function AppShellFrame({
               <button
                 ref={closeRef}
                 type="button"
-                onClick={() => setCommandPaletteOpen(false)}
+                onClick={closeCommandPalette}
                 aria-label="关闭命令面板"
               >
                 Esc
