@@ -8,6 +8,24 @@ variable "alb_security_group_id" { type = string }
 variable "certificate_arn" { type = string }
 variable "kms_key_arn" { type = string }
 
+variable "public_canary_percent" {
+  type    = number
+  default = 5
+  validation {
+    condition     = var.public_canary_percent >= 0.1 && var.public_canary_percent <= 25
+    error_message = "Public canary percent must be between 0.1 and 25."
+  }
+}
+
+variable "public_canary_bake_time_minutes" {
+  type    = number
+  default = 10
+  validation {
+    condition     = var.public_canary_bake_time_minutes >= 5 && var.public_canary_bake_time_minutes <= 60
+    error_message = "Public canary bake time must be between 5 and 60 minutes."
+  }
+}
+
 variable "services" {
   description = "Production deployment units. Exactly one service must be publicly_routed."
   type = map(object({
