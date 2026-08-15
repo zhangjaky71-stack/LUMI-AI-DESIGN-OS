@@ -6,51 +6,83 @@ on:
     branches: [main]
   schedule:
     - cron: '23 3 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
   security-events: write
 
+env:
+  NODE_VERSION: "24"
+  PNPM_VERSION: "11.4.0"
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
 jobs:
   security-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - name: Python security corpus
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen Python install
+        run: uv sync --all-packages --frozen
+      - name: Canonical security regression corpus
         run: |
-          uv sync --frozen
-          uv run --project apps/api pytest apps/api/tests/test_security_hardening.py apps/api/tests/integration/test_auth_tenant.py apps/api/tests/integration/test_auth_privilege_escalation.py apps/api/tests/integration/test_project_security.py
+          uv run pytest \
+            apps/api/tests/test_security_hardening.py \
+            apps/api/tests/integration/test_auth_tenant.py \
+            apps/api/tests/integration/test_auth_privilege_escalation.py \
+            apps/api/tests/integration/test_project_security.py \
+            services/tool-gateway/tests/test_ssrf.py \
+            services/tool-gateway/tests/test_mcp_error_sanitization.py \
+            services/sandbox-runtime/tests/test_sandbox_contracts.py \
+            apps/agent-runtime/tests/test_context_engine.py \
+            apps/agent-runtime/tests/test_approval_bridge.py
+      - name: Asset Storage MIME and SVG security corpus
+        env:
+          PYTHONPATH: services/asset-storage/src
+        run: uv run pytest services/asset-storage/tests/test_asset_storage_security.py
       - name: Python dependency audit
         run: |
-          uv export --frozen --no-dev --format requirements-txt > /tmp/requirements.txt
+          uv export --all-packages --frozen --no-dev --format requirements-txt > /tmp/requirements.txt
           uvx --from pip-audit pip-audit -r /tmp/requirements.txt --strict
-      - name: Python SAST
-        run: uvx --from bandit bandit -q -r apps packages -x '*/tests/*'
+      - name: Python high-severity SAST
+        run: uvx --from bandit bandit -q -lll -r apps services packages -x '*/tests/*'
 
   node-supply-chain:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          version: 11.4.0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
       - run: pnpm install --frozen-lockfile
       - name: Production dependency audit
         run: pnpm audit --prod --audit-level high
 
   codeql:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         language: [javascript-typescript, python]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
@@ -59,20 +91,22 @@ jobs:
 
   dependency-review:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
           deny-licenses: AGPL-1.0-only, AGPL-3.0-only
 
   secret-and-iac-scan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Repository secret scan
@@ -92,12 +126,17 @@ jobs:
   release-gate:
     if: always()
     needs: [security-tests, node-supply-chain, codeql, dependency-review, secret-and-iac-scan]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - name: Enforce Critical/High gate
+        shell: bash
         run: |
+          set -euo pipefail
           test '${{ needs.security-tests.result }}' = success
           test '${{ needs.node-supply-chain.result }}' = success
           test '${{ needs.codeql.result }}' = success
-          if [ '${{ github.event_name }}' = pull_request ]; then test '${{ needs.dependency-review.result }}' = success; fi
+          if [ '${{ github.event_name }}' = pull_request ]; then
+            test '${{ needs.dependency-review.result }}' = success
+          fi
           test '${{ needs.secret-and-iac-scan.result }}' = success
