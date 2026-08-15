@@ -48,7 +48,7 @@ app = FastAPI(
 )
 apply_security_hardening(
     app,
-    SecurityConfig(production=settings.lumi_env == "production", allowed_origins=tuple(_origins())),
+    SecurityConfig(production=settings.lumi_env == "production"),
 )
 app.include_router(
     create_auth_router(
