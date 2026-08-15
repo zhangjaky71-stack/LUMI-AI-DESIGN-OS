@@ -1,0 +1,165 @@
+name: Billing
+
+on:
+  pull_request:
+    paths:
+      - "services/project-core/src/lumi_project_core/billing.py"
+      - "services/project-core/tests/test_billing.py"
+      - "apps/api/src/lumi_api/billing_router.py"
+      - "apps/api/tests/test_billing_router.py"
+      - "db/migrations/0013_billing.sql"
+      - "apps/web/src/app/app/billing/**"
+      - "apps/web/src/components/billing/**"
+      - "apps/web/src/lib/billing/**"
+      - "apps/web/e2e/billing.spec.ts"
+      - "scripts/validate_billing.py"
+      - "docs/nodes/NODE-63-BILLING.md"
+      - "docs/runtime/BILLING-V1.md"
+      - "reports/nodes/NODE-63/**"
+      - ".github/workflows/billing.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  billing-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - uses: astral-sh/setup-uv@v7
+        with: { version: "0.10.9" }
+      - run: uv sync --frozen
+      - name: Validate architecture chain through NODE-63
+        run: |
+          python scripts/validate_app_shell.py
+          python scripts/validate_projects_ui.py
+          python scripts/validate_ai_workspace.py
+          python scripts/validate_infinite_canvas.py
+          python scripts/validate_layers_inspector.py
+          python scripts/validate_agent_timeline.py
+          python scripts/validate_brand_kit_ui.py
+          python scripts/validate_versions_ui.py
+          python scripts/validate_export_engine.py
+          python scripts/validate_export_ui.py
+          python scripts/validate_collaboration.py
+          python scripts/validate_approval_engine.py
+          python scripts/validate_billing.py
+      - name: Typecheck billing backend
+        run: uv run pyright services/project-core/src/lumi_project_core/billing.py apps/api/src/lumi_api/billing_router.py
+      - name: Typecheck web
+        run: pnpm --filter @lumi/web typecheck
+
+  billing-backend:
+    needs: billing-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - uses: astral-sh/setup-uv@v7
+        with: { version: "0.10.9" }
+      - run: uv sync --frozen
+      - run: uv run pytest services/project-core/tests/test_billing.py apps/api/tests/test_billing_router.py
+      - run: uv run ruff check --select F,B services/project-core/src/lumi_project_core/billing.py services/project-core/tests/test_billing.py apps/api/src/lumi_api/billing_router.py apps/api/tests/test_billing_router.py
+
+  billing-db:
+    needs: billing-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: lumi, POSTGRES_PASSWORD: lumi, POSTGRES_DB: lumi }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U lumi -d lumi"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Apply Billing migration
+        env: { PGPASSWORD: lumi }
+        run: psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0013_billing.sql
+      - name: Verify Billing schema
+        env: { PGPASSWORD: lumi }
+        run: |
+          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.tables where table_name in ('billing_plan_versions','billing_pricing_policies','billing_accounts','billing_subscriptions','billing_credit_ledger','billing_usage_records','billing_invoices','billing_payment_events');\")" = "8"
+          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.views where table_name='billing_credit_balances';\")" = "1"
+          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.columns where table_name like 'billing%' and column_name in ('card_number','cvc','cvv','pan');\")" = "0"
+
+  billing-quality:
+    needs: billing-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lumi/web exec vitest run src/lib/billing
+      - run: pnpm --filter @lumi/web exec vitest run src/lib/approval-ui src/lib/collaboration src/lib/export-ui
+      - run: pnpm --filter @lumi/web lint
+
+  billing-build:
+    needs: billing-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    env:
+      LUMI_SHELL_E2E_AUTH: "0"
+      LUMI_PROJECTS_E2E: "0"
+      LUMI_AI_WORKSPACE_E2E: "0"
+      LUMI_INFINITE_CANVAS_E2E: "0"
+      LUMI_BRAND_KIT_E2E: "0"
+      LUMI_VERSIONS_E2E: "0"
+      LUMI_EXPORT_UI_E2E: "0"
+      LUMI_COLLABORATION_E2E: "0"
+      LUMI_APPROVAL_E2E: "0"
+      LUMI_BILLING_E2E: "0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lumi/web build
+      - name: Assert deterministic Billing fixture absent from production client chunks
+        run: |
+          if grep -R --line-number --fixed-strings 'mock_sub_63' apps/web/.next/static 2>/dev/null; then
+            echo 'NODE-63 deterministic Billing fixture leaked into production client chunks.' >&2
+            exit 1
+          fi
+
+  billing-browser-e2e:
+    needs: [billing-backend, billing-db, billing-quality, billing-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      LUMI_SHELL_E2E_AUTH: "1"
+      LUMI_PROJECTS_E2E: "1"
+      LUMI_AI_WORKSPACE_E2E: "1"
+      LUMI_INFINITE_CANVAS_E2E: "1"
+      LUMI_BRAND_KIT_E2E: "1"
+      LUMI_VERSIONS_E2E: "1"
+      LUMI_EXPORT_UI_E2E: "1"
+      LUMI_COLLABORATION_E2E: "1"
+      LUMI_APPROVAL_E2E: "1"
+      LUMI_BILLING_E2E: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: "24" }
+      - run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec playwright test apps/web/e2e/billing.spec.ts
+      - name: Prior-node browser regressions
+        run: pnpm exec playwright test apps/web/e2e/approval-ui.spec.ts apps/web/e2e/collaboration.spec.ts apps/web/e2e/export-ui.spec.ts apps/web/e2e/versions-ui.spec.ts apps/web/e2e/brand-kit.spec.ts apps/web/e2e/agent-timeline.spec.ts apps/web/e2e/layers-inspector.spec.ts apps/web/e2e/infinite-canvas.spec.ts apps/web/e2e/ai-workspace.spec.ts
