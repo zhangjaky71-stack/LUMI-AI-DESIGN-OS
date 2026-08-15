@@ -1,7 +1,13 @@
 variable "project" { type = string }
 variable "environment" { type = string }
 variable "vpc_id" { type = string }
-variable "data_subnet_ids" { type = list(string) }
+variable "data_subnet_ids" {
+  type = list(string)
+  validation {
+    condition     = length(var.data_subnet_ids) >= 3
+    error_message = "CLUSTER_MULTI_AZ RabbitMQ requires at least three data subnets/AZs in this LUMI topology."
+  }
+}
 variable "app_security_group_id" { type = string }
 variable "kms_key_arn" { type = string }
 
