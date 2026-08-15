@@ -1,0 +1,134 @@
+name: AI Workspace
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/src/app/app/projects/**"
+      - "apps/web/src/components/ai-workspace/**"
+      - "apps/web/src/lib/ai-workspace/**"
+      - "apps/web/e2e/ai-workspace.spec.ts"
+      - "scripts/validate_ai_workspace.py"
+      - "scripts/validate_app_shell.py"
+      - "scripts/validate_projects_ui.py"
+      - "docs/nodes/NODE-54-AI-WORKSPACE.md"
+      - "docs/runtime/AI-WORKSPACE-V1.md"
+      - "reports/nodes/NODE-54/**"
+      - ".github/workflows/ai-workspace.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ai-workspace-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Validate upstream frontend boundaries
+        run: |
+          python scripts/validate_app_shell.py
+          python scripts/validate_projects_ui.py
+      - name: Validate NODE-54 workspace architecture
+        run: python scripts/validate_ai_workspace.py
+      - name: Typecheck web product
+        run: pnpm --filter @lumi/web typecheck
+
+  ai-workspace-quality:
+    needs: ai-workspace-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Lint web product
+        run: pnpm --filter @lumi/web lint
+      - name: Run AI Workspace unit tests
+        run: pnpm --filter @lumi/web exec vitest run src/lib/ai-workspace
+      - name: Run App Shell and Projects regression units
+        run: pnpm --filter @lumi/web exec vitest run src/lib/app-shell/api-client.test.ts src/lib/app-shell/query-cache.test.ts src/lib/projects
+      - name: Check NODE-54 formatting
+        run: pnpm exec prettier --check "apps/web/src/app/app/projects/**/workspace/**/*.{ts,tsx}" "apps/web/src/components/ai-workspace/**/*.{ts,tsx,css}" "apps/web/src/lib/ai-workspace/**/*.{ts,tsx}" "apps/web/e2e/ai-workspace.spec.ts"
+
+  ai-workspace-build:
+    needs: ai-workspace-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    env:
+      LUMI_SHELL_E2E_AUTH: "0"
+      LUMI_PROJECTS_E2E: "0"
+      LUMI_AI_WORKSPACE_E2E: "0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Build production Next.js app
+        run: pnpm --filter @lumi/web build
+      - name: Assert AI Workspace E2E control is absent from client chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -F "LUMI_AI_WORKSPACE_E2E" apps/web/.next/static; then
+            echo "AI Workspace E2E environment flag leaked into client chunks"
+            exit 1
+          fi
+
+  ai-workspace-security:
+    needs: ai-workspace-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Re-run tenant/realtime/version safety gates
+        run: |
+          python scripts/validate_app_shell.py
+          python scripts/validate_projects_ui.py
+          python scripts/validate_ai_workspace.py
+
+  ai-workspace-browser-e2e:
+    needs: [ai-workspace-quality, ai-workspace-build, ai-workspace-security]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      LUMI_SHELL_E2E_AUTH: "1"
+      LUMI_PROJECTS_E2E: "1"
+      LUMI_AI_WORKSPACE_E2E: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run AI Workspace browser scenarios
+        run: pnpm exec playwright test apps/web/e2e/ai-workspace.spec.ts
+      - name: Re-run Projects and App Shell browser regressions
+        run: pnpm exec playwright test apps/web/e2e/projects.spec.ts apps/web/e2e/app-shell.spec.ts

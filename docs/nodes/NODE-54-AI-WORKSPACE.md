@@ -1,161 +1,232 @@
 # NODE-54 — AI Design Workspace
 
 > Phase: 7 Frontend Product  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: IMPLEMENTED / VALIDATING / NOT COMPLETE  
 > Priority: P0 / CORE UX  
-> Depends on: NODE-28, NODE-33, NODE-42, NODE-52  
-> Produces: Chat + Canvas 主工作区、输入/引用/Streaming、Stop/Resume/Retry、Approval cards
+> Depends on: NODE-28, NODE-33, NODE-42, NODE-52, NODE-53  
+> Produces: project-scoped Chat + Canvas workspace, safe Streaming, versioned run controls, selected-object context, Artifact and Approval workflow
 
 ---
 
-## 1. 目标
+## 1. Goal
 
-构建 LUMI 核心工作台：用户在同一个项目中通过自然语言驱动Agent，同时看到Canvas、任务进度、产物和审批，而不是在聊天与设计工具之间来回切换。
+Build LUMI’s core design workspace so a user can drive an Agent with natural language while simultaneously seeing Canvas state, progress, exact Artifact versions, context and approvals.
 
-## 2. Desktop Layout
-
-```text
-┌──────────────┬─────────────────────────────┬─────────────┐
-│ Agent/Chat   │          Canvas             │ Inspector   │
-│              │                             │ /Context    │
-└──────────────┴─────────────────────────────┴─────────────┘
-```
-
-左/右面板可collapse/resizable；Canvas始终保留足够空间。
-
-## 3. Prompt Composer
-
-支持：
-
-- multiline；
-- @ asset/artifact/frame引用；
--附件；
-- selected canvas nodes自动形成context chips；
-- send/stop；
-- slash commands P1。
-
-输入中明确显示当前选中了什么，避免误改。
-
-## 4. Message Model
-
-UI消息区分：
+The implementation preserves NODE-53 Project/Structured Brief UX and adds:
 
 ```text
-user message
-agent status/update
-agent answer
-artifact card
-approval card
-warning/error
+/app/projects/{projectId}/workspace
 ```
 
-不渲染内部Chain-of-Thought；展示安全、可理解的计划/进展摘要。
+NODE-55 will replace the current versioned Canvas preview/selection surface with the Infinite Canvas editor without changing the command/version contracts established here.
 
-## 5. Streaming
+## 2. Product layout
 
-SSE连接 AgentRun：
+Desktop is a three-surface workspace:
 
-- reconnect with Last-Event-ID；
-- event dedupe；
--断线状态；
--流结束从API refetch canonical run state。
+```text
+Agent / Chat     Canvas / Selection     Inspector / Context
+```
 
-UI不能把SSE作为唯一真相。
+- Canvas keeps the flexible center column.
+- Context is explicit rather than implicit.
+- Mobile switches to focused Agent/Canvas/Context tabs instead of squeezing three columns.
 
-## 6. Run Control
+## 3. Prompt composer
+
+P0 implemented:
+
+- multiline prompt;
+- `Ctrl/Cmd + Enter` send;
+- selected Canvas node context chips;
+- READY project references;
+- exact Artifact version references;
+- explicit target labels including `locked identity`.
+
+Start payload binds the user request to:
+
+```text
+project_id
+selected_node_ids
+document_version
+reference_asset_ids
+reference_artifact_version_ids
+```
+
+Slash commands remain P1.
+
+## 4. Safe message model
+
+Implemented UI kinds:
+
+```text
+USER
+STATUS
+ANSWER
+ARTIFACT
+APPROVAL
+WARNING
+ERROR
+```
+
+Private chain-of-thought is not a type field and is never displayed. Only safe status/progress summaries are allowed.
+
+## 5. Realtime / SSE
+
+Implemented behavior:
+
+- same-origin SSE fetch;
+- explicit organization scope header;
+- `Last-Event-ID` reconnect;
+- event-id dedupe for at-least-once delivery;
+- visible offline/reconnecting state;
+- old stream abort on navigation/control/new run;
+- canonical API refetch after stream completion.
+
+SSE is an acceleration/projection channel, not the canonical database.
+
+## 6. Run controls
+
+Implemented:
 
 ```text
 Start
-Stop/Cancel
-Pause（若后端支持状态）
+Pause
 Resume
-Retry failed task
+Stop / Cancel
+Retry failed retryable task
 ```
 
-按钮显示操作语义，取消不假装能撤销已提交第三方任务。
+Every mutation is version-bound with `expected_run_version`. Stale commands reload canonical state instead of overwriting newer state.
 
-## 7. Artifact Cards
+## 7. Artifact cards
 
-消息中产物：
+Implemented:
 
-- preview；
-- version；
-- “放到Canvas”；
-- compare；
-- approve；
-- use as reference。
+- preview label;
+- explicit version;
+- exact `artifact_version_id`;
+- place on Canvas;
+- use exact version as next-run reference;
+- compare placeholder reserved for NODE-59.
 
-所有操作绑定exact version。
+Canvas placement also requires `expected_document_version`, so “latest artifact/latest document” ambiguity cannot silently mutate the wrong version.
 
-## 8. Selection Context
+## 8. Selection context
 
-Canvas selection变化时 composer显示：
+The current Canvas selection surface exposes selectable nodes and sends selected node IDs plus the active document version to Agent commands.
+
+The UX shows:
 
 ```text
 2 selected
-- Hero Product [locked identity]
-- Headline
+Hero Product · locked identity
+Headline
+Document vN
 ```
 
-用户说“只改这个”时 request payload传selected node IDs + document version。
+This contract is intentionally ready for NODE-55 Infinite Canvas.
 
-## 9. Approval Card
+## 9. Approval cards
 
-展示：
+Implemented:
 
-- Agent需要确认什么；
--候选方向/Artifacts；
--影响/预计成本可选；
-- Approve/Reject/Request Changes。
+- approval title and description;
+- impact;
+- estimated incremental cost when present;
+- Approve;
+- Reject;
+- Request Changes + required note;
+- stale/expired protection.
 
-卡片过期/stale时禁止提交旧decision。
+A decision is disabled unless the approval still matches the current run and expected run version.
 
-## 10. Warnings
+## 10. Warnings and context transparency
 
-明确显示：
+Implemented warning surface includes provider-degraded/fallback scenarios. The model can later carry budget, hard constraint, rights and validation warnings through the same safe message kind.
+
+Inspector shows Brand, references, selected nodes and document version. It never exposes system prompts/private reasoning.
+
+## 11. Production adapter boundary
+
+Production/default uses a typed HTTP/SSE adapter. Deterministic behavior is available only in non-production E2E mode:
 
 ```text
-budget near limit
-provider unavailable fallback
-hard constraint blocked
-asset rights unknown
-validation requires review
+NODE_ENV !== production
+LUMI_AI_WORKSPACE_E2E = 1
 ```
 
-## 11. Context Transparency
+Production client chunks are scanned to ensure that server-only E2E control name is not leaked.
 
-P1可展示“本次使用：Brand Kit X / 3 references / selected frame”，但不暴露秘密system prompt。
+The adapter is intentionally narrow because NODE-28/NODE-33/NODE-42 and canonical generated API contracts still need full production integration. NODE-54 does not pretend a browser mock is a backend implementation.
 
-## 12. Mobile
+## 12. Test matrix
 
-移动端P0提供Project/Chat/preview/approve；完整Canvas专业编辑桌面优先。不要为了移动端强塞三栏。
+Unit:
 
-## 13. Tests
+- SSE decode;
+- duplicate event;
+- stale approval;
+- selected-node edit context;
+- pause/resume/stop version conflict;
+- Last-Event-ID resume;
+- exact Artifact/document version placement.
 
-- SSE reconnect；
-- duplicated event；
-- stop；
-- approval stale；
-- selected-node edit context；
-- artifact exact version；
-- provider warning；
-- error recover。
+Playwright:
 
-## 14. 验收标准
+- project Chat + Canvas coexist;
+- selection context visible;
+- streaming + duplicate suppression;
+- Artifact → Approval;
+- stale approval disabled;
+- pause/resume/stop;
+- exact Artifact placement;
+- provider warning;
+- private-reasoning non-exposure;
+- mobile focused panels.
 
-- [ ] Chat与Canvas同Project工作区。
-- [ ] Streaming可重连。
-- [ ] selected objects能进入Agent command。
-- [ ] run control可用。
-- [ ] approval嵌入工作流。
-- [ ] 不显示私有chain-of-thought。
+## 13. CI
+
+Workflow: `.github/workflows/ai-workspace.yml`
+
+Gates:
+
+```text
+ai-workspace-contract
+ai-workspace-quality
+ai-workspace-build
+ai-workspace-security
+ai-workspace-browser-e2e
+```
+
+It also reruns NODE-52 App Shell and NODE-53 Projects regression validation.
+
+## 14. Acceptance checklist
+
+- [x] Chat and Canvas are in one Project workspace.
+- [x] Streaming client supports reconnect with `Last-Event-ID`.
+- [x] duplicate realtime events are idempotently ignored.
+- [x] selected objects + document version enter Agent commands.
+- [x] Start/Pause/Resume/Stop/Retry contracts exist.
+- [x] Approval is embedded and stale decisions are blocked.
+- [x] Artifact actions bind exact versions.
+- [x] provider warnings are visible.
+- [x] mobile does not squeeze the desktop three-column layout.
+- [x] private chain-of-thought is not exposed by the UI model.
+- [ ] pinned hosted TypeScript/lint/unit/build/Playwright gates execute green.
+- [ ] NODE-28/NODE-33/NODE-42/canonical client production dependencies are actually connected or formally superseded.
 
 ## 15. Definition of Done
 
+Current state:
+
 ```text
-workspace E2E with MockAgent green
-+ SSE/recovery tests green
-+ selected-edit UX green
+implementation                 DONE
+static architecture validator DONE locally after commit candidate assembly
+hosted frontend gates         PENDING EXECUTION
+production runtime adapters   UPSTREAM DEPENDENCY
 ```
 
-下一节点：NODE-55 Infinite Canvas UI。
+NODE-54 remains **IMPLEMENTED / VALIDATING / NOT COMPLETE** until required hosted gates execute green and production dependencies are real.
+
+Next node: **NODE-55 — Infinite Canvas UI**.
