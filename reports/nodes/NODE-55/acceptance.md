@@ -133,6 +133,27 @@ infinite-canvas-browser-e2e
 
 The workflow uses Node 24 / pnpm 11.4.0 and the repository's pinned TypeScript 6.0.3 toolchain.
 
+## Hosted run evidence — 2026-08-15
+
+Draft PR #55 triggered Infinite Canvas workflow run `31860921972` against implementation SHA `22bf9d8be351e9be0d0a410c4cec3afe698f7642`.
+
+Observed result:
+
+```text
+infinite-canvas-contract     failure before runner start
+steps                        []
+runner_id                    0
+infinite-canvas-quality      skipped
+infinite-canvas-build        skipped
+infinite-canvas-browser-e2e  skipped
+```
+
+GitHub check-run `94954061582` attached an annotation stating that the job was not started because recent account payments failed or the account spending limit must be increased.
+
+Therefore this workflow provides **no execution evidence** for the staged static validator, TypeScript, lint, unit tests, Canvas SDK regressions, production build or Playwright. It must not be classified as either a code/test failure or a PASS.
+
+The same platform-level condition also caused other workflows attached to the commit to fail before meaningful execution. NODE-55 acceptance remains blocked on an actual runner start.
+
 ## Completion blockers
 
 NODE-55 cannot be marked COMPLETE until:
@@ -140,8 +161,6 @@ NODE-55 cannot be marked COMPLETE until:
 1. hosted typecheck/lint/unit/build/Playwright gates actually execute green;
 2. the canonical production Canvas operations API is connected or formally superseded;
 3. production route renderer/Pixi parity and performance are validated.
-
-GitHub Actions on NODE-53/NODE-54 were already observed failing before runner start because of account payment/spending-limit state. If NODE-55 receives the same platform annotation, that must be recorded as a hosted execution blocker rather than a code/test failure.
 
 ## Current verdict
 
@@ -153,8 +172,8 @@ version conflict recovery         IMPLEMENTED
 Asset / Artifact drag contracts   IMPLEMENTED
 AI exact-selection integration    IMPLEMENTED
 2k viewport culling coverage      IMPLEMENTED
-static architecture gate          READY TO EXECUTE ON COMMITTED TREE
-pinned hosted gates               PENDING
+static architecture gate          STAGED / NOT EXECUTED BY HOSTED RUNNER
+pinned hosted gates               BLOCKED BEFORE RUNNER START (billing/spend limit)
 canonical save backend            UPSTREAM DEPENDENCY
 production renderer parity        VALIDATION DEPENDENCY
 ```
