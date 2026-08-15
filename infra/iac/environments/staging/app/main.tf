@@ -30,15 +30,13 @@ locals {
       max_capacity      = 6
       publicly_routed   = true
       health_check_path = "/health/ready"
-      environment = merge(local.common_environment, {
-        LUMI_ROLE = "api"
-      })
+      environment = merge(local.common_environment, { LUMI_ROLE = "api" })
       secret_arns = {
-        LUMI_DATABASE_URL            = local.secret_arns["database/app"]
-        LUMI_REDIS_URL               = local.secret_arns["redis/url"]
-        LUMI_RABBITMQ_URL            = local.secret_arns["rabbitmq/url"]
+        LUMI_DATABASE_URL           = local.secret_arns["database/app"]
+        LUMI_REDIS_URL              = local.secret_arns["redis/url"]
+        LUMI_RABBITMQ_URL           = local.secret_arns["rabbitmq/url"]
         LUMI_BILLING_WEBHOOK_SECRET = local.secret_arns["billing/webhook"]
-        LUMI_AUTH_SIGNING_SECRET     = local.secret_arns["auth/signing"]
+        LUMI_AUTH_SIGNING_SECRET    = local.secret_arns["auth/signing"]
       }
       s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["exports"]]
       autoscale_metric_name  = "ApiConcurrentRequests"
@@ -52,9 +50,7 @@ locals {
       desired_count = 2
       min_capacity  = 2
       max_capacity  = 8
-      environment = merge(local.common_environment, {
-        LUMI_ROLE = "agent-runtime"
-      })
+      environment = merge(local.common_environment, { LUMI_ROLE = "agent-runtime" })
       secret_arns = {
         LUMI_DATABASE_URL          = local.secret_arns["database/app"]
         LUMI_REDIS_URL             = local.secret_arns["redis/url"]
@@ -73,12 +69,8 @@ locals {
       desired_count = 2
       min_capacity  = 2
       max_capacity  = 6
-      environment = merge(local.common_environment, {
-        LUMI_ROLE = "model-gateway"
-      })
-      secret_arns = {
-        LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"]
-      }
+      environment = merge(local.common_environment, { LUMI_ROLE = "model-gateway" })
+      secret_arns = { LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"] }
       s3_bucket_arns         = []
       autoscale_metric_name  = "ModelGatewayInflight"
       autoscale_target_value = 40
@@ -91,9 +83,7 @@ locals {
       desired_count = 2
       min_capacity  = 2
       max_capacity  = 6
-      environment = merge(local.common_environment, {
-        LUMI_ROLE = "tool-gateway"
-      })
+      environment = merge(local.common_environment, { LUMI_ROLE = "tool-gateway" })
       secret_arns = {
         LUMI_DATABASE_URL        = local.secret_arns["database/app"]
         LUMI_AUTH_SIGNING_SECRET = local.secret_arns["auth/signing"]
@@ -110,9 +100,7 @@ locals {
       desired_count = 2
       min_capacity  = 2
       max_capacity  = 12
-      environment = merge(local.common_environment, {
-        LUMI_ROLE = "worker-media"
-      })
+      environment = merge(local.common_environment, { LUMI_ROLE = "worker-media" })
       secret_arns = {
         LUMI_REDIS_URL             = local.secret_arns["redis/url"]
         LUMI_RABBITMQ_URL          = local.secret_arns["rabbitmq/url"]
@@ -130,9 +118,7 @@ locals {
       desired_count = 2
       min_capacity  = 2
       max_capacity  = 6
-      environment = merge(local.common_environment, {
-        LUMI_ROLE = "sandbox-runtime"
-      })
+      environment = merge(local.common_environment, { LUMI_ROLE = "sandbox-runtime" })
       secret_arns = {
         LUMI_REDIS_URL    = local.secret_arns["redis/url"]
         LUMI_RABBITMQ_URL = local.secret_arns["rabbitmq/url"]
@@ -147,22 +133,18 @@ locals {
 module "platform_app" {
   source = "../../../modules/platform-app"
 
-  project                   = local.project
-  environment               = local.environment
-  vpc_id                    = local.core.vpc_id
-  public_subnet_ids         = local.core.public_subnet_ids
-  private_subnet_ids        = local.core.private_subnet_ids
-  app_security_group_id     = local.core.app_security_group_id
-  alb_security_group_id     = local.core.alb_security_group_id
-  certificate_arn           = var.certificate_arn
-  kms_key_arn               = local.core.kms_key_arn
-  domain_name               = var.domain_name
-  hosted_zone_id            = var.hosted_zone_id
-  services                  = local.services
-  migration_task = {
-    image                = var.api_image
-    migration_secret_arn = local.secret_arns["database/migration"]
-  }
+  project                    = local.project
+  environment                = local.environment
+  vpc_id                     = local.core.vpc_id
+  public_subnet_ids          = local.core.public_subnet_ids
+  private_subnet_ids         = local.core.private_subnet_ids
+  app_security_group_id      = local.core.app_security_group_id
+  alb_security_group_id      = local.core.alb_security_group_id
+  certificate_arn            = var.certificate_arn
+  kms_key_arn                = local.core.kms_key_arn
+  domain_name                = var.domain_name
+  hosted_zone_id             = var.hosted_zone_id
+  services                   = local.services
   waf_rate_limit_requests_per_5m = var.waf_rate_limit_requests_per_5m
   tags = {
     Owner       = "platform"
