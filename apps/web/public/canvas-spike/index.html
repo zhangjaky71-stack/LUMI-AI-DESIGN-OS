@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>LUMI Canvas Technology Spike — NODE-08</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <strong>LUMI Canvas Spike</strong>
+          <span class="muted">NODE-08 · PixiJS v8 + DOM overlay</span>
+        </div>
+        <div class="toolbar" aria-label="Canvas controls">
+          <button id="fit-scene" data-testid="fit-scene">Fit scene</button>
+          <button id="frame-selection" data-testid="frame-selection">Frame selected</button>
+          <button id="edit-text" data-testid="edit-text">Edit text</button>
+          <button id="bring-forward" data-testid="bring-forward">Bring forward</button>
+          <button id="send-backward" data-testid="send-backward">Send backward</button>
+          <button id="copy" data-testid="copy">Copy</button>
+          <button id="paste" data-testid="paste">Paste</button>
+          <button id="undo" data-testid="undo">Undo</button>
+          <button id="redo" data-testid="redo">Redo</button>
+          <button id="run-benchmark" class="primary" data-testid="run-benchmark">Run benchmark</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="canvas-panel" aria-label="Infinite canvas prototype">
+          <div id="canvas-host" data-testid="canvas-host"></div>
+          <div id="marquee" class="marquee hidden" aria-hidden="true"></div>
+          <div id="selection-box" class="selection-box hidden" aria-hidden="true">
+            <button class="handle nw" data-handle="nw" aria-label="Resize north west"></button>
+            <button class="handle ne" data-handle="ne" aria-label="Resize north east"></button>
+            <button class="handle sw" data-handle="sw" aria-label="Resize south west"></button>
+            <button class="handle se" data-handle="se" aria-label="Resize south east"></button>
+            <button class="rotate-handle" data-testid="rotate-handle" aria-label="Rotate"></button>
+          </div>
+          <textarea id="text-editor" class="text-editor hidden" data-testid="text-editor" spellcheck="false"></textarea>
+          <div class="help">
+            Wheel / pinch to zoom · drag empty canvas to pan · Shift-drag for marquee · drag nodes to move
+          </div>
+        </section>
+
+        <aside class="inspector">
+          <h2>Spike telemetry</h2>
+          <dl>
+            <div><dt>Status</dt><dd id="status" data-testid="canvas-status">loading</dd></div>
+            <div><dt>Renderer</dt><dd id="renderer">initializing</dd></div>
+            <div><dt>Camera</dt><dd id="camera">—</dd></div>
+            <div><dt>Nodes</dt><dd id="node-count">0</dd></div>
+            <div><dt>Visible</dt><dd id="visible-count">0</dd></div>
+            <div><dt>Selected</dt><dd id="selected-count">0</dd></div>
+            <div><dt>Image ref</dt><dd id="image-ref">—</dd></div>
+            <div><dt>Textures</dt><dd id="texture-count">0</dd></div>
+          </dl>
+          <h3>Benchmark</h3>
+          <pre id="benchmark-output" data-testid="benchmark-output">not run</pre>
+          <p class="muted small">Benchmark values are measured in the current browser and are not vendor marketing scores.</p>
+        </aside>
+      </main>
+    </div>
+
+    <script type="module" src="./app.mjs"></script>
+  </body>
+</html>
