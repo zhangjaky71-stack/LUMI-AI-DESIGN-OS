@@ -28,6 +28,13 @@
     "worker-media": "PENDING",
     "sandbox-runtime": "PENDING"
   },
+  "rollout": {
+    "public_api_strategy": "ECS_CANARY",
+    "public_api_canary_percent": 5,
+    "public_api_canary_bake_minutes": 10,
+    "public_api_alarm_rollback": true,
+    "internal_service_strategy": "ROLLING_CIRCUIT_BREAKER"
+  },
   "first_day_limits": {
     "max_org_concurrent_agent_runs": 4,
     "max_org_concurrent_generations": 4,
