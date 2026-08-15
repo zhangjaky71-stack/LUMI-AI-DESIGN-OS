@@ -1,10 +1,16 @@
 # NODE-66 — Security Hardening & Threat Model
 
 > Phase: 9 Production Readiness  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: IMPLEMENTED / RELEASE BLOCKED  
 > Priority: P0 / RELEASE BLOCKER  
 > Depends on: NODE-16, NODE-18, NODE-20, NODE-21, NODE-25, NODE-65  
 > Produces: Threat Model、Security Test Suite、SAST/DAST/Supply-chain/Prompt-injection/SSRF/Sandbox hardening与上线安全门
+
+> Implementation Branch: `node-66-security-hardening-release`  
+> Pull Request: `#66 — NODE-66: Security hardening and threat model`  
+> Release Evidence: `docs/security/NODE-66-RELEASE-EVIDENCE.md`  
+> Threat Model: `docs/security/THREAT-MODEL.md`  
+> Implementation State: Source controls and release workflows are implemented; executable acceptance is blocked because GitHub Actions cannot currently allocate runners due to account billing/spending-limit status. This node is **not COMPLETE** until the security gates execute and pass.
 
 ---
 
@@ -234,6 +240,14 @@ Low: tracked
 - [ ] secrets不在repo/client/log。
 - [ ] Security runbooks完成。
 
+### 18.1 当前验收执行状态 — 2026-08-15
+
+源代码、Threat Model、Release Evidence、安全回归集合、SAST/SCA/Secret/IaC 门禁以及受保护的 Staging DAST workflow 已提交到 PR #66。现有 Tool Gateway SSRF、Agent Context prompt-injection、Sandbox、Auth/Tenant、Approval 与 Asset Storage 安全能力已经按 canonical owner 收敛到统一 Release Gate。
+
+但当前 GitHub Actions job 在 runner 启动前即被平台拒绝，原因是账户 recent payments failed / Actions spending limit needs to be increased。由于测试步骤没有执行，上述验收项不能被标记为 PASS，也不能据此判定代码 FAIL。
+
+恢复 Actions runner 后必须在 PR 最新 HEAD 上重新执行 `.github/workflows/security-release-gate.yml`；之后还必须执行 production-equivalent NODE-21 sandbox escape verification、对真实 Staging HTTPS URL 执行 `.github/workflows/security-dast.yml`，并完成生产环境控制与独立渗透测试签署。
+
 ## 19. Definition of Done
 
 ```text
@@ -243,4 +257,6 @@ security threat model signed off
 + residual risks documented
 ```
 
-下一节点：NODE-67 Observability。
+当前 DoD：**NOT MET / RELEASE BLOCKED**。
+
+下一节点：NODE-67 Observability。NODE-67 可以继续工程实现，但不得把 NODE-66 视为 Production Security PASS；NODE-71/72/73 的上线验收必须回收并验证 NODE-66 的全部未完成安全证据。
