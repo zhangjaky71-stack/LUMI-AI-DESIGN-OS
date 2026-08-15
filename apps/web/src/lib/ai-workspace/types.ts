@@ -9,6 +9,9 @@ export type AgentRunStatus =
   | "FAILED"
   | "CANCELED";
 
+export type AgentTaskStatus = "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELED";
+export type AgentTaskCategory = "AGENT" | "GENERATION" | "APPROVAL" | "ERROR";
+
 export type WorkspaceMessageKind =
   | "USER"
   | "STATUS"
@@ -77,11 +80,46 @@ export interface WorkspaceMessage {
   readonly warning_code: string | null;
 }
 
+/**
+ * Safe, user-facing observability only. Raw tool args/results, prompts, secrets,
+ * stack traces and private reasoning are deliberately absent from this model.
+ */
+export interface AgentToolSummary {
+  readonly id: string;
+  readonly label: string;
+}
+
+export interface AgentTaskErrorSummary {
+  readonly code: string;
+  readonly safe_message: string;
+  readonly retrying: boolean;
+  readonly request_id: string | null;
+  readonly provider_fallback: string | null;
+}
+
+export interface AgentCostSummary {
+  readonly estimated_microusd: string | null;
+  readonly actual_microusd: string | null;
+  readonly credits: string | null;
+  readonly budget_warning: boolean;
+}
+
 export interface AgentTaskSummary {
   readonly task_id: string;
   readonly label: string;
-  readonly status: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELED";
+  readonly status: AgentTaskStatus;
   readonly retryable: boolean;
+  readonly category?: AgentTaskCategory;
+  readonly safe_summary?: string | null;
+  readonly started_at?: string | null;
+  readonly finished_at?: string | null;
+  readonly completed_units?: number | null;
+  readonly total_units?: number | null;
+  readonly artifact_version_ids?: readonly string[];
+  readonly approval_id?: string | null;
+  readonly tool_summaries?: readonly AgentToolSummary[];
+  readonly error?: AgentTaskErrorSummary | null;
+  readonly cost_summary?: AgentCostSummary | null;
 }
 
 export interface AgentRunSnapshot {
@@ -94,6 +132,8 @@ export interface AgentRunSnapshot {
   readonly selected_node_ids: readonly string[];
   readonly document_version: number;
   readonly tasks: readonly AgentTaskSummary[];
+  readonly safe_summary?: string | null;
+  readonly cost_summary?: AgentCostSummary | null;
 }
 
 export interface AIWorkspaceSnapshot {

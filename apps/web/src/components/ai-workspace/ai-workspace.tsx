@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AgentTimeline } from "@/components/agent-timeline/agent-timeline";
 import { useShell } from "@/components/app-shell/shell-context";
 import { InfiniteCanvasProduct } from "@/components/infinite-canvas/infinite-canvas";
 import { LayersInspector } from "@/components/layers-inspector/layers-inspector";
@@ -35,12 +36,6 @@ const RUN_LABEL: Readonly<Record<string, string>> = {
 function uiError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return "AI Workspace 操作失败，请重试。";
-}
-
-function money(microusd: string | null): string | null {
-  if (!microusd) return null;
-  const value = Number(microusd) / 1_000_000;
-  return Number.isFinite(value) ? `$${value.toFixed(2)}` : null;
 }
 
 export function AIWorkspace({
@@ -196,6 +191,7 @@ export function AIWorkspace({
   const retryTask = async (taskId: string) => {
     if (!snapshot?.run || busy) return;
     setBusy(true);
+    setError(null);
     try {
       const run = await gateway.retryTask(activeOrganization.id, {
         run_id: snapshot.run.run_id,
@@ -289,6 +285,14 @@ export function AIWorkspace({
     setMobilePanel("agent");
   }, []);
 
+  const handleJumpToCanvas = useCallback((artifactVersionId: string) => {
+    setArtifactReferenceIds((current) =>
+      current.includes(artifactVersionId) ? current : [...current, artifactVersionId],
+    );
+    setMobilePanel("canvas");
+    canvasEditorRef.current?.fitSelection();
+  }, []);
+
   if (loading) return <div className={styles.loading}>正在加载 AI Workspace…</div>;
   if (!snapshot) {
     return (
@@ -323,71 +327,18 @@ export function AIWorkspace({
         </div>
       </div>
 
-      <div className={styles.messages} aria-live="polite">
-        {snapshot.messages.map((message) => (
-          <article key={message.id} className={styles.message} data-kind={message.kind}>
-            <span>{message.kind}</span>
-            <p>{message.text}</p>
-          </article>
-        ))}
-
-        {snapshot.artifacts.map((artifact) => (
-          <article key={artifact.version_id} className={styles.artifactCard}>
-            <div className={styles.artifactPreview}>{artifact.preview_label}</div>
-            <div>
-              <span className={styles.eyebrow}>ARTIFACT · v{artifact.version}</span>
-              <h3>{artifact.title}</h3>
-              <p>绑定精确版本 {artifact.version_id}</p>
-              <div className={styles.cardActions}>
-                <button type="button" onClick={() => void placeArtifact(artifact.artifact_id, artifact.version_id)} disabled={busy}>放到 Canvas</button>
-                <button type="button" onClick={() => toggleArtifactReference(artifact.version_id)} aria-pressed={artifactReferenceIds.includes(artifact.version_id)}>作为参考</button>
-                <button type="button" disabled title="NODE-59 Artifact compare">Compare</button>
-              </div>
-            </div>
-          </article>
-        ))}
-
-        {snapshot.approvals.map((approval) => {
-          const actionable = isApprovalActionable(approval, run);
-          const stale = !actionable && approval.state !== "APPROVED" && approval.state !== "REJECTED" && approval.state !== "CHANGES_REQUESTED";
-          return (
-            <article key={approval.approval_id} className={styles.approvalCard}>
-              <div className={styles.approvalHeading}>
-                <div><span className={styles.eyebrow}>APPROVAL</span><h3>{approval.title}</h3></div>
-                <strong>{stale ? "已过期" : approval.state}</strong>
-              </div>
-              <p>{approval.description}</p>
-              {approval.impact ? <p className={styles.muted}>{approval.impact}</p> : null}
-              {money(approval.estimated_cost_microusd) ? <p>预计增量成本 {money(approval.estimated_cost_microusd)}</p> : null}
-              {stale ? <p className={styles.staleNote}>旧审批不会被提交；请以当前 Run 的 canonical state 为准。</p> : null}
-              {approval.state === "PENDING" ? (
-                <>
-                  <textarea
-                    aria-label={`${approval.title} 修改意见`}
-                    placeholder="需要修改时填写具体要求"
-                    value={approvalNotes[approval.approval_id] ?? ""}
-                    onChange={(event) => setApprovalNotes((current) => ({ ...current, [approval.approval_id]: event.target.value }))}
-                    disabled={!actionable}
-                  />
-                  <div className={styles.cardActions}>
-                    <button type="button" onClick={() => void decideApproval(approval, "APPROVE")} disabled={!actionable || busy}>Approve</button>
-                    <button type="button" onClick={() => void decideApproval(approval, "REJECT")} disabled={!actionable || busy}>Reject</button>
-                    <button type="button" onClick={() => void decideApproval(approval, "REQUEST_CHANGES")} disabled={!actionable || busy}>Request Changes</button>
-                  </div>
-                </>
-              ) : null}
-            </article>
-          );
-        })}
-      </div>
-
-      {run?.tasks.some((task) => task.status === "FAILED" && task.retryable) ? (
-        <div className={styles.retryList}>
-          {run.tasks.filter((task) => task.status === "FAILED" && task.retryable).map((task) => (
-            <button key={task.task_id} type="button" onClick={() => void retryTask(task.task_id)}>Retry {task.label}</button>
-          ))}
-        </div>
-      ) : null}
+      <AgentTimeline
+        snapshot={snapshot}
+        busy={busy}
+        artifactReferenceIds={artifactReferenceIds}
+        approvalNotes={approvalNotes}
+        onApprovalNoteChange={(approvalId, note) => setApprovalNotes((current) => ({ ...current, [approvalId]: note }))}
+        onDecideApproval={(approval, decision) => void decideApproval(approval, decision)}
+        onPlaceArtifact={(artifactId, versionId) => void placeArtifact(artifactId, versionId)}
+        onToggleArtifactReference={toggleArtifactReference}
+        onRetryTask={(taskId) => void retryTask(taskId)}
+        onJumpToCanvas={handleJumpToCanvas}
+      />
 
       <div className={styles.composer}>
         <div className={styles.contextChips}>
@@ -456,7 +407,7 @@ export function AIWorkspace({
         <div>
           <Link href={`/app/projects/${encodeURIComponent(projectId)}`}>← Project Brief</Link>
           <h1>{snapshot.project_name}</h1>
-          <p>{snapshot.brand_name ?? "No Brand Kit"} · Chat + Infinite Canvas + Layers / Inspector</p>
+          <p>{snapshot.brand_name ?? "No Brand Kit"} · Timeline + Infinite Canvas + Layers / Inspector</p>
         </div>
         {error ? <p role="alert" className={styles.error}>{error}</p> : null}
       </header>
