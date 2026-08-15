@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LumiApiError } from "@/lib/app-shell/api-client";
-import {
-  DeterministicProjectsGateway,
-} from "./projects-gateway";
+import { DeterministicProjectsGateway } from "./projects-gateway";
 import type {
   DeterministicProjectSeed,
   ProjectDetail,
@@ -22,7 +19,12 @@ function brief(objective: string): StructuredBrief {
   };
 }
 
-function detail(id: string, organizationId: string, name: string, status: "ACTIVE" | "ARCHIVED" = "ACTIVE"): ProjectDetail {
+function detail(
+  id: string,
+  organizationId: string,
+  name: string,
+  status: "ACTIVE" | "ARCHIVED" = "ACTIVE",
+): ProjectDetail {
   const value = brief(`Objective ${name}`);
   return {
     summary: {
@@ -41,7 +43,13 @@ function detail(id: string, organizationId: string, name: string, status: "ACTIV
     },
     brief_version: 1,
     brief: value,
-    brief_history: [{ version: 1, created_at: "2026-08-01T00:00:00.000Z", brief: value }],
+    brief_history: [
+      {
+        version: 1,
+        created_at: "2026-08-01T00:00:00.000Z",
+        brief: value,
+      },
+    ],
     references: [],
   };
 }
@@ -74,15 +82,22 @@ describe("DeterministicProjectsGateway", () => {
     const gateway = new DeterministicProjectsGateway(seed());
     const first = await gateway.listProjects("org-a", filters);
     expect(first.items).toHaveLength(2);
-    expect(first.items.every((project) => project.organization_id === "org-a")).toBe(true);
+    expect(
+      first.items.every((project) => project.organization_id === "org-a"),
+    ).toBe(true);
     expect(first.has_more).toBe(true);
 
     const second = await gateway.listProjects("org-a", {
       ...filters,
       cursor: first.next_cursor,
     });
-    expect(second.items.every((project) => project.organization_id === "org-a")).toBe(true);
-    expect(new Set([...first.items, ...second.items].map((project) => project.id)).size).toBe(4);
+    expect(
+      second.items.every((project) => project.organization_id === "org-a"),
+    ).toBe(true);
+    expect(
+      new Set([...first.items, ...second.items].map((project) => project.id))
+        .size,
+    ).toBe(4);
   });
 
   it("creates a project from only a natural-language intent and optional brand context", async () => {
@@ -113,7 +128,7 @@ describe("DeterministicProjectsGateway", () => {
       }),
     ).rejects.toMatchObject({
       problem: { code: "VERSION_CONFLICT" },
-    } satisfies Partial<LumiApiError>);
+    });
 
     const unchanged = await gateway.getProject("org-a", "project-2");
     expect(unchanged.summary.name).toBe("Beta");
@@ -139,7 +154,9 @@ describe("DeterministicProjectsGateway", () => {
     const progress: string[] = [];
     const reference = await gateway.uploadReference("org-a", {
       project_id: "project-1",
-      file: new File(["fixture"], "scan-fail-logo.png", { type: "image/png" }),
+      file: new File(["fixture"], "scan-fail-logo.png", {
+        type: "image/png",
+      }),
       role: "logo",
       on_progress: (value, status) => progress.push(`${status}:${value}`),
     });
