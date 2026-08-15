@@ -54,6 +54,13 @@ def clean_manifest(acceptance_path: str) -> dict[str, Any]:
             name: f"123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/lumi-{name}@{digest}"
             for name in ["api", "agent-runtime", "model-gateway", "tool-gateway", "worker-media", "sandbox-runtime"]
         },
+        "rollout": {
+            "public_api_strategy": "ECS_CANARY",
+            "public_api_canary_percent": 5,
+            "public_api_canary_bake_minutes": 10,
+            "public_api_alarm_rollback": True,
+            "internal_service_strategy": "ROLLING_CIRCUIT_BREAKER",
+        },
         "first_day_limits": {
             "max_org_concurrent_agent_runs": 4,
             "max_org_concurrent_generations": 4,
@@ -119,6 +126,10 @@ def main() -> int:
     mutable_image["images"]["api"] = "example.invalid/lumi-api:latest"
     require(gate.evaluate(mutable_image, decision, acceptance_path)["passed"] is False, "mutable image tag must block")
 
+    rollout_swap = copy.deepcopy(clean)
+    rollout_swap["rollout"]["public_api_canary_percent"] = 100
+    require(gate.evaluate(rollout_swap, decision, acceptance_path)["passed"] is False, "all-at-once public rollout must block")
+
     no_rollback = copy.deepcopy(clean)
     no_rollback["rollback"]["database_backward_compatible"] = False
     require(gate.evaluate(no_rollback, decision, acceptance_path)["passed"] is False, "unproven DB rollback compatibility must block")
@@ -139,6 +150,7 @@ def main() -> int:
             "accepted_sha_swap_blocked": True,
             "migration_swap_blocked": True,
             "mutable_image_blocked": True,
+            "all_at_once_rollout_blocked": True,
             "db_rollback_unproven_blocked": True,
             "external_pending_blocked": True,
             "missing_approval_blocked": True
