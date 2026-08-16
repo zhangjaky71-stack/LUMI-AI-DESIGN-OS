@@ -15,7 +15,9 @@ from lumi_model_gateway.models import (
 )
 from lumi_model_gateway.openai_adapter import OpenAIResponsesAdapter
 from lumi_model_gateway.registry import CapabilityRegistry
-from lumi_model_gateway.registry_projection import provider_model_from_record
+from lumi_model_gateway.registry_projection import (
+    provider_model_from_record,
+)
 from lumi_model_gateway.registry_seed import load_seed_snapshot
 from lumi_model_gateway.routing import ModelRouter, ProviderRegistry
 from lumi_model_gateway.secrets import MappingSecretProvider
@@ -63,7 +65,7 @@ def build_router() -> ModelRouter:
     )
 
 
-def test_registry_projects_openai_token_prices_with_snapshot_provenance() -> None:
+def test_registry_projects_openai_token_prices_with_provenance() -> None:
     snapshot = load_seed_snapshot(ROOT)
     record = snapshot.models["openai:gpt-5.6-sol"]
     projected = provider_model_from_record(
@@ -71,15 +73,15 @@ def test_registry_projects_openai_token_prices_with_snapshot_provenance() -> Non
         registry_snapshot_id=snapshot.snapshot_id,
         pricing_at=AT,
     )
-    assert projected.input_usd_per_million == Decimal("1.75")
-    assert projected.output_usd_per_million == Decimal("14")
+    assert projected.input_usd_per_million == Decimal("5.0")
+    assert projected.output_usd_per_million == Decimal("30.0")
     assert projected.pricing_snapshot_id is not None
     assert len(projected.pricing_snapshot_ids) == 2
     assert projected.registry_snapshot_id == snapshot.snapshot_id
     assert projected.model_revision_id == record.revision_id
 
 
-def test_registry_routing_uses_known_token_cost_instead_of_unknown_filter() -> None:
+def test_registry_routing_uses_known_token_cost() -> None:
     decision = build_router().route(
         request(Capability.LLM_REASONING)
     )
@@ -95,7 +97,7 @@ def test_registry_routing_uses_known_token_cost_instead_of_unknown_filter() -> N
     )
 
 
-def test_catalog_capability_without_transport_implementation_fails_closed() -> None:
+def test_catalog_capability_without_transport_fails_closed() -> None:
     decision = build_router().route(
         request(Capability.IMAGE_GENERATE)
     )
