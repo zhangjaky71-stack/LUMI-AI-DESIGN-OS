@@ -1,4 +1,4 @@
-name: Final Cost and Sandbox Hard Stops
+name: Final Production Safety Hard Stops
 
 on:
   pull_request:
@@ -13,8 +13,13 @@ on:
       - "scripts/validate_provider_daily_hard_stop.py"
       - "scripts/validate_final_hard_stops.py"
       - "scripts/integration_provider_daily_hard_stop.py"
+      - "scripts/alert-delivery-drill.sh"
+      - "scripts/ecs-rollback-to-state.sh"
       - "docs/operations/PROVIDER-DAILY-HARD-STOP.md"
       - "docs/operations/SANDBOX-EGRESS-ISOLATION.md"
+      - "docs/operations/ROLLBACK-AND-ALERT-DRILLS.md"
+      - ".github/workflows/deploy-production.yml"
+      - ".github/workflows/final-operational-drills.yml"
       - ".github/workflows/provider-daily-hard-stop.yml"
   workflow_dispatch:
 
@@ -43,9 +48,11 @@ jobs:
           scripts/validate_provider_daily_hard_stop.py
           scripts/validate_final_hard_stops.py
           scripts/integration_provider_daily_hard_stop.py
+      - name: Validate shell drill syntax
+        run: bash -n scripts/alert-delivery-drill.sh scripts/ecs-rollback-to-state.sh scripts/capture-ecs-deployment-state.sh
       - name: Validate provider daily hard-stop contract
         run: python scripts/validate_provider_daily_hard_stop.py
-      - name: Validate final source hard stops
+      - name: Validate final production safety contracts
         run: python scripts/validate_final_hard_stops.py
 
   terraform-format:
