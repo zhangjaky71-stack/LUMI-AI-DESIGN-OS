@@ -137,7 +137,9 @@ class PostgresCapabilityRegistryStore:
             version_id,
         )
 
-        claims_by_revision: dict[UUID, list[CapabilityClaim]] = defaultdict(list)
+        claims_by_revision: dict[UUID, list[CapabilityClaim]] = defaultdict(
+            list
+        )
         for row in claim_rows:
             claims_by_revision[row["model_revision_id"]].append(
                 CapabilityClaim(
@@ -151,8 +153,12 @@ class PostgresCapabilityRegistryStore:
                 )
             )
 
-        prices_by_revision: dict[UUID, list[PricingSnapshot]] = defaultdict(list)
+        prices_by_revision: dict[UUID, list[PricingSnapshot]] = defaultdict(
+            list
+        )
         for row in price_rows:
+            region_value = row["region"]
+            expires_at = row["expires_at"]
             prices_by_revision[row["model_revision_id"]].append(
                 PricingSnapshot(
                     pricing_snapshot_id=str(row["id"]),
@@ -167,18 +173,24 @@ class PostgresCapabilityRegistryStore:
                         else Decimal(str(row["minimum_charge"]))
                     ),
                     region=(
-                        None if row["region"] in (None, "global") else str(row["region"])
+                        None
+                        if region_value in (None, "global")
+                        else str(region_value)
                     ),
                     effective_from=_aware(row["effective_from"]),
                     observed_at=_aware(row["observed_at"]),
                     expires_at=(
-                        None if row["expires_at"] is None else _aware(row["expires_at"])
+                        None
+                        if expires_at is None
+                        else _aware(expires_at)
                     ),
                     source_ref=str(row["source_ref"]),
                 )
             )
 
-        benchmarks_by_revision: dict[UUID, list[BenchmarkScore]] = defaultdict(list)
+        benchmarks_by_revision: dict[UUID, list[BenchmarkScore]] = defaultdict(
+            list
+        )
         for row in benchmark_rows:
             benchmarks_by_revision[row["model_revision_id"]].append(
                 BenchmarkScore(
@@ -228,19 +240,29 @@ class PostgresCapabilityRegistryStore:
                 lifecycle=ModelLifecycle(str(row["lifecycle"])),
                 route_eligible=bool(row["route_eligible"]),
                 observed_at=_aware(row["observed_at"]),
-                source_refs=tuple(str(item) for item in row["source_refs"]),
+                source_refs=tuple(
+                    str(item) for item in row["source_refs"]
+                ),
                 claims=claims,
                 prices=prices,
                 benchmarks=benchmarks,
-                regions=frozenset(str(item) for item in row["regions"]),
+                regions=frozenset(
+                    str(item) for item in row["regions"]
+                ),
                 revision_id=str(row["revision_key"]),
                 metadata=dict(row["metadata"] or {}),
             )
 
-        candidates_by_profile: dict[UUID, list[tuple[str, bool]]] = defaultdict(list)
+        candidates_by_profile: dict[
+            UUID,
+            list[tuple[str, bool]],
+        ] = defaultdict(list)
         for row in candidate_rows:
             candidates_by_profile[row["routing_profile_id"]].append(
-                (str(row["model_key"]), bool(row["stable_fallback"]))
+                (
+                    str(row["model_key"]),
+                    bool(row["stable_fallback"]),
+                )
             )
         profiles: dict[str, RoutingProfile] = {}
         for row in profile_rows:
@@ -249,9 +271,12 @@ class PostgresCapabilityRegistryStore:
             profile = RoutingProfile(
                 name=str(row["profile_key"]),
                 required_capabilities=tuple(
-                    Capability(str(item)) for item in row["required_capabilities"]
+                    Capability(str(item))
+                    for item in row["required_capabilities"]
                 ),
-                candidate_model_keys=tuple(item[0] for item in candidates),
+                candidate_model_keys=tuple(
+                    item[0] for item in candidates
+                ),
                 stable_fallback_model_keys=tuple(
                     item[0] for item in candidates if item[1]
                 ),
@@ -263,10 +288,14 @@ class PostgresCapabilityRegistryStore:
                 ),
                 weights=RoutingWeights(
                     quality=Decimal(str(weight_payload["quality"])),
-                    constraint=Decimal(str(weight_payload["constraint"])),
+                    constraint=Decimal(
+                        str(weight_payload["constraint"])
+                    ),
                     cost=Decimal(str(weight_payload["cost"])),
                     latency=Decimal(str(weight_payload["latency"])),
-                    availability=Decimal(str(weight_payload["availability"])),
+                    availability=Decimal(
+                        str(weight_payload["availability"])
+                    ),
                 ),
                 source_ref=str(row["source_ref"]),
             )
@@ -311,11 +340,16 @@ class PostgresCapabilityRegistryStore:
             disabled_providers=frozenset(
                 str(item) for item in row["disabled_providers"]
             ),
-            allowed_regions=frozenset(str(item) for item in row["allowed_regions"]),
-            preferred_models=tuple(str(item) for item in row["preferred_models"]),
+            allowed_regions=frozenset(
+                str(item) for item in row["allowed_regions"]
+            ),
+            preferred_models=tuple(
+                str(item) for item in row["preferred_models"]
+            ),
             max_cost_class=row["max_cost_class"],
             data_handling_restrictions=frozenset(
-                str(item) for item in row["data_handling_restrictions"]
+                str(item)
+                for item in row["data_handling_restrictions"]
             ),
         )
 
@@ -328,7 +362,9 @@ class PostgresCapabilityRegistryStore:
         latest = await self.load_snapshot(connection)
         if latest.snapshot_id == current.snapshot_id:
             if latest.checksum_sha256 != current.checksum_sha256:
-                raise RuntimeError("REGISTRY_SNAPSHOT_ID_CHECKSUM_CONFLICT")
+                raise RuntimeError(
+                    "REGISTRY_SNAPSHOT_ID_CHECKSUM_CONFLICT"
+                )
             return False
         registry.publish(latest)
         return True
