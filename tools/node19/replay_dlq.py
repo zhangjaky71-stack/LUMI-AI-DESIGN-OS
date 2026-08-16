@@ -8,7 +8,10 @@ from uuid import UUID
 
 from lumi_worker_media.app import submit_job
 from lumi_worker_media.event_runtime import DeadLetterReplayService, KombuDomainPublisher
-from lumi_worker_media.job_dlq import JobDeadLetterReplayService
+from lumi_worker_media.job_dlq import (
+    JobDeadLetterReplayService,
+    PostgresJobReplayState,
+)
 from lumi_worker_media.postgres_runtime import PostgresDeadLetterStore
 from lumi_worker_media.queue_contracts import JobKind, JobMessage
 
@@ -34,6 +37,7 @@ async def run(organization_id: UUID, record_id: UUID) -> None:
     elif record.message_kind == "job":
         service = JobDeadLetterReplayService(
             store=store,
+            state=PostgresJobReplayState(dsn),
             submitter=CelerySubmitter(),
         )
         replayed = await service.replay(organization_id, record_id)
