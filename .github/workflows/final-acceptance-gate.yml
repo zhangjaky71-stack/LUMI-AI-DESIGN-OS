@@ -41,6 +41,8 @@ jobs:
         run: python3 scripts/validate_final_browser_preflight.py
       - name: Validate upstream canonical lock contract
         run: python3 scripts/validate_final_upstream_lock_contract.py
+      - name: Validate final runner checkout binding
+        run: python3 scripts/validate_final_runner_checkout_binding.py
       - name: Validate canonical lock helper shell syntax
         run: bash -n scripts/regenerate-root-uv-lock.sh
       - name: Validate JSON and Python syntax
@@ -58,7 +60,8 @@ jobs:
             scripts/validate_final_acceptance_contract.py \
             scripts/validate_final_manual_evidence_contract.py \
             scripts/validate_final_browser_preflight.py \
-            scripts/validate_final_upstream_lock_contract.py
+            scripts/validate_final_upstream_lock_contract.py \
+            scripts/validate_final_runner_checkout_binding.py
 
   canonical-lock-gate:
     runs-on: ubuntu-24.04
