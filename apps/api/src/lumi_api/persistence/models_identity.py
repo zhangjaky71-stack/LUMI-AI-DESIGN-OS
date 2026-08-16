@@ -1,10 +1,11 @@
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +19,9 @@ class UserModel(Base, UUIDPrimaryKeyMixin, MutableMixin):
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="active")
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     __table_args__ = (CheckConstraint("status IN ('active','disabled')", name="status"),)
 
 
@@ -47,7 +51,9 @@ class OrganizationMemberModel(Base, UUIDPrimaryKeyMixin, TenantMixin, MutableMix
         UniqueConstraint(
             "organization_id", "user_id", name="uq_organization_members_org_user"
         ),
-        CheckConstraint("role IN ('owner','admin','member','viewer')", name="role"),
+        CheckConstraint(
+            "role IN ('owner','admin','editor','viewer','billing')", name="role"
+        ),
     )
 
 
