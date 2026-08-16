@@ -116,7 +116,10 @@ class ModelRequest:
             raise ValueError("model request requires at least one input")
         if self.budget_limit is not None and self.budget_limit < 0:
             raise ValueError("budget_limit cannot be negative")
-        if self.capability is Capability.LLM_STRUCTURED_OUTPUT and not self.structured_output_schema:
+        if (
+            self.capability is Capability.LLM_STRUCTURED_OUTPUT
+            and not self.structured_output_schema
+        ):
             raise ValueError("structured output capability requires a schema")
 
     def semantic_hash(self) -> str:
@@ -158,6 +161,10 @@ class ProviderModel:
     output_usd_per_million: Decimal | None = None
     fixed_request_usd: Decimal | None = None
     enabled: bool = True
+    registry_snapshot_id: str | None = None
+    model_revision_id: str | None = None
+    quality_measured: bool = True
+    latency_measured: bool = True
 
     def __post_init__(self) -> None:
         if not self.provider or not self.model:
@@ -166,6 +173,8 @@ class ProviderModel:
             raise ValueError("provider model must expose at least one capability")
         if not 0 <= self.quality_score <= 100 or not 0 <= self.latency_score <= 100:
             raise ValueError("quality_score and latency_score must be 0..100")
+        if self.registry_snapshot_id is not None and not self.model_revision_id:
+            raise ValueError("registry-backed model requires model_revision_id")
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,6 +262,7 @@ class RouteDecision:
     request_id: UUID
     candidates: tuple[RouteCandidate, ...]
     rejected_reason_codes: tuple[str, ...] = ()
+    registry_snapshot_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
