@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -214,13 +216,29 @@ class AssetModel(Base, UUIDPrimaryKeyMixin, TenantMixin, MutableMixin, SoftDelet
         PGUUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
     source: Mapped[str] = mapped_column(String(64), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False, server_default="unknown")
+    declared_mime_type: Mapped[str] = mapped_column(
+        String(255), nullable=False, server_default="application/octet-stream"
+    )
     mime_type: Mapped[str] = mapped_column(String(255), nullable=False)
+    media_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending")
+    rejected_reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    created_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     semantic_metadata_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=JSON_OBJECT_DEFAULT
     )
     __table_args__ = (
-        CheckConstraint("status IN ('pending','ready','failed','deleted')", name="status"),
+        CheckConstraint(
+            "status IN ('pending','uploading','verifying','scanning','ready','rejected','deleted')",
+            name="status",
+        ),
+        CheckConstraint(
+            "media_kind IS NULL OR media_kind IN ('image','vector','document','video','font')",
+            name="media_kind",
+        ),
     )
 
 
@@ -230,16 +248,33 @@ class AssetFileModel(Base, UUIDPrimaryKeyMixin, TenantMixin, CreatedAtMixin):
     asset_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
     )
+    role: Mapped[str] = mapped_column(String(32), nullable=False, server_default="original")
     bucket: Mapped[str] = mapped_column(String(128), nullable=False)
     object_key: Mapped[str] = mapped_column(Text, nullable=False)
     checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     byte_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    mime_type: Mapped[str] = mapped_column(
+        String(255), nullable=False, server_default="application/octet-stream"
+    )
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    fps: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    codec: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    color_profile: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    has_alpha: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=JSON_OBJECT_DEFAULT
+    )
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     __table_args__ = (
         UniqueConstraint("bucket", "object_key", name="uq_asset_files_bucket_key"),
         CheckConstraint("byte_size >= 0", name="byte_size_nonnegative"),
         CheckConstraint("checksum_sha256 ~ '^[0-9a-f]{64}$'", name="sha256_format"),
+        CheckConstraint(
+            "role IN ('original','sanitized','thumbnail','medium','poster')",
+            name="role",
+        ),
     )
 
 
@@ -249,10 +284,18 @@ class AssetPreviewModel(Base, UUIDPrimaryKeyMixin, TenantMixin, CreatedAtMixin):
     asset_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
     )
+    source_file_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("asset_files.id", ondelete="SET NULL"), nullable=True
+    )
     kind: Mapped[str] = mapped_column(String(64), nullable=False)
     bucket: Mapped[str] = mapped_column(String(128), nullable=False)
     object_key: Mapped[str] = mapped_column(Text, nullable=False)
     checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    mime_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    byte_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
 
 class AssetMetadataModel(Base, UUIDPrimaryKeyMixin, TenantMixin, MutableMixin):
@@ -303,15 +346,24 @@ class AssetRightsModel(Base, UUIDPrimaryKeyMixin, TenantMixin, MutableMixin):
         unique=True,
     )
     rights_level: Mapped[str] = mapped_column(String(32), nullable=False)
+    assertion: Mapped[str] = mapped_column(String(32), nullable=False, server_default="UNKNOWN")
     commercial_use: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     attribution_required: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
     source_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    asserted_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    asserted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     __table_args__ = (
         CheckConstraint(
             "rights_level IN ('unknown','owned','licensed','public_domain','restricted')",
             name="rights_level",
+        ),
+        CheckConstraint(
+            "assertion IN ('USER_OWNED','LICENSED','UNKNOWN')",
+            name="assertion",
         ),
     )
