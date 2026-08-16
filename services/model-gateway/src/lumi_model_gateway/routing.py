@@ -10,6 +10,7 @@ from .models import (
     RouteDecision,
 )
 from .ports import HealthPort, ProviderAdapter
+from .registry import CapabilityRegistry
 
 
 _QUALITY_MIN = {
@@ -27,6 +28,12 @@ _LATENCY_MIN = {
 
 
 class ProviderRegistry:
+    """Transport registry.
+
+    Provider adapters are execution transports, not the source of routing facts. NODE-23 keeps
+    this class for adapter lookup while CapabilityRegistry owns model/capability/pricing truth.
+    """
+
     def __init__(self) -> None:
         self._adapters: dict[str, ProviderAdapter] = {}
 
@@ -42,6 +49,9 @@ class ProviderRegistry:
         except KeyError as exc:
             raise KeyError(f"provider is not registered: {provider}") from exc
 
+    def has_adapter(self, provider: str) -> bool:
+        return provider in self._adapters
+
     def model(self, provider: str, model_name: str) -> ProviderModel:
         adapter = self.adapter(provider)
         for model in adapter.models():
@@ -54,9 +64,25 @@ class ProviderRegistry:
 
 
 class ModelRouter:
-    def __init__(self, registry: ProviderRegistry, health: HealthPort) -> None:
+    def __init__(
+        self,
+        registry: ProviderRegistry,
+        health: HealthPort,
+        capability_registry: CapabilityRegistry | None = None,
+    ) -> None:
         self.registry = registry
         self.health = health
+        self.capability_registry = capability_registry
+
+    def resolve_model(self, provider: str, model_name: str) -> ProviderModel:
+        if self.capability_registry is not None:
+            snapshot = self.capability_registry.capture_snapshot()
+            for record in snapshot.models.values():
+                if record.provider == provider and record.model == model_name:
+                    return record.to_provider_model(
+                        registry_snapshot_id=snapshot.snapshot_id
+                    )
+        return self.registry.model(provider, model_name)
 
     def route(self, request: ModelRequest) -> RouteDecision:
         accepted: list[RouteCandidate] = []
@@ -64,75 +90,125 @@ class ModelRouter:
         preferred_providers = set(request.routing_hints.preferred_providers)
         preferred_models = set(request.routing_hints.preferred_models)
         excluded = set(request.routing_hints.excluded_providers)
-        for adapter in self.registry.adapters():
-            for model in adapter.models():
-                reasons: list[str] = []
-                identity = f"{model.provider}/{model.model}"
-                if not model.enabled:
-                    rejected.append(f"{identity}:disabled")
-                    continue
-                if model.provider in excluded:
-                    rejected.append(f"{identity}:provider_excluded")
-                    continue
-                if request.capability not in model.capabilities:
-                    continue
-                reasons.append("capability_match")
+        registry_snapshot_id: str | None = None
+
+        if self.capability_registry is not None:
+            snapshot = self.capability_registry.capture_snapshot()
+            registry_snapshot_id = snapshot.snapshot_id
+            policy = self.capability_registry.policy_for(request.organization_id)
+            allow_partial = bool(
+                request.constraints.get("allow_partial_capability", False)
+            )
+            records = snapshot.list_models(
+                request.capability,
+                policy=policy,
+                allow_partial=allow_partial,
+            )
+            models = tuple(
+                record.to_provider_model(
+                    registry_snapshot_id=snapshot.snapshot_id
+                )
+                for record in records
+            )
+        else:
+            models = tuple(
+                model
+                for adapter in self.registry.adapters()
+                for model in adapter.models()
+            )
+
+        for model in models:
+            reasons: list[str] = []
+            identity = f"{model.provider}/{model.model}"
+            if not model.enabled:
+                rejected.append(f"{identity}:disabled")
+                continue
+            if model.provider in excluded:
+                rejected.append(f"{identity}:provider_excluded")
+                continue
+            if request.capability not in model.capabilities:
+                continue
+            reasons.append("capability_match")
+            if not self.registry.has_adapter(model.provider):
+                rejected.append(f"{identity}:adapter_unavailable")
+                continue
+            adapter = self.registry.adapter(model.provider)
+
+            if model.quality_measured:
                 if model.quality_score < _QUALITY_MIN[request.quality_profile]:
                     rejected.append(f"{identity}:quality_below_threshold")
                     continue
+                reasons.append("quality_measured")
+            else:
+                reasons.append("quality_not_measured")
+
+            if model.latency_measured:
                 if model.latency_score < _LATENCY_MIN[request.latency_profile]:
                     rejected.append(f"{identity}:latency_below_threshold")
                     continue
-                if request.routing_hints.required_region:
-                    required = request.routing_hints.required_region
-                    if required not in model.regions and "global" not in model.regions:
-                        rejected.append(f"{identity}:region_mismatch")
-                        continue
-                    reasons.append("region_match")
-                snapshot = self.health.snapshot(model.provider, model.model)
-                if not snapshot.healthy or snapshot.score <= 0:
-                    rejected.append(f"{identity}:health_filtered")
+                reasons.append("latency_measured")
+            else:
+                reasons.append("latency_not_measured")
+
+            if request.routing_hints.required_region:
+                required = request.routing_hints.required_region
+                if required not in model.regions and "global" not in model.regions:
+                    rejected.append(f"{identity}:region_mismatch")
                     continue
-                reasons.append("health_ok")
-                try:
-                    adapter.validate(request, model)
-                    estimate = adapter.estimate_cost(request, model)
-                except (TypeError, ValueError) as exc:
-                    rejected.append(
-                        f"{identity}:validation:{type(exc).__name__}"
-                    )
-                    continue
-                if (
-                    estimate.amount_usd is None
-                    and not request.routing_hints.allow_unknown_cost
-                ):
-                    rejected.append(f"{identity}:unknown_cost")
-                    continue
-                if request.budget_limit is not None and estimate.amount_usd is not None:
-                    if estimate.amount_usd > request.budget_limit:
-                        rejected.append(f"{identity}:budget_filtered")
-                        continue
-                    reasons.append("within_request_budget")
-                score = model.quality_score + model.latency_score + snapshot.score
-                if model.provider in preferred_providers:
-                    score += 60
-                    reasons.append("preferred_provider")
-                if model.model in preferred_models:
-                    score += 80
-                    reasons.append("preferred_model")
-                if estimate.confidence is CostConfidence.EXACT:
-                    score += 5
-                elif estimate.confidence is CostConfidence.UNKNOWN:
-                    score -= 30
-                accepted.append(
-                    RouteCandidate(
-                        model,
-                        estimate,
-                        snapshot,
-                        score,
-                        tuple(reasons),
-                    )
+                reasons.append("region_match")
+
+            health_snapshot = self.health.snapshot(model.provider, model.model)
+            if not health_snapshot.healthy or health_snapshot.score <= 0:
+                rejected.append(f"{identity}:health_filtered")
+                continue
+            reasons.append("health_ok")
+
+            try:
+                adapter.validate(request, model)
+                estimate = adapter.estimate_cost(request, model)
+            except (TypeError, ValueError) as exc:
+                rejected.append(
+                    f"{identity}:validation:{type(exc).__name__}"
                 )
+                continue
+
+            if (
+                estimate.amount_usd is None
+                and not request.routing_hints.allow_unknown_cost
+            ):
+                rejected.append(f"{identity}:unknown_cost")
+                continue
+            if request.budget_limit is not None and estimate.amount_usd is not None:
+                if estimate.amount_usd > request.budget_limit:
+                    rejected.append(f"{identity}:budget_filtered")
+                    continue
+                reasons.append("within_request_budget")
+
+            score = health_snapshot.score
+            if model.quality_measured:
+                score += model.quality_score
+            if model.latency_measured:
+                score += model.latency_score
+            if model.provider in preferred_providers:
+                score += 60
+                reasons.append("preferred_provider")
+            if model.model in preferred_models:
+                score += 80
+                reasons.append("preferred_model")
+            if estimate.confidence is CostConfidence.EXACT:
+                score += 5
+            elif estimate.confidence is CostConfidence.UNKNOWN:
+                score -= 30
+            accepted.append(
+                RouteCandidate(
+                    model,
+                    estimate,
+                    health_snapshot,
+                    score,
+                    tuple(reasons),
+                )
+            )
+
         accepted.sort(
             key=lambda item: (
                 -item.score,
@@ -148,4 +224,5 @@ class ModelRouter:
             request.request_id,
             tuple(accepted),
             tuple(sorted(set(rejected))),
+            registry_snapshot_id,
         )
