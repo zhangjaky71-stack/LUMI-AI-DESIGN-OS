@@ -193,6 +193,7 @@ jobs:
         with:
           name: final-acceptance-${{ github.run_id }}
           path: |
+            reports/final-acceptance/**/release-identity-decision.json
             reports/final-acceptance/**/manual-evidence-decision.json
             reports/final-acceptance/**/final-decision.json
           if-no-files-found: warn
