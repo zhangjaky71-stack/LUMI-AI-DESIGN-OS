@@ -7,6 +7,7 @@ from uuid import UUID
 from lumi_api.domain.ids import new_uuid7
 
 from .models import (
+    ActorType,
     ApiToken,
     AuditCategory,
     AuthAuditEvent,
@@ -182,6 +183,18 @@ class AuthService:
         self.store.save_session(refreshed)
         return refreshed
 
+    def require_recent_authentication(
+        self,
+        session_secret: str,
+        *,
+        now: datetime,
+        max_age: timedelta = timedelta(minutes=10),
+    ) -> BrowserSession:
+        session = self.authenticate_session(session_secret, now=now)
+        if now - session.recent_auth_at > max_age:
+            raise InvalidCredentials("RECENT_AUTH_REQUIRED")
+        return session
+
     def logout(self, session_secret: str, *, now: datetime) -> None:
         key = hash_secret(session_secret)
         session = self.store.sessions.get(key)
@@ -213,6 +226,35 @@ class AuthService:
                 metadata=(("count", str(count)),),
             )
         return count
+
+    def change_password(
+        self,
+        *,
+        user_id: UUID,
+        current_password: str,
+        new_password: str,
+        now: datetime,
+    ) -> None:
+        validate_password_policy(new_password)
+        credential = self.store.credentials.get(user_id)
+        if credential is None or not self.password_hasher.verify(
+            credential.password_hash, current_password
+        ):
+            raise InvalidCredentials("INVALID_CREDENTIALS")
+        self.store.save_credential(
+            PasswordCredential(
+                user_id=user_id,
+                password_hash=self.password_hasher.hash(new_password),
+                changed_at=now,
+            )
+        )
+        self.revoke_all_sessions(user_id, now=now)
+        self._audit(
+            AuditCategory.PASSWORD_CHANGED,
+            now=now,
+            actor_id=str(user_id),
+            subject_user_id=user_id,
+        )
 
     def add_organization_membership(
         self,
@@ -342,6 +384,42 @@ class AuthService:
         )
         return IssuedOneTimeSecret(secret=raw, token=token)
 
+    def revoke_invite(
+        self,
+        token_id: UUID,
+        *,
+        principal: Principal,
+        now: datetime,
+    ) -> None:
+        decision = self.policy.authorize(
+            principal,
+            organization_id=principal.organization_id,
+            permission=Permission.MEMBER_INVITE,
+        )
+        if not decision.allowed:
+            raise AuthFlowError(decision.reason_code)
+        for token_hash, token in tuple(self.store.one_time_tokens.items()):
+            if (
+                token.id != token_id
+                or token.purpose != "invite"
+                or token.organization_id != principal.organization_id
+            ):
+                continue
+            if token.consumed_at is not None:
+                raise AuthFlowError("INVITE_ALREADY_CONSUMED")
+            self.store.one_time_tokens[token_hash] = token.model_copy(
+                update={"revoked_at": now}
+            )
+            self._audit(
+                AuditCategory.INVITE_REVOKED,
+                now=now,
+                organization_id=principal.organization_id,
+                actor_id=principal.actor_id,
+                metadata=(("invite_id", str(token.id)),),
+            )
+            return
+        raise AuthFlowError("INVITE_NOT_FOUND")
+
     def accept_invite(
         self,
         secret: str,
@@ -358,9 +436,16 @@ class AuthService:
             window=timedelta(minutes=15),
         )
         token = self.store.one_time_tokens.get(hash_secret(secret))
-        if token is None or token.purpose != "invite" or not token.is_usable(now):
-            raise AuthFlowError("INVITE_INVALID")
-        if token.email != email.strip().casefold():
+        user = self.store.users.get(user_id)
+        normalized_email = email.strip().casefold()
+        if (
+            token is None
+            or token.purpose != "invite"
+            or not token.is_usable(now)
+            or user is None
+            or user.email != normalized_email
+            or token.email != normalized_email
+        ):
             raise AuthFlowError("INVITE_INVALID")
         assert token.organization_id is not None and token.role is not None
         membership = self.add_organization_membership(
@@ -378,6 +463,48 @@ class AuthService:
             subject_user_id=user_id,
         )
         return membership
+
+    def create_email_verification(
+        self,
+        *,
+        user_id: UUID,
+        now: datetime,
+        ttl: timedelta = timedelta(hours=24),
+    ) -> IssuedOneTimeSecret:
+        user = self.store.users.get(user_id)
+        if user is None:
+            raise AuthFlowError("USER_NOT_FOUND")
+        raw = issue_secret(32)
+        token = OneTimeToken(
+            id=new_uuid7(),
+            purpose="email_verification",
+            token_hash=hash_secret(raw),
+            user_id=user_id,
+            email=user.email,
+            created_at=now,
+            expires_at=now + ttl,
+        )
+        self.store.save_one_time_token(token)
+        return IssuedOneTimeSecret(secret=raw, token=token)
+
+    def consume_email_verification(self, secret: str, *, now: datetime) -> User:
+        token_hash = hash_secret(secret)
+        token = self.store.one_time_tokens.get(token_hash)
+        if (
+            token is None
+            or token.purpose != "email_verification"
+            or token.user_id is None
+            or not token.is_usable(now)
+            or not verify_hashed_secret(secret, token.token_hash)
+        ):
+            raise AuthFlowError("EMAIL_VERIFICATION_INVALID")
+        user = self.store.users.get(token.user_id)
+        if user is None or (token.email is not None and user.email != token.email):
+            raise AuthFlowError("EMAIL_VERIFICATION_INVALID")
+        verified = user.model_copy(update={"email_verified_at": now})
+        self.store.save_user(verified)
+        self.store.save_one_time_token(token.model_copy(update={"consumed_at": now}))
+        return verified
 
     def create_password_reset(
         self,
@@ -458,6 +585,8 @@ class AuthService:
         )
         if not decision.allowed:
             raise AuthFlowError(decision.reason_code)
+        if principal.user_id is None:
+            raise AuthFlowError("USER_PRINCIPAL_REQUIRED")
         allowed_scopes = set(principal.permissions)
         if not set(scopes).issubset(allowed_scopes):
             raise AuthFlowError("TOKEN_SCOPE_ESCALATION")
@@ -471,7 +600,7 @@ class AuthService:
             prefix=prefix,
             secret_hash=hash_secret(raw),
             scopes=scopes,
-            created_by_user_id=principal.user_id or UUID(int=0),
+            created_by_user_id=principal.user_id,
             created_at=now,
             expires_at=expires_at,
         )
@@ -494,7 +623,7 @@ class AuthService:
             raise InvalidCredentials("API_TOKEN_INVALID")
         self.store.api_tokens[token_hash] = token.model_copy(update={"last_used_at": now})
         return Principal(
-            actor_type="API_TOKEN",
+            actor_type=ActorType.API_TOKEN,
             actor_id=str(token.id),
             user_id=token.created_by_user_id,
             organization_id=token.organization_id,
