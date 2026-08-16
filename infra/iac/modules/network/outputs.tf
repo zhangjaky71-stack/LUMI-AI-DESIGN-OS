@@ -21,3 +21,7 @@ output "alb_security_group_id" {
 output "app_security_group_id" {
   value = aws_security_group.app.id
 }
+
+output "sandbox_security_group_id" {
+  value = aws_security_group.sandbox.id
+}
