@@ -31,14 +31,17 @@ resource "aws_security_group" "postgres" {
 
 resource "aws_security_group" "redis" {
   name        = "${local.name}-redis"
-  description = "Redis reachable only from LUMI application tasks."
+  description = "Redis reachable from LUMI application and sandbox runtime tasks only."
   vpc_id      = var.vpc_id
 
   ingress {
-    protocol        = "tcp"
-    from_port       = 6379
-    to_port         = 6379
-    security_groups = [var.app_security_group_id]
+    protocol = "tcp"
+    from_port = 6379
+    to_port   = 6379
+    security_groups = [
+      var.app_security_group_id,
+      var.sandbox_security_group_id,
+    ]
   }
 
   tags = merge(local.tags, { Name = "${local.name}-redis-sg" })
@@ -46,14 +49,17 @@ resource "aws_security_group" "redis" {
 
 resource "aws_security_group" "rabbitmq" {
   name        = "${local.name}-rabbitmq"
-  description = "RabbitMQ AMQPS reachable only from LUMI application tasks."
+  description = "RabbitMQ AMQPS reachable from LUMI application and sandbox runtime tasks only."
   vpc_id      = var.vpc_id
 
   ingress {
-    protocol        = "tcp"
-    from_port       = 5671
-    to_port         = 5671
-    security_groups = [var.app_security_group_id]
+    protocol = "tcp"
+    from_port = 5671
+    to_port   = 5671
+    security_groups = [
+      var.app_security_group_id,
+      var.sandbox_security_group_id,
+    ]
   }
 
   tags = merge(local.tags, { Name = "${local.name}-rabbitmq-sg" })
