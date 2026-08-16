@@ -47,7 +47,7 @@ def recover_stale_memory_jobs(
 
 
 class PostgresStaleJobRecovery:
-    """Tenant-sharded crash recovery while NODE-19 keeps Celery acks_late disabled."""
+    """Tenant-sharded recovery for lost triggers and crashed workers."""
 
     def __init__(self, dsn: str, publisher: JobPublisher) -> None:
         self.dsn = dsn
@@ -85,6 +85,7 @@ class PostgresStaleJobRecovery:
         module = _asyncpg()
         connection = await module.connect(self.dsn)
         recovered = 0
+        cutoff = now - stale_after
         try:
             async with connection.transaction():
                 await connection.execute(
@@ -94,16 +95,21 @@ class PostgresStaleJobRecovery:
                 rows = await connection.fetch(
                     """
                     SELECT id, organization_id, project_id, job_kind, operation_id,
-                           resource_id, traceparent
+                           resource_id, traceparent, status
                     FROM runtime_jobs
-                    WHERE organization_id=$1 AND status='running'
-                      AND updated_at <= $2
+                    WHERE organization_id=$1
+                      AND attempt_count < max_attempts
+                      AND (
+                        (status IN ('pending','running') AND updated_at <= $2)
+                        OR (status='retrying' AND (next_retry_at IS NULL OR next_retry_at <= $3))
+                      )
                     ORDER BY updated_at,id
                     FOR UPDATE SKIP LOCKED
-                    LIMIT $3
+                    LIMIT $4
                     """,
                     organization_id,
-                    now - stale_after,
+                    cutoff,
+                    now,
                     limit,
                 )
                 for row in rows:
@@ -116,24 +122,26 @@ class PostgresStaleJobRecovery:
                         traceparent=row["traceparent"],
                     )
                     kind = JobKind(row["job_kind"])
-                    # Publish before committing the retry transition. A process crash after
-                    # broker acceptance rolls the transaction back to RUNNING, so a later
-                    # sweep will publish again. Duplicate delivery is safe because claim()
-                    # only moves one PENDING/RETRYING row into RUNNING.
+                    # Publish before the state transition commits. A crash after broker
+                    # acceptance rolls the DB transaction back, so a later sweep can
+                    # republish. Duplicate triggers are harmless because JobStore.claim()
+                    # is the durable execution gate.
                     await asyncio.to_thread(self.publisher.submit, kind, message)
                     await connection.execute(
                         """
                         UPDATE runtime_jobs
-                        SET status='retrying', next_retry_at=$2, updated_at=$2,
+                        SET status='pending', next_retry_at=NULL, updated_at=$2,
                             error_category='transient',
-                            error_code='WORKER_STALE_RECOVERY',
-                            error_message='worker lease expired before terminal job state',
+                            error_code='QUEUE_TRIGGER_RECOVERY',
+                            error_message=$4,
                             version=version+1
-                        WHERE id=$1 AND organization_id=$3 AND status='running'
+                        WHERE id=$1 AND organization_id=$3
+                          AND status IN ('pending','running','retrying')
                         """,
                         message.job_id,
                         now,
                         organization_id,
+                        f"recovered lost trigger from {row['status']}",
                     )
                     recovered += 1
             return recovered
