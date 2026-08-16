@@ -5,6 +5,7 @@ from . import models_asset_storage as _models_asset_storage
 from . import models_auth as _models_auth
 from . import models_identity as _models_identity
 from . import models_project_core as _models_project_core
+from . import models_queue_runtime as _models_queue_runtime
 from .models_artifacts import ArtifactEdgeModel, ArtifactVersionModel
 from .models_execution import (
     AgentRunModel,
@@ -14,6 +15,7 @@ from .models_execution import (
 )
 from .models_platform import CostLedgerModel, OutboxEventModel
 from .models_projects_assets import AssetModel, ProjectModel
+from .models_queue_runtime import DeadLetterRecordModel, RuntimeJobModel
 
 # Keep these referenced so linters see metadata-registration side effects as intentional.
 _METADATA_MODULES = (
@@ -21,6 +23,7 @@ _METADATA_MODULES = (
     _models_auth,
     _models_identity,
     _models_project_core,
+    _models_queue_runtime,
 )
 
 # Query-driven indexes. Plain organization_id indexes come from TenantMixin.
@@ -47,6 +50,29 @@ Index(
     "ix_outbox_unpublished_created",
     OutboxEventModel.published_at,
     OutboxEventModel.created_at,
+)
+Index(
+    "ix_outbox_due",
+    OutboxEventModel.organization_id,
+    OutboxEventModel.next_publish_at,
+    OutboxEventModel.created_at,
+)
+Index(
+    "ix_runtime_jobs_due",
+    RuntimeJobModel.organization_id,
+    RuntimeJobModel.status,
+    RuntimeJobModel.next_retry_at,
+)
+Index(
+    "ix_runtime_jobs_project_status",
+    RuntimeJobModel.project_id,
+    RuntimeJobModel.status,
+)
+Index(
+    "ix_dead_letters_org_status",
+    DeadLetterRecordModel.organization_id,
+    DeadLetterRecordModel.status,
+    DeadLetterRecordModel.updated_at,
 )
 Index(
     "ix_cost_ledger_org_occurred",
