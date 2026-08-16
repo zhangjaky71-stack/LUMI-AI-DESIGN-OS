@@ -1,6 +1,7 @@
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
 from sqlalchemy import Index
 
+from . import models_auth as _models_auth
 from . import models_identity as _models_identity
 from .models_artifacts import ArtifactEdgeModel, ArtifactVersionModel
 from .models_execution import (
@@ -12,8 +13,8 @@ from .models_execution import (
 from .models_platform import CostLedgerModel, OutboxEventModel
 from .models_projects_assets import AssetModel, ProjectModel
 
-# Keep this referenced so linters see metadata-registration side effects as intentional.
-_METADATA_MODULES = (_models_identity,)
+# Keep these referenced so linters see metadata-registration side effects as intentional.
+_METADATA_MODULES = (_models_auth, _models_identity)
 
 # Query-driven indexes. Plain organization_id indexes come from TenantMixin.
 Index("ix_projects_org_created", ProjectModel.organization_id, ProjectModel.created_at)
