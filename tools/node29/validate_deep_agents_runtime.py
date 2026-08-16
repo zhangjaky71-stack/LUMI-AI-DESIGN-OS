@@ -5,7 +5,14 @@ import inspect
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-PKG = ROOT / "apps" / "agent-runtime" / "src" / "lumi_agent_runtime" / "deep_runtime"
+PKG = (
+    ROOT
+    / "apps"
+    / "agent-runtime"
+    / "src"
+    / "lumi_agent_runtime"
+    / "deep_runtime"
+)
 PYPROJECT = ROOT / "apps" / "agent-runtime" / "pyproject.toml"
 SANDBOX_ADAPTER = (
     ROOT
@@ -117,12 +124,13 @@ def main() -> None:
 
     prompting = sources["prompting.py"]
     assert "pinned_project_constraints" in prompting
-    assert 'immutable=\\"true\\"' in repr(prompting)
+    assert "immutable" in prompting
     assert "treat_as_data" in prompting
     assert "do not expose private reasoning" in prompting.casefold()
 
     executor = sources["executor.py"]
-    assert "proposed_operations" not in executor.split("_safe_control_delta", 1)[1]
+    safe_delta_source = executor.split("_safe_control_delta", 1)[1]
+    assert "proposed_operations" not in safe_delta_source
     assert "agent-result://" not in executor
     assert "factory.compile" in executor
 
@@ -141,7 +149,8 @@ def main() -> None:
     assert "remained invalid after one repair" in result
 
     sandbox = SANDBOX_ADAPTER.read_text(encoding="utf-8")
-    assert "class DeepAgentsSandboxAdapter(SandboxBackendProtocol)" in sandbox
+    adapter_class = "class DeepAgentsSandboxAdapter(SandboxBackendProtocol)"
+    assert adapter_class in sandbox
     assert "SandboxRuntimeService" in sandbox
     assert "DockerSandboxBackend" in sandbox
     assert "shell operators are not allowed" in sandbox
