@@ -1,0 +1,25 @@
+{
+  "node": "NODE-30",
+  "title": "Agent Registry",
+  "status": "IMPLEMENTED_VALIDATING_BLOCKED_EXTERNAL",
+  "gaps": [
+    {
+      "id": "AGENT-REGISTRY-GIT-REMOTE-001",
+      "owner": "Deployment / Control Plane",
+      "status": "OPEN",
+      "detail": "The runtime-safe GitWorkspaceAgentRegistryStore writes canonical atomic JSON but intentionally does not own Git credentials, commit signing, protected-branch review, or remote push. Production deployment must mount/sync a protected Git configuration workspace."
+    },
+    {
+      "id": "AGENT-REGISTRY-SKILL-002",
+      "owner": "NODE-31",
+      "status": "OPEN",
+      "detail": "Skill refs are exact syntactically but Skill dependency/eval validation, immutable publication, materialization, and provenance are owned by NODE-31."
+    },
+    {
+      "id": "AGENT-REGISTRY-CI-003",
+      "owner": "External GitHub account",
+      "status": "BLOCKED_EXTERNAL",
+      "detail": "Hosted GitHub Actions were unable to allocate a runner on NODE-29 due to the account payment/spending-limit condition. NODE-30 must not claim hosted checks passed until a runner executes steps."
+    }
+  ]
+}
