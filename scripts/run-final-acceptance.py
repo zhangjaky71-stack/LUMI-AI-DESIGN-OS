@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import subprocess
@@ -56,7 +57,7 @@ def rc_identity(payload: dict[str, Any]) -> tuple[str, str, str]:
         raise SystemExit("release_candidate.version is missing")
     if not isinstance(migration, str) or not migration.strip():
         raise SystemExit("release_candidate.migration_head is missing")
-    return sha.lower(), version, migration
+    return sha.lower(), version.strip(), migration.strip()
 
 
 def release_manifest(release_arg: str) -> dict[str, Any]:
@@ -84,6 +85,66 @@ def current_git_sha() -> str:
     return value
 
 
+def current_version() -> str:
+    path = ROOT / "VERSION"
+    if not path.is_file():
+        raise SystemExit("VERSION file is missing")
+    value = path.read_text(encoding="utf-8").strip()
+    if not value:
+        raise SystemExit("VERSION file is empty")
+    return value
+
+
+def current_migration_head() -> str:
+    revisions: dict[str, tuple[str, ...]] = {}
+    root = ROOT / "apps" / "api" / "alembic" / "versions"
+    for path in sorted(root.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        values: dict[str, Any] = {}
+        for node in tree.body:
+            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                continue
+            target = node.targets[0]
+            if not isinstance(target, ast.Name) or target.id not in {"revision", "down_revision"}:
+                continue
+            try:
+                values[target.id] = ast.literal_eval(node.value)
+            except (ValueError, TypeError):
+                continue
+        revision = values.get("revision")
+        if not isinstance(revision, str) or not revision:
+            continue
+        raw_parent = values.get("down_revision")
+        if raw_parent is None:
+            parents: tuple[str, ...] = ()
+        elif isinstance(raw_parent, str):
+            parents = (raw_parent,)
+        elif isinstance(raw_parent, (tuple, list)) and all(
+            isinstance(item, str) for item in raw_parent
+        ):
+            parents = tuple(raw_parent)
+        else:
+            raise SystemExit(f"unsupported down_revision in {path.relative_to(ROOT)}")
+        if revision in revisions:
+            raise SystemExit(f"duplicate Alembic revision {revision}")
+        revisions[revision] = parents
+
+    if not revisions:
+        raise SystemExit("no Alembic revisions found")
+    referenced = {parent for parents in revisions.values() for parent in parents}
+    unknown = sorted(referenced - set(revisions))
+    if unknown:
+        raise SystemExit(f"Alembic graph references unknown revisions: {unknown}")
+    heads = sorted(set(revisions) - referenced)
+    if len(heads) != 1:
+        raise SystemExit(f"expected exactly one Alembic head, found {heads}")
+    return heads[0]
+
+
+def repository_release_identity() -> tuple[str, str, str]:
+    return current_git_sha(), current_version(), current_migration_head()
+
+
 def require_current_checkout_binding(release_arg: str) -> str:
     declared = rc_identity(release_manifest(release_arg))[0]
     actual = current_git_sha()
@@ -91,6 +152,17 @@ def require_current_checkout_binding(release_arg: str) -> str:
         raise SystemExit(
             "FINAL_ACCEPTANCE_CHECKOUT_SHA_MISMATCH: "
             f"release manifest declares {declared}, current checkout is {actual}"
+        )
+    return actual
+
+
+def require_repository_identity_binding(release_arg: str) -> tuple[str, str, str]:
+    declared = rc_identity(release_manifest(release_arg))
+    actual = repository_release_identity()
+    if declared != actual:
+        raise SystemExit(
+            "FINAL_ACCEPTANCE_REPOSITORY_IDENTITY_MISMATCH: "
+            f"release manifest declares {declared}, repository is {actual}"
         )
     return actual
 
@@ -149,12 +221,16 @@ def main() -> int:
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
-    bound_sha = require_current_checkout_binding(args.release)
+    repository_identity = require_repository_identity_binding(args.release)
     upstream = require_all_upstream_rc_binding(args.release, args.matrix)
     print(
         json.dumps(
             {
-                "final_acceptance_checkout_sha": bound_sha,
+                "final_acceptance_repository_identity": {
+                    "git_sha": repository_identity[0],
+                    "version": repository_identity[1],
+                    "migration_head": repository_identity[2],
+                },
                 "upstream_rc_bound": list(upstream),
             },
             sort_keys=True,
