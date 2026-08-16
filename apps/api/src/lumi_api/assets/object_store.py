@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import io
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -11,9 +10,11 @@ import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
+from typing import Literal, Protocol, cast
 
 from .models import ObjectHead, SignedRequest
+
+HttpMethod = Literal["GET", "PUT", "POST", "DELETE", "HEAD"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,7 +50,11 @@ class ObjectStore(Protocol):
     ) -> None: ...
 
     def abort_multipart(
-        self, intent: UploadIntent, *, upload_id: str, now: datetime
+        self,
+        intent: UploadIntent,
+        *,
+        upload_id: str,
+        now: datetime,
     ) -> None: ...
 
     def head(self, bucket: str, key: str, *, now: datetime) -> ObjectHead: ...
@@ -77,7 +82,14 @@ class ObjectStore(Protocol):
         now: datetime,
     ) -> SignedRequest: ...
 
-    def copy(self, bucket: str, source_key: str, target_key: str, *, now: datetime) -> None: ...
+    def copy(
+        self,
+        bucket: str,
+        source_key: str,
+        target_key: str,
+        *,
+        now: datetime,
+    ) -> None: ...
 
     def delete_candidate(self, bucket: str, key: str, *, now: datetime) -> None: ...
 
@@ -120,7 +132,10 @@ class MemoryObjectStore(ObjectStore):
             raise ValueError("MULTIPART_UPLOAD_NOT_FOUND")
         return SignedRequest(
             method="PUT",
-            url=f"memory://{intent.bucket}/{intent.key}?uploadId={upload_id}&partNumber={part_number}",
+            url=(
+                f"memory://{intent.bucket}/{intent.key}"
+                f"?uploadId={upload_id}&partNumber={part_number}"
+            ),
             expires_at=now + timedelta(seconds=intent.expires_seconds),
         )
 
@@ -143,7 +158,11 @@ class MemoryObjectStore(ObjectStore):
         self.set_uploaded_bytes(intent, content)
 
     def abort_multipart(
-        self, intent: UploadIntent, *, upload_id: str, now: datetime
+        self,
+        intent: UploadIntent,
+        *,
+        upload_id: str,
+        now: datetime,
     ) -> None:
         _ = (intent, now)
         self.multipart.pop(upload_id, None)
@@ -167,8 +186,9 @@ class MemoryObjectStore(ObjectStore):
         content = self.objects.get((bucket, key))
         if content is None:
             raise FileNotFoundError(key)
-        for offset in range(0, len(content), 1024 * 1024):
-            yield content[offset : offset + 1024 * 1024]
+        chunk_size = 1024 * 1024
+        for offset in range(0, len(content), chunk_size):
+            yield content[offset : offset + chunk_size]
 
     def put_derived(
         self,
@@ -203,11 +223,21 @@ class MemoryObjectStore(ObjectStore):
             expires_at=now + timedelta(seconds=expires_seconds),
         )
 
-    def copy(self, bucket: str, source_key: str, target_key: str, *, now: datetime) -> None:
+    def copy(
+        self,
+        bucket: str,
+        source_key: str,
+        target_key: str,
+        *,
+        now: datetime,
+    ) -> None:
         _ = now
         content = self.objects[(bucket, source_key)]
         self.objects[(bucket, target_key)] = content
-        self.content_types[(bucket, target_key)] = self.content_types.get((bucket, source_key), "")
+        self.content_types[(bucket, target_key)] = self.content_types.get(
+            (bucket, source_key),
+            "",
+        )
 
     def delete_candidate(self, bucket: str, key: str, *, now: datetime) -> None:
         _ = now
@@ -216,7 +246,7 @@ class MemoryObjectStore(ObjectStore):
 
 
 class S3CompatibleObjectStore(ObjectStore):
-    """Dependency-free SigV4/path-style adapter for MinIO and S3-compatible stores."""
+    """Dependency-free SigV4/path-style adapter for MinIO and compatible stores."""
 
     def __init__(
         self,
@@ -233,7 +263,7 @@ class S3CompatibleObjectStore(ObjectStore):
 
     def _presign(
         self,
-        method: str,
+        method: HttpMethod,
         bucket: str,
         key: str,
         *,
@@ -252,7 +282,8 @@ class S3CompatibleObjectStore(ObjectStore):
         date = timestamp.strftime("%Y%m%d")
         scope = f"{date}/{self.region}/s3/aws4_request"
         canonical_uri = "/" + "/".join(
-            urllib.parse.quote(part, safe="-_.~") for part in (bucket, *key.split("/"))
+            urllib.parse.quote(part, safe="-_.~")
+            for part in (bucket, *key.split("/"))
         )
         headers = {"host": parsed.netloc}
         for name, value in (signed_headers or {}).items():
@@ -268,10 +299,22 @@ class S3CompatibleObjectStore(ObjectStore):
                 "X-Amz-SignedHeaders": signed_names,
             }
         )
-        canonical_query = urllib.parse.urlencode(sorted(params.items()), quote_via=urllib.parse.quote)
-        canonical_headers = "".join(f"{name}:{headers[name]}\n" for name in sorted(headers))
+        canonical_query = urllib.parse.urlencode(
+            sorted(params.items()),
+            quote_via=urllib.parse.quote,
+        )
+        canonical_headers = "".join(
+            f"{name}:{headers[name]}\n" for name in sorted(headers)
+        )
         canonical_request = "\n".join(
-            [method, canonical_uri, canonical_query, canonical_headers, signed_names, "UNSIGNED-PAYLOAD"]
+            [
+                method,
+                canonical_uri,
+                canonical_query,
+                canonical_headers,
+                signed_names,
+                "UNSIGNED-PAYLOAD",
+            ]
         )
         string_to_sign = "\n".join(
             [
@@ -281,15 +324,28 @@ class S3CompatibleObjectStore(ObjectStore):
                 hashlib.sha256(canonical_request.encode()).hexdigest(),
             ]
         )
-        key_date = hmac.new(("AWS4" + self.secret_key).encode(), date.encode(), hashlib.sha256).digest()
+        key_date = hmac.new(
+            ("AWS4" + self.secret_key).encode(),
+            date.encode(),
+            hashlib.sha256,
+        ).digest()
         key_region = hmac.new(key_date, self.region.encode(), hashlib.sha256).digest()
         key_service = hmac.new(key_region, b"s3", hashlib.sha256).digest()
         signing_key = hmac.new(key_service, b"aws4_request", hashlib.sha256).digest()
-        signature = hmac.new(signing_key, string_to_sign.encode(), hashlib.sha256).hexdigest()
-        url = f"{parsed.scheme}://{parsed.netloc}{canonical_uri}?{canonical_query}&X-Amz-Signature={signature}"
-        client_headers = {name: value for name, value in headers.items() if name != "host"}
+        signature = hmac.new(
+            signing_key,
+            string_to_sign.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        url = (
+            f"{parsed.scheme}://{parsed.netloc}{canonical_uri}?{canonical_query}"
+            f"&X-Amz-Signature={signature}"
+        )
+        client_headers = {
+            name: value for name, value in headers.items() if name != "host"
+        }
         return SignedRequest(
-            method=method,  # type: ignore[arg-type]
+            method=method,
             url=url,
             expires_at=timestamp + timedelta(seconds=expires_seconds),
             headers=client_headers,
@@ -306,16 +362,29 @@ class S3CompatibleObjectStore(ObjectStore):
             intent.key,
             now=now,
             expires_seconds=intent.expires_seconds,
-            signed_headers={"x-amz-checksum-sha256": self._checksum_header(intent.expected_checksum_sha256)},
+            signed_headers={
+                "x-amz-checksum-sha256": self._checksum_header(
+                    intent.expected_checksum_sha256
+                )
+            },
         )
 
     def start_multipart(self, intent: UploadIntent, *, now: datetime) -> str:
-        request = self._presign(
-            "POST", intent.bucket, intent.key, now=now, expires_seconds=60, query={"uploads": ""}
+        signed = self._presign(
+            "POST",
+            intent.bucket,
+            intent.key,
+            now=now,
+            expires_seconds=60,
+            query={"uploads": ""},
         )
-        response = urllib.request.urlopen(urllib.request.Request(request.url, method="POST"), timeout=30)
-        root = ET.fromstring(response.read())
-        upload_id = next((node.text for node in root.iter() if node.tag.endswith("UploadId")), None)
+        request = urllib.request.Request(signed.url, method="POST")
+        with urllib.request.urlopen(request, timeout=30) as response:
+            root = ET.fromstring(response.read())
+        upload_id = next(
+            (node.text for node in root.iter() if node.tag.endswith("UploadId")),
+            None,
+        )
         if not upload_id:
             raise RuntimeError("S3_MULTIPART_UPLOAD_ID_MISSING")
         return upload_id
@@ -365,10 +434,15 @@ class S3CompatibleObjectStore(ObjectStore):
         )
         request = urllib.request.Request(signed.url, data=body, method="POST")
         request.add_header("Content-Type", "application/xml")
-        urllib.request.urlopen(request, timeout=60).read()
+        with urllib.request.urlopen(request, timeout=60) as response:
+            response.read()
 
     def abort_multipart(
-        self, intent: UploadIntent, *, upload_id: str, now: datetime
+        self,
+        intent: UploadIntent,
+        *,
+        upload_id: str,
+        now: datetime,
     ) -> None:
         signed = self._presign(
             "DELETE",
@@ -378,30 +452,32 @@ class S3CompatibleObjectStore(ObjectStore):
             expires_seconds=60,
             query={"uploadId": upload_id},
         )
-        urllib.request.urlopen(urllib.request.Request(signed.url, method="DELETE"), timeout=30).read()
+        request = urllib.request.Request(signed.url, method="DELETE")
+        with urllib.request.urlopen(request, timeout=30) as response:
+            response.read()
 
     def head(self, bucket: str, key: str, *, now: datetime) -> ObjectHead:
         signed = self._presign("HEAD", bucket, key, now=now, expires_seconds=60)
+        request = urllib.request.Request(signed.url, method="HEAD")
         try:
-            response = urllib.request.urlopen(
-                urllib.request.Request(signed.url, method="HEAD"), timeout=30
-            )
+            response = urllib.request.urlopen(request, timeout=30)
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
                 return ObjectHead(bucket=bucket, key=key, exists=False, byte_size=0)
             raise
-        checksum_b64 = response.headers.get("x-amz-checksum-sha256")
-        checksum = None
-        if checksum_b64:
-            checksum = base64.b64decode(checksum_b64).hex()
-        return ObjectHead(
-            bucket=bucket,
-            key=key,
-            byte_size=int(response.headers.get("Content-Length", "0")),
-            content_type=response.headers.get("Content-Type"),
-            checksum_sha256=checksum,
-            etag=response.headers.get("ETag", "").strip('"') or None,
-        )
+        with response:
+            checksum_b64 = response.headers.get("x-amz-checksum-sha256")
+            checksum = None
+            if checksum_b64:
+                checksum = base64.b64decode(checksum_b64).hex()
+            return ObjectHead(
+                bucket=bucket,
+                key=key,
+                byte_size=int(response.headers.get("Content-Length", "0")),
+                content_type=response.headers.get("Content-Type"),
+                checksum_sha256=checksum,
+                etag=response.headers.get("ETag", "").strip('"') or None,
+            )
 
     def iter_bytes(self, bucket: str, key: str, *, now: datetime) -> Iterator[bytes]:
         signed = self._presign("GET", bucket, key, now=now, expires_seconds=120)
@@ -428,13 +504,16 @@ class S3CompatibleObjectStore(ObjectStore):
             key,
             now=now,
             expires_seconds=60,
-            signed_headers={"x-amz-checksum-sha256": self._checksum_header(checksum_sha256)},
+            signed_headers={
+                "x-amz-checksum-sha256": self._checksum_header(checksum_sha256)
+            },
         )
         request = urllib.request.Request(signed.url, data=content, method="PUT")
         request.add_header("Content-Type", content_type)
         for name, value in signed.headers.items():
             request.add_header(name, value)
-        urllib.request.urlopen(request, timeout=120).read()
+        with urllib.request.urlopen(request, timeout=120) as response:
+            response.read()
 
     def get_signed_download(
         self,
@@ -445,7 +524,8 @@ class S3CompatibleObjectStore(ObjectStore):
         expires_seconds: int,
         now: datetime,
     ) -> SignedRequest:
-        disposition = f'attachment; filename="{filename.replace(chr(34), "_")}"'
+        safe_filename = filename.replace('"', "_")
+        disposition = f'attachment; filename="{safe_filename}"'
         return self._presign(
             "GET",
             bucket,
@@ -455,8 +535,18 @@ class S3CompatibleObjectStore(ObjectStore):
             query={"response-content-disposition": disposition},
         )
 
-    def copy(self, bucket: str, source_key: str, target_key: str, *, now: datetime) -> None:
-        source = "/" + "/".join(urllib.parse.quote(part, safe="-_.~") for part in (bucket, *source_key.split("/")))
+    def copy(
+        self,
+        bucket: str,
+        source_key: str,
+        target_key: str,
+        *,
+        now: datetime,
+    ) -> None:
+        source = "/" + "/".join(
+            urllib.parse.quote(part, safe="-_.~")
+            for part in (bucket, *source_key.split("/"))
+        )
         signed = self._presign(
             "PUT",
             bucket,
@@ -468,8 +558,11 @@ class S3CompatibleObjectStore(ObjectStore):
         request = urllib.request.Request(signed.url, method="PUT")
         for name, value in signed.headers.items():
             request.add_header(name, value)
-        urllib.request.urlopen(request, timeout=60).read()
+        with urllib.request.urlopen(request, timeout=60) as response:
+            response.read()
 
     def delete_candidate(self, bucket: str, key: str, *, now: datetime) -> None:
         signed = self._presign("DELETE", bucket, key, now=now, expires_seconds=60)
-        urllib.request.urlopen(urllib.request.Request(signed.url, method="DELETE"), timeout=30).read()
+        request = urllib.request.Request(signed.url, method="DELETE")
+        with urllib.request.urlopen(request, timeout=30) as response:
+            response.read()
