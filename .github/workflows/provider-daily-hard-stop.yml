@@ -99,8 +99,7 @@ jobs:
       - name: Model Gateway production guard unit tests
         run: >-
           PYTHONPATH=services/model-gateway/src
-          uv run python -m unittest
-          services.model-gateway.tests.test_production_budget_guard
+          uv run python services/model-gateway/tests/test_production_budget_guard.py
 
   postgres-acceptance:
     needs: quality
