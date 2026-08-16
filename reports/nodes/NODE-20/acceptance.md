@@ -23,6 +23,7 @@ Hosted status: **not PASS until a runner actually executes the workflow**
 - tenant RLS preserved/recreated;
 - Cost Ledger operation FK plus one-charge-per-operation partial unique index;
 - fail-closed downgrade if NODE-20 operation-type key scopes cannot fit NODE-10 uniqueness;
+- fail-closed downgrade if a Cost Ledger row already carries NODE-20 operation lineage;
 - memory concurrency/crash-window failure injection suite;
 - HTTP replay/conflict contract test;
 - PostgreSQL concurrent claim/RLS/stale recovery/cost-charge invariant script;
@@ -62,12 +63,19 @@ upgrade through NODE-19 / 0005
 load deterministic two-tenant fixture
 upgrade to 0006
 run baseline NODE-10 invariants at current head
-run NODE-20 PostgreSQL concurrency/RLS/cost invariants
+run NODE-20 core PostgreSQL concurrency/RLS/stale-lease invariants without writing Cost Ledger fixtures
 downgrade to 0005
 verify NODE-19 survives and NODE-20 columns/indexes are removed
 reapply 0006
-rerun NODE-20 invariants
+run full NODE-20 invariants, including append-only one-charge-per-operation fencing
 ```
+
+The ordering is intentional. `cost_ledger` has been immutable since NODE-10. NODE-20 also
+refuses to downgrade when an existing Cost Ledger row contains `operation_id`, because
+removing that column would destroy audit lineage. The workflow therefore proves structural
+downgrade before creating its immutable Cost test evidence, then performs the Cost fence only
+after the final reapply. It never disables the immutable trigger or deletes a charge to make a
+downgrade pass.
 
 ## Evidence required before COMPLETE
 
@@ -78,7 +86,7 @@ rerun NODE-20 invariants
 - Ruff green;
 - Pyright green;
 - real PostgreSQL migration/concurrency/RLS/charge fencing green;
-- downgrade/reapply green;
+- safe downgrade/reapply green before immutable Cost lineage exists;
 - repository CI/security green;
 - stacked NODE-09 through NODE-19 dependencies resolved.
 
@@ -87,6 +95,7 @@ rerun NODE-20 invariants
 - no distributed exactly-once claim;
 - no claim that provider-native reconciliation exists before provider adapters land;
 - no claim that expired rows are safe to physically delete;
+- no claim that a production database with NODE-20 Cost Ledger operation lineage can be losslessly downgraded to NODE-19;
 - no production paid-provider PASS;
 - no hosted PASS from a workflow that never received a runner.
 
