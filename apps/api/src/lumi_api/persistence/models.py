@@ -3,6 +3,7 @@ from sqlalchemy import Index
 
 from . import models_auth as _models_auth
 from . import models_identity as _models_identity
+from . import models_project_core as _models_project_core
 from .models_artifacts import ArtifactEdgeModel, ArtifactVersionModel
 from .models_execution import (
     AgentRunModel,
@@ -14,11 +15,13 @@ from .models_platform import CostLedgerModel, OutboxEventModel
 from .models_projects_assets import AssetModel, ProjectModel
 
 # Keep these referenced so linters see metadata-registration side effects as intentional.
-_METADATA_MODULES = (_models_auth, _models_identity)
+_METADATA_MODULES = (_models_auth, _models_identity, _models_project_core)
 
 # Query-driven indexes. Plain organization_id indexes come from TenantMixin.
 Index("ix_projects_org_created", ProjectModel.organization_id, ProjectModel.created_at)
 Index("ix_projects_org_status", ProjectModel.organization_id, ProjectModel.status)
+Index("ix_projects_org_updated", ProjectModel.organization_id, ProjectModel.updated_at)
+Index("ix_projects_workspace_updated", ProjectModel.workspace_id, ProjectModel.updated_at)
 Index("ix_assets_org_created", AssetModel.organization_id, AssetModel.created_at)
 Index(
     "ix_artifact_versions_artifact_version",
