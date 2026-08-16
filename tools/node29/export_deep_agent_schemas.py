@@ -23,7 +23,13 @@ def schemas() -> dict[str, dict]:
     string_array = {"type": "array", "items": {"type": "string"}}
     return {
         "permission-scope": _object(
-            ["allowed_tools", "sandbox_execute", "memory_read_scopes", "memory_write_scopes", "allowed_subagents"],
+            [
+                "allowed_tools",
+                "sandbox_execute",
+                "memory_read_scopes",
+                "memory_write_scopes",
+                "allowed_subagents",
+            ],
             {
                 "allowed_tools": string_array,
                 "sandbox_execute": {"type": "boolean"},
@@ -55,7 +61,10 @@ def schemas() -> dict[str, dict]:
                 "context_policy": {"type": "string"},
                 "sandbox_execute": {"type": "boolean"},
                 "output_schema": {"type": "string"},
-                "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "content_hash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$",
+                },
             },
         ),
         "materialized-skill": _object(
@@ -64,7 +73,10 @@ def schemas() -> dict[str, dict]:
                 "skill_id": {"type": "string"},
                 "exact_version": {"type": "string"},
                 "path": {"type": "string", "pattern": "^/skills/"},
-                "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "content_hash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$",
+                },
                 "required_tools": string_array,
                 "required_permissions": string_array,
                 "provenance_ref": ref,
@@ -85,7 +97,10 @@ def schemas() -> dict[str, dict]:
                 "pinned_constraints": {"type": "string"},
                 "task_context": {"type": "string"},
                 "source_refs": {"type": "array", "items": ref},
-                "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "content_hash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$",
+                },
             },
         ),
         "deep-agent-task-request": _object(
@@ -140,9 +155,15 @@ def schemas() -> dict[str, dict]:
             {
                 "agent_id": {"type": "string"},
                 "agent_version": {"type": "string"},
-                "agent_config_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "agent_config_hash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$",
+                },
                 "context_bundle_ref": ref,
-                "context_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "context_hash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$",
+                },
                 "skill_versions": string_array,
                 "tool_versions": string_array,
                 "model_profile": {"type": "string"},
