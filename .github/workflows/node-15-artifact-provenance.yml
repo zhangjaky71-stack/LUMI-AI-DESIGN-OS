@@ -62,7 +62,7 @@ jobs:
         run: |
           rm -rf reports/nodes/NODE-15/generated-schemas
           PYTHONPATH=apps/api/src uv run python tools/node15/export_artifact_schemas.py
-          test "$(find reports/nodes/NODE-15/generated-schemas -name '*.schema.json' | wc -l)" -eq 8
+          test "$(find reports/nodes/NODE-15/generated-schemas -name '*.schema.json' | wc -l)" -eq 9
 
       - name: Validate exported JSON schemas and persistence gap ledger parse
         run: |
@@ -72,7 +72,7 @@ jobs:
 
           root = Path("reports/nodes/NODE-15/generated-schemas")
           paths = sorted(root.glob("*.schema.json"))
-          assert len(paths) == 8, len(paths)
+          assert len(paths) == 9, len(paths)
           for path in paths:
               with path.open("r", encoding="utf-8") as handle:
                   json.load(handle)
