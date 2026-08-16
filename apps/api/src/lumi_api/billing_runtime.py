@@ -129,29 +129,39 @@ class AsyncStripeBillingRuntime:
                 if plan is None or plan.status != "ACTIVE":
                     raise BillingError("BILLING_PLAN_VERSION_NOT_AVAILABLE", 404)
                 account = await _get_account(session, actor.organization_id)
-        if account is None:
-            customer_ref = await to_thread.run_sync(
-                self._provider.create_customer,
-                actor.organization_id,
-                actor.billing_email,
-            )
-            async with self._sessions() as session:
-                async with session.begin():
-                    await _set_tenant(session, actor.organization_id)
+                if account is None:
+                    # Serialize first-customer creation per organization. The external Stripe call
+                    # happens while this transaction-scoped lock is held; Stripe also receives a
+                    # stable Idempotency-Key, covering a crash after provider success but before
+                    # the local billing_accounts row commits.
                     await session.execute(
-                        text("""
-                        INSERT INTO billing_accounts(
-                          organization_id, payment_provider, payment_customer_ref
-                        ) VALUES (:org, :provider, :customer)
-                        ON CONFLICT (organization_id) DO NOTHING
-                        """),
-                        {
-                            "org": actor.organization_id,
-                            "provider": self._provider.name,
-                            "customer": customer_ref,
-                        },
+                        text(
+                            "SELECT pg_advisory_xact_lock("
+                            "hashtextextended('billing-customer:' || :org, 0))"
+                        ),
+                        {"org": actor.organization_id},
                     )
                     account = await _get_account(session, actor.organization_id)
+                    if account is None:
+                        customer_ref = await to_thread.run_sync(
+                            self._provider.create_customer,
+                            actor.organization_id,
+                            actor.billing_email,
+                        )
+                        await session.execute(
+                            text("""
+                            INSERT INTO billing_accounts(
+                              organization_id, payment_provider, payment_customer_ref
+                            ) VALUES (:org, :provider, :customer)
+                            ON CONFLICT (organization_id) DO NOTHING
+                            """),
+                            {
+                                "org": actor.organization_id,
+                                "provider": self._provider.name,
+                                "customer": customer_ref,
+                            },
+                        )
+                        account = await _get_account(session, actor.organization_id)
         if account is None:
             raise BillingError("BILLING_ACCOUNT_PERSIST_FAILED", 503)
         if account.payment_provider != self._provider.name:
@@ -389,12 +399,18 @@ class AsyncStripeBillingRuntime:
             )
 
 
-def load_stripe_runtime_config(*, environment: str) -> tuple[StripeProviderConfig, tuple[PlanVersion, ...]]:
+def load_stripe_runtime_config(
+    *, environment: str
+) -> tuple[StripeProviderConfig, tuple[PlanVersion, ...]]:
     required = {
         "LUMI_STRIPE_SECRET_KEY": os.environ.get("LUMI_STRIPE_SECRET_KEY", ""),
         "LUMI_STRIPE_WEBHOOK_SECRET": os.environ.get("LUMI_STRIPE_WEBHOOK_SECRET", ""),
-        "LUMI_STRIPE_CHECKOUT_SUCCESS_URL": os.environ.get("LUMI_STRIPE_CHECKOUT_SUCCESS_URL", ""),
-        "LUMI_STRIPE_CHECKOUT_CANCEL_URL": os.environ.get("LUMI_STRIPE_CHECKOUT_CANCEL_URL", ""),
+        "LUMI_STRIPE_CHECKOUT_SUCCESS_URL": os.environ.get(
+            "LUMI_STRIPE_CHECKOUT_SUCCESS_URL", ""
+        ),
+        "LUMI_STRIPE_CHECKOUT_CANCEL_URL": os.environ.get(
+            "LUMI_STRIPE_CHECKOUT_CANCEL_URL", ""
+        ),
         "LUMI_STRIPE_PORTAL_RETURN_URL": os.environ.get("LUMI_STRIPE_PORTAL_RETURN_URL", ""),
         "LUMI_STRIPE_PLAN_CATALOG_JSON": os.environ.get("LUMI_STRIPE_PLAN_CATALOG_JSON", ""),
     }
@@ -551,7 +567,10 @@ async def _get_subscription(session: AsyncSession, organization_id: str) -> Subs
 
 async def _credit_balance(session: AsyncSession, organization_id: str) -> int:
     value = await session.scalar(
-        text("SELECT COALESCE(sum(delta_credits),0) FROM billing_credit_ledger WHERE organization_id=:org"),
+        text(
+            "SELECT COALESCE(sum(delta_credits),0) FROM billing_credit_ledger "
+            "WHERE organization_id=:org"
+        ),
         {"org": organization_id},
     )
     return int(value or 0)
@@ -582,7 +601,9 @@ async def _list_credits(
             created_at=row["created_at"].isoformat(),
             project_id=str(row["project_id"]) if row["project_id"] else None,
             usage_record_id=row["usage_record_id"],
-            reverses_entry_id=str(row["reverses_entry_id"]) if row["reverses_entry_id"] else None,
+            reverses_entry_id=(
+                str(row["reverses_entry_id"]) if row["reverses_entry_id"] else None
+            ),
         )
         for row in rows
     )
