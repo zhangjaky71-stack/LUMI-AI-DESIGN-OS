@@ -6,6 +6,7 @@ import uuid
 
 from lumi_model_gateway.provider_health import (
     AdaptiveProviderHealthRegistry,
+    CapacityHint,
     ProviderHealthPolicy,
     ProviderHealthState,
 )
@@ -14,7 +15,10 @@ from lumi_model_gateway.provider_health_store import (
 )
 
 
-def build_registry(client: object, prefix: str) -> AdaptiveProviderHealthRegistry:
+def build_registry(
+    client: object,
+    prefix: str,
+) -> AdaptiveProviderHealthRegistry:
     return AdaptiveProviderHealthRegistry(
         store=RedisHealthStateStore(
             client,  # type: ignore[arg-type]
@@ -43,7 +47,10 @@ def main() -> None:
             "redis package is required for NODE-24 integration verification"
         ) from exc
 
-    client = redis.Redis.from_url(args.url, decode_responses=False)
+    client = redis.Redis.from_url(
+        args.url,
+        decode_responses=False,
+    )
     assert client.ping() is True
     prefix = f"lumi:node24:test:{uuid.uuid4().hex}"
 
@@ -81,10 +88,7 @@ def main() -> None:
     second.record_capacity_hint(
         "provider-a",
         "model-a",
-        hint=__import__(
-            "lumi_model_gateway.provider_health",
-            fromlist=["CapacityHint"],
-        ).CapacityHint(
+        hint=CapacityHint(
             remaining=0,
             limit=100,
             reset_at_epoch=time.time() + 30,
