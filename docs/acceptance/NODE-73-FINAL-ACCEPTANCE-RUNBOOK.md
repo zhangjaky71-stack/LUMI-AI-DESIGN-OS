@@ -4,19 +4,19 @@
 
 ## 1. Purpose
 
-This runbook is the final Go/No-Go procedure for LUMI AI Design OS. It does not replace NODE-66～72; it freezes and re-validates their real evidence together with the product journeys, documentation and operational handoff.
+This is the final Go/No-Go procedure for LUMI AI Design OS. It freezes and re-validates the real NODE-66～72 evidence together with product UAT, production safety drills, Stripe live billing, documentation, browser/accessibility evidence and cross-functional signoff.
 
-The default outcome is:
+Default outcome:
 
 ```text
 NOT ACCEPTED — SEE BLOCKING GAPS
 ```
 
-The gate may emit `LUMI AI DESIGN OS — PRODUCT ACCEPTED` only when every P0 and every required upstream gate is evidenced PASS and no release blocker remains.
+`LUMI AI DESIGN OS — PRODUCT ACCEPTED` is reserved for a machine decision with `accepted=true`, `passed=true`, `blockers=[]` against one exact release candidate.
 
 ## 2. Freeze one exact release candidate
 
-Before final acceptance, identify exactly one RC:
+Freeze exactly one identity before final evidence is accepted:
 
 ```text
 git_sha
@@ -24,45 +24,42 @@ version
 migration_head
 production deployment_id
 production domain
+immutable image/task-definition identities
 ```
 
-Do not mix evidence from different commits, migration heads or image sets.
+Do not mix evidence from different commits, migration heads or deployment sets. Any candidate change invalidates affected evidence and signoffs.
 
-The exact Production deployment manifest must already exist under:
+The exact Production deployment manifest must exist under `reports/production-deployments/` and match the same RC.
 
-```text
-reports/production-deployments/<deployment-id>/manifest.json
-```
+## 3. Resolve source and external blockers first
 
-and must match the final RC.
+STOP final acceptance while any mandatory blocker remains, including:
 
-## 3. Collect six upstream machine decisions
+- stale root `uv.lock`;
+- GitHub Actions runner/account Billing blocker;
+- unexecuted canonical frozen install/CI/release gate;
+- missing production-like Staging decision;
+- missing production deployment/canary evidence;
+- unresolved Critical/High security or reliability issue.
 
-Normalize the following into `reports/final-acceptance/<release-id>/upstream/` using `final/acceptance/upstream-decision-template.json`:
+`SOURCE_IMPLEMENTED`, `VALIDATION_PENDING`, zero-step CI, mock tests or test-mode provider evidence are not PASS.
+
+## 4. Collect six upstream machine decisions
+
+Freeze these six required upstream gates:
 
 ```text
 security
 recovery
 performance
-ai-regression
-staging-acceptance
-production-deployment
+ai_regression
+staging_acceptance
+production_deployment
 ```
 
-Each wrapper must freeze the real evidence behind the decision and include:
+Each decision must include a concrete `decision_id`, `passed=true`, non-empty frozen `evidence_refs[]`, and no release blocker. Performance, AI Regression, Staging Acceptance and Production Deployment must match the exact final RC identity.
 
-```text
-decision_id
-passed=true
-evidence_refs[] with path + sha256
-blockers=[]
-```
-
-Performance, AI Regression, Staging Acceptance and Production Deployment must also use the exact final RC identity.
-
-STOP if any upstream gate is not `passed=true`.
-
-## 4. Create the final evidence skeleton
+## 5. Create the final evidence skeleton
 
 Run:
 
@@ -75,129 +72,98 @@ python3 scripts/create-final-acceptance-evidence.py \
   --output reports/final-acceptance/<release-id>/acceptance-evidence.json
 ```
 
-The generator creates all 46 scenarios as `NOT_RUN`. Do not replace unexecuted work with `PASS` just to complete the matrix.
+The generator reads `final/acceptance/manifest-v1.json` and currently creates **50 scenarios** as `NOT_RUN`. Never replace unexecuted work with PASS to complete the matrix.
 
-## 5. Execute Golden Journey A — Zero-to-Brand
+## 6. Execute Golden Journey A — Zero-to-Brand
 
-Use a production-scope test account and the frozen RC.
-
-Natural-language brief:
-
-> 为一家精品咖啡品牌做完整设计，包括研究、品牌定位、视觉方向、Logo、品牌规范、包装、菜单、海报、社媒和短视频。
-
-Collect evidence for:
+Use a production-scope test account and the frozen RC. Prove the complete flow:
 
 ```text
-Create Project
-Brief Agent
-research with sources
-brand strategy
-creative directions
-human approval
-moodboard
-Brand Kit
-image/design generation
-editable Canvas artifacts
-Critic / Brand / Identity QA
-repair
-versions/provenance
-multi-format export
-Agent Timeline
-cost ledger
-pause/resume
+Create Project -> Brief Agent -> sourced research -> strategy -> creative directions
+-> approval -> moodboard/Brand Kit -> generation/design -> editable Canvas
+-> Critic/Brand/Identity QA -> repair -> Versions/provenance -> multi-format export
+-> Agent Timeline/cost/pause/resume
 ```
 
-A rendered image alone is not PASS. The final assets must remain structurally editable and versioned.
+A rendered image alone is insufficient. Final assets must remain structurally editable, versioned and traceable.
 
-## 6. Execute Golden Journey B — Precision Local Edit
+## 7. Execute Golden Journey B — Precision Local Edit
 
-Use an existing approved poster/version and issue:
+Use an approved version and execute a constrained instruction such as:
 
 > 产品和Logo都不要动，二维码位置大小不变；背景改成黑色，标题缩小15%。
 
-Prove with before/after data and visual evidence:
+Prove product/logo/QR invariants, structural title/background edit, QR scanability, new immutable version, old-version restore and quality/constraint PASS.
+
+## 8. Execute Golden Journey C — Multi-size Campaign
+
+Adapt one approved design to 1:1, 4:5, 9:16 and 16:9. Prove real layout adaptation rather than naive stretching and preserve Brand/Product constraints.
+
+## 9. Execute Golden Journey D — Failure Recovery
+
+Inject controlled worker restart, provider timeout/429/5xx, duplicate request/event and SSE disconnect/reconnect. Prove explicit recovery without duplicate paid generation, corrupt Artifact, approved-version loss or blind ambiguous provider retry.
+
+## 10. Execute explicit product UAT
+
+`UAT-01` is a P0/Critical independent final gate. Execute the exact RC across:
 
 ```text
-exact selected version
-product identity unchanged
-logo unchanged
-QR payload unchanged
-QR geometry/position invariant
-QR remains scannable
-title structural size change approximately -15%
-background local/structural edit
-new immutable version created
-old version remains restorable
-quality/constraint result PASS
+project -> agent -> generation -> canvas -> artifact/version -> compare/restore -> export
 ```
 
-Any silent product/logo/QR mutation is a P0 failure.
+Include primary failure, retry and reconnect paths. Follow `docs/acceptance/NODE-73-UAT-SIGNOFF-MATRIX.md`.
 
-## 7. Execute Golden Journey C — Multi-size Campaign
+## 11. Execute Billing UX and Stripe live purchase
 
-From one approved design generate/adapt:
+`BILLING-UX-01` is P0/High and covers plan display, role authorization, Checkout, success/cancel, Portal, cancellation lifecycle, idempotency, CSRF/Origin and actionable failure states.
 
-```text
-1:1
-4:5
-9:16
-16:9
-```
+The real-charge gate is separate and mandatory. Execute `docs/operations/STRIPE-LIVE-PURCHASE-DRILL.md` and prove:
 
-Prove layout adaptation rather than naive stretching, and show preserved Brand/Product constraints with independent DesignVersions where layout changes materially.
+- approved `sk_live_` production mode;
+- source-supported Stripe API version;
+- startup Price reconciliation;
+- one bounded approved real payment;
+- signed live subscription/invoice webhooks;
+- ACTIVE subscription;
+- PAID invoice at exact configured amount/currency;
+- exactly one credit grant;
+- replay of the exact paid-invoice event remains DUPLICATE and grants no second credit.
 
-## 8. Execute Golden Journey D — Failure Recovery
+Mock/test-mode evidence cannot satisfy the live-payment gate.
 
-During a controlled run inject:
+## 12. Execute browser matrix
 
-```text
-Agent worker restart
-provider timeout/429/5xx
-duplicate request/event
-SSE disconnect/reconnect
-```
+`BROWSER-01` is P0/High for current supported Chrome and Edge. `BROWSER-02` is P0/High for current supported Safari and Firefox; Safari is no longer a deferrable P1 final-acceptance item.
 
-Required result:
+Capture exact browser/OS versions and verify critical create/edit/export, Canvas, IME/font, upload/download, approval/version and Billing-safe flows.
 
-```text
-run resumes or ends explicitly
-no duplicate paid generation
-no corrupt artifact
-no approved version loss
-ambiguous provider operation is reconciled, not blindly retried
-```
+## 13. Execute responsive/mobile scope
 
-## 9. Execute the remaining matrix
+`RESPONSIVE-01` is P1/Medium. If mobile/responsive is launch scope, run the declared device/browser matrix. If the release is explicitly desktop-only, a defer is allowed only with complete non-critical gap metadata and a documented supported-device statement.
 
-Use `final/acceptance/manifest-v1.json` as the canonical list. Cover:
+## 14. Execute accessibility critical paths
 
-- Architecture and governed deviations;
-- Agent/tool/model authority and idempotency;
-- Design/Canvas/constraint quality;
-- Security release corpus;
-- Reliability and rollback;
-- Artifact provenance and data lifecycle;
-- Cost/Billing reconciliation and hard controls;
-- Frontend/browser/IME flows;
-- Launch performance/capacity;
-- recovery/PITR/object restore;
-- observability/SLO alerts;
-- production operations;
-- documentation;
-- operational handoff.
+`A11Y-01` is P0/High. Require zero unresolved High/Critical accessibility blocker and verify at minimum:
 
-Every PASS must reference frozen evidence files by path + SHA-256.
+- keyboard reachability and no traps;
+- visible/logical focus;
+- accessible names and semantic structure;
+- assistive-technology status/error exposure;
+- contrast/focus/error visibility;
+- supported zoom/reflow;
+- critical screen-reader smoke path.
 
-## 10. Gap policy
+Manual keyboard and screen-reader checks remain required even when automation is used.
 
-Only a genuinely non-critical P1/P2 item may use:
+## 15. Execute remaining canonical matrix
 
-```text
-DEFERRED_NON_CRITICAL
-BLOCKED_EXTERNAL
-```
+Use `final/acceptance/manifest-v1.json` as the only scenario authority. It also covers architecture, Agent authority, Design/Canvas quality, security, reliability, provenance/data lifecycle, cost controls, performance/capacity, recovery, observability, production operations, documentation and operational handoff.
 
-and it must record:
+Every PASS requires at least one frozen evidence reference with path + SHA-256.
+
+## 16. Gap policy
+
+Only genuinely non-critical P1/P2 items may use `DEFERRED_NON_CRITICAL` or `BLOCKED_EXTERNAL`, and must include:
 
 ```text
 owner
@@ -207,85 +173,67 @@ target_release
 workaround
 ```
 
-P0 and Critical/High items cannot be deferred into a green release.
+P0 and Critical/High items cannot be deferred or externally blocked into a green release.
 
-## 11. Cost reconciliation
+## 17. Production safety proof
 
-For a statistically useful sample of real accepted runs, reconcile:
+Final evidence must include real runtime proof for:
 
-```text
-Provider request
-Generation
-Idempotency Operation
-Cost Ledger
-AgentRun / Task
-Billing usage / credit entry
-```
+- provider daily dollar hard stop;
+- sandbox egress isolation;
+- production rollback drill;
+- alert ALARM -> delivery -> OK machine path;
+- approved human on-call delivery/acknowledgement;
+- HTTPS/domain, DB/storage/broker/secrets/WAF/backups;
+- exact immutable image digests and migrations;
+- production smoke/canary/steady state.
 
-Any estimated value must state confidence/reconciliation status. Unexplained material spend blocks `COST-01`.
+Source Terraform and runbooks alone are not production evidence.
 
-The platform-wide daily provider-dollar hard stop must be proven at a durable runtime boundary; a value written only in a release manifest is not enforcement.
+## 18. Cost and billing reconciliation
 
-## 12. Security acceptance
+For real accepted runs, reconcile Provider Request -> Generation -> Idempotency Operation -> Cost Ledger -> AgentRun/Task -> Billing/Credit. Any estimated value must expose confidence/reconciliation status. Unexplained material spend blocks release.
 
-STOP immediately on any release-blocking condition, including:
+The platform-wide daily provider-dollar hard stop must be proven at a durable runtime boundary.
 
-```text
-cross-tenant leak
-sandbox escape
-secret exposure
-unauthorized prompt-injection tool escalation
-SSRF to metadata/private targets
-payment/credit replay
-unresolved Critical/High without an approved release policy exception
-```
+## 19. Security STOP-SHIP conditions
 
-Do not continue final sign-off while a STOP-SHIP issue is open.
+Stop on cross-tenant leak, sandbox escape, secret exposure, prompt-injection authority escalation, SSRF to metadata/private targets, payment/credit replay, or any unresolved Critical/High issue not permitted by an explicit release policy.
 
-## 13. Production acceptance
+## 20. Freeze acceptance evidence
 
-The final package must contain real evidence for:
+When all scenario statuses are final, compute the exact SHA-256 of `acceptance-evidence.json` and freeze its path/hash in `release-manifest.json`. Any subsequent edit requires a new hash and re-evaluation.
+
+Freeze all upstream decisions and the Production deployment manifest the same way.
+
+## 21. Complete eight evidence-backed signoffs
+
+Required roles are exactly:
 
 ```text
-HTTPS/domain
-production DB/storage/broker/secrets
-backup/recovery
-WAF/rate limit
-observability/SLO
-exact immutable image digests
-migration success
-API canary
-alarm rollback
-ECS steady state
-production smoke
-post-promotion rollback
-provider quotas
-billing webhook
-support/admin/on-call
+product
+engineering
+design
+security
+operations
+legal_privacy
+finance_billing
+release_owner
 ```
 
-Source Terraform is not Production evidence.
-
-## 14. Freeze acceptance evidence
-
-After all scenario statuses are final, compute the SHA-256 of `acceptance-evidence.json` and put the exact path/hash into `release-manifest.json`.
-
-Do not edit evidence after this point. Any edit requires re-freezing the release manifest and re-running the gate.
-
-## 15. Freeze upstream and Production evidence
-
-The final release manifest must also freeze:
+For each role, copy `final/acceptance/signoff-record-template.json` to:
 
 ```text
-six upstream decision wrappers
-production deployment manifest
+reports/final-acceptance/<release-id>/signoffs/<role>.json
 ```
 
-Each file is validated again by SHA-256 at decision time.
+Each record must bind the same `release_id`, Git SHA, version and migration head; identify a named approver; contain `status: APPROVED`; include an ISO-8601 UTC `Z` timestamp, a concrete decision and at least one frozen evidence reference.
 
-## 16. Complete operational handoff
+Freeze every signoff record in `release-manifest.json` as `{path, sha256}`. Missing Design, Legal/Privacy, Finance/Billing or any other required role blocks release. The gate validates records; it never impersonates or auto-approves a human role.
 
-Assign and record:
+## 22. Complete operational handoff
+
+Assign:
 
 - on-call owner;
 - support owner;
@@ -296,19 +244,18 @@ Assign and record:
 - DR drill owner;
 - capacity review owner.
 
-Required approvals:
+## 23. Run canonical final source gate
 
-```text
-Product
-Engineering
-Security
-Operations
-Release Owner
+The GitHub `Final Product Acceptance Gate` must execute on an allocated runner using Python 3.12 and uv 0.11.28 with:
+
+```bash
+uv sync --all-packages --frozen
+python3 scripts/validate_final_acceptance_contract.py
 ```
 
-All must be `APPROVED`.
+A `runner_id=0 / steps=[]` account Billing failure is `BLOCKED_EXTERNAL`, not source validation.
 
-## 17. Run the final gate
+## 24. Run final decision
 
 ```bash
 python3 scripts/final-acceptance-gate.py \
@@ -317,43 +264,32 @@ python3 scripts/final-acceptance-gate.py \
   --output reports/final-acceptance/<release-id>/final-decision.json
 ```
 
-Or run the manual `Final Product Acceptance Gate` workflow against the two frozen files.
+Or use the manual `Final Product Acceptance Gate` workflow with the two frozen files.
 
-## 18. Decision handling
+## 25. Decision handling
 
-If the gate exits non-zero or reports blockers:
+If the gate exits non-zero or reports any blocker, the required headline remains:
 
 ```text
 NOT ACCEPTED — SEE BLOCKING GAPS
 ```
 
-Keep the release out of final acceptance. Fix or explicitly re-scope the actual blocker; do not edit the matrix or delete a scenario to make the report green.
+Do not delete scenarios, weaken P0 priorities or edit signoff/evidence hashes to obtain green.
 
-Only when the machine decision returns `accepted=true` may the release headline be:
+Only a decision with `accepted=true`, `passed=true` and `blockers=[]` may emit:
 
 ```text
 LUMI AI DESIGN OS — PRODUCT ACCEPTED
 ```
 
-## 19. Post-acceptance operating cadence
+## 26. Post-acceptance cadence
 
-After a real accepted production release, continue:
+After a real accepted release, continue weekly provider/cost/quality review, monthly security/dependency review, quarterly DR drills, AI release gates for production AI changes, capacity review and governed customer-feedback learning.
 
-```text
-weekly provider / cost / quality review
-monthly security / dependency review
-quarterly DR drill
-AI release gate for every production AI change
-capacity planning and autoscaling review
-customer feedback -> governed data flywheel
-```
+## 27. Current project state
 
-Final acceptance is the start of governed operations, not permission to stop validation.
+Current source work does **not** satisfy runtime/manual acceptance. GitHub hosted jobs remain externally blocked before runner allocation by the account Billing/spending-limit condition, root `uv.lock` remains stale, and required real cloud/payment/UAT/signoff evidence is still pending.
 
-## 20. Current project state
-
-As of this source baseline, NODE-68～72 still contain unresolved runtime/cloud evidence requirements and GitHub hosted CI has been blocked before runner start by an account Billing/spending-limit condition on the latest readiness nodes.
-
-Therefore this runbook's current final outcome is intentionally:
+Therefore the current outcome remains:
 
 # NOT ACCEPTED — SEE BLOCKING GAPS
