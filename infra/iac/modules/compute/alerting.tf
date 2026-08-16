@@ -1,8 +1,56 @@
 data "aws_caller_identity" "current" {}
 
+data "aws_iam_policy_document" "deployment_alert_kms" {
+  statement {
+    sid       = "AccountRootAdministration"
+    effect    = "Allow"
+    actions   = ["kms:*"]
+    resources = ["*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+  }
+
+  # AWS documents that CloudWatch/EventBridge publishers to an encrypted SNS
+  # topic need GenerateDataKey/Decrypt on a customer-managed key. Do not add
+  # SourceAccount/SourceArn conditions to the EventBridge statement: AWS SNS
+  # documents that those conditions are not supported for EventBridge ->
+  # encrypted SNS topics.
+  statement {
+    sid     = "AwsServicePublishers"
+    effect  = "Allow"
+    actions = ["kms:GenerateDataKey*", "kms:Decrypt", "kms:DescribeKey"]
+    resources = ["*"]
+
+    principals {
+      type = "Service"
+      identifiers = [
+        "cloudwatch.amazonaws.com",
+        "events.amazonaws.com",
+        "sns.amazonaws.com",
+      ]
+    }
+  }
+}
+
+resource "aws_kms_key" "deployment_alerts" {
+  description             = "${local.name} deployment alert transport encryption"
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+  policy                  = data.aws_iam_policy_document.deployment_alert_kms.json
+  tags                    = merge(local.tags, { Name = "${local.name}-deployment-alerts-kms" })
+}
+
+resource "aws_kms_alias" "deployment_alerts" {
+  name          = "alias/${local.name}-deployment-alerts"
+  target_key_id = aws_kms_key.deployment_alerts.key_id
+}
+
 resource "aws_sns_topic" "deployment_alerts" {
   name              = "${local.name}-deployment-alerts"
-  kms_master_key_id = "alias/aws/sns"
+  kms_master_key_id = aws_kms_key.deployment_alerts.arn
   tags              = local.tags
 }
 
