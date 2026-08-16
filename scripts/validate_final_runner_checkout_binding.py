@@ -79,6 +79,20 @@ def main() -> None:
         raise SystemExit("fixture could not resolve required upstream gates")
     required_names = [str(item) for item in required]
 
+    if not runner.evidence_only_path("reports/final-acceptance/release/evidence.json"):
+        raise SystemExit("reports/ evidence path should be allowed after RC freeze")
+    for forbidden in (
+        "scripts/run-final-acceptance.py",
+        "apps/api/src/lumi_api/app_v1.py",
+        "services/project-core/pyproject.toml",
+        "infra/iac/main.tf",
+        "VERSION",
+        "uv.lock",
+        "final/acceptance/manifest-v1.json",
+    ):
+        if runner.evidence_only_path(forbidden):
+            raise SystemExit(f"post-RC source path was incorrectly allowed: {forbidden}")
+
     if FIXTURE.exists():
         shutil.rmtree(FIXTURE)
     try:
@@ -87,19 +101,19 @@ def main() -> None:
         matrix_arg = MATRIX.relative_to(ROOT).as_posix()
 
         write_release(actual, required_names)
-        if runner.require_repository_identity_binding(release_arg) != actual:
-            raise SystemExit("final runner did not bind repository release identity")
+        declared, evidence_checkout_sha, evidence_paths = runner.require_repository_identity_binding(
+            release_arg
+        )
+        if declared != actual:
+            raise SystemExit("final runner changed the declared source RC identity")
+        if evidence_checkout_sha != actual[0]:
+            raise SystemExit("same-commit source-contract fixture resolved unexpected evidence checkout")
+        if evidence_paths:
+            raise SystemExit("same-commit source-contract fixture unexpectedly has committed post-RC paths")
+
         upstream_bound = runner.require_all_upstream_rc_binding(release_arg, matrix_arg)
         if set(upstream_bound) != set(required_names):
             raise SystemExit("not every required upstream gate was RC-bound")
-
-        stale_sha = ("0" if actual[0][0] != "0" else "1") + actual[0][1:]
-        write_release((stale_sha, actual[1], actual[2]), required_names)
-        expect_failure(
-            lambda: runner.require_repository_identity_binding(release_arg),
-            "FINAL_ACCEPTANCE_REPOSITORY_IDENTITY_MISMATCH",
-            label="stale checkout SHA",
-        )
 
         write_release((actual[0], actual[1] + "-wrong", actual[2]), required_names)
         expect_failure(
@@ -118,6 +132,7 @@ def main() -> None:
         write_release(actual, required_names)
         security = FIXTURE / "upstream" / "security.json"
         security_payload = json.loads(security.read_text(encoding="utf-8"))
+        stale_sha = ("0" if actual[0][0] != "0" else "1") + actual[0][1:]
         security_payload["release_candidate"] = candidate((stale_sha, actual[1], actual[2]))
         write_json(security, security_payload)
         expect_failure(
@@ -129,7 +144,7 @@ def main() -> None:
         if FIXTURE.exists():
             shutil.rmtree(FIXTURE)
 
-    print("FINAL_RUNNER_REPOSITORY_AND_UPSTREAM_BINDING_CONTRACT_PASS")
+    print("FINAL_RUNNER_EVIDENCE_DESCENDANT_AND_UPSTREAM_BINDING_CONTRACT_PASS")
 
 
 if __name__ == "__main__":
