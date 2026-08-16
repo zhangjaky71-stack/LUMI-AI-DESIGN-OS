@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from lumi_model_gateway.registry_postgres import PostgresCapabilityRegistryStore
+from lumi_model_gateway.registry_postgres import (
+    PostgresCapabilityRegistryStore,
+)
 from lumi_model_gateway.registry_seed import load_seed_snapshot
 
 from seed_capability_registry import publish_snapshot
@@ -30,22 +33,29 @@ async def require_tables(connection: Any) -> None:
     rows = await connection.fetch(
         """
         SELECT tablename FROM pg_tables
-        WHERE schemaname = 'public' AND tablename = ANY($1::text[])
+        WHERE schemaname = 'public'
+          AND tablename = ANY($1::text[])
         """,
         [*GLOBAL_TABLES, "organization_model_policies"],
     )
     found = {str(row["tablename"]) for row in rows}
     expected = {*GLOBAL_TABLES, "organization_model_policies"}
     if found != expected:
-        raise AssertionError(f"registry table mismatch missing={sorted(expected - found)}")
+        raise AssertionError(
+            "registry table mismatch missing="
+            f"{sorted(expected - found)}"
+        )
 
 
 async def require_policy_rls(connection: Any) -> None:
     enabled = await connection.fetchval(
-        "SELECT relrowsecurity FROM pg_class WHERE relname = 'organization_model_policies'"
+        "SELECT relrowsecurity FROM pg_class "
+        "WHERE relname = 'organization_model_policies'"
     )
     if enabled is not True:
-        raise AssertionError("organization_model_policies RLS is not enabled")
+        raise AssertionError(
+            "organization_model_policies RLS is not enabled"
+        )
     policy_count = await connection.fetchval(
         """
         SELECT count(*) FROM pg_policies
@@ -55,12 +65,34 @@ async def require_policy_rls(connection: Any) -> None:
         """
     )
     if int(policy_count or 0) != 1:
-        raise AssertionError("organization model policy tenant RLS policy missing")
+        raise AssertionError(
+            "organization model policy tenant RLS policy missing"
+        )
+
+
+async def require_pricing_region_identity(connection: Any) -> None:
+    row = await connection.fetchrow(
+        """
+        SELECT is_nullable, column_default
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'model_pricing_snapshots'
+          AND column_name = 'region'
+        """
+    )
+    if row is None:
+        raise AssertionError("model pricing region column is missing")
+    if row["is_nullable"] != "NO":
+        raise AssertionError("model pricing region must be NOT NULL")
+    if "global" not in str(row["column_default"]):
+        raise AssertionError("model pricing region default must be global")
 
 
 async def require_runtime_global_read_only(connection: Any) -> None:
     role_exists = await connection.fetchval(
-        "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')"
+        "SELECT EXISTS ("
+        "SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app'"
+        ")"
     )
     if not role_exists:
         return
@@ -81,8 +113,13 @@ async def require_runtime_global_read_only(connection: Any) -> None:
             "SELECT has_table_privilege('lumi_app', $1, 'DELETE')",
             table,
         )
-        if can_select is not True or any((can_insert, can_update, can_delete)):
-            raise AssertionError(f"lumi_app global registry grants are not read-only: {table}")
+        if can_select is not True or any(
+            (can_insert, can_update, can_delete)
+        ):
+            raise AssertionError(
+                "lumi_app global registry grants are not read-only: "
+                f"{table}"
+            )
 
 
 async def require_seed_round_trip(connection: Any) -> None:
@@ -90,36 +127,61 @@ async def require_seed_round_trip(connection: Any) -> None:
     first = await publish_snapshot(connection, expected)
     second = await publish_snapshot(connection, expected)
     if first != second:
-        raise AssertionError("idempotent seed replay changed registry counts")
-    if first["providers"] != 5 or first["models"] != 28 or first["profiles"] != 15:
-        raise AssertionError(f"NODE-07 seed cardinality changed: {first}")
+        raise AssertionError(
+            "idempotent seed replay changed registry counts"
+        )
+    if (
+        first["providers"] != 5
+        or first["models"] != 28
+        or first["profiles"] != 15
+    ):
+        raise AssertionError(
+            f"NODE-07 seed cardinality changed: {first}"
+        )
     if first["benchmarks"] != 0:
-        raise AssertionError("NOT_MEASURED seed created synthetic benchmark scores")
+        raise AssertionError(
+            "NOT_MEASURED seed created synthetic benchmark scores"
+        )
 
     raw_price_count = 0
-    config = __import__("json").loads(
-        (ROOT / "config/model-registry.seed.json").read_text(encoding="utf-8")
+    config = json.loads(
+        (ROOT / "config/model-registry.seed.json").read_text(
+            encoding="utf-8"
+        )
     )
     for provider_file in config["provider_files"]:
-        payload = __import__("json").loads(
+        payload = json.loads(
             (ROOT / provider_file).read_text(encoding="utf-8")
         )
         raw_price_count += sum(
-            len(model.get("pricing") or []) for model in payload.get("models") or []
+            len(model.get("pricing") or [])
+            for model in payload.get("models") or []
         )
     if first["prices"] != raw_price_count:
         raise AssertionError(
-            f"pricing normalization lost records raw={raw_price_count} db={first['prices']}"
+            "pricing normalization lost records "
+            f"raw={raw_price_count} db={first['prices']}"
         )
 
     store = PostgresCapabilityRegistryStore()
-    restored = await store.load_snapshot(connection, version=expected.version)
+    restored = await store.load_snapshot(
+        connection,
+        version=expected.version,
+    )
     if restored.checksum_sha256 != expected.checksum_sha256:
-        raise AssertionError("PostgreSQL round-trip changed snapshot checksum identity")
+        raise AssertionError(
+            "PostgreSQL round-trip changed snapshot checksum identity"
+        )
     if len(restored.models) != len(expected.models):
-        raise AssertionError("PostgreSQL round-trip changed model cardinality")
-    if len(restored.routing_profiles) != len(expected.routing_profiles):
-        raise AssertionError("PostgreSQL round-trip changed routing profile cardinality")
+        raise AssertionError(
+            "PostgreSQL round-trip changed model cardinality"
+        )
+    if len(restored.routing_profiles) != len(
+        expected.routing_profiles
+    ):
+        raise AssertionError(
+            "PostgreSQL round-trip changed routing profile cardinality"
+        )
 
     conflict = replace(expected, checksum_sha256="0" * 64)
     try:
@@ -128,18 +190,23 @@ async def require_seed_round_trip(connection: Any) -> None:
         if "REGISTRY_VERSION_CHECKSUM_CONFLICT" not in str(exc):
             raise
     else:
-        raise AssertionError("same registry version accepted a different checksum")
+        raise AssertionError(
+            "same registry version accepted a different checksum"
+        )
 
 
 async def run(dsn: str) -> None:
     try:
         import asyncpg
     except ImportError as exc:
-        raise RuntimeError("asyncpg is required for NODE-23 DB verification") from exc
+        raise RuntimeError(
+            "asyncpg is required for NODE-23 DB verification"
+        ) from exc
     connection = await asyncpg.connect(dsn)
     try:
         await require_tables(connection)
         await require_policy_rls(connection)
+        await require_pricing_region_identity(connection)
         await require_runtime_global_read_only(connection)
         await require_seed_round_trip(connection)
     finally:
