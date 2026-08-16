@@ -1,0 +1,49 @@
+{
+  "node": "NODE-25",
+  "title": "Tool Gateway",
+  "status": "IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL",
+  "gaps": [
+    {
+      "id": "TOOL-COMPOSITION-001",
+      "severity": "P0",
+      "summary": "Deployable production composition is not yet activated.",
+      "detail": "The Tool Gateway contracts now compose deterministically with the current NODE-20 SideEffectGateway and expose narrow NODE-21/NODE-18/NODE-16 boundaries, but the production API/service bootstrap has not yet installed the complete authenticated permission-context + durable SideEffectGateway + trusted offloader + sandbox client graph."
+    },
+    {
+      "id": "TOOL-WEB-002",
+      "severity": "P0",
+      "summary": "Live web backends remain intentionally unbound.",
+      "detail": "web.search and web.fetch contracts, SSRF policy, pinned-IP transport contract and redirect revalidation are implemented. A production TLS/SNI-aware pinned HTTP transport and approved search backend are not activated, so no live ambient external network authority is granted to Agents."
+    },
+    {
+      "id": "TOOL-APPROVAL-003",
+      "severity": "P0",
+      "summary": "Durable LangGraph approval/resume wiring is pending.",
+      "detail": "Tool Gateway returns APPROVAL_REQUIRED before external/destructive/financial/privileged side effects and accepts an injected ApprovalResolver. Durable interrupt/resume and approval binding are owned by NODE-28/NODE-62."
+    },
+    {
+      "id": "TOOL-MCP-004",
+      "severity": "P1",
+      "summary": "MCP runtime adapter is intentionally deferred.",
+      "detail": "ToolRuntime.MCP is frozen in the contract but MCP server discovery, connection policy and adapter execution are NODE-26 scope."
+    },
+    {
+      "id": "TOOL-AUDIT-005",
+      "severity": "P0",
+      "summary": "Durable audit persistence/retention is not installed yet.",
+      "detail": "Write-class tools fail closed without an AuditSink and structured field-level redaction is implemented. The reference MemoryAuditSink is not durable; append-only persistence, retention/legal hold and audit querying remain NODE-65 production work."
+    },
+    {
+      "id": "TOOL-NATIVE-006",
+      "severity": "P1",
+      "summary": "Production native handler and result-offloader bindings remain open.",
+      "detail": "The P0 catalog and adapter ports exist for Asset, Project, Artifact, Sandbox and Media. Production domain handlers and NODE-18 trusted large-result offloader/object-store composition are not activated in this node."
+    },
+    {
+      "id": "TOOL-CI-007",
+      "severity": "P0",
+      "summary": "Hosted GitHub Actions cannot currently allocate a runner.",
+      "detail": "The repository account payment/spending-limit condition prevents hosted jobs from starting. No pytest, Ruff, Pyright, integration or security PASS is claimed until a real runner executes the NODE-25 workflow."
+    }
+  ]
+}

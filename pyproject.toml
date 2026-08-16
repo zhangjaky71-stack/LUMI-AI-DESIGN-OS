@@ -70,10 +70,14 @@ exclude = ["**/__pycache__", ".venv"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
-pythonpath = ["."]
+pythonpath = [
+  ".",
+  "services/tool-gateway/src",
+]
 testpaths = [
   "apps/api/tests",
   "apps/agent-runtime/tests",
   "apps/worker-media/tests",
+  "services/tool-gateway/tests",
   "evals/tests",
 ]
