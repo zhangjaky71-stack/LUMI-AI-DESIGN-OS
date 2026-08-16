@@ -79,15 +79,14 @@ jobs:
       - name: Run Project Core service, HTTP and API regression tests
         run: |
           PYTHONPATH=apps/api/src uv run pytest -q \
-            apps/api/tests/test_project_core_contract.py \
-            apps/api/tests/test_project_core_http.py \
+            apps/api/tests/test_project_core_*.py \
             apps/api/tests/test_api_v1_contract.py
 
       - name: Export Project Core schemas
         run: |
           rm -rf reports/nodes/NODE-17/generated-schemas
           PYTHONPATH=apps/api/src uv run python tools/node17/export_project_schemas.py
-          test "$(find reports/nodes/NODE-17/generated-schemas -name '*.schema.json' | wc -l)" -eq 7
+          test "$(find reports/nodes/NODE-17/generated-schemas -name '*.schema.json' | wc -l)" -eq 8
 
       - name: Validate schemas and gap ledger
         run: |
@@ -96,7 +95,7 @@ jobs:
           from pathlib import Path
 
           schemas = sorted(Path("reports/nodes/NODE-17/generated-schemas").glob("*.schema.json"))
-          assert len(schemas) == 7, len(schemas)
+          assert len(schemas) == 8, len(schemas)
           for path in schemas:
               json.loads(path.read_text(encoding="utf-8"))
               print(f"validated {path}")
@@ -113,8 +112,7 @@ jobs:
             apps/api/src/lumi_api/api/v1/schemas.py \
             apps/api/src/lumi_api/api/v1/ports.py \
             apps/api/src/lumi_api/persistence/models_project_core.py \
-            apps/api/tests/test_project_core_contract.py \
-            apps/api/tests/test_project_core_http.py \
+            apps/api/tests/test_project_core_*.py \
             tools/node17
           uv run pyright \
             apps/api/src/lumi_api/projects \
@@ -122,8 +120,7 @@ jobs:
             apps/api/src/lumi_api/api/v1/schemas.py \
             apps/api/src/lumi_api/api/v1/ports.py \
             apps/api/src/lumi_api/persistence/models_project_core.py \
-            apps/api/tests/test_project_core_contract.py \
-            apps/api/tests/test_project_core_http.py \
+            apps/api/tests/test_project_core_*.py \
             tools/node17
 
       - name: Prepare local PostgreSQL environment
