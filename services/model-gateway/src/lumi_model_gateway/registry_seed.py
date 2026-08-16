@@ -268,9 +268,11 @@ def _claims_for_model(
 
     if "reasoning" in modalities:
         add(Capability.LLM_REASONING)
-    if "vision" in modalities or "image" in inputs:
-        if "reasoning" in modalities or "vision" in modalities:
-            add(Capability.LLM_VISION)
+    if (
+        ("vision" in modalities or "image" in inputs)
+        and ("reasoning" in modalities or "vision" in modalities)
+    ):
+        add(Capability.LLM_VISION)
     if documented.get("structured_output") is True:
         add(Capability.LLM_STRUCTURED_OUTPUT)
     if (
