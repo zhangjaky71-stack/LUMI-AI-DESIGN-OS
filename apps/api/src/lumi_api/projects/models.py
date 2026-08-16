@@ -29,7 +29,10 @@ class DataRetentionProfile(StrEnum):
 
 
 class ProjectBrief(ProjectModel):
-    schema_version: str = Field(default="lumi.project-brief/1.0", pattern=r"^lumi\.project-brief/1\.0$")
+    schema_version: str = Field(
+        default="lumi.project-brief/1.0",
+        pattern=r"^lumi\.project-brief/1\.0$",
+    )
     objective: str = Field(default="", max_length=20_000)
     audience: tuple[str, ...] = Field(default=(), max_length=100)
     brand_context: str = Field(default="", max_length=20_000)
@@ -45,7 +48,12 @@ class ProjectBrief(ProjectModel):
     source_input_ref: str | None = Field(default=None, max_length=2_000)
 
     @field_validator(
-        "audience", "deliverables", "channels", "copy_requirements", "constraints", "references"
+        "audience",
+        "deliverables",
+        "channels",
+        "copy_requirements",
+        "constraints",
+        "references",
     )
     @classmethod
     def normalize_sequences(cls, value: tuple[str, ...]) -> tuple[str, ...]:
@@ -56,7 +64,10 @@ class ProjectBrief(ProjectModel):
 
 
 class ProjectSettings(ProjectModel):
-    schema_version: str = Field(default="lumi.project-settings/1.0", pattern=r"^lumi\.project-settings/1\.0$")
+    schema_version: str = Field(
+        default="lumi.project-settings/1.0",
+        pattern=r"^lumi\.project-settings/1\.0$",
+    )
     default_locale: str = Field(default="en-US", min_length=2, max_length=35)
     timezone: str = Field(default="UTC", min_length=1, max_length=100)
     cost_budget_default: Decimal | None = Field(default=None, ge=0)
@@ -138,6 +149,16 @@ class ProjectEvent(ProjectModel):
     actor_id: str | None = None
     occurred_at: datetime
     payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProjectAuditEntry(ProjectModel):
+    id: UUID = Field(default_factory=new_uuid7)
+    organization_id: UUID
+    project_id: UUID
+    actor_id: str | None = Field(default=None, max_length=200)
+    action: ProjectEventType
+    occurred_at: datetime
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 class ProjectListQuery(ProjectModel):
