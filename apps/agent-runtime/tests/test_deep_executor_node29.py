@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
 from uuid import uuid4
 
 from lumi_agent_runtime.deep_runtime.contracts import (
@@ -14,6 +13,7 @@ from lumi_agent_runtime.deep_runtime.contracts import (
     ResolvedAgentConfig,
 )
 from lumi_agent_runtime.deep_runtime.executor import DeepAgentTaskExecutor
+from lumi_agent_runtime.deep_runtime.factory import CompiledDeepAgent
 from lumi_agent_runtime.deep_runtime.structured_result import (
     StructuredResultParser,
 )
@@ -119,10 +119,12 @@ def test_autonomous_agentic_task_returns_only_safe_node28_delta() -> None:
         model_profile=config.model_profile,
         sandbox_execute=False,
     )
-    compiled = SimpleNamespace(
+    compiled = CompiledDeepAgent(
+        config=config,
         compiled_graph=graph,
         provenance=provenance,
         thread_id=f"deep:{run_id}:{task_id}:critic:1.0.0",
+        effective_tools=("asset.read",),
     )
     result_store = MemoryResultStore()
     executor = DeepAgentTaskExecutor(
@@ -155,4 +157,6 @@ def test_autonomous_agentic_task_returns_only_safe_node28_delta() -> None:
     invocation_message, invocation_config = graph.invocations[0]
     task_content = invocation_message["messages"][0]["content"]
     assert "Logo geometry is immutable" in task_content
-    assert invocation_config["configurable"]["thread_id"].startswith("deep:")
+    expected_thread = f"deep:{run_id}:{task_id}:critic:1.0.0"
+    assert invocation_config["configurable"]["thread_id"] == expected_thread
+    assert invocation_config["recursion_limit"] == config.max_steps
