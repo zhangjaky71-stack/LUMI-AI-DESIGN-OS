@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import uuid4
 
 import pytest
@@ -95,8 +96,11 @@ def _start() -> StartRunCommand:
     )
 
 
-@pytest.mark.asyncio
-async def test_main_graph_completes_mock_run_and_replays_start_once() -> None:
+def test_main_graph_completes_mock_run_and_replays_start_once() -> None:
+    asyncio.run(_test_main_graph_completes_mock_run_and_replays_start_once())
+
+
+async def _test_main_graph_completes_mock_run_and_replays_start_once() -> None:
     plane, _, guard, events, _, _ = _plane(["deterministic"])
     command = _start()
     first = await plane.start(command)
@@ -107,8 +111,11 @@ async def test_main_graph_completes_mock_run_and_replays_start_once() -> None:
     assert [event.event_type for event in events.events] == ["run.started", "run.completed"]
 
 
-@pytest.mark.asyncio
-async def test_approval_interrupt_resume_and_version_fence() -> None:
+def test_approval_interrupt_resume_and_version_fence() -> None:
+    asyncio.run(_test_approval_interrupt_resume_and_version_fence())
+
+
+async def _test_approval_interrupt_resume_and_version_fence() -> None:
     plane, _, _, events, _, _ = _plane(["approval"])
     start = _start()
     waiting = await plane.start(start)
@@ -154,8 +161,11 @@ async def test_approval_interrupt_resume_and_version_fence() -> None:
     assert "approval.required" in [event.event_type for event in events.events]
 
 
-@pytest.mark.asyncio
-async def test_external_job_wait_resumes_same_thread_without_new_job_identity() -> None:
+def test_external_job_wait_resumes_same_thread_without_new_job_identity() -> None:
+    asyncio.run(_test_external_job_wait_resumes_same_thread_without_new_job_identity())
+
+
+async def _test_external_job_wait_resumes_same_thread_without_new_job_identity() -> None:
     plane, _, _, events, external, _ = _plane(["wait_external"])
     start = _start()
     waiting = await plane.start(start)
@@ -184,8 +194,11 @@ async def test_external_job_wait_resumes_same_thread_without_new_job_identity() 
     assert "run.waiting_external" in [event.event_type for event in events.events]
 
 
-@pytest.mark.asyncio
-async def test_resume_rejects_graph_version_drift() -> None:
+def test_resume_rejects_graph_version_drift() -> None:
+    asyncio.run(_test_resume_rejects_graph_version_drift())
+
+
+async def _test_resume_rejects_graph_version_drift() -> None:
     plane, _, _, _, _, _ = _plane(["approval"])
     start = _start()
     waiting = await plane.start(start)
@@ -207,8 +220,11 @@ async def test_resume_rejects_graph_version_drift() -> None:
         await plane.resume(command)
 
 
-@pytest.mark.asyncio
-async def test_cancel_releases_pending_work_and_budget() -> None:
+def test_cancel_releases_pending_work_and_budget() -> None:
+    asyncio.run(_test_cancel_releases_pending_work_and_budget())
+
+
+async def _test_cancel_releases_pending_work_and_budget() -> None:
     plane, _, _, _, _, cancellation = _plane(["approval"])
     start = _start()
     await plane.start(start)
@@ -243,9 +259,12 @@ def test_safe_event_rejects_private_reasoning_payload() -> None:
         )
 
 
-@pytest.mark.asyncio
-async def test_postgres_checkpointer_requires_explicit_strict_msgpack(monkeypatch) -> None:
+def test_postgres_checkpointer_requires_explicit_strict_msgpack(monkeypatch) -> None:
     monkeypatch.delenv("LANGGRAPH_STRICT_MSGPACK", raising=False)
+    asyncio.run(_assert_postgres_checkpointer_requires_explicit_strict_msgpack())
+
+
+async def _assert_postgres_checkpointer_requires_explicit_strict_msgpack() -> None:
     with pytest.raises(CheckpointUnavailable, match="LANGGRAPH_STRICT_MSGPACK_REQUIRED"):
         async with open_postgres_checkpointer("postgresql://fixture"):
             pass
