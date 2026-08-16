@@ -21,7 +21,7 @@ from lumi_api.assets.models import (
     MediaKind,
     RightsAssertion,
 )
-from lumi_api.domain.ids import new_uuid7
+from lumi_api.domain.states import ProjectStatus
 from lumi_api.events.runtime_bridge import (
     asset_ready_envelope,
     outbox_row,
@@ -34,7 +34,6 @@ from lumi_api.projects.models import (
     ProjectRecord,
     ProjectSettings,
 )
-from lumi_api.domain.states import ProjectStatus
 from lumi_api.queueing import MemoryJobScheduler, QueuedAssetApiService
 
 NOW = datetime(2026, 8, 16, 8, 55, tzinfo=UTC)
@@ -101,7 +100,13 @@ def test_project_and_asset_events_bridge_to_node12_envelopes() -> None:
 
 
 class FakeAssetApi:
-    async def create_upload(self, organization_id, project_id, request):
+    async def create_upload(
+        self,
+        organization_id: UUID,
+        project_id: UUID,
+        request: CreateAssetUploadRequest,
+    ) -> CreateAssetUploadResponse:
+        _ = (organization_id, project_id, request)
         return CreateAssetUploadResponse(
             asset_id=ASSET,
             upload_id=UPLOAD,
@@ -110,10 +115,22 @@ class FakeAssetApi:
             expires_at=NOW,
         )
 
-    async def sign_multipart_part(self, organization_id, upload_id, part_number):
+    async def sign_multipart_part(
+        self,
+        organization_id: UUID,
+        upload_id: UUID,
+        part_number: int,
+    ) -> MultipartPartResponse:
+        _ = (organization_id, upload_id, part_number)
         raise AssertionError("not used")
 
-    async def complete_upload(self, organization_id, upload_id, request):
+    async def complete_upload(
+        self,
+        organization_id: UUID,
+        upload_id: UUID,
+        request: CompleteAssetUploadRequest,
+    ) -> AssetResponse:
+        _ = (organization_id, upload_id, request)
         return AssetResponse(
             id=ASSET,
             organization_id=ORG,
@@ -126,13 +143,24 @@ class FakeAssetApi:
             updated_at=NOW,
         )
 
-    async def get_asset(self, organization_id, asset_id):
+    async def get_asset(self, organization_id: UUID, asset_id: UUID) -> AssetResponse:
+        _ = (organization_id, asset_id)
         raise AssertionError("not used")
 
-    async def get_download(self, organization_id, asset_id):
+    async def get_download(
+        self,
+        organization_id: UUID,
+        asset_id: UUID,
+    ) -> AssetDownloadResponse:
+        _ = (organization_id, asset_id)
         raise AssertionError("not used")
 
-    async def list_previews(self, organization_id, asset_id):
+    async def list_previews(
+        self,
+        organization_id: UUID,
+        asset_id: UUID,
+    ) -> AssetPreviewListResponse:
+        _ = organization_id
         return AssetPreviewListResponse(asset_id=asset_id, items=())
 
 
