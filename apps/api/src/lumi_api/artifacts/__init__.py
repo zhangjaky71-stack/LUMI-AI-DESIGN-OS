@@ -1,3 +1,4 @@
+from .annotations import ArtifactAnnotationType, ProvenanceAnnotation
 from .engine import (
     ArtifactContractError,
     ArtifactGraphViolation,
@@ -40,6 +41,7 @@ from .models import (
 
 __all__ = [
     "Artifact",
+    "ArtifactAnnotationType",
     "ArtifactBranch",
     "ArtifactContractError",
     "ArtifactFile",
@@ -54,6 +56,7 @@ __all__ = [
     "GcCandidate",
     "LineageEdge",
     "LineageEdgeType",
+    "ProvenanceAnnotation",
     "ProvenanceManifest",
     "ProvenanceRecord",
     "RightsPolicy",
