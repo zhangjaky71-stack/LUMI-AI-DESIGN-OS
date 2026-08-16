@@ -228,6 +228,12 @@ jobs:
       - name: Initialize production core for safety outputs
         if: inputs.operation == 'deploy-release'
         run: /tmp/init-root.sh infra/iac/environments/production/core lumi/production/core/terraform.tfstate
+      - name: Initialize production app for rollback baseline
+        if: inputs.operation == 'deploy-release'
+        run: /tmp/init-root.sh infra/iac/environments/production/app lumi/production/app/terraform.tfstate
+      - name: Freeze pre-deployment ECS rollback target
+        if: inputs.operation == 'deploy-release'
+        run: bash scripts/capture-ecs-deployment-state.sh infra/iac/environments/production/app reports/production-deployments/runtime/predeploy-ecs-state.json
       - name: Create and wait for pre-deployment RDS snapshot
         if: inputs.operation == 'deploy-release'
         run: bash scripts/create-predeploy-rds-snapshot.sh infra/iac/environments/production/core "$DEPLOYMENT_ID" reports/production-deployments/runtime/predeploy-snapshot.json
