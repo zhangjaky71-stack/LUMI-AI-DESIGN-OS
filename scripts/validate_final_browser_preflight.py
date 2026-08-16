@@ -60,7 +60,7 @@ def main() -> None:
         "A11Y-01",
         "Safari is no longer a deferrable P1 item",
         "exact browser version",
-        "Manual keyboard and screen-reader checks are required",
+        "manual keyboard and screen-reader checks are required",
     )
     require(
         "final/acceptance/manifest-v1.json",
