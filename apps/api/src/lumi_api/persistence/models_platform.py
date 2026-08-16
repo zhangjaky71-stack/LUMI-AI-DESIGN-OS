@@ -13,6 +13,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -98,6 +99,11 @@ class OutboxEventModel(Base, UUIDPrimaryKeyMixin, TenantMixin, CreatedAtMixin):
     )
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     publish_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_publish_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    next_publish_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_publish_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class InboxEventModel(Base, TenantMixin, CreatedAtMixin):
