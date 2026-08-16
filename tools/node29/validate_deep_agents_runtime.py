@@ -77,13 +77,16 @@ def main() -> None:
         "tools",
         "system_prompt",
         "subagents",
-        "backend",
-        "checkpointer",
         "skills",
+        "permissions",
+        "backend",
         "response_format",
+        "checkpointer",
         "store",
     ):
-        assert name in params, f"deepagents 0.6.12 factory contract missing {name}"
+        assert name in params, (
+            f"deepagents 0.6.12 factory contract missing {name}"
+        )
 
     sources = {
         path.name: path.read_text(encoding="utf-8")
@@ -96,12 +99,22 @@ def main() -> None:
         assert marker not in combined, f"host shell boundary bypass: {marker}"
 
     factory = sources["factory.py"]
-    assert "create_deep_agent" in factory
-    assert 'kwargs["skills"] = ["/skills/"]' in factory
-    assert 'kwargs["response_format"] = AGENT_TASK_RESULT_SCHEMA' in factory
-    assert "_lumi_model_gateway_bound" in factory
-    assert "_lumi_budget_meter_bound" in factory
-    assert "assert_trusted_backend" in factory
+    for marker in (
+        "create_deep_agent",
+        "_skill_sources",
+        '"permissions": root_permissions',
+        "_disabled_general_purpose_subagent",
+        "general-purpose",
+        "build_subagent_system_prompt",
+        '"skills": list(child_sources)',
+        '"response_format": AGENT_TASK_RESULT_SCHEMA',
+        'kwargs["response_format"] = AGENT_TASK_RESULT_SCHEMA',
+        "P0 sandbox execute cannot be combined with synchronous subagents",
+        "_lumi_model_gateway_bound",
+        "_lumi_budget_meter_bound",
+        "assert_trusted_backend",
+    ):
+        assert marker in factory, f"missing factory safeguard: {marker}"
 
     tooling = sources["tooling.py"]
     for marker in (
@@ -123,9 +136,15 @@ def main() -> None:
     assert "/memory" in filesystem
 
     prompting = sources["prompting.py"]
-    assert "pinned_project_constraints" in prompting
-    assert "immutable" in prompting
-    assert "treat_as_data" in prompting
+    for marker in (
+        "pinned_project_constraints",
+        "immutable",
+        "treat_as_data",
+        "build_subagent_system_prompt",
+        "sandbox_execute: false",
+        "memory: none",
+    ):
+        assert marker in prompting
     assert "do not expose private reasoning" in prompting.casefold()
 
     executor = sources["executor.py"]
@@ -167,9 +186,9 @@ def main() -> None:
     assert "services.agentic.execute(state)" in main_graph
 
     print(
-        "NODE-29 Deep Agents Runtime validation PASS: pinned deepagents contract, "
-        "Model/Tool/Sandbox boundaries, scope injection defense, native skills, "
-        "structured output, and NODE-28 agentic-node seam are present"
+        "NODE-29 Deep Agents Runtime validation PASS: pinned API, exact skill "
+        "isolation, disabled general-purpose delegation, Model/Tool/Sandbox "
+        "boundaries, structured output, and NODE-28 agentic-node seam present"
     )
 
 
