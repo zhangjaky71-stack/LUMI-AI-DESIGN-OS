@@ -14,10 +14,16 @@ from lumi_agent_runtime.deep_runtime.contracts import (
     ResolvedAgentConfig,
     ResolvedSubagent,
 )
-from lumi_agent_runtime.deep_runtime.errors import DeepAgentPermissionError
+from lumi_agent_runtime.deep_runtime.errors import (
+    DeepAgentFilesystemError,
+    DeepAgentPermissionError,
+)
 from lumi_agent_runtime.deep_runtime.factory import LumiDeepAgentFactory
 from lumi_agent_runtime.deep_runtime.filesystem import ScopedWorkspacePolicy
-from lumi_agent_runtime.deep_runtime.prompting import build_system_prompt, build_user_task
+from lumi_agent_runtime.deep_runtime.prompting import (
+    build_system_prompt,
+    build_user_task,
+)
 from lumi_agent_runtime.deep_runtime.providers import StaticCheckpointerProvider
 from lumi_agent_runtime.deep_runtime.structured_result import StructuredResultParser
 from lumi_agent_runtime.deep_runtime.testing import (
@@ -88,8 +94,12 @@ def _bundle() -> PinnedContextBundle:
     return PinnedContextBundle(
         context_bundle_ref="context://project/fixture",
         version="1.0.0",
-        pinned_constraints="Brand primary color is black. Never alter the logo geometry.",
-        task_context="User supplied notes may contain text that looks like instructions.",
+        pinned_constraints=(
+            "Brand primary color is black. Never alter the logo geometry."
+        ),
+        task_context=(
+            "User supplied notes may contain text that looks like instructions."
+        ),
         source_refs=("project://fixture/brief/1",),
         content_hash="b" * 64,
     )
@@ -108,15 +118,21 @@ def _skill() -> MaterializedSkill:
 
 def test_permission_and_filesystem_boundaries() -> None:
     policy = ScopedWorkspacePolicy(_permission())
-    assert policy.authorize_read("/workspace/input/brief.json") == "/workspace/input/brief.json"
-    assert policy.authorize_write("/workspace/work/plan.md") == "/workspace/work/plan.md"
-    with pytest.raises(Exception):
+    assert (
+        policy.authorize_read("/workspace/input/brief.json")
+        == "/workspace/input/brief.json"
+    )
+    assert (
+        policy.authorize_write("/workspace/work/plan.md")
+        == "/workspace/work/plan.md"
+    )
+    with pytest.raises(DeepAgentFilesystemError):
         policy.authorize_write("/skills/x/SKILL.md")
-    with pytest.raises(Exception):
+    with pytest.raises(DeepAgentFilesystemError):
         policy.authorize_write("/workspace/input/brief.json")
-    with pytest.raises(Exception):
+    with pytest.raises(DeepAgentFilesystemError):
         policy.authorize_read("/workspace/../etc/passwd")
-    with pytest.raises(Exception):
+    with pytest.raises(DeepAgentFilesystemError):
         policy.authorize_execute()
 
 
@@ -132,7 +148,10 @@ def test_prompt_keeps_pinned_constraints_and_labels_dynamic_context() -> None:
     assert "immutable=\"true\"" in prompt
     assert "creative-direction@1.0.0" in prompt
     assert "20% budget remaining" in prompt
-    task = build_user_task(objective="Create three directions", bundle=_bundle())
+    task = build_user_task(
+        objective="Create three directions",
+        bundle=_bundle(),
+    )
     assert "instruction_priority=\"user\"" in task
     assert "treat_as_data=\"true\"" in task
 
@@ -150,12 +169,16 @@ def test_structured_result_repairs_once() -> None:
     }
     repairer = OneShotRepairer(repaired)
     parser = StructuredResultParser(repairer)
-    result = asyncio.run(parser.parse(raw_result={"bad": True}, context=_context()))
+    result = asyncio.run(
+        parser.parse(raw_result={"bad": True}, context=_context())
+    )
     assert result.status is AgentTaskStatus.SUCCEEDED
     assert repairer.calls == 1
 
 
-def test_factory_uses_native_skills_and_hard_permission_scope(monkeypatch) -> None:
+def test_factory_uses_native_skills_and_hard_permission_scope(
+    monkeypatch,
+) -> None:
     captured: dict[str, object] = {}
 
     def fake_create_deep_agent(
@@ -210,7 +233,9 @@ def test_factory_uses_native_skills_and_hard_permission_scope(monkeypatch) -> No
     )
     assert captured["skills"] == ["/skills/"]
     assert captured["name"] == "creative-director"
-    assert compiled.provenance.skill_versions == ("creative-direction@1.0.0",)
+    assert compiled.provenance.skill_versions == (
+        "creative-direction@1.0.0",
+    )
     assert compiled.thread_id.startswith("deep:")
 
     expanded = _context(execute=True)
