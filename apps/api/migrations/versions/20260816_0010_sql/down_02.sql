@@ -3,6 +3,21 @@ BEGIN
   IF EXISTS (SELECT 1 FROM agent_run_control LIMIT 1) THEN
     RAISE EXCEPTION 'NODE-28 downgrade refused: durable AgentRun control state exists';
   END IF;
+  IF EXISTS (SELECT 1 FROM agent_graph_definitions LIMIT 1) THEN
+    RAISE EXCEPTION 'NODE-28 downgrade refused: published graph definitions exist';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM agent_runs
+    WHERE graph_key <> 'lumi.main'
+       OR code_git_sha <> 'unknown'
+       OR status = 'waiting_external'
+       OR length(thread_id) > 200
+       OR length(graph_version) > 80
+       OR length(agent_config_version) > 80
+    LIMIT 1
+  ) THEN
+    RAISE EXCEPTION 'NODE-28 downgrade refused: AgentRun contains NODE-28-only state';
+  END IF;
 END;
 $$;
 
