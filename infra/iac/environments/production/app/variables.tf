@@ -13,4 +13,13 @@ variable "tool_gateway_image" { type = string }
 variable "worker_media_image" { type = string }
 variable "sandbox_runtime_image" { type = string }
 
+variable "stripe_plan_catalog_json" {
+  description = "Server-owned Stripe plan/version/Price catalog JSON. Price IDs are configuration, never client input."
+  type        = string
+  validation {
+    condition     = can(jsondecode(var.stripe_plan_catalog_json)) && length(trimspace(var.stripe_plan_catalog_json)) > 2
+    error_message = "stripe_plan_catalog_json must be non-empty valid JSON."
+  }
+}
+
 variable "waf_rate_limit_requests_per_5m" { type = number, default = 1500 }
