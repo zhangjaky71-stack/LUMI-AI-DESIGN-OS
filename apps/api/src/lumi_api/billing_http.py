@@ -22,10 +22,6 @@ from lumi_api.config import Settings, get_settings
 from lumi_api.persistence.session import create_engine, create_session_factory
 
 
-class CheckoutPayload:
-    pass
-
-
 def _problem(error: BillingError, request: Request) -> JSONResponse:
     request_id = str(getattr(request.state, "request_id", "missing-request-id"))
     return JSONResponse(
@@ -105,9 +101,9 @@ async def _actor(
                         hash_token(csrf), principal.csrf_token_hash
                     ):
                         raise BillingError("BILLING_CSRF_INVALID", 403)
-                    origin = request.headers.get("Origin")
                     allowed = _allowed_origins()
-                    if origin and allowed and origin.rstrip("/") not in allowed:
+                    origin = request.headers.get("Origin", "").strip().rstrip("/")
+                    if not allowed or not origin or origin not in allowed:
                         raise BillingError("BILLING_ORIGIN_FORBIDDEN", 403)
                 return BillingActor(
                     actor_id=principal.context.actor_id,
@@ -152,7 +148,7 @@ def create_stripe_billing_router(
             return asdict(await runtime.create_checkout(actor, plan_version_id))
         except BillingError as error:
             return _problem(error, request)
-        except ValueError as error:
+        except ValueError:
             return _problem(BillingError("BILLING_CHECKOUT_INVALID"), request)
 
     @router.post("/portal")
@@ -186,9 +182,6 @@ def create_stripe_billing_router(
         try:
             return asdict(await runtime.process_webhook(raw_body, stripe_signature))
         except BillingError as error:
-            # A verified Stripe event type that LUMI does not subscribe to is acknowledged so
-            # Stripe does not retry it forever. Signature, mode, identity and payload failures
-            # are never swallowed.
             if error.code == "BILLING_STRIPE_EVENT_UNSUPPORTED":
                 return {"disposition": "IGNORED"}
             return _problem(error, request)
@@ -200,6 +193,8 @@ def install_stripe_billing(app: FastAPI, *, settings: Settings | None = None) ->
     resolved = settings or get_settings()
     if resolved.lumi_env not in {"staging", "production"}:
         return
+    if not _allowed_origins():
+        raise RuntimeError("LUMI_ALLOWED_ORIGINS is required for Stripe billing")
     provider_config, plans = load_stripe_runtime_config(environment=resolved.lumi_env)
     engine = create_engine(resolved)
     sessions = create_session_factory(engine)
