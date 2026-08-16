@@ -85,6 +85,8 @@ def require_workflow_history_contract() -> None:
         )
     if "python3 scripts/run-final-acceptance.py" not in section:
         raise SystemExit("final-decision job does not invoke the canonical final runner")
+    if "release-identity-decision.json" not in section:
+        raise SystemExit("final-decision artifact must retain release-identity-decision.json")
 
 
 def main() -> None:
@@ -131,6 +133,31 @@ def main() -> None:
         upstream_bound = runner.require_all_upstream_rc_binding(release_arg, matrix_arg)
         if set(upstream_bound) != set(required_names):
             raise SystemExit("not every required upstream gate was RC-bound")
+
+        identity_path = runner.write_identity_decision(
+            release_arg=release_arg,
+            release_identity=declared,
+            evidence_checkout_sha=evidence_checkout_sha,
+            evidence_paths=evidence_paths,
+            upstream=upstream_bound,
+        )
+        if identity_path.name != "release-identity-decision.json":
+            raise SystemExit("canonical runner wrote an unexpected identity decision filename")
+        identity = json.loads(identity_path.read_text(encoding="utf-8"))
+        if identity.get("passed") is not True:
+            raise SystemExit("identity decision must be passed=true after all identity checks")
+        if identity.get("release_candidate") != candidate(actual):
+            raise SystemExit("identity decision source RC does not match fixture RC")
+        if identity.get("evidence_checkout_sha") != actual[0]:
+            raise SystemExit("identity decision evidence checkout mismatch")
+        if identity.get("post_rc_evidence_paths") != []:
+            raise SystemExit("identity fixture unexpectedly recorded post-RC committed paths")
+        if set(identity.get("upstream_rc_bound", [])) != set(required_names):
+            raise SystemExit("identity decision did not retain every upstream RC binding")
+        if identity.get("allowed_post_rc_prefixes") != ["reports/"]:
+            raise SystemExit("identity decision changed the post-RC evidence namespace")
+        if not isinstance(identity.get("decision_id"), str) or len(identity["decision_id"]) != 24:
+            raise SystemExit("identity decision_id must be a stable 24-character digest prefix")
 
         write_release((actual[0], actual[1] + "-wrong", actual[2]), required_names)
         expect_failure(
