@@ -25,11 +25,14 @@ _RESERVED_HEADERS = frozenset(
 @dataclass(frozen=True, slots=True)
 class MCPRequestAuth:
     organization_id: UUID
+    server_id: str
     headers: dict[str, str]
     subject: str | None = None
     expires_at_epoch: int | None = None
 
     def __post_init__(self) -> None:
+        if not self.server_id or len(self.server_id) > 63:
+            raise ValueError("MCP_AUTH_SERVER_ID_INVALID")
         normalized: set[str] = set()
         for key, value in self.headers.items():
             lower = key.lower()
@@ -64,8 +67,11 @@ class NoAuthCredentialProvider:
         *,
         organization_id: UUID,
     ) -> MCPRequestAuth:
-        del server
-        return MCPRequestAuth(organization_id=organization_id, headers={})
+        return MCPRequestAuth(
+            organization_id=organization_id,
+            server_id=server.server_id,
+            headers={},
+        )
 
 
 def validate_request_auth(
@@ -77,6 +83,8 @@ def validate_request_auth(
 ) -> None:
     if auth.organization_id != organization_id:
         raise MCPAuthFailedError("MCP credential tenant mismatch")
+    if auth.server_id != server.server_id:
+        raise MCPAuthFailedError("MCP credential server mismatch")
     if auth.headers and server.auth_profile is None:
         raise MCPAuthFailedError("MCP credential supplied for no-auth server")
     allowed = {header.lower() for header in server.auth_header_names}
