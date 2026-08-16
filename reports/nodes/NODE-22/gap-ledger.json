@@ -1,0 +1,48 @@
+{
+  "node": "NODE-22",
+  "status": "IMPLEMENTED/VALIDATING",
+  "gaps": [
+    {
+      "id": "MODEL-REGISTRY-001",
+      "owner": "NODE-23",
+      "severity": "P0",
+      "description": "Persistent capability/model/provider/pricing registry is not yet wired; NODE-22 catalog and prices are injectable runtime configuration."
+    },
+    {
+      "id": "MODEL-COST-002",
+      "owner": "NODE-27",
+      "severity": "P0",
+      "description": "Production concurrency-safe budget reservation and immutable actual cost ledger are not yet bound to BudgetPort/CostTelemetryPort."
+    },
+    {
+      "id": "MODEL-STREAM-003",
+      "owner": "AI Infrastructure / NODE-20 integration",
+      "severity": "P0",
+      "description": "Paid provider streaming is fail-closed until provider acceptance and usage can be checkpointed through a streaming-aware NODE-20 bridge."
+    },
+    {
+      "id": "MODEL-SECRET-004",
+      "owner": "Platform Security",
+      "severity": "P1",
+      "description": "Production Vault/KMS secret retrieval, rotation and provider credential lifecycle are not composed; EnvironmentSecretProvider is a reference binding."
+    },
+    {
+      "id": "MODEL-ASYNC-005",
+      "owner": "Worker / Event Runtime",
+      "severity": "P1",
+      "description": "Production async image/video provider poll/webhook scheduling is not composed; normalized status/cancel contract and deterministic mock lifecycle exist."
+    },
+    {
+      "id": "MODEL-OBS-006",
+      "owner": "Observability",
+      "severity": "P1",
+      "description": "Durable metrics, tracing, health persistence, redacted raw-response evidence and alerts are not yet composed."
+    },
+    {
+      "id": "MODEL-CI-007",
+      "owner": "External GitHub account",
+      "severity": "BLOCKED_EXTERNAL",
+      "description": "Hosted GitHub Actions cannot be treated as PASS while the account billing/spending-limit condition prevents runner allocation."
+    }
+  ]
+}

@@ -46,21 +46,39 @@ def _json_request_sync(
     payload: dict[str, Any] | None,
     timeout_seconds: float,
 ) -> JsonHttpResponse:
-    data = None if payload is None else json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    request = urllib.request.Request(url, data=data, method=method, headers=headers)
+    data = (
+        None
+        if payload is None
+        else json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    )
+    request = urllib.request.Request(
+        url,
+        data=data,
+        method=method,
+        headers=headers,
+    )
     try:
         with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             raw = response.read()
             parsed = json.loads(raw) if raw else {}
             return JsonHttpResponse(
                 status=int(response.status),
-                headers={key.lower(): value for key, value in response.headers.items()},
+                headers={
+                    key.lower(): value for key, value in response.headers.items()
+                },
                 body=parsed,
             )
     except urllib.error.HTTPError as exc:
         raw = exc.read()
-        message = raw.decode("utf-8", "replace")[:2000] if raw else str(exc)
-        raise normalize_http_error(provider, int(exc.code), message, dict(exc.headers.items())) from exc
+        message = (
+            raw.decode("utf-8", "replace")[:2000] if raw else str(exc)
+        )
+        raise normalize_http_error(
+            provider,
+            int(exc.code),
+            message,
+            dict(exc.headers.items()),
+        ) from exc
     except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
         raise ProviderCallError(
             ErrorCategory.TIMEOUT,
@@ -72,10 +90,16 @@ def _json_request_sync(
 
 
 def normalize_http_error(
-    provider: str, status: int, message: str, headers: dict[str, str] | None = None
+    provider: str,
+    status: int,
+    message: str,
+    headers: dict[str, str] | None = None,
 ) -> ProviderCallError:
-    normalized_headers = {key.lower(): value for key, value in (headers or {}).items()}
+    normalized_headers = {
+        key.lower(): value for key, value in (headers or {}).items()
+    }
     retry_after = _retry_after(normalized_headers.get("retry-after"))
+    acceptance = ProviderAcceptance.NOT_ACCEPTED
     if status in {401, 403}:
         category = ErrorCategory.AUTH_ERROR
         retryable = False
@@ -85,6 +109,7 @@ def normalize_http_error(
     elif status >= 500:
         category = ErrorCategory.PROVIDER_5XX
         retryable = True
+        acceptance = ProviderAcceptance.UNKNOWN
     elif status in {408, 409, 425}:
         category = ErrorCategory.CAPABILITY_TEMP_UNAVAILABLE
         retryable = True
@@ -98,7 +123,7 @@ def normalize_http_error(
         status_code=status,
         retry_after_seconds=retry_after,
         retryable=retryable,
-        acceptance=ProviderAcceptance.NOT_ACCEPTED,
+        acceptance=acceptance,
     )
 
 
