@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import unittest
+from dataclasses import replace
 from uuid import uuid4
 
 from lumi_tool_gateway.audit import MemoryAuditSink
@@ -18,6 +19,8 @@ from lumi_tool_gateway.contracts import (
 )
 from lumi_tool_gateway.errors import (
     ToolAdapterExecutionError,
+    ToolAuditSinkRequiredError,
+    ToolIdempotencyConflictError,
     ToolIdempotencyRequiredError,
     ToolInputValidationError,
     ToolOutputValidationError,
@@ -87,7 +90,9 @@ def request(
     context = ToolPermissionContext(
         organization_id=organization_id,
         actor_id="user-1",
-        granted_permissions=permissions or tool.permissions,
+        granted_permissions=(
+            tool.permissions if permissions is None else permissions
+        ),
         agent_allow_patterns=(tool.name,) if patterns is None else patterns,
         parent_allow_patterns=parent_patterns,
     )
@@ -113,17 +118,64 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
         v11 = definition(version="1.1.0")
         v2 = definition(version="2.0.0")
         registry = ToolRegistry((v1, v11, v2))
-        self.assertEqual(registry.resolve(v1.name, "1.0.0").version, "1.0.0")
-        self.assertEqual(registry.resolve(v1.name, "1.x").version, "1.1.0")
-        self.assertEqual(registry.resolve(v1.name, "2.x").version, "2.0.0")
+        self.assertEqual(
+            registry.resolve(v1.name, "1.0.0").version,
+            "1.0.0",
+        )
+        self.assertEqual(
+            registry.resolve(v1.name, "1.x").version,
+            "1.1.0",
+        )
+        self.assertEqual(
+            registry.resolve(v1.name, "2.x").version,
+            "2.0.0",
+        )
 
     def test_write_definition_cannot_disable_idempotency(self) -> None:
-        with self.assertRaisesRegex(ValueError, "TOOL_WRITE_IDEMPOTENCY_REQUIRED"):
+        with self.assertRaisesRegex(
+            ValueError,
+            "TOOL_WRITE_IDEMPOTENCY_REQUIRED",
+        ):
             definition(
                 name="asset.write-derived",
                 risk=ToolRisk.WRITE_INTERNAL,
                 idempotency=ToolIdempotency.NOT_REQUIRED,
             )
+
+    def test_definition_operation_identity_fits_node20_contract(self) -> None:
+        tool = definition(
+            name="asset.write-derived",
+            risk=ToolRisk.WRITE_INTERNAL,
+            idempotency=ToolIdempotency.REQUIRED,
+        )
+        self.assertLessEqual(len(tool.operation_type), 100)
+        self.assertEqual(
+            tool.operation_type,
+            "tool:asset.write-derived:1.0.0",
+        )
+        too_long = "write." + "x" * 90
+        with self.assertRaisesRegex(
+            ValueError,
+            "TOOL_OPERATION_TYPE_TOO_LONG",
+        ):
+            definition(
+                name=too_long,
+                risk=ToolRisk.WRITE_INTERNAL,
+                idempotency=ToolIdempotency.REQUIRED,
+            )
+
+    def test_idempotency_key_matches_node20_maximum(self) -> None:
+        tool = definition(
+            name="asset.write-derived",
+            risk=ToolRisk.WRITE_INTERNAL,
+            idempotency=ToolIdempotency.REQUIRED,
+        )
+        request(tool, idempotency_key="x" * 255)
+        with self.assertRaisesRegex(
+            ValueError,
+            "TOOL_IDEMPOTENCY_KEY_INVALID",
+        ):
+            request(tool, idempotency_key="x" * 256)
 
     async def test_empty_agent_allowlist_is_default_deny(self) -> None:
         tool = definition()
@@ -132,7 +184,10 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
             registry=ToolRegistry((tool,)),
             adapters={tool.key: adapter},
         )
-        with self.assertRaisesRegex(ToolPermissionDeniedError, "AGENT_TOOL_NOT_ALLOWED"):
+        with self.assertRaisesRegex(
+            ToolPermissionDeniedError,
+            "AGENT_TOOL_NOT_ALLOWED",
+        ):
             await gateway.invoke(request(tool, patterns=()))
         self.assertEqual(adapter.calls, 0)
 
@@ -144,7 +199,9 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
             adapters={tool.key: adapter},
         )
         with self.assertRaises(ToolInputValidationError):
-            await gateway.invoke(request(tool, arguments={"value": 7}))
+            await gateway.invoke(
+                request(tool, arguments={"value": 7})
+            )
         self.assertEqual(adapter.calls, 0)
 
     async def test_default_deny_forbidden_tool(self) -> None:
@@ -155,7 +212,9 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
             adapters={tool.key: adapter},
         )
         with self.assertRaises(ToolPermissionDeniedError):
-            await gateway.invoke(request(tool, patterns=("asset.*",)))
+            await gateway.invoke(
+                request(tool, patterns=("asset.*",))
+            )
         self.assertEqual(adapter.calls, 0)
 
     async def test_subagent_cannot_expand_parent_tool_scope(self) -> None:
@@ -198,7 +257,7 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(adapter.calls, 0)
 
-    async def test_external_write_requires_approval_before_adapter(self) -> None:
+    async def test_write_requires_audit_before_approval_or_effect(self) -> None:
         tool = definition(
             name="publish.external",
             risk=ToolRisk.WRITE_EXTERNAL,
@@ -211,10 +270,41 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
             adapters={tool.key: adapter},
             side_effect_guard=guard,
         )
-        result = await gateway.invoke(request(tool, idempotency_key="publish-1"))
-        self.assertEqual(result.status, ToolCallStatus.APPROVAL_REQUIRED)
+        with self.assertRaises(ToolAuditSinkRequiredError):
+            await gateway.invoke(
+                request(tool, idempotency_key="publish-1")
+            )
         self.assertEqual(adapter.calls, 0)
         self.assertEqual(guard.invocations, 0)
+
+    async def test_external_write_requires_approval_before_adapter(self) -> None:
+        tool = definition(
+            name="publish.external",
+            risk=ToolRisk.WRITE_EXTERNAL,
+            idempotency=ToolIdempotency.REQUIRED,
+        )
+        adapter = CountingAdapter(ToolAdapterOutput(data={"ok": True}))
+        guard = MemoryIdempotentSideEffectGuard()
+        audit = MemoryAuditSink()
+        gateway = ToolGateway(
+            registry=ToolRegistry((tool,)),
+            adapters={tool.key: adapter},
+            side_effect_guard=guard,
+            audit_sink=audit,
+        )
+        result = await gateway.invoke(
+            request(tool, idempotency_key="publish-1")
+        )
+        self.assertEqual(
+            result.status,
+            ToolCallStatus.APPROVAL_REQUIRED,
+        )
+        self.assertEqual(adapter.calls, 0)
+        self.assertEqual(guard.invocations, 0)
+        self.assertEqual(
+            audit.records[-1].status,
+            ToolCallStatus.APPROVAL_REQUIRED.value,
+        )
 
     async def test_approved_write_is_idempotent_and_replays(self) -> None:
         tool = definition(
@@ -223,14 +313,21 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
             idempotency=ToolIdempotency.REQUIRED,
         )
         adapter = CountingAdapter(
-            ToolAdapterOutput(data={"ok": True}, side_effect_ref="ext://1")
+            ToolAdapterOutput(
+                data={"ok": True},
+                side_effect_ref="ext://1",
+            )
         )
         guard = MemoryIdempotentSideEffectGuard()
+        audit = MemoryAuditSink()
         gateway = ToolGateway(
             registry=ToolRegistry((tool,)),
             adapters={tool.key: adapter},
-            approval_resolver=StaticApprovalResolver(ApprovalDecision.APPROVED),
+            approval_resolver=StaticApprovalResolver(
+                ApprovalDecision.APPROVED
+            ),
             side_effect_guard=guard,
+            audit_sink=audit,
         )
         req = request(tool, idempotency_key="publish-1")
         first = await gateway.invoke(req)
@@ -240,6 +337,54 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(adapter.calls, 1)
         self.assertEqual(guard.invocations, 1)
         self.assertEqual(guard.replays, 1)
+
+    async def test_same_key_different_semantic_request_conflicts(self) -> None:
+        tool = definition(
+            name="asset.write-derived",
+            risk=ToolRisk.WRITE_INTERNAL,
+            idempotency=ToolIdempotency.REQUIRED,
+        )
+        adapter = CountingAdapter(ToolAdapterOutput(data={"ok": True}))
+        guard = MemoryIdempotentSideEffectGuard()
+        audit = MemoryAuditSink()
+        gateway = ToolGateway(
+            registry=ToolRegistry((tool,)),
+            adapters={tool.key: adapter},
+            side_effect_guard=guard,
+            audit_sink=audit,
+        )
+        first = request(tool, idempotency_key="write-1")
+        await gateway.invoke(first)
+        changed = replace(
+            first,
+            tool_call_id=uuid4(),
+            arguments={"value": "different"},
+        )
+        with self.assertRaises(ToolIdempotencyConflictError):
+            await gateway.invoke(changed)
+        self.assertEqual(adapter.calls, 1)
+
+    async def test_concurrent_same_key_invokes_adapter_once(self) -> None:
+        tool = definition(
+            name="asset.write-derived",
+            risk=ToolRisk.WRITE_INTERNAL,
+            idempotency=ToolIdempotency.REQUIRED,
+        )
+        adapter = CountingAdapter(ToolAdapterOutput(data={"ok": True}))
+        guard = MemoryIdempotentSideEffectGuard()
+        gateway = ToolGateway(
+            registry=ToolRegistry((tool,)),
+            adapters={tool.key: adapter},
+            side_effect_guard=guard,
+            audit_sink=MemoryAuditSink(),
+        )
+        req = request(tool, idempotency_key="concurrent-1")
+        results = await asyncio.gather(
+            gateway.invoke(req),
+            gateway.invoke(req),
+        )
+        self.assertEqual(adapter.calls, 1)
+        self.assertEqual(sum(item.replayed for item in results), 1)
 
     async def test_required_idempotency_key_and_guard_fail_closed(self) -> None:
         tool = definition(
@@ -251,11 +396,14 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
         without_guard = ToolGateway(
             registry=ToolRegistry((tool,)),
             adapters={tool.key: adapter},
+            audit_sink=MemoryAuditSink(),
         )
         with self.assertRaises(ToolIdempotencyRequiredError):
             await without_guard.invoke(request(tool))
         with self.assertRaises(ToolSideEffectGuardRequiredError):
-            await without_guard.invoke(request(tool, idempotency_key="write-1"))
+            await without_guard.invoke(
+                request(tool, idempotency_key="write-1")
+            )
         self.assertEqual(adapter.calls, 0)
 
     async def test_large_output_is_offloaded(self) -> None:
@@ -268,7 +416,9 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
             },
             max_inline=1024,
         )
-        adapter = CountingAdapter(ToolAdapterOutput(data={"text": "x" * 5000}))
+        adapter = CountingAdapter(
+            ToolAdapterOutput(data={"text": "x" * 5000})
+        )
         offloader = MemoryResultOffloader()
         gateway = ToolGateway(
             registry=ToolRegistry((tool,)),
@@ -278,12 +428,17 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
         result = await gateway.invoke(request(tool))
         self.assertTrue(result.truncated)
         self.assertIsNotNone(result.full_result_ref)
-        self.assertIn(result.full_result_ref or "", offloader.objects)
+        self.assertIn(
+            result.full_result_ref or "",
+            offloader.objects,
+        )
         self.assertLess(len(str(result.data)), 5000)
 
     async def test_invalid_adapter_output_is_rejected(self) -> None:
         tool = definition()
-        adapter = CountingAdapter(ToolAdapterOutput(data={"ok": "yes"}))
+        adapter = CountingAdapter(
+            ToolAdapterOutput(data={"ok": "yes"})
+        )
         gateway = ToolGateway(
             registry=ToolRegistry((tool,)),
             adapters={tool.key: adapter},
@@ -327,7 +482,10 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
             audit.records[-1].error_code,
             "TOOL_ADAPTER_EXECUTION_ERROR",
         )
-        self.assertNotIn("provider secret", repr(audit.records[-1]))
+        self.assertNotIn(
+            "provider secret",
+            repr(audit.records[-1]),
+        )
 
     async def test_audit_redacts_secret_like_fields(self) -> None:
         tool = definition()
@@ -339,10 +497,22 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
             audit_sink=audit,
         )
         await gateway.invoke(
-            request(tool, arguments={"value": "ok", "api_key": "super-secret"})
+            request(
+                tool,
+                arguments={
+                    "value": "ok",
+                    "api_key": "super-secret",
+                },
+            )
         )
-        self.assertEqual(audit.records[-1].arguments["api_key"], "[REDACTED]")
-        self.assertNotIn("super-secret", repr(audit.records[-1]))
+        self.assertEqual(
+            audit.records[-1].arguments["api_key"],
+            "[REDACTED]",
+        )
+        self.assertNotIn(
+            "super-secret",
+            repr(audit.records[-1]),
+        )
 
 
 if __name__ == "__main__":
