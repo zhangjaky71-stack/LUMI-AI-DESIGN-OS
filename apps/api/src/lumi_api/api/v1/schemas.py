@@ -14,6 +14,7 @@ from lumi_api.domain.states import (
     ProjectStatus,
     TaskStatus,
 )
+from lumi_api.projects.models import ProjectBrief, ProjectSettings
 
 from .common import Page, StrictModel, VersionedResource
 
@@ -26,16 +27,17 @@ class MoneyInput(StrictModel):
 class ProjectCreateRequest(StrictModel):
     workspace_id: UUID
     name: str = Field(min_length=1, max_length=240)
-    brief: dict[str, Any] = Field(default_factory=dict)
+    brief: ProjectBrief = Field(default_factory=ProjectBrief)
     brand_id: UUID | None = None
-    settings: dict[str, Any] = Field(default_factory=dict)
+    settings: ProjectSettings = Field(default_factory=ProjectSettings)
 
 
 class ProjectPatchRequest(StrictModel):
     name: str | None = Field(default=None, min_length=1, max_length=240)
-    brief: dict[str, Any] | None = None
+    brief: ProjectBrief | None = None
     brand_id: UUID | None = None
-    settings: dict[str, Any] | None = None
+    settings: ProjectSettings | None = None
+    brief_change_reason: str | None = Field(default=None, max_length=1_000)
 
 
 class ProjectTransitionRequest(StrictModel):
@@ -46,14 +48,32 @@ class ProjectResponse(VersionedResource):
     workspace_id: UUID
     name: str
     status: ProjectStatus
-    brief: dict[str, Any]
+    brief: ProjectBrief
+    brief_version: int = Field(default=1, ge=1)
     brand_id: UUID | None = None
     active_branch_id: UUID | None = None
-    settings: dict[str, Any]
+    settings: ProjectSettings
+    archived_at: datetime | None = None
 
 
 class ProjectPage(Page[ProjectResponse]):
     pass
+
+
+class ProjectBriefVersionResponse(StrictModel):
+    id: UUID
+    organization_id: UUID
+    project_id: UUID
+    version: int = Field(ge=1)
+    brief: ProjectBrief
+    changed_by: UUID | None = None
+    change_reason: str | None = None
+    created_at: datetime
+
+
+class ProjectBriefHistoryResponse(StrictModel):
+    project_id: UUID
+    items: list[ProjectBriefVersionResponse]
 
 
 class TaskCreateRequest(StrictModel):
