@@ -29,8 +29,10 @@ class FakeStripeTransport:
         self._lock = Lock()
         self._customers: dict[str, str] = {}
         self._customer_organizations: dict[str, str] = {}
+        self._checkout_sessions: dict[str, str] = {}
         self.customer_posts = 0
         self.checkout_posts = 0
+        self.checkout_sessions_created = 0
         self.price_reads = 0
 
     def __call__(
@@ -79,12 +81,18 @@ class FakeStripeTransport:
             return {"id": customer, "metadata": {"organization_id": organization_id}}
 
         if method == "POST" and path == "/checkout/sessions":
+            if idempotency_key is None or not idempotency_key.startswith("lumi-checkout:"):
+                raise AssertionError("Stripe checkout idempotency key missing")
             with self._lock:
                 self.checkout_posts += 1
-                checkout_number = self.checkout_posts
+                checkout_id = self._checkout_sessions.get(idempotency_key)
+                if checkout_id is None:
+                    self.checkout_sessions_created += 1
+                    checkout_id = f"cs_accept_{self.checkout_sessions_created}"
+                    self._checkout_sessions[idempotency_key] = checkout_id
             return {
-                "id": f"cs_accept_{checkout_number}",
-                "url": f"https://checkout.stripe.com/c/pay/cs_accept_{checkout_number}",
+                "id": checkout_id,
+                "url": f"https://checkout.stripe.com/c/pay/{checkout_id}",
             }
 
         raise AssertionError(f"unexpected fake Stripe call: {method} {path}")
@@ -221,12 +229,14 @@ async def main() -> None:
         await runtime.initialize_catalog()
         assert transport.price_reads == 1
 
+        checkout_key = "checkout-retry-acceptance-0001"
         first, second = await asyncio.gather(
-            runtime.create_checkout(actor, plan_version_id),
-            runtime.create_checkout(actor, plan_version_id),
+            runtime.create_checkout(actor, plan_version_id, checkout_key),
+            runtime.create_checkout(actor, plan_version_id, checkout_key),
         )
-        assert first.session_ref != second.session_ref
+        assert first.session_ref == second.session_ref
         assert transport.checkout_posts == 2
+        assert transport.checkout_sessions_created == 1
         assert transport.customer_posts == 1, (
             "concurrent first checkout created more than one Stripe customer"
         )
@@ -256,7 +266,8 @@ async def main() -> None:
             }
         )
         subscription_result = await runtime.process_webhook(
-            subscription_raw, _signature(subscription_raw, timestamp)
+            subscription_raw,
+            _signature(subscription_raw, timestamp),
         )
         assert subscription_result.disposition == "PROCESSED"
 
@@ -289,11 +300,13 @@ async def main() -> None:
             }
         )
         invoice_result = await runtime.process_webhook(
-            invoice_raw, _signature(invoice_raw, timestamp)
+            invoice_raw,
+            _signature(invoice_raw, timestamp),
         )
         assert invoice_result.disposition == "PROCESSED"
         duplicate_result = await runtime.process_webhook(
-            invoice_raw, _signature(invoice_raw, timestamp)
+            invoice_raw,
+            _signature(invoice_raw, timestamp),
         )
         assert duplicate_result.disposition == "DUPLICATE"
 
@@ -302,7 +315,8 @@ async def main() -> None:
         collision_raw = _event_bytes(collision_payload)
         try:
             await runtime.process_webhook(
-                collision_raw, _signature(collision_raw, timestamp)
+                collision_raw,
+                _signature(collision_raw, timestamp),
             )
         except BillingError as error:
             assert error.code == "BILLING_WEBHOOK_EVENT_ID_COLLISION"
@@ -366,6 +380,7 @@ async def main() -> None:
                 "stripe_price_reads": transport.price_reads,
                 "stripe_customer_posts": transport.customer_posts,
                 "checkout_posts": transport.checkout_posts,
+                "checkout_sessions_created": transport.checkout_sessions_created,
                 "webhook_replay": "DUPLICATE",
                 "credit_balance": 500,
                 "rls_isolation": "PASS",
