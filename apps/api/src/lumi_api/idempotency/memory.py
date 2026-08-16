@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from .gateway import lease_expiry
@@ -58,6 +58,7 @@ class MemoryIdempotencyStore:
                     status=OperationStatus.IN_PROGRESS,
                     lease_owner=lease_owner,
                     lease_expires_at=lease_expiry(now, request.lease_seconds),
+                    expires_at=now + timedelta(seconds=request.ttl_seconds),
                     created_at=now,
                     updated_at=now,
                 )
@@ -137,7 +138,10 @@ class MemoryIdempotencyStore:
         async with self._lock:
             record, key = self._owned(organization_id, operation_id, lease_owner)
             provider_request_id = outcome.provider_request_id or record.provider_request_id
-            if record.provider_request_id is not None and provider_request_id != record.provider_request_id:
+            if (
+                record.provider_request_id is not None
+                and provider_request_id != record.provider_request_id
+            ):
                 raise ValueError("PROVIDER_REQUEST_ID_IMMUTABLE")
             updated = record.model_copy(
                 update={
@@ -174,7 +178,11 @@ class MemoryIdempotencyStore:
     ) -> IdempotencyOperation:
         async with self._lock:
             record, key = self._owned(organization_id, operation_id, lease_owner)
-            status = OperationStatus.FAILED_RETRYABLE if retryable else OperationStatus.FAILED_FINAL
+            status = (
+                OperationStatus.FAILED_RETRYABLE
+                if retryable
+                else OperationStatus.FAILED_FINAL
+            )
             updated = record.model_copy(
                 update={
                     "status": status,
