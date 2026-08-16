@@ -4,16 +4,24 @@ from uuid import uuid4
 
 import pytest
 
-from lumi_agent_runtime.control_plane.checkpointing import memory_checkpointer
+from lumi_agent_runtime.control_plane.checkpointing import (
+    memory_checkpointer,
+    open_postgres_checkpointer,
+)
 from lumi_agent_runtime.control_plane.contracts import (
     GraphDefinition,
     ResumeKind,
     ResumeRunCommand,
     RunStatus,
+    SafeRunEvent,
     StartRunCommand,
     validate_run_state,
 )
-from lumi_agent_runtime.control_plane.errors import GraphVersionMismatch, ResumeVersionConflict
+from lumi_agent_runtime.control_plane.errors import (
+    CheckpointUnavailable,
+    GraphVersionMismatch,
+    ResumeVersionConflict,
+)
 from lumi_agent_runtime.control_plane.main_graph import GRAPH_KEY, GRAPH_VERSION, build_main_graph
 from lumi_agent_runtime.control_plane.ports import ControlServices
 from lumi_agent_runtime.control_plane.runtime import (
@@ -215,8 +223,29 @@ async def test_cancel_releases_pending_work_and_budget() -> None:
     assert cancellation.release_calls == 1
 
 
-def test_graph_state_rejects_binary_and_inline_data_uri() -> None:
+def test_graph_state_rejects_binary_inline_data_uri_and_unknown_keys() -> None:
     with pytest.raises(ValueError):
         validate_run_state({"errors": [{"blob": b"secret"}]})  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="GRAPH_STATE_INLINE_DATA_URI_FORBIDDEN"):
         validate_run_state({"artifact_refs": ["data:image/png;base64,AAAA"]})  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="GRAPH_STATE_UNKNOWN_KEYS"):
+        validate_run_state({"prompt": "do not checkpoint me"})  # type: ignore[arg-type]
+
+
+def test_safe_event_rejects_private_reasoning_payload() -> None:
+    with pytest.raises(ValueError, match="GRAPH_EVENT_PRIVATE_REASONING_FORBIDDEN"):
+        SafeRunEvent(
+            event_type="agent.delta",
+            organization_id=uuid4(),
+            project_id=uuid4(),
+            agent_run_id=uuid4(),
+            payload={"nested": {"reasoning": "private"}},
+        )
+
+
+@pytest.mark.asyncio
+async def test_postgres_checkpointer_requires_explicit_strict_msgpack(monkeypatch) -> None:
+    monkeypatch.delenv("LANGGRAPH_STRICT_MSGPACK", raising=False)
+    with pytest.raises(CheckpointUnavailable, match="LANGGRAPH_STRICT_MSGPACK_REQUIRED"):
+        async with open_postgres_checkpointer("postgresql://fixture"):
+            pass
