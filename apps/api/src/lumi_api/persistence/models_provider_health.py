@@ -25,7 +25,10 @@ class ProviderHealthSummaryModel(Base):
     __tablename__ = "provider_health_summaries"
     __table_args__ = (
         CheckConstraint(
-            "state IN ('unknown','healthy','degraded','open_circuit','recovering','disabled')",
+            "state IN ("
+            "'unknown','healthy','degraded','open_circuit',"
+            "'recovering','disabled'"
+            ")",
             name="ck_provider_health_summary_state",
         ),
         CheckConstraint(
@@ -61,7 +64,8 @@ class ProviderHealthSummaryModel(Base):
             name="ck_provider_health_summary_latency_p95",
         ),
         CheckConstraint(
-            "queue_completion_p95_ms IS NULL OR queue_completion_p95_ms >= 0",
+            "queue_completion_p95_ms IS NULL "
+            "OR queue_completion_p95_ms >= 0",
             name="ck_provider_health_summary_queue_p95",
         ),
         CheckConstraint(
@@ -145,7 +149,10 @@ class ProviderHealthOverrideAuditModel(Base):
     __tablename__ = "provider_health_override_audit"
     __table_args__ = (
         CheckConstraint(
-            "action IN ('force_disabled','force_degraded','clear_override','clear_breaker')",
+            "action IN ("
+            "'force_disabled','force_degraded',"
+            "'clear_override','clear_breaker'"
+            ")",
             name="ck_provider_health_audit_action",
         ),
         CheckConstraint(
