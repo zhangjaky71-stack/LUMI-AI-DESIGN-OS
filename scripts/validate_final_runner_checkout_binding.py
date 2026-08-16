@@ -27,15 +27,15 @@ def write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def candidate(git_sha: str) -> dict[str, str]:
+def candidate(identity: tuple[str, str, str]) -> dict[str, str]:
     return {
-        "git_sha": git_sha,
-        "version": "runner-binding-fixture",
-        "migration_head": "runner-binding-fixture",
+        "git_sha": identity[0],
+        "version": identity[1],
+        "migration_head": identity[2],
     }
 
 
-def write_release(git_sha: str, required: list[str]) -> None:
+def write_release(identity: tuple[str, str, str], required: list[str]) -> None:
     specs: dict[str, dict[str, str]] = {}
     for name in required:
         path = FIXTURE / "upstream" / f"{name}.json"
@@ -45,7 +45,7 @@ def write_release(git_sha: str, required: list[str]) -> None:
                 "schema_version": 1,
                 "decision_id": f"{name}-fixture",
                 "passed": True,
-                "release_candidate": candidate(git_sha),
+                "release_candidate": candidate(identity),
             },
         )
         specs[name] = {"path": path.relative_to(ROOT).as_posix()}
@@ -55,10 +55,20 @@ def write_release(git_sha: str, required: list[str]) -> None:
         {
             "schema_version": 1,
             "release_id": "runner-checkout-binding-fixture",
-            "release_candidate": candidate(git_sha),
+            "release_candidate": candidate(identity),
             "upstream_gates": specs,
         },
     )
+
+
+def expect_failure(callable_obj, marker: str, *, label: str) -> None:
+    try:
+        callable_obj()
+    except SystemExit as exc:
+        if marker not in str(exc):
+            raise SystemExit(f"unexpected {label} failure contract: {exc}") from exc
+    else:
+        raise SystemExit(f"{label} unexpectedly passed")
 
 
 def main() -> None:
@@ -72,47 +82,54 @@ def main() -> None:
     if FIXTURE.exists():
         shutil.rmtree(FIXTURE)
     try:
-        actual = runner.current_git_sha()
+        actual = runner.repository_release_identity()
         release_arg = RELEASE.relative_to(ROOT).as_posix()
         matrix_arg = MATRIX.relative_to(ROOT).as_posix()
 
         write_release(actual, required_names)
-        bound = runner.require_current_checkout_binding(release_arg)
-        if bound != actual:
-            raise SystemExit("final runner did not bind matching current checkout")
+        if runner.require_repository_identity_binding(release_arg) != actual:
+            raise SystemExit("final runner did not bind repository release identity")
         upstream_bound = runner.require_all_upstream_rc_binding(release_arg, matrix_arg)
         if set(upstream_bound) != set(required_names):
             raise SystemExit("not every required upstream gate was RC-bound")
 
-        stale = ("0" if actual[0] != "0" else "1") + actual[1:]
-        write_release(stale, required_names)
-        try:
-            runner.require_current_checkout_binding(release_arg)
-        except SystemExit as exc:
-            if "FINAL_ACCEPTANCE_CHECKOUT_SHA_MISMATCH" not in str(exc):
-                raise SystemExit(f"unexpected stale-RC failure contract: {exc}") from exc
-        else:
-            raise SystemExit("stale release candidate was accepted on a different checkout")
+        stale_sha = ("0" if actual[0][0] != "0" else "1") + actual[0][1:]
+        write_release((stale_sha, actual[1], actual[2]), required_names)
+        expect_failure(
+            lambda: runner.require_repository_identity_binding(release_arg),
+            "FINAL_ACCEPTANCE_REPOSITORY_IDENTITY_MISMATCH",
+            label="stale checkout SHA",
+        )
+
+        write_release((actual[0], actual[1] + "-wrong", actual[2]), required_names)
+        expect_failure(
+            lambda: runner.require_repository_identity_binding(release_arg),
+            "FINAL_ACCEPTANCE_REPOSITORY_IDENTITY_MISMATCH",
+            label="wrong VERSION binding",
+        )
+
+        write_release((actual[0], actual[1], actual[2] + "-wrong"), required_names)
+        expect_failure(
+            lambda: runner.require_repository_identity_binding(release_arg),
+            "FINAL_ACCEPTANCE_REPOSITORY_IDENTITY_MISMATCH",
+            label="wrong Alembic head binding",
+        )
 
         write_release(actual, required_names)
         security = FIXTURE / "upstream" / "security.json"
         security_payload = json.loads(security.read_text(encoding="utf-8"))
-        security_payload["release_candidate"] = candidate(stale)
+        security_payload["release_candidate"] = candidate((stale_sha, actual[1], actual[2]))
         write_json(security, security_payload)
-        try:
-            runner.require_all_upstream_rc_binding(release_arg, matrix_arg)
-        except SystemExit as exc:
-            if "FINAL_ACCEPTANCE_UPSTREAM_RC_MISMATCH" not in str(exc):
-                raise SystemExit(f"unexpected upstream-RC failure contract: {exc}") from exc
-            if "security" not in str(exc):
-                raise SystemExit("upstream mismatch did not identify the stale security gate")
-        else:
-            raise SystemExit("stale Security decision was accepted for a different RC")
+        expect_failure(
+            lambda: runner.require_all_upstream_rc_binding(release_arg, matrix_arg),
+            "FINAL_ACCEPTANCE_UPSTREAM_RC_MISMATCH",
+            label="stale Security decision",
+        )
     finally:
         if FIXTURE.exists():
             shutil.rmtree(FIXTURE)
 
-    print("FINAL_RUNNER_CHECKOUT_AND_UPSTREAM_BINDING_CONTRACT_PASS")
+    print("FINAL_RUNNER_REPOSITORY_AND_UPSTREAM_BINDING_CONTRACT_PASS")
 
 
 if __name__ == "__main__":
