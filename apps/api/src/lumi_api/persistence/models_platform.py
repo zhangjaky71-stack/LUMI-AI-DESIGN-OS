@@ -44,12 +44,13 @@ class CostLedgerModel(Base, UUIDPrimaryKeyMixin, TenantMixin, CreatedAtMixin):
         ForeignKey("idempotency_operations.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    related_entry_id: Mapped[UUID | None] = mapped_column(
+    reverses_entry_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("cost_ledger.id", ondelete="RESTRICT"), nullable=True
     )
     provider: Mapped[str | None] = mapped_column(String(80), nullable=True)
     model: Mapped[str | None] = mapped_column(String(160), nullable=True)
     entry_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entry_key: Mapped[str] = mapped_column(String(128), nullable=False, server_default="primary")
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     quantity: Mapped[Decimal | None] = mapped_column(Numeric(30, 10), nullable=True)
@@ -59,6 +60,16 @@ class CostLedgerModel(Base, UUIDPrimaryKeyMixin, TenantMixin, CreatedAtMixin):
         ForeignKey("provider_requests.id", ondelete="SET NULL"),
         nullable=True,
     )
+    pricing_snapshot_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    external_provider_request_id: Mapped[str | None] = mapped_column(
+        String(512), nullable=True
+    )
+    confidence: Mapped[str] = mapped_column(String(16), nullable=False, server_default="unknown")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="final")
+    cost_basis: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="provider_cost"
+    )
+    source: Mapped[str] = mapped_column(String(64), nullable=False, server_default="runtime")
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -66,12 +77,33 @@ class CostLedgerModel(Base, UUIDPrimaryKeyMixin, TenantMixin, CreatedAtMixin):
         JSONB, nullable=False, server_default=JSON_OBJECT_DEFAULT
     )
     __table_args__ = (
-        CheckConstraint("entry_type IN ('charge','reversal','adjustment')", name="entry_type"),
+        CheckConstraint(
+            "entry_type IN ('estimate','reservation','actual_cost','reversal','adjustment')",
+            name="entry_type",
+        ),
         CheckConstraint("currency ~ '^[A-Z]{3}$'", name="currency_format"),
         CheckConstraint(
-            "(entry_type = 'charge' AND related_entry_id IS NULL) OR "
-            "(entry_type IN ('reversal','adjustment') AND related_entry_id IS NOT NULL)",
-            name="related_entry_semantics",
+            "(entry_type IN ('actual_cost','estimate','reservation') "
+            "AND reverses_entry_id IS NULL) OR "
+            "(entry_type IN ('reversal','adjustment') AND reverses_entry_id IS NOT NULL)",
+            name="reversal_semantics",
+        ),
+        CheckConstraint(
+            "confidence IN ('exact','estimated','unknown')", name="confidence"
+        ),
+        CheckConstraint(
+            "status IN ('unknown','estimated','partial','final','reconciled')",
+            name="status",
+        ),
+        CheckConstraint(
+            "cost_basis IN ('provider_cost','customer_charge')", name="cost_basis"
+        ),
+        UniqueConstraint(
+            "organization_id",
+            "operation_id",
+            "entry_type",
+            "entry_key",
+            name="uq_cost_ledger_operation_entry_key",
         ),
     )
 
