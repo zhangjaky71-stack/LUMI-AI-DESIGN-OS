@@ -1,8 +1,8 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, field_validator, model_validator
@@ -174,11 +174,12 @@ class ProvenanceRecord(ArtifactContractModel):
 
     @model_validator(mode="after")
     def generated_records_are_traceable(self) -> ProvenanceRecord:
-        if self.generation_id is not None:
-            if not self.provider or not self.model or not self.prompt_hash:
-                raise ValueError(
-                    "generation provenance requires provider, model and prompt_hash"
-                )
+        if self.generation_id is not None and (
+            not self.provider or not self.model or not self.prompt_hash
+        ):
+            raise ValueError(
+                "generation provenance requires provider, model and prompt_hash"
+            )
         return self
 
 
@@ -243,9 +244,11 @@ class ArtifactBranch(ArtifactContractModel):
 
     @model_validator(mode="after")
     def creator_identity_is_consistent(self) -> ArtifactBranch:
-        if self.created_by_type in {CreatedByType.USER, CreatedByType.AGENT}:
-            if not self.created_by_id:
-                raise ValueError("user/agent branch creator requires created_by_id")
+        if (
+            self.created_by_type in {CreatedByType.USER, CreatedByType.AGENT}
+            and not self.created_by_id
+        ):
+            raise ValueError("user/agent branch creator requires created_by_id")
         return self
 
 
@@ -299,9 +302,11 @@ class ArtifactVersion(ArtifactContractModel):
             raise ValueError("artifact version file storage locations must be unique")
         if self.primary_file_id is not None and self.primary_file_id not in set(file_ids):
             raise ValueError("primary_file_id must reference a version file")
-        if self.created_by_type in {CreatedByType.USER, CreatedByType.AGENT}:
-            if not self.created_by_id:
-                raise ValueError("user/agent version creator requires created_by_id")
+        if (
+            self.created_by_type in {CreatedByType.USER, CreatedByType.AGENT}
+            and not self.created_by_id
+        ):
+            raise ValueError("user/agent version creator requires created_by_id")
         if (
             self.constraint_snapshot_hash is not None
             and self.provenance.constraint_snapshot_hash is not None
@@ -372,7 +377,3 @@ class ProvenanceManifest(ArtifactContractModel):
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("created_at must be timezone-aware")
         return value
-
-
-JsonPrimitive = str | int | float | bool | None
-JsonObject = dict[str, JsonPrimitive | list[JsonPrimitive] | dict[str, Any]]
