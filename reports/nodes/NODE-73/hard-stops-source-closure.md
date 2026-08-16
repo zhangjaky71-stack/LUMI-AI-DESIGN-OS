@@ -2,7 +2,7 @@
 
 Status: **SOURCE_IMPLEMENTED / VALIDATION_PENDING**
 
-This record does not change NODE-73 Final Acceptance to PASS.
+This record does not change NODE-73 Final Acceptance to PASS. The canonical decision ledger is `reports/nodes/NODE-73/release-acceptance.md`.
 
 ## Provider daily USD hard stop
 
@@ -107,14 +107,59 @@ Still required before acceptance:
 - connect the approved human on-call destination;
 - prove human delivery/acknowledgement. The SQS evidence sink proves machine transport only and is not sufficient human notification evidence.
 
-## Current external blockers
+## Stripe production billing and live purchase
 
-GitHub Actions runner allocation remains blocked by the account billing/spending-limit condition observed on prior node workflows. This must be classified as `BLOCKED_EXTERNAL`, not as a code test PASS or FAIL.
+Source closure now includes:
 
-The root `uv.lock` is also stale relative to the current workspace manifest and therefore the canonical frozen install/release gate cannot yet be claimed.
+- real Stripe HTTP adapter without adding a new Python package dependency to the already-stale workspace lock;
+- production/test secret-key mode separation and production live-mode enforcement;
+- Stripe API version pinned by source and enforced on accepted webhook events;
+- server-owned recurring Stripe Price IDs mapped from immutable LUMI plan versions;
+- startup Price reconciliation for active/live mode, USD amount, recurrence interval/count, billing scheme and licensed usage type;
+- authenticated `/api/v1/billing` runtime installed in the production/staging API;
+- `PrincipalResolver` session/API-token authorization and `billing.read`/`billing.manage` permissions;
+- cookie billing writes require both a valid CSRF token and an explicit allowlisted `Origin`;
+- production/staging refuses Stripe Billing startup without an explicit origin allowlist or required Stripe configuration;
+- Checkout accepts a plan-version identity only; amount, currency and Stripe Price remain server-owned;
+- Checkout requires `Idempotency-Key` and derives a bounded hashed Stripe idempotency key for retry-safe session creation;
+- first Stripe Customer creation is protected by a per-organization PostgreSQL advisory lock plus stable Stripe customer idempotency;
+- raw-body `Stripe-Signature` verification with multiple `v1` signatures and a bounded replay window;
+- webhook `livemode` and pinned API-version fail-closed checks;
+- migration `0019_stripe_billing_runtime` with durable account/subscription/payment-event/invoice/credit state;
+- payment event uniqueness on `(provider, provider_event_id)` and payload-hash collision rejection;
+- payment-event claim, subscription/invoice mutation and credit grant occur within one PostgreSQL transaction;
+- credit grants are idempotent and the credit/event ledgers are immutable after insert;
+- tenant billing tables use forced RLS and least-privilege `lumi_app` DML grants;
+- Billing ORM metadata exists so `alembic check` can detect drift rather than treating billing tables as intentional unmanaged schema;
+- production/staging Terraform declares dedicated Stripe secret-key/webhook-secret resources and injects server-owned plan catalog/return URLs into API ECS;
+- PostgreSQL acceptance script covers Price preflight, concurrent first Checkout, retry-safe Checkout, webhook replay, event-ID collision, one-time credit grant, RLS and table privileges;
+- `docs/operations/STRIPE-LIVE-PURCHASE-DRILL.md` defines the required real-payment drill;
+- `scripts/verify_stripe_live_purchase_db.py` provides a read-only production DB verifier for the exact live `sub_`, `in_` and `evt_` correlation identifiers.
 
-Real AWS Terraform plan/apply, rollback execution, sandbox egress probes, provider budget concurrency proof and alert delivery/human acknowledgement remain runtime evidence requirements.
+Still required before acceptance:
+
+- run static/lint/type/unit/PostgreSQL acceptance on an allocated CI runner;
+- run `alembic check` and migration downgrade/upgrade smoke on the exact candidate;
+- run Terraform format/validate/plan and apply the Stripe secret inventory/API task-definition changes;
+- populate reviewed production live Stripe secret key and production webhook signing secret;
+- configure the production Stripe webhook/event destination for the required subscription/invoice events using the source-supported API version;
+- populate the approved live Price catalog and prove startup Price reconciliation passes;
+- obtain finance/operator approval for one bounded real production charge;
+- complete one real Stripe-hosted live purchase;
+- prove live signed webhook delivery, ACTIVE subscription, PAID exact-amount invoice and exactly one credit grant;
+- resend the exact paid-invoice event and prove duplicate semantics with no second credit grant;
+- archive the redacted live-purchase evidence manifest and DB verifier output.
+
+Mock transport, test-mode Stripe, local PostgreSQL integration or static source validation do not satisfy the live-purchase gate.
+
+## Current external/source blockers
+
+GitHub Actions runner allocation has previously been blocked by the account billing/spending-limit condition observed on node workflows. It must remain `BLOCKED_EXTERNAL` unless a newly allocated runner actually executes the required jobs; it is not a code-test PASS or FAIL.
+
+The root `uv.lock` is stale relative to the current workspace manifest and therefore the canonical frozen install/release gate cannot yet be claimed. The lock must be regenerated by canonical tooling; it must not be hand-edited.
+
+Real AWS Terraform plan/apply, rollback execution, sandbox egress probes, provider budget concurrency proof, alert delivery/human acknowledgement and the Stripe live payment remain runtime evidence requirements.
 
 ## Final status
 
-NODE-73 remains **NOT ACCEPTED** until every mandatory release item in `reports/nodes/NODE-73/release-acceptance.md` passes with evidence from the exact release candidate.
+NODE-73 remains **NOT ACCEPTED** until every mandatory item in `reports/nodes/NODE-73/release-acceptance.md` passes with evidence from one exact release candidate.
