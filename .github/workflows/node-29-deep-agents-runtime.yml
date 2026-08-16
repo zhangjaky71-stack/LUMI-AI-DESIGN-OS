@@ -1,0 +1,116 @@
+name: NODE-29 Deep Agents Runtime
+
+on:
+  pull_request:
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/**"
+      - "apps/agent-runtime/tests/test_deep_*_node29.py"
+      - "services/sandbox-runtime/src/lumi_sandbox_runtime/deepagents_adapter.py"
+      - "tools/node29/**"
+      - "docs/agents/DEEP-AGENTS-RUNTIME-V1.md"
+      - "reports/nodes/NODE-29/**"
+      - ".github/workflows/node-29-deep-agents-runtime.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/**"
+      - "tools/node29/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  deep-agents-runtime:
+    name: deep-agents-runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen workspace dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Validate NODE-29 architecture and pinned Deep Agents API
+        run: uv run python tools/node29/validate_deep_agents_runtime.py
+
+      - name: Run Deep Agents runtime contracts and autonomous eval
+        run: |
+          PYTHONPATH=apps/agent-runtime/src \
+            uv run pytest -q \
+              apps/agent-runtime/tests/test_deep_runtime_node29.py \
+              apps/agent-runtime/tests/test_deep_tooling_node29.py \
+              apps/agent-runtime/tests/test_deep_executor_node29.py \
+              apps/agent-runtime/tests/test_deep_sandbox_boundary_node29.py
+
+      - name: Export and validate NODE-29 schemas and gaps
+        run: |
+          rm -rf reports/nodes/NODE-29/generated-schemas
+          uv run python tools/node29/export_deep_agent_schemas.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("reports/nodes/NODE-29")
+          schemas = sorted((root / "generated-schemas").glob("*.schema.json"))
+          assert len(schemas) == 7
+          for path in schemas:
+              payload = json.loads(path.read_text(encoding="utf-8"))
+              assert payload["$schema"].endswith("2020-12/schema")
+          ledger = json.loads((root / "gap-ledger.json").read_text(encoding="utf-8"))
+          assert len(ledger["gaps"]) == 8
+          print("NODE-29 schemas and gap ledger valid")
+          PY
+
+      - name: Ruff NODE-29 affected scope
+        run: |
+          uv run ruff check \
+            apps/agent-runtime/src/lumi_agent_runtime/deep_runtime \
+            apps/agent-runtime/tests/test_deep_runtime_node29.py \
+            apps/agent-runtime/tests/test_deep_tooling_node29.py \
+            apps/agent-runtime/tests/test_deep_executor_node29.py \
+            apps/agent-runtime/tests/test_deep_sandbox_boundary_node29.py \
+            tools/node29
+
+      - name: Pyright NODE-29 runtime scope
+        run: |
+          PYTHONPATH=apps/agent-runtime/src \
+            uv run pyright \
+              apps/agent-runtime/src/lumi_agent_runtime/deep_runtime \
+              tools/node29
+
+      - name: Verify no live provider key is required
+        env:
+          OPENAI_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+          GOOGLE_API_KEY: ""
+        run: |
+          PYTHONPATH=apps/agent-runtime/src \
+            uv run pytest -q \
+              apps/agent-runtime/tests/test_deep_runtime_node29.py \
+              apps/agent-runtime/tests/test_deep_executor_node29.py
+
+      - name: Upload NODE-29 evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-29-deep-agents-runtime-${{ github.run_id }}
+          path: |
+            reports/nodes/NODE-29/generated-schemas
+            reports/nodes/NODE-29/gap-ledger.json
+            reports/nodes/NODE-29/acceptance.md
+          if-no-files-found: ignore
+          retention-days: 14
