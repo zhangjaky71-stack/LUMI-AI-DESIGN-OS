@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CHAR,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -35,14 +36,18 @@ class BillingPlanVersion(Base):
         ),
         CheckConstraint("monthly_credit_grant >= 0", name="credit_grant_nonnegative"),
         CheckConstraint("status IN ('ACTIVE','ARCHIVED')", name="status_valid"),
-        UniqueConstraint("plan_id", "version", name="uq_billing_plan_versions_plan_version"),
+        UniqueConstraint(
+            "plan_id",
+            "version",
+            name="uq_billing_plan_versions_plan_version",
+        ),
     )
 
     plan_version_id: Mapped[str] = mapped_column(String(120), primary_key=True)
     plan_id: Mapped[str] = mapped_column(String(120), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
     price_microusd: Mapped[int] = mapped_column(BigInteger, nullable=False)
     billing_interval: Mapped[str] = mapped_column(String(10), nullable=False)
     monthly_credit_grant: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -54,7 +59,9 @@ class BillingPlanVersion(Base):
     )
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )
 
 
@@ -76,7 +83,9 @@ class BillingAccount(Base):
     payment_provider: Mapped[str] = mapped_column(String(40), nullable=False)
     payment_customer_ref: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )
 
 
@@ -91,25 +100,40 @@ class BillingSubscription(Base):
         unique=True,
     )
     plan_version_id: Mapped[str] = mapped_column(
-        String(120), ForeignKey("billing_plan_versions.plan_version_id"), nullable=False
+        String(120),
+        ForeignKey("billing_plan_versions.plan_version_id"),
+        nullable=False,
     )
     payment_provider: Mapped[str] = mapped_column(String(40), nullable=False)
-    provider_subscription_ref: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    provider_subscription_ref: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        unique=True,
+    )
     state: Mapped[str] = mapped_column(
         String(32),
         CheckConstraint(
-            "state IN ('TRIALING','ACTIVE','PAST_DUE','CANCEL_AT_PERIOD_END','CANCELLED','INCOMPLETE')",
+            "state IN ("
+            "'TRIALING','ACTIVE','PAST_DUE','CANCEL_AT_PERIOD_END','CANCELLED','INCOMPLETE'"
+            ")",
             name="state_valid",
         ),
         nullable=False,
     )
-    current_period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    current_period_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancel_at_period_end: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="false"
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )
 
 
@@ -124,9 +148,11 @@ class BillingPaymentEvent(Base):
         nullable=False,
     )
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
     received_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )
 
 
@@ -143,7 +169,11 @@ class BillingInvoice(Base):
             "provider_invoice_ref",
             name="uq_billing_invoices_provider_invoice",
         ),
-        Index("ix_billing_invoices_org_created", "organization_id", text("created_at DESC")),
+        Index(
+            "ix_billing_invoices_org_created",
+            "organization_id",
+            text("created_at DESC"),
+        ),
     )
 
     invoice_id: Mapped[str] = mapped_column(String(512), primary_key=True)
@@ -155,14 +185,18 @@ class BillingInvoice(Base):
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
     provider_invoice_ref: Mapped[str] = mapped_column(String(255), nullable=False)
     plan_version_id: Mapped[str] = mapped_column(
-        String(120), ForeignKey("billing_plan_versions.plan_version_id"), nullable=False
+        String(120),
+        ForeignKey("billing_plan_versions.plan_version_id"),
+        nullable=False,
     )
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     amount_due_microusd: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
     hosted_invoice_url: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )
 
 
@@ -170,7 +204,9 @@ class BillingCreditLedger(Base):
     __tablename__ = "billing_credit_ledger"
     __table_args__ = (
         CheckConstraint(
-            "entry_type IN ('GRANT','CONSUME','REFUND','EXPIRE','ADJUSTMENT','REVERSAL')",
+            "entry_type IN ("
+            "'GRANT','CONSUME','REFUND','EXPIRE','ADJUSTMENT','REVERSAL'"
+            ")",
             name="entry_type_valid",
         ),
         CheckConstraint("delta_credits <> 0", name="delta_nonzero"),
@@ -201,8 +237,11 @@ class BillingCreditLedger(Base):
     project_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     usage_record_id: Mapped[str | None] = mapped_column(String(255))
     reverses_entry_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("billing_credit_ledger.entry_id")
+        PGUUID(as_uuid=True),
+        ForeignKey("billing_credit_ledger.entry_id"),
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )
