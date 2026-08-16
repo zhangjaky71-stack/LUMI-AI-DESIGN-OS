@@ -1,4 +1,7 @@
 ALTER TABLE agent_runs
+  ALTER COLUMN thread_id TYPE VARCHAR(255),
+  ALTER COLUMN graph_version TYPE VARCHAR(100),
+  ALTER COLUMN agent_config_version TYPE VARCHAR(100),
   ADD COLUMN graph_key VARCHAR(128) NOT NULL DEFAULT 'lumi.main',
   ADD COLUMN code_git_sha VARCHAR(80) NOT NULL DEFAULT 'unknown';
 
@@ -70,7 +73,8 @@ CREATE TABLE agent_run_control (
   CONSTRAINT ck_agent_run_control_hash CHECK (graph_definition_hash ~ '^[0-9a-f]{64}$'),
   CONSTRAINT ck_agent_run_control_status CHECK (
     control_status IN (
-      'pending','running','waiting_user','waiting_external','succeeded','failed','cancelled'
+      'pending','running','waiting_user','waiting_external','cancel_requested',
+      'succeeded','failed','cancelled'
     )
   ),
   CONSTRAINT ck_agent_run_control_resume_version CHECK (resume_version >= 1),
