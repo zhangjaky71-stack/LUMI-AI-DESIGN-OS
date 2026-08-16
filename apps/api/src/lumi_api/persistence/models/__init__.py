@@ -70,6 +70,7 @@ from .project import (
     ProjectMember,
     ProjectSummary,
 )
+from .provider_cost_controls import PlatformCostControl, ProviderDailyCostLimit
 from .queue_runtime import DeadLetterRecord
 from .task_graph import TaskAttemptRecord, TaskGraphInstance
 from .workflow import (
@@ -136,10 +137,12 @@ __all__ = [
     "OutboxEvent",
     "PasswordCredential",
     "PasswordResetToken",
+    "PlatformCostControl",
     "Project",
     "ProjectBriefVersion",
     "ProjectMember",
     "ProjectSummary",
+    "ProviderDailyCostLimit",
     "ProviderRequest",
     "QuotaLeaseModel",
     "QuotaLimit",
