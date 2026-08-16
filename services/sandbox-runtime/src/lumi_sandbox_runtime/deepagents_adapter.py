@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import fnmatch
+import inspect
 import shlex
 import threading
 from collections.abc import Coroutine
@@ -31,6 +32,11 @@ from .service import SandboxRuntimeService
 
 T = TypeVar("T")
 _SHELL_OPERATORS = {"|", "||", "&", "&&", ";", ">", ">>", "<", "<<", "(", ")"}
+_WORKSPACE_ROOTS = {
+    "/workspace/input",
+    "/workspace/work",
+    "/workspace/output",
+}
 
 
 class DeepAgentsCommandRejected(ValueError):
@@ -83,13 +89,32 @@ def parse_deepagents_command(command: str) -> tuple[str, ...]:
     return tokens
 
 
-class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
-    """Deep Agents protocol adapter backed by the isolated LUMI sandbox runtime.
+def _grep_result(
+    *,
+    error: str | None = None,
+    matches: list[GrepMatch] | None = None,
+    truncated: bool = False,
+) -> GrepResult:
+    kwargs: dict[str, Any] = {"error": error, "matches": matches}
+    if "truncated" in inspect.signature(GrepResult).parameters:
+        kwargs["truncated"] = truncated
+    return GrepResult(**kwargs)
 
-    Both sync and async Deep Agents methods are bridged to one dedicated asyncio loop. File
-    operations are implemented through the safe workspace API and never through shell
-    redirection or host filesystem calls.
-    """
+
+def _glob_result(
+    *,
+    error: str | None = None,
+    matches: list[FileInfo] | None = None,
+    truncated: bool = False,
+) -> GlobResult:
+    kwargs: dict[str, Any] = {"error": error, "matches": matches}
+    if "truncated" in inspect.signature(GlobResult).parameters:
+        kwargs["truncated"] = truncated
+    return GlobResult(**kwargs)
+
+
+class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
+    """Deep Agents protocol adapter backed by the isolated LUMI runtime."""
 
     def __init__(
         self,
@@ -113,7 +138,7 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
         context: SandboxAccessContext,
         storage: ArtifactStoragePort | None = None,
         audit: AuditSink | None = None,
-    ) -> "DeepAgentsSandboxAdapter":
+    ) -> DeepAgentsSandboxAdapter:
         bridge = _LoopBridge()
         backend = DockerSandboxBackend(storage=storage)
         runtime = SandboxRuntimeService(backend, audit or MemoryAuditSink())
@@ -136,12 +161,22 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
     def execute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
         return self._bridge.run(self._aexecute_impl(command, timeout=timeout))
 
-    async def aexecute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
+    async def aexecute(
+        self,
+        command: str,
+        *,
+        timeout: int | None = None,
+    ) -> ExecuteResponse:
         return await self._bridge.arun(self._aexecute_impl(command, timeout=timeout))
 
     async def _aexecute_impl(
-        self, command: str, *, timeout: int | None
+        self,
+        command: str,
+        *,
+        timeout: int | None,
     ) -> ExecuteResponse:
+        if timeout == 0:
+            timeout = None
         argv = parse_deepagents_command(command)
         result = await self._runtime.exec(
             self._sandbox_id,
@@ -218,9 +253,9 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
                     "encoding": "base64",
                 }
             )
-        lines = text.splitlines(keepends=True)
         if offset < 0 or limit <= 0:
             return ReadResult(error="offset must be >= 0 and limit must be > 0")
+        lines = text.splitlines(keepends=True)
         if not lines or offset >= len(lines):
             return ReadResult(file_data={"content": "", "encoding": "utf-8"})
         selected = lines[offset : offset + limit]
@@ -325,14 +360,14 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
         try:
             files, walk_truncated = await self._walk(root)
         except Exception as exc:
-            return GlobResult(error=str(exc), matches=None)
+            return _glob_result(error=str(exc), matches=None)
         matches: list[FileInfo] = []
         for info in files:
             candidate = info["path"]
             relative = candidate.removeprefix(root.rstrip("/") + "/")
             if fnmatch.fnmatch(relative, pattern) or fnmatch.fnmatch(candidate, pattern):
                 matches.append(info)
-        return GlobResult(matches=matches, truncated=walk_truncated)
+        return _glob_result(matches=matches, truncated=walk_truncated)
 
     def grep(
         self,
@@ -352,7 +387,9 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
         *,
         max_count: int | None = None,
     ) -> GrepResult:
-        return await self._bridge.arun(self._agrep_impl(pattern, path, glob, max_count))
+        return await self._bridge.arun(
+            self._agrep_impl(pattern, path, glob, max_count)
+        )
 
     async def _agrep_impl(
         self,
@@ -362,12 +399,12 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
         max_count: int | None,
     ) -> GrepResult:
         if max_count is not None and max_count <= 0:
-            return GrepResult(error="max_count must be > 0", matches=None)
+            return _grep_result(error="max_count must be > 0", matches=None)
         root = self._map_path(path or "/")
         try:
             files, walk_truncated = await self._walk(root)
         except Exception as exc:
-            return GrepResult(error=str(exc), matches=None)
+            return _grep_result(error=str(exc), matches=None)
         matches: list[GrepMatch] = []
         for info in files:
             if info.get("is_dir"):
@@ -399,11 +436,11 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
                     }
                 )
                 if max_count is not None and len(matches) > max_count:
-                    return GrepResult(
+                    return _grep_result(
                         matches=matches[:max_count],
                         truncated=True,
                     )
-        return GrepResult(matches=matches, truncated=walk_truncated)
+        return _grep_result(matches=matches, truncated=walk_truncated)
 
     def upload_files(self, files: list[tuple[str, bytes]]) -> list[FileUploadResponse]:
         return self._bridge.run(self._aupload_files_impl(files))
@@ -476,7 +513,7 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
             self._closed = True
             self._bridge.close()
 
-    def __enter__(self) -> "DeepAgentsSandboxAdapter":
+    def __enter__(self) -> DeepAgentsSandboxAdapter:
         return self
 
     def __exit__(self, *_exc: object) -> None:
@@ -514,6 +551,8 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
     def _map_path(path: str) -> str:
         if path in {"", "/", "/workspace", "/workspace/"}:
             return "/workspace/work"
+        if path in _WORKSPACE_ROOTS:
+            return path
         if path.startswith(
             ("/workspace/input/", "/workspace/work/", "/workspace/output/")
         ):
