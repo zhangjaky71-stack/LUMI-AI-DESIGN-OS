@@ -48,7 +48,10 @@ def load_seed_registry(root: Path) -> CapabilityRegistry:
 def load_seed_snapshot(root: Path) -> RegistrySnapshot:
     config_path = root / "config/model-registry.seed.json"
     config = _load_json(config_path)
-    provider_payloads = [_load_json(root / path) for path in config["provider_files"]]
+    provider_payloads = [
+        _load_json(root / path)
+        for path in config["provider_files"]
+    ]
     route_payload = _load_json(root / config["route_policy"])
     checksum_payload = {
         "config": config,
@@ -62,9 +65,14 @@ def load_seed_snapshot(root: Path) -> RegistrySnapshot:
     for payload in provider_payloads:
         for record in _provider_models(payload, version=version):
             if record.model_key in models:
-                raise ValueError(f"duplicate model_key in seed: {record.model_key}")
+                raise ValueError(
+                    f"duplicate model_key in seed: {record.model_key}"
+                )
             models[record.model_key] = record
-    profiles = {profile.name: profile for profile in _routing_profiles(route_payload)}
+    profiles = {
+        profile.name: profile
+        for profile in _routing_profiles(route_payload)
+    }
     _validate_route_references(models, profiles)
     snapshot = RegistrySnapshot(
         snapshot_id=f"registry:{version}:{checksum[:16]}",
@@ -90,22 +98,33 @@ def validate_seed_snapshot(snapshot: RegistrySnapshot) -> None:
         raise ValueError("NODE-23 seed lost NODE-07 routing profiles")
     for record in snapshot.models.values():
         if not record.source_refs:
-            raise ValueError(f"model missing source refs: {record.model_key}")
+            raise ValueError(
+                f"model missing source refs: {record.model_key}"
+            )
         if record.lifecycle in {
             ModelLifecycle.DEPRECATED,
             ModelLifecycle.LEGACY,
             ModelLifecycle.SHUTDOWN,
         } and record.route_eligible:
-            raise ValueError(f"inactive model is route eligible: {record.model_key}")
+            raise ValueError(
+                f"inactive model is route eligible: {record.model_key}"
+            )
         for claim in record.claims:
-            if claim.support is CapabilitySupport.UNKNOWN and claim.route_eligible:
-                raise ValueError("unknown capability claim became route eligible")
+            if (
+                claim.support is CapabilitySupport.UNKNOWN
+                and claim.route_eligible
+            ):
+                raise ValueError(
+                    "unknown capability claim became route eligible"
+                )
         for benchmark in record.benchmarks:
             if not isinstance(benchmark, BenchmarkScore):
                 raise TypeError("invalid benchmark score record")
     for profile in snapshot.routing_profiles.values():
         if not profile.candidate_model_keys:
-            raise ValueError(f"routing profile has no candidates: {profile.name}")
+            raise ValueError(
+                f"routing profile has no candidates: {profile.name}"
+            )
         if any(
             snapshot.models[key].lifecycle is ModelLifecycle.PREVIEW
             for key in profile.candidate_model_keys
@@ -115,15 +134,21 @@ def validate_seed_snapshot(snapshot: RegistrySnapshot) -> None:
                 key
                 for key in profile.candidate_model_keys
                 if key in snapshot.models
-                and snapshot.models[key].lifecycle is ModelLifecycle.STABLE
+                and snapshot.models[key].lifecycle
+                is ModelLifecycle.STABLE
             ]
             if not stable:
                 raise ValueError(
-                    f"preview-only route lacks stable fallback: {profile.name}"
+                    "preview-only route lacks stable fallback: "
+                    f"{profile.name}"
                 )
 
 
-def _provider_models(payload: dict[str, Any], *, version: str) -> tuple[ModelRecord, ...]:
+def _provider_models(
+    payload: dict[str, Any],
+    *,
+    version: str,
+) -> tuple[ModelRecord, ...]:
     provider = str(payload["provider"])
     observed_at = _as_datetime(payload["observed_at"])
     expires_at = (
@@ -135,7 +160,10 @@ def _provider_models(payload: dict[str, Any], *, version: str) -> tuple[ModelRec
     for item in payload.get("models", []):
         model_key = str(item["registry_id"])
         model_id = str(item["model_id"])
-        source_refs = tuple(str(value) for value in item.get("sources") or ())
+        source_refs = tuple(
+            str(value)
+            for value in item.get("sources") or ()
+        )
         if not source_refs:
             source_refs = (f"{provider}:unspecified-source",)
         claims = _claims_for_model(
@@ -152,16 +180,26 @@ def _provider_models(payload: dict[str, Any], *, version: str) -> tuple[ModelRec
             source_ref=source_refs[0],
             version=version,
         )
-        lifecycle = ModelLifecycle(str(item.get("lifecycle") or "stable"))
+        lifecycle = ModelLifecycle(
+            str(item.get("lifecycle") or "stable")
+        )
         metadata = {
             "modalities": tuple(item.get("modalities") or ()),
             "roles": tuple(item.get("documented_roles") or ()),
-            "documented_capabilities": dict(item.get("documented_capabilities") or {}),
-            "benchmark_status": str(item.get("benchmark_status") or "NOT_MEASURED"),
+            "documented_capabilities": dict(
+                item.get("documented_capabilities") or {}
+            ),
+            "benchmark_status": str(
+                item.get("benchmark_status") or "NOT_MEASURED"
+            ),
             "notes": str(item.get("notes") or ""),
         }
         revision_hash = registry_checksum(
-            {"version": version, "model": item, "observed_at": observed_at}
+            {
+                "version": version,
+                "model": item,
+                "observed_at": observed_at,
+            }
         )
         output.append(
             ModelRecord(
@@ -169,14 +207,18 @@ def _provider_models(payload: dict[str, Any], *, version: str) -> tuple[ModelRec
                 provider=provider,
                 model=model_id,
                 lifecycle=lifecycle,
-                route_eligible=bool(item.get("route_eligible", False)),
+                route_eligible=bool(
+                    item.get("route_eligible", False)
+                ),
                 observed_at=observed_at,
                 source_refs=source_refs,
                 claims=claims,
                 prices=prices,
                 benchmarks=(),
                 regions=frozenset({"global"}),
-                revision_id=f"revision:{version}:{revision_hash[:16]}",
+                revision_id=(
+                    f"revision:{version}:{revision_hash[:16]}"
+                ),
                 metadata=metadata,
             )
         )
@@ -190,10 +232,21 @@ def _claims_for_model(
     observed_at: datetime,
     source_ref: str,
 ) -> tuple[CapabilityClaim, ...]:
-    modalities = set(str(value) for value in item.get("modalities") or ())
-    documented = dict(item.get("documented_capabilities") or {})
-    inputs = set(str(value) for value in documented.get("input") or ())
-    roles = set(str(value) for value in item.get("documented_roles") or ())
+    modalities = set(
+        str(value)
+        for value in item.get("modalities") or ()
+    )
+    documented = dict(
+        item.get("documented_capabilities") or {}
+    )
+    inputs = set(
+        str(value)
+        for value in documented.get("input") or ()
+    )
+    roles = set(
+        str(value)
+        for value in item.get("documented_roles") or ()
+    )
     claims: dict[Capability, CapabilityClaim] = {}
 
     def add(
@@ -220,9 +273,15 @@ def _claims_for_model(
             add(Capability.LLM_VISION)
     if documented.get("structured_output") is True:
         add(Capability.LLM_STRUCTURED_OUTPUT)
-    if "image_generation" in modalities or documented.get("image_generation") is True:
+    if (
+        "image_generation" in modalities
+        or documented.get("image_generation") is True
+    ):
         add(Capability.IMAGE_GENERATE)
-    if "image_edit" in modalities or documented.get("image_edit") is True:
+    if (
+        "image_edit" in modalities
+        or documented.get("image_edit") is True
+    ):
         add(Capability.IMAGE_EDIT)
     if documented.get("mask_edit") is True:
         add(Capability.IMAGE_MASK_EDIT)
@@ -249,9 +308,16 @@ def _claims_for_model(
             Capability.OCR_DOCUMENT,
             support=CapabilitySupport.PARTIAL,
             confidence=ClaimConfidence.INFERRED,
-            limits={"route_semantics": "ocr-like multimodal extraction"},
+            limits={
+                "route_semantics": "ocr-like multimodal extraction"
+            },
         )
-    return tuple(sorted(claims.values(), key=lambda value: value.capability.value))
+    return tuple(
+        sorted(
+            claims.values(),
+            key=lambda value: value.capability.value,
+        )
+    )
 
 
 def _prices_for_model(
@@ -267,13 +333,25 @@ def _prices_for_model(
     for index, price in enumerate(item.get("pricing") or []):
         metric = str(price.get("metric") or f"metric_{index}")
         amount_key = next(
-            (key for key in price if key.startswith("usd_") and key != "usd_currency"),
+            (
+                key
+                for key in price
+                if key.startswith("usd_")
+                and key != "usd_currency"
+            ),
             "usd" if "usd" in price else None,
         )
         if amount_key is None:
-            raise ValueError(f"pricing record has no USD amount: {model_key}/{metric}")
+            raise ValueError(
+                "pricing record has no USD amount: "
+                f"{model_key}/{metric}"
+            )
         amount = Decimal(str(price[amount_key]))
-        unit = metric if amount_key == "usd" else amount_key.removeprefix("usd_")
+        unit = (
+            metric
+            if amount_key == "usd"
+            else amount_key.removeprefix("usd_")
+        )
         minimum = price.get("minimum_charge_usd")
         identity = registry_checksum(
             {
@@ -287,13 +365,19 @@ def _prices_for_model(
         )
         output.append(
             PricingSnapshot(
-                pricing_snapshot_id=f"price:{version}:{identity[:16]}",
+                pricing_snapshot_id=(
+                    f"price:{version}:{identity[:16]}"
+                ),
                 model_key=model_key,
                 metric=metric,
                 currency="USD",
                 unit=unit,
                 price=amount,
-                minimum_charge=None if minimum is None else Decimal(str(minimum)),
+                minimum_charge=(
+                    None
+                    if minimum is None
+                    else Decimal(str(minimum))
+                ),
                 effective_from=observed_at,
                 observed_at=observed_at,
                 expires_at=expires_at,
@@ -303,25 +387,38 @@ def _prices_for_model(
     return tuple(output)
 
 
-def _routing_profiles(payload: dict[str, Any]) -> tuple[RoutingProfile, ...]:
+def _routing_profiles(
+    payload: dict[str, Any],
+) -> tuple[RoutingProfile, ...]:
     output: list[RoutingProfile] = []
     for route in payload.get("routes") or []:
         name = str(route["route"])
         if route.get("selected_primary") is not None:
             raise ValueError(
-                f"NODE-07 candidate route selected a primary before benchmark: {name}"
+                "NODE-07 candidate route selected a primary "
+                f"before benchmark: {name}"
             )
         output.append(
             RoutingProfile(
                 name=name,
-                required_capabilities=_ROUTE_CAPABILITIES.get(name, ()),
+                required_capabilities=_ROUTE_CAPABILITIES.get(
+                    name,
+                    (),
+                ),
                 candidate_model_keys=tuple(
-                    str(value) for value in route.get("candidates") or ()
+                    str(value)
+                    for value in route.get("candidates") or ()
                 ),
                 stable_fallback_model_keys=tuple(
-                    str(value) for value in route.get("stable_fallback_candidates") or ()
+                    str(value)
+                    for value in (
+                        route.get("stable_fallback_candidates")
+                        or ()
+                    )
                 ),
-                selection_gate=str(route.get("selection_gate") or name),
+                selection_gate=str(
+                    route.get("selection_gate") or name
+                ),
                 weights=RoutingWeights(),
             )
         )
@@ -336,12 +433,17 @@ def _validate_route_references(
         {
             key
             for profile in profiles.values()
-            for key in (*profile.candidate_model_keys, *profile.stable_fallback_model_keys)
+            for key in (
+                *profile.candidate_model_keys,
+                *profile.stable_fallback_model_keys,
+            )
             if key not in models
         }
     )
     if missing:
-        raise ValueError(f"routing profile references unknown models: {missing}")
+        raise ValueError(
+            f"routing profile references unknown models: {missing}"
+        )
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -353,6 +455,16 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 def _as_datetime(value: str) -> datetime:
     if "T" in value:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
-    return datetime.combine(date.fromisoformat(value), time.min, tzinfo=UTC)
+        parsed = datetime.fromisoformat(
+            value.replace("Z", "+00:00")
+        )
+        return (
+            parsed
+            if parsed.tzinfo is not None
+            else parsed.replace(tzinfo=UTC)
+        )
+    return datetime.combine(
+        date.fromisoformat(value),
+        time.min,
+        tzinfo=UTC,
+    )
