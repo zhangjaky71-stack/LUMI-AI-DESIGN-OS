@@ -33,7 +33,13 @@ ALTER TABLE cost_ledger
 
 -- statement-breakpoint
 
-UPDATE cost_ledger SET entry_type='actual_cost' WHERE entry_type='charge';
+UPDATE cost_ledger
+SET entry_type='actual_cost',
+    confidence='unknown',
+    status='unknown',
+    cost_basis='provider_cost',
+    source='legacy_migration'
+WHERE entry_type='charge';
 
 -- statement-breakpoint
 
