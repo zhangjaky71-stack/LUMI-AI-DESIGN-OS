@@ -92,10 +92,10 @@ def test_complete_evidence_uses_versioned_profile_weights() -> None:
         organization_id=ORG,
         evidence={
             "alpha:a": RoutingEvidence(
-                quality=Decimal("90"),
-                constraint=Decimal("90"),
-                cost=Decimal("70"),
-                latency=Decimal("60"),
+                quality=Decimal("100"),
+                constraint=Decimal("100"),
+                cost=Decimal("80"),
+                latency=Decimal("80"),
                 availability=Decimal("100"),
             ),
             "beta:b": RoutingEvidence(
