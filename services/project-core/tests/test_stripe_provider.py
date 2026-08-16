@@ -59,10 +59,32 @@ def test_mode_key_must_match_environment() -> None:
         )
 
 
+def test_customer_creation_uses_stable_idempotency_key() -> None:
+    calls: list[tuple[str, str, list[tuple[str, str]] | None, str | None]] = []
+
+    def transport(method, path, fields, _secret, idempotency_key):
+        calls.append((method, path, fields, idempotency_key))
+        return {"id": "cus_1"}
+
+    provider = StripePaymentProvider(config(), transport=transport)
+    assert provider.create_customer("org-1", "billing@example.test") == "cus_1"
+    assert calls == [
+        (
+            "POST",
+            "/customers",
+            [
+                ("metadata[organization_id]", "org-1"),
+                ("email", "billing@example.test"),
+            ],
+            "lumi-customer:org-1",
+        )
+    ]
+
+
 def test_checkout_uses_server_owned_price_and_subscription_metadata() -> None:
     calls: list[tuple[str, str, list[tuple[str, str]] | None]] = []
 
-    def transport(method, path, fields, _secret):
+    def transport(method, path, fields, _secret, _idempotency_key):
         calls.append((method, path, fields))
         if method == "GET":
             return {"id": "cus_1", "metadata": {"organization_id": "org-1"}}
@@ -113,7 +135,10 @@ def test_webhook_accepts_any_valid_v1_and_rejects_stale_timestamp() -> None:
                     "cancel_at_period_end": False,
                     "current_period_start": now - 100,
                     "current_period_end": now + 100,
-                    "metadata": {"organization_id": "11111111-1111-1111-1111-111111111111", "plan_version_id": "pro-v1"},
+                    "metadata": {
+                        "organization_id": "11111111-1111-1111-1111-111111111111",
+                        "plan_version_id": "pro-v1",
+                    },
                 }
             },
         },
@@ -138,7 +163,9 @@ def test_invalid_signature_is_rejected_before_json_parse() -> None:
 
 def test_livemode_mismatch_fails_closed() -> None:
     now = 1_800_000_000
-    raw = json.dumps({"id": "evt_live", "type": "invoice.paid", "livemode": True, "data": {"object": {}}}).encode()
+    raw = json.dumps(
+        {"id": "evt_live", "type": "invoice.paid", "livemode": True, "data": {"object": {}}}
+    ).encode()
     provider = StripePaymentProvider(config(), transport=lambda *_: {}, now=lambda: now)
     with pytest.raises(BillingError, match="BILLING_STRIPE_EVENT_MODE_MISMATCH"):
         provider.verify_webhook(raw, signature(raw, now))
@@ -161,7 +188,10 @@ def test_invoice_paid_normalizes_subscription_metadata_and_microusd() -> None:
                     "parent": {
                         "subscription_details": {
                             "subscription": "sub_1",
-                            "metadata": {"organization_id": "11111111-1111-1111-1111-111111111111", "plan_version_id": "pro-v1"},
+                            "metadata": {
+                                "organization_id": "11111111-1111-1111-1111-111111111111",
+                                "plan_version_id": "pro-v1",
+                            },
                         }
                     },
                 }
