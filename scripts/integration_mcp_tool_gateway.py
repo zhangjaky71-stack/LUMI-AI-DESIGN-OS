@@ -46,9 +46,9 @@ class Resolver:
 
 class Credentials:
     async def credentials_for(self, server, *, organization_id):
-        del server
         return MCPRequestAuth(
             organization_id=organization_id,
+            server_id=server.server_id,
             headers={"Authorization": "Bearer fixture-token"},
             subject="fixture-user",
         )
@@ -86,11 +86,13 @@ class StatelessFixtureTransport:
                 "supportedVersions": [MCP_PROTOCOL_2026_07_28],
                 "capabilities": {"tools": {}},
                 "ttlMs": 10_000,
+                "cacheScope": "private",
             }
         elif method == "tools/list":
             result = {
                 "resultType": "complete",
                 "ttlMs": 10_000,
+                "cacheScope": "private",
                 "tools": [
                     {
                         "name": "search",
