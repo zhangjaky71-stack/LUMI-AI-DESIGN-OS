@@ -4,7 +4,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -27,9 +29,16 @@ async def set_tenant(connection: asyncpg.Connection, org: UUID) -> None:
     )
 
 
-async def reject(awaitable, *, sqlstates: set[str], label: str) -> None:
+async def reject_in_savepoint(
+    connection: asyncpg.Connection,
+    operation: Callable[[], Awaitable[Any]],
+    *,
+    sqlstates: set[str],
+    label: str,
+) -> None:
     try:
-        await awaitable
+        async with connection.transaction():
+            await operation()
     except asyncpg.PostgresError as exc:
         if exc.sqlstate not in sqlstates:
             raise AssertionError(
@@ -42,7 +51,8 @@ async def reject(awaitable, *, sqlstates: set[str], label: str) -> None:
 async def test_head_and_objects() -> None:
     connection = await asyncpg.connect(MIGRATION_DSN)
     try:
-        assert await connection.fetchval("SELECT version_num FROM alembic_version") == "20260816_0005"
+        revision = await connection.fetchval("SELECT version_num FROM alembic_version")
+        assert revision == "20260816_0005"
         for table in ("runtime_jobs", "dead_letter_records"):
             assert await connection.fetchval("SELECT to_regclass($1) IS NOT NULL", table)
         columns = {
@@ -77,29 +87,32 @@ async def test_runtime_job_rls_and_same_tenant_guard() -> None:
                 json.dumps({"job_id": str(JOB_A), "resource_id": str(EVENT_A)}),
             )
             assert await connection.fetchval(
-                "SELECT status FROM runtime_jobs WHERE id=$1", JOB_A
+                "SELECT status FROM runtime_jobs WHERE id=$1",
+                JOB_A,
             ) == "pending"
 
         async with connection.transaction():
             await set_tenant(connection, ORG_B)
             assert await connection.fetchval(
-                "SELECT count(*) FROM runtime_jobs WHERE id=$1", JOB_A
+                "SELECT count(*) FROM runtime_jobs WHERE id=$1",
+                JOB_A,
             ) == 0
-            async with connection.transaction():
-                await reject(
-                    connection.execute(
-                        """
-                        INSERT INTO runtime_jobs(
-                          id,organization_id,project_id,job_kind,status,input_json
-                        ) VALUES($1,$2,$3,'image.transform','pending','{}'::jsonb)
-                        """,
-                        UUID("01910000-0000-7000-8000-000000000899"),
-                        ORG_B,
-                        PROJECT_A,
-                    ),
-                    sqlstates={"23503", "42501"},
-                    label="cross tenant runtime job",
-                )
+            bad_job = UUID("01910000-0000-7000-8000-000000000899")
+            await reject_in_savepoint(
+                connection,
+                lambda: connection.execute(
+                    """
+                    INSERT INTO runtime_jobs(
+                      id,organization_id,project_id,job_kind,status,input_json
+                    ) VALUES($1,$2,$3,'image.transform','pending','{}'::jsonb)
+                    """,
+                    bad_job,
+                    ORG_B,
+                    PROJECT_A,
+                ),
+                sqlstates={"23503", "42501"},
+                label="cross tenant runtime job",
+            )
     finally:
         await connection.close()
 
@@ -124,8 +137,9 @@ async def test_inbox_receipt_rolls_back_with_effect() -> None:
                 assert inserted == EVENT_A
                 await connection.execute(
                     """
-                    INSERT INTO usage_counters(id,organization_id,period_key,metric_key,quantity,unit)
-                    VALUES($1,$2,'node19',$3,1,'effect')
+                    INSERT INTO usage_counters(
+                      id,organization_id,period_key,metric_key,quantity,unit
+                    ) VALUES($1,$2,'node19',$3,1,'effect')
                     ON CONFLICT (organization_id,period_key,metric_key)
                     DO UPDATE SET quantity=usage_counters.quantity+1
                     """,
@@ -152,8 +166,9 @@ async def test_inbox_receipt_rolls_back_with_effect() -> None:
             assert inserted == EVENT_A
             await connection.execute(
                 """
-                INSERT INTO usage_counters(id,organization_id,period_key,metric_key,quantity,unit)
-                VALUES($1,$2,'node19',$3,1,'effect')
+                INSERT INTO usage_counters(
+                  id,organization_id,period_key,metric_key,quantity,unit
+                ) VALUES($1,$2,'node19',$3,1,'effect')
                 ON CONFLICT (organization_id,period_key,metric_key)
                 DO UPDATE SET quantity=usage_counters.quantity+1
                 """,
@@ -175,14 +190,15 @@ async def test_inbox_receipt_rolls_back_with_effect() -> None:
                 ORG_A,
             )
             assert duplicate is None
-            assert await connection.fetchval(
+            quantity = await connection.fetchval(
                 """
                 SELECT quantity FROM usage_counters
                 WHERE organization_id=$1 AND period_key='node19' AND metric_key=$2
                 """,
                 ORG_A,
                 metric,
-            ) == 1
+            )
+            assert quantity == 1
     finally:
         await connection.close()
 
@@ -210,13 +226,15 @@ async def test_dead_letter_rls_and_outbox_retry_columns() -> None:
                 NOW,
             )
             assert await connection.fetchval(
-                "SELECT status FROM dead_letter_records WHERE id=$1", DLQ_A
+                "SELECT status FROM dead_letter_records WHERE id=$1",
+                DLQ_A,
             ) == "open"
 
         async with connection.transaction():
             await set_tenant(connection, ORG_B)
             assert await connection.fetchval(
-                "SELECT count(*) FROM dead_letter_records WHERE id=$1", DLQ_A
+                "SELECT count(*) FROM dead_letter_records WHERE id=$1",
+                DLQ_A,
             ) == 0
     finally:
         await connection.close()
