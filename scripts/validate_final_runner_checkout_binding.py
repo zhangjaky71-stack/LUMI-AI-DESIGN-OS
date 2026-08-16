@@ -9,6 +9,7 @@ from types import ModuleType
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER_PATH = ROOT / "scripts" / "run-final-acceptance.py"
 MATRIX = ROOT / "final" / "acceptance" / "manifest-v1.json"
+WORKFLOW = ROOT / ".github" / "workflows" / "final-acceptance-gate.yml"
 FIXTURE = ROOT / "reports" / "final-acceptance" / "_runner-checkout-binding"
 RELEASE = FIXTURE / "release-manifest.json"
 
@@ -71,8 +72,24 @@ def expect_failure(callable_obj, marker: str, *, label: str) -> None:
         raise SystemExit(f"{label} unexpectedly passed")
 
 
+def require_workflow_history_contract() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    marker = "final-decision:"
+    start = text.find(marker)
+    if start < 0:
+        raise SystemExit("Final Product Acceptance workflow has no final-decision job")
+    section = text[start:]
+    if "fetch-depth: 0" not in section:
+        raise SystemExit(
+            "final-decision checkout must use fetch-depth: 0 for source-RC ancestry proof"
+        )
+    if "python3 scripts/run-final-acceptance.py" not in section:
+        raise SystemExit("final-decision job does not invoke the canonical final runner")
+
+
 def main() -> None:
     runner = load_runner()
+    require_workflow_history_contract()
     matrix = json.loads(MATRIX.read_text(encoding="utf-8"))
     required = matrix.get("required_upstream_gates")
     if not isinstance(required, list) or not all(isinstance(item, str) for item in required):
