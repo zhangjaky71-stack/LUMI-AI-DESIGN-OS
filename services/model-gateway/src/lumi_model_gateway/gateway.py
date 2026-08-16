@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from .budget import RequestBudgetGuard
 from .errors import (
     AmbiguousProviderOutcomeError,
     DeliveryState,
+    DurableBudgetGuardRequiredError,
     ModelGatewayError,
     NoRouteError,
     PaidInvocationGuardRequiredError,
@@ -35,6 +37,9 @@ from .ports import (
 )
 from .routing import ModelRouter
 from .telemetry import NullCostTelemetrySink, ResilientCostTelemetrySink
+
+
+_PRODUCTION_LIKE_ENVIRONMENTS = frozenset({"production", "staging"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +86,14 @@ class ModelGateway:
         if paid_guard is None:
             raise PaidInvocationGuardRequiredError(
                 "ModelGateway requires a NODE-20-compatible paid invocation guard"
+            )
+        environment = os.getenv("LUMI_ENV", "development").strip().lower()
+        if environment in _PRODUCTION_LIKE_ENVIRONMENTS and (
+            budget_guard is None or isinstance(budget_guard, RequestBudgetGuard)
+        ):
+            raise DurableBudgetGuardRequiredError(
+                "production/staging ModelGateway requires durable cost accounting; "
+                "RequestBudgetGuard is development-only"
             )
         self.registry = registry
         self.health = health

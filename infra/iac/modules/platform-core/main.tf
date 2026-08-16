@@ -29,6 +29,7 @@ module "data" {
   vpc_id                    = module.network.vpc_id
   data_subnet_ids           = module.network.data_subnet_ids
   app_security_group_id     = module.network.app_security_group_id
+  sandbox_security_group_id = module.network.sandbox_security_group_id
   kms_key_arn               = module.storage.kms_key_arn
   postgres_engine_version   = var.postgres_engine_version
   db_instance_class         = var.db_instance_class

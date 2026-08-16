@@ -1,0 +1,203 @@
+name: Final Production Safety Hard Stops
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/alembic/versions/0018_provider_daily_cost_hard_stop.py"
+      - "apps/api/alembic/versions/0019_stripe_billing_runtime.py"
+      - "apps/api/src/lumi_api/app_v1.py"
+      - "apps/api/src/lumi_api/billing_http.py"
+      - "apps/api/src/lumi_api/billing_runtime.py"
+      - "apps/api/src/lumi_api/costs/**"
+      - "apps/api/src/lumi_api/persistence/models/billing.py"
+      - "apps/api/src/lumi_api/persistence/models/provider_cost_controls.py"
+      - "apps/api/src/lumi_api/persistence/models/__init__.py"
+      - "services/model-gateway/src/lumi_model_gateway/**"
+      - "services/model-gateway/tests/test_production_budget_guard.py"
+      - "services/project-core/src/lumi_project_core/stripe_provider.py"
+      - "services/project-core/tests/test_stripe_provider.py"
+      - "infra/iac/**"
+      - "scripts/validate_provider_daily_hard_stop.py"
+      - "scripts/validate_final_hard_stops.py"
+      - "scripts/validate_stripe_billing_runtime.py"
+      - "scripts/integration_provider_daily_hard_stop.py"
+      - "scripts/integration_stripe_billing_runtime.py"
+      - "scripts/verify_stripe_live_purchase_db.py"
+      - "scripts/alert-delivery-drill.sh"
+      - "scripts/ecs-rollback-to-state.sh"
+      - "docs/operations/PROVIDER-DAILY-HARD-STOP.md"
+      - "docs/operations/SANDBOX-EGRESS-ISOLATION.md"
+      - "docs/operations/ROLLBACK-AND-ALERT-DRILLS.md"
+      - "docs/operations/STRIPE-LIVE-PURCHASE-DRILL.md"
+      - ".github/workflows/deploy-production.yml"
+      - ".github/workflows/final-operational-drills.yml"
+      - ".github/workflows/provider-daily-hard-stop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile hard-stop sources
+        run: >-
+          python -m compileall -q
+          apps/api/alembic/versions/0018_provider_daily_cost_hard_stop.py
+          apps/api/alembic/versions/0019_stripe_billing_runtime.py
+          apps/api/src/lumi_api/app_v1.py
+          apps/api/src/lumi_api/billing_http.py
+          apps/api/src/lumi_api/billing_runtime.py
+          apps/api/src/lumi_api/costs/model_gateway_adapter.py
+          apps/api/src/lumi_api/costs/model_gateway_factory.py
+          apps/api/src/lumi_api/persistence/models/billing.py
+          apps/api/src/lumi_api/persistence/models/provider_cost_controls.py
+          services/model-gateway/src/lumi_model_gateway/gateway.py
+          services/model-gateway/src/lumi_model_gateway/errors.py
+          services/model-gateway/tests/test_production_budget_guard.py
+          services/project-core/src/lumi_project_core/stripe_provider.py
+          services/project-core/tests/test_stripe_provider.py
+          scripts/validate_provider_daily_hard_stop.py
+          scripts/validate_final_hard_stops.py
+          scripts/validate_stripe_billing_runtime.py
+          scripts/integration_provider_daily_hard_stop.py
+          scripts/integration_stripe_billing_runtime.py
+          scripts/verify_stripe_live_purchase_db.py
+      - name: Validate shell drill syntax
+        run: >-
+          bash -n
+          scripts/alert-delivery-drill.sh
+          scripts/ecs-rollback-to-state.sh
+          scripts/capture-ecs-deployment-state.sh
+      - name: Validate provider daily hard-stop contract
+        run: python scripts/validate_provider_daily_hard_stop.py
+      - name: Validate final production safety contracts
+        run: python scripts/validate_final_hard_stops.py
+      - name: Validate Stripe billing production contract
+        run: python scripts/validate_stripe_billing_runtime.py
+
+  terraform-format:
+    needs: static-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform formatting gate
+        run: terraform fmt -check -recursive infra/iac
+
+  quality:
+    needs: [static-contract, terraform-format]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Canonical frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Ruff hard-stop gate
+        run: >-
+          uv run ruff check
+          apps/api/alembic/versions/0018_provider_daily_cost_hard_stop.py
+          apps/api/alembic/versions/0019_stripe_billing_runtime.py
+          apps/api/src/lumi_api/app_v1.py
+          apps/api/src/lumi_api/billing_http.py
+          apps/api/src/lumi_api/billing_runtime.py
+          apps/api/src/lumi_api/costs/model_gateway_adapter.py
+          apps/api/src/lumi_api/costs/model_gateway_factory.py
+          apps/api/src/lumi_api/persistence/models/billing.py
+          apps/api/src/lumi_api/persistence/models/provider_cost_controls.py
+          services/model-gateway/src/lumi_model_gateway/gateway.py
+          services/model-gateway/src/lumi_model_gateway/errors.py
+          services/model-gateway/tests/test_production_budget_guard.py
+          services/project-core/src/lumi_project_core/stripe_provider.py
+          services/project-core/tests/test_stripe_provider.py
+          scripts/validate_provider_daily_hard_stop.py
+          scripts/validate_final_hard_stops.py
+          scripts/validate_stripe_billing_runtime.py
+          scripts/integration_provider_daily_hard_stop.py
+          scripts/integration_stripe_billing_runtime.py
+          scripts/verify_stripe_live_purchase_db.py
+      - name: Pyright hard-stop gate
+        run: >-
+          uv run pyright
+          apps/api/src/lumi_api/billing_http.py
+          apps/api/src/lumi_api/billing_runtime.py
+          apps/api/src/lumi_api/costs/model_gateway_adapter.py
+          apps/api/src/lumi_api/costs/model_gateway_factory.py
+          apps/api/src/lumi_api/persistence/models/billing.py
+          apps/api/src/lumi_api/persistence/models/provider_cost_controls.py
+          services/model-gateway/src/lumi_model_gateway/gateway.py
+          services/model-gateway/tests/test_production_budget_guard.py
+          services/project-core/src/lumi_project_core/stripe_provider.py
+          services/project-core/tests/test_stripe_provider.py
+          scripts/integration_provider_daily_hard_stop.py
+          scripts/integration_stripe_billing_runtime.py
+          scripts/verify_stripe_live_purchase_db.py
+      - name: Model Gateway production guard unit tests
+        run: >-
+          PYTHONPATH=services/model-gateway/src
+          uv run python services/model-gateway/tests/test_production_budget_guard.py
+      - name: Stripe provider unit tests
+        run: >-
+          PYTHONPATH=services/project-core/src
+          uv run pytest -q services/project-core/tests/test_stripe_provider.py
+
+  postgres-acceptance:
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Canonical frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Start local infrastructure
+        run: |
+          make infra-env
+          make infra-up
+      - name: Upgrade and seed database
+        run: |
+          make db-upgrade
+          bash scripts/db-local schema-check
+          make db-seed
+      - name: Alembic metadata drift gate
+        run: >-
+          PYTHONPATH=apps/api/src
+          uv run alembic -c apps/api/alembic.ini check
+      - name: Provider daily hard-stop acceptance
+        run: >-
+          PYTHONPATH=apps/api/src:services/model-gateway/src
+          uv run python scripts/integration_provider_daily_hard_stop.py
+      - name: Stripe billing PostgreSQL acceptance
+        run: >-
+          PYTHONPATH=apps/api/src:services/auth/src:services/domain/src:services/project-core/src
+          uv run python scripts/integration_stripe_billing_runtime.py
+      - name: Migration downgrade/upgrade smoke
+        run: bash scripts/db-local downgrade-smoke
+      - name: Cleanup
+        if: always()
+        run: CONFIRM=1 make infra-reset || true

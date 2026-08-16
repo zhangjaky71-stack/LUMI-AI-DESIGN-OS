@@ -13,9 +13,10 @@
     "lint": "pnpm --filter @lumi/web lint && pnpm --filter @lumi/admin lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "format:check": "prettier --check \"apps/**/*.{json,js,mjs,ts,tsx,css}\" \"packages/**/*.{json,ts}\" package.json pnpm-workspace.yaml turbo.json tsconfig.base.json playwright.config.ts",
+    "format:check": "prettier --check \"apps/**/*.{json,js,mjs,ts,tsx,css}\" \"packages/**/*.{json,ts}\" package.json pnpm-workspace.yaml turbo.json tsconfig.base.json playwright.config.ts playwright.final-acceptance.config.ts",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:final-browsers": "playwright test --config=playwright.final-acceptance.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",

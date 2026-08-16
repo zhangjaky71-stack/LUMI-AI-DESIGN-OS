@@ -3,7 +3,9 @@ variable "environment" { type = string }
 variable "vpc_id" { type = string }
 variable "public_subnet_ids" { type = list(string) }
 variable "private_subnet_ids" { type = list(string) }
+variable "isolated_subnet_ids" { type = list(string) }
 variable "app_security_group_id" { type = string }
+variable "sandbox_security_group_id" { type = string }
 variable "alb_security_group_id" { type = string }
 variable "certificate_arn" { type = string }
 variable "kms_key_arn" { type = string }
@@ -20,6 +22,7 @@ variable "services" {
     container_port           = optional(number, 8080)
     command                  = optional(list(string), [])
     publicly_routed          = optional(bool, false)
+    isolated_network         = optional(bool, false)
     health_check_path        = optional(string, "/health/ready")
     environment              = optional(map(string), {})
     secret_arns              = optional(map(string), {})

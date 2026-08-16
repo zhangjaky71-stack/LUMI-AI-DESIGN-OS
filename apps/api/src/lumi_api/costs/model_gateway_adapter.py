@@ -8,6 +8,7 @@ import asyncpg
 
 from .contracts import (
     ActualCost,
+    BudgetExceeded,
     BudgetReservationRequest,
     CostConfidence,
     CostContext,
@@ -15,6 +16,15 @@ from .contracts import (
     UsageFact,
 )
 from .gateway import PostgresCostGateway
+
+
+_PROVIDER_DAILY_HARD_STOP_MARKERS = (
+    "COST_PROVIDER_DAILY_BUDGET_EXCEEDED",
+    "COST_PROVIDER_DAILY_CURRENCY_UNSUPPORTED",
+    "COST_PROVIDER_DAILY_LIMIT_NOT_CONFIGURED",
+    "COST_PROVIDER_DAILY_PROVIDER_REQUIRED",
+    "COST_PROVIDER_DAILY_RESERVATION_REQUIRED",
+)
 
 
 class PostgresModelCostAccounting:
@@ -62,7 +72,11 @@ class PostgresModelCostAccounting:
             reservation_key=reservation_key,
             metadata={"source": "model_gateway"},
         )
-        handle = await self.gateway.reserve(request)
+        try:
+            handle = await self.gateway.reserve(request)
+        except asyncpg.PostgresError as exc:
+            _raise_provider_daily_budget_error(exc)
+            raise
         return str(handle.reservation_id)
 
     async def commit_provider_cost(
@@ -124,6 +138,12 @@ class PostgresModelCostAccounting:
             request=request,
             replayed=row["status"] == "committed",
         )
+
+
+def _raise_provider_daily_budget_error(exc: asyncpg.PostgresError) -> None:
+    message = str(exc)
+    if any(marker in message for marker in _PROVIDER_DAILY_HARD_STOP_MARKERS):
+        raise BudgetExceeded(message) from exc
 
 
 def _request_from_row(row: asyncpg.Record) -> BudgetReservationRequest:

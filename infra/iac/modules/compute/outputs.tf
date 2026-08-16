@@ -29,3 +29,15 @@ output "alb_zone_id" {
 output "service_discovery_namespace" {
   value = aws_service_discovery_private_dns_namespace.this.name
 }
+
+output "deployment_alert_topic_arn" {
+  value = aws_sns_topic.deployment_alerts.arn
+}
+
+output "deployment_alert_evidence_queue_url" {
+  value = aws_sqs_queue.deployment_alert_evidence.id
+}
+
+output "deployment_alert_evidence_queue_arn" {
+  value = aws_sqs_queue.deployment_alert_evidence.arn
+}

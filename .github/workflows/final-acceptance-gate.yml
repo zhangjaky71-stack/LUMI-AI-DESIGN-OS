@@ -35,24 +35,106 @@ jobs:
           python-version: "3.12"
       - name: Validate final acceptance contract
         run: python3 scripts/validate_final_acceptance_contract.py
+      - name: Validate structured manual evidence contract
+        run: python3 scripts/validate_final_manual_evidence_contract.py
+      - name: Validate final browser preflight contract
+        run: python3 scripts/validate_final_browser_preflight.py
+      - name: Validate upstream canonical lock contract
+        run: python3 scripts/validate_final_upstream_lock_contract.py
+      - name: Validate final runner checkout binding
+        run: python3 scripts/validate_final_runner_checkout_binding.py
+      - name: Validate canonical lock helper shell syntax
+        run: bash -n scripts/regenerate-root-uv-lock.sh
       - name: Validate JSON and Python syntax
         run: |
           python3 -m json.tool final/acceptance/manifest-v1.json >/dev/null
           python3 -m json.tool final/acceptance/release-manifest-template.json >/dev/null
+          python3 -m json.tool final/acceptance/signoff-record-template.json >/dev/null
+          python3 -m json.tool final/acceptance/manual-evidence-record-template.json >/dev/null
           python3 -m json.tool final/acceptance/upstream-decision-template.json >/dev/null
           python3 -m py_compile \
+            scripts/run-final-acceptance.py \
             scripts/final-acceptance-gate.py \
+            scripts/final-manual-evidence-gate.py \
             scripts/create-final-acceptance-evidence.py \
-            scripts/validate_final_acceptance_contract.py
+            scripts/validate_final_acceptance_contract.py \
+            scripts/validate_final_manual_evidence_contract.py \
+            scripts/validate_final_browser_preflight.py \
+            scripts/validate_final_upstream_lock_contract.py \
+            scripts/validate_final_runner_checkout_binding.py
+
+  lock-repair-artifact:
+    # Repair assistance only. This job never mutates the branch and never satisfies
+    # canonical-lock-gate by itself. It emits the exact uv.lock produced/validated
+    # by canonical Python/uv tooling so the generated lock can be reviewed and committed.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Detect stale root lock
+        id: lock_state
+        shell: bash
+        run: |
+          set -euo pipefail
+          if uv lock --check; then
+            echo "needs_repair=false" >> "$GITHUB_OUTPUT"
+            echo "ROOT_UV_LOCK_ALREADY_CURRENT"
+          else
+            echo "needs_repair=true" >> "$GITHUB_OUTPUT"
+            echo "ROOT_UV_LOCK_REPAIR_REQUIRED"
+          fi
+      - name: Regenerate stale root lock with canonical guard
+        if: steps.lock_state.outputs.needs_repair == 'true'
+        run: bash scripts/regenerate-root-uv-lock.sh
+      - name: Validate current root lock
+        if: steps.lock_state.outputs.needs_repair != 'true'
+        run: |
+          uv lock --check
+          uv sync --all-packages --frozen
+      - name: Build review artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/root-uv-lock
+          cp uv.lock artifacts/root-uv-lock/uv.lock
+          {
+            echo "source_sha=${GITHUB_SHA}"
+            echo "python=$(python --version 2>&1)"
+            echo "uv=$(uv --version 2>&1)"
+            echo "repair_required=${{ steps.lock_state.outputs.needs_repair }}"
+            echo "uv_lock_sha256=$(sha256sum uv.lock | awk '{print $1}')"
+          } > artifacts/root-uv-lock/metadata.txt
+          git diff --exit-code -- . ':!uv.lock'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: canonical-root-uv-lock-${{ github.run_id }}
+          path: artifacts/root-uv-lock/
+          if-no-files-found: error
+          retention-days: 30
 
   canonical-lock-gate:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
       - name: Require canonical frozen dependency graph
-        run: uv sync --frozen
+        run: uv sync --all-packages --frozen
 
   final-decision:
     if: github.event_name == 'workflow_dispatch' && inputs.release_manifest_path != '' && inputs.acceptance_evidence_path != ''
@@ -60,6 +142,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          # The canonical runner proves source-RC ancestry and inspects every path
+          # changed from source RC to evidence checkout. A shallow clone cannot
+          # establish that evidence-only descendant invariant.
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -86,24 +173,30 @@ jobs:
               raise SystemExit('final acceptance input file is missing')
           if release.parent != evidence.parent:
               raise SystemExit('release manifest and acceptance evidence must be in the same release directory')
+          manual_output = release.parent / 'manual-evidence-decision.json'
           output = release.parent / 'final-decision.json'
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
               fh.write(f'FINAL_RELEASE={release.relative_to(root).as_posix()}\n')
               fh.write(f'FINAL_EVIDENCE={evidence.relative_to(root).as_posix()}\n')
+              fh.write(f'FINAL_MANUAL_OUTPUT={manual_output.relative_to(root).as_posix()}\n')
               fh.write(f'FINAL_OUTPUT={output.relative_to(root).as_posix()}\n')
           PY
-      - name: Evaluate final product acceptance
+      - name: Evaluate canonical final product acceptance
         run: |
-          python3 scripts/final-acceptance-gate.py \
+          python3 scripts/run-final-acceptance.py \
             --release "$FINAL_RELEASE" \
             --evidence "$FINAL_EVIDENCE" \
+            --manual-output "$FINAL_MANUAL_OUTPUT" \
             --output "$FINAL_OUTPUT"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: final-acceptance-${{ github.run_id }}
-          path: reports/final-acceptance/**/final-decision.json
-          if-no-files-found: error
+          path: |
+            reports/final-acceptance/**/release-identity-decision.json
+            reports/final-acceptance/**/manual-evidence-decision.json
+            reports/final-acceptance/**/final-decision.json
+          if-no-files-found: warn
           retention-days: 180
 
   contract-gate:

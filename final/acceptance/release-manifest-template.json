@@ -26,11 +26,14 @@
   },
   "release_blockers": [],
   "approvals": {
-    "product": "PENDING",
-    "engineering": "PENDING",
-    "security": "PENDING",
-    "operations": "PENDING",
-    "release_owner": "PENDING"
+    "product": {"path": "PENDING", "sha256": "PENDING"},
+    "engineering": {"path": "PENDING", "sha256": "PENDING"},
+    "design": {"path": "PENDING", "sha256": "PENDING"},
+    "security": {"path": "PENDING", "sha256": "PENDING"},
+    "operations": {"path": "PENDING", "sha256": "PENDING"},
+    "legal_privacy": {"path": "PENDING", "sha256": "PENDING"},
+    "finance_billing": {"path": "PENDING", "sha256": "PENDING"},
+    "release_owner": {"path": "PENDING", "sha256": "PENDING"}
   },
   "operational_handoff": {
     "on_call_owner": "PENDING",

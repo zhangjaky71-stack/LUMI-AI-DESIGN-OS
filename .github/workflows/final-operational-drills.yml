@@ -1,0 +1,181 @@
+name: Final Operational Drills
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Controlled production drill"
+        required: true
+        type: choice
+        options:
+          - alert-delivery
+          - rollback
+      manifest_path:
+        description: "Frozen production manifest under reports/production-deployments/<deployment-id>/manifest.json"
+        required: true
+        type: string
+      deployment_run_id:
+        description: "Deploy Production workflow run id whose artifact contains predeploy-ecs-state.json (rollback only)"
+        required: false
+        type: string
+      drill_ack:
+        description: "ALERT_DRILL:<deployment-id> or ROLLBACK_PRODUCTION:<deployment-id>:<deployment-run-id>"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+jobs:
+  drill:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+      - name: Resolve frozen production identity
+        id: release
+        shell: bash
+        env:
+          MANIFEST_PATH_INPUT: ${{ inputs.manifest_path }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path.cwd().resolve()
+          manifest = (root / os.environ["MANIFEST_PATH_INPUT"]).resolve()
+          allowed = (root / "reports/production-deployments").resolve()
+          try:
+              manifest.relative_to(allowed)
+          except ValueError as exc:
+              raise SystemExit("manifest path escapes reports/production-deployments") from exc
+          if manifest.name != "manifest.json" or not manifest.is_file():
+              raise SystemExit("frozen production manifest is missing")
+          payload = json.loads(manifest.read_text(encoding="utf-8"))
+          required = {
+              "deployment_id": payload.get("deployment_id"),
+              "account_id": payload.get("aws", {}).get("account_id"),
+              "region": payload.get("aws", {}).get("region"),
+              "role_arn": payload.get("aws", {}).get("production_role_arn"),
+              "domain": payload.get("edge", {}).get("domain"),
+          }
+          if any(not isinstance(v, str) or not v.strip() for v in required.values()):
+              raise SystemExit("production manifest lacks concrete deployment/AWS/domain identity")
+          output = Path(os.environ["GITHUB_OUTPUT"])
+          with output.open("a", encoding="utf-8") as fh:
+              for key, value in required.items():
+                  fh.write(f"{key}={value}\n")
+          PY
+      - name: Require protected environment role and explicit acknowledgement
+        shell: bash
+        env:
+          OPERATION: ${{ inputs.operation }}
+          ACK: ${{ inputs.drill_ack }}
+          DEPLOYMENT_ID: ${{ steps.release.outputs.deployment_id }}
+          DEPLOYMENT_RUN_ID: ${{ inputs.deployment_run_id }}
+          ENV_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          MANIFEST_ROLE_ARN: ${{ steps.release.outputs.role_arn }}
+        run: |
+          set -euo pipefail
+          test -n "$ENV_ROLE_ARN"
+          test "$ENV_ROLE_ARN" = "$MANIFEST_ROLE_ARN"
+          if [[ "$OPERATION" == "alert-delivery" ]]; then
+            test "$ACK" = "ALERT_DRILL:${DEPLOYMENT_ID}"
+          else
+            test -n "$DEPLOYMENT_RUN_ID"
+            [[ "$DEPLOYMENT_RUN_ID" =~ ^[0-9]+$ ]]
+            test "$ACK" = "ROLLBACK_PRODUCTION:${DEPLOYMENT_ID}:${DEPLOYMENT_RUN_ID}"
+          fi
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          aws-region: ${{ steps.release.outputs.region }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: lumi-final-drill-${{ github.run_id }}
+      - name: Verify AWS account identity
+        shell: bash
+        env:
+          EXPECTED_ACCOUNT: ${{ steps.release.outputs.account_id }}
+        run: |
+          set -euo pipefail
+          actual="$(aws sts get-caller-identity --query Account --output text)"
+          test "$actual" = "$EXPECTED_ACCOUNT"
+      - name: Initialize production application state
+        shell: bash
+        env:
+          TF_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+          AWS_REGION: ${{ steps.release.outputs.region }}
+        run: |
+          set -euo pipefail
+          test -n "$TF_STATE_BUCKET"
+          cat > /tmp/backend.hcl <<BACKEND
+          bucket       = "$TF_STATE_BUCKET"
+          key          = "lumi/production/app/terraform.tfstate"
+          region       = "$AWS_REGION"
+          encrypt      = true
+          use_lockfile = true
+          BACKEND
+          terraform -chdir=infra/iac/environments/production/app init -input=false -backend-config=/tmp/backend.hcl
+          mkdir -p reports/production-deployments/runtime-drills
+      - name: Execute alert firing and delivery drill
+        if: inputs.operation == 'alert-delivery'
+        run: |
+          bash scripts/alert-delivery-drill.sh \
+            infra/iac/environments/production/app \
+            reports/production-deployments/runtime-drills/alert-delivery.json
+      - name: Download the exact deployment artifact containing the predeploy rollback target
+        if: inputs.operation == 'rollback'
+        uses: actions/download-artifact@v4
+        with:
+          name: production-deployment-${{ steps.release.outputs.deployment_id }}-${{ inputs.deployment_run_id }}
+          path: reports/production-deployments/runtime-drills/source
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.deployment_run_id }}
+      - name: Validate rollback source belongs to the requested deployment artifact
+        if: inputs.operation == 'rollback'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f reports/production-deployments/runtime-drills/source/predeploy-ecs-state.json
+          test -f reports/production-deployments/runtime-drills/source/ecs-deployment-state.json
+          jq -e '.schema_version == 1 and .passed == true' reports/production-deployments/runtime-drills/source/predeploy-ecs-state.json >/dev/null
+          jq -e '.schema_version == 1 and .passed == true' reports/production-deployments/runtime-drills/source/ecs-deployment-state.json >/dev/null
+      - name: Execute immutable ECS rollback
+        if: inputs.operation == 'rollback'
+        run: |
+          bash scripts/ecs-rollback-to-state.sh \
+            reports/production-deployments/runtime-drills/source/predeploy-ecs-state.json \
+            reports/production-deployments/runtime-drills/rollback-drill.json
+      - name: Verify public readiness after rollback
+        if: inputs.operation == 'rollback'
+        shell: bash
+        env:
+          RELEASE_DOMAIN: ${{ steps.release.outputs.domain }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 24); do
+            if curl --fail --silent --show-error --max-time 10 "https://${RELEASE_DOMAIN}/health/ready" \
+              | tee reports/production-deployments/runtime-drills/rollback-readiness.json \
+              | jq -e '.status == "ok"' >/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "public readiness did not recover after rollback" >&2
+          exit 74
+      - name: Archive immutable drill evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-operational-drill-${{ inputs.operation }}-${{ github.run_id }}
+          path: reports/production-deployments/runtime-drills/
+          if-no-files-found: error
+          retention-days: 90

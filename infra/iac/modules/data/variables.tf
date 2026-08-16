@@ -9,6 +9,7 @@ variable "data_subnet_ids" {
   }
 }
 variable "app_security_group_id" { type = string }
+variable "sandbox_security_group_id" { type = string }
 variable "kms_key_arn" { type = string }
 
 variable "postgres_engine_version" {

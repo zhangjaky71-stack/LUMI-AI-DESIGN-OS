@@ -5,3 +5,6 @@ output "alb_arn" { value = module.platform_app.alb_arn }
 output "alb_dns_name" { value = module.platform_app.alb_dns_name }
 output "waf_web_acl_arn" { value = module.platform_app.waf_web_acl_arn }
 output "application_fqdn" { value = module.platform_app.application_fqdn }
+output "deployment_alert_topic_arn" { value = module.platform_app.deployment_alert_topic_arn }
+output "deployment_alert_evidence_queue_url" { value = module.platform_app.deployment_alert_evidence_queue_url }
+output "deployment_alert_evidence_queue_arn" { value = module.platform_app.deployment_alert_evidence_queue_arn }

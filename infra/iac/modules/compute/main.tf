@@ -429,8 +429,12 @@ resource "aws_ecs_service" "service" {
   }
 
   network_configuration {
-    subnets          = var.private_subnet_ids
-    security_groups  = [var.app_security_group_id]
+    subnets = (
+      each.value.isolated_network ? var.isolated_subnet_ids : var.private_subnet_ids
+    )
+    security_groups = [
+      each.value.isolated_network ? var.sandbox_security_group_id : var.app_security_group_id
+    ]
     assign_public_ip = false
   }
 

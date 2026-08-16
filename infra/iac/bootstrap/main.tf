@@ -152,7 +152,8 @@ resource "aws_iam_role_policy" "github_state" {
 
 # This is a bootstrap provisioning role, not an application runtime role. It is
 # restricted by GitHub Environment OIDC subject and only includes AWS services
-# managed by NODE-72. Runtime ECS task roles remain service-specific/minimal.
+# managed by NODE-72/final production safety drills. Runtime ECS task roles
+# remain service-specific/minimal.
 data "aws_iam_policy_document" "github_platform_provisioner" {
   statement {
     sid = "ProvisionLumiPlatform"
@@ -169,6 +170,9 @@ data "aws_iam_policy_document" "github_platform_provisioner" {
       "secretsmanager:*",
       "logs:*",
       "cloudwatch:*",
+      "events:*",
+      "sns:*",
+      "sqs:*",
       "servicediscovery:*",
       "route53:*",
       "wafv2:*",

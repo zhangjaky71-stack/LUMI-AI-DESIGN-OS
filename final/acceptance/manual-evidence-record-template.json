@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "release_id": "PENDING",
+  "scenario_id": "PENDING",
+  "status": "PENDING",
+  "release_candidate": {
+    "git_sha": "PENDING",
+    "version": "PENDING",
+    "migration_head": "PENDING"
+  },
+  "environment": "PENDING",
+  "tester": "PENDING",
+  "started_at_utc": "PENDING",
+  "completed_at_utc": "PENDING",
+  "clients": [],
+  "checks": [],
+  "manual_checks": [],
+  "evidence_refs": [
+    {"path": "PENDING", "sha256": "PENDING"}
+  ],
+  "notes": ""
+}

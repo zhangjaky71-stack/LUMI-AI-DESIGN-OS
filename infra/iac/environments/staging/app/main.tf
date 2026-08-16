@@ -31,13 +31,21 @@ locals {
       container_port    = 8000
       publicly_routed   = true
       health_check_path = "/health/ready"
-      environment = merge(local.common_environment, { LUMI_ROLE = "api" })
+      environment = merge(local.common_environment, {
+        LUMI_ROLE                        = "api"
+        LUMI_ALLOWED_ORIGINS             = "https://${var.domain_name}"
+        LUMI_STRIPE_CHECKOUT_SUCCESS_URL = "https://${var.domain_name}/billing/success?session_id={CHECKOUT_SESSION_ID}"
+        LUMI_STRIPE_CHECKOUT_CANCEL_URL  = "https://${var.domain_name}/billing"
+        LUMI_STRIPE_PORTAL_RETURN_URL    = "https://${var.domain_name}/billing"
+        LUMI_STRIPE_PLAN_CATALOG_JSON    = var.stripe_plan_catalog_json
+      })
       secret_arns = {
-        LUMI_DATABASE_URL           = local.secret_arns["database/app"]
-        LUMI_REDIS_URL              = local.secret_arns["redis/url"]
-        LUMI_RABBITMQ_URL           = local.secret_arns["rabbitmq/url"]
-        LUMI_BILLING_WEBHOOK_SECRET = local.secret_arns["billing/webhook"]
-        LUMI_AUTH_SIGNING_SECRET    = local.secret_arns["auth/signing"]
+        LUMI_DATABASE_URL          = local.secret_arns["database/app"]
+        LUMI_REDIS_URL             = local.secret_arns["redis/url"]
+        LUMI_RABBITMQ_URL          = local.secret_arns["rabbitmq/url"]
+        LUMI_STRIPE_SECRET_KEY     = local.secret_arns["billing/stripe-secret-key"]
+        LUMI_STRIPE_WEBHOOK_SECRET = local.secret_arns["billing/stripe-webhook-secret"]
+        LUMI_AUTH_SIGNING_SECRET   = local.secret_arns["auth/signing"]
       }
       s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["exports"]]
       autoscale_metric_name  = "ApiConcurrentRequests"
@@ -71,7 +79,10 @@ locals {
       min_capacity  = 2
       max_capacity  = 6
       environment = merge(local.common_environment, { LUMI_ROLE = "model-gateway" })
-      secret_arns = { LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"] }
+      secret_arns = {
+        LUMI_DATABASE_URL          = local.secret_arns["database/app"]
+        LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"]
+      }
       s3_bucket_arns         = []
       autoscale_metric_name  = "ModelGatewayInflight"
       autoscale_target_value = 40
@@ -113,12 +124,13 @@ locals {
     }
 
     sandbox-runtime = {
-      image         = var.sandbox_runtime_image
-      cpu           = 1024
-      memory        = 2048
-      desired_count = 2
-      min_capacity  = 2
-      max_capacity  = 6
+      image            = var.sandbox_runtime_image
+      cpu              = 1024
+      memory           = 2048
+      desired_count    = 2
+      min_capacity     = 2
+      max_capacity     = 6
+      isolated_network = true
       environment = merge(local.common_environment, { LUMI_ROLE = "sandbox-runtime" })
       secret_arns = {
         LUMI_REDIS_URL    = local.secret_arns["redis/url"]
@@ -134,18 +146,20 @@ locals {
 module "platform_app" {
   source = "../../../modules/platform-app"
 
-  project                    = local.project
-  environment                = local.environment
-  vpc_id                     = local.core.vpc_id
-  public_subnet_ids          = local.core.public_subnet_ids
-  private_subnet_ids         = local.core.private_subnet_ids
-  app_security_group_id      = local.core.app_security_group_id
-  alb_security_group_id      = local.core.alb_security_group_id
-  certificate_arn            = var.certificate_arn
-  kms_key_arn                = local.core.kms_key_arn
-  domain_name                = var.domain_name
-  hosted_zone_id             = var.hosted_zone_id
-  services                   = local.services
+  project                       = local.project
+  environment                   = local.environment
+  vpc_id                        = local.core.vpc_id
+  public_subnet_ids             = local.core.public_subnet_ids
+  private_subnet_ids            = local.core.private_subnet_ids
+  isolated_subnet_ids           = local.core.data_subnet_ids
+  app_security_group_id         = local.core.app_security_group_id
+  sandbox_security_group_id     = local.core.sandbox_security_group_id
+  alb_security_group_id         = local.core.alb_security_group_id
+  certificate_arn               = var.certificate_arn
+  kms_key_arn                   = local.core.kms_key_arn
+  domain_name                   = var.domain_name
+  hosted_zone_id                = var.hosted_zone_id
+  services                      = local.services
   waf_rate_limit_requests_per_5m = var.waf_rate_limit_requests_per_5m
   tags = {
     Owner       = "platform"

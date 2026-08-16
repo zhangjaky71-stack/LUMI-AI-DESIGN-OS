@@ -25,6 +25,10 @@ from .contracts import (
 )
 from .gateway import PostgresCostGateway, usage_facts_from_values
 from .model_gateway_adapter import PostgresModelCostAccounting
+from .model_gateway_factory import (
+    DurableModelBudgetConfigurationError,
+    build_durable_model_budget_guard,
+)
 
 __all__ = [
     "ActualCost",
@@ -38,6 +42,7 @@ __all__ = [
     "CostEntryType",
     "CostLedgerConflict",
     "CostSummary",
+    "DurableModelBudgetConfigurationError",
     "LedgerWriteResult",
     "PostgresCostGateway",
     "PostgresModelCostAccounting",
@@ -49,6 +54,7 @@ __all__ = [
     "ReservationStatus",
     "UsageFact",
     "UsageSummary",
+    "build_durable_model_budget_guard",
     "decimal_amount",
     "lifetime_period_key",
     "month_period_key",

@@ -6,7 +6,9 @@ module "compute" {
   vpc_id                    = var.vpc_id
   public_subnet_ids         = var.public_subnet_ids
   private_subnet_ids        = var.private_subnet_ids
+  isolated_subnet_ids       = var.isolated_subnet_ids
   app_security_group_id     = var.app_security_group_id
+  sandbox_security_group_id = var.sandbox_security_group_id
   alb_security_group_id     = var.alb_security_group_id
   certificate_arn           = var.certificate_arn
   kms_key_arn               = var.kms_key_arn

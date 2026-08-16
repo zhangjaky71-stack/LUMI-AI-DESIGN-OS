@@ -59,6 +59,10 @@ class PaidInvocationGuardRequiredError(ModelGatewayError):
     code = "MODEL_PAID_INVOCATION_GUARD_REQUIRED"
 
 
+class DurableBudgetGuardRequiredError(ModelGatewayError):
+    code = "MODEL_DURABLE_BUDGET_GUARD_REQUIRED"
+
+
 class AmbiguousProviderOutcomeError(ModelGatewayError):
     code = "MODEL_PROVIDER_OUTCOME_AMBIGUOUS"
 
