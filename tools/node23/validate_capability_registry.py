@@ -12,9 +12,15 @@ REQUIRED = (
     "services/model-gateway/src/lumi_model_gateway/registry.py",
     "services/model-gateway/src/lumi_model_gateway/registry_seed.py",
     "services/model-gateway/src/lumi_model_gateway/registry_postgres.py",
-    "services/model-gateway/src/lumi_model_gateway/routing_profile_evaluator.py",
+    (
+        "services/model-gateway/src/lumi_model_gateway/"
+        "routing_profile_evaluator.py"
+    ),
     "apps/api/src/lumi_api/persistence/models_capability_registry.py",
-    "apps/api/migrations/versions/20260816_0007_capability_registry.py",
+    (
+        "apps/api/migrations/versions/"
+        "20260816_0007_capability_registry.py"
+    ),
     "apps/api/migrations/versions/20260816_0007_sql/up_01.sql",
     "apps/api/migrations/versions/20260816_0007_sql/up_02.sql",
     "tools/node23/seed_capability_registry.py",
@@ -35,16 +41,27 @@ def read(path: str) -> str:
 
 
 def validate_required_files() -> None:
-    missing = [path for path in REQUIRED if not (ROOT / path).is_file()]
+    missing = [
+        path
+        for path in REQUIRED
+        if not (ROOT / path).is_file()
+    ]
     require(not missing, f"missing NODE-23 files: {missing}")
 
 
 def validate_migration_chain() -> None:
     migration = read(
-        "apps/api/migrations/versions/20260816_0007_capability_registry.py"
+        "apps/api/migrations/versions/"
+        "20260816_0007_capability_registry.py"
     )
-    require('revision = "20260816_0007"' in migration, "NODE-23 revision missing")
-    require('down_revision = "20260816_0006"' in migration, "NODE-23 base changed")
+    require(
+        'revision = "20260816_0007"' in migration,
+        "NODE-23 revision missing",
+    )
+    require(
+        'down_revision = "20260816_0006"' in migration,
+        "NODE-23 base changed",
+    )
     models = read("apps/api/src/lumi_api/persistence/models.py")
     require(
         "_models_capability_registry" in models,
@@ -53,7 +70,12 @@ def validate_migration_chain() -> None:
 
 
 def validate_registry_routing_boundary() -> None:
-    routing = read("services/model-gateway/src/lumi_model_gateway/routing.py")
+    routing = read(
+        "services/model-gateway/src/lumi_model_gateway/routing.py"
+    )
+    registry = read(
+        "services/model-gateway/src/lumi_model_gateway/registry.py"
+    )
     require(
         "capability_registry.capture_snapshot()" in routing,
         "ModelRouter does not query CapabilityRegistry snapshot",
@@ -66,20 +88,39 @@ def validate_registry_routing_boundary() -> None:
         "adapter_unavailable" in routing,
         "catalog entries without transport adapters do not fail closed",
     )
+    require(
+        "registry model has no executable capability claims" in registry,
+        "model without capability evidence does not fail closed",
+    )
 
 
 def validate_seed_truth() -> None:
     snapshot = load_seed_snapshot(ROOT)
-    providers = {record.provider for record in snapshot.models.values()}
-    require(len(providers) == 5, f"expected 5 providers, got {len(providers)}")
-    require(len(snapshot.models) == 28, f"expected 28 models, got {len(snapshot.models)}")
+    providers = {
+        record.provider
+        for record in snapshot.models.values()
+    }
     require(
-        len(snapshot.routing_profiles) == 15,
-        f"expected 15 routing profiles, got {len(snapshot.routing_profiles)}",
+        len(providers) == 5,
+        f"expected 5 providers, got {len(providers)}",
     )
     require(
-        all(not record.benchmarks for record in snapshot.models.values()),
-        "NODE-07 NOT_MEASURED records became synthetic benchmark scores",
+        len(snapshot.models) == 28,
+        f"expected 28 models, got {len(snapshot.models)}",
+    )
+    require(
+        len(snapshot.routing_profiles) == 15,
+        (
+            "expected 15 routing profiles, got "
+            f"{len(snapshot.routing_profiles)}"
+        ),
+    )
+    require(
+        all(
+            not record.benchmarks
+            for record in snapshot.models.values()
+        ),
+        "NODE-07 NOT_MEASURED records became benchmark scores",
     )
     require(
         all(
@@ -101,24 +142,35 @@ def validate_seed_truth() -> None:
 
 def validate_pricing_normalization() -> None:
     config = json.loads(
-        (ROOT / "config/model-registry.seed.json").read_text(encoding="utf-8")
+        (ROOT / "config/model-registry.seed.json").read_text(
+            encoding="utf-8"
+        )
     )
     raw_count = 0
     for provider_file in config["provider_files"]:
-        payload = json.loads((ROOT / provider_file).read_text(encoding="utf-8"))
+        payload = json.loads(
+            (ROOT / provider_file).read_text(encoding="utf-8")
+        )
         raw_count += sum(
             len(item.get("pricing") or [])
             for item in payload.get("models") or []
         )
     snapshot = load_seed_snapshot(ROOT)
-    normalized_count = sum(len(record.prices) for record in snapshot.models.values())
+    normalized_count = sum(
+        len(record.prices)
+        for record in snapshot.models.values()
+    )
     require(
         normalized_count == raw_count,
-        f"pricing normalization loss raw={raw_count} normalized={normalized_count}",
+        (
+            "pricing normalization loss "
+            f"raw={raw_count} normalized={normalized_count}"
+        ),
     )
     require(
         all(
-            price.source_ref and price.observed_at.tzinfo is not None
+            price.source_ref
+            and price.observed_at.tzinfo is not None
             for record in snapshot.models.values()
             for price in record.prices
         ),
@@ -128,33 +180,45 @@ def validate_pricing_normalization() -> None:
 
 def validate_profile_truthfulness() -> None:
     routes = json.loads(
-        (ROOT / "docs/models/route-candidates.json").read_text(encoding="utf-8")
+        (ROOT / "docs/models/route-candidates.json").read_text(
+            encoding="utf-8"
+        )
     )
     require(
-        all(route.get("selected_primary") is None for route in routes["routes"]),
+        all(
+            route.get("selected_primary") is None
+            for route in routes["routes"]
+        ),
         "seed selected a primary before live benchmark",
     )
     evaluator = read(
-        "services/model-gateway/src/lumi_model_gateway/routing_profile_evaluator.py"
+        "services/model-gateway/src/lumi_model_gateway/"
+        "routing_profile_evaluator.py"
     )
     require(
         "insufficient_evidence" in evaluator,
-        "profile evaluator does not fail open on missing measurements",
+        "profile evaluator invents missing measurements",
     )
 
 
 def validate_database_security_markers() -> None:
     global_sql = read(
-        "apps/api/migrations/versions/20260816_0007_sql/up_01.sql"
+        "apps/api/migrations/versions/"
+        "20260816_0007_sql/up_01.sql"
     )
     policy_sql = read(
-        "apps/api/migrations/versions/20260816_0007_sql/up_02.sql"
+        "apps/api/migrations/versions/"
+        "20260816_0007_sql/up_02.sql"
     )
     require(
         "model_registry_versions" in global_sql
         and "model_pricing_snapshots" in global_sql
         and "model_benchmark_scores" in global_sql,
         "registry persistence separation is incomplete",
+    )
+    require(
+        "region VARCHAR(64) DEFAULT 'global' NOT NULL" in global_sql,
+        "pricing region identity is nullable or lacks global default",
     )
     require(
         "ENABLE ROW LEVEL SECURITY" in policy_sql
@@ -169,7 +233,10 @@ def validate_database_security_markers() -> None:
 
 def validate_gap_ledger() -> None:
     ledger = json.loads(
-        (ROOT / "reports/nodes/NODE-23/gap-ledger.json").read_text(encoding="utf-8")
+        (
+            ROOT
+            / "reports/nodes/NODE-23/gap-ledger.json"
+        ).read_text(encoding="utf-8")
     )
     ids = {item["id"] for item in ledger["gaps"]}
     expected = {
@@ -181,7 +248,10 @@ def validate_gap_ledger() -> None:
         "REGISTRY-PACKAGE-006",
         "REGISTRY-CI-007",
     }
-    require(ids == expected, f"unexpected NODE-23 gap ledger: {sorted(ids)}")
+    require(
+        ids == expected,
+        f"unexpected NODE-23 gap ledger: {sorted(ids)}",
+    )
 
 
 def main() -> None:
@@ -198,7 +268,9 @@ def main() -> None:
     for check in checks:
         check()
         print(f"PASS {check.__name__}")
-    print(f"NODE23_CAPABILITY_REGISTRY_VALID: {len(checks)} checks")
+    print(
+        f"NODE23_CAPABILITY_REGISTRY_VALID: {len(checks)} checks"
+    )
 
 
 if __name__ == "__main__":
