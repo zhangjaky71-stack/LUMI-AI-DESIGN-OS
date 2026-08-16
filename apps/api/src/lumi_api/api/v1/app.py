@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from .auth_routes import router as auth_router
 from .errors import install_error_contract
 from .routes import router
 
@@ -15,6 +16,7 @@ def create_contract_app() -> FastAPI:
         openapi_url="/api/openapi.json",
     )
     install_error_contract(app)
+    app.include_router(auth_router)
     app.include_router(router)
     return app
 
