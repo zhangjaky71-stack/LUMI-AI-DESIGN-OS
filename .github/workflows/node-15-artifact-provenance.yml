@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - "apps/api/src/lumi_api/artifacts/**"
-      - "apps/api/tests/test_artifact_version_provenance_contract.py"
+      - "apps/api/tests/test_artifact_*.py"
       - "tools/node15/**"
       - "benchmarks/artifacts/**"
       - "docs/artifacts/**"
@@ -15,7 +15,7 @@ on:
     branches: [main]
     paths:
       - "apps/api/src/lumi_api/artifacts/**"
-      - "apps/api/tests/test_artifact_version_provenance_contract.py"
+      - "apps/api/tests/test_artifact_*.py"
       - "tools/node15/**"
       - "benchmarks/artifacts/**"
       - "docs/artifacts/**"
@@ -56,7 +56,7 @@ jobs:
 
       - name: Run executable Artifact contract tests
         run: |
-          PYTHONPATH=apps/api/src uv run pytest -q apps/api/tests/test_artifact_version_provenance_contract.py
+          PYTHONPATH=apps/api/src uv run pytest -q apps/api/tests/test_artifact_*.py
 
       - name: Export machine-readable Artifact schemas
         run: |
@@ -88,9 +88,9 @@ jobs:
       - name: Lint and type-check NODE-15 scope
         run: |
           uv run ruff check apps/api/src/lumi_api/artifacts \
-            apps/api/tests/test_artifact_version_provenance_contract.py tools/node15
+            apps/api/tests/test_artifact_*.py tools/node15
           uv run pyright apps/api/src/lumi_api/artifacts \
-            apps/api/tests/test_artifact_version_provenance_contract.py tools/node15
+            apps/api/tests/test_artifact_*.py tools/node15
 
       - name: Upload Artifact contract evidence
         if: always()
