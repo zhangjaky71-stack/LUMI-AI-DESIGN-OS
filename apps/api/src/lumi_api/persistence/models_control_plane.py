@@ -10,6 +10,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     String,
     UniqueConstraint,
@@ -35,16 +36,26 @@ class AgentGraphDefinitionModel(Base):
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, server_default=JSON_OBJECT_DEFAULT
+        JSONB,
+        nullable=False,
+        server_default=JSON_OBJECT_DEFAULT,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )
     __table_args__ = (
-        UniqueConstraint("graph_key", "graph_version", name="uq_agent_graph_definitions_identity"),
+        UniqueConstraint(
+            "graph_key",
+            "graph_version",
+            name="uq_agent_graph_definitions_identity",
+        ),
         CheckConstraint("content_hash ~ '^[0-9a-f]{64}$'", name="hash"),
         CheckConstraint("state_schema_version >= 1", name="schema_version"),
     )
@@ -59,13 +70,19 @@ class AgentRunControlModel(Base):
         primary_key=True,
     )
     organization_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
     )
     project_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+        PGUUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
     )
     task_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True
+        PGUUID(as_uuid=True),
+        ForeignKey("tasks.id", ondelete="SET NULL"),
+        nullable=True,
     )
     graph_key: Mapped[str] = mapped_column(String(128), nullable=False)
     graph_version: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -74,28 +91,54 @@ class AgentRunControlModel(Base):
     thread_id: Mapped[str] = mapped_column(String(255), nullable=False)
     control_status: Mapped[str] = mapped_column(String(32), nullable=False)
     checkpoint_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    checkpoint_namespace: Mapped[str] = mapped_column(String(1024), nullable=False, server_default="")
+    checkpoint_namespace: Mapped[str] = mapped_column(
+        String(1024),
+        nullable=False,
+        server_default="",
+    )
     state_values_json: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, server_default=JSON_OBJECT_DEFAULT
+        JSONB,
+        nullable=False,
+        server_default=JSON_OBJECT_DEFAULT,
     )
     next_nodes_json: Mapped[list[Any]] = mapped_column(
-        JSONB, nullable=False, server_default=JSON_ARRAY_DEFAULT
+        JSONB,
+        nullable=False,
+        server_default=JSON_ARRAY_DEFAULT,
     )
     interrupts_json: Mapped[list[Any]] = mapped_column(
-        JSONB, nullable=False, server_default=JSON_ARRAY_DEFAULT
+        JSONB,
+        nullable=False,
+        server_default=JSON_ARRAY_DEFAULT,
     )
-    resume_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    resume_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default="1",
+    )
     error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     __table_args__ = (
         UniqueConstraint(
-            "organization_id", "thread_id", name="uq_agent_run_control_thread"
+            "organization_id",
+            "thread_id",
+            name="uq_agent_run_control_thread",
+        ),
+        ForeignKeyConstraint(
+            ["graph_key", "graph_version"],
+            ["agent_graph_definitions.graph_key", "agent_graph_definitions.graph_version"],
+            name="fk_agent_run_control_graph_definition",
+            ondelete="RESTRICT",
         ),
         CheckConstraint(
             "control_status IN ('pending','running','waiting_user','waiting_external',"
