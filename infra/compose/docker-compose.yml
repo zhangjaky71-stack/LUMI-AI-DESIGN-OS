@@ -111,6 +111,22 @@ services:
         mc stat "local/$${MINIO_BUCKET_SANDBOX}" >/dev/null
     networks: [lumi_local]
 
+  clamav:
+    image: ${CLAMAV_IMAGE:-clamav/clamav:1.5.3}
+    profiles: [security]
+    restart: unless-stopped
+    ports:
+      - "${CLAMAV_PORT:-3310}:3310"
+    volumes:
+      - clamav_data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD-SHELL", "clamdcheck.sh"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    networks: [lumi_local]
+
   mailpit:
     image: ${MAILPIT_IMAGE}
     restart: unless-stopped
@@ -134,6 +150,8 @@ volumes:
     name: lumi_rabbitmq_data
   minio_data:
     name: lumi_minio_data
+  clamav_data:
+    name: lumi_clamav_data
 
 networks:
   lumi_local:

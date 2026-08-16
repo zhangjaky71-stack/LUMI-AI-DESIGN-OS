@@ -1,0 +1,274 @@
+name: NODE-18 Asset Storage
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/assets/**"
+      - "apps/api/src/lumi_api/api/v1/asset_*.py"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/src/lumi_api/api/v1/auth_guard.py"
+      - "apps/api/src/lumi_api/persistence/models_asset_storage.py"
+      - "apps/api/src/lumi_api/persistence/models_projects_assets.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260816_0004_asset_storage.py"
+      - "apps/api/migrations/versions/20260816_0004_sql/**"
+      - "apps/api/tests/test_asset_*.py"
+      - "tools/node18/**"
+      - "docs/assets/**"
+      - "docs/nodes/NODE-18-ASSET-STORAGE.md"
+      - "reports/nodes/NODE-18/**"
+      - "infra/compose/docker-compose.yml"
+      - "infra/compose/env.local.example"
+      - ".github/workflows/node-18-asset-storage.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/src/lumi_api/assets/**"
+      - "apps/api/src/lumi_api/api/v1/asset_*.py"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/src/lumi_api/api/v1/auth_guard.py"
+      - "apps/api/src/lumi_api/persistence/models_asset_storage.py"
+      - "apps/api/src/lumi_api/persistence/models_projects_assets.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260816_0004_asset_storage.py"
+      - "apps/api/migrations/versions/20260816_0004_sql/**"
+      - "apps/api/tests/test_asset_*.py"
+      - "tools/node18/**"
+      - "docs/assets/**"
+      - "reports/nodes/NODE-18/**"
+      - "infra/compose/docker-compose.yml"
+      - "infra/compose/env.local.example"
+      - ".github/workflows/node-18-asset-storage.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  SQLALCHEMY_VERSION: "2.0.51"
+  ALEMBIC_VERSION: "1.18.5"
+  ASYNCPG_VERSION: "0.31.0"
+  LUMI_DATABASE_MIGRATION_URL: "postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi"
+  LUMI_DATABASE_MIGRATION_URL_ASYNCPG: "postgresql://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi"
+  LUMI_DATABASE_APP_URL: "postgresql://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi"
+  LUMI_MINIO_ENDPOINT: "http://127.0.0.1:9000"
+  LUMI_CLAMD_HOST: "127.0.0.1"
+  LUMI_CLAMD_PORT: "3310"
+
+jobs:
+  asset-storage:
+    name: asset-storage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen workspace dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Validate Asset Storage architecture and migration
+        run: PYTHONPATH=apps/api/src uv run python tools/node18/validate_asset_storage.py
+
+      - name: Run Asset Storage contracts and API regression
+        run: |
+          PYTHONPATH=apps/api/src uv run pytest -q \
+            apps/api/tests/test_asset_storage_contract.py \
+            apps/api/tests/test_asset_security_contract.py \
+            apps/api/tests/test_asset_multipart_contract.py \
+            apps/api/tests/test_asset_http_contract.py \
+            apps/api/tests/test_api_v1_contract.py
+
+      - name: Export Asset Storage schemas
+        run: |
+          rm -rf reports/nodes/NODE-18/generated-schemas
+          PYTHONPATH=apps/api/src uv run python tools/node18/export_asset_schemas.py
+          test "$(find reports/nodes/NODE-18/generated-schemas -name '*.schema.json' | wc -l)" -eq 8
+
+      - name: Validate schemas and gap ledger
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          schemas = sorted(Path("reports/nodes/NODE-18/generated-schemas").glob("*.schema.json"))
+          assert len(schemas) == 8, len(schemas)
+          for path in schemas:
+              json.loads(path.read_text(encoding="utf-8"))
+              print(f"validated {path}")
+          ledger = json.loads(Path("reports/nodes/NODE-18/gap-ledger.json").read_text(encoding="utf-8"))
+          assert len(ledger["gaps"]) == 4
+          print("validated NODE-18 gap ledger")
+          PY
+
+      - name: Lint and type-check NODE-18 scope
+        run: |
+          uv run ruff check \
+            apps/api/src/lumi_api/assets \
+            apps/api/src/lumi_api/api/v1/asset_dependencies.py \
+            apps/api/src/lumi_api/api/v1/asset_routes.py \
+            apps/api/src/lumi_api/api/v1/auth_guard.py \
+            apps/api/src/lumi_api/persistence/models_asset_storage.py \
+            apps/api/tests/test_asset_storage_contract.py \
+            apps/api/tests/test_asset_security_contract.py \
+            apps/api/tests/test_asset_multipart_contract.py \
+            apps/api/tests/test_asset_http_contract.py \
+            tools/node18
+          uv run pyright \
+            apps/api/src/lumi_api/assets \
+            apps/api/src/lumi_api/api/v1/asset_dependencies.py \
+            apps/api/src/lumi_api/api/v1/asset_routes.py \
+            apps/api/src/lumi_api/api/v1/auth_guard.py \
+            apps/api/src/lumi_api/persistence/models_asset_storage.py \
+            apps/api/tests/test_asset_storage_contract.py \
+            apps/api/tests/test_asset_security_contract.py \
+            apps/api/tests/test_asset_multipart_contract.py \
+            apps/api/tests/test_asset_http_contract.py \
+            tools/node18
+
+      - name: Install ffmpeg for preview smoke
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Start PostgreSQL, MinIO and ClamAV
+        run: |
+          cp infra/compose/env.local.example infra/compose/.env
+          docker compose --profile security --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml up -d --wait --wait-timeout 300 \
+            postgres minio clamav
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            run --rm minio-init
+
+      - name: Real MinIO signed round trip
+        run: |
+          set -a
+          source infra/compose/.env
+          set +a
+          PYTHONPATH=apps/api/src uv run python tools/node18/test_minio_roundtrip.py
+
+      - name: Real ClamAV clean and EICAR scan
+        run: PYTHONPATH=apps/api/src uv run python tools/node18/test_clamd.py
+
+      - name: Real ffmpeg preview smoke
+        run: PYTHONPATH=apps/api/src uv run python tools/node18/test_ffmpeg_preview.py
+
+      - name: Upgrade database through NODE-17 baseline
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade 20260816_0003
+
+      - name: Load pre-NODE-18 deterministic two-tenant fixture
+        run: |
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -v ON_ERROR_STOP=1 -U lumi_migration -d lumi \
+            < apps/api/migrations/seeds/p0_local_fixture.sql
+
+      - name: Upgrade PostgreSQL to NODE-18 head
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+
+      - name: Validate frozen NODE-10 baseline plus current metadata
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            python tools/node10/validate_schema.py
+
+      - name: Re-run baseline database invariants at current head
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            python tools/node10/run_database_integration.py
+
+      - name: Validate NODE-18 PostgreSQL invariants
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            python tools/node18/test_asset_database.py
+
+      - name: Downgrade NODE-18 migration only
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic downgrade 20260816_0003
+
+      - name: Verify rollback preserves NODE-17 and NODE-16 baselines
+        run: |
+          asset_table="$(docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c "SELECT to_regclass('public.asset_upload_sessions') IS NULL")"
+          project_table="$(docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c "SELECT to_regclass('public.project_brief_versions') IS NOT NULL")"
+          auth_table="$(docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c "SELECT to_regclass('public.api_tokens') IS NOT NULL")"
+          test "$asset_table" = "t"
+          test "$project_table" = "t"
+          test "$auth_table" = "t"
+
+      - name: Reapply NODE-18 and rerun persistence invariants
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+          cd ../..
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            python tools/node18/test_asset_database.py
+
+      - name: Capture diagnostics on failure
+        if: failure()
+        run: |
+          mkdir -p reports/nodes/NODE-18/runtime
+          docker compose --profile security --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml ps \
+            > reports/nodes/NODE-18/runtime/compose-ps.txt 2>&1 || true
+          docker compose --profile security --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml logs --no-color --tail=400 \
+            postgres minio clamav \
+            > reports/nodes/NODE-18/runtime/services.log 2>&1 || true
+
+      - name: Upload NODE-18 evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-18-asset-storage-${{ github.run_id }}
+          path: |
+            reports/nodes/NODE-18/generated-schemas
+            reports/nodes/NODE-18/gap-ledger.json
+            reports/nodes/NODE-18/runtime
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose --profile security --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml down --volumes --remove-orphans || true
