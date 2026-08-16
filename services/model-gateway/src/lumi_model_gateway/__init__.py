@@ -34,12 +34,33 @@ from .models import (
     RoutingHints,
 )
 from .openai_adapter import OpenAIResponsesAdapter
+from .registry import (
+    BenchmarkScore,
+    CapabilityClaim,
+    CapabilityRegistry,
+    CapabilitySupport,
+    ClaimConfidence,
+    ModelLifecycle,
+    ModelRecord,
+    OrganizationModelPolicy,
+    PricingSnapshot,
+    RegistrySnapshot,
+    RoutingProfile,
+    RoutingWeights,
+)
+from .registry_postgres import PostgresCapabilityRegistryStore
+from .registry_seed import load_seed_registry, load_seed_snapshot
 from .routing import ModelRouter, ProviderRegistry
 from .secrets import EnvironmentSecretProvider, MappingSecretProvider
 
 __all__ = [
     "AnthropicMessagesAdapter",
+    "BenchmarkScore",
     "Capability",
+    "CapabilityClaim",
+    "CapabilityRegistry",
+    "CapabilitySupport",
+    "ClaimConfidence",
     "CostConfidence",
     "CostEstimate",
     "EnvironmentSecretProvider",
@@ -56,7 +77,9 @@ __all__ = [
     "ModelGateway",
     "ModelGatewayClient",
     "ModelInput",
+    "ModelLifecycle",
     "ModelOutput",
+    "ModelRecord",
     "ModelRequest",
     "ModelRouter",
     "ModelStreamChunk",
@@ -64,14 +87,22 @@ __all__ = [
     "NoRouteAvailable",
     "NormalizedResult",
     "OpenAIResponsesAdapter",
+    "OrganizationModelPolicy",
     "PaidSideEffectGuardRequired",
     "PaidSideEffectSemanticConflict",
+    "PostgresCapabilityRegistryStore",
+    "PricingSnapshot",
     "ProviderAcceptance",
     "ProviderCallError",
     "ProviderModel",
     "ProviderRegistry",
     "QualityProfile",
+    "RegistrySnapshot",
     "ResultStatus",
     "RetryPolicy",
     "RoutingHints",
+    "RoutingProfile",
+    "RoutingWeights",
+    "load_seed_registry",
+    "load_seed_snapshot",
 ]
