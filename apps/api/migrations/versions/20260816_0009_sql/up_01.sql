@@ -157,7 +157,7 @@ CREATE TABLE cost_budget_limits (
   CONSTRAINT ck_cost_budget_limits_amount CHECK (amount_limit >= 0),
   CONSTRAINT ck_cost_budget_limits_tolerance CHECK (tolerance_amount >= 0),
   CONSTRAINT ck_cost_budget_limits_currency CHECK (currency ~ '^[A-Z]{3}$'),
-  ADD CONSTRAINT ck_cost_budget_limits_mode CHECK (enforcement_mode IN ('hard','approval'))
+  CONSTRAINT ck_cost_budget_limits_mode CHECK (enforcement_mode IN ('hard','approval'))
 );
 
 -- statement-breakpoint
