@@ -36,6 +36,7 @@ class StripeProviderConfig:
     expected_livemode: bool
     webhook_tolerance_seconds: int = 300
     api_base: str = "https://api.stripe.com/v1"
+    api_version: str = "2026-02-25.clover"
 
     def __post_init__(self) -> None:
         expected_prefix = "sk_live_" if self.expected_livemode else "sk_test_"
@@ -45,6 +46,8 @@ class StripeProviderConfig:
             raise BillingError("BILLING_STRIPE_WEBHOOK_SECRET_INVALID", 500)
         if self.webhook_tolerance_seconds <= 0:
             raise BillingError("BILLING_STRIPE_WEBHOOK_TOLERANCE_INVALID", 500)
+        if not self.api_version.strip():
+            raise BillingError("BILLING_STRIPE_API_VERSION_INVALID", 500)
         if not self.price_ids_by_plan_version:
             raise BillingError("BILLING_STRIPE_PRICE_MAP_EMPTY", 500)
         for plan_version_id, price_id in self.price_ids_by_plan_version.items():
@@ -60,12 +63,7 @@ class StripeProviderConfig:
 
 
 class StripePaymentProvider:
-    """Stripe-hosted billing adapter.
-
-    Money never comes from the request body. A published LUMI plan version is mapped to a
-    server-owned Stripe Price ID and Checkout is always created in subscription mode.
-    Entitlements are updated only by verified Stripe webhook events through BillingEngine.
-    """
+    """Stripe-hosted billing adapter with server-owned prices and verified events."""
 
     name = "STRIPE"
 
@@ -79,6 +77,35 @@ class StripePaymentProvider:
         self._config = config
         self._transport = transport or self._default_transport
         self._now = now
+
+    def validate_plan_price(self, plan: PlanVersion) -> None:
+        price_id = self._config.price_ids_by_plan_version.get(plan.plan_version_id)
+        if not price_id:
+            raise BillingError("BILLING_STRIPE_PRICE_NOT_CONFIGURED", 409)
+        price = self._api("GET", f"/prices/{quote(price_id, safe='')}", None)
+        if price.get("active") is not True:
+            raise BillingError("BILLING_STRIPE_PRICE_INACTIVE", 409)
+        if price.get("livemode") is not self._config.expected_livemode:
+            raise BillingError("BILLING_STRIPE_PRICE_MODE_MISMATCH", 409)
+        if _optional_string(price.get("type")) != "recurring":
+            raise BillingError("BILLING_STRIPE_PRICE_NOT_RECURRING", 409)
+        if _optional_string(price.get("billing_scheme")) != "per_unit":
+            raise BillingError("BILLING_STRIPE_PRICE_BILLING_SCHEME_UNSUPPORTED", 409)
+        currency = _required_string(price, "currency", "BILLING_STRIPE_PRICE_INVALID").upper()
+        if currency != plan.currency or currency != "USD":
+            raise BillingError("BILLING_STRIPE_PRICE_CURRENCY_MISMATCH", 409)
+        unit_amount = price.get("unit_amount")
+        if isinstance(unit_amount, bool) or not isinstance(unit_amount, int) or unit_amount < 0:
+            raise BillingError("BILLING_STRIPE_PRICE_AMOUNT_INVALID", 409)
+        if unit_amount * 10_000 != plan.price_microusd:
+            raise BillingError("BILLING_STRIPE_PRICE_AMOUNT_MISMATCH", 409)
+        recurring = _mapping(price.get("recurring"))
+        interval = _optional_string(recurring.get("interval"))
+        expected_interval = "month" if plan.billing_interval == "MONTH" else "year"
+        if interval != expected_interval or recurring.get("interval_count") != 1:
+            raise BillingError("BILLING_STRIPE_PRICE_INTERVAL_MISMATCH", 409)
+        if _optional_string(recurring.get("usage_type")) != "licensed":
+            raise BillingError("BILLING_STRIPE_PRICE_USAGE_TYPE_UNSUPPORTED", 409)
 
     def create_customer(self, organization_id: str, billing_email: str | None) -> str:
         fields: list[tuple[str, str]] = [("metadata[organization_id]", organization_id)]
@@ -172,6 +199,9 @@ class StripePaymentProvider:
         livemode = event.get("livemode")
         if not isinstance(livemode, bool) or livemode is not self._config.expected_livemode:
             raise BillingError("BILLING_STRIPE_EVENT_MODE_MISMATCH", 409)
+        event_api_version = _optional_string(event.get("api_version"))
+        if event_api_version != self._config.api_version:
+            raise BillingError("BILLING_STRIPE_EVENT_API_VERSION_MISMATCH", 409)
         normalized = self._normalize_event(event)
         return normalized, hashlib.sha256(raw_body).hexdigest()
 
@@ -217,6 +247,8 @@ class StripePaymentProvider:
             if isinstance(amount_due, bool) or not isinstance(amount_due, int) or amount_due < 0:
                 raise BillingError("BILLING_WEBHOOK_INVOICE_INCOMPLETE")
             currency = _required_string(obj, "currency", "BILLING_WEBHOOK_INVOICE_INCOMPLETE")
+            if currency.lower() != "usd":
+                raise BillingError("BILLING_STRIPE_CURRENCY_UNSUPPORTED", 409)
             return NormalizedPaymentEvent(
                 provider=self.name,
                 provider_event_id=event_id,
@@ -262,7 +294,7 @@ class StripePaymentProvider:
             )
         except BillingError:
             raise
-        except Exception as error:  # pragma: no cover - defensive boundary around injected transports
+        except Exception as error:  # pragma: no cover
             raise BillingError("BILLING_STRIPE_UNAVAILABLE", 503) from error
 
     def _default_transport(
@@ -279,15 +311,11 @@ class StripePaymentProvider:
             "Authorization": f"Bearer {secret_key}",
             "Content-Type": "application/x-www-form-urlencoded",
             "User-Agent": "lumi-ai-design-os/stripe-adapter",
+            "Stripe-Version": self._config.api_version,
         }
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
-        request = Request(
-            url,
-            data=data,
-            method=method,
-            headers=headers,
-        )
+        request = Request(url, data=data, method=method, headers=headers)
         try:
             with urlopen(request, timeout=15) as response:  # noqa: S310 - fixed HTTPS API base
                 payload = response.read()
@@ -353,9 +381,8 @@ def _invoice_subscription_identity(
     if not details:
         details = _mapping(invoice.get("subscription_details"))
     metadata = _mapping(details.get("metadata"))
-    subscription_ref = _optional_string(details.get("subscription")) or _optional_string(
-        invoice.get("subscription")
-    )
+    subscription_ref = _optional_string(details.get("subscription"))
+    subscription_ref = subscription_ref or _optional_string(invoice.get("subscription"))
     if metadata:
         return metadata, subscription_ref
     lines = _mapping(invoice.get("lines"))
