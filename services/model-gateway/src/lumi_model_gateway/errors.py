@@ -54,7 +54,10 @@ class ProviderCallError(RuntimeError):
 
     @property
     def ambiguous_paid_effect(self) -> bool:
-        return self.acceptance is ProviderAcceptance.UNKNOWN and self.category is ErrorCategory.TIMEOUT
+        return (
+            self.acceptance is ProviderAcceptance.UNKNOWN
+            and self.category is ErrorCategory.TIMEOUT
+        )
 
 
 class NoRouteAvailable(RuntimeError):
@@ -63,6 +66,10 @@ class NoRouteAvailable(RuntimeError):
 
 class PaidSideEffectGuardRequired(RuntimeError):
     code = "MODEL_GATEWAY_PAID_SIDE_EFFECT_GUARD_REQUIRED"
+
+
+class PaidSideEffectSemanticConflict(RuntimeError):
+    code = "MODEL_GATEWAY_PAID_SIDE_EFFECT_SEMANTIC_CONFLICT"
 
 
 class SecretUnavailable(RuntimeError):

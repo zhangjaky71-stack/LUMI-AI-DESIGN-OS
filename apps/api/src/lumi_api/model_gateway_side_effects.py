@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Awaitable, Callable
 
 from lumi_model_gateway.errors import ProviderAcceptance, ProviderCallError
-from lumi_model_gateway.models import Capability, ModelRequest, NormalizedResult, ResultStatus, RouteCandidate
+from lumi_model_gateway.models import (
+    Capability,
+    ModelRequest,
+    NormalizedResult,
+    ResultStatus,
+    RouteCandidate,
+)
 from lumi_model_gateway.ports import PaidEffect, ReconcileEffect
 from lumi_model_gateway.serialization import result_from_dict, result_to_dict
 
@@ -36,12 +41,17 @@ class ConfirmedNotAcceptedProviderError(RuntimeError):
 class _ModelProviderReconciler(ProviderReconciler):
     reconcile_effect: ReconcileEffect | None
 
-    async def reconcile(self, operation: IdempotencyOperation) -> ProviderReconciliation:
+    async def reconcile(
+        self, operation: IdempotencyOperation
+    ) -> ProviderReconciliation:
         if not operation.provider_request_id or self.reconcile_effect is None:
             return ProviderReconciliation(
                 status=ProviderReconciliationStatus.AMBIGUOUS,
                 provider_request_id=operation.provider_request_id,
-                detail="provider request id/status unavailable; paid effect cannot be safely replayed",
+                detail=(
+                    "provider request id/status unavailable; paid effect cannot be safely "
+                    "replayed"
+                ),
             )
         try:
             result = await self.reconcile_effect(operation.provider_request_id)
@@ -67,7 +77,9 @@ class _ModelProviderReconciler(ProviderReconciler):
         return ProviderReconciliation(
             status=ProviderReconciliationStatus.NOT_FOUND,
             provider_request_id=operation.provider_request_id,
-            detail=f"provider reports terminal non-success status {result.status.value}",
+            detail=(
+                f"provider reports terminal non-success status {result.status.value}"
+            ),
         )
 
 
@@ -112,7 +124,10 @@ class Node20ModelSideEffectBridge:
             try:
                 result = await effect()
             except ProviderCallError as exc:
-                if exc.retryable and exc.acceptance is ProviderAcceptance.NOT_ACCEPTED:
+                if (
+                    exc.retryable
+                    and exc.acceptance is ProviderAcceptance.NOT_ACCEPTED
+                ):
                     raise ConfirmedNotAcceptedProviderError(exc) from exc
                 raise
             if result.provider_request_id:
@@ -120,7 +135,9 @@ class Node20ModelSideEffectBridge:
             return SideEffectOutcome(
                 result=result_to_dict(result),
                 result_ref=_first_asset_ref(result),
-                response_status=202 if result.status is ResultStatus.PENDING else 200,
+                response_status=(
+                    202 if result.status is ResultStatus.PENDING else 200
+                ),
                 provider_request_id=result.provider_request_id,
             )
 
@@ -153,4 +170,7 @@ def _side_effect_kind(capability: Capability) -> SideEffectKind:
 
 
 def _first_asset_ref(result: NormalizedResult) -> str | None:
-    return next((output.asset_ref for output in result.outputs if output.asset_ref), None)
+    return next(
+        (output.asset_ref for output in result.outputs if output.asset_ref),
+        None,
+    )

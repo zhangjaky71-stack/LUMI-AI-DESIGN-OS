@@ -5,6 +5,7 @@ from collections import defaultdict
 from decimal import Decimal
 from uuid import uuid4
 
+from .errors import PaidSideEffectSemanticConflict
 from .models import CostEstimate, HealthSnapshot, ModelRequest, NormalizedResult, RouteCandidate
 from .ports import BudgetReservation, CostTelemetry, PaidEffect, ReconcileEffect
 
@@ -35,7 +36,9 @@ class MemoryBudgetPort:
         self.remaining_usd = remaining_usd
         self.reserved: dict[str, Decimal] = {}
 
-    async def reserve(self, request: ModelRequest, candidate: RouteCandidate) -> BudgetReservation:
+    async def reserve(
+        self, request: ModelRequest, candidate: RouteCandidate
+    ) -> BudgetReservation:
         amount = candidate.estimate.amount_usd
         effective_limit = request.budget_limit
         if amount is None:
@@ -43,16 +46,30 @@ class MemoryBudgetPort:
                 return BudgetReservation(False, reason="unknown_cost")
             return BudgetReservation(True, reservation_ref=f"unknown:{uuid4()}")
         if effective_limit is not None and amount > effective_limit:
-            return BudgetReservation(False, remaining_usd=effective_limit, reason="operation_budget")
+            return BudgetReservation(
+                False,
+                remaining_usd=effective_limit,
+                reason="operation_budget",
+            )
         if self.remaining_usd is not None and amount > self.remaining_usd:
-            return BudgetReservation(False, remaining_usd=self.remaining_usd, reason="remaining_budget")
+            return BudgetReservation(
+                False,
+                remaining_usd=self.remaining_usd,
+                reason="remaining_budget",
+            )
         ref = str(uuid4())
         self.reserved[ref] = amount
         if self.remaining_usd is not None:
             self.remaining_usd -= amount
-        return BudgetReservation(True, reservation_ref=ref, remaining_usd=self.remaining_usd)
+        return BudgetReservation(
+            True,
+            reservation_ref=ref,
+            remaining_usd=self.remaining_usd,
+        )
 
-    async def settle(self, reservation: BudgetReservation, *, actual: CostEstimate) -> None:
+    async def settle(
+        self, reservation: BudgetReservation, *, actual: CostEstimate
+    ) -> None:
         if not reservation.reservation_ref:
             return
         estimated = self.reserved.pop(reservation.reservation_ref, Decimal("0"))
@@ -79,7 +96,9 @@ class MemoryPaidSideEffectPort:
     """Deterministic CI reference only. Production must bind NODE-20 SideEffectGateway."""
 
     def __init__(self) -> None:
-        self._results: dict[tuple[str, str, str, str], NormalizedResult] = {}
+        self._results: dict[
+            tuple[str, str, str, str], tuple[str, NormalizedResult]
+        ] = {}
         self.executions = 0
         self._lock = asyncio.Lock()
 
@@ -98,13 +117,19 @@ class MemoryPaidSideEffectPort:
             candidate.model.provider,
             candidate.model.model,
         )
+        semantic_hash = request.semantic_hash()
         async with self._lock:
             existing = self._results.get(key)
             if existing is not None:
-                return existing
+                existing_hash, result = existing
+                if existing_hash != semantic_hash:
+                    raise PaidSideEffectSemanticConflict(
+                        PaidSideEffectSemanticConflict.code
+                    )
+                return result
             self.executions += 1
             result = await effect()
-            self._results[key] = result
+            self._results[key] = (semantic_hash, result)
             return result
 
 

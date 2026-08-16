@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import asdict, dataclass, field, is_dataclass
 from decimal import Decimal
 from enum import StrEnum
@@ -134,7 +135,13 @@ class ModelRequest:
             "constraints": self.constraints,
             "routing_hints": self.routing_hints,
         }
-        encoded = json.dumps(_jsonable(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        encoded = json.dumps(
+            _jsonable(payload),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
         return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
@@ -153,6 +160,10 @@ class ProviderModel:
     enabled: bool = True
 
     def __post_init__(self) -> None:
+        if not self.provider or not self.model:
+            raise ValueError("provider and model are required")
+        if not self.capabilities:
+            raise ValueError("provider model must expose at least one capability")
         if not 0 <= self.quality_score <= 100 or not 0 <= self.latency_score <= 100:
             raise ValueError("quality_score and latency_score must be 0..100")
 
@@ -164,6 +175,10 @@ class CostEstimate:
     pricing_snapshot_id: str | None = None
     detail: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if self.amount_usd is not None and self.amount_usd < 0:
+            raise ValueError("cost cannot be negative")
+
 
 @dataclass(frozen=True, slots=True)
 class ModelUsage:
@@ -173,6 +188,17 @@ class ModelUsage:
     images: int = 0
     video_seconds: Decimal = Decimal("0")
     requests: int = 1
+
+    def __post_init__(self) -> None:
+        values = (
+            self.input_tokens,
+            self.output_tokens,
+            self.cached_input_tokens,
+            self.images,
+            self.requests,
+        )
+        if any(value < 0 for value in values) or self.video_seconds < 0:
+            raise ValueError("usage values cannot be negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,7 +227,9 @@ class NormalizedResult:
     safety_metadata: dict[str, Any] = field(default_factory=dict)
     finish_reason: str | None = None
     raw_response_ref: str | None = None
-    cost: CostEstimate = field(default_factory=lambda: CostEstimate(None, CostConfidence.UNKNOWN))
+    cost: CostEstimate = field(
+        default_factory=lambda: CostEstimate(None, CostConfidence.UNKNOWN)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,11 +272,29 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, UUID):
         return str(value)
     if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise ValueError("non-finite Decimal is not canonical")
         return format(value, "f")
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("non-finite float is not canonical")
+        return value
     if is_dataclass(value):
         return _jsonable(asdict(value))
     if isinstance(value, dict):
         return {str(key): _jsonable(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple, set, frozenset)):
+    if isinstance(value, (set, frozenset)):
+        converted = [_jsonable(item) for item in value]
+        return sorted(
+            converted,
+            key=lambda item: json.dumps(
+                item,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ),
+        )
+    if isinstance(value, (list, tuple)):
         return [_jsonable(item) for item in value]
     return value
