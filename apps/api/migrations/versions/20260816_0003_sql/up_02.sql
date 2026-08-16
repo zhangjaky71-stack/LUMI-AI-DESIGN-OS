@@ -2,6 +2,7 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app') THEN
     REVOKE UPDATE, DELETE ON TABLE project_brief_versions FROM lumi_app;
+    REVOKE DELETE ON TABLE project_branch_defaults FROM lumi_app;
   END IF;
 END;
 $$;
