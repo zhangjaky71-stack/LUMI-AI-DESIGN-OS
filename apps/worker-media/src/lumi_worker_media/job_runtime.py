@@ -57,8 +57,6 @@ class JobStore(Protocol):
         error_message: str,
     ) -> JobRecord: ...
 
-    def requeue_failed(self, message: JobMessage, *, now: datetime) -> JobRecord: ...
-
     def succeed(
         self,
         message: JobMessage,
@@ -171,10 +169,11 @@ class MemoryJobStore(JobStore):
             raise ValueError("JOB_NOT_REPLAYABLE")
         updated = replace(
             record,
-            state=JobState.RETRYING,
+            state=JobState.PENDING,
+            attempt_count=0,
             updated_at=now,
             finished_at=None,
-            next_retry_at=now,
+            next_retry_at=None,
             cancellation_requested_at=None,
             error_category=None,
             error_code=None,
