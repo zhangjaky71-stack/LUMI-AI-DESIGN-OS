@@ -15,18 +15,26 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def stable_uuid(kind: str, value: str) -> UUID:
-    return uuid5(NAMESPACE_URL, f"lumi:model-registry:{kind}:{value}")
+    return uuid5(
+        NAMESPACE_URL,
+        f"lumi:model-registry:{kind}:{value}",
+    )
 
 
-async def publish_snapshot(connection: Any, snapshot: RegistrySnapshot) -> dict[str, int]:
+async def publish_snapshot(
+    connection: Any,
+    snapshot: RegistrySnapshot,
+) -> dict[str, int]:
     existing = await connection.fetchrow(
-        "SELECT id, checksum_sha256 FROM model_registry_versions WHERE version = $1",
+        "SELECT id, checksum_sha256 FROM model_registry_versions "
+        "WHERE version = $1",
         snapshot.version,
     )
     if existing is not None:
         if existing["checksum_sha256"] != snapshot.checksum_sha256:
             raise RuntimeError(
-                "REGISTRY_VERSION_CHECKSUM_CONFLICT: published version is immutable"
+                "REGISTRY_VERSION_CHECKSUM_CONFLICT: "
+                "published version is immutable"
             )
         return await snapshot_counts(connection, existing["id"])
 
@@ -35,7 +43,8 @@ async def publish_snapshot(connection: Any, snapshot: RegistrySnapshot) -> dict[
         await connection.execute(
             """
             INSERT INTO model_registry_versions
-              (id, version, checksum_sha256, status, observed_at, published_at, source_ref)
+              (id, version, checksum_sha256, status, observed_at,
+               published_at, source_ref)
             VALUES ($1, $2, $3, 'published', $4, $5, $6)
             """,
             version_id,
@@ -48,7 +57,8 @@ async def publish_snapshot(connection: Any, snapshot: RegistrySnapshot) -> dict[
         for capability in Capability:
             await connection.execute(
                 """
-                INSERT INTO model_capabilities (capability_key, description)
+                INSERT INTO model_capabilities
+                  (capability_key, description)
                 VALUES ($1, $2)
                 ON CONFLICT (capability_key) DO NOTHING
                 """,
@@ -58,7 +68,6 @@ async def publish_snapshot(connection: Any, snapshot: RegistrySnapshot) -> dict[
 
         provider_ids: dict[str, UUID] = {}
         definition_ids: dict[str, UUID] = {}
-        revision_ids: dict[str, UUID] = {}
         for record in snapshot.models.values():
             provider_id = provider_ids.setdefault(
                 record.provider,
@@ -77,7 +86,10 @@ async def publish_snapshot(connection: Any, snapshot: RegistrySnapshot) -> dict[
                 record.source_refs[0],
                 record.observed_at,
             )
-            definition_id = stable_uuid("model", record.model_key)
+            definition_id = stable_uuid(
+                "model",
+                record.model_key,
+            )
             definition_ids[record.model_key] = definition_id
             await connection.execute(
                 """
@@ -93,15 +105,21 @@ async def publish_snapshot(connection: Any, snapshot: RegistrySnapshot) -> dict[
             )
             revision_id = stable_uuid(
                 "revision",
-                f"{snapshot.version}:{record.model_key}:{record.revision_id}",
+                (
+                    f"{snapshot.version}:"
+                    f"{record.model_key}:"
+                    f"{record.revision_id}"
+                ),
             )
-            revision_ids[record.model_key] = revision_id
             await connection.execute(
                 """
                 INSERT INTO model_revisions
-                  (id, registry_version_id, model_definition_id, revision_key,
-                   lifecycle, route_eligible, regions, observed_at, source_refs, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9::jsonb, $10::jsonb)
+                  (id, registry_version_id, model_definition_id,
+                   revision_key, lifecycle, route_eligible, regions,
+                   observed_at, source_refs, metadata)
+                VALUES
+                  ($1, $2, $3, $4, $5, $6, $7::jsonb,
+                   $8, $9::jsonb, $10::jsonb)
                 """,
                 revision_id,
                 version_id,
@@ -117,14 +135,20 @@ async def publish_snapshot(connection: Any, snapshot: RegistrySnapshot) -> dict[
             for claim in record.claims:
                 claim_id = stable_uuid(
                     "claim",
-                    f"{snapshot.version}:{record.model_key}:{claim.capability.value}",
+                    (
+                        f"{snapshot.version}:"
+                        f"{record.model_key}:"
+                        f"{claim.capability.value}"
+                    ),
                 )
                 await connection.execute(
                     """
                     INSERT INTO model_capability_claims
-                      (id, registry_version_id, model_revision_id, capability_key,
-                       support, limits, confidence, observed_at, source_ref)
-                    VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
+                      (id, registry_version_id, model_revision_id,
+                       capability_key, support, limits, confidence,
+                       observed_at, source_ref)
+                    VALUES
+                      ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
                     """,
                     claim_id,
                     version_id,
@@ -137,14 +161,20 @@ async def publish_snapshot(connection: Any, snapshot: RegistrySnapshot) -> dict[
                     claim.source_ref,
                 )
             for price in record.prices:
-                price_id = stable_uuid("price", price.pricing_snapshot_id)
+                price_id = stable_uuid(
+                    "price",
+                    price.pricing_snapshot_id,
+                )
                 await connection.execute(
                     """
                     INSERT INTO model_pricing_snapshots
-                      (id, registry_version_id, model_revision_id, metric, currency,
-                       unit, price, minimum_charge, region, effective_from, observed_at,
-                       expires_at, source_ref)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                      (id, registry_version_id, model_revision_id,
+                       metric, currency, unit, price, minimum_charge,
+                       region, effective_from, observed_at, expires_at,
+                       source_ref)
+                    VALUES
+                      ($1, $2, $3, $4, $5, $6, $7, $8,
+                       $9, $10, $11, $12, $13)
                     """,
                     price_id,
                     version_id,
@@ -161,14 +191,20 @@ async def publish_snapshot(connection: Any, snapshot: RegistrySnapshot) -> dict[
                     price.source_ref,
                 )
             for benchmark in record.benchmarks:
-                benchmark_id = stable_uuid("benchmark", benchmark.benchmark_score_id)
+                benchmark_id = stable_uuid(
+                    "benchmark",
+                    benchmark.benchmark_score_id,
+                )
                 await connection.execute(
                     """
                     INSERT INTO model_benchmark_scores
-                      (id, registry_version_id, model_revision_id, profile,
-                       dataset_version, run_id, sample_count, score, confidence_low,
-                       confidence_high, statistics, observed_at, source_ref)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)
+                      (id, registry_version_id, model_revision_id,
+                       profile, dataset_version, run_id, sample_count,
+                       score, confidence_low, confidence_high, statistics,
+                       observed_at, source_ref)
+                    VALUES
+                      ($1, $2, $3, $4, $5, $6, $7, $8,
+                       $9, $10, $11::jsonb, $12, $13)
                     """,
                     benchmark_id,
                     version_id,
@@ -180,7 +216,10 @@ async def publish_snapshot(connection: Any, snapshot: RegistrySnapshot) -> dict[
                     benchmark.score,
                     benchmark.confidence_low,
                     benchmark.confidence_high,
-                    json.dumps(dict(benchmark.statistics), default=str),
+                    json.dumps(
+                        dict(benchmark.statistics),
+                        default=str,
+                    ),
                     benchmark.observed_at,
                     benchmark.source_ref,
                 )
@@ -195,30 +234,44 @@ async def publish_snapshot(connection: Any, snapshot: RegistrySnapshot) -> dict[
                 "constraint": str(profile.weights.constraint),
                 "cost": str(profile.weights.cost),
                 "latency": str(profile.weights.latency),
-                "availability": str(profile.weights.availability),
+                "availability": str(
+                    profile.weights.availability
+                ),
             }
             await connection.execute(
                 """
                 INSERT INTO model_routing_profiles
-                  (id, registry_version_id, profile_key, required_capabilities,
-                   weights, minimum_quality, selection_gate, source_ref)
-                VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8)
+                  (id, registry_version_id, profile_key,
+                   required_capabilities, weights, minimum_quality,
+                   selection_gate, source_ref)
+                VALUES
+                  ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8)
                 """,
                 profile_id,
                 version_id,
                 profile.name,
-                json.dumps([item.value for item in profile.required_capabilities]),
+                json.dumps(
+                    [
+                        item.value
+                        for item in profile.required_capabilities
+                    ]
+                ),
                 json.dumps(weights),
                 profile.minimum_quality,
                 profile.selection_gate,
                 profile.source_ref,
             )
-            stable_fallbacks = set(profile.stable_fallback_model_keys)
-            for ordinal, model_key in enumerate(profile.candidate_model_keys):
+            stable_fallbacks = set(
+                profile.stable_fallback_model_keys
+            )
+            for ordinal, model_key in enumerate(
+                profile.candidate_model_keys
+            ):
                 await connection.execute(
                     """
                     INSERT INTO model_routing_profile_candidates
-                      (routing_profile_id, model_definition_id, ordinal, stable_fallback)
+                      (routing_profile_id, model_definition_id,
+                       ordinal, stable_fallback)
                     VALUES ($1, $2, $3, $4)
                     """,
                     profile_id,
@@ -230,31 +283,37 @@ async def publish_snapshot(connection: Any, snapshot: RegistrySnapshot) -> dict[
     return await snapshot_counts(connection, version_id)
 
 
-async def snapshot_counts(connection: Any, version_id: UUID) -> dict[str, int]:
+async def snapshot_counts(
+    connection: Any,
+    version_id: UUID,
+) -> dict[str, int]:
     queries = {
         "providers": "SELECT count(*) FROM model_providers",
         "models": (
-            "SELECT count(*) FROM model_revisions WHERE registry_version_id = $1"
+            "SELECT count(*) FROM model_revisions "
+            "WHERE registry_version_id = $1"
         ),
         "claims": (
-            "SELECT count(*) FROM model_capability_claims WHERE registry_version_id = $1"
+            "SELECT count(*) FROM model_capability_claims "
+            "WHERE registry_version_id = $1"
         ),
         "prices": (
-            "SELECT count(*) FROM model_pricing_snapshots WHERE registry_version_id = $1"
+            "SELECT count(*) FROM model_pricing_snapshots "
+            "WHERE registry_version_id = $1"
         ),
         "benchmarks": (
-            "SELECT count(*) FROM model_benchmark_scores WHERE registry_version_id = $1"
+            "SELECT count(*) FROM model_benchmark_scores "
+            "WHERE registry_version_id = $1"
         ),
         "profiles": (
-            "SELECT count(*) FROM model_routing_profiles WHERE registry_version_id = $1"
+            "SELECT count(*) FROM model_routing_profiles "
+            "WHERE registry_version_id = $1"
         ),
     }
     result: dict[str, int] = {}
     for key, query in queries.items():
-        if "$1" in query:
-            value = await connection.fetchval(query, version_id)
-        else:
-            value = await connection.fetchval(query)
+        args = (version_id,) if "$1" in query else ()
+        value = await connection.fetchval(query, *args)
         result[key] = int(value or 0)
     return result
 
@@ -272,7 +331,12 @@ async def run(dsn: str) -> None:
         counts = await publish_snapshot(connection, snapshot)
     finally:
         await connection.close()
-    print(json.dumps({"snapshot_id": snapshot.snapshot_id, **counts}, sort_keys=True))
+    print(
+        json.dumps(
+            {"snapshot_id": snapshot.snapshot_id, **counts},
+            sort_keys=True,
+        )
+    )
 
 
 def main() -> None:
