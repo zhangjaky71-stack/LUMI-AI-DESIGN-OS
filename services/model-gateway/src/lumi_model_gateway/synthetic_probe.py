@@ -7,6 +7,7 @@ from decimal import Decimal
 from enum import StrEnum
 from time import monotonic
 
+from .errors import ProviderCallError
 from .provider_health import AdaptiveProviderHealthRegistry
 
 
@@ -29,11 +30,15 @@ class SyntheticProbeDefinition:
 
     def __post_init__(self) -> None:
         if not self.provider or not self.model or not self.capability:
-            raise ValueError("PROVIDER_HEALTH_PROBE_IDENTITY_REQUIRED")
+            raise ValueError(
+                "PROVIDER_HEALTH_PROBE_IDENTITY_REQUIRED"
+            )
         if self.estimated_cost_usd < 0:
             raise ValueError("PROVIDER_HEALTH_PROBE_COST_INVALID")
         if self.timeout_seconds <= 0:
-            raise ValueError("PROVIDER_HEALTH_PROBE_TIMEOUT_INVALID")
+            raise ValueError(
+                "PROVIDER_HEALTH_PROBE_TIMEOUT_INVALID"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,7 +49,9 @@ class SyntheticProbePolicy:
 
     def __post_init__(self) -> None:
         if self.max_estimated_cost_usd < 0:
-            raise ValueError("PROVIDER_HEALTH_PROBE_POLICY_COST_INVALID")
+            raise ValueError(
+                "PROVIDER_HEALTH_PROBE_POLICY_COST_INVALID"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +65,7 @@ ProbeCall = Callable[[], Awaitable[None]]
 
 
 class SyntheticProbeRunner:
-    """Runs only explicitly authorized probes; no provider SDK is embedded here."""
+    """Runs only explicitly authorized probes; embeds no provider SDK."""
 
     def __init__(
         self,
@@ -92,10 +99,14 @@ class SyntheticProbeRunner:
 
         started = monotonic()
         try:
-            async with asyncio.timeout(definition.timeout_seconds):
+            async with asyncio.timeout(
+                definition.timeout_seconds
+            ):
                 await probe()
         except TimeoutError:
-            latency_ms = int((monotonic() - started) * 1000)
+            latency_ms = int(
+                (monotonic() - started) * 1000
+            )
             self.health.record_failure(
                 definition.provider,
                 definition.model,
@@ -113,14 +124,17 @@ class SyntheticProbeRunner:
                 "probe_timeout",
                 latency_ms,
             )
-        except Exception:
-            latency_ms = int((monotonic() - started) * 1000)
+        except ProviderCallError as exc:
+            latency_ms = int(
+                (monotonic() - started) * 1000
+            )
             self.health.record_failure(
                 definition.provider,
                 definition.model,
-                "provider_unavailable",
+                exc.category.value,
                 capability=definition.capability,
                 latency_ms=latency_ms,
+                retry_after_seconds=exc.retry_after_seconds,
             )
             self.health.release_probe(
                 definition.provider,
@@ -129,7 +143,22 @@ class SyntheticProbeRunner:
             )
             return SyntheticProbeResult(
                 SyntheticProbeStatus.FAILED,
-                "probe_provider_failure",
+                f"probe_provider_error:{exc.category.value}",
+                latency_ms,
+            )
+        except Exception:
+            # Probe implementation/configuration errors are ours, not Provider evidence.
+            latency_ms = int(
+                (monotonic() - started) * 1000
+            )
+            self.health.release_probe(
+                definition.provider,
+                definition.model,
+                capability=definition.capability,
+            )
+            return SyntheticProbeResult(
+                SyntheticProbeStatus.FAILED,
+                "probe_internal_error",
                 latency_ms,
             )
 
