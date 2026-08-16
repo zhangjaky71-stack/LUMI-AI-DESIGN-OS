@@ -31,6 +31,7 @@ from lumi_model_gateway.models import (
     NormalizedResult,
     ProviderModel,
     ResultStatus,
+    StreamEventType,
 )
 from lumi_model_gateway.provider_health import (
     AdaptiveProviderHealthRegistry,
@@ -125,9 +126,12 @@ class FakeAdapter:
         request: ModelRequest,
         model: ProviderModel,
     ) -> AsyncIterator[ModelStreamChunk]:
-        del request, model
-        if False:
-            yield ModelStreamChunk  # pragma: no cover
+        del request
+        yield ModelStreamChunk(
+            StreamEventType.COMPLETED,
+            self._provider,
+            model.model,
+        )
 
     async def get_async_status(
         self,
@@ -164,7 +168,9 @@ class FakeAdapter:
 
 def request() -> ModelRequest:
     return ModelRequest(
-        request_id=UUID("01910000-0000-7000-8000-000000000701"),
+        request_id=UUID(
+            "01910000-0000-7000-8000-000000000701"
+        ),
         organization_id=UUID(
             "01910000-0000-7000-8000-000000000702"
         ),
@@ -258,7 +264,10 @@ def test_all_open_routes_raise_explicit_temporary_unavailable() -> None:
     try:
         asyncio.run(gateway.invoke(request()))
     except ModelCapabilityTemporarilyUnavailable as exc:
-        assert "MODEL_CAPABILITY_TEMPORARILY_UNAVAILABLE" in str(exc)
+        assert (
+            "MODEL_CAPABILITY_TEMPORARILY_UNAVAILABLE"
+            in str(exc)
+        )
     else:
         raise AssertionError(
             "all-open route did not raise temporary unavailable"
@@ -275,7 +284,9 @@ def test_invalid_request_does_not_open_provider() -> None:
     except ProviderCallError as exc:
         assert exc.category is ErrorCategory.INVALID_REQUEST
     else:
-        raise AssertionError("invalid request was not propagated")
+        raise AssertionError(
+            "invalid request was not propagated"
+        )
     snapshot = health.detailed_snapshot(
         first.provider_name,
         first.models()[0].model,
