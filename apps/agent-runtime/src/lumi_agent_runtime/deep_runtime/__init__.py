@@ -1,63 +1,43 @@
 from .contracts import (
-    DeepAgentDefinition,
+    AgentTaskResult,
+    AgentTaskStatus,
     DeepAgentInvocationContext,
-    DeepSubagentDefinition,
+    DeepAgentProvenance,
+    DeepAgentTaskRequest,
     DelegationLimits,
-    DelegationUsage,
-    SubagentInvocationContext,
+    MaterializedSkill,
+    PermissionScope,
+    PinnedContextBundle,
+    ResolvedAgentConfig,
+    ResolvedSubagent,
+    StoredAgentResult,
 )
-from .control_plane import (
-    DeepAgentControlPlaneBundle,
-    DeepAgentControlPlaneCompiler,
-)
-from .errors import DeepAgentRuntimeError
-from .factory import CompiledDeepAgent
-from .node25_adapter import Node25ToolGatewayInvoker, StaticToolDefinitionReader
-from .ports import (
-    DeepAgentBackendProvider,
-    DeepAgentCheckpointerProvider,
-    DeepAgentModelProvider,
-    DeepAgentStoreProvider,
-    DeepAgentToolProvider,
-)
-from .providers import (
-    ProfileModelProvider,
-    StaticCheckpointerProvider,
-    StaticStoreProvider,
-    TrustedBackendProvider,
-    mark_backend_bound,
-    mark_model_gateway_bound,
-)
-from .registry import DeepAgentRegistry
-from .runtime_factory import BoundedDeepAgentRuntimeFactory
+from .executor import DeepAgentTaskExecutor
+from .factory import CompiledDeepAgent, LumiDeepAgentFactory
+from .filesystem import ScopedWorkspacePolicy, mark_trusted_backend
+from .structured_result import AGENT_TASK_RESULT_SCHEMA, StructuredResultParser
 from .tooling import BoundToolDefinition, LumiToolGatewayProvider
 
 __all__ = [
+    "AGENT_TASK_RESULT_SCHEMA",
+    "AgentTaskResult",
+    "AgentTaskStatus",
     "BoundToolDefinition",
-    "BoundedDeepAgentRuntimeFactory",
     "CompiledDeepAgent",
-    "DeepAgentBackendProvider",
-    "DeepAgentCheckpointerProvider",
-    "DeepAgentControlPlaneBundle",
-    "DeepAgentControlPlaneCompiler",
-    "DeepAgentDefinition",
     "DeepAgentInvocationContext",
-    "DeepAgentModelProvider",
-    "DeepAgentRegistry",
-    "DeepAgentRuntimeError",
-    "DeepAgentStoreProvider",
-    "DeepAgentToolProvider",
-    "DeepSubagentDefinition",
+    "DeepAgentProvenance",
+    "DeepAgentTaskExecutor",
+    "DeepAgentTaskRequest",
     "DelegationLimits",
-    "DelegationUsage",
+    "LumiDeepAgentFactory",
     "LumiToolGatewayProvider",
-    "Node25ToolGatewayInvoker",
-    "ProfileModelProvider",
-    "StaticCheckpointerProvider",
-    "StaticStoreProvider",
-    "StaticToolDefinitionReader",
-    "SubagentInvocationContext",
-    "TrustedBackendProvider",
-    "mark_backend_bound",
-    "mark_model_gateway_bound",
+    "MaterializedSkill",
+    "PermissionScope",
+    "PinnedContextBundle",
+    "ResolvedAgentConfig",
+    "ResolvedSubagent",
+    "ScopedWorkspacePolicy",
+    "StoredAgentResult",
+    "StructuredResultParser",
+    "mark_trusted_backend",
 ]

@@ -5,41 +5,43 @@ from dataclasses import dataclass
 from importlib import import_module
 from typing import Any
 
-from lumi_agent_runtime.control_plane.contracts import GraphDefinition
-
 from .contracts import (
-    DeepAgentDefinition,
     DeepAgentInvocationContext,
-    SubagentInvocationContext,
+    DeepAgentProvenance,
+    MaterializedSkill,
+    PinnedContextBundle,
+    ResolvedAgentConfig,
 )
 from .errors import (
-    DeepAgentBackendBoundaryError,
     DeepAgentDelegationDeniedError,
     DeepAgentFactoryError,
     DeepAgentModelBoundaryError,
-    DeepAgentToolScopeError,
+    DeepAgentPermissionError,
 )
+from .filesystem import ScopedWorkspacePolicy, assert_trusted_backend
 from .ports import (
     DeepAgentBackendProvider,
     DeepAgentCheckpointerProvider,
     DeepAgentModelProvider,
     DeepAgentStoreProvider,
     DeepAgentToolProvider,
+    RunBudgetMeter,
 )
+from .prompting import build_system_prompt
+from .structured_result import AGENT_TASK_RESULT_SCHEMA
+from .tooling import assert_gateway_tools
 
 
 @dataclass(frozen=True, slots=True)
 class CompiledDeepAgent:
-    definition: DeepAgentDefinition
-    graph_definition: GraphDefinition
+    config: ResolvedAgentConfig
     compiled_graph: Any
-    effective_root_tools: tuple[str, ...]
-    subagent_tools: dict[str, tuple[str, ...]]
+    provenance: DeepAgentProvenance
+    thread_id: str
+    effective_tools: tuple[str, ...]
 
 
-class DeepAgentRuntimeFactory:
-    """Compile current Deep Agents behind LUMI's model/tool/backend/checkpoint ports."""
-
+class LumiDeepAgentFactory:
     def __init__(
         self,
         *,
@@ -47,48 +49,51 @@ class DeepAgentRuntimeFactory:
         tools: DeepAgentToolProvider,
         backends: DeepAgentBackendProvider,
         checkpointers: DeepAgentCheckpointerProvider,
+        budget: RunBudgetMeter,
         stores: DeepAgentStoreProvider | None = None,
     ) -> None:
         self.models = models
         self.tools = tools
         self.backends = backends
         self.checkpointers = checkpointers
+        self.budget = budget
         self.stores = stores
 
     async def compile(
         self,
-        definition: DeepAgentDefinition,
         *,
+        config: ResolvedAgentConfig,
         context: DeepAgentInvocationContext,
+        bundle: PinnedContextBundle,
+        skills: tuple[MaterializedSkill, ...],
     ) -> CompiledDeepAgent:
-        self._validate_context(definition, context)
-        if any(child.can_delegate for child in definition.subagents):
-            raise DeepAgentDelegationDeniedError(
-                "NODE-29 P0 forbids nested subagent delegation; use root->leaf delegation only"
-            )
-
-        effective_root_tools = _ordered_intersection(
-            definition.allowed_tools,
-            context.allowed_tools,
+        _validate_permissions(config, context)
+        effective_tools = tuple(
+            item for item in config.allowed_tools if item in context.permissions.allowed_tools
         )
+        _validate_skills(skills, effective_tools, context)
+        warning = await self.budget.warning(context=context)
+
         root_model = await self.models.model_for_root(
-            model_profile=definition.model_profile,
+            model_profile=config.model_profile,
             context=context,
         )
-        _assert_gateway_model(root_model, profile=definition.model_profile)
+        _assert_model(root_model, config.model_profile)
         root_tools = await self.tools.tools_for_root(
             context=context,
-            allowed_tools=effective_root_tools,
+            allowed_tools=effective_tools,
         )
-        _assert_gateway_tools(root_tools, expected=effective_root_tools)
+        root_tool_versions = assert_gateway_tools(root_tools, effective_tools)
+
         backend = await self.backends.backend_for_run(
             context=context,
-            virtual_files_enabled=definition.virtual_files_enabled,
+            skills=skills,
+            bundle=bundle,
         )
-        _assert_backend(backend)
+        assert_trusted_backend(backend, ScopedWorkspacePolicy(context.permissions))
         checkpointer = await self.checkpointers.checkpointer_for_run(context=context)
         if checkpointer is None:
-            raise DeepAgentFactoryError("durable Deep Agent requires a NODE-28 checkpointer")
+            raise DeepAgentFactoryError("durable checkpointer is required")
         store = (
             await self.stores.store_for_run(context=context)
             if self.stores is not None
@@ -96,41 +101,30 @@ class DeepAgentRuntimeFactory:
         )
 
         subagent_configs: list[dict[str, Any]] = []
-        subagent_tools: dict[str, tuple[str, ...]] = {}
-        for child in definition.subagents:
-            child_allowed = _ordered_intersection(
-                child.allowed_tools,
-                effective_root_tools,
-            )
-            child_context = SubagentInvocationContext(
-                organization_id=context.organization_id,
-                project_id=context.project_id,
-                agent_run_id=context.agent_run_id,
-                task_id=context.task_id,
-                operation_id=context.operation_id,
-                actor_id=context.actor_id,
-                root_agent=context.root_agent,
-                subagent_name=child.name,
-                depth=1,
-                granted_permissions=context.granted_permissions,
-                parent_allowed_tools=effective_root_tools,
-                allowed_tools=child_allowed,
-                trace_id=context.trace_id,
+        subagent_tool_versions: list[str] = []
+        allowed_subagents = set(context.permissions.allowed_subagents)
+        for child in config.subagents:
+            if child.agent_id not in allowed_subagents:
+                continue
+            child_tools_scope = tuple(
+                item for item in child.allowed_tools if item in effective_tools
             )
             child_model = await self.models.model_for_subagent(
                 definition=child,
-                context=child_context,
+                context=context,
             )
-            _assert_gateway_model(child_model, profile=child.model_profile)
+            _assert_model(child_model, child.model_profile)
             child_tools = await self.tools.tools_for_subagent(
-                context=child_context,
-                allowed_tools=child_allowed,
+                context=context,
+                definition=child,
+                allowed_tools=child_tools_scope,
             )
-            _assert_gateway_tools(child_tools, expected=child_allowed)
-            subagent_tools[child.name] = child_allowed
+            subagent_tool_versions.extend(
+                assert_gateway_tools(child_tools, child_tools_scope)
+            )
             subagent_configs.append(
                 {
-                    "name": child.name,
+                    "name": child.agent_id,
                     "description": child.description,
                     "system_prompt": child.system_prompt,
                     "model": child_model,
@@ -138,138 +132,146 @@ class DeepAgentRuntimeFactory:
                 }
             )
 
-        create_deep_agent = _load_create_deep_agent()
-        _require_current_factory_contract(create_deep_agent)
+        factory = _load_create_deep_agent()
+        parameters = _require_factory_contract(factory)
+        system_prompt = build_system_prompt(
+            config=config,
+            context=context,
+            bundle=bundle,
+            skills=skills,
+            budget_warning=warning,
+        )
         kwargs: dict[str, Any] = {
             "model": root_model,
             "tools": list(root_tools),
-            "system_prompt": definition.system_prompt,
+            "system_prompt": system_prompt,
             "subagents": subagent_configs,
             "backend": backend,
             "checkpointer": checkpointer,
         }
-        parameters = inspect.signature(create_deep_agent).parameters
         if "name" in parameters:
-            kwargs["name"] = definition.agent_key
+            kwargs["name"] = config.agent_id
+        if skills:
+            if "skills" not in parameters:
+                raise DeepAgentFactoryError("installed Deep Agents lacks native skills")
+            kwargs["skills"] = ["/skills/"]
+        if context.permissions.memory_read_scopes and "memory" in parameters:
+            kwargs["memory"] = ["/memory/"]
+        if "response_format" in parameters:
+            kwargs["response_format"] = AGENT_TASK_RESULT_SCHEMA
         if store is not None:
             if "store" not in parameters:
-                raise DeepAgentFactoryError(
-                    "installed Deep Agents does not support the required store parameter"
-                )
+                raise DeepAgentFactoryError("installed Deep Agents lacks store support")
             kwargs["store"] = store
         try:
-            compiled = create_deep_agent(**kwargs)
+            compiled = factory(**kwargs)
         except Exception as exc:
             raise DeepAgentFactoryError("Deep Agents factory compilation failed") from exc
         if getattr(compiled, "checkpointer", None) is None:
-            raise DeepAgentFactoryError("compiled Deep Agent lost the durable checkpointer")
+            raise DeepAgentFactoryError("compiled Deep Agent lost durable checkpointer")
 
-        graph_definition = GraphDefinition(
-            graph_key=definition.graph_key,
-            graph_version=definition.graph_version,
-            agent_config_version=definition.agent_config_version,
-            description=f"Deep Agent runtime {definition.identity}",
-            state_schema_version=1,
-            interrupt_policy_version="deep-runtime-v1",
-            metadata={
-                "deep_agent_key": definition.agent_key,
-                "deep_agent_runtime_version": definition.runtime_version,
-                "deep_agent_definition_hash": definition.content_hash,
-                "model_profile": definition.model_profile,
-                "root_tools": list(effective_root_tools),
-                "subagents": [child.name for child in definition.subagents],
-                "recursion_limit": definition.max_steps,
-                "planning_enabled": definition.planning_enabled,
-                "virtual_files_enabled": definition.virtual_files_enabled,
-                "delegation_max_depth": definition.delegation.max_depth,
-                "delegation_max_total_calls": definition.delegation.max_total_subagent_calls,
-            },
+        skill_versions = tuple(
+            f"{item.skill_id}@{item.exact_version}" for item in skills
+        )
+        tool_versions = tuple(dict.fromkeys(root_tool_versions + tuple(subagent_tool_versions)))
+        provenance = DeepAgentProvenance(
+            agent_id=config.agent_id,
+            agent_version=config.exact_version,
+            agent_config_hash=config.content_hash,
+            context_bundle_ref=bundle.context_bundle_ref,
+            context_hash=bundle.content_hash,
+            skill_versions=skill_versions,
+            tool_versions=tool_versions,
+            model_profile=config.model_profile,
+            sandbox_execute=context.permissions.sandbox_execute,
+        )
+        thread_id = (
+            f"deep:{context.agent_run_id}:{context.task_id or 'no-task'}:"
+            f"{config.agent_id}:{config.exact_version}"
         )
         return CompiledDeepAgent(
-            definition=definition,
-            graph_definition=graph_definition,
+            config=config,
             compiled_graph=compiled,
-            effective_root_tools=effective_root_tools,
-            subagent_tools=subagent_tools,
+            provenance=provenance,
+            thread_id=thread_id,
+            effective_tools=effective_tools,
         )
 
-    def _validate_context(
-        self,
-        definition: DeepAgentDefinition,
-        context: DeepAgentInvocationContext,
-    ) -> None:
-        if context.root_agent != definition.agent_key:
-            raise DeepAgentToolScopeError("runtime context root agent differs from definition")
-        requested = set(context.allowed_tools)
-        declared = set(definition.allowed_tools)
-        if not requested <= declared:
-            extra = ",".join(sorted(requested - declared))
-            raise DeepAgentToolScopeError(f"runtime context expands tool scope: {extra}")
+
+def _validate_permissions(
+    config: ResolvedAgentConfig,
+    context: DeepAgentInvocationContext,
+) -> None:
+    scope = context.permissions
+    if context.root_agent != config.agent_id:
+        raise DeepAgentPermissionError("runtime root agent differs from resolved config")
+    if not set(scope.allowed_tools) <= set(config.allowed_tools):
+        raise DeepAgentPermissionError("runtime tool scope expands agent config")
+    if scope.sandbox_execute and not config.sandbox_execute:
+        raise DeepAgentPermissionError("runtime sandbox permission expands agent config")
+    if not set(scope.memory_read_scopes) <= set(config.memory_read_scopes):
+        raise DeepAgentPermissionError("runtime memory read scope expands agent config")
+    if not set(scope.memory_write_scopes) <= set(config.memory_write_scopes):
+        raise DeepAgentPermissionError("runtime memory write scope expands agent config")
+    configured_children = {item.agent_id for item in config.subagents}
+    if not set(scope.allowed_subagents) <= configured_children:
+        raise DeepAgentDelegationDeniedError("runtime subagent scope expands agent config")
+    if scope.allowed_subagents and config.delegation.max_depth < 1:
+        raise DeepAgentDelegationDeniedError("delegation disabled by agent config")
 
 
-def _ordered_intersection(
-    declared: tuple[str, ...],
-    allowed: tuple[str, ...],
-) -> tuple[str, ...]:
-    allowed_set = set(allowed)
-    return tuple(item for item in declared if item in allowed_set)
+def _validate_skills(
+    skills: tuple[MaterializedSkill, ...],
+    effective_tools: tuple[str, ...],
+    context: DeepAgentInvocationContext,
+) -> None:
+    effective = set(effective_tools)
+    for skill in skills:
+        if not set(skill.required_tools) <= effective:
+            raise DeepAgentPermissionError(
+                f"skill expands tool permission: {skill.skill_id}@{skill.exact_version}"
+            )
+        for permission in skill.required_permissions:
+            if permission == "sandbox.execute" and not context.permissions.sandbox_execute:
+                raise DeepAgentPermissionError(
+                    f"skill requires ungranted sandbox permission: {skill.skill_id}"
+                )
+            if permission.startswith("memory.write:"):
+                scope = permission.removeprefix("memory.write:")
+                if scope not in context.permissions.memory_write_scopes:
+                    raise DeepAgentPermissionError(
+                        f"skill requires ungranted memory scope: {skill.skill_id}"
+                    )
 
 
-def _load_create_deep_agent():
+def _assert_model(model: Any, profile: str) -> None:
+    if not bool(getattr(model, "_lumi_model_gateway_bound", False)):
+        raise DeepAgentModelBoundaryError(
+            f"model profile {profile} bypasses NODE-22 Model Gateway"
+        )
+    if not bool(getattr(model, "_lumi_budget_meter_bound", False)):
+        raise DeepAgentModelBoundaryError(
+            f"model profile {profile} lacks server-side run budget metering"
+        )
+
+
+def _load_create_deep_agent() -> Any:
     try:
         module = import_module("deepagents")
-        factory = getattr(module, "create_deep_agent")
+        return getattr(module, "create_deep_agent")
     except (ImportError, AttributeError) as exc:
-        raise DeepAgentFactoryError(
-            "current deepagents package with create_deep_agent is required"
-        ) from exc
-    return factory
+        raise DeepAgentFactoryError("deepagents.create_deep_agent is required") from exc
 
 
-def _require_current_factory_contract(factory: Any) -> None:
+def _require_factory_contract(factory: Any) -> dict[str, inspect.Parameter]:
     try:
-        parameters = inspect.signature(factory).parameters
+        parameters = dict(inspect.signature(factory).parameters)
     except (TypeError, ValueError) as exc:
         raise DeepAgentFactoryError("cannot inspect create_deep_agent signature") from exc
     required = {"model", "tools", "system_prompt", "subagents", "backend", "checkpointer"}
     missing = required - set(parameters)
     if missing:
         raise DeepAgentFactoryError(
-            "installed Deep Agents factory is missing required capabilities: "
-            + ",".join(sorted(missing))
+            "installed Deep Agents factory missing: " + ",".join(sorted(missing))
         )
-
-
-def _assert_gateway_model(model: Any, *, profile: str) -> None:
-    if not bool(getattr(model, "_lumi_model_gateway_bound", False)):
-        raise DeepAgentModelBoundaryError(
-            f"model profile {profile} is not bound to NODE-22 Model Gateway"
-        )
-
-
-def _assert_gateway_tools(tools: tuple[Any, ...], *, expected: tuple[str, ...]) -> None:
-    seen: list[str] = []
-    for tool in tools:
-        if not bool(getattr(tool, "_lumi_tool_gateway_bound", False)):
-            raise DeepAgentToolScopeError("Deep Agent tool bypasses NODE-25 Tool Gateway")
-        canonical = getattr(tool, "_lumi_tool_name", None)
-        if not isinstance(canonical, str):
-            raise DeepAgentToolScopeError("Tool Gateway wrapper has no canonical tool name")
-        seen.append(canonical)
-    if tuple(seen) != expected:
-        raise DeepAgentToolScopeError(
-            f"Tool Gateway provider returned unexpected tool scope: {seen!r} != {expected!r}"
-        )
-
-
-def _assert_backend(backend: Any) -> None:
-    if not bool(getattr(backend, "_lumi_backend_bound", False)):
-        raise DeepAgentBackendBoundaryError(
-            "Deep Agents backend must be provided by a LUMI trusted backend adapter"
-        )
-    identity = f"{type(backend).__module__}.{type(backend).__name__}".lower()
-    for marker in ("filesystembackend", "localshell", "local_shell", "dockerbackend"):
-        if marker in identity:
-            raise DeepAgentBackendBoundaryError(
-                f"host-local Deep Agents backend is forbidden: {identity}"
-            )
+    return parameters
