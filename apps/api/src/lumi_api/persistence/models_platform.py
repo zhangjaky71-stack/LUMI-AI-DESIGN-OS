@@ -39,6 +39,11 @@ class CostLedgerModel(Base, UUIDPrimaryKeyMixin, TenantMixin, CreatedAtMixin):
     generation_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("generations.id", ondelete="SET NULL"), nullable=True
     )
+    operation_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("idempotency_operations.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     related_entry_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("cost_ledger.id", ondelete="RESTRICT"), nullable=True
     )
