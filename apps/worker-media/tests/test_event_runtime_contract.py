@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 import pytest
@@ -29,7 +30,7 @@ WORKSPACE = UUID("01910000-0000-7000-8000-000000000021")
 EVENT = UUID("01910000-0000-7000-8000-000000000701")
 
 
-def project_created() -> dict[str, object]:
+def project_created() -> dict[str, Any]:
     return {
         "spec_version": "lumi.events/1.0",
         "event_id": str(EVENT),
@@ -98,7 +99,7 @@ def test_inbox_duplicate_applies_effect_once() -> None:
     runtime = EventConsumerRuntime(inbox, consumer="project-indexer.v1")
     effects: list[UUID] = []
 
-    async def handler(event, _connection):
+    async def handler(event, _connection) -> None:
         effects.append(event.event_id)
 
     first = asyncio.run(runtime.process(project_created(), handler))
@@ -113,7 +114,7 @@ def test_handler_failure_rolls_back_inbox_receipt() -> None:
     runtime = EventConsumerRuntime(inbox, consumer="project-indexer.v1")
     attempts = 0
 
-    async def handler(_event, _connection):
+    async def handler(_event, _connection) -> None:
         nonlocal attempts
         attempts += 1
         if attempts == 1:
@@ -143,7 +144,7 @@ def test_dispatcher_crash_window_can_duplicate_but_inbox_dedupes() -> None:
     runtime = EventConsumerRuntime(inbox, consumer="duplicate-proof.v1")
     effects = 0
 
-    async def handler(_event, _connection):
+    async def handler(_event, _connection) -> None:
         nonlocal effects
         effects += 1
 
