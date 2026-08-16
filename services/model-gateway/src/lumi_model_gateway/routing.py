@@ -28,14 +28,14 @@ _LATENCY_MIN = {
 
 
 class ProviderRegistry:
-    """Transport registry.
-
-    Provider adapters are execution transports, not the source of routing facts. NODE-23 keeps
-    this class for adapter lookup while CapabilityRegistry owns model/capability/pricing truth.
-    """
+    """Execution transports, deliberately separate from registry control-plane facts."""
 
     def __init__(self) -> None:
         self._adapters: dict[str, ProviderAdapter] = {}
+        self._capability_registry: CapabilityRegistry | None = None
+
+    def bind_capability_registry(self, registry: CapabilityRegistry) -> None:
+        self._capability_registry = registry
 
     def register(self, adapter: ProviderAdapter) -> None:
         name = adapter.provider_name
@@ -53,6 +53,13 @@ class ProviderRegistry:
         return provider in self._adapters
 
     def model(self, provider: str, model_name: str) -> ProviderModel:
+        if self._capability_registry is not None:
+            snapshot = self._capability_registry.capture_snapshot()
+            for record in snapshot.models.values():
+                if record.provider == provider and record.model == model_name:
+                    return record.to_provider_model(
+                        registry_snapshot_id=snapshot.snapshot_id
+                    )
         adapter = self.adapter(provider)
         for model in adapter.models():
             if model.model == model_name:
@@ -73,15 +80,10 @@ class ModelRouter:
         self.registry = registry
         self.health = health
         self.capability_registry = capability_registry
+        if capability_registry is not None:
+            self.registry.bind_capability_registry(capability_registry)
 
     def resolve_model(self, provider: str, model_name: str) -> ProviderModel:
-        if self.capability_registry is not None:
-            snapshot = self.capability_registry.capture_snapshot()
-            for record in snapshot.models.values():
-                if record.provider == provider and record.model == model_name:
-                    return record.to_provider_model(
-                        registry_snapshot_id=snapshot.snapshot_id
-                    )
         return self.registry.model(provider, model_name)
 
     def route(self, request: ModelRequest) -> RouteDecision:
