@@ -85,7 +85,14 @@ def main() -> int:
     )
     require(
         "infra/iac/modules/compute/alerting.tf",
+        'data "aws_iam_policy_document" "deployment_alert_kms"',
+        'resource "aws_kms_key" "deployment_alerts"',
+        '"cloudwatch.amazonaws.com"',
+        '"events.amazonaws.com"',
+        '"kms:GenerateDataKey*"',
+        '"kms:Decrypt"',
         'resource "aws_sns_topic" "deployment_alerts"',
+        "kms_master_key_id = aws_kms_key.deployment_alerts.arn",
         'resource "aws_sqs_queue" "deployment_alert_evidence"',
         'resource "aws_sns_topic_subscription" "deployment_alert_evidence"',
         'resource "aws_cloudwatch_composite_alarm" "public_deployment"',
@@ -93,6 +100,14 @@ def main() -> int:
         "ok_actions        = [aws_sns_topic.deployment_alerts.arn]",
         'resource "aws_cloudwatch_event_rule" "ecs_deployment_failure"',
         '"SERVICE_DEPLOYMENT_FAILED"',
+    )
+    require(
+        "infra/iac/bootstrap/main.tf",
+        '"cloudwatch:*"',
+        '"events:*"',
+        '"sns:*"',
+        '"sqs:*"',
+        '"ecs:*"',
     )
 
     data = read("infra/iac/modules/data/main.tf")
@@ -170,6 +185,13 @@ def main() -> int:
         "predeploy-ecs-state.json",
         "scripts/ecs-rollback-to-state.sh",
         "scripts/alert-delivery-drill.sh",
+    )
+    require(
+        "docs/operations/ROLLBACK-AND-ALERT-DRILLS.md",
+        "SOURCE_IMPLEMENTED / VALIDATION_PENDING",
+        "human on-call",
+        "First production bootstrap",
+        "Terraform reconciliation after emergency rollback",
     )
 
     print(
