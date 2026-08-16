@@ -1,2 +1,63 @@
-SERVICE_NAME = "model-gateway"
-VERSION = "0.0.0-dev"
+from .anthropic_adapter import AnthropicMessagesAdapter
+from .client import InProcessModelGatewayClient, ModelGatewayClient
+from .errors import ErrorCategory, NoRouteAvailable, PaidSideEffectGuardRequired, ProviderCallError
+from .gateway import ModelGateway, RetryPolicy
+from .memory import MemoryBudgetPort, MemoryCostTelemetryPort, MemoryHealthPort, MemoryPaidSideEffectPort
+from .mock_provider import MockProvider
+from .models import (
+    Capability,
+    CostConfidence,
+    CostEstimate,
+    InputKind,
+    LatencyProfile,
+    ModelInput,
+    ModelOutput,
+    ModelRequest,
+    ModelStreamChunk,
+    ModelUsage,
+    NormalizedResult,
+    ProviderModel,
+    QualityProfile,
+    ResultStatus,
+    RoutingHints,
+)
+from .openai_adapter import OpenAIResponsesAdapter
+from .routing import ModelRouter, ProviderRegistry
+from .secrets import EnvironmentSecretProvider, MappingSecretProvider
+
+__all__ = [
+    "AnthropicMessagesAdapter",
+    "Capability",
+    "CostConfidence",
+    "CostEstimate",
+    "EnvironmentSecretProvider",
+    "ErrorCategory",
+    "InProcessModelGatewayClient",
+    "InputKind",
+    "LatencyProfile",
+    "MappingSecretProvider",
+    "MemoryBudgetPort",
+    "MemoryCostTelemetryPort",
+    "MemoryHealthPort",
+    "MemoryPaidSideEffectPort",
+    "MockProvider",
+    "ModelGateway",
+    "ModelGatewayClient",
+    "ModelInput",
+    "ModelOutput",
+    "ModelRequest",
+    "ModelRouter",
+    "ModelStreamChunk",
+    "ModelUsage",
+    "NoRouteAvailable",
+    "NormalizedResult",
+    "OpenAIResponsesAdapter",
+    "PaidSideEffectGuardRequired",
+    "ProviderCallError",
+    "ProviderModel",
+    "ProviderRegistry",
+    "QualityProfile",
+    "ResultStatus",
+    "RetryPolicy",
+    "RoutingHints",
+]
