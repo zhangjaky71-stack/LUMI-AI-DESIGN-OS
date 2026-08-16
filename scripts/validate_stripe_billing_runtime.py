@@ -40,6 +40,9 @@ def main() -> None:
         "LUMI_STRIPE_WEBHOOK_SECRET",
         "LUMI_STRIPE_PLAN_CATALOG_JSON",
         'expected_livemode = environment == "production"',
+        "validate_plan_price",
+        'plan.currency != "USD"',
+        "plan.price_microusd % 10_000",
         "ON CONFLICT (provider, provider_event_id) DO NOTHING",
         "BILLING_WEBHOOK_EVENT_ID_COLLISION",
         "ON CONFLICT (organization_id, idempotency_key) DO NOTHING",
@@ -48,12 +51,21 @@ def main() -> None:
     )
     require(
         "services/project-core/src/lumi_project_core/stripe_provider.py",
+        'api_version: str = "2026-02-25.clover"',
+        'headers["Stripe-Version"]',
+        "validate_plan_price",
+        "BILLING_STRIPE_PRICE_AMOUNT_MISMATCH",
+        "BILLING_STRIPE_PRICE_INTERVAL_MISMATCH",
+        "BILLING_STRIPE_PRICE_MODE_MISMATCH",
+        "BILLING_STRIPE_EVENT_API_VERSION_MISMATCH",
+        "BILLING_STRIPE_CURRENCY_UNSUPPORTED",
         'expected_prefix = "sk_live_" if self.expected_livemode else "sk_test_"',
         "hmac.compare_digest",
         "webhook_tolerance_seconds",
         '("mode", "subscription")',
         "price_ids_by_plan_version",
         'event.get("livemode")',
+        'event.get("api_version")',
         'idempotency_key=f"lumi-customer:{organization_id}"[:255]',
         'headers["Idempotency-Key"] = idempotency_key',
     )
@@ -81,14 +93,16 @@ def main() -> None:
     )
     require(
         "apps/api/src/lumi_api/persistence/models/billing.py",
-        'class BillingPlanVersion(Base):',
-        'class BillingAccount(Base):',
-        'class BillingSubscription(Base):',
-        'class BillingPaymentEvent(Base):',
-        'class BillingInvoice(Base):',
-        'class BillingCreditLedger(Base):',
-        'ix_billing_credit_ledger_org_created',
-        'ix_billing_invoices_org_created',
+        "class BillingPlanVersion(Base):",
+        "class BillingAccount(Base):",
+        "class BillingSubscription(Base):",
+        "class BillingPaymentEvent(Base):",
+        "class BillingInvoice(Base):",
+        "class BillingCreditLedger(Base):",
+        "mapped_column(CHAR(3), nullable=False)",
+        "mapped_column(CHAR(64), nullable=False)",
+        "ix_billing_credit_ledger_org_created",
+        "ix_billing_invoices_org_created",
     )
     for environment in ("staging", "production"):
         require(
@@ -111,8 +125,17 @@ def main() -> None:
             "LUMI_BILLING_WEBHOOK_SECRET",
         )
     require(
+        "services/project-core/tests/test_stripe_provider.py",
+        "test_plan_price_reconciliation_accepts_exact_recurring_contract",
+        "test_plan_price_reconciliation_rejects_amount_drift",
+        "test_plan_price_reconciliation_rejects_mode_drift",
+        "test_webhook_api_version_mismatch_fails_closed",
+    )
+    require(
         "scripts/integration_stripe_billing_runtime.py",
         "STRIPE_BILLING_POSTGRES_ACCEPTANCE_PASS",
+        'path == "/prices/price_acceptance"',
+        '"api_version": API_VERSION',
         "transport.customer_posts == 1",
         'duplicate_result.disposition == "DUPLICATE"',
         'error.code == "BILLING_WEBHOOK_EVENT_ID_COLLISION"',
