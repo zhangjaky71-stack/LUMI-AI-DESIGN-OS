@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import inspect
 import json
 import re
@@ -12,8 +11,7 @@ from uuid import UUID
 
 from kombu import Connection, Producer
 
-from .queue_contracts import ErrorCategory, classify_error
-from .topology import DOMAIN_EXCHANGE, domain_queue
+from .topology import DOMAIN_EXCHANGE
 
 MAX_EVENT_MESSAGE_BYTES = 256 * 1024
 EVENT_TYPE_RE = re.compile(
@@ -24,36 +22,50 @@ PRODUCER_RE = re.compile(r"^[a-z][a-z0-9_.:-]{0,127}$")
 AGGREGATE_RE = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
-_REQUIRED_ENVELOPE_FIELDS = {
-    "spec_version",
-    "event_id",
-    "event_type",
-    "occurred_at",
-    "organization_id",
-    "aggregate_type",
-    "aggregate_id",
-    "producer",
-    "payload",
-}
-_OPTIONAL_ENVELOPE_FIELDS = {
-    "aggregate_version",
-    "correlation_id",
-    "causation_id",
-    "traceparent",
-}
+_REQUIRED_ENVELOPE_FIELDS = frozenset(
+    {
+        "spec_version",
+        "event_id",
+        "event_type",
+        "occurred_at",
+        "organization_id",
+        "aggregate_type",
+        "aggregate_id",
+        "producer",
+        "payload",
+    }
+)
+_OPTIONAL_ENVELOPE_FIELDS = frozenset(
+    {
+        "aggregate_version",
+        "correlation_id",
+        "causation_id",
+        "traceparent",
+    }
+)
 _ALLOWED_ENVELOPE_FIELDS = _REQUIRED_ENVELOPE_FIELDS | _OPTIONAL_ENVELOPE_FIELDS
 
-_PAYLOAD_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
-    "lumi.project.created.v1": (
-        frozenset({"project_id", "workspace_id", "project_version"}),
-        frozenset(),
+
+@dataclass(frozen=True, slots=True)
+class PayloadContract:
+    required: frozenset[str]
+    optional: frozenset[str] = frozenset()
+    uuid_fields: frozenset[str] = frozenset()
+    uuid_list_fields: frozenset[str] = frozenset()
+
+
+_PAYLOAD_CONTRACTS: dict[str, PayloadContract] = {
+    "lumi.project.created.v1": PayloadContract(
+        required=frozenset({"project_id", "workspace_id", "project_version"}),
+        uuid_fields=frozenset({"project_id", "workspace_id"}),
     ),
-    "lumi.asset.ready.v1": (
-        frozenset({"asset_id", "mime_type", "checksum_sha256"}),
-        frozenset({"project_id"}),
+    "lumi.asset.ready.v1": PayloadContract(
+        required=frozenset({"asset_id", "mime_type", "checksum_sha256"}),
+        optional=frozenset({"project_id"}),
+        uuid_fields=frozenset({"asset_id", "project_id"}),
     ),
-    "lumi.agent_run.started.v1": (
-        frozenset(
+    "lumi.agent_run.started.v1": PayloadContract(
+        required=frozenset(
             {
                 "agent_run_id",
                 "project_id",
@@ -62,18 +74,21 @@ _PAYLOAD_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                 "agent_config_version",
             }
         ),
-        frozenset(),
+        uuid_fields=frozenset({"agent_run_id", "project_id"}),
     ),
-    "lumi.agent_run.waiting_user.v1": (
-        frozenset({"agent_run_id", "project_id", "interaction_id", "reason_code"}),
-        frozenset(),
+    "lumi.agent_run.waiting_user.v1": PayloadContract(
+        required=frozenset(
+            {"agent_run_id", "project_id", "interaction_id", "reason_code"}
+        ),
+        uuid_fields=frozenset({"agent_run_id", "project_id", "interaction_id"}),
     ),
-    "lumi.task.succeeded.v1": (
-        frozenset({"task_id", "project_id", "output_artifact_version_ids"}),
-        frozenset(),
+    "lumi.task.succeeded.v1": PayloadContract(
+        required=frozenset({"task_id", "project_id", "output_artifact_version_ids"}),
+        uuid_fields=frozenset({"task_id", "project_id"}),
+        uuid_list_fields=frozenset({"output_artifact_version_ids"}),
     ),
-    "lumi.generation.completed.v1": (
-        frozenset(
+    "lumi.generation.completed.v1": PayloadContract(
+        required=frozenset(
             {
                 "generation_id",
                 "project_id",
@@ -83,19 +98,25 @@ _PAYLOAD_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                 "output_artifact_version_ids",
             }
         ),
-        frozenset(),
+        uuid_fields=frozenset({"generation_id", "project_id", "operation_id"}),
+        uuid_list_fields=frozenset({"output_artifact_version_ids"}),
     ),
-    "lumi.artifact.version_created.v1": (
-        frozenset({"artifact_id", "artifact_version_id", "branch_id", "version_number"}),
-        frozenset(),
+    "lumi.artifact.version_created.v1": PayloadContract(
+        required=frozenset(
+            {"artifact_id", "artifact_version_id", "branch_id", "version_number"}
+        ),
+        uuid_fields=frozenset({"artifact_id", "artifact_version_id", "branch_id"}),
     ),
-    "lumi.artifact.approved.v1": (
-        frozenset({"artifact_version_id"}),
-        frozenset({"approval_id", "actor_id"}),
+    "lumi.artifact.approved.v1": PayloadContract(
+        required=frozenset({"artifact_version_id"}),
+        optional=frozenset({"approval_id", "actor_id"}),
+        uuid_fields=frozenset({"artifact_version_id", "approval_id", "actor_id"}),
     ),
-    "lumi.cost.recorded.v1": (
-        frozenset({"cost_entry_id", "operation_id", "amount", "currency", "kind"}),
-        frozenset(),
+    "lumi.cost.recorded.v1": PayloadContract(
+        required=frozenset(
+            {"cost_entry_id", "operation_id", "amount", "currency", "kind"}
+        ),
+        uuid_fields=frozenset({"cost_entry_id", "operation_id"}),
     ),
 }
 
@@ -140,19 +161,25 @@ def validate_event_envelope(value: dict[str, Any]) -> CanonicalEvent:
         raise EventValidationError(f"EVENT_UNKNOWN_FIELDS:{','.join(sorted(unknown))}")
     if value.get("spec_version") != "lumi.events/1.0":
         raise EventValidationError("EVENT_SPEC_VERSION_UNSUPPORTED")
+
     event_type = str(value.get("event_type", ""))
     if not EVENT_TYPE_RE.fullmatch(event_type):
         raise EventValidationError("EVENT_TYPE_INVALID")
-    if event_type not in _PAYLOAD_FIELDS:
+    if event_type not in _PAYLOAD_CONTRACTS:
         raise EventValidationError("EVENT_TYPE_UNSUPPORTED")
+
     aggregate_type = str(value.get("aggregate_type", ""))
     producer = str(value.get("producer", ""))
     if not AGGREGATE_RE.fullmatch(aggregate_type):
         raise EventValidationError("EVENT_AGGREGATE_TYPE_INVALID")
     if not PRODUCER_RE.fullmatch(producer):
         raise EventValidationError("EVENT_PRODUCER_INVALID")
+
     event_id = _uuid(value.get("event_id"), "EVENT_ID_INVALID")
-    organization_id = _uuid(value.get("organization_id"), "EVENT_ORGANIZATION_ID_INVALID")
+    organization_id = _uuid(
+        value.get("organization_id"),
+        "EVENT_ORGANIZATION_ID_INVALID",
+    )
     aggregate_id = _uuid(value.get("aggregate_id"), "EVENT_AGGREGATE_ID_INVALID")
     causation_id = (
         _uuid(value.get("causation_id"), "EVENT_CAUSATION_ID_INVALID")
@@ -160,32 +187,43 @@ def validate_event_envelope(value: dict[str, Any]) -> CanonicalEvent:
         else None
     )
     occurred_at = _datetime(value.get("occurred_at"))
+
     aggregate_version = value.get("aggregate_version")
     if aggregate_version is not None and (
-        not isinstance(aggregate_version, int) or isinstance(aggregate_version, bool) or aggregate_version < 1
+        not isinstance(aggregate_version, int)
+        or isinstance(aggregate_version, bool)
+        or aggregate_version < 1
     ):
         raise EventValidationError("EVENT_AGGREGATE_VERSION_INVALID")
+
     correlation_id = value.get("correlation_id")
     if correlation_id is not None and (
-        not isinstance(correlation_id, str) or not 1 <= len(correlation_id) <= 128
+        not isinstance(correlation_id, str)
+        or not 1 <= len(correlation_id) <= 128
     ):
         raise EventValidationError("EVENT_CORRELATION_ID_INVALID")
+
     traceparent = value.get("traceparent")
     if traceparent is not None and (
-        not isinstance(traceparent, str) or not TRACEPARENT_RE.fullmatch(traceparent)
+        not isinstance(traceparent, str)
+        or not TRACEPARENT_RE.fullmatch(traceparent)
     ):
         raise EventValidationError("EVENT_TRACEPARENT_INVALID")
+
     payload = value.get("payload")
     if not isinstance(payload, dict):
         raise EventValidationError("EVENT_PAYLOAD_OBJECT_REQUIRED")
     _validate_payload(event_type, payload)
     _reject_secret_or_binary(payload, path="$.payload", depth=0)
-    encoded = json.dumps(
-        value,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
+    try:
+        encoded = json.dumps(
+            value,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise EventValidationError("EVENT_JSON_ENCODING_INVALID") from exc
     if len(encoded) > MAX_EVENT_MESSAGE_BYTES:
         raise EventValidationError("EVENT_TOO_LARGE")
     normalized = json.loads(encoded.decode("utf-8"))
@@ -207,30 +245,56 @@ def validate_event_envelope(value: dict[str, Any]) -> CanonicalEvent:
 
 
 def _validate_payload(event_type: str, payload: dict[str, Any]) -> None:
-    required, optional = _PAYLOAD_FIELDS[event_type]
-    missing = required - set(payload)
+    contract = _PAYLOAD_CONTRACTS[event_type]
+    missing = contract.required - set(payload)
     if missing:
         raise EventValidationError(f"EVENT_PAYLOAD_REQUIRED:{','.join(sorted(missing))}")
-    unknown = set(payload) - required - optional
+    unknown = set(payload) - contract.required - contract.optional
     if unknown:
         raise EventValidationError(f"EVENT_PAYLOAD_UNKNOWN:{','.join(sorted(unknown))}")
-    for key, item in payload.items():
-        if item is None and key in optional:
-            continue
-        if key.endswith("_id"):
-            _uuid(item, f"EVENT_PAYLOAD_UUID_INVALID:{key}")
-        elif key.endswith("_ids"):
-            if not isinstance(item, list):
-                raise EventValidationError(f"EVENT_PAYLOAD_UUID_LIST_INVALID:{key}")
-            for candidate in item:
-                _uuid(candidate, f"EVENT_PAYLOAD_UUID_LIST_INVALID:{key}")
-    if "checksum_sha256" in payload and not SHA256_RE.fullmatch(str(payload["checksum_sha256"])):
+
+    for field in contract.uuid_fields:
+        if field not in payload or payload[field] is None:
+            if field in contract.optional:
+                continue
+            raise EventValidationError(f"EVENT_PAYLOAD_UUID_REQUIRED:{field}")
+        _uuid(payload[field], f"EVENT_PAYLOAD_UUID_INVALID:{field}")
+
+    for field in contract.uuid_list_fields:
+        item = payload.get(field)
+        if not isinstance(item, list):
+            raise EventValidationError(f"EVENT_PAYLOAD_UUID_LIST_INVALID:{field}")
+        for candidate in item:
+            _uuid(candidate, f"EVENT_PAYLOAD_UUID_LIST_INVALID:{field}")
+
+    if "checksum_sha256" in payload and not SHA256_RE.fullmatch(
+        str(payload["checksum_sha256"])
+    ):
         raise EventValidationError("EVENT_PAYLOAD_CHECKSUM_INVALID")
-    for key in ("project_version", "version_number"):
-        if key in payload and (
-            not isinstance(payload[key], int) or isinstance(payload[key], bool) or payload[key] < 1
+
+    for field in ("project_version", "version_number"):
+        if field in payload and (
+            not isinstance(payload[field], int)
+            or isinstance(payload[field], bool)
+            or payload[field] < 1
         ):
-            raise EventValidationError(f"EVENT_PAYLOAD_VERSION_INVALID:{key}")
+            raise EventValidationError(f"EVENT_PAYLOAD_VERSION_INVALID:{field}")
+
+    for field in (
+        "thread_id",
+        "graph_version",
+        "agent_config_version",
+        "reason_code",
+        "mime_type",
+        "provider",
+        "model",
+    ):
+        if field in payload and (
+            not isinstance(payload[field], str)
+            or not 1 <= len(payload[field]) <= 255
+        ):
+            raise EventValidationError(f"EVENT_PAYLOAD_STRING_INVALID:{field}")
+
     if event_type == "lumi.cost.recorded.v1":
         if not isinstance(payload["amount"], str):
             raise EventValidationError("EVENT_COST_AMOUNT_DECIMAL_STRING_REQUIRED")
@@ -286,7 +350,9 @@ def _reject_secret_or_binary(value: Any, *, path: str, depth: int) -> None:
                     "signed_url",
                 )
             ):
-                raise EventValidationError(f"EVENT_SECRET_FIELD_FORBIDDEN:{path}.{key}")
+                raise EventValidationError(
+                    f"EVENT_SECRET_FIELD_FORBIDDEN:{path}.{key}"
+                )
             _reject_secret_or_binary(child, path=f"{path}.{key}", depth=depth + 1)
     elif isinstance(value, (list, tuple)):
         for index, child in enumerate(value):
@@ -357,7 +423,10 @@ class KombuDomainPublisher(DomainPublisher, RawPublisher):
         payload: dict[str, Any],
         headers: dict[str, Any] | None = None,
     ) -> None:
-        with Connection(self.broker_url, transport_options={"confirm_publish": True}) as connection:
+        with Connection(
+            self.broker_url,
+            transport_options={"confirm_publish": True},
+        ) as connection:
             connection.ensure_connection(max_retries=3)
             with connection.channel() as channel:
                 confirm_select = getattr(channel, "confirm_select", None)
@@ -387,7 +456,9 @@ class KombuDomainPublisher(DomainPublisher, RawPublisher):
 class MemoryDomainPublisher(DomainPublisher, RawPublisher):
     def __init__(self) -> None:
         self.events: list[CanonicalEvent] = []
-        self.raw_messages: list[tuple[str, str, dict[str, Any], dict[str, Any]]] = []
+        self.raw_messages: list[
+            tuple[str, str, dict[str, Any], dict[str, Any]]
+        ] = []
         self.fail_after_publish = False
 
     def publish(self, event: CanonicalEvent) -> None:
@@ -403,7 +474,9 @@ class MemoryDomainPublisher(DomainPublisher, RawPublisher):
         payload: dict[str, Any],
         headers: dict[str, Any] | None = None,
     ) -> None:
-        self.raw_messages.append((exchange, routing_key, dict(payload), dict(headers or {})))
+        self.raw_messages.append(
+            (exchange, routing_key, dict(payload), dict(headers or {}))
+        )
 
 
 class OutboxStore(Protocol):
@@ -449,7 +522,11 @@ class MemoryOutboxStore(OutboxStore):
         candidates.sort(key=lambda item: (item.created_at, item.event_id.int))
         claimed: list[OutboxItem] = []
         for item in candidates[:limit]:
-            locked = replace(item, locked=True, publish_attempts=item.publish_attempts + 1)
+            locked = replace(
+                item,
+                locked=True,
+                publish_attempts=item.publish_attempts + 1,
+            )
             self.items[item.event_id] = locked
             claimed.append(locked)
         return tuple(claimed)
@@ -503,16 +580,19 @@ class OutboxDispatcher:
     ) -> DispatchResult:
         if not 1 <= limit <= 1000:
             raise ValueError("OUTBOX_BATCH_LIMIT_INVALID")
-        items = self.store.claim_batch(organization_id=organization_id, now=now, limit=limit)
+        items = self.store.claim_batch(
+            organization_id=organization_id,
+            now=now,
+            limit=limit,
+        )
         published = 0
         failed = 0
         for item in items:
             try:
-                event = item.canonical_event()
-                self.publisher.publish(event)
+                self.publisher.publish(item.canonical_event())
             except Exception as exc:
                 failed += 1
-                delay = _outbox_retry_delay(item.publish_attempts)
+                delay = min(300, 2 ** max(0, min(item.publish_attempts, 8) - 1))
                 self.store.mark_failed(
                     item.event_id,
                     now=now,
@@ -522,11 +602,11 @@ class OutboxDispatcher:
             else:
                 self.store.mark_published(item.event_id, now=now)
                 published += 1
-        return DispatchResult(claimed=len(items), published=published, failed=failed)
-
-
-def _outbox_retry_delay(attempt: int) -> int:
-    return min(300, 2 ** max(0, min(attempt, 8) - 1))
+        return DispatchResult(
+            claimed=len(items),
+            published=published,
+            failed=failed,
+        )
 
 
 EventHandler = Callable[[CanonicalEvent, object | None], Awaitable[None] | None]
@@ -574,9 +654,17 @@ class EventConsumerRuntime:
         self.inbox = inbox
         self.consumer = consumer
 
-    async def process(self, envelope: dict[str, Any], handler: EventHandler) -> str:
+    async def process(
+        self,
+        envelope: dict[str, Any],
+        handler: EventHandler,
+    ) -> str:
         event = validate_event_envelope(envelope)
-        applied = await self.inbox.apply_once(event, consumer=self.consumer, handler=handler)
+        applied = await self.inbox.apply_once(
+            event,
+            consumer=self.consumer,
+            handler=handler,
+        )
         return "PROCESSED" if applied else "DUPLICATE"
 
 
@@ -589,7 +677,7 @@ class DeadLetterRecord:
     source_queue: str
     exchange_name: str
     routing_key: str
-    error_category: ErrorCategory
+    error_category: Any
     error_code: str
     error_message: str
     attempts: int
@@ -604,7 +692,11 @@ class DeadLetterRecord:
 class DeadLetterStore(Protocol):
     async def record(self, record: DeadLetterRecord) -> None: ...
 
-    async def get(self, organization_id: UUID, record_id: UUID) -> DeadLetterRecord | None: ...
+    async def get(
+        self,
+        organization_id: UUID,
+        record_id: UUID,
+    ) -> DeadLetterRecord | None: ...
 
     async def mark_replayed(
         self,
@@ -622,7 +714,11 @@ class MemoryDeadLetterStore(DeadLetterStore):
     async def record(self, record: DeadLetterRecord) -> None:
         self.records[record.id] = record
 
-    async def get(self, organization_id: UUID, record_id: UUID) -> DeadLetterRecord | None:
+    async def get(
+        self,
+        organization_id: UUID,
+        record_id: UUID,
+    ) -> DeadLetterRecord | None:
         record = self.records.get(record_id)
         return record if record and record.organization_id == organization_id else None
 
@@ -637,58 +733,6 @@ class MemoryDeadLetterStore(DeadLetterStore):
         if record is None:
             raise ValueError("DEAD_LETTER_NOT_FOUND")
         self.records[record_id] = replace(record, replayed_at=now)
-
-
-class KombuEventConsumer:
-    def __init__(
-        self,
-        *,
-        broker_url: str,
-        runtime: EventConsumerRuntime,
-        dead_letters: DeadLetterStore,
-        binding_key: str = "#",
-    ) -> None:
-        self.broker_url = broker_url
-        self.runtime = runtime
-        self.dead_letters = dead_letters
-        self.binding_key = binding_key
-
-    def consume_one(self, handler: EventHandler, *, timeout: float = 1.0) -> str:
-        queue = domain_queue(self.runtime.consumer, self.binding_key)
-        with Connection(self.broker_url) as connection:
-            with connection.SimpleQueue(queue) as simple_queue:
-                message = simple_queue.get(block=True, timeout=timeout)
-                payload = message.payload
-                try:
-                    if not isinstance(payload, dict):
-                        raise EventValidationError("EVENT_ENVELOPE_OBJECT_REQUIRED")
-                    result = asyncio.run(self.runtime.process(payload, handler))
-                except Exception as exc:
-                    retryable = False if isinstance(exc, EventValidationError) else getattr(exc, "retryable", None)
-                    category = classify_error(
-                        code=str(getattr(exc, "code", type(exc).__name__)),
-                        retryable=retryable,
-                    )
-                    if category is ErrorCategory.TRANSIENT:
-                        message.reject(requeue=True)
-                    else:
-                        record = _dead_letter_from_message(
-                            payload if isinstance(payload, dict) else {"invalid_payload": str(payload)},
-                            source_queue=queue.name,
-                            consumer=self.runtime.consumer,
-                            exchange_name=DOMAIN_EXCHANGE.name,
-                            routing_key=str(message.delivery_info.get("routing_key", "#")),
-                            category=category,
-                            error_code=str(getattr(exc, "code", type(exc).__name__)),
-                            error_message=str(exc),
-                            attempts=_delivery_attempts(message.headers),
-                        )
-                        asyncio.run(self.dead_letters.record(record))
-                        message.reject(requeue=False)
-                    raise
-                else:
-                    message.ack()
-                    return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -717,64 +761,12 @@ class DeadLetterReplayService:
             headers={"lumi-replayed-from": str(record.id)},
         )
         replayed_at = now or datetime.now(UTC)
-        await self.store.mark_replayed(organization_id, record_id, now=replayed_at)
+        await self.store.mark_replayed(
+            organization_id,
+            record_id,
+            now=replayed_at,
+        )
         updated = await self.store.get(organization_id, record_id)
         if updated is None:
             raise RuntimeError("DEAD_LETTER_REPLAY_STATE_LOST")
         return updated
-
-
-def _dead_letter_from_message(
-    payload: dict[str, Any],
-    *,
-    source_queue: str,
-    consumer: str,
-    exchange_name: str,
-    routing_key: str,
-    category: ErrorCategory,
-    error_code: str,
-    error_message: str,
-    attempts: int,
-) -> DeadLetterRecord:
-    from uuid import uuid4
-
-    organization_id = _uuid(payload.get("organization_id"), "EVENT_ORGANIZATION_ID_INVALID")
-    message_id = _uuid(payload.get("event_id"), "EVENT_ID_INVALID")
-    traceparent = payload.get("traceparent")
-    now = datetime.now(UTC)
-    return DeadLetterRecord(
-        id=uuid4(),
-        organization_id=organization_id,
-        message_id=message_id,
-        message_kind="domain_event",
-        source_queue=source_queue,
-        consumer=consumer,
-        exchange_name=exchange_name,
-        routing_key=routing_key,
-        error_category=category,
-        error_code=error_code[:128],
-        error_message=error_message[:2000],
-        attempts=max(1, attempts),
-        traceparent=str(traceparent)[:128] if traceparent else None,
-        payload=dict(payload),
-        first_failed_at=now,
-        last_failed_at=now,
-    )
-
-
-def _delivery_attempts(headers: dict[str, Any] | None) -> int:
-    if not headers:
-        return 1
-    value = headers.get("x-delivery-count")
-    if value is not None:
-        try:
-            return max(1, int(value) + 1)
-        except (TypeError, ValueError):
-            pass
-    deaths = headers.get("x-death")
-    if isinstance(deaths, list) and deaths and isinstance(deaths[0], dict):
-        try:
-            return max(1, int(deaths[0].get("count", 1)))
-        except (TypeError, ValueError):
-            return 1
-    return 1
