@@ -99,7 +99,7 @@ class AgentRunControlModel(Base):
         ),
         CheckConstraint(
             "control_status IN ('pending','running','waiting_user','waiting_external',"
-            "'succeeded','failed','cancelled')",
+            "'cancel_requested','succeeded','failed','cancelled')",
             name="status",
         ),
         CheckConstraint("resume_version >= 1", name="resume_version"),
