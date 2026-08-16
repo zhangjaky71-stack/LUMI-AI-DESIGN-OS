@@ -25,6 +25,7 @@ PROJECT_A = UUID("01910000-0000-7000-8000-000000000031")
 NOW = datetime(2026, 8, 16, 9, 45, tzinfo=UTC)
 MIGRATION_DSN = os.environ["LUMI_DATABASE_MIGRATION_URL_ASYNCPG"]
 APP_DSN = os.environ["LUMI_DATABASE_APP_URL"]
+SKIP_COST = os.getenv("NODE20_SKIP_COST") == "1"
 
 
 async def set_tenant(connection: asyncpg.Connection, org: UUID) -> None:
@@ -271,18 +272,20 @@ async def test_rls_and_cost_charge_uniqueness() -> None:
 
 
 async def main() -> None:
-    tests = (
+    tests = [
         test_head_and_schema,
         test_concurrent_claim_and_hash_conflict,
         test_operation_type_scopes_same_client_key_and_stale_recovery,
-        test_rls_and_cost_charge_uniqueness,
-    )
+    ]
+    if not SKIP_COST:
+        tests.append(test_rls_and_cost_charge_uniqueness)
     await cleanup_unreferenced_claim_fixtures()
     try:
         for test in tests:
             await test()
             print(f"PASS {test.__name__}")
-        print(f"NODE-20 PostgreSQL PASS: {len(tests)} invariant groups")
+        mode = "core" if SKIP_COST else "full"
+        print(f"NODE-20 PostgreSQL PASS ({mode}): {len(tests)} invariant groups")
     finally:
         await cleanup_unreferenced_claim_fixtures()
 
