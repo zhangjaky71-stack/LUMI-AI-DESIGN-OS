@@ -1,0 +1,101 @@
+name: Provider Daily USD Hard Stop
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/alembic/versions/0018_provider_daily_cost_hard_stop.py"
+      - "apps/api/src/lumi_api/costs/model_gateway_adapter.py"
+      - "scripts/validate_provider_daily_hard_stop.py"
+      - "scripts/integration_provider_daily_hard_stop.py"
+      - "docs/operations/PROVIDER-DAILY-HARD-STOP.md"
+      - ".github/workflows/provider-daily-hard-stop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile hard-stop sources
+        run: >-
+          python -m compileall -q
+          apps/api/alembic/versions/0018_provider_daily_cost_hard_stop.py
+          apps/api/src/lumi_api/costs/model_gateway_adapter.py
+          scripts/validate_provider_daily_hard_stop.py
+          scripts/integration_provider_daily_hard_stop.py
+      - name: Validate durable hard-stop contract
+        run: python scripts/validate_provider_daily_hard_stop.py
+
+  quality:
+    needs: static-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Canonical frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Ruff hard-stop gate
+        run: >-
+          uv run ruff check
+          apps/api/alembic/versions/0018_provider_daily_cost_hard_stop.py
+          apps/api/src/lumi_api/costs/model_gateway_adapter.py
+          scripts/validate_provider_daily_hard_stop.py
+          scripts/integration_provider_daily_hard_stop.py
+      - name: Pyright hard-stop gate
+        run: >-
+          uv run pyright
+          apps/api/src/lumi_api/costs/model_gateway_adapter.py
+          scripts/integration_provider_daily_hard_stop.py
+
+  postgres-acceptance:
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Canonical frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Start local infrastructure
+        run: |
+          make infra-env
+          make infra-up
+      - name: Upgrade and seed database
+        run: |
+          make db-upgrade
+          bash scripts/db-local schema-check
+          make db-seed
+      - name: Provider daily hard-stop acceptance
+        run: >-
+          PYTHONPATH=apps/api/src:services/model-gateway/src
+          uv run python scripts/integration_provider_daily_hard_stop.py
+      - name: Migration downgrade/upgrade smoke
+        run: bash scripts/db-local downgrade-smoke
+      - name: Cleanup
+        if: always()
+        run: CONFIRM=1 make infra-reset || true
