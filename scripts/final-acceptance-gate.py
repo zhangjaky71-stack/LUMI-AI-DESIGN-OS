@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import hashlib
 import json
 import re
@@ -13,6 +14,16 @@ SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 FINAL_STATUSES = {"PASS", "FAIL", "BLOCKED_EXTERNAL", "DEFERRED_NON_CRITICAL"}
 IDENTITY_GATES = {"performance", "ai_regression", "staging_acceptance", "production_deployment"}
+REQUIRED_APPROVALS = {
+    "product",
+    "engineering",
+    "design",
+    "security",
+    "operations",
+    "legal_privacy",
+    "finance_billing",
+    "release_owner",
+}
 
 
 class FinalAcceptanceError(RuntimeError):
@@ -27,7 +38,11 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def present(value: Any) -> bool:
-    return isinstance(value, str) and bool(value.strip()) and value.strip().upper() != "PENDING"
+    return (
+        isinstance(value, str)
+        and bool(value.strip())
+        and value.strip().upper() != "PENDING"
+    )
 
 
 def canonical_repo_path(value: str, *, allowed_prefixes: tuple[str, ...]) -> Path:
@@ -36,7 +51,10 @@ def canonical_repo_path(value: str, *, allowed_prefixes: tuple[str, ...]) -> Pat
         relative = candidate.relative_to(ROOT).as_posix()
     except ValueError as exc:
         raise FinalAcceptanceError(f"evidence path escapes repository: {value}") from exc
-    if not any(relative == prefix.rstrip("/") or relative.startswith(prefix) for prefix in allowed_prefixes):
+    if not any(
+        relative == prefix.rstrip("/") or relative.startswith(prefix)
+        for prefix in allowed_prefixes
+    ):
         raise FinalAcceptanceError(f"evidence path is outside allowed roots: {value}")
     return candidate
 
@@ -70,7 +88,9 @@ def verify_frozen_file(
         return None
     actual = digest(path)
     if actual != hash_value.lower():
-        blockers.append(f"{label} SHA-256 mismatch: expected {hash_value.lower()}, got {actual}")
+        blockers.append(
+            f"{label} SHA-256 mismatch: expected {hash_value.lower()}, got {actual}"
+        )
         return None
     return path
 
@@ -80,6 +100,84 @@ def rc_identity(payload: dict[str, Any]) -> tuple[str | None, str | None, str | 
     if not isinstance(rc, dict):
         return None, None, None
     return rc.get("git_sha"), rc.get("version"), rc.get("migration_head")
+
+
+def valid_utc_timestamp(value: Any) -> bool:
+    if not isinstance(value, str) or not value.endswith("Z"):
+        return False
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        return False
+    return parsed.utcoffset() is not None and parsed.utcoffset().total_seconds() == 0
+
+
+def validate_approval_records(manifest: dict[str, Any]) -> list[str]:
+    blockers: list[str] = []
+    approvals = manifest.get("approvals")
+    if not isinstance(approvals, dict) or set(approvals) != REQUIRED_APPROVALS:
+        blockers.append(f"approvals must contain exactly {sorted(REQUIRED_APPROVALS)}")
+        return blockers
+
+    expected_release_id = manifest.get("release_id")
+    expected_rc = rc_identity(manifest)
+    for role in sorted(REQUIRED_APPROVALS):
+        spec = approvals.get(role)
+        if not isinstance(spec, dict):
+            blockers.append(f"approval {role} freeze spec must be an object")
+            continue
+        path = verify_frozen_file(
+            spec,
+            label=f"approvals.{role}",
+            allowed_prefixes=("reports/final-acceptance/",),
+            blockers=blockers,
+        )
+        if path is None:
+            continue
+        try:
+            record = load_json(path)
+        except (OSError, json.JSONDecodeError, FinalAcceptanceError) as exc:
+            blockers.append(f"approval {role} record invalid: {exc}")
+            continue
+
+        if record.get("schema_version") != 1:
+            blockers.append(f"approval {role} schema_version must be 1")
+        if record.get("release_id") != expected_release_id:
+            blockers.append(f"approval {role} release_id does not match final release")
+        if record.get("role") != role:
+            blockers.append(f"approval {role} role identity mismatch")
+        if record.get("status") != "APPROVED":
+            blockers.append(f"approval {role} is not APPROVED")
+        if not present(record.get("approver")):
+            blockers.append(f"approval {role} approver is missing/PENDING")
+        if not valid_utc_timestamp(record.get("approved_at_utc")):
+            blockers.append(f"approval {role} approved_at_utc must be an ISO-8601 UTC Z timestamp")
+        if rc_identity(record) != expected_rc:
+            blockers.append(f"approval {role} release candidate does not match final release")
+        if not present(record.get("decision")):
+            blockers.append(f"approval {role} decision is missing/PENDING")
+
+        refs = record.get("evidence_refs")
+        if not isinstance(refs, list) or not refs:
+            blockers.append(f"approval {role} requires at least one frozen evidence_ref")
+            continue
+        for index, ref in enumerate(refs):
+            if not isinstance(ref, dict):
+                blockers.append(f"approval {role} evidence_refs[{index}] must be an object")
+                continue
+            verify_frozen_file(
+                ref,
+                label=f"approval {role}.evidence_refs[{index}]",
+                allowed_prefixes=(
+                    "reports/",
+                    "docs/",
+                    "evals/",
+                    "staging/",
+                    "production/",
+                ),
+                blockers=blockers,
+            )
+    return blockers
 
 
 def validate_release_manifest(manifest: dict[str, Any], matrix: dict[str, Any]) -> list[str]:
@@ -123,16 +221,11 @@ def validate_release_manifest(manifest: dict[str, Any], matrix: dict[str, Any]) 
     if not isinstance(release_blockers, list):
         blockers.append("release_blockers must be an array")
     elif release_blockers:
-        blockers.append(f"unresolved release_blockers must be zero; found {len(release_blockers)}")
+        blockers.append(
+            f"unresolved release_blockers must be zero; found {len(release_blockers)}"
+        )
 
-    approvals = manifest.get("approvals")
-    required_approvals = {"product", "engineering", "security", "operations", "release_owner"}
-    if not isinstance(approvals, dict) or set(approvals) != required_approvals:
-        blockers.append(f"approvals must contain exactly {sorted(required_approvals)}")
-    else:
-        for name, status in approvals.items():
-            if status != "APPROVED":
-                blockers.append(f"approval {name} is not APPROVED")
+    blockers.extend(validate_approval_records(manifest))
 
     handoff = manifest.get("operational_handoff")
     required_handoff = {
@@ -189,12 +282,20 @@ def validate_upstream_gates(manifest: dict[str, Any], matrix: dict[str, Any]) ->
         else:
             for index, ref in enumerate(refs):
                 if not isinstance(ref, dict):
-                    blockers.append(f"upstream gate {name} evidence_refs[{index}] must be an object")
+                    blockers.append(
+                        f"upstream gate {name} evidence_refs[{index}] must be an object"
+                    )
                     continue
                 verify_frozen_file(
                     ref,
                     label=f"upstream gate {name}.evidence_refs[{index}]",
-                    allowed_prefixes=("reports/", "docs/", "evals/", "staging/", "production/"),
+                    allowed_prefixes=(
+                        "reports/",
+                        "docs/",
+                        "evals/",
+                        "staging/",
+                        "production/",
+                    ),
                     blockers=blockers,
                 )
 
@@ -204,7 +305,8 @@ def validate_upstream_gates(manifest: dict[str, Any], matrix: dict[str, Any]) ->
                 blockers.append(f"upstream gate {name} lacks release_candidate identity")
             elif actual_rc != expected_rc:
                 blockers.append(
-                    f"upstream gate {name} RC identity mismatch: expected {expected_rc}, got {actual_rc}"
+                    f"upstream gate {name} RC identity mismatch: "
+                    f"expected {expected_rc}, got {actual_rc}"
                 )
     return blockers
 
@@ -242,7 +344,11 @@ def validate_gap_metadata(item: dict[str, Any], *, scenario_id: str) -> list[str
     required = ("owner", "reason", "impact", "target_release", "workaround")
     if not isinstance(gap, dict):
         return [f"{scenario_id} deferred/blocked non-critical item requires gap metadata"]
-    return [f"{scenario_id} gap.{key} is missing" for key in required if not present(gap.get(key))]
+    return [
+        f"{scenario_id} gap.{key} is missing"
+        for key in required
+        if not present(gap.get(key))
+    ]
 
 
 def validate_acceptance_evidence(
@@ -269,16 +375,21 @@ def validate_acceptance_evidence(
         except ValueError:
             relative = "<outside-repository>"
         if configured != relative:
-            blockers.append("release acceptance_evidence.path does not match evaluated evidence file")
-        if not isinstance(frozen.get("sha256"), str) or not SHA256.fullmatch(str(frozen.get("sha256", "")).lower()):
+            blockers.append(
+                "release acceptance_evidence.path does not match evaluated evidence file"
+            )
+        frozen_sha = frozen.get("sha256")
+        if not isinstance(frozen_sha, str) or not SHA256.fullmatch(frozen_sha.lower()):
             blockers.append("release acceptance_evidence.sha256 must be SHA-256")
-        elif evidence_path.is_file() and digest(evidence_path) != frozen["sha256"].lower():
+        elif evidence_path.is_file() and digest(evidence_path) != frozen_sha.lower():
             blockers.append("acceptance evidence SHA-256 does not match frozen release manifest")
 
     scenarios = matrix.get("scenarios")
     if not isinstance(scenarios, list):
         return blockers + ["acceptance matrix scenarios missing"], {}
-    scenario_by_id = {item.get("id"): item for item in scenarios if isinstance(item, dict)}
+    scenario_by_id = {
+        item.get("id"): item for item in scenarios if isinstance(item, dict)
+    }
     if len(scenario_by_id) != len(scenarios) or None in scenario_by_id:
         blockers.append("acceptance matrix has duplicate/invalid scenario ids")
 
@@ -296,7 +407,9 @@ def validate_acceptance_evidence(
     if set(item_by_id) != set(scenario_by_id):
         missing = sorted(set(scenario_by_id) - set(item_by_id))
         extra = sorted(set(item_by_id) - set(scenario_by_id))
-        blockers.append(f"acceptance evidence scenario set mismatch; missing={missing}, extra={extra}")
+        blockers.append(
+            f"acceptance evidence scenario set mismatch; missing={missing}, extra={extra}"
+        )
 
     counts = {status: 0 for status in sorted(FINAL_STATUSES)}
     for scenario_id, scenario in scenario_by_id.items():
@@ -305,7 +418,9 @@ def validate_acceptance_evidence(
             continue
         status = item.get("status")
         if status not in FINAL_STATUSES:
-            blockers.append(f"{scenario_id} has invalid/finally-unset status {status!r}")
+            blockers.append(
+                f"{scenario_id} has invalid/finally-unset status {status!r}"
+            )
             continue
         counts[status] += 1
         priority = scenario.get("priority")
@@ -317,22 +432,34 @@ def validate_acceptance_evidence(
             blockers.append(f"{scenario_id} is FAIL")
         if status in {"DEFERRED_NON_CRITICAL", "BLOCKED_EXTERNAL"}:
             if priority == "P0" or severity in {"critical", "high"}:
-                blockers.append(f"{scenario_id} cannot be deferred/blocked at {priority}/{severity}")
+                blockers.append(
+                    f"{scenario_id} cannot be deferred/blocked at {priority}/{severity}"
+                )
             blockers.extend(validate_gap_metadata(item, scenario_id=scenario_id))
 
         refs = item.get("evidence_refs")
         if status == "PASS":
             if not isinstance(refs, list) or not refs:
-                blockers.append(f"{scenario_id} PASS requires at least one frozen evidence_ref")
+                blockers.append(
+                    f"{scenario_id} PASS requires at least one frozen evidence_ref"
+                )
                 continue
             for index, ref in enumerate(refs):
                 if not isinstance(ref, dict):
-                    blockers.append(f"{scenario_id} evidence_refs[{index}] must be an object")
+                    blockers.append(
+                        f"{scenario_id} evidence_refs[{index}] must be an object"
+                    )
                     continue
                 verify_frozen_file(
                     ref,
                     label=f"{scenario_id}.evidence_refs[{index}]",
-                    allowed_prefixes=("reports/", "docs/", "evals/", "staging/", "production/"),
+                    allowed_prefixes=(
+                        "reports/",
+                        "docs/",
+                        "evals/",
+                        "staging/",
+                        "production/",
+                    ),
                     blockers=blockers,
                 )
     return blockers, counts
@@ -347,7 +474,9 @@ def evaluate(
     blockers = validate_release_manifest(release, matrix)
     blockers.extend(validate_upstream_gates(release, matrix))
     blockers.extend(validate_production_manifest(release))
-    evidence_blockers, counts = validate_acceptance_evidence(matrix, release, evidence, evidence_path)
+    evidence_blockers, counts = validate_acceptance_evidence(
+        matrix, release, evidence, evidence_path
+    )
     blockers.extend(evidence_blockers)
     blockers = sorted(set(blockers))
     accepted = not blockers
@@ -367,28 +496,58 @@ def evaluate(
         "blockers": blockers,
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return {"decision_id": hashlib.sha256(canonical.encode()).hexdigest()[:24], **payload}
+    return {
+        "decision_id": hashlib.sha256(canonical.encode()).hexdigest()[:24],
+        **payload,
+    }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Evaluate LUMI NODE-73 final product acceptance")
+    parser = argparse.ArgumentParser(
+        description="Evaluate LUMI NODE-73 final product acceptance"
+    )
     parser.add_argument("--matrix", default="final/acceptance/manifest-v1.json")
     parser.add_argument("--release", required=True)
     parser.add_argument("--evidence", required=True)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     try:
-        matrix_path = canonical_repo_path(args.matrix, allowed_prefixes=("final/acceptance/",))
-        release_path = canonical_repo_path(args.release, allowed_prefixes=("reports/final-acceptance/",))
-        evidence_path = canonical_repo_path(args.evidence, allowed_prefixes=("reports/final-acceptance/",))
-        result = evaluate(load_json(matrix_path), load_json(release_path), load_json(evidence_path), evidence_path)
+        matrix_path = canonical_repo_path(
+            args.matrix, allowed_prefixes=("final/acceptance/",)
+        )
+        release_path = canonical_repo_path(
+            args.release, allowed_prefixes=("reports/final-acceptance/",)
+        )
+        evidence_path = canonical_repo_path(
+            args.evidence, allowed_prefixes=("reports/final-acceptance/",)
+        )
+        result = evaluate(
+            load_json(matrix_path),
+            load_json(release_path),
+            load_json(evidence_path),
+            evidence_path,
+        )
     except (OSError, json.JSONDecodeError, FinalAcceptanceError) as exc:
         raise SystemExit(f"final acceptance input invalid: {exc}") from exc
 
-    output = canonical_repo_path(args.output, allowed_prefixes=("reports/final-acceptance/",))
+    output = canonical_repo_path(
+        args.output, allowed_prefixes=("reports/final-acceptance/",)
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({"accepted": result["accepted"], "decision_id": result["decision_id"], "headline": result["headline"]}, ensure_ascii=False, sort_keys=True))
+    output.write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    print(
+        json.dumps(
+            {
+                "accepted": result["accepted"],
+                "decision_id": result["decision_id"],
+                "headline": result["headline"],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
     return 0 if result["accepted"] else 2
 
 
