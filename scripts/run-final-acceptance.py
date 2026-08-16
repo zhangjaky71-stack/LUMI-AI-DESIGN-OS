@@ -19,6 +19,55 @@ def run(command: list[str]) -> None:
         raise SystemExit(completed.returncode)
 
 
+def canonical_path(value: str, *, root: Path, expected_name: str | None = None) -> Path:
+    candidate = (ROOT / value).resolve()
+    allowed = root.resolve()
+    try:
+        candidate.relative_to(allowed)
+    except ValueError as exc:
+        raise SystemExit(f"final acceptance path escapes {allowed.relative_to(ROOT)}/") from exc
+    if expected_name is not None and candidate.name != expected_name:
+        raise SystemExit(f"expected {expected_name}, got {candidate.name}")
+    if not candidate.is_file():
+        raise SystemExit(f"final acceptance file is missing: {value}")
+    return candidate
+
+
+def load_object(path: Path) -> dict[str, Any]:
+    try:
+        payload: Any = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"{path.relative_to(ROOT)} is invalid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise SystemExit(f"{path.relative_to(ROOT)} must be a JSON object")
+    return payload
+
+
+def rc_identity(payload: dict[str, Any]) -> tuple[str, str, str]:
+    candidate = payload.get("release_candidate")
+    if not isinstance(candidate, dict):
+        raise SystemExit("release_candidate is missing")
+    sha = candidate.get("git_sha")
+    version = candidate.get("version")
+    migration = candidate.get("migration_head")
+    if not isinstance(sha, str) or not SHA40.fullmatch(sha.lower()):
+        raise SystemExit("release_candidate.git_sha must be an exact SHA40")
+    if not isinstance(version, str) or not version.strip():
+        raise SystemExit("release_candidate.version is missing")
+    if not isinstance(migration, str) or not migration.strip():
+        raise SystemExit("release_candidate.migration_head is missing")
+    return sha.lower(), version, migration
+
+
+def release_manifest(release_arg: str) -> dict[str, Any]:
+    path = canonical_path(
+        release_arg,
+        root=ROOT / "reports" / "final-acceptance",
+        expected_name="release-manifest.json",
+    )
+    return load_object(path)
+
+
 def current_git_sha() -> str:
     completed = subprocess.run(  # noqa: S603
         ["git", "rev-parse", "HEAD"],
@@ -35,32 +84,8 @@ def current_git_sha() -> str:
     return value
 
 
-def load_release_candidate_sha(release_arg: str) -> str:
-    release_path = (ROOT / release_arg).resolve()
-    allowed = (ROOT / "reports" / "final-acceptance").resolve()
-    try:
-        release_path.relative_to(allowed)
-    except ValueError as exc:
-        raise SystemExit("release manifest escapes reports/final-acceptance/") from exc
-    if release_path.name != "release-manifest.json" or not release_path.is_file():
-        raise SystemExit("expected an existing reports/final-acceptance/<release>/release-manifest.json")
-    try:
-        payload: Any = json.loads(release_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise SystemExit(f"release manifest is invalid JSON: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise SystemExit("release manifest must be a JSON object")
-    candidate = payload.get("release_candidate")
-    if not isinstance(candidate, dict):
-        raise SystemExit("release manifest release_candidate is missing")
-    value = candidate.get("git_sha")
-    if not isinstance(value, str) or not SHA40.fullmatch(value.lower()):
-        raise SystemExit("release_candidate.git_sha must be an exact SHA40")
-    return value.lower()
-
-
 def require_current_checkout_binding(release_arg: str) -> str:
-    declared = load_release_candidate_sha(release_arg)
+    declared = rc_identity(release_manifest(release_arg))[0]
     actual = current_git_sha()
     if declared != actual:
         raise SystemExit(
@@ -68,6 +93,46 @@ def require_current_checkout_binding(release_arg: str) -> str:
             f"release manifest declares {declared}, current checkout is {actual}"
         )
     return actual
+
+
+def require_all_upstream_rc_binding(release_arg: str, matrix_arg: str) -> tuple[str, ...]:
+    release = release_manifest(release_arg)
+    expected = rc_identity(release)
+    matrix_path = canonical_path(
+        matrix_arg,
+        root=ROOT / "final" / "acceptance",
+        expected_name="manifest-v1.json",
+    )
+    matrix = load_object(matrix_path)
+    required = matrix.get("required_upstream_gates")
+    if not isinstance(required, list) or not required or not all(
+        isinstance(item, str) and item for item in required
+    ):
+        raise SystemExit("final acceptance matrix required_upstream_gates is invalid")
+    if len(set(required)) != len(required):
+        raise SystemExit("final acceptance matrix has duplicate required_upstream_gates")
+
+    upstream = release.get("upstream_gates")
+    if not isinstance(upstream, dict) or set(upstream) != set(required):
+        raise SystemExit("release manifest upstream_gates do not match required upstream gates")
+
+    bound: list[str] = []
+    for name in required:
+        spec = upstream.get(name)
+        if not isinstance(spec, dict):
+            raise SystemExit(f"upstream gate {name} freeze spec is missing")
+        path_value = spec.get("path")
+        if not isinstance(path_value, str) or not path_value.strip():
+            raise SystemExit(f"upstream gate {name} path is missing")
+        decision_path = canonical_path(path_value, root=ROOT / "reports")
+        actual = rc_identity(load_object(decision_path))
+        if actual != expected:
+            raise SystemExit(
+                "FINAL_ACCEPTANCE_UPSTREAM_RC_MISMATCH: "
+                f"{name} expected {expected}, got {actual}"
+            )
+        bound.append(name)
+    return tuple(bound)
 
 
 def main() -> int:
@@ -85,7 +150,16 @@ def main() -> int:
     args = parser.parse_args()
 
     bound_sha = require_current_checkout_binding(args.release)
-    print(json.dumps({"final_acceptance_checkout_sha": bound_sha}, sort_keys=True))
+    upstream = require_all_upstream_rc_binding(args.release, args.matrix)
+    print(
+        json.dumps(
+            {
+                "final_acceptance_checkout_sha": bound_sha,
+                "upstream_rc_bound": list(upstream),
+            },
+            sort_keys=True,
+        )
+    )
 
     run(
         [
