@@ -12,6 +12,14 @@ DROP POLICY IF EXISTS tenant_isolation_agent_run_control ON agent_run_control;
 
 -- statement-breakpoint
 
+DROP TRIGGER IF EXISTS trg_agent_run_control_graph_definition ON agent_run_control;
+
+-- statement-breakpoint
+
+DROP FUNCTION IF EXISTS lumi_validate_agent_run_graph_definition();
+
+-- statement-breakpoint
+
 DROP TRIGGER IF EXISTS trg_agent_run_control_same_tenant ON agent_run_control;
 
 -- statement-breakpoint
