@@ -76,7 +76,7 @@ class FrozenModel(BaseModel):
 class OperationRequest(FrozenModel):
     organization_id: UUID
     operation_type: str = Field(pattern=_OPERATION_TYPE_PATTERN)
-    idempotency_key: str = Field(min_length=8, max_length=255)
+    idempotency_key: str = Field(min_length=1, max_length=255)
     request_hash: str = Field(pattern=_SHA256_PATTERN)
     business_scope_id: str | None = Field(default=None, max_length=255)
     side_effect_kind: SideEffectKind
@@ -89,7 +89,7 @@ class OperationRequest(FrozenModel):
 class IdempotencyOperation(FrozenModel):
     id: UUID = Field(default_factory=new_uuid7)
     organization_id: UUID
-    idempotency_key: str = Field(min_length=8, max_length=255)
+    idempotency_key: str = Field(min_length=1, max_length=255)
     operation_type: str = Field(pattern=_OPERATION_TYPE_PATTERN)
     request_hash: str = Field(pattern=_SHA256_PATTERN)
     business_scope_id: str | None = Field(default=None, max_length=255)
@@ -98,9 +98,9 @@ class IdempotencyOperation(FrozenModel):
     paid: bool = False
     status: OperationStatus = OperationStatus.NEW
     recovery_state: RecoveryState = RecoveryState.NONE
-    lease_owner: str | None = Field(default=None, max_length=160)
+    lease_owner: str | None = Field(default=None, min_length=1, max_length=160)
     lease_expires_at: datetime | None = None
-    provider_request_id: str | None = Field(default=None, max_length=255)
+    provider_request_id: str | None = Field(default=None, min_length=1, max_length=255)
     result_ref: str | None = Field(default=None, max_length=2048)
     response_status: int | None = Field(default=None, ge=100, le=599)
     response_json: dict[str, Any] | None = None
@@ -144,7 +144,7 @@ class AcquireResult(FrozenModel):
 
 class ProviderReconciliation(FrozenModel):
     status: ProviderReconciliationStatus
-    provider_request_id: str | None = Field(default=None, max_length=255)
+    provider_request_id: str | None = Field(default=None, min_length=1, max_length=255)
     response_status: int | None = Field(default=None, ge=100, le=599)
     result_ref: str | None = Field(default=None, max_length=2048)
     result: dict[str, Any] | None = None
@@ -155,6 +155,6 @@ class SideEffectOutcome(FrozenModel):
     result: dict[str, Any] = Field(default_factory=dict)
     result_ref: str | None = Field(default=None, max_length=2048)
     response_status: int = Field(default=200, ge=100, le=599)
-    provider_request_id: str | None = Field(default=None, max_length=255)
+    provider_request_id: str | None = Field(default=None, min_length=1, max_length=255)
     replayed: bool = False
     operation_id: UUID | None = None
