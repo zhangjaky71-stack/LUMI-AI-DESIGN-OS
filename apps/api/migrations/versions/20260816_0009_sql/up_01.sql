@@ -23,6 +23,8 @@ ALTER TABLE cost_ledger RENAME COLUMN related_entry_id TO reverses_entry_id;
 -- statement-breakpoint
 
 ALTER TABLE cost_ledger
+  ALTER COLUMN provider TYPE VARCHAR(100),
+  ALTER COLUMN model TYPE VARCHAR(255),
   ADD COLUMN entry_key VARCHAR(128) NOT NULL DEFAULT 'primary',
   ADD COLUMN pricing_snapshot_id VARCHAR(128),
   ADD COLUMN external_provider_request_id VARCHAR(512),
@@ -40,6 +42,16 @@ SET entry_type='actual_cost',
     cost_basis='provider_cost',
     source='legacy_migration'
 WHERE entry_type='charge';
+
+-- statement-breakpoint
+
+UPDATE cost_ledger
+SET entry_key='legacy:' || id::text,
+    confidence='unknown',
+    status='reconciled',
+    cost_basis='provider_cost',
+    source='legacy_migration'
+WHERE entry_type IN ('adjustment','reversal');
 
 -- statement-breakpoint
 
@@ -145,7 +157,7 @@ CREATE TABLE cost_budget_limits (
   CONSTRAINT ck_cost_budget_limits_amount CHECK (amount_limit >= 0),
   CONSTRAINT ck_cost_budget_limits_tolerance CHECK (tolerance_amount >= 0),
   CONSTRAINT ck_cost_budget_limits_currency CHECK (currency ~ '^[A-Z]{3}$'),
-  CONSTRAINT ck_cost_budget_limits_mode CHECK (enforcement_mode IN ('hard','approval'))
+  ADD CONSTRAINT ck_cost_budget_limits_mode CHECK (enforcement_mode IN ('hard','approval'))
 );
 
 -- statement-breakpoint
