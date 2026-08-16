@@ -1,8 +1,7 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import uuid4
-
-import pytest
 
 from lumi_agent_runtime.control_plane.checkpointing import memory_checkpointer
 from lumi_agent_runtime.control_plane.contracts import (
@@ -34,8 +33,11 @@ from lumi_agent_runtime.control_plane.testing import (
 )
 
 
-@pytest.mark.asyncio
-async def test_rejected_approval_cannot_finalize_as_success() -> None:
+def test_rejected_approval_cannot_finalize_as_success() -> None:
+    asyncio.run(_assert_rejected_approval_cannot_finalize_as_success())
+
+
+async def _assert_rejected_approval_cannot_finalize_as_success() -> None:
     code_sha = "node28-reject-fixture"
     events = MemoryEventSink()
     cancellation = MemoryCancellationPort()
