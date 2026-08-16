@@ -5,6 +5,7 @@ from pathlib import Path
 
 from lumi_api.projects import (
     BriefVersion,
+    ProjectAuditEntry,
     ProjectBrief,
     ProjectEvent,
     ProjectListQuery,
@@ -23,6 +24,7 @@ SCHEMAS = {
     "project-brief-version-v1.schema.json": BriefVersion,
     "project-summary-v1.schema.json": ProjectSummary,
     "project-event-v1.schema.json": ProjectEvent,
+    "project-audit-entry-v1.schema.json": ProjectAuditEntry,
     "project-list-query-v1.schema.json": ProjectListQuery,
 }
 
