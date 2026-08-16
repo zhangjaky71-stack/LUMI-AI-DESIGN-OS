@@ -28,13 +28,16 @@ _LATENCY_MIN = {
 
 
 class ProviderRegistry:
-    """Execution transports, deliberately separate from registry control-plane facts."""
+    """Execution transports, separate from registry control-plane facts."""
 
     def __init__(self) -> None:
         self._adapters: dict[str, ProviderAdapter] = {}
         self._capability_registry: CapabilityRegistry | None = None
 
-    def bind_capability_registry(self, registry: CapabilityRegistry) -> None:
+    def bind_capability_registry(
+        self,
+        registry: CapabilityRegistry,
+    ) -> None:
         self._capability_registry = registry
 
     def register(self, adapter: ProviderAdapter) -> None:
@@ -47,7 +50,9 @@ class ProviderRegistry:
         try:
             return self._adapters[provider]
         except KeyError as exc:
-            raise KeyError(f"provider is not registered: {provider}") from exc
+            raise KeyError(
+                f"provider is not registered: {provider}"
+            ) from exc
 
     def has_adapter(self, provider: str) -> bool:
         return provider in self._adapters
@@ -56,7 +61,10 @@ class ProviderRegistry:
         if self._capability_registry is not None:
             snapshot = self._capability_registry.capture_snapshot()
             for record in snapshot.models.values():
-                if record.provider == provider and record.model == model_name:
+                if (
+                    record.provider == provider
+                    and record.model == model_name
+                ):
                     return record.to_provider_model(
                         registry_snapshot_id=snapshot.snapshot_id
                     )
@@ -64,10 +72,15 @@ class ProviderRegistry:
         for model in adapter.models():
             if model.model == model_name:
                 return model
-        raise KeyError(f"model is not registered: {provider}/{model_name}")
+        raise KeyError(
+            f"model is not registered: {provider}/{model_name}"
+        )
 
     def adapters(self) -> tuple[ProviderAdapter, ...]:
-        return tuple(self._adapters[name] for name in sorted(self._adapters))
+        return tuple(
+            self._adapters[name]
+            for name in sorted(self._adapters)
+        )
 
 
 class ModelRouter:
@@ -83,23 +96,36 @@ class ModelRouter:
         if capability_registry is not None:
             self.registry.bind_capability_registry(capability_registry)
 
-    def resolve_model(self, provider: str, model_name: str) -> ProviderModel:
+    def resolve_model(
+        self,
+        provider: str,
+        model_name: str,
+    ) -> ProviderModel:
         return self.registry.model(provider, model_name)
 
     def route(self, request: ModelRequest) -> RouteDecision:
         accepted: list[RouteCandidate] = []
         rejected: list[str] = []
-        preferred_providers = set(request.routing_hints.preferred_providers)
-        preferred_models = set(request.routing_hints.preferred_models)
+        preferred_providers = set(
+            request.routing_hints.preferred_providers
+        )
+        preferred_models = set(
+            request.routing_hints.preferred_models
+        )
         excluded = set(request.routing_hints.excluded_providers)
         registry_snapshot_id: str | None = None
 
         if self.capability_registry is not None:
             snapshot = self.capability_registry.capture_snapshot()
             registry_snapshot_id = snapshot.snapshot_id
-            policy = self.capability_registry.policy_for(request.organization_id)
+            policy = self.capability_registry.policy_for(
+                request.organization_id
+            )
             allow_partial = bool(
-                request.constraints.get("allow_partial_capability", False)
+                request.constraints.get(
+                    "allow_partial_capability",
+                    False,
+                )
             )
             records = snapshot.list_models(
                 request.capability,
@@ -136,30 +162,51 @@ class ModelRouter:
                 continue
             adapter = self.registry.adapter(model.provider)
 
-            if model.quality_measured:
-                if model.quality_score < _QUALITY_MIN[request.quality_profile]:
-                    rejected.append(f"{identity}:quality_below_threshold")
-                    continue
-                reasons.append("quality_measured")
-            else:
-                reasons.append("quality_not_measured")
+            if (
+                model.quality_measured
+                and model.quality_score
+                < _QUALITY_MIN[request.quality_profile]
+            ):
+                rejected.append(
+                    f"{identity}:quality_below_threshold"
+                )
+                continue
+            reasons.append(
+                "quality_measured"
+                if model.quality_measured
+                else "quality_not_measured"
+            )
 
-            if model.latency_measured:
-                if model.latency_score < _LATENCY_MIN[request.latency_profile]:
-                    rejected.append(f"{identity}:latency_below_threshold")
-                    continue
-                reasons.append("latency_measured")
-            else:
-                reasons.append("latency_not_measured")
+            if (
+                model.latency_measured
+                and model.latency_score
+                < _LATENCY_MIN[request.latency_profile]
+            ):
+                rejected.append(
+                    f"{identity}:latency_below_threshold"
+                )
+                continue
+            reasons.append(
+                "latency_measured"
+                if model.latency_measured
+                else "latency_not_measured"
+            )
 
-            if request.routing_hints.required_region:
-                required = request.routing_hints.required_region
-                if required not in model.regions and "global" not in model.regions:
-                    rejected.append(f"{identity}:region_mismatch")
-                    continue
+            required_region = request.routing_hints.required_region
+            if (
+                required_region
+                and required_region not in model.regions
+                and "global" not in model.regions
+            ):
+                rejected.append(f"{identity}:region_mismatch")
+                continue
+            if required_region:
                 reasons.append("region_match")
 
-            health_snapshot = self.health.snapshot(model.provider, model.model)
+            health_snapshot = self.health.snapshot(
+                model.provider,
+                model.model,
+            )
             if not health_snapshot.healthy or health_snapshot.score <= 0:
                 rejected.append(f"{identity}:health_filtered")
                 continue
@@ -180,10 +227,17 @@ class ModelRouter:
             ):
                 rejected.append(f"{identity}:unknown_cost")
                 continue
-            if request.budget_limit is not None and estimate.amount_usd is not None:
-                if estimate.amount_usd > request.budget_limit:
-                    rejected.append(f"{identity}:budget_filtered")
-                    continue
+            if (
+                request.budget_limit is not None
+                and estimate.amount_usd is not None
+                and estimate.amount_usd > request.budget_limit
+            ):
+                rejected.append(f"{identity}:budget_filtered")
+                continue
+            if (
+                request.budget_limit is not None
+                and estimate.amount_usd is not None
+            ):
                 reasons.append("within_request_budget")
 
             score = health_snapshot.score
