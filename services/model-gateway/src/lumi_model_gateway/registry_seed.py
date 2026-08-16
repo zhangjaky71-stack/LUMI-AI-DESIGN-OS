@@ -48,10 +48,7 @@ def load_seed_registry(root: Path) -> CapabilityRegistry:
 def load_seed_snapshot(root: Path) -> RegistrySnapshot:
     config_path = root / "config/model-registry.seed.json"
     config = _load_json(config_path)
-    provider_payloads = [
-        _load_json(root / path)
-        for path in config["provider_files"]
-    ]
+    provider_payloads = [_load_json(root / path) for path in config["provider_files"]]
     route_payload = _load_json(root / config["route_policy"])
     checksum_payload = {
         "config": config,
@@ -67,10 +64,7 @@ def load_seed_snapshot(root: Path) -> RegistrySnapshot:
             if record.model_key in models:
                 raise ValueError(f"duplicate model_key in seed: {record.model_key}")
             models[record.model_key] = record
-    profiles = {
-        profile.name: profile
-        for profile in _routing_profiles(route_payload)
-    }
+    profiles = {profile.name: profile for profile in _routing_profiles(route_payload)}
     _validate_route_references(models, profiles)
     snapshot = RegistrySnapshot(
         snapshot_id=f"registry:{version}:{checksum[:16]}",
@@ -162,20 +156,12 @@ def _provider_models(payload: dict[str, Any], *, version: str) -> tuple[ModelRec
         metadata = {
             "modalities": tuple(item.get("modalities") or ()),
             "roles": tuple(item.get("documented_roles") or ()),
-            "documented_capabilities": dict(
-                item.get("documented_capabilities") or {}
-            ),
-            "benchmark_status": str(
-                item.get("benchmark_status") or "NOT_MEASURED"
-            ),
+            "documented_capabilities": dict(item.get("documented_capabilities") or {}),
+            "benchmark_status": str(item.get("benchmark_status") or "NOT_MEASURED"),
             "notes": str(item.get("notes") or ""),
         }
         revision_hash = registry_checksum(
-            {
-                "version": version,
-                "model": item,
-                "observed_at": observed_at,
-            }
+            {"version": version, "model": item, "observed_at": observed_at}
         )
         output.append(
             ModelRecord(
@@ -249,6 +235,8 @@ def _claims_for_model(
             add(Capability.VIDEO_TEXT_TO_VIDEO)
         if "image" in inputs:
             add(Capability.VIDEO_IMAGE_TO_VIDEO)
+    if "video_edit" in modalities:
+        add(Capability.VIDEO_IMAGE_TO_VIDEO)
     if "embedding" in modalities:
         if inputs and inputs.issubset({"text"}):
             add(Capability.EMBEDDING_TEXT)
@@ -279,17 +267,13 @@ def _prices_for_model(
     for index, price in enumerate(item.get("pricing") or []):
         metric = str(price.get("metric") or f"metric_{index}")
         amount_key = next(
-            (
-                key
-                for key in price
-                if key.startswith("usd_") and key != "usd_currency"
-            ),
-            None,
+            (key for key in price if key.startswith("usd_") and key != "usd_currency"),
+            "usd" if "usd" in price else None,
         )
         if amount_key is None:
-            continue
+            raise ValueError(f"pricing record has no USD amount: {model_key}/{metric}")
         amount = Decimal(str(price[amount_key]))
-        unit = amount_key.removeprefix("usd_")
+        unit = metric if amount_key == "usd" else amount_key.removeprefix("usd_")
         minimum = price.get("minimum_charge_usd")
         identity = registry_checksum(
             {
@@ -309,9 +293,7 @@ def _prices_for_model(
                 currency="USD",
                 unit=unit,
                 price=amount,
-                minimum_charge=(
-                    None if minimum is None else Decimal(str(minimum))
-                ),
+                minimum_charge=None if minimum is None else Decimal(str(minimum)),
                 effective_from=observed_at,
                 observed_at=observed_at,
                 expires_at=expires_at,
@@ -337,8 +319,7 @@ def _routing_profiles(payload: dict[str, Any]) -> tuple[RoutingProfile, ...]:
                     str(value) for value in route.get("candidates") or ()
                 ),
                 stable_fallback_model_keys=tuple(
-                    str(value)
-                    for value in route.get("stable_fallback_candidates") or ()
+                    str(value) for value in route.get("stable_fallback_candidates") or ()
                 ),
                 selection_gate=str(route.get("selection_gate") or name),
                 weights=RoutingWeights(),
@@ -355,10 +336,7 @@ def _validate_route_references(
         {
             key
             for profile in profiles.values()
-            for key in (
-                *profile.candidate_model_keys,
-                *profile.stable_fallback_model_keys,
-            )
+            for key in (*profile.candidate_model_keys, *profile.stable_fallback_model_keys)
             if key not in models
         }
     )
