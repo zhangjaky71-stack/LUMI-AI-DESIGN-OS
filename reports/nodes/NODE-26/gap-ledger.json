@@ -1,0 +1,49 @@
+{
+  "node": "NODE-26",
+  "title": "MCP Integration",
+  "status": "IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL",
+  "gaps": [
+    {
+      "id": "MCP-COMPOSITION-001",
+      "severity": "P1",
+      "summary": "Production MCP Server Registry, MCPToolPolicy persistence, admin approval workflow and application DI are not yet wired.",
+      "owner": "control-plane/admin integration"
+    },
+    {
+      "id": "MCP-TRANSPORT-002",
+      "severity": "P0",
+      "summary": "The trusted MCPHTTPTransport port is defined, but the production TLS/SNI-aware pinned-IP HTTP/SSE implementation, response byte budget and transport hardening are not yet bound.",
+      "owner": "network/runtime composition"
+    },
+    {
+      "id": "MCP-SCHEMA-003",
+      "severity": "P1",
+      "summary": "MCP 2026-07-28 permits JSON Schema 2020-12; P0 maps only the subset NODE-25 can enforce and rejects unsupported keywords rather than silently weakening validation.",
+      "owner": "Tool Gateway schema engine"
+    },
+    {
+      "id": "MCP-MRTR-004",
+      "severity": "P1",
+      "summary": "MRTR input_required is sanitized and fail-closed; durable LUMI-owned approval/input collection and bounded resume with inputResponses/requestState is not yet implemented.",
+      "owner": "NODE-28/NODE-62 HITL orchestration"
+    },
+    {
+      "id": "MCP-AUTH-005",
+      "severity": "P1",
+      "summary": "Organization/server-bound credential contracts exist, but production Secret Manager, delegated-user OAuth/EMA principal mapping, refresh and revocation are not composed.",
+      "owner": "auth/secrets integration"
+    },
+    {
+      "id": "MCP-COMPAT-006",
+      "severity": "P2",
+      "summary": "2025-11-25 compatibility is isolated and deterministically tested; broader real-server/SDK compatibility and conformance matrix evidence remains future validation.",
+      "owner": "compatibility/evals"
+    },
+    {
+      "id": "MCP-CI-007",
+      "severity": "BLOCKED_EXTERNAL",
+      "summary": "Hosted GitHub Actions cannot receive a runner while the repository account payment/spending-limit condition persists; no hosted PASS may be claimed.",
+      "owner": "GitHub account/billing"
+    }
+  ]
+}
