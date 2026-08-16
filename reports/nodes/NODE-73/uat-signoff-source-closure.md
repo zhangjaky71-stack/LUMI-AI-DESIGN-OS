@@ -6,12 +6,13 @@ This record does not change Final Acceptance to PASS.
 
 ## Gap found
 
-The previous Final Acceptance source baseline had two release-control mismatches:
+The previous Final Acceptance source baseline had three release-control mismatches:
 
-1. the canonical matrix treated Chrome/Edge as P0 but Safari as a deferrable P1 item, did not independently require Firefox, Billing UX or critical-path Accessibility;
-2. the release manifest accepted five plain `APPROVED` strings and therefore did not require Design, Legal/Privacy or Finance/Billing signoff, a named approver, timestamp, release-candidate binding or frozen signoff evidence.
+1. the canonical matrix treated Chrome/Edge as P0 but Safari as a deferrable P1 item, and did not independently require Firefox, Billing UX or critical-path Accessibility;
+2. the release manifest accepted five plain `APPROVED` strings and therefore did not require Design, Legal/Privacy or Finance/Billing signoff, a named approver, timestamp, release-candidate binding or frozen signoff evidence;
+3. the existing Playwright configuration/CI only used a single default browser for most E2E coverage, so it could not serve as a repeatable cross-browser regression preflight for Final Acceptance.
 
-These gaps conflicted with the final release ledger and were source gaps, not merely missing runtime evidence.
+These were source/control-plane gaps, not merely missing runtime evidence.
 
 ## Source closure now implemented
 
@@ -26,7 +27,30 @@ These gaps conflicted with the final release ledger and were source gaps, not me
 - `RESPONSIVE-01` — P1/Medium declared responsive/mobile scope, with only complete non-critical desktop-only defer allowed;
 - `A11Y-01` — P0/High keyboard/focus/semantics/contrast/zoom/critical screen-reader acceptance.
 
-The existing fail-closed scenario rules remain: P0 must PASS, Critical/High cannot be deferred/blocked into green, and every PASS requires frozen evidence refs.
+P0 must PASS, Critical/High cannot be deferred/blocked into green, and every PASS requires frozen evidence refs.
+
+### Automated browser preflight
+
+Added `playwright.final-acceptance.config.ts` with projects for:
+
+- branded Google Chrome stable channel;
+- branded Microsoft Edge stable channel;
+- Playwright Firefox engine;
+- Playwright WebKit Safari-engine preflight.
+
+The selected smoke corpus exercises App Shell, Projects, AI Workspace, Canvas, Layers/Inspector, Versions, Export and Billing surfaces.
+
+Added `.github/workflows/final-browser-preflight.yml` to:
+
+- perform frozen pnpm install;
+- install browser/system runtimes;
+- capture Node/pnpm/Playwright/OS/browser inventory;
+- run the selected corpus across all four projects;
+- archive traces/screenshots/videos on failures.
+
+`webkit-safari-engine-preflight` is explicitly **not** accepted as proof that real macOS Safari passed `BROWSER-02`; real Safari evidence remains mandatory. The workflow is a regression preflight, not a replacement for exact-browser final UAT.
+
+Added `scripts/validate_final_browser_preflight.py`, and the Final Product Acceptance source-contract job now validates this browser preflight contract.
 
 ### Evidence-backed signoffs
 
@@ -69,17 +93,11 @@ The gate does not create or impersonate human approval.
 - Design approval whose nested evidence hash is substituted;
 - all previous P0/upstream/Production/evidence substitution drills.
 
-The validator also requires the 50-scenario matrix and the new UAT/browser/accessibility scenario IDs.
+The validator requires the 50-scenario matrix and the new UAT/browser/accessibility scenario IDs.
 
 ### Canonical dependency gate
 
-`.github/workflows/final-acceptance-gate.yml` now pins:
-
-- Python 3.12;
-- uv 0.11.28;
-- `uv sync --all-packages --frozen`.
-
-This aligns Final Product Acceptance with the canonical workspace dependency rule used by the hard-stop workflow.
+`.github/workflows/final-acceptance-gate.yml` pins Python 3.12, uv 0.11.28 and `uv sync --all-packages --frozen`, aligning Final Product Acceptance with the canonical workspace dependency rule used by the hard-stop workflow.
 
 ### Operator documentation
 
@@ -87,14 +105,16 @@ Added/updated:
 
 - `docs/acceptance/NODE-73-UAT-SIGNOFF-MATRIX.md`;
 - `docs/acceptance/NODE-73-FINAL-ACCEPTANCE-RUNBOOK.md`;
-- `reports/nodes/NODE-73/release-acceptance.md`.
+- `reports/nodes/NODE-73/release-acceptance.md`;
+- `reports/nodes/NODE-73/latest-ci-external-blocker.md`.
 
 ## Still required before acceptance
 
 - regenerate the stale root `uv.lock` with canonical tooling;
-- restore GitHub Actions runner allocation and execute the source contract/canonical lock gate;
+- restore GitHub Actions runner allocation and execute source-contract/canonical lock/browser preflight jobs;
 - freeze one exact final RC;
 - execute all required P0 UAT/browser/accessibility scenarios on the exact RC;
+- run real supported Safari on macOS; do not substitute WebKit preflight for Safari evidence;
 - execute Billing UX and real Stripe live-purchase evidence;
 - provide any in-scope responsive/mobile evidence or a valid P1 desktop-only defer record;
 - obtain all eight real human signoffs after the evidence they approve is frozen;
@@ -103,4 +123,4 @@ Added/updated:
 
 ## Current status
 
-NODE-73 remains **NOT ACCEPTED**. Source controls now prevent the final release from becoming green merely because Chrome/Edge passed or five approval strings were changed to `APPROVED`.
+NODE-73 remains **NOT ACCEPTED**. Source controls now prevent the final release from becoming green merely because a single browser passed or a handful of approval strings were changed to `APPROVED`.
