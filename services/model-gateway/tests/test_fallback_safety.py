@@ -22,6 +22,7 @@ from lumi_model_gateway.models import (
     Capability,
     CostConfidence,
     CostEstimate,
+    InputKind,
     ModelInput,
     ModelOutput,
     ModelRequest,
@@ -63,17 +64,28 @@ class ScriptedProvider:
     def models(self) -> tuple[ProviderModel, ...]:
         return (self._model,)
 
-    def validate(self, request: ModelRequest, model: ProviderModel) -> None:
+    def validate(
+        self,
+        request: ModelRequest,
+        model: ProviderModel,
+    ) -> None:
         del request, model
 
     def estimate_cost(
-        self, request: ModelRequest, model: ProviderModel
+        self,
+        request: ModelRequest,
+        model: ProviderModel,
     ) -> CostEstimate:
         del request, model
-        return CostEstimate(Decimal("0.01"), CostConfidence.EXACT)
+        return CostEstimate(
+            Decimal("0.01"),
+            CostConfidence.EXACT,
+        )
 
     async def invoke(
-        self, request: ModelRequest, model: ProviderModel
+        self,
+        request: ModelRequest,
+        model: ProviderModel,
     ) -> NormalizedResult:
         del request, model
         self.calls += 1
@@ -83,23 +95,34 @@ class ScriptedProvider:
         return item
 
     async def stream(
-        self, request: ModelRequest, model: ProviderModel
+        self,
+        request: ModelRequest,
+        model: ProviderModel,
     ) -> AsyncIterator[ModelStreamChunk]:
         del request, model
         raise UnsupportedProviderOperation("not used")
         yield
 
     async def get_async_status(
-        self, provider_request_id: str, model: ProviderModel
+        self,
+        provider_request_id: str,
+        model: ProviderModel,
     ) -> NormalizedResult:
         del provider_request_id, model
         raise UnsupportedProviderOperation("not used")
 
-    async def cancel(self, provider_request_id: str, model: ProviderModel) -> bool:
+    async def cancel(
+        self,
+        provider_request_id: str,
+        model: ProviderModel,
+    ) -> bool:
         del provider_request_id, model
         return False
 
-    def normalize_error(self, error: BaseException) -> ProviderCallError:
+    def normalize_error(
+        self,
+        error: BaseException,
+    ) -> ProviderCallError:
         assert isinstance(error, ProviderCallError)
         return error
 
@@ -111,7 +134,10 @@ def result(provider: str) -> NormalizedResult:
         f"{provider}-model",
         outputs=(ModelOutput(kind="text", text=provider),),
         provider_request_id=f"{provider}-request",
-        cost=CostEstimate(Decimal("0.01"), CostConfidence.EXACT),
+        cost=CostEstimate(
+            Decimal("0.01"),
+            CostConfidence.EXACT,
+        ),
     )
 
 
@@ -129,13 +155,22 @@ def error(
     )
 
 
-def request(*, preferred: str, allow_fallback: bool = True) -> ModelRequest:
+def request(
+    *,
+    preferred: str,
+    allow_fallback: bool = True,
+) -> ModelRequest:
     return ModelRequest(
         request_id=REQ,
         organization_id=ORG,
         operation_id=OP,
         capability=Capability.LLM_REASONING,
-        inputs=(ModelInput(kind="text", text="hello"),),
+        inputs=(
+            ModelInput(
+                kind=InputKind.TEXT,
+                text="hello",
+            ),
+        ),
         budget_limit=Decimal("1"),
         routing_hints=RoutingHints(
             preferred_providers=(preferred,),
@@ -144,7 +179,10 @@ def request(*, preferred: str, allow_fallback: bool = True) -> ModelRequest:
     )
 
 
-def gateway(primary: ScriptedProvider, backup: ScriptedProvider) -> ModelGateway:
+def gateway(
+    primary: ScriptedProvider,
+    backup: ScriptedProvider,
+) -> ModelGateway:
     registry = ProviderRegistry()
     registry.register(primary)
     registry.register(backup)
@@ -171,8 +209,17 @@ def test_paid_confirmed_rejection_can_fallback() -> None:
         paid=True,
         quality=95,
     )
-    backup = ScriptedProvider("backup", [result("backup")], paid=True, quality=80)
-    value = asyncio.run(gateway(primary, backup).invoke(request(preferred="primary")))
+    backup = ScriptedProvider(
+        "backup",
+        [result("backup")],
+        paid=True,
+        quality=80,
+    )
+    value = asyncio.run(
+        gateway(primary, backup).invoke(
+            request(preferred="primary")
+        )
+    )
     assert value.provider == "backup"
     assert primary.calls == 1
     assert backup.calls == 1
@@ -191,13 +238,24 @@ def test_paid_unknown_timeout_never_cross_provider_fallbacks() -> None:
         paid=True,
         quality=95,
     )
-    backup = ScriptedProvider("backup", [result("backup")], paid=True, quality=80)
+    backup = ScriptedProvider(
+        "backup",
+        [result("backup")],
+        paid=True,
+        quality=80,
+    )
     try:
-        asyncio.run(gateway(primary, backup).invoke(request(preferred="primary")))
+        asyncio.run(
+            gateway(primary, backup).invoke(
+                request(preferred="primary")
+            )
+        )
     except ProviderCallError as exc:
         assert exc.category is ErrorCategory.TIMEOUT
     else:
-        raise AssertionError("ambiguous paid timeout incorrectly fell back")
+        raise AssertionError(
+            "ambiguous paid timeout incorrectly fell back"
+        )
     assert primary.calls == 1
     assert backup.calls == 0
 
@@ -215,9 +273,18 @@ def test_auth_error_never_fallbacks_but_unpaid_timeout_can() -> None:
         paid=False,
         quality=95,
     )
-    backup = ScriptedProvider("backup", [result("backup")], paid=False, quality=80)
+    backup = ScriptedProvider(
+        "backup",
+        [result("backup")],
+        paid=False,
+        quality=80,
+    )
     try:
-        asyncio.run(gateway(auth_primary, backup).invoke(request(preferred="primary")))
+        asyncio.run(
+            gateway(auth_primary, backup).invoke(
+                request(preferred="primary")
+            )
+        )
     except ProviderCallError as exc:
         assert exc.category is ErrorCategory.AUTH_ERROR
     else:
@@ -243,6 +310,8 @@ def test_auth_error_never_fallbacks_but_unpaid_timeout_can() -> None:
         quality=80,
     )
     value = asyncio.run(
-        gateway(timeout_primary, timeout_backup).invoke(request(preferred="primary"))
+        gateway(timeout_primary, timeout_backup).invoke(
+            request(preferred="primary")
+        )
     )
     assert value.provider == "backup"

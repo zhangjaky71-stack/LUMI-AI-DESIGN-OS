@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import asyncio
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 import lumi_model_gateway.anthropic_adapter as anthropic_module
 import lumi_model_gateway.openai_adapter as openai_module
 from lumi_model_gateway.anthropic_adapter import AnthropicMessagesAdapter
 from lumi_model_gateway.http_common import JsonHttpResponse
-from lumi_model_gateway.models import Capability, ModelInput, ModelRequest
+from lumi_model_gateway.models import (
+    Capability,
+    InputKind,
+    ModelInput,
+    ModelRequest,
+)
 from lumi_model_gateway.openai_adapter import OpenAIResponsesAdapter
 from lumi_model_gateway.secrets import MappingSecretProvider
 
@@ -23,7 +29,12 @@ def structured_request() -> ModelRequest:
         organization_id=ORG,
         operation_id=OP,
         capability=Capability.LLM_STRUCTURED_OUTPUT,
-        inputs=(ModelInput(kind="text", text="return one title"),),
+        inputs=(
+            ModelInput(
+                kind=InputKind.TEXT,
+                text="return one title",
+            ),
+        ),
         budget_limit=Decimal("1"),
         structured_output_schema={
             "type": "object",
@@ -40,7 +51,12 @@ def reasoning_request() -> ModelRequest:
         organization_id=ORG,
         operation_id=OP,
         capability=Capability.LLM_REASONING,
-        inputs=(ModelInput(kind="text", text="hello"),),
+        inputs=(
+            ModelInput(
+                kind=InputKind.TEXT,
+                text="hello",
+            ),
+        ),
         budget_limit=Decimal("1"),
         constraints={"max_output_tokens": 50},
     )
@@ -53,10 +69,10 @@ def test_openai_responses_payload_and_normalization_do_not_leak_secret() -> None
         input_usd_per_million=Decimal("1"),
         output_usd_per_million=Decimal("2"),
     )
-    captured = {}
+    captured: dict[str, Any] = {}
     original = openai_module.json_request
 
-    async def fake_request(**kwargs):
+    async def fake_request(**kwargs: Any) -> JsonHttpResponse:
         captured.update(kwargs)
         return JsonHttpResponse(
             200,
@@ -75,15 +91,24 @@ def test_openai_responses_payload_and_normalization_do_not_leak_secret() -> None
 
     openai_module.json_request = fake_request
     try:
-        result = asyncio.run(adapter.invoke(structured_request(), adapter.models()[0]))
+        result = asyncio.run(
+            adapter.invoke(
+                structured_request(),
+                adapter.models()[0],
+            )
+        )
     finally:
         openai_module.json_request = original
 
-    assert captured["url"].endswith("/v1/responses")
-    assert captured["payload"]["store"] is False
-    assert captured["payload"]["text"]["format"]["type"] == "json_schema"
-    assert captured["headers"]["X-Client-Request-Id"] == str(REQ)
-    assert captured["headers"]["Authorization"] == f"Bearer {secret}"
+    assert str(captured["url"]).endswith("/v1/responses")
+    payload = captured["payload"]
+    headers = captured["headers"]
+    assert isinstance(payload, dict)
+    assert isinstance(headers, dict)
+    assert payload["store"] is False
+    assert payload["text"]["format"]["type"] == "json_schema"
+    assert headers["X-Client-Request-Id"] == str(REQ)
+    assert headers["Authorization"] == f"Bearer {secret}"
     assert result.outputs[0].json_value == {"title": "LUMI"}
     assert result.usage.cached_input_tokens == 2
     assert secret not in repr(result)
@@ -96,17 +121,22 @@ def test_anthropic_messages_headers_and_normalization_do_not_leak_secret() -> No
         input_usd_per_million=Decimal("1"),
         output_usd_per_million=Decimal("2"),
     )
-    captured = {}
+    captured: dict[str, Any] = {}
     original = anthropic_module.json_request
 
-    async def fake_request(**kwargs):
+    async def fake_request(**kwargs: Any) -> JsonHttpResponse:
         captured.update(kwargs)
         return JsonHttpResponse(
             200,
             {},
             {
                 "id": "msg_123",
-                "content": [{"type": "text", "text": "anthropic-ok"}],
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "anthropic-ok",
+                    }
+                ],
                 "stop_reason": "end_turn",
                 "usage": {
                     "input_tokens": 12,
@@ -118,14 +148,23 @@ def test_anthropic_messages_headers_and_normalization_do_not_leak_secret() -> No
 
     anthropic_module.json_request = fake_request
     try:
-        result = asyncio.run(adapter.invoke(reasoning_request(), adapter.models()[0]))
+        result = asyncio.run(
+            adapter.invoke(
+                reasoning_request(),
+                adapter.models()[0],
+            )
+        )
     finally:
         anthropic_module.json_request = original
 
-    assert captured["url"].endswith("/v1/messages")
-    assert captured["headers"]["x-api-key"] == secret
-    assert captured["headers"]["anthropic-version"] == "2023-06-01"
-    assert captured["payload"]["max_tokens"] == 50
+    assert str(captured["url"]).endswith("/v1/messages")
+    headers = captured["headers"]
+    payload = captured["payload"]
+    assert isinstance(headers, dict)
+    assert isinstance(payload, dict)
+    assert headers["x-api-key"] == secret
+    assert headers["anthropic-version"] == "2023-06-01"
+    assert payload["max_tokens"] == 50
     assert result.outputs[0].text == "anthropic-ok"
     assert result.usage.cached_input_tokens == 3
     assert secret not in repr(result)

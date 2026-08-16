@@ -14,6 +14,7 @@ from lumi_model_gateway.models import (
     CostConfidence,
     CostEstimate,
     HealthSnapshot,
+    InputKind,
     ModelInput,
     ModelOutput,
     ModelRequest,
@@ -42,7 +43,12 @@ def model_request(text: str = "hello") -> ModelRequest:
         organization_id=ORG,
         operation_id=OP,
         capability=Capability.LLM_REASONING,
-        inputs=(ModelInput(kind="text", text=text),),
+        inputs=(
+            ModelInput(
+                kind=InputKind.TEXT,
+                text=text,
+            ),
+        ),
         budget_limit=Decimal("1"),
     )
 
@@ -59,7 +65,10 @@ def candidate() -> RouteCandidate:
     )
     return RouteCandidate(
         model=model,
-        estimate=CostEstimate(Decimal("0.01"), CostConfidence.EXACT),
+        estimate=CostEstimate(
+            Decimal("0.01"),
+            CostConfidence.EXACT,
+        ),
         health=HealthSnapshot(),
         score=270,
         reason_codes=("test",),
@@ -73,7 +82,10 @@ def completed_result() -> NormalizedResult:
         model="paid-model-v1",
         outputs=(ModelOutput(kind="text", text="paid-ok"),),
         provider_request_id="provider-paid-123",
-        cost=CostEstimate(Decimal("0.01"), CostConfidence.EXACT),
+        cost=CostEstimate(
+            Decimal("0.01"),
+            CostConfidence.EXACT,
+        ),
     )
 
 
@@ -139,7 +151,9 @@ def test_same_operation_candidate_with_different_semantics_conflicts() -> None:
     except IdempotencyConflict:
         pass
     else:
-        raise AssertionError("same operation with different semantics was replayed")
+        raise AssertionError(
+            "same operation with different semantics was replayed"
+        )
 
 
 def test_confirmed_not_accepted_failure_can_recover_without_reconciliation() -> None:
@@ -172,7 +186,9 @@ def test_confirmed_not_accepted_failure_can_recover_without_reconciliation() -> 
         except ProviderCallError as exc:
             assert exc.category is ModelErrorCategory.RATE_LIMIT
         else:
-            raise AssertionError("confirmed rejection unexpectedly succeeded")
+            raise AssertionError(
+                "confirmed rejection unexpectedly succeeded"
+            )
         return await adapter.execute(
             request=model_request(),
             candidate=candidate(),
@@ -228,7 +244,9 @@ def test_unknown_paid_timeout_becomes_ambiguous_and_never_executes_again() -> No
     except AmbiguousSideEffect:
         pass
     else:
-        raise AssertionError("ambiguous paid timeout was executed again")
+        raise AssertionError(
+            "ambiguous paid timeout was executed again"
+        )
     assert calls == 1
     record = next(iter(store.records.values()))
     assert record.error_category is not None
