@@ -14,4 +14,7 @@ ALTER TABLE agent_runs
 
 ALTER TABLE agent_runs
   DROP COLUMN code_git_sha,
-  DROP COLUMN graph_key;
+  DROP COLUMN graph_key,
+  ALTER COLUMN thread_id TYPE VARCHAR(200),
+  ALTER COLUMN graph_version TYPE VARCHAR(80),
+  ALTER COLUMN agent_config_version TYPE VARCHAR(80);
