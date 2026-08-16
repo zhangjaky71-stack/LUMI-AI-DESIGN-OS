@@ -61,14 +61,17 @@ class SandboxSpec(FrozenModel):
     network_policy: NetworkPolicy = NetworkPolicy.NONE
     network_allowlist: tuple[str, ...] = ()
     max_output_bytes: int = Field(default=1_048_576, ge=1024, le=16_777_216)
+    max_artifact_bytes: int = Field(default=16_777_216, ge=1024, le=268_435_456)
     ttl_seconds: int = Field(default=1800, ge=30, le=86400)
 
     @model_validator(mode="after")
-    def validate_network(self) -> "SandboxSpec":
+    def validate_limits(self) -> "SandboxSpec":
         if self.network_policy is NetworkPolicy.ALLOWLIST and not self.network_allowlist:
             raise ValueError("ALLOWLIST requires at least one destination")
         if self.network_policy is not NetworkPolicy.ALLOWLIST and self.network_allowlist:
             raise ValueError("network_allowlist is only valid with ALLOWLIST policy")
+        if self.max_artifact_bytes > self.disk_limit_mb * 1024 * 1024:
+            raise ValueError("max_artifact_bytes cannot exceed sandbox disk limit")
         return self
 
 
