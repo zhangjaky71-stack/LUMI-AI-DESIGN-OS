@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from uuid import UUID
 
-from .models import OrganizationMembership, OrganizationRole, Principal
+from .models import ActorType, OrganizationMembership, OrganizationRole, Principal
 
 
 class Permission(StrEnum):
@@ -90,7 +90,7 @@ class AccessPolicyService:
             return None
         permissions = self.permissions_for_roles(roles)
         return Principal(
-            actor_type="USER",
+            actor_type=ActorType.USER,
             actor_id=actor_id,
             user_id=user_id,
             organization_id=organization_id,
@@ -107,7 +107,9 @@ class AccessPolicyService:
     ) -> AccessDecision:
         if principal.organization_id != organization_id:
             return AccessDecision(False, "TENANT_RESOURCE_NOT_FOUND")
-        permission_value = permission.value if isinstance(permission, Permission) else permission
+        permission_value = (
+            permission.value if isinstance(permission, Permission) else permission
+        )
         if permission_value not in principal.permissions:
             return AccessDecision(False, "PERMISSION_DENIED")
         return AccessDecision(True, "ALLOW")
@@ -120,7 +122,11 @@ def enforce_last_owner_invariant(
     new_role: OrganizationRole | None,
 ) -> None:
     target = next(
-        (membership for membership in memberships if membership.id == target_membership_id),
+        (
+            membership
+            for membership in memberships
+            if membership.id == target_membership_id
+        ),
         None,
     )
     if target is None or target.role != OrganizationRole.OWNER:
