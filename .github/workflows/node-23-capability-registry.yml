@@ -1,0 +1,250 @@
+name: NODE-23 Capability Registry
+
+on:
+  pull_request:
+    paths:
+      - "services/model-gateway/src/lumi_model_gateway/registry*.py"
+      - "services/model-gateway/src/lumi_model_gateway/routing*.py"
+      - "services/model-gateway/src/lumi_model_gateway/models.py"
+      - "services/model-gateway/src/lumi_model_gateway/__init__.py"
+      - "services/model-gateway/tests/test_capability_registry.py"
+      - "services/model-gateway/tests/test_registry_router_integration.py"
+      - "services/model-gateway/tests/test_routing_profile_evaluator.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/src/lumi_api/persistence/models_capability_registry.py"
+      - "apps/api/migrations/versions/20260816_0007_capability_registry.py"
+      - "apps/api/migrations/versions/20260816_0007_sql/**"
+      - "tools/node23/**"
+      - "docs/models/CAPABILITY-REGISTRY-*.md"
+      - "reports/nodes/NODE-23/**"
+      - ".github/workflows/node-23-capability-registry.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/model-gateway/src/lumi_model_gateway/registry*.py"
+      - "services/model-gateway/src/lumi_model_gateway/routing*.py"
+      - "services/model-gateway/src/lumi_model_gateway/models.py"
+      - "apps/api/src/lumi_api/persistence/models_capability_registry.py"
+      - "apps/api/migrations/versions/20260816_0007_capability_registry.py"
+      - "apps/api/migrations/versions/20260816_0007_sql/**"
+      - "tools/node23/**"
+      - "docs/models/CAPABILITY-REGISTRY-*.md"
+      - "reports/nodes/NODE-23/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  SQLALCHEMY_VERSION: "2.0.51"
+  ALEMBIC_VERSION: "1.18.5"
+  ASYNCPG_VERSION: "0.31.0"
+  LUMI_DATABASE_MIGRATION_URL: "postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi"
+  LUMI_DATABASE_MIGRATION_URL_ASYNCPG: "postgresql://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi"
+  LUMI_DATABASE_APP_URL: "postgresql://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi"
+
+jobs:
+  capability-registry:
+    name: capability-registry
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen workspace dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Validate Capability Registry architecture and seed truth
+        run: |
+          PYTHONPATH=services/model-gateway/src:apps/api/src \
+            uv run python tools/node23/validate_capability_registry.py
+
+      - name: Run Registry contracts and Model Gateway regression
+        run: |
+          PYTHONPATH=services/model-gateway/src:apps/api/src \
+            uv run pytest -q services/model-gateway/tests
+
+      - name: Export and validate Capability Registry schemas
+        run: |
+          rm -rf reports/nodes/NODE-23/generated-schemas
+          uv run python tools/node23/export_registry_schemas.py
+          count="$(find reports/nodes/NODE-23/generated-schemas \
+            -name '*.schema.json' | wc -l)"
+          test "$count" -eq 6
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("reports/nodes/NODE-23")
+          schemas = sorted((root / "generated-schemas").glob("*.schema.json"))
+          assert len(schemas) == 6
+          for path in schemas:
+              payload = json.loads(path.read_text(encoding="utf-8"))
+              assert payload["$schema"].endswith("2020-12/schema")
+          ledger = json.loads((root / "gap-ledger.json").read_text(encoding="utf-8"))
+          assert len(ledger["gaps"]) == 7
+          print("NODE-23 schemas and gap ledger valid")
+          PY
+
+      - name: Ruff NODE-23 affected scope
+        run: |
+          uv run ruff check \
+            services/model-gateway/src/lumi_model_gateway/registry.py \
+            services/model-gateway/src/lumi_model_gateway/registry_seed.py \
+            services/model-gateway/src/lumi_model_gateway/registry_postgres.py \
+            services/model-gateway/src/lumi_model_gateway/routing.py \
+            services/model-gateway/src/lumi_model_gateway/routing_profile_evaluator.py \
+            services/model-gateway/src/lumi_model_gateway/models.py \
+            services/model-gateway/src/lumi_model_gateway/__init__.py \
+            services/model-gateway/tests/test_capability_registry.py \
+            services/model-gateway/tests/test_registry_router_integration.py \
+            services/model-gateway/tests/test_routing_profile_evaluator.py \
+            apps/api/src/lumi_api/persistence/models.py \
+            apps/api/src/lumi_api/persistence/models_capability_registry.py \
+            tools/node23
+
+      - name: Pyright NODE-23 affected scope
+        run: |
+          uv run pyright \
+            services/model-gateway/src/lumi_model_gateway/registry.py \
+            services/model-gateway/src/lumi_model_gateway/registry_seed.py \
+            services/model-gateway/src/lumi_model_gateway/registry_postgres.py \
+            services/model-gateway/src/lumi_model_gateway/routing.py \
+            services/model-gateway/src/lumi_model_gateway/routing_profile_evaluator.py \
+            services/model-gateway/src/lumi_model_gateway/models.py \
+            services/model-gateway/src/lumi_model_gateway/__init__.py \
+            services/model-gateway/tests/test_capability_registry.py \
+            services/model-gateway/tests/test_registry_router_integration.py \
+            services/model-gateway/tests/test_routing_profile_evaluator.py \
+            apps/api/src/lumi_api/persistence/models.py \
+            apps/api/src/lumi_api/persistence/models_capability_registry.py \
+            tools/node23
+
+      - name: Start PostgreSQL
+        run: |
+          cp infra/compose/env.local.example infra/compose/.env
+          docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml \
+            up -d --wait --wait-timeout 180 postgres
+
+      - name: Upgrade through NODE-20 baseline
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade 20260816_0006
+
+      - name: Load deterministic two-tenant fixture
+        run: |
+          docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -v ON_ERROR_STOP=1 -U lumi_migration -d lumi \
+            < apps/api/migrations/seeds/p0_local_fixture.sql
+
+      - name: Upgrade PostgreSQL to NODE-23 head
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+
+      - name: Validate frozen baseline plus current ORM metadata
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            python tools/node10/validate_schema.py
+
+      - name: Run NODE-23 PostgreSQL seed and round-trip invariants
+        run: |
+          PYTHONPATH=services/model-gateway/src:apps/api/src:tools/node23 \
+            uv run --no-project \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            python tools/node23/test_registry_database.py \
+            --dsn "${LUMI_DATABASE_MIGRATION_URL_ASYNCPG}"
+
+      - name: Downgrade NODE-23 migration only
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic downgrade 20260816_0006
+
+      - name: Verify rollback preserves NODE-20 baseline
+        run: |
+          registry_gone="$(docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c \
+            "SELECT to_regclass('public.model_registry_versions') IS NULL")"
+          policy_gone="$(docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c \
+            "SELECT to_regclass('public.organization_model_policies') IS NULL")"
+          node20_kept="$(docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c \
+            "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='idempotency_operations' AND column_name='lease_owner')")"
+          test "$registry_gone" = "t"
+          test "$policy_gone" = "t"
+          test "$node20_kept" = "t"
+
+      - name: Reapply NODE-23 and rerun PostgreSQL invariants
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+          cd ../..
+          PYTHONPATH=services/model-gateway/src:apps/api/src:tools/node23 \
+            uv run --no-project \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            python tools/node23/test_registry_database.py \
+            --dsn "${LUMI_DATABASE_MIGRATION_URL_ASYNCPG}"
+
+      - name: Capture PostgreSQL diagnostics on failure
+        if: failure()
+        run: |
+          docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml ps || true
+          docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml logs --no-color postgres || true
+
+      - name: Upload NODE-23 evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-23-capability-registry-${{ github.run_id }}
+          path: |
+            reports/nodes/NODE-23/generated-schemas
+            reports/nodes/NODE-23/gap-ledger.json
+            reports/nodes/NODE-23/acceptance.md
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml down -v --remove-orphans || true
