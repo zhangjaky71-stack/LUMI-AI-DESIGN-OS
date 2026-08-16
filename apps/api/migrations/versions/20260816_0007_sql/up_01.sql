@@ -112,7 +112,7 @@ CREATE TABLE model_pricing_snapshots (
   unit VARCHAR(128) NOT NULL,
   price NUMERIC(24,10) NOT NULL,
   minimum_charge NUMERIC(24,10),
-  region VARCHAR(64),
+  region VARCHAR(64) DEFAULT 'global' NOT NULL,
   effective_from TIMESTAMP WITH TIME ZONE NOT NULL,
   observed_at TIMESTAMP WITH TIME ZONE NOT NULL,
   expires_at TIMESTAMP WITH TIME ZONE,
