@@ -21,6 +21,8 @@ from .models import (
     SideEffectKind,
     SideEffectOutcome,
 )
+from .postgres import PostgresIdempotencyStore
+from .transactional import PostgresTransactionalSideEffectGateway
 
 __all__ = [
     "AcquireAction",
@@ -36,6 +38,8 @@ __all__ = [
     "OperationInProgress",
     "OperationRequest",
     "OperationStatus",
+    "PostgresIdempotencyStore",
+    "PostgresTransactionalSideEffectGateway",
     "ProviderReconciliation",
     "ProviderReconciliationStatus",
     "RecoveryState",
