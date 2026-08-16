@@ -101,13 +101,20 @@ class CostTelemetryPort(Protocol):
 
 
 class HealthPort(Protocol):
-    def snapshot(self, provider: str, model: str) -> HealthSnapshot: ...
+    def snapshot(
+        self,
+        provider: str,
+        model: str,
+        capability: str | None = None,
+    ) -> HealthSnapshot: ...
 
     def record_success(
         self,
         provider: str,
         model: str,
         latency_ms: int | None,
+        *,
+        capability: str | None = None,
     ) -> None: ...
 
     def record_failure(
@@ -115,7 +122,40 @@ class HealthPort(Protocol):
         provider: str,
         model: str,
         category: str,
+        *,
+        capability: str | None = None,
+        latency_ms: int | None = None,
+        retry_after_seconds: float | None = None,
     ) -> None: ...
+
+    def record_queue_completion(
+        self,
+        provider: str,
+        model: str,
+        completion_ms: int,
+        *,
+        capability: str | None = None,
+    ) -> None: ...
+
+    def acquire_probe(
+        self,
+        provider: str,
+        model: str,
+        *,
+        capability: str | None = None,
+    ) -> bool: ...
+
+    def release_probe(
+        self,
+        provider: str,
+        model: str,
+        *,
+        capability: str | None = None,
+    ) -> None: ...
+
+    def record_fallback(self) -> None: ...
+
+    def record_all_candidates_unavailable(self) -> None: ...
 
 
 PaidEffect = Callable[[], Awaitable[NormalizedResult]]
