@@ -74,6 +74,8 @@ python3 scripts/create-final-acceptance-evidence.py \
 
 The generator reads `final/acceptance/manifest-v1.json` and currently creates **50 scenarios** as `NOT_RUN`. Never replace unexecuted work with PASS to complete the matrix.
 
+`release_id` must use only letters, digits, `.`, `_` and `-`, start with a letter/digit, and be at most 120 characters.
+
 ## 6. Execute Golden Journey A — Zero-to-Brand
 
 Use a production-scope test account and the frozen RC. Prove the complete flow:
@@ -111,11 +113,35 @@ Inject controlled worker restart, provider timeout/429/5xx, duplicate request/ev
 project -> agent -> generation -> canvas -> artifact/version -> compare/restore -> export
 ```
 
-Include primary failure, retry and reconnect paths. Follow `docs/acceptance/NODE-73-UAT-SIGNOFF-MATRIX.md`.
+The structured record must include PASS checks for:
+
+```text
+project
+agent
+generation
+canvas
+artifact-version
+export
+error-retry-reconnect
+```
+
+Follow `docs/acceptance/NODE-73-UAT-SIGNOFF-MATRIX.md`.
 
 ## 11. Execute Billing UX and Stripe live purchase
 
-`BILLING-UX-01` is P0/High and covers plan display, role authorization, Checkout, success/cancel, Portal, cancellation lifecycle, idempotency, CSRF/Origin and actionable failure states.
+`BILLING-UX-01` is P0/High. Its structured record must include PASS checks for:
+
+```text
+plan-display
+authorization
+checkout
+success-cancel
+portal
+cancellation
+idempotency
+csrf-origin
+error-states
+```
 
 The real-charge gate is separate and mandatory. Execute `docs/operations/STRIPE-LIVE-PURCHASE-DRILL.md` and prove:
 
@@ -133,13 +159,28 @@ Mock/test-mode evidence cannot satisfy the live-payment gate.
 
 ## 12. Execute browser matrix
 
-`BROWSER-01` is P0/High for current supported Chrome and Edge. `BROWSER-02` is P0/High for current supported Safari and Firefox; Safari is no longer a deferrable P1 final-acceptance item.
+`BROWSER-01` is P0/High and requires real current supported Chrome and Edge. `BROWSER-02` is P0/High and requires real current supported Safari and Firefox; Safari is no longer a deferrable P1 final-acceptance item.
 
-Capture exact browser/OS versions and verify critical create/edit/export, Canvas, IME/font, upload/download, approval/version and Billing-safe flows.
+For each required browser, structured evidence must contain:
+
+```text
+browser
+browser_version
+os
+os_version
+real_browser = true
+status = PASS
+```
+
+For Safari, `engine_preflight_only=true` is explicitly rejected. Playwright WebKit is a useful automated Safari-engine preflight but cannot satisfy real macOS Safari evidence.
+
+The automated preflight lives in `playwright.final-acceptance.config.ts` and `.github/workflows/final-browser-preflight.yml`; it complements, but does not replace, exact-browser final evidence.
 
 ## 13. Execute responsive/mobile scope
 
-`RESPONSIVE-01` is P1/Medium. If mobile/responsive is launch scope, run the declared device/browser matrix. If the release is explicitly desktop-only, a defer is allowed only with complete non-critical gap metadata and a documented supported-device statement.
+`RESPONSIVE-01` is P1/Medium. If mobile/responsive is launch scope, a PASS requires at least one real tested client/device with device, browser/browser version, OS/OS version and `real_browser=true`.
+
+If the release is explicitly desktop-only, a defer is allowed only with complete non-critical gap metadata and a documented supported-device statement.
 
 ## 14. Execute accessibility critical paths
 
@@ -148,20 +189,62 @@ Capture exact browser/OS versions and verify critical create/edit/export, Canvas
 - keyboard reachability and no traps;
 - visible/logical focus;
 - accessible names and semantic structure;
-- assistive-technology status/error exposure;
 - contrast/focus/error visibility;
 - supported zoom/reflow;
 - critical screen-reader smoke path.
 
-Manual keyboard and screen-reader checks remain required even when automation is used.
+The structured manual record must include PASS manual checks for:
 
-## 15. Execute remaining canonical matrix
+```text
+keyboard
+focus
+semantics
+contrast
+screen-reader
+```
+
+The `screen-reader` check must identify the real assistive technology and its version. Automated DOM/keyboard preflight cannot replace the manual screen-reader check.
+
+## 15. Freeze structured manual UAT evidence
+
+For each of the five mandatory manual P0 scenarios, copy `final/acceptance/manual-evidence-record-template.json` into the exact release directory:
+
+```text
+reports/final-acceptance/<release-id>/manual/uat-01.json
+reports/final-acceptance/<release-id>/manual/billing-ux-01.json
+reports/final-acceptance/<release-id>/manual/browser-01.json
+reports/final-acceptance/<release-id>/manual/browser-02.json
+reports/final-acceptance/<release-id>/manual/a11y-01.json
+```
+
+If `RESPONSIVE-01` is PASS, also create:
+
+```text
+reports/final-acceptance/<release-id>/manual/responsive-01.json
+```
+
+Every structured record must contain:
+
+- `schema_version: 1`;
+- exact `release_id`;
+- exact scenario ID;
+- `status: PASS`;
+- exact Git SHA/version/migration head;
+- `environment` equal to `production` or `production-like-staging`;
+- named tester;
+- valid UTC start/end timestamps ending in `Z`;
+- scenario-specific clients/checks/manual_checks;
+- at least one nested evidence ref with path + SHA-256.
+
+Then add that JSON itself to the matching scenario's `acceptance-evidence.json` `evidence_refs[]` as `{path, sha256}`. Each mandatory scenario must contain exactly one structured manual JSON under its release `manual/` directory. Duplicate scenario IDs, duplicate browser/check IDs, wrong RC, hash mismatch or malformed release directory identity fail closed.
+
+## 16. Execute remaining canonical matrix
 
 Use `final/acceptance/manifest-v1.json` as the only scenario authority. It also covers architecture, Agent authority, Design/Canvas quality, security, reliability, provenance/data lifecycle, cost controls, performance/capacity, recovery, observability, production operations, documentation and operational handoff.
 
 Every PASS requires at least one frozen evidence reference with path + SHA-256.
 
-## 16. Gap policy
+## 17. Gap policy
 
 Only genuinely non-critical P1/P2 items may use `DEFERRED_NON_CRITICAL` or `BLOCKED_EXTERNAL`, and must include:
 
@@ -175,7 +258,7 @@ workaround
 
 P0 and Critical/High items cannot be deferred or externally blocked into a green release.
 
-## 17. Production safety proof
+## 18. Production safety proof
 
 Final evidence must include real runtime proof for:
 
@@ -190,23 +273,23 @@ Final evidence must include real runtime proof for:
 
 Source Terraform and runbooks alone are not production evidence.
 
-## 18. Cost and billing reconciliation
+## 19. Cost and billing reconciliation
 
 For real accepted runs, reconcile Provider Request -> Generation -> Idempotency Operation -> Cost Ledger -> AgentRun/Task -> Billing/Credit. Any estimated value must expose confidence/reconciliation status. Unexplained material spend blocks release.
 
 The platform-wide daily provider-dollar hard stop must be proven at a durable runtime boundary.
 
-## 19. Security STOP-SHIP conditions
+## 20. Security STOP-SHIP conditions
 
 Stop on cross-tenant leak, sandbox escape, secret exposure, prompt-injection authority escalation, SSRF to metadata/private targets, payment/credit replay, or any unresolved Critical/High issue not permitted by an explicit release policy.
 
-## 20. Freeze acceptance evidence
+## 21. Freeze acceptance evidence
 
 When all scenario statuses are final, compute the exact SHA-256 of `acceptance-evidence.json` and freeze its path/hash in `release-manifest.json`. Any subsequent edit requires a new hash and re-evaluation.
 
 Freeze all upstream decisions and the Production deployment manifest the same way.
 
-## 21. Complete eight evidence-backed signoffs
+## 22. Complete eight evidence-backed signoffs
 
 Required roles are exactly:
 
@@ -231,7 +314,7 @@ Each record must bind the same `release_id`, Git SHA, version and migration head
 
 Freeze every signoff record in `release-manifest.json` as `{path, sha256}`. Missing Design, Legal/Privacy, Finance/Billing or any other required role blocks release. The gate validates records; it never impersonates or auto-approves a human role.
 
-## 22. Complete operational handoff
+## 23. Complete operational handoff
 
 Assign:
 
@@ -244,49 +327,57 @@ Assign:
 - DR drill owner;
 - capacity review owner.
 
-## 23. Run canonical final source gate
+## 24. Run canonical final source gate
 
 The GitHub `Final Product Acceptance Gate` must execute on an allocated runner using Python 3.12 and uv 0.11.28 with:
 
 ```bash
 uv sync --all-packages --frozen
 python3 scripts/validate_final_acceptance_contract.py
+python3 scripts/validate_final_manual_evidence_contract.py
+python3 scripts/validate_final_browser_preflight.py
+python3 scripts/validate_final_upstream_lock_contract.py
 ```
+
+The separate `Final Browser Preflight` should also run the selected multi-browser regression corpus. Its WebKit result is not real Safari evidence.
 
 A `runner_id=0 / steps=[]` account Billing failure is `BLOCKED_EXTERNAL`, not source validation.
 
-## 24. Run final decision
+## 25. Run final decision through the canonical runner
+
+Do **not** call the low-level `final-acceptance-gate.py` by itself for release authorization. The canonical runner always evaluates structured manual evidence first:
 
 ```bash
-python3 scripts/final-acceptance-gate.py \
+python3 scripts/run-final-acceptance.py \
   --release reports/final-acceptance/<release-id>/release-manifest.json \
   --evidence reports/final-acceptance/<release-id>/acceptance-evidence.json \
+  --manual-output reports/final-acceptance/<release-id>/manual-evidence-decision.json \
   --output reports/final-acceptance/<release-id>/final-decision.json
 ```
 
-Or use the manual `Final Product Acceptance Gate` workflow with the two frozen files.
+Or use the manual `Final Product Acceptance Gate` workflow with the two frozen files; that workflow calls the same canonical runner.
 
-## 25. Decision handling
+## 26. Decision handling
 
-If the gate exits non-zero or reports any blocker, the required headline remains:
+If the structured manual gate or final gate exits non-zero or reports any blocker, the required headline remains:
 
 ```text
 NOT ACCEPTED — SEE BLOCKING GAPS
 ```
 
-Do not delete scenarios, weaken P0 priorities or edit signoff/evidence hashes to obtain green.
+Do not delete scenarios, weaken P0 priorities, substitute WebKit for Safari, invent browser/assistive-technology versions, or edit signoff/evidence hashes to obtain green.
 
-Only a decision with `accepted=true`, `passed=true` and `blockers=[]` may emit:
+Only a canonical run where manual evidence passes and the final decision has `accepted=true`, `passed=true` and `blockers=[]` may emit:
 
 ```text
 LUMI AI DESIGN OS — PRODUCT ACCEPTED
 ```
 
-## 26. Post-acceptance cadence
+## 27. Post-acceptance cadence
 
 After a real accepted release, continue weekly provider/cost/quality review, monthly security/dependency review, quarterly DR drills, AI release gates for production AI changes, capacity review and governed customer-feedback learning.
 
-## 27. Current project state
+## 28. Current project state
 
 Current source work does **not** satisfy runtime/manual acceptance. GitHub hosted jobs remain externally blocked before runner allocation by the account Billing/spending-limit condition, root `uv.lock` remains stale, and required real cloud/payment/UAT/signoff evidence is still pending.
 
