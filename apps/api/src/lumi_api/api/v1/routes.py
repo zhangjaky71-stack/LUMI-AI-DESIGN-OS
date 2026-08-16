@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Response, status
+
+from lumi_api.domain.states import ProjectStatus
 
 from .common import ProblemDetail, parse_if_match, version_etag
 from .dependencies import ApiServiceDependency
@@ -16,6 +19,7 @@ from .schemas import (
     CancelResponse,
     GenerationCreateRequest,
     GenerationResponse,
+    ProjectBriefHistoryResponse,
     ProjectCreateRequest,
     ProjectPage,
     ProjectPatchRequest,
@@ -65,11 +69,23 @@ async def list_projects(
     service: ApiServiceDependency,
     cursor: Annotated[str | None, Query(max_length=2048)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    project_status: Annotated[ProjectStatus | None, Query(alias="status")] = None,
+    workspace_id: UUID | None = None,
+    created_by: UUID | None = None,
+    updated_from: datetime | None = None,
+    updated_to: datetime | None = None,
+    name_query: Annotated[str | None, Query(alias="q", min_length=1, max_length=240)] = None,
 ) -> ProjectPage:
     return await service.list_projects(
         organization_id,
         cursor=cursor,
         limit=limit,
+        status=project_status,
+        workspace_id=workspace_id,
+        created_by=created_by,
+        updated_from=updated_from,
+        updated_to=updated_to,
+        name_query=name_query,
     )
 
 
@@ -114,6 +130,20 @@ async def get_project(
     return project
 
 
+@router.get(
+    "/projects/{project_id}/brief/versions",
+    response_model=ProjectBriefHistoryResponse,
+    responses=_ERROR_RESPONSES,
+    tags=["projects"],
+)
+async def get_project_brief_history(
+    project_id: UUID,
+    organization_id: OrganizationId,
+    service: ApiServiceDependency,
+) -> ProjectBriefHistoryResponse:
+    return await service.get_project_brief_history(organization_id, project_id)
+
+
 @router.patch(
     "/projects/{project_id}",
     response_model=ProjectResponse,
@@ -156,6 +186,52 @@ async def transition_project(
         organization_id,
         project_id,
         request.target,
+        expected_version=_expected_version(if_match),
+    )
+    _set_version_headers(response, project.version)
+    return project
+
+
+@router.delete(
+    "/projects/{project_id}",
+    response_model=ProjectResponse,
+    responses=_ERROR_RESPONSES,
+    tags=["projects"],
+)
+async def archive_project(
+    project_id: UUID,
+    response: Response,
+    organization_id: OrganizationId,
+    if_match: IfMatch,
+    service: ApiServiceDependency,
+) -> ProjectResponse:
+    project = await service.transition_project(
+        organization_id,
+        project_id,
+        ProjectStatus.ARCHIVED,
+        expected_version=_expected_version(if_match),
+    )
+    _set_version_headers(response, project.version)
+    return project
+
+
+@router.post(
+    "/projects/{project_id}/restore",
+    response_model=ProjectResponse,
+    responses=_ERROR_RESPONSES,
+    tags=["projects"],
+)
+async def restore_project(
+    project_id: UUID,
+    response: Response,
+    organization_id: OrganizationId,
+    if_match: IfMatch,
+    service: ApiServiceDependency,
+) -> ProjectResponse:
+    project = await service.transition_project(
+        organization_id,
+        project_id,
+        ProjectStatus.ACTIVE,
         expected_version=_expected_version(if_match),
     )
     _set_version_headers(response, project.version)

@@ -1,0 +1,240 @@
+name: NODE-17 Project Core
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/projects/**"
+      - "apps/api/src/lumi_api/api/v1/routes.py"
+      - "apps/api/src/lumi_api/api/v1/schemas.py"
+      - "apps/api/src/lumi_api/api/v1/ports.py"
+      - "apps/api/src/lumi_api/persistence/models_projects_assets.py"
+      - "apps/api/src/lumi_api/persistence/models_project_core.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260816_0003_project_core.py"
+      - "apps/api/migrations/versions/20260816_0003_sql/**"
+      - "apps/api/tests/test_project_core_*.py"
+      - "apps/api/tests/test_api_v1_contract.py"
+      - "tools/node17/**"
+      - "docs/projects/**"
+      - "docs/nodes/NODE-17-PROJECT-CORE.md"
+      - "reports/nodes/NODE-17/**"
+      - ".github/workflows/node-17-project-core.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/src/lumi_api/projects/**"
+      - "apps/api/src/lumi_api/api/v1/routes.py"
+      - "apps/api/src/lumi_api/api/v1/schemas.py"
+      - "apps/api/src/lumi_api/api/v1/ports.py"
+      - "apps/api/src/lumi_api/persistence/models_projects_assets.py"
+      - "apps/api/src/lumi_api/persistence/models_project_core.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260816_0003_project_core.py"
+      - "apps/api/migrations/versions/20260816_0003_sql/**"
+      - "apps/api/tests/test_project_core_*.py"
+      - "apps/api/tests/test_api_v1_contract.py"
+      - "tools/node17/**"
+      - "docs/projects/**"
+      - "reports/nodes/NODE-17/**"
+      - ".github/workflows/node-17-project-core.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  SQLALCHEMY_VERSION: "2.0.51"
+  ALEMBIC_VERSION: "1.18.5"
+  ASYNCPG_VERSION: "0.31.0"
+  LUMI_DATABASE_MIGRATION_URL: "postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi"
+  LUMI_DATABASE_MIGRATION_URL_ASYNCPG: "postgresql://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi"
+  LUMI_DATABASE_APP_URL: "postgresql://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi"
+
+jobs:
+  project-core:
+    name: project-core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen workspace dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Validate Project Core architecture and migration
+        run: |
+          PYTHONPATH=apps/api/src uv run python tools/node17/validate_project_core.py
+
+      - name: Run Project Core service, HTTP and API regression tests
+        run: |
+          PYTHONPATH=apps/api/src uv run pytest -q \
+            apps/api/tests/test_project_core_*.py \
+            apps/api/tests/test_api_v1_contract.py
+
+      - name: Export Project Core schemas
+        run: |
+          rm -rf reports/nodes/NODE-17/generated-schemas
+          PYTHONPATH=apps/api/src uv run python tools/node17/export_project_schemas.py
+          test "$(find reports/nodes/NODE-17/generated-schemas -name '*.schema.json' | wc -l)" -eq 8
+
+      - name: Validate schemas and gap ledger
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          schemas = sorted(Path("reports/nodes/NODE-17/generated-schemas").glob("*.schema.json"))
+          assert len(schemas) == 8, len(schemas)
+          for path in schemas:
+              json.loads(path.read_text(encoding="utf-8"))
+              print(f"validated {path}")
+          ledger = json.loads(Path("reports/nodes/NODE-17/gap-ledger.json").read_text(encoding="utf-8"))
+          assert len(ledger["gaps"]) == 4
+          print("validated NODE-17 gap ledger")
+          PY
+
+      - name: Lint and type-check NODE-17 scope
+        run: |
+          uv run ruff check \
+            apps/api/src/lumi_api/projects \
+            apps/api/src/lumi_api/api/v1/routes.py \
+            apps/api/src/lumi_api/api/v1/schemas.py \
+            apps/api/src/lumi_api/api/v1/ports.py \
+            apps/api/src/lumi_api/persistence/models_project_core.py \
+            apps/api/tests/test_project_core_*.py \
+            tools/node17
+          uv run pyright \
+            apps/api/src/lumi_api/projects \
+            apps/api/src/lumi_api/api/v1/routes.py \
+            apps/api/src/lumi_api/api/v1/schemas.py \
+            apps/api/src/lumi_api/api/v1/ports.py \
+            apps/api/src/lumi_api/persistence/models_project_core.py \
+            apps/api/tests/test_project_core_*.py \
+            tools/node17
+
+      - name: Prepare local PostgreSQL environment
+        run: |
+          cp infra/compose/env.local.example infra/compose/.env
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            up -d --wait --wait-timeout 180 postgres
+
+      - name: Upgrade through NODE-16 baseline first
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade 20260816_0002
+
+      - name: Load pre-NODE-17 deterministic two-tenant fixture
+        run: |
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -v ON_ERROR_STOP=1 -U lumi_migration -d lumi \
+            < apps/api/migrations/seeds/p0_local_fixture.sql
+
+      - name: Upgrade PostgreSQL to NODE-17 head
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+
+      - name: Validate frozen NODE-10 baseline plus current metadata
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            python tools/node10/validate_schema.py
+
+      - name: Re-run baseline database invariants at current head
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            python tools/node10/run_database_integration.py
+
+      - name: Validate NODE-17 Project Core PostgreSQL invariants
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            python tools/node17/test_project_database.py
+
+      - name: Downgrade NODE-17 migration only
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic downgrade 20260816_0002
+
+      - name: Verify NODE-17 rollback preserves NODE-16 baseline
+        run: |
+          project_table="$(docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c "SELECT to_regclass('public.project_brief_versions') IS NULL")"
+          auth_table="$(docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c "SELECT to_regclass('public.api_tokens') IS NOT NULL")"
+          base_project="$(docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c "SELECT to_regclass('public.projects') IS NOT NULL")"
+          test "$project_table" = "t"
+          test "$auth_table" = "t"
+          test "$base_project" = "t"
+
+      - name: Reapply NODE-17 migration
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+
+      - name: Re-run NODE-17 PostgreSQL invariants after reapply
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            python tools/node17/test_project_database.py
+
+      - name: Capture PostgreSQL diagnostics on failure
+        if: failure()
+        run: |
+          mkdir -p reports/nodes/NODE-17/runtime
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml ps \
+            > reports/nodes/NODE-17/runtime/compose-ps.txt 2>&1 || true
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml logs \
+            --no-color --tail=400 postgres \
+            > reports/nodes/NODE-17/runtime/postgres.log 2>&1 || true
+
+      - name: Upload NODE-17 evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-17-project-core-${{ github.run_id }}
+          path: |
+            reports/nodes/NODE-17/generated-schemas
+            reports/nodes/NODE-17/gap-ledger.json
+            reports/nodes/NODE-17/runtime
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            down --volumes --remove-orphans || true

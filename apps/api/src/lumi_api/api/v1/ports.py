@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from .schemas import (
     CancelResponse,
     GenerationCreateRequest,
     GenerationResponse,
+    ProjectBriefHistoryResponse,
     ProjectCreateRequest,
     ProjectPage,
     ProjectPatchRequest,
@@ -29,6 +31,12 @@ class ApiV1Service(Protocol):
         *,
         cursor: str | None,
         limit: int,
+        status: ProjectStatus | None = None,
+        workspace_id: UUID | None = None,
+        created_by: UUID | None = None,
+        updated_from: datetime | None = None,
+        updated_to: datetime | None = None,
+        name_query: str | None = None,
     ) -> ProjectPage: ...
 
     async def create_project(
@@ -42,6 +50,10 @@ class ApiV1Service(Protocol):
     async def get_project(
         self, organization_id: UUID, project_id: UUID
     ) -> ProjectResponse: ...
+
+    async def get_project_brief_history(
+        self, organization_id: UUID, project_id: UUID
+    ) -> ProjectBriefHistoryResponse: ...
 
     async def patch_project(
         self,
