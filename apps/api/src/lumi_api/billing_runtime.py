@@ -128,8 +128,11 @@ class AsyncStripeBillingRuntime:
         self,
         actor: BillingActor,
         plan_version_id: str,
+        idempotency_key: str,
     ) -> HostedSession:
         _require(actor, "billing.manage")
+        if not 8 <= len(idempotency_key) <= 128:
+            raise BillingError("BILLING_IDEMPOTENCY_KEY_INVALID", 400)
         async with self._sessions() as session:
             async with session.begin():
                 await _set_tenant(session, actor.organization_id)
@@ -174,6 +177,7 @@ class AsyncStripeBillingRuntime:
             self._provider.create_checkout,
             account.payment_customer_ref,
             plan,
+            idempotency_key,
         )
 
     async def create_portal(self, actor: BillingActor) -> HostedSession:
