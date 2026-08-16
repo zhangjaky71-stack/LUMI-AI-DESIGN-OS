@@ -41,10 +41,14 @@ A mandatory gate has only these acceptance outcomes:
 | Migration upgrade/downgrade smoke | **PENDING** | canonical PostgreSQL acceptance PASS |
 | Terraform format/validate/plan | **PENDING** | exact-candidate production/staging IaC evidence |
 | Canonical GitHub Actions CI | **BLOCKED_EXTERNAL** | runner allocated and required workflows execute successfully |
-| Final Product Acceptance source contract | **BLOCKED_EXTERNAL** | source contract executes on runner and passes |
+| Final Product Acceptance source contract | **BLOCKED_EXTERNAL** | source contract executes all final/signoff/manual-evidence negative drills |
+| Final Browser Preflight | **BLOCKED_EXTERNAL** | branded Chrome/Edge + Firefox/WebKit preflight executes; WebKit result is not Safari acceptance evidence |
+| Structured manual evidence gate | **PENDING** | `manual-evidence-decision.json` reports `passed=true` for exact candidate |
 | `make release-gate` | **PENDING** | exact-candidate release-gate PASS |
 
-Latest confirmed hard-stop workflow evidence still shows `runner_id=0`, `steps=[]` and the GitHub account payment/spending-limit annotation. Until a newly allocated runner actually executes the jobs, this remains `BLOCKED_EXTERNAL`, not code FAIL and not PASS.
+Latest confirmed hosted workflow evidence shows `runner_id=0`, `steps=[]` and the GitHub account payment/spending-limit annotation. Until a newly allocated runner actually executes the jobs, this remains `BLOCKED_EXTERNAL`, not code FAIL and not PASS.
+
+Canonical Python-dependent upstream/final gates now use Python 3.12, uv 0.11.28 and `uv sync --all-packages --frozen`; the stale root lock therefore remains a real source blocker even after GitHub runner allocation is restored.
 
 ## Mandatory production safety gates
 
@@ -81,22 +85,36 @@ Test-mode Checkout, mocked Stripe transport and local PostgreSQL acceptance are 
 
 ## Canonical product/UAT matrix
 
-`final/acceptance/manifest-v1.json` now contains **50 scenarios**. In addition to the original architecture/golden-journey/security/performance/recovery/operations controls, Final Acceptance explicitly requires:
+`final/acceptance/manifest-v1.json` contains **50 scenarios**. In addition to the architecture/golden-journey/security/performance/recovery/operations controls, Final Acceptance explicitly requires:
 
 | Canonical scenario | Priority | Current status | Required evidence |
 |---|---:|---|---|
-| `UAT-01` core exact-RC product UAT | P0 / Critical | **PENDING** | project -> agent -> generation -> Canvas -> Artifact/Version -> export plus error/retry paths |
-| `BILLING-UX-01` Billing UX | P0 / High | **PENDING** | plan display, role controls, Checkout, success/cancel, Portal, cancellation, idempotency, CSRF/Origin, errors |
-| `BROWSER-01` Chrome + Edge | P0 / High | **PENDING** | exact browser/OS versions and primary create/edit/export + IME/font/upload/download evidence |
-| `BROWSER-02` Safari + Firefox | P0 / High | **PENDING** | exact browser/OS versions and core create/edit/export evidence; no P1 Safari defer |
-| `RESPONSIVE-01` mobile/responsive scope | P1 / Medium | **PENDING** | supported device matrix, or complete explicitly desktop-only non-critical defer metadata |
-| `A11Y-01` accessibility critical paths | P0 / High | **PENDING** | keyboard/focus/semantics/contrast/zoom and critical screen-reader checks with zero High/Critical blocker |
+| `UAT-01` core exact-RC product UAT | P0 / Critical | **PENDING** | structured record proving project -> agent -> generation -> Canvas -> Artifact/Version -> export plus error/retry/reconnect |
+| `BILLING-UX-01` Billing UX | P0 / High | **PENDING** | structured record proving plan display, auth, Checkout, success/cancel, Portal, cancellation, idempotency, CSRF/Origin, errors |
+| `BROWSER-01` Chrome + Edge | P0 / High | **PENDING** | structured real-browser records with exact browser/OS versions and PASS results |
+| `BROWSER-02` Safari + Firefox | P0 / High | **PENDING** | structured real-browser records with exact browser/OS versions; WebKit engine preflight cannot substitute Safari |
+| `RESPONSIVE-01` mobile/responsive scope | P1 / Medium | **PENDING** | real device/client structured evidence if PASS, or complete explicitly desktop-only non-critical defer metadata |
+| `A11Y-01` accessibility critical paths | P0 / High | **PENDING** | structured keyboard/focus/semantics/contrast/screen-reader evidence; screen-reader technology + version required |
 
-Execution procedure: `docs/acceptance/NODE-73-UAT-SIGNOFF-MATRIX.md`.
+Execution procedure: `docs/acceptance/NODE-73-UAT-SIGNOFF-MATRIX.md` and `docs/acceptance/NODE-73-FINAL-ACCEPTANCE-RUNBOOK.md`.
+
+### Structured manual evidence rule
+
+The five mandatory manual P0 scenarios must each reference exactly one JSON under:
+
+```text
+reports/final-acceptance/<release-id>/manual/
+```
+
+using `final/acceptance/manual-evidence-record-template.json`. The structured gate validates exact release ID/RC, PASS status, tester, production or production-like-staging environment, UTC start/end time, scenario-specific checks, real browser/device metadata, screen-reader metadata and nested evidence hashes.
+
+It fails closed on duplicate scenario/client/check identities, malformed release IDs, wrong RC, missing exact browser versions, WebKit-only Safari substitution, missing screen-reader version, missing UAT/Billing checks and responsive PASS without a real client.
+
+The canonical release command is `scripts/run-final-acceptance.py`, which executes the structured manual evidence gate before the low-level product decision gate. A standalone invocation of `final-acceptance-gate.py` is not the release-authorization procedure.
 
 ## Mandatory evidence-backed signoffs
 
-The final release manifest no longer accepts plain `"APPROVED"` strings. It must freeze eight signed decision records by `{path, sha256}`:
+The final release manifest does not accept plain `"APPROVED"` strings. It must freeze eight signed decision records by `{path, sha256}`:
 
 | Role | Acceptance status | Required evidence |
 |---|---|---|
@@ -118,19 +136,22 @@ The gate validates these records; it does not impersonate or auto-approve any hu
 The final evidence package must reference at minimum:
 
 - `reports/nodes/NODE-73/hard-stops-source-closure.md`;
+- `reports/nodes/NODE-73/uat-signoff-source-closure.md`;
 - provider daily hard-stop runtime evidence;
 - sandbox network/runtime evidence;
 - rollback drill evidence;
 - alert firing/delivery/human acknowledgement evidence;
 - Stripe live-purchase redacted manifest and DB verifier output;
-- canonical CI workflow/run IDs;
+- canonical CI and Final Browser Preflight workflow/run IDs;
 - `make release-gate` output;
-- 50-scenario final acceptance evidence including UAT/browser/accessibility;
+- 50-scenario final acceptance evidence;
+- structured manual UAT/Billing/browser/accessibility records and `manual-evidence-decision.json`;
 - eight frozen signoff records;
-- exact release SHA and production deployment identity.
+- exact release SHA and production deployment identity;
+- final `final-decision.json` generated by the canonical runner.
 
 ## Decision rule
 
-Final Acceptance may change from **NOT ACCEPTED** to **ACCEPTED** only when every mandatory P0/High/Critical item and required upstream/safety/signoff gate passes with frozen evidence for one exact release candidate, there is no unresolved mandatory `FAIL` or `BLOCKED_EXTERNAL`, and the final evidence generator/gate is rerun after the final candidate change.
+Final Acceptance may change from **NOT ACCEPTED** to **ACCEPTED** only when every mandatory P0/High/Critical item and required upstream/safety/signoff gate passes with frozen evidence for one exact release candidate, the structured manual evidence decision passes, there is no unresolved mandatory `FAIL` or `BLOCKED_EXTERNAL`, and the canonical final runner is rerun after the last candidate/evidence/signoff change.
 
 Until then, NODE-73 remains **NOT ACCEPTED**.
