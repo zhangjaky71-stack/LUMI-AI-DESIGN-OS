@@ -52,7 +52,9 @@ components with `openat`/`dir_fd` + `O_NOFOLLOW`, so an agent-created symlink ca
 privileged read/collect operation into following a link outside the permitted subtree.
 
 Archive imports are inspected before exposure. ZIP/TAR members with absolute paths or `..`
-components are rejected to prevent zip-slip/tar traversal.
+components are rejected to prevent zip-slip/tar traversal. TAR symlink/hardlink members and
+ZIP entries encoded as Unix symlinks are also rejected before the archive becomes visible to
+the sandbox.
 
 ## 4. Local Docker backend hardening
 
@@ -96,8 +98,12 @@ not expose host subprocess handles to the model.
 one-liners. Sync and async Deep Agents calls are bridged onto one dedicated asyncio loop so
 both API styles use the same sandbox lifecycle.
 
-Recursive glob/grep scanning has a bounded entry count and reports truncation when the safety
-limit is reached. `grep(max_count=N)` only marks truncation if more than N matches exist.
+The repository currently freezes Deep Agents `0.6.12`; NODE-21 therefore treats that protocol
+as the compatibility authority. `ReadResult`, `GlobResult` and `GrepResult` are constructed
+using only fields supported by the installed version. Newer optional result fields such as
+`truncated` are populated only when the installed class exposes them, so tracking upstream
+main cannot silently break the frozen runtime. Recursive glob/grep scanning is still bounded
+at 5,000 entries even when the older result type cannot surface a truncation flag.
 
 ## 7. Network policy
 
@@ -184,6 +190,7 @@ The dedicated NODE-21 gate builds the sandbox image and attempts:
 
 - `../../` traversal;
 - symlink escape to `/etc/passwd`;
+- archive path traversal and archive symlink/hardlink input;
 - PID/fork exhaustion;
 - memory exhaustion;
 - tmpfs disk fill;
@@ -191,8 +198,7 @@ The dedicated NODE-21 gate builds the sandbox image and attempts:
 - cloud metadata IP connection;
 - Docker socket discovery;
 - cloud/database secret environment enumeration;
-- oversized stdout flood;
-- malicious ZIP traversal.
+- oversized stdout flood.
 
 Destructive resource tests run in separate sandboxes so one attack cannot invalidate the next
 case.
