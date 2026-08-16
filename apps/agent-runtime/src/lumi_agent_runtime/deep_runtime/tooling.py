@@ -124,7 +124,9 @@ class LumiToolGatewayProvider:
 
         async def call(payload: dict[str, Any], tool_call_id: str) -> Any:
             if not isinstance(payload, dict):
-                raise DeepAgentToolScopeError("tool payload must be an object")
+                raise DeepAgentToolScopeError(
+                    "tool payload must be an object"
+                )
             reserved = _reserved_keys(payload)
             if reserved:
                 raise DeepAgentToolScopeError(
@@ -203,11 +205,15 @@ def assert_gateway_tools(
     names: list[str] = []
     for tool in tools:
         if not bool(getattr(tool, "_lumi_tool_gateway_bound", False)):
-            raise DeepAgentToolScopeError("tool bypasses NODE-25 Tool Gateway")
+            raise DeepAgentToolScopeError(
+                "tool bypasses NODE-25 Tool Gateway"
+            )
         name = getattr(tool, "_lumi_tool_name", None)
         version = getattr(tool, "_lumi_tool_version", None)
         if not isinstance(name, str) or not isinstance(version, str):
-            raise DeepAgentToolScopeError("trusted tool lacks canonical identity")
+            raise DeepAgentToolScopeError(
+                "trusted tool lacks canonical identity"
+            )
         names.append(name)
         versions.append(f"{name}@{version}")
     if tuple(names) != expected:
@@ -253,11 +259,12 @@ def _idempotency_key(
 def _langchain_tool_types() -> tuple[Any, Any]:
     try:
         tools_module = import_module("langchain_core.tools")
-        injected = getattr(tools_module, "InjectedToolCallId")
-        structured = getattr(tools_module, "StructuredTool")
+        injected = tools_module.InjectedToolCallId  # type: ignore[attr-defined]
+        structured = tools_module.StructuredTool  # type: ignore[attr-defined]
     except (ImportError, AttributeError) as exc:
         raise DeepAgentToolScopeError(
-            "current langchain-core StructuredTool/InjectedToolCallId is required"
+            "current langchain-core StructuredTool/InjectedToolCallId is "
+            "required"
         ) from exc
     return injected, structured
 
@@ -265,7 +272,9 @@ def _langchain_tool_types() -> tuple[Any, Any]:
 def _langchain_name(canonical: str) -> str:
     normalized = _LANGCHAIN_NAME.sub("__", canonical).strip("_")
     if not normalized:
-        raise DeepAgentToolScopeError("canonical tool cannot map to LangChain name")
+        raise DeepAgentToolScopeError(
+            "canonical tool cannot map to LangChain name"
+        )
     return f"lumi__{normalized}"[:128]
 
 
