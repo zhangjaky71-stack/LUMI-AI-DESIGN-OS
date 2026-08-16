@@ -1,3 +1,4 @@
+from .api_adapter import ProjectApiAdapter
 from .models import (
     BriefVersion,
     DataRetentionProfile,
@@ -21,6 +22,7 @@ __all__ = [
     "DataRetentionProfile",
     "DefaultProjectBranch",
     "MemoryProjectRepository",
+    "ProjectApiAdapter",
     "ProjectBrief",
     "ProjectCommandError",
     "ProjectCoreService",
