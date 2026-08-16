@@ -61,10 +61,17 @@ def assert_trusted_backend(backend: object, policy: ScopedWorkspacePolicy) -> No
     expected = _permission_hash(policy.permissions)
     if bound_hash != expected:
         raise DeepAgentFilesystemError("backend permission scope does not match invocation")
-    if policy.permissions.sandbox_execute and not bool(
-        getattr(backend, "_lumi_sandbox_execute_bound", False)
-    ):
-        raise DeepAgentFilesystemError("execute permission lacks SandboxBackend binding")
+
+    has_execute = callable(getattr(backend, "execute", None)) or callable(
+        getattr(backend, "aexecute", None)
+    )
+    execute_bound = bool(getattr(backend, "_lumi_sandbox_execute_bound", False))
+    if policy.permissions.sandbox_execute:
+        if not has_execute or not execute_bound:
+            raise DeepAgentFilesystemError("execute permission lacks SandboxBackend binding")
+    elif has_execute or execute_bound:
+        raise DeepAgentFilesystemError("backend exposes execute without granted permission")
+
     identity = f"{type(backend).__module__}.{type(backend).__name__}".casefold()
     for marker in ("filesystembackend", "localshell", "local_shell", "dockerbackend"):
         if marker in identity:
@@ -77,6 +84,8 @@ def mark_trusted_backend(
     permissions: PermissionScope,
     sandbox_execute_bound: bool,
 ) -> object:
+    if sandbox_execute_bound and not permissions.sandbox_execute:
+        raise DeepAgentFilesystemError("cannot bind sandbox execute outside permission scope")
     _mark(backend, "_lumi_backend_bound", True)
     _mark(backend, "_lumi_permission_scope_hash", _permission_hash(permissions))
     _mark(backend, "_lumi_sandbox_execute_bound", bool(sandbox_execute_bound))
