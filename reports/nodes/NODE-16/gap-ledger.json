@@ -1,0 +1,34 @@
+{
+  "node": "NODE-16",
+  "status": "IMPLEMENTED_VALIDATING",
+  "gaps": [
+    {
+      "id": "AUTH-DEP-001",
+      "title": "Argon2 production dependency is not yet frozen in uv.lock",
+      "status": "OPEN_DEPENDENCY",
+      "impact": "Argon2idPasswordHasher intentionally fails closed when argon2-cffi is unavailable. Test doubles prove orchestration only; they are not production password crypto.",
+      "closure": "Add a reviewed argon2-cffi version to the workspace dependency set, regenerate uv.lock, and execute hash/verify tests in canonical Python 3.12 CI."
+    },
+    {
+      "id": "AUTH-PERSIST-002",
+      "title": "Reference AuthService still uses MemoryAuthStore",
+      "status": "OPEN_RUNTIME_ADAPTER",
+      "impact": "The complete auth behavior is executable in-process, while SQLAlchemy models and migration 0002 are present but not yet wired through a transactional PostgreSQL AuthStore adapter.",
+      "closure": "Implement the PostgreSQL auth repository adapter using migration 0002 tables and tenant_session after membership authorization."
+    },
+    {
+      "id": "AUTH-MAIL-003",
+      "title": "Email delivery provider adapter not wired",
+      "status": "OPEN_ADAPTER",
+      "impact": "Invite and email-verification secrets are generated/hash-stored correctly, but delivery to Mailpit/production provider is not part of the current runtime adapter.",
+      "closure": "Wire the existing local Mailpit infrastructure through an AuthMailPort; production provider remains environment-specific."
+    },
+    {
+      "id": "AUTH-CI-004",
+      "title": "Hosted runner and PostgreSQL validation pending",
+      "status": "BLOCKED_EXTERNAL",
+      "impact": "Canonical frozen-install, Argon2 dependency, migration upgrade/downgrade/reapply, RLS and cross-tenant integration evidence cannot be promoted to PASS until GitHub Actions receives a runner.",
+      "closure": "Resolve the repository/account Actions billing or spending-limit condition, then run NODE-16 and repository security gates."
+    }
+  ]
+}
