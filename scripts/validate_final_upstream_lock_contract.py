@@ -20,6 +20,13 @@ def require(path: str, *needles: str) -> None:
         raise SystemExit(f"{path}: canonical dependency contract missing {missing}")
 
 
+def forbid(path: str, *needles: str) -> None:
+    text = (ROOT / path).read_text(encoding="utf-8")
+    present = [needle for needle in needles if needle in text]
+    if present:
+        raise SystemExit(f"{path}: forbidden dependency-repair behavior present {present}")
+
+
 def main() -> None:
     for path in CANONICAL_WORKFLOWS:
         text = (ROOT / path).read_text(encoding="utf-8")
@@ -43,6 +50,29 @@ def main() -> None:
         "uv.lock did not change",
         "lock regeneration changed files other than uv.lock",
         "Do not edit the lock by hand",
+    )
+
+    workflow = ".github/workflows/final-acceptance-gate.yml"
+    require(
+        workflow,
+        "lock-repair-artifact:",
+        'version: "0.11.28"',
+        'python-version: "3.12"',
+        "uv lock --check",
+        "bash scripts/regenerate-root-uv-lock.sh",
+        "uv sync --all-packages --frozen",
+        "canonical-root-uv-lock-${{ github.run_id }}",
+        "artifacts/root-uv-lock/uv.lock",
+        "repair_required=${{ steps.lock_state.outputs.needs_repair }}",
+        "canonical-lock-gate:",
+        "needs: [source-contract, canonical-lock-gate]",
+    )
+    forbid(
+        workflow,
+        "git push",
+        "git commit",
+        "contents: write",
+        "gh pr create",
     )
 
     print("FINAL_UPSTREAM_LOCK_STATIC_CONTRACT_PASS")
