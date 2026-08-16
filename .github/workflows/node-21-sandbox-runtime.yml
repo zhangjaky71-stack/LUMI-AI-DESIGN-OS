@@ -1,0 +1,186 @@
+name: NODE-21 Sandbox Runtime
+
+on:
+  pull_request:
+    paths:
+      - "services/sandbox-runtime/**"
+      - "tools/node21/**"
+      - "docs/runtime/SANDBOX-*.md"
+      - "reports/nodes/NODE-21/**"
+      - ".github/workflows/node-21-sandbox-runtime.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/sandbox-runtime/**"
+      - "tools/node21/**"
+      - "docs/runtime/SANDBOX-*.md"
+      - "reports/nodes/NODE-21/**"
+      - ".github/workflows/node-21-sandbox-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  SANDBOX_IMAGE: "lumi-sandbox:node21"
+
+jobs:
+  sandbox-runtime:
+    name: sandbox-runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen workspace dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Validate sandbox architecture and security policy
+        run: |
+          PYTHONPATH=services/sandbox-runtime/src \
+            uv run python tools/node21/validate_sandbox_runtime.py
+          PYTHONPATH=services/sandbox-runtime/src \
+            uv run python tools/node21/validate_deepagents_protocol.py
+
+      - name: Run sandbox contract tests
+        run: |
+          PYTHONPATH=services/sandbox-runtime/src \
+            uv run pytest -q services/sandbox-runtime/tests
+
+      - name: Export and validate sandbox schemas
+        run: |
+          rm -rf reports/nodes/NODE-21/generated-schemas
+          PYTHONPATH=services/sandbox-runtime/src \
+            uv run python tools/node21/export_sandbox_schemas.py
+          test "$(find reports/nodes/NODE-21/generated-schemas -name '*.schema.json' | wc -l)" -eq 7
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          schemas = sorted(
+              Path("reports/nodes/NODE-21/generated-schemas").glob("*.schema.json")
+          )
+          assert len(schemas) == 7
+          for path in schemas:
+              json.loads(path.read_text(encoding="utf-8"))
+          ledger = json.loads(
+              Path("reports/nodes/NODE-21/gap-ledger.json").read_text(encoding="utf-8")
+          )
+          assert len(ledger["gaps"]) == 7
+          print("NODE-21 schemas and gap ledger valid")
+          PY
+
+      - name: Ruff and Pyright NODE-21 scope
+        run: |
+          uv run ruff check \
+            services/sandbox-runtime/src \
+            services/sandbox-runtime/tests \
+            tools/node21
+          uv run pyright \
+            services/sandbox-runtime/src \
+            services/sandbox-runtime/tests \
+            tools/node21
+
+      - name: Build versioned sandbox image
+        run: |
+          docker build \
+            --file services/sandbox-runtime/docker/Dockerfile \
+            --tag "${SANDBOX_IMAGE}" \
+            .
+          docker image inspect "${SANDBOX_IMAGE}" \
+            > reports/nodes/NODE-21/image-inspect.json
+
+      - name: Verify built image contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(
+              Path("reports/nodes/NODE-21/image-inspect.json").read_text()
+          )[0]
+          config = data["Config"]
+          assert config["User"] == "65532:65532", config["User"]
+          env = config.get("Env") or []
+          forbidden = (
+              "OPENAI_API_KEY=",
+              "ANTHROPIC_API_KEY=",
+              "DATABASE_URL=",
+              "PGPASSWORD=",
+              "AWS_SECRET_ACCESS_KEY=",
+          )
+          assert not any(item.startswith(forbidden) for item in env), env
+          print("image id", data["Id"])
+          PY
+          docker run --rm --network none --entrypoint python "${SANDBOX_IMAGE}" \
+            -c "from pathlib import Path; p=Path('/opt/lumi/workspace_helper.py'); assert p.is_file(); print('WORKSPACE_HELPER_OK')"
+
+      - name: Run real Docker functional and attack suites
+        run: |
+          PYTHONPATH=services/sandbox-runtime/src \
+            uv run python tools/node21/test_docker_sandbox.py
+
+      - name: Run exact locked Deep Agents sandbox protocol spike
+        run: |
+          PYTHONPATH=services/sandbox-runtime/src \
+            uv run python tools/node21/test_deepagents_adapter.py
+
+      - name: Verify sandbox cleanup
+        run: |
+          leftovers="$(docker ps -aq --filter label=lumi.sandbox=true)"
+          if [ -n "$leftovers" ]; then
+            echo "leftover LUMI sandbox containers: $leftovers" >&2
+            docker inspect $leftovers || true
+            exit 1
+          fi
+
+      - name: Capture diagnostics on failure
+        if: failure()
+        run: |
+          mkdir -p reports/nodes/NODE-21/runtime
+          docker version > reports/nodes/NODE-21/runtime/docker-version.txt 2>&1 || true
+          docker info > reports/nodes/NODE-21/runtime/docker-info.txt 2>&1 || true
+          docker ps -a --filter label=lumi.sandbox=true \
+            > reports/nodes/NODE-21/runtime/sandbox-containers.txt 2>&1 || true
+          ids="$(docker ps -aq --filter label=lumi.sandbox=true)"
+          if [ -n "$ids" ]; then
+            docker inspect $ids \
+              > reports/nodes/NODE-21/runtime/sandbox-inspect.json 2>&1 || true
+            for id in $ids; do
+              docker logs "$id" \
+                >> reports/nodes/NODE-21/runtime/sandbox-logs.txt 2>&1 || true
+            done
+          fi
+
+      - name: Upload NODE-21 evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-21-sandbox-${{ github.run_id }}
+          path: |
+            reports/nodes/NODE-21/generated-schemas
+            reports/nodes/NODE-21/gap-ledger.json
+            reports/nodes/NODE-21/image-inspect.json
+            reports/nodes/NODE-21/runtime
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Cleanup sandbox containers and image
+        if: always()
+        run: |
+          ids="$(docker ps -aq --filter label=lumi.sandbox=true)"
+          if [ -n "$ids" ]; then
+            docker rm -f $ids || true
+          fi
+          docker image rm -f "${SANDBOX_IMAGE}" || true

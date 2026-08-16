@@ -1,0 +1,48 @@
+{
+  "node": "NODE-21",
+  "status": "IMPLEMENTED_VALIDATING",
+  "gaps": [
+    {
+      "id": "SANDBOX-PACKAGE-001",
+      "status": "OPEN",
+      "description": "The sandbox runtime implementation uses Pydantic and its Deep Agents integration module uses deepagents, but the existing frozen workspace lock still records lumi-sandbox-runtime as dependency-free. The implementation intentionally did not mutate pyproject without regenerating uv.lock.",
+      "closure": "Regenerate and review the workspace lock in a dependency-management change so lumi-sandbox-runtime explicitly owns its standalone Pydantic dependency and an optional Deep Agents integration extra without breaking frozen installs."
+    },
+    {
+      "id": "SANDBOX-EGRESS-002",
+      "status": "OPEN",
+      "description": "Network NONE is enforced by the local Docker backend. TOOL_PROXY_ONLY and ALLOWLIST contracts fail closed because a destination-aware egress proxy/firewall adapter is not implemented yet.",
+      "closure": "Bind Tool Gateway or a dedicated egress enforcement service that resolves DNS safely, blocks private/link-local/metadata ranges after resolution, and enforces destination allowlists before enabling either networked policy."
+    },
+    {
+      "id": "SANDBOX-STORAGE-003",
+      "status": "OPEN",
+      "description": "Output inspection, checksum, MIME detection and ArtifactStoragePort are implemented, but the production NODE-18 Object Storage/Asset adapter is not wired into sandbox runtime composition yet.",
+      "closure": "Bind the NODE-18 production storage adapter and create Asset/Artifact candidate references transactionally after validated collection."
+    },
+    {
+      "id": "SANDBOX-REMOTE-004",
+      "status": "OPEN",
+      "description": "Ephemeral Docker is the Local/CI reference backend. A production remote sandbox or dedicated strongly isolated execution-node adapter has not been selected or benchmarked.",
+      "closure": "Benchmark and select a production isolation backend/provider for escape resistance, startup latency, resource enforcement, egress control, artifact transfer and cost, then implement the same SandboxBackend contract."
+    },
+    {
+      "id": "SANDBOX-AUDIT-005",
+      "status": "OPEN",
+      "description": "The structured audit contract, sanitization and MemoryAuditSink are implemented, but durable audit persistence, metrics and security alert export are not yet composed into the production runtime.",
+      "closure": "Persist sandbox audit events in the platform audit pipeline and export resource/security-deny metrics in the observability node without logging user file contents."
+    },
+    {
+      "id": "SANDBOX-IMAGE-006",
+      "status": "OPEN",
+      "description": "The NODE-21 minimal image is versioned by the local build tag and CI can capture its image ID, but its upstream python:3.12-slim-bookworm base is not yet pinned to an immutable registry digest/SBOM policy.",
+      "closure": "Publish the production sandbox image to the controlled registry with immutable digest, SBOM, vulnerability scanning and signed provenance; deploy by digest rather than a mutable tag."
+    },
+    {
+      "id": "SANDBOX-CI-007",
+      "status": "OPEN",
+      "description": "Hosted security validation remains pending while GitHub Actions cannot allocate a runner because of the repository account billing/spending-limit condition.",
+      "closure": "Fix GitHub Billing/spending limit and execute the committed NODE-21 workflow. runner_id=0 and steps=[] must remain BLOCKED_EXTERNAL, never PASS."
+    }
+  ]
+}
