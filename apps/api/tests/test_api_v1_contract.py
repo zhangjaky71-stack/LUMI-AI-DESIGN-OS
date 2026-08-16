@@ -10,11 +10,7 @@ from lumi_api.api.v1.app import create_contract_app
 from lumi_api.api.v1.auth_guard import enforce_api_auth
 from lumi_api.api.v1.common import parse_if_match, version_etag
 from lumi_api.api.v1.dependencies import get_api_v1_service
-from lumi_api.api.v1.schemas import (
-    MoneyInput,
-    ProjectCreateRequest,
-    ProjectResponse,
-)
+from lumi_api.api.v1.schemas import MoneyInput, ProjectCreateRequest, ProjectResponse
 from lumi_api.domain.states import ProjectStatus
 
 ORG_ID = UUID("01910000-0000-7000-8000-000000000001")
@@ -39,6 +35,7 @@ class FakeApiService:
             name=request.name,
             status=ProjectStatus.DRAFT,
             brief=request.brief,
+            brief_version=1,
             brand_id=request.brand_id,
             active_branch_id=None,
             settings=request.settings,
@@ -60,18 +57,15 @@ def _parameter_names(operation: dict[str, object]) -> set[str]:
 
 def _node11_app():
     app = create_contract_app()
-    # NODE-11 tests intentionally isolate the REST/ETag/idempotency contract.
-    # NODE-16 has a separate suite for the real auth guard.
     app.dependency_overrides[enforce_api_auth] = lambda: None
     return app
 
 
-def test_openapi_freezes_p0_paths_and_headers() -> None:
-    app = create_contract_app()
-    schema = app.openapi()
+def test_openapi_preserves_node11_baseline_and_tenant_headers() -> None:
+    schema = create_contract_app().openapi()
     paths = schema["paths"]
 
-    business_paths = {
+    baseline_business_paths = {
         "/api/v1/projects",
         "/api/v1/projects/{project_id}",
         "/api/v1/projects/{project_id}/transitions",
@@ -90,9 +84,13 @@ def test_openapi_freezes_p0_paths_and_headers() -> None:
         "/api/v1/auth/logout",
         "/api/v1/auth/me",
     }
-    assert set(paths) == business_paths | auth_paths
+    node17_paths = {
+        "/api/v1/projects/{project_id}/brief/versions",
+        "/api/v1/projects/{project_id}/restore",
+    }
+    assert baseline_business_paths | auth_paths | node17_paths <= set(paths)
 
-    for path in business_paths | {"/api/v1/auth/me"}:
+    for path in baseline_business_paths | node17_paths | {"/api/v1/auth/me"}:
         for method, operation in paths[path].items():
             if method not in {"get", "post", "patch", "put", "delete"}:
                 continue
@@ -112,6 +110,8 @@ def test_openapi_freezes_p0_paths_and_headers() -> None:
     assert "If-Match" in _parameter_names(
         paths["/api/v1/projects/{project_id}/transitions"]["post"]
     )
+    assert "If-Match" in _parameter_names(paths["/api/v1/projects/{project_id}"]["delete"])
+    assert "If-Match" in _parameter_names(paths["/api/v1/projects/{project_id}/restore"]["post"])
 
 
 def test_domain_status_values_are_reused_by_openapi() -> None:
@@ -135,7 +135,7 @@ def test_mutating_project_returns_location_and_etag() -> None:
         json={
             "workspace_id": str(WORKSPACE_ID),
             "name": "Launch Campaign",
-            "brief": {"goal": "launch"},
+            "brief": {"objective": "launch"},
             "settings": {},
         },
     )
