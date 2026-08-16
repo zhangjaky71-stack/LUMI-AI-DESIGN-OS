@@ -85,6 +85,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          # The canonical runner proves source-RC ancestry and inspects every path
+          # changed from source RC to evidence checkout. A shallow clone cannot
+          # establish that evidence-only descendant invariant.
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
