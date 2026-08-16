@@ -85,6 +85,13 @@ class MCPServerDefinition:
         for version in self.protocol_versions:
             if version not in {MCP_PROTOCOL_2026_07_28, MCP_PROTOCOL_2025_11_25}:
                 raise ValueError(f"MCP_PROTOCOL_VERSION_UNSUPPORTED:{version}")
+        # MCP 2026-07-28 defines the modern HTTP binding as Streamable HTTP.
+        # Never advertise or negotiate the modern stateless era over legacy HTTP/SSE.
+        if (
+            MCP_PROTOCOL_2026_07_28 in self.protocol_versions
+            and self.transport is not MCPTransportKind.STREAMABLE_HTTP
+        ):
+            raise ValueError("MCP_2026_TRANSPORT_INVALID")
         normalized_headers: set[str] = set()
         for header in self.auth_header_names:
             if not _HEADER_NAME.fullmatch(header):
