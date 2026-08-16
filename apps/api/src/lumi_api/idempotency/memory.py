@@ -79,13 +79,11 @@ class MemoryIdempotencyStore:
                 and record.lease_expires_at > now
             ):
                 return AcquireResult(action=AcquireAction.WAIT, operation=record)
-
-            recoverable = record.status in {
+            if record.status not in {
                 OperationStatus.NEW,
                 OperationStatus.IN_PROGRESS,
                 OperationStatus.FAILED_RETRYABLE,
-            }
-            if not recoverable:
+            }:
                 return AcquireResult(action=AcquireAction.FINAL_FAILURE, operation=record)
             claimed = record.model_copy(
                 update={
@@ -106,6 +104,7 @@ class MemoryIdempotencyStore:
 
     async def record_provider_request(
         self,
+        organization_id: UUID,
         operation_id: UUID,
         *,
         provider_request_id: str,
@@ -113,7 +112,7 @@ class MemoryIdempotencyStore:
         now: datetime,
     ) -> IdempotencyOperation:
         async with self._lock:
-            record, key = self._owned(operation_id, lease_owner)
+            record, key = self._owned(organization_id, operation_id, lease_owner)
             if record.provider_request_id not in {None, provider_request_id}:
                 raise ValueError("PROVIDER_REQUEST_ID_IMMUTABLE")
             updated = record.model_copy(
@@ -128,6 +127,7 @@ class MemoryIdempotencyStore:
 
     async def complete(
         self,
+        organization_id: UUID,
         operation_id: UUID,
         *,
         lease_owner: str,
@@ -135,12 +135,9 @@ class MemoryIdempotencyStore:
         now: datetime,
     ) -> IdempotencyOperation:
         async with self._lock:
-            record, key = self._owned(operation_id, lease_owner)
+            record, key = self._owned(organization_id, operation_id, lease_owner)
             provider_request_id = outcome.provider_request_id or record.provider_request_id
-            if (
-                record.provider_request_id is not None
-                and provider_request_id != record.provider_request_id
-            ):
+            if record.provider_request_id is not None and provider_request_id != record.provider_request_id:
                 raise ValueError("PROVIDER_REQUEST_ID_IMMUTABLE")
             updated = record.model_copy(
                 update={
@@ -165,6 +162,7 @@ class MemoryIdempotencyStore:
 
     async def fail(
         self,
+        organization_id: UUID,
         operation_id: UUID,
         *,
         lease_owner: str,
@@ -175,10 +173,8 @@ class MemoryIdempotencyStore:
         now: datetime,
     ) -> IdempotencyOperation:
         async with self._lock:
-            record, key = self._owned(operation_id, lease_owner)
-            status = (
-                OperationStatus.FAILED_RETRYABLE if retryable else OperationStatus.FAILED_FINAL
-            )
+            record, key = self._owned(organization_id, operation_id, lease_owner)
+            status = OperationStatus.FAILED_RETRYABLE if retryable else OperationStatus.FAILED_FINAL
             updated = record.model_copy(
                 update={
                     "status": status,
@@ -198,6 +194,7 @@ class MemoryIdempotencyStore:
 
     async def mark_ambiguous(
         self,
+        organization_id: UUID,
         operation_id: UUID,
         *,
         lease_owner: str,
@@ -205,7 +202,7 @@ class MemoryIdempotencyStore:
         now: datetime,
     ) -> IdempotencyOperation:
         async with self._lock:
-            record, key = self._owned(operation_id, lease_owner)
+            record, key = self._owned(organization_id, operation_id, lease_owner)
             updated = record.model_copy(
                 update={
                     "status": OperationStatus.FAILED_RETRYABLE,
@@ -224,10 +221,10 @@ class MemoryIdempotencyStore:
             return updated
 
     def _owned(
-        self, operation_id: UUID, lease_owner: str
+        self, organization_id: UUID, operation_id: UUID, lease_owner: str
     ) -> tuple[IdempotencyOperation, tuple[UUID, str, str]]:
         key = self.by_id.get(operation_id)
-        if key is None:
+        if key is None or key[0] != organization_id:
             raise ValueError("IDEMPOTENCY_OPERATION_NOT_FOUND")
         record = self.records[key]
         if record.status is not OperationStatus.IN_PROGRESS:
