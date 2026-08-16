@@ -118,8 +118,7 @@ jobs:
             services/model-gateway/src/lumi_model_gateway/memory.py \
             services/model-gateway/src/lumi_model_gateway/errors.py \
             services/model-gateway/src/lumi_model_gateway/__init__.py \
-            services/model-gateway/tests/test_provider_health.py \
-            services/model-gateway/tests/test_provider_health_gateway.py \
+            services/model-gateway/tests/test_provider_health*.py \
             services/model-gateway/tests/test_synthetic_probe.py \
             apps/api/src/lumi_api/persistence/models.py \
             apps/api/src/lumi_api/persistence/models_provider_health.py \
@@ -138,8 +137,7 @@ jobs:
             services/model-gateway/src/lumi_model_gateway/memory.py \
             services/model-gateway/src/lumi_model_gateway/errors.py \
             services/model-gateway/src/lumi_model_gateway/__init__.py \
-            services/model-gateway/tests/test_provider_health.py \
-            services/model-gateway/tests/test_provider_health_gateway.py \
+            services/model-gateway/tests/test_provider_health*.py \
             services/model-gateway/tests/test_synthetic_probe.py \
             apps/api/src/lumi_api/persistence/models.py \
             apps/api/src/lumi_api/persistence/models_provider_health.py \
