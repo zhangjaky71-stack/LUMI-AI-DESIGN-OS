@@ -11,14 +11,14 @@
     {
       "id": "QUEUE-HANDLER-002",
       "status": "OPEN",
-      "description": "Celery task registration, routing, durable job state and retry logic are implemented, but media handlers are placeholder orchestration handlers rather than final image/video/export implementations.",
+      "description": "Celery task registration, routing, durable job state, retry, crash recovery and explicit Job DLQ are implemented, but media handlers are placeholder orchestration handlers rather than final image/video/export implementations.",
       "closure": "Bind job kinds to production media/AssetStorage handlers as those runtime adapters land."
     },
     {
       "id": "QUEUE-COMPOSE-003",
       "status": "OPEN",
-      "description": "QueuedAssetApiService provides the NODE-18 to NODE-19 scheduling boundary, but production FastAPI composition plus an atomic PostgreSQL JobScheduler is not wired while the NODE-18 production SQL repository remains open.",
-      "closure": "Bind Asset completion and runtime_jobs creation in one application transaction boundary, then let the dispatcher publish from durable state."
+      "description": "QueuedAssetApiService and Project/Asset canonical event bridges exist, but production FastAPI composition does not yet atomically bind NODE-17/18 SQL repositories to runtime_jobs creation and canonical outbox envelope writes while the upstream production SQL repository gaps remain open.",
+      "closure": "Bind Project/Asset transactions to canonical Outbox rows and durable JobScheduler rows in the same application transaction boundaries, then publish only from those durable rows."
     },
     {
       "id": "QUEUE-OBS-004",
