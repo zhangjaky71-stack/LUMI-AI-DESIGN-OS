@@ -3,6 +3,7 @@
 Revision ID: 0019_stripe_billing_runtime
 Revises: 0018_provider_daily_cost_hard_stop
 """
+
 from __future__ import annotations
 
 from alembic import op
@@ -115,8 +116,14 @@ def upgrade() -> None:
       UNIQUE (organization_id, idempotency_key)
     )
     """)
-    op.execute("CREATE INDEX ix_billing_credit_ledger_org_created ON billing_credit_ledger(organization_id, created_at DESC)")
-    op.execute("CREATE INDEX ix_billing_invoices_org_created ON billing_invoices(organization_id, created_at DESC)")
+    op.execute(
+        "CREATE INDEX ix_billing_credit_ledger_org_created "
+        "ON billing_credit_ledger(organization_id, created_at DESC)"
+    )
+    op.execute(
+        "CREATE INDEX ix_billing_invoices_org_created "
+        "ON billing_invoices(organization_id, created_at DESC)"
+    )
 
     for table in TENANT_TABLES:
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
@@ -149,6 +156,28 @@ def upgrade() -> None:
     BEFORE UPDATE OR DELETE ON billing_payment_events
     FOR EACH ROW EXECUTE FUNCTION lumi_billing_payment_event_immutable()
     """)
+
+    # NODE-03 defaults deliberately give newly migrated tables SELECT-only access.
+    # Billing therefore opts into the minimum DML required by each runtime operation.
+    op.execute("""
+    REVOKE INSERT, UPDATE, DELETE ON
+      billing_plan_versions,
+      billing_accounts,
+      billing_subscriptions,
+      billing_payment_events,
+      billing_invoices,
+      billing_credit_ledger
+    FROM lumi_app
+    """)
+    op.execute("GRANT SELECT, INSERT ON billing_plan_versions TO lumi_app")
+    op.execute("GRANT INSERT ON billing_accounts TO lumi_app")
+    op.execute("GRANT INSERT, UPDATE ON billing_subscriptions TO lumi_app")
+    op.execute("GRANT INSERT ON billing_payment_events TO lumi_app")
+    op.execute("GRANT INSERT, UPDATE ON billing_invoices TO lumi_app")
+    op.execute("GRANT INSERT ON billing_credit_ledger TO lumi_app")
+    op.execute("REVOKE ALL ON FUNCTION lumi_billing_plan_immutable() FROM PUBLIC")
+    op.execute("REVOKE ALL ON FUNCTION lumi_billing_credit_immutable() FROM PUBLIC")
+    op.execute("REVOKE ALL ON FUNCTION lumi_billing_payment_event_immutable() FROM PUBLIC")
 
 
 def downgrade() -> None:
