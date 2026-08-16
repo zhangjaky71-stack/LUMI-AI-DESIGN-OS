@@ -9,6 +9,7 @@ PACKAGE = ROOT / "apps/api/src/lumi_api/idempotency"
 MIGRATION = ROOT / "apps/api/migrations/versions/20260816_0006_idempotency_side_effects.py"
 UP1 = ROOT / "apps/api/migrations/versions/20260816_0006_sql/up_01.sql"
 UP2 = ROOT / "apps/api/migrations/versions/20260816_0006_sql/up_02.sql"
+DOWN2 = ROOT / "apps/api/migrations/versions/20260816_0006_sql/down_02.sql"
 LEDGER = ROOT / "reports/nodes/NODE-20/gap-ledger.json"
 
 FORBIDDEN_IMPORT_PREFIXES = (
@@ -50,7 +51,10 @@ def validate_import_boundary() -> None:
 
 def validate_migration() -> None:
     migration = MIGRATION.read_text(encoding="utf-8")
-    if 'revision = "20260816_0006"' not in migration or 'down_revision = "20260816_0005"' not in migration:
+    if (
+        'revision = "20260816_0006"' not in migration
+        or 'down_revision = "20260816_0005"' not in migration
+    ):
         fail("NODE-20 Alembic chain is invalid")
     up = UP1.read_text(encoding="utf-8") + "\n" + UP2.read_text(encoding="utf-8")
     required = (
@@ -66,15 +70,25 @@ def validate_migration() -> None:
     missing = [marker for marker in required if marker not in up]
     if missing:
         fail(f"NODE-20 migration missing markers: {missing}")
+    downgrade = DOWN2.read_text(encoding="utf-8")
+    if "cost ledger operation lineage would be lost" not in downgrade:
+        fail("NODE-20 downgrade must fail closed on operation-bound Cost Ledger rows")
 
 
-def validate_gateway_metrics() -> None:
+def validate_gateway_contract() -> None:
     gateway = (PACKAGE / "gateway.py").read_text(encoding="utf-8")
     missing = sorted(metric for metric in REQUIRED_METRICS if metric not in gateway)
     if missing:
         fail(f"gateway missing required metrics: {missing}")
     if "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST" not in gateway:
         fail("canonical same-key/different-request error code missing")
+    if "renew_lease" not in gateway or "heartbeat" not in gateway:
+        fail("long side effects require renewable lease/heartbeat boundary")
+    transactional = (PACKAGE / "transactional.py").read_text(encoding="utf-8")
+    if "PostgresTransactionalSideEffectGateway" not in transactional:
+        fail("atomic PostgreSQL side-effect gateway is missing")
+    if "async with connection.transaction():" not in transactional:
+        fail("transactional gateway must own PostgreSQL transaction scope")
 
 
 def validate_gap_ledger() -> None:
@@ -95,7 +109,7 @@ def validate_gap_ledger() -> None:
 def main() -> None:
     validate_import_boundary()
     validate_migration()
-    validate_gateway_metrics()
+    validate_gateway_contract()
     validate_gap_ledger()
     print("NODE20_IDEMPOTENCY_CONTRACT_VALID")
 
