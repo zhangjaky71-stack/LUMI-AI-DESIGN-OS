@@ -35,6 +35,7 @@
     {"id":"JOURNEY-B","category":"golden_journey","title":"Precision local edit preserves product, logo and QR invariants while structurally editing background and title","priority":"P0","severity":"critical"},
     {"id":"JOURNEY-C","category":"golden_journey","title":"Approved design adapts to 1:1, 4:5, 9:16 and 16:9 without naive stretching and preserves constraints","priority":"P0","severity":"high"},
     {"id":"JOURNEY-D","category":"golden_journey","title":"Worker restart, provider timeout, duplicate request and SSE reconnect recover without duplicate paid generation or corrupt artifact","priority":"P0","severity":"critical"},
+    {"id":"UAT-01","category":"product_uat","title":"Exact release candidate passes project to agent to generation to Canvas to Artifact/Version to export UAT, including primary error and retry states","priority":"P0","severity":"critical"},
 
     {"id":"AGENT-01","category":"agent_intelligence","title":"Agent run can pause, approve, resume and recover from checkpoint with versioned graph identity","priority":"P0","severity":"critical"},
     {"id":"AGENT-02","category":"agent_intelligence","title":"Prompt injection remains untrusted data and cannot widen tool authority","priority":"P0","severity":"critical"},
@@ -56,11 +57,14 @@
 
     {"id":"COST-01","category":"cost_billing","title":"Sampled provider request to Generation/Operation/Cost Ledger/AgentRun/Billing chain reconciles without unexplained large other","priority":"P0","severity":"critical"},
     {"id":"COST-02","category":"cost_billing","title":"Budget, credit, concurrency and platform-wide provider-spend controls are enforced at durable runtime boundaries","priority":"P0","severity":"critical"},
+    {"id":"BILLING-UX-01","category":"cost_billing","title":"Billing UX passes plan display, Checkout redirect/success/cancel, Portal, cancellation lifecycle, retry/idempotency and actionable error states on the exact release candidate","priority":"P0","severity":"high"},
 
     {"id":"FE-01","category":"frontend","title":"Projects, AI Workspace, Canvas, Layers/Inspector, Timeline, Brand Kit, Versions/Compare, Export and Approval have no P0 dead end","priority":"P0","severity":"critical"},
     {"id":"FE-02","category":"frontend","title":"Billing and Team surfaces match the frozen release scope and do not expose placeholder functionality","priority":"P0","severity":"high"},
-    {"id":"BROWSER-01","category":"frontend","title":"Chrome and Edge primary create/edit/export journeys pass; Chinese IME/font/upload/download behavior is verified","priority":"P0","severity":"high"},
-    {"id":"BROWSER-02","category":"frontend","title":"Safari core view/edit flow is validated or deferred with non-critical gap metadata","priority":"P1","severity":"medium"},
+    {"id":"BROWSER-01","category":"frontend","title":"Current supported Chrome and Edge primary create/edit/export journeys pass; Chinese IME/font/upload/download behavior is verified with exact browser versions captured in evidence","priority":"P0","severity":"high"},
+    {"id":"BROWSER-02","category":"frontend","title":"Current supported Safari and Firefox core create/edit/export journeys pass with exact browser versions captured in evidence","priority":"P0","severity":"high"},
+    {"id":"RESPONSIVE-01","category":"frontend","title":"Supported mobile/responsive breakpoints and touch interactions pass for the frozen release scope, or an explicitly desktop-only non-critical scope gap is documented","priority":"P1","severity":"medium"},
+    {"id":"A11Y-01","category":"frontend","title":"Critical paths pass keyboard navigation, visible focus, semantic naming, contrast and critical screen-reader checks with zero high-severity accessibility blocker","priority":"P0","severity":"high"},
 
     {"id":"PERF-01","category":"performance","title":"NODE-69 launch profile meets frozen API/SSE/DB/Queue/Canvas thresholds without P0 capacity blocker","priority":"P0","severity":"high"},
     {"id":"PERF-02","category":"performance","title":"Autoscaling/capacity and media isolation evidence supports first production operating envelope","priority":"P0","severity":"high"},
