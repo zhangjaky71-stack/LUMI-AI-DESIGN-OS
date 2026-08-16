@@ -76,6 +76,8 @@ class MCPServerDefinition:
         parsed = urlsplit(self.base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("MCP_SERVER_URL_INVALID")
+        if parsed.scheme != "https":
+            raise ValueError("MCP_SERVER_TLS_REQUIRED")
         if parsed.username or parsed.password or parsed.fragment or parsed.query:
             raise ValueError("MCP_SERVER_URL_INVALID")
         if not self.allowed_tool_patterns:
@@ -85,8 +87,6 @@ class MCPServerDefinition:
         for version in self.protocol_versions:
             if version not in {MCP_PROTOCOL_2026_07_28, MCP_PROTOCOL_2025_11_25}:
                 raise ValueError(f"MCP_PROTOCOL_VERSION_UNSUPPORTED:{version}")
-        # MCP 2026-07-28 defines the modern HTTP binding as Streamable HTTP.
-        # Never advertise or negotiate the modern stateless era over legacy HTTP/SSE.
         if (
             MCP_PROTOCOL_2026_07_28 in self.protocol_versions
             and self.transport is not MCPTransportKind.STREAMABLE_HTTP
