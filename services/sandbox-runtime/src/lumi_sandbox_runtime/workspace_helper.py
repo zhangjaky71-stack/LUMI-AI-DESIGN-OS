@@ -33,27 +33,43 @@ def _parts(path: str) -> tuple[str, ...]:
     return parts
 
 
-def _open_parent(parts: tuple[str, ...], *, write: bool) -> tuple[int, str]:
-    if write and parts[0] not in _WRITE_ROOTS:
-        raise UnsafePath("input is read-only")
-    root_fd = os.open(WORKSPACE, os.O_RDONLY | os.O_DIRECTORY)
-    current = root_fd
+def _open_directory(parts: tuple[str, ...]) -> int:
+    current = os.open(WORKSPACE, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        for component in parts[:-1]:
+        for component in parts:
             next_fd = os.open(
                 component,
                 os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
                 dir_fd=current,
             )
-            if current != root_fd:
-                os.close(current)
-            current = next_fd
-        return current, parts[-1]
-    except Exception:
-        if current != root_fd:
             os.close(current)
-        os.close(root_fd)
+            current = next_fd
+        return current
+    except Exception:
+        os.close(current)
         raise
+
+
+def _open_parent(parts: tuple[str, ...], *, write: bool) -> tuple[int, str]:
+    if write and parts[0] not in _WRITE_ROOTS:
+        raise UnsafePath("input is read-only")
+    parent_fd = _open_directory(parts[:-1])
+    return parent_fd, parts[-1]
+
+
+def _read_regular_file(fd: int, size: int) -> bytes:
+    chunks: list[bytes] = []
+    remaining = size
+    while remaining:
+        chunk = os.read(fd, min(remaining, 1024 * 1024))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    payload = b"".join(chunks)
+    if len(payload) != size:
+        raise UnsafePath("file changed while being read")
+    return payload
 
 
 def read_bytes(path: str, max_bytes: int) -> bytes:
@@ -67,7 +83,7 @@ def read_bytes(path: str, max_bytes: int) -> bytes:
                 raise UnsafePath("only regular files may be read")
             if info.st_size > max_bytes:
                 raise UnsafePath("file exceeds read limit")
-            return os.read(fd, max_bytes + 1)
+            return _read_regular_file(fd, int(info.st_size))
         finally:
             os.close(fd)
     finally:
@@ -99,22 +115,12 @@ def write_bytes(path: str, payload: bytes, max_bytes: int) -> None:
 
 def list_entries(path: str) -> list[dict[str, object]]:
     parts = _parts(path)
-    root_fd = os.open(WORKSPACE, os.O_RDONLY | os.O_DIRECTORY)
-    current = root_fd
+    directory_fd = _open_directory(parts)
     try:
-        for component in parts:
-            next_fd = os.open(
-                component,
-                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                dir_fd=current,
-            )
-            if current != root_fd:
-                os.close(current)
-            current = next_fd
         entries: list[dict[str, object]] = []
         base = "/workspace/" + "/".join(parts)
-        for name in sorted(os.listdir(current)):
-            info = os.stat(name, dir_fd=current, follow_symlinks=False)
+        for name in sorted(os.listdir(directory_fd)):
+            info = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
             if stat.S_ISLNK(info.st_mode):
                 continue
             entries.append(
@@ -126,9 +132,7 @@ def list_entries(path: str) -> list[dict[str, object]]:
             )
         return entries
     finally:
-        if current != root_fd:
-            os.close(current)
-        os.close(root_fd)
+        os.close(directory_fd)
 
 
 def inspect_file(path: str, max_bytes: int) -> dict[str, object]:
@@ -183,7 +187,12 @@ def main() -> None:
     elif args.action == "list":
         print(json.dumps(list_entries(args.path), separators=(",", ":")))
     elif args.action == "inspect":
-        print(json.dumps(inspect_file(args.path, args.max_bytes), separators=(",", ":")))
+        print(
+            json.dumps(
+                inspect_file(args.path, args.max_bytes),
+                separators=(",", ":"),
+            )
+        )
 
 
 if __name__ == "__main__":
