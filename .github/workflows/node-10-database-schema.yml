@@ -85,7 +85,7 @@ jobs:
         run: |
           PYTHONPATH=apps/api/src uv run --no-project \
             --with "asyncpg==${ASYNCPG_VERSION}" \
-            python tools/node10/test_database_integration.py
+            python tools/node10/run_database_integration.py
 
       - name: Downgrade to base
         working-directory: apps/api
@@ -123,7 +123,7 @@ jobs:
         run: |
           PYTHONPATH=apps/api/src uv run --no-project \
             --with "asyncpg==${ASYNCPG_VERSION}" \
-            python tools/node10/test_database_integration.py
+            python tools/node10/run_database_integration.py
 
       - name: Capture diagnostics on failure
         if: failure()
