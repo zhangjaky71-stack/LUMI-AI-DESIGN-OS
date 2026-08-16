@@ -77,7 +77,9 @@ ALTER TABLE cost_ledger
   DROP COLUMN confidence,
   DROP COLUMN external_provider_request_id,
   DROP COLUMN pricing_snapshot_id,
-  DROP COLUMN entry_key;
+  DROP COLUMN entry_key,
+  ALTER COLUMN provider TYPE VARCHAR(80),
+  ALTER COLUMN model TYPE VARCHAR(160);
 
 -- statement-breakpoint
 
