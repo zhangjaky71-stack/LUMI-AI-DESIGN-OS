@@ -31,7 +31,10 @@ SET status = CASE status
   ELSE status
 END,
 updated_at = now(),
-completed_at = CASE WHEN status IN ('completed','failed') THEN COALESCE(completed_at, now()) ELSE completed_at END;
+completed_at = CASE
+  WHEN status IN ('completed','failed') THEN COALESCE(completed_at, now())
+  ELSE completed_at
+END;
 
 -- statement-breakpoint
 
@@ -62,8 +65,18 @@ ALTER TABLE idempotency_operations
   CHECK (error_category IS NULL OR error_category IN ('transient','permanent','ambiguous')),
   ADD CONSTRAINT ck_idempotency_operations_recovery_state
   CHECK (recovery_state IN ('none','reconciling','ambiguous')),
+  ADD CONSTRAINT ck_idempotency_operations_recovery_consistency
+  CHECK (recovery_state <> 'ambiguous' OR error_category = 'ambiguous'),
+  ADD CONSTRAINT ck_idempotency_operations_side_effect_kind
+  CHECK (side_effect_kind IN (
+    'paid_model_invocation','image_generation','video_generation',
+    'external_tool_write','object_finalization','billing_charge','billing_credit',
+    'email_send','export_creation','external_publish','generic_write'
+  )),
   ADD CONSTRAINT ck_idempotency_operations_compensation_mode
   CHECK (compensation_mode IN ('compensatable','non_compensatable','reversible_by_new_operation')),
+  ADD CONSTRAINT ck_idempotency_operations_terminal_completion
+  CHECK ((status IN ('succeeded','failed_final')) = (completed_at IS NOT NULL)),
   ADD CONSTRAINT ck_idempotency_operations_version_positive
   CHECK (version >= 1);
 
