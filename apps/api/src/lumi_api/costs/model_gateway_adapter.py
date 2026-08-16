@@ -41,17 +41,36 @@ class Node27BudgetPort:
         candidate: RouteCandidate,
     ) -> BudgetReservation:
         estimate = candidate.estimate
+        if (
+            estimate.amount_usd is not None
+            and request.budget_limit is not None
+            and estimate.amount_usd > request.budget_limit
+        ):
+            return BudgetReservation(
+                False,
+                remaining_usd=request.budget_limit,
+                reason="COST_OPERATION_BUDGET_EXCEEDED",
+            )
         if estimate.amount_usd is None:
             if request.budget_limit is not None:
                 return BudgetReservation(
                     False,
                     reason="COST_UNKNOWN_COST_OPERATION_BUDGET",
                 )
-            mode = await _unknown_cost_budget_mode(self.gateway.dsn, request)
+            mode = await _unknown_cost_budget_mode(
+                self.gateway.dsn,
+                request,
+            )
             if mode == "hard":
-                return BudgetReservation(False, reason="COST_UNKNOWN_COST_HARD_BUDGET")
+                return BudgetReservation(
+                    False,
+                    reason="COST_UNKNOWN_COST_HARD_BUDGET",
+                )
             if mode == "approval":
-                return BudgetReservation(False, reason="COST_BUDGET_APPROVAL_REQUIRED")
+                return BudgetReservation(
+                    False,
+                    reason="COST_BUDGET_APPROVAL_REQUIRED",
+                )
 
         amount = estimate.amount_usd or Decimal("0")
         reservation_request = BudgetReservationRequest(
@@ -61,20 +80,34 @@ class Node27BudgetPort:
             estimated_amount=amount,
             pricing_snapshot_id=estimate.pricing_snapshot_id,
             confidence=_confidence(estimate.confidence),
-            reservation_key=f"{candidate.model.provider}:{candidate.model.model}",
+            reservation_key=(
+                f"{candidate.model.provider}:"
+                f"{candidate.model.model}"
+            ),
             metadata={
                 "capability": request.capability.value,
-                "registry_snapshot_id": candidate.model.registry_snapshot_id,
-                "model_revision_id": candidate.model.model_revision_id,
+                "registry_snapshot_id": (
+                    candidate.model.registry_snapshot_id
+                ),
+                "model_revision_id": (
+                    candidate.model.model_revision_id
+                ),
                 "estimate_unknown": estimate.amount_usd is None,
             },
         )
         try:
-            handle = await self.gateway.reserve(reservation_request)
+            handle = await self.gateway.reserve(
+                reservation_request
+            )
         except BudgetExceeded as exc:
-            return BudgetReservation(False, reason=exc.code)
+            return BudgetReservation(
+                False,
+                reason=exc.code,
+            )
         self._handles[handle.reservation_id] = handle
-        remaining = await self.gateway.remaining_budget(reservation_request)
+        remaining = await self.gateway.remaining_budget(
+            reservation_request
+        )
         return BudgetReservation(
             True,
             reservation_ref=str(handle.reservation_id),
@@ -104,58 +137,82 @@ class Node27BudgetPort:
                 amount=actual.amount_usd or Decimal("0"),
                 currency=handle.request.currency,
                 confidence=_confidence(actual.confidence),
-                pricing_snapshot_id=actual.pricing_snapshot_id,
-                external_provider_request_id=provider_request_id,
+                pricing_snapshot_id=(
+                    actual.pricing_snapshot_id
+                ),
+                external_provider_request_id=(
+                    provider_request_id
+                ),
                 usage=usage_facts,
                 metadata=metadata,
             ),
         )
         self._handles.pop(handle.reservation_id, None)
 
-    async def release(self, reservation: BudgetReservation) -> None:
+    async def release(
+        self,
+        reservation: BudgetReservation,
+    ) -> None:
         if not reservation.reservation_ref:
             return
         try:
             handle = await self._handle(reservation)
         except ValueError:
             return
-        await self.gateway.release(handle, reason="provider_not_accepted")
+        await self.gateway.release(
+            handle,
+            reason="provider_not_accepted",
+        )
         self._handles.pop(handle.reservation_id, None)
 
-    async def _handle(self, reservation: BudgetReservation) -> ReservationHandle:
+    async def _handle(
+        self,
+        reservation: BudgetReservation,
+    ) -> ReservationHandle:
         if not reservation.reservation_ref:
             raise ValueError("COST_RESERVATION_REF_REQUIRED")
         try:
-            reservation_id = UUID(reservation.reservation_ref)
+            reservation_id = UUID(
+                reservation.reservation_ref
+            )
         except ValueError as exc:
-            raise ValueError("COST_RESERVATION_REF_INVALID") from exc
+            raise ValueError(
+                "COST_RESERVATION_REF_INVALID"
+            ) from exc
         cached = self._handles.get(reservation_id)
         if cached is not None:
             return cached
-        recovered = await _load_reservation_handle(self.gateway.dsn, reservation_id)
+        recovered = await _load_reservation_handle(
+            self.gateway.dsn,
+            reservation_id,
+        )
         self._handles[reservation_id] = recovered
         return recovered
 
 
 class Node27CostTelemetryPort:
-    """Non-financial telemetry seam; settle() is the only provider-cost writer."""
+    """Non-financial telemetry seam; settle() is the only cost writer."""
 
     def __init__(self) -> None:
         self.records: list[CostTelemetry] = []
 
-    async def record(self, telemetry: CostTelemetry) -> None:
+    async def record(
+        self,
+        telemetry: CostTelemetry,
+    ) -> None:
         self.records.append(telemetry)
 
 
-async def _unknown_cost_budget_mode(dsn: str, request: ModelRequest) -> str | None:
-    scopes = [str(request.organization_id)]
+async def _unknown_cost_budget_mode(
+    dsn: str,
+    request: ModelRequest,
+) -> str | None:
     scope_ids = [
         request.project_id,
         request.agent_run_id,
         request.task_id,
         request.operation_id,
     ]
-    del scopes
     connection = await asyncpg.connect(dsn)
     try:
         rows = await connection.fetch(
@@ -173,7 +230,10 @@ async def _unknown_cost_budget_mode(dsn: str, request: ModelRequest) -> str | No
               )
             """,
             request.organization_id,
-            ["lifetime", month_period_key(datetime.now(UTC))],
+            [
+                "lifetime",
+                month_period_key(datetime.now(UTC)),
+            ],
             *scope_ids,
         )
     finally:
@@ -186,7 +246,10 @@ async def _unknown_cost_budget_mode(dsn: str, request: ModelRequest) -> str | No
     return None
 
 
-async def _load_reservation_handle(dsn: str, reservation_id: UUID) -> ReservationHandle:
+async def _load_reservation_handle(
+    dsn: str,
+    reservation_id: UUID,
+) -> ReservationHandle:
     connection = await asyncpg.connect(dsn)
     try:
         row = await connection.fetchrow(
@@ -208,7 +271,9 @@ async def _load_reservation_handle(dsn: str, reservation_id: UUID) -> Reservatio
         ),
         provider=row["provider"],
         model=row["model"],
-        estimated_amount=Decimal(row["estimated_amount"]),
+        estimated_amount=Decimal(
+            row["estimated_amount"]
+        ),
         currency=row["currency"],
         pricing_snapshot_id=row["pricing_snapshot_id"],
         confidence=CostConfidence(row["confidence"]),
@@ -233,15 +298,23 @@ def _context(request: ModelRequest) -> CostContext:
     )
 
 
-def _confidence(value: ModelCostConfidence) -> CostConfidence:
+def _confidence(
+    value: ModelCostConfidence,
+) -> CostConfidence:
     return CostConfidence(value.value)
 
 
-def _usage_facts(usage: ModelUsage) -> tuple[UsageFact, ...]:
+def _usage_facts(
+    usage: ModelUsage,
+) -> tuple[UsageFact, ...]:
     values: list[UsageFact] = []
     if usage.input_tokens:
         values.append(
-            UsageFact("llm.input_tokens", Decimal(usage.input_tokens), "tokens")
+            UsageFact(
+                "llm.input_tokens",
+                Decimal(usage.input_tokens),
+                "tokens",
+            )
         )
     if usage.cached_input_tokens:
         values.append(
@@ -253,15 +326,33 @@ def _usage_facts(usage: ModelUsage) -> tuple[UsageFact, ...]:
         )
     if usage.output_tokens:
         values.append(
-            UsageFact("llm.output_tokens", Decimal(usage.output_tokens), "tokens")
+            UsageFact(
+                "llm.output_tokens",
+                Decimal(usage.output_tokens),
+                "tokens",
+            )
         )
     if usage.images:
         values.append(
-            UsageFact("image.generations", Decimal(usage.images), "images")
+            UsageFact(
+                "image.generations",
+                Decimal(usage.images),
+                "images",
+            )
         )
     if usage.video_seconds:
-        values.append(UsageFact("video.seconds", usage.video_seconds, "seconds"))
+        values.append(
+            UsageFact(
+                "video.seconds",
+                usage.video_seconds,
+                "seconds",
+            )
+        )
     values.append(
-        UsageFact("provider.requests", Decimal(usage.requests), "requests")
+        UsageFact(
+            "provider.requests",
+            Decimal(usage.requests),
+            "requests",
+        )
     )
     return tuple(values)
