@@ -50,10 +50,10 @@ class GenerationStatus(StrEnum):
 
 
 PROJECT_TRANSITIONS: dict[ProjectStatus, frozenset[ProjectStatus]] = {
-    ProjectStatus.DRAFT: frozenset({ProjectStatus.ACTIVE, ProjectStatus.ARCHIVED}),
+    ProjectStatus.DRAFT: frozenset({ProjectStatus.ACTIVE}),
     ProjectStatus.ACTIVE: frozenset({ProjectStatus.PAUSED, ProjectStatus.ARCHIVED}),
     ProjectStatus.PAUSED: frozenset({ProjectStatus.ACTIVE, ProjectStatus.ARCHIVED}),
-    ProjectStatus.ARCHIVED: frozenset({ProjectStatus.ACTIVE}),
+    ProjectStatus.ARCHIVED: frozenset(),
 }
 
 AGENT_RUN_TRANSITIONS: dict[AgentRunStatus, frozenset[AgentRunStatus]] = {
