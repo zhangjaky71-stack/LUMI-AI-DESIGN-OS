@@ -12,12 +12,23 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
+EVIDENCE_ONLY_PREFIXES = ("reports/",)
 
 
 def run(command: list[str]) -> None:
     completed = subprocess.run(command, cwd=ROOT, check=False)  # noqa: S603
     if completed.returncode != 0:
         raise SystemExit(completed.returncode)
+
+
+def git(args: list[str], *, capture: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603
+        ["git", *args],
+        cwd=ROOT,
+        check=False,
+        capture_output=capture,
+        text=True,
+    )
 
 
 def canonical_path(value: str, *, root: Path, expected_name: str | None = None) -> Path:
@@ -70,13 +81,7 @@ def release_manifest(release_arg: str) -> dict[str, Any]:
 
 
 def current_git_sha() -> str:
-    completed = subprocess.run(  # noqa: S603
-        ["git", "rev-parse", "HEAD"],
-        cwd=ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    completed = git(["rev-parse", "HEAD"])
     if completed.returncode != 0:
         raise SystemExit("unable to resolve current git HEAD for final acceptance")
     value = completed.stdout.strip().lower()
@@ -142,29 +147,66 @@ def current_migration_head() -> str:
 
 
 def repository_release_identity() -> tuple[str, str, str]:
+    """Identity to freeze when creating a new source release candidate."""
     return current_git_sha(), current_version(), current_migration_head()
 
 
-def require_current_checkout_binding(release_arg: str) -> str:
-    declared = rc_identity(release_manifest(release_arg))[0]
-    actual = current_git_sha()
-    if declared != actual:
+def require_clean_worktree() -> None:
+    completed = git(["status", "--porcelain", "--untracked-files=all"])
+    if completed.returncode != 0:
+        raise SystemExit("unable to inspect git worktree for final acceptance")
+    dirty = [line for line in completed.stdout.splitlines() if line.strip()]
+    if dirty:
+        preview = "; ".join(dirty[:20])
         raise SystemExit(
-            "FINAL_ACCEPTANCE_CHECKOUT_SHA_MISMATCH: "
-            f"release manifest declares {declared}, current checkout is {actual}"
+            "FINAL_ACCEPTANCE_DIRTY_WORKTREE: canonical final acceptance requires a clean "
+            f"checkout; dirty entries: {preview}"
         )
-    return actual
 
 
-def require_repository_identity_binding(release_arg: str) -> tuple[str, str, str]:
+def evidence_only_path(path: str) -> bool:
+    normalized = path.replace("\\", "/").lstrip("./")
+    return any(normalized.startswith(prefix) for prefix in EVIDENCE_ONLY_PREFIXES)
+
+
+def require_evidence_only_descendant(release_sha: str) -> tuple[str, tuple[str, ...]]:
+    exists = git(["cat-file", "-e", f"{release_sha}^{{commit}}"])
+    if exists.returncode != 0:
+        raise SystemExit(f"release candidate commit does not exist locally: {release_sha}")
+
+    ancestor = git(["merge-base", "--is-ancestor", release_sha, "HEAD"])
+    if ancestor.returncode != 0:
+        raise SystemExit(
+            "FINAL_ACCEPTANCE_RC_NOT_ANCESTOR: release candidate is not an ancestor of "
+            "the evidence checkout"
+        )
+
+    changed = git(["diff", "--name-only", f"{release_sha}..HEAD", "--"])
+    if changed.returncode != 0:
+        raise SystemExit("unable to inspect post-RC changes")
+    paths = tuple(line.strip() for line in changed.stdout.splitlines() if line.strip())
+    invalid = tuple(path for path in paths if not evidence_only_path(path))
+    if invalid:
+        raise SystemExit(
+            "FINAL_ACCEPTANCE_POST_RC_SOURCE_CHANGE: only reports/ evidence commits are "
+            f"allowed after source RC freeze; invalid paths={list(invalid)}"
+        )
+    return current_git_sha(), paths
+
+
+def require_repository_identity_binding(
+    release_arg: str,
+) -> tuple[tuple[str, str, str], str, tuple[str, ...]]:
     declared = rc_identity(release_manifest(release_arg))
-    actual = repository_release_identity()
-    if declared != actual:
+    current_source_facts = (current_version(), current_migration_head())
+    if declared[1:] != current_source_facts:
         raise SystemExit(
             "FINAL_ACCEPTANCE_REPOSITORY_IDENTITY_MISMATCH: "
-            f"release manifest declares {declared}, repository is {actual}"
+            f"release manifest declares version/head {declared[1:]}, "
+            f"repository has {current_source_facts}"
         )
-    return actual
+    evidence_checkout_sha, evidence_paths = require_evidence_only_descendant(declared[0])
+    return declared, evidence_checkout_sha, evidence_paths
 
 
 def require_all_upstream_rc_binding(release_arg: str, matrix_arg: str) -> tuple[str, ...]:
@@ -221,16 +263,21 @@ def main() -> int:
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
-    repository_identity = require_repository_identity_binding(args.release)
+    require_clean_worktree()
+    release_identity, evidence_checkout_sha, evidence_paths = require_repository_identity_binding(
+        args.release
+    )
     upstream = require_all_upstream_rc_binding(args.release, args.matrix)
     print(
         json.dumps(
             {
-                "final_acceptance_repository_identity": {
-                    "git_sha": repository_identity[0],
-                    "version": repository_identity[1],
-                    "migration_head": repository_identity[2],
+                "release_candidate": {
+                    "git_sha": release_identity[0],
+                    "version": release_identity[1],
+                    "migration_head": release_identity[2],
                 },
+                "evidence_checkout_sha": evidence_checkout_sha,
+                "post_rc_evidence_paths": list(evidence_paths),
                 "upstream_rc_bound": list(upstream),
             },
             sort_keys=True,
