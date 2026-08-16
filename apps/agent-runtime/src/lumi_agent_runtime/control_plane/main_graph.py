@@ -122,7 +122,11 @@ def build_main_graph(*, services: ControlServices, checkpointer: Any):
         if action == "reject":
             errors = list(state.get("errors", []))
             errors.append({"code": "APPROVAL_REJECTED"})
-            return {"errors": errors, "route": "done"}
+            return {
+                "errors": errors,
+                "status": RunStatus.FAILED.value,
+                "route": "done",
+            }
         return {"status": RunStatus.RUNNING.value, "route": "done"}
 
     async def collect_results(state: LumiRunState) -> dict[str, Any]:
@@ -130,6 +134,8 @@ def build_main_graph(*, services: ControlServices, checkpointer: Any):
         return {"route": ""}
 
     async def quality_gate(state: LumiRunState) -> dict[str, Any]:
+        if state.get("status") == RunStatus.FAILED.value:
+            return {"route": "finalize"}
         decision = await services.quality.evaluate(state)
         if decision == "repair":
             iteration = int(state.get("repair_iteration", 0))
@@ -143,6 +149,8 @@ def build_main_graph(*, services: ControlServices, checkpointer: Any):
 
     async def finalize(state: LumiRunState) -> dict[str, Any]:
         validate_run_state(state)
+        if state.get("status") == RunStatus.FAILED.value:
+            return {"status": RunStatus.FAILED.value, "route": ""}
         return {"status": RunStatus.SUCCEEDED.value, "route": ""}
 
     graph = StateGraph(LumiRunState)
