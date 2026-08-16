@@ -77,17 +77,14 @@ def build_main_graph(*, services: ControlServices, checkpointer: Any):
         return _safe_delta(await services.deterministic.execute(state))
 
     async def deep_agent_task(state: LumiRunState) -> dict[str, Any]:
-        # NODE-29 owns the Deep Agents implementation behind this port.
         return _safe_delta(await services.agentic.execute(state))
 
     async def side_effect_task(state: LumiRunState) -> dict[str, Any]:
-        # The method name is deliberate: NODE-20 idempotency must be applied inside the port.
         return _safe_delta(await services.side_effects.execute_idempotent(state))
 
     async def media_job_wait(state: LumiRunState) -> dict[str, Any]:
         job_id = state.get("external_job_id")
         if not job_id:
-            # This line is re-executed after interrupt; the port MUST be idempotent.
             job_id = await services.external_jobs.submit_idempotent(state)
         resume_value = interrupt(
             {
@@ -173,8 +170,8 @@ def build_main_graph(*, services: ControlServices, checkpointer: Any):
     graph.add_edge("ensure_task_graph", "route_ready_tasks")
     graph.add_conditional_edges(
         "route_ready_tasks",
-        lambda state: _ALLOWED_TASK_ROUTES[state["route"]],
-        set(_ALLOWED_TASK_ROUTES.values()),
+        lambda state: state["route"],
+        _ALLOWED_TASK_ROUTES,
     )
     for task_node in (
         "deterministic_task",
