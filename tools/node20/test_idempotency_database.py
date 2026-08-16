@@ -35,6 +35,21 @@ async def set_tenant(connection: asyncpg.Connection, org: UUID) -> None:
     )
 
 
+async def cleanup_fixtures() -> None:
+    connection = await asyncpg.connect(MIGRATION_DSN)
+    try:
+        async with connection.transaction():
+            await connection.execute(
+                "DELETE FROM cost_ledger WHERE id = ANY($1::uuid[])",
+                [CHARGE_1, CHARGE_2],
+            )
+            await connection.execute(
+                "DELETE FROM idempotency_operations WHERE idempotency_key LIKE 'node20-%'"
+            )
+    finally:
+        await connection.close()
+
+
 async def expect_postgres_error(awaitable, *, sqlstates: set[str], label: str) -> None:
     try:
         await awaitable
@@ -59,12 +74,12 @@ def operation_request(
         organization_id=ORG_A,
         operation_type=operation_type,
         idempotency_key=key,
-        request_hash=canonical_request_hash(
-            {"project_id": PROJECT_A, "prompt": prompt}
-        ),
+        request_hash=canonical_request_hash({"project_id": PROJECT_A, "prompt": prompt}),
         business_scope_id=str(PROJECT_A),
         side_effect_kind=(
-            SideEffectKind.PAID_MODEL_INVOCATION if paid else SideEffectKind.GENERIC_WRITE
+            SideEffectKind.PAID_MODEL_INVOCATION
+            if paid
+            else SideEffectKind.GENERIC_WRITE
         ),
         compensation_mode=CompensationMode.NON_COMPENSATABLE,
         paid=paid,
@@ -75,7 +90,10 @@ def operation_request(
 async def test_head_and_schema() -> None:
     connection = await asyncpg.connect(MIGRATION_DSN)
     try:
-        assert await connection.fetchval("SELECT version_num FROM alembic_version") == "20260816_0006"
+        assert (
+            await connection.fetchval("SELECT version_num FROM alembic_version")
+            == "20260816_0006"
+        )
         columns = {
             row["column_name"]
             for row in await connection.fetch(
@@ -100,7 +118,8 @@ async def test_head_and_schema() -> None:
             """
             SELECT EXISTS(
               SELECT 1 FROM pg_indexes
-              WHERE schemaname='public' AND indexname='uq_cost_ledger_charge_operation'
+              WHERE schemaname='public'
+                AND indexname='uq_cost_ledger_charge_operation'
             )
             """
         )
@@ -116,8 +135,7 @@ async def test_concurrent_claim_and_hash_conflict() -> None:
         store.acquire(req, lease_owner="worker-b", now=NOW),
     )
     assert {first.action, second.action} == {AcquireAction.EXECUTE, AcquireAction.WAIT}
-    operation_ids = {first.operation.id, second.operation.id}
-    assert len(operation_ids) == 1
+    assert len({first.operation.id, second.operation.id}) == 1
 
     conflict = await store.acquire(
         operation_request(key="node20-concurrent-key", prompt="different"),
@@ -131,12 +149,20 @@ async def test_operation_type_scopes_same_client_key_and_stale_recovery() -> Non
     store = PostgresIdempotencyStore(APP_DSN)
     shared = "node20-cross-operation-key"
     project = await store.acquire(
-        operation_request(key=shared, operation_type="api.project.create", lease_seconds=5),
+        operation_request(
+            key=shared,
+            operation_type="api.project.create",
+            lease_seconds=5,
+        ),
         lease_owner="project-worker",
         now=NOW,
     )
     task = await store.acquire(
-        operation_request(key=shared, operation_type="api.task.create", lease_seconds=5),
+        operation_request(
+            key=shared,
+            operation_type="api.task.create",
+            lease_seconds=5,
+        ),
         lease_owner="task-worker",
         now=NOW,
     )
@@ -145,7 +171,11 @@ async def test_operation_type_scopes_same_client_key_and_stale_recovery() -> Non
     assert project.operation.id != task.operation.id
 
     recovered = await store.acquire(
-        operation_request(key=shared, operation_type="api.project.create", lease_seconds=5),
+        operation_request(
+            key=shared,
+            operation_type="api.project.create",
+            lease_seconds=5,
+        ),
         lease_owner="recovery-worker",
         now=NOW + timedelta(seconds=6),
     )
@@ -164,58 +194,57 @@ async def test_rls_and_cost_charge_uniqueness() -> None:
                 INSERT INTO idempotency_operations(
                   id,organization_id,idempotency_key,operation_type,request_hash,
                   side_effect_kind,compensation_mode,paid,status,recovery_state,
-                  created_at,updated_at,version
+                  created_at,updated_at,completed_at,version
                 ) VALUES(
                   $1,$2,'node20-charge-key','billing.charge',$3,
                   'billing_charge','reversible_by_new_operation',true,
-                  'succeeded','none',$4,$4,1
-                ) ON CONFLICT (organization_id,operation_type,idempotency_key) DO NOTHING
+                  'succeeded','none',$4,$4,$4,1
+                )
                 """,
                 OP_CHARGE,
                 ORG_A,
                 "a" * 64,
                 NOW,
             )
-            operation_id = await connection.fetchval(
-                """
-                SELECT id FROM idempotency_operations
-                WHERE organization_id=$1 AND operation_type='billing.charge'
-                  AND idempotency_key='node20-charge-key'
-                """,
-                ORG_A,
-            )
-            assert operation_id is not None
             await connection.execute(
                 """
                 INSERT INTO cost_ledger(
-                  id,organization_id,project_id,operation_id,entry_type,amount,currency,occurred_at
+                  id,organization_id,project_id,operation_id,
+                  entry_type,amount,currency,occurred_at
                 ) VALUES($1,$2,$3,$4,'charge',$5,'USD',$6)
-                ON CONFLICT DO NOTHING
                 """,
                 CHARGE_1,
                 ORG_A,
                 PROJECT_A,
-                operation_id,
+                OP_CHARGE,
                 Decimal("1.25"),
                 NOW,
             )
-            assert await connection.fetchval(
-                "SELECT count(*) FROM cost_ledger WHERE organization_id=$1 AND operation_id=$2 AND entry_type='charge'",
-                ORG_A,
-                operation_id,
-            ) == 1
+            assert (
+                await connection.fetchval(
+                    """
+                    SELECT count(*) FROM cost_ledger
+                    WHERE organization_id=$1 AND operation_id=$2
+                      AND entry_type='charge'
+                    """,
+                    ORG_A,
+                    OP_CHARGE,
+                )
+                == 1
+            )
             async with connection.transaction():
                 await expect_postgres_error(
                     connection.execute(
                         """
                         INSERT INTO cost_ledger(
-                          id,organization_id,project_id,operation_id,entry_type,amount,currency,occurred_at
+                          id,organization_id,project_id,operation_id,
+                          entry_type,amount,currency,occurred_at
                         ) VALUES($1,$2,$3,$4,'charge',$5,'USD',$6)
                         """,
                         CHARGE_2,
                         ORG_A,
                         PROJECT_A,
-                        operation_id,
+                        OP_CHARGE,
                         Decimal("1.25"),
                         NOW,
                     ),
@@ -225,9 +254,13 @@ async def test_rls_and_cost_charge_uniqueness() -> None:
 
         async with connection.transaction():
             await set_tenant(connection, ORG_B)
-            assert await connection.fetchval(
-                "SELECT count(*) FROM idempotency_operations WHERE id=$1", OP_CHARGE
-            ) == 0
+            assert (
+                await connection.fetchval(
+                    "SELECT count(*) FROM idempotency_operations WHERE id=$1",
+                    OP_CHARGE,
+                )
+                == 0
+            )
     finally:
         await connection.close()
 
@@ -239,10 +272,14 @@ async def main() -> None:
         test_operation_type_scopes_same_client_key_and_stale_recovery,
         test_rls_and_cost_charge_uniqueness,
     )
-    for test in tests:
-        await test()
-        print(f"PASS {test.__name__}")
-    print(f"NODE-20 PostgreSQL PASS: {len(tests)} invariant groups")
+    await cleanup_fixtures()
+    try:
+        for test in tests:
+            await test()
+            print(f"PASS {test.__name__}")
+        print(f"NODE-20 PostgreSQL PASS: {len(tests)} invariant groups")
+    finally:
+        await cleanup_fixtures()
 
 
 if __name__ == "__main__":
