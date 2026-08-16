@@ -1,0 +1,48 @@
+{
+  "node": "NODE-23",
+  "status": "IMPLEMENTED/VALIDATING",
+  "gaps": [
+    {
+      "id": "REGISTRY-ADAPTER-001",
+      "owner": "AI Infrastructure",
+      "severity": "P0",
+      "description": "The durable catalog contains Google, Black Forest Labs and Runway facts from NODE-07, but execution adapters for those providers are not implemented in NODE-22/23. Registry-first routing fails them closed as adapter_unavailable instead of pretending they are callable."
+    },
+    {
+      "id": "REGISTRY-BENCHMARK-002",
+      "owner": "Evaluation / Benchmark Harness",
+      "severity": "P0",
+      "description": "NODE-07 seed intentionally has no LUMI live benchmark scores. Routing profile evaluation therefore returns insufficient_evidence rather than inventing quality winners until versioned benchmark runs are published."
+    },
+    {
+      "id": "REGISTRY-INVALIDATION-003",
+      "owner": "AI Infrastructure / Event Runtime",
+      "severity": "P1",
+      "description": "Versioned refresh and in-process snapshot replacement are implemented, but a broker-level registry-version invalidation event is not added to the frozen NODE-12 v1 event set. Multi-process propagation remains a composition step."
+    },
+    {
+      "id": "REGISTRY-ADMIN-004",
+      "owner": "Platform Admin",
+      "severity": "P1",
+      "description": "Immutable snapshot schema and deterministic publisher exist, but the production admin approval/change-review UI/API and audit workflow for publishing new registry versions are not composed."
+    },
+    {
+      "id": "REGISTRY-DEP-005",
+      "owner": "Platform Packaging",
+      "severity": "P1",
+      "description": "PostgreSQL verification and seed tools use asyncpg through ephemeral CI dependencies; asyncpg is not added as a frozen Model Gateway runtime dependency in this connector-only environment."
+    },
+    {
+      "id": "REGISTRY-PACKAGE-006",
+      "owner": "Platform Packaging",
+      "severity": "P1",
+      "description": "NODE-22 MODEL-PACKAGE-008 remains open: the formal standalone lumi-api -> lumi-model-gateway workspace dependency and reviewed uv.lock regeneration are not claimed complete."
+    },
+    {
+      "id": "REGISTRY-CI-007",
+      "owner": "External GitHub account",
+      "severity": "BLOCKED_EXTERNAL",
+      "description": "Hosted GitHub Actions cannot be treated as PASS while account payment/spending-limit state prevents runner allocation."
+    }
+  ]
+}
