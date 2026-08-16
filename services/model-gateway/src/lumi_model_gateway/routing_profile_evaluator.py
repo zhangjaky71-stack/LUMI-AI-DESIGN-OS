@@ -5,9 +5,20 @@ from decimal import Decimal
 from typing import Mapping
 from uuid import UUID
 
-from .registry import CapabilityRegistry, ModelRecord, RoutingProfile
+from .registry import (
+    CapabilityRegistry,
+    ModelRecord,
+    OrganizationModelPolicy,
+    RoutingProfile,
+)
 
-_DIMENSIONS = ("quality", "constraint", "cost", "latency", "availability")
+_DIMENSIONS = (
+    "quality",
+    "constraint",
+    "cost",
+    "latency",
+    "availability",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,8 +32,13 @@ class RoutingEvidence:
     def __post_init__(self) -> None:
         for name in _DIMENSIONS:
             value = getattr(self, name)
-            if value is not None and not Decimal("0") <= value <= Decimal("100"):
-                raise ValueError(f"routing evidence {name} must be 0..100")
+            if (
+                value is not None
+                and not Decimal("0") <= value <= Decimal("100")
+            ):
+                raise ValueError(
+                    f"routing evidence {name} must be 0..100"
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +50,7 @@ class ProfileEvaluation:
 
 
 class RoutingProfileEvaluator:
-    """Evaluate versioned profile weights without inventing missing measurements."""
+    """Evaluate versioned profile weights without inventing measurements."""
 
     def __init__(self, registry: CapabilityRegistry) -> None:
         self.registry = registry
@@ -50,12 +66,20 @@ class RoutingProfileEvaluator:
         try:
             profile = snapshot.routing_profiles[profile_name]
         except KeyError as exc:
-            raise KeyError(f"unknown routing profile: {profile_name}") from exc
+            raise KeyError(
+                f"unknown routing profile: {profile_name}"
+            ) from exc
         policy = self.registry.policy_for(organization_id)
         evaluations: list[tuple[int, ProfileEvaluation]] = []
-        for ordinal, model_key in enumerate(profile.candidate_model_keys):
+        for ordinal, model_key in enumerate(
+            profile.candidate_model_keys
+        ):
             record = snapshot.models.get(model_key)
-            if record is None or not self._eligible(record, profile, policy):
+            if record is None or not self._eligible(
+                record,
+                profile,
+                policy,
+            ):
                 continue
             value = evidence.get(model_key, RoutingEvidence())
             reasons: list[str] = []
@@ -67,11 +91,20 @@ class RoutingProfileEvaluator:
                     evaluations.append(
                         (
                             ordinal,
-                            ProfileEvaluation(model_key, None, False, tuple(reasons)),
+                            ProfileEvaluation(
+                                model_key,
+                                None,
+                                False,
+                                tuple(reasons),
+                            ),
                         )
                     )
                     continue
-            weighted = self._weighted_score(profile, value, reasons)
+            weighted = self._weighted_score(
+                profile,
+                value,
+                reasons,
+            )
             evaluations.append(
                 (
                     ordinal,
@@ -96,7 +129,7 @@ class RoutingProfileEvaluator:
     def _eligible(
         record: ModelRecord,
         profile: RoutingProfile,
-        policy: object | None,
+        policy: OrganizationModelPolicy | None,
     ) -> bool:
         if not record.route_eligible:
             return False
@@ -105,11 +138,10 @@ class RoutingProfileEvaluator:
             for capability in profile.required_capabilities
         ):
             return False
-        if policy is not None:
-            disabled = getattr(policy, "disabled_providers", frozenset())
-            if record.provider in disabled:
-                return False
-        return True
+        return not (
+            policy is not None
+            and record.provider in policy.disabled_providers
+        )
 
     @staticmethod
     def _weighted_score(
@@ -136,7 +168,10 @@ class RoutingProfileEvaluator:
                 continue
             total += value * weight
         if missing:
-            reasons.append("insufficient_evidence:" + ",".join(sorted(missing)))
+            reasons.append(
+                "insufficient_evidence:"
+                + ",".join(sorted(missing))
+            )
             return None
         reasons.append("profile_evidence_complete")
         return total.quantize(Decimal("0.0001"))
