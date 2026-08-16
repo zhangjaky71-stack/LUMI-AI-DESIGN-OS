@@ -9,6 +9,7 @@ from uuid import UUID
 
 import asyncpg
 
+from lumi_api.domain.ids import new_uuid7
 from lumi_api.idempotency import (
     AcquireAction,
     CompensationMode,
@@ -21,9 +22,6 @@ from lumi_api.idempotency.postgres import PostgresIdempotencyStore
 ORG_A = UUID("01910000-0000-7000-8000-000000000001")
 ORG_B = UUID("01910000-0000-7000-8000-000000000002")
 PROJECT_A = UUID("01910000-0000-7000-8000-000000000031")
-OP_CHARGE = UUID("01910000-0000-7000-8000-000000000901")
-CHARGE_1 = UUID("01910000-0000-7000-8000-000000000902")
-CHARGE_2 = UUID("01910000-0000-7000-8000-000000000903")
 NOW = datetime(2026, 8, 16, 9, 45, tzinfo=UTC)
 MIGRATION_DSN = os.environ["LUMI_DATABASE_MIGRATION_URL_ASYNCPG"]
 APP_DSN = os.environ["LUMI_DATABASE_APP_URL"]
@@ -35,16 +33,18 @@ async def set_tenant(connection: asyncpg.Connection, org: UUID) -> None:
     )
 
 
-async def cleanup_fixtures() -> None:
+async def cleanup_unreferenced_claim_fixtures() -> None:
     connection = await asyncpg.connect(MIGRATION_DSN)
     try:
         async with connection.transaction():
             await connection.execute(
-                "DELETE FROM cost_ledger WHERE id = ANY($1::uuid[])",
-                [CHARGE_1, CHARGE_2],
-            )
-            await connection.execute(
-                "DELETE FROM idempotency_operations WHERE idempotency_key LIKE 'node20-%'"
+                """
+                DELETE FROM idempotency_operations
+                WHERE idempotency_key IN (
+                  'node20-concurrent-key',
+                  'node20-cross-operation-key'
+                )
+                """
             )
     finally:
         await connection.close()
@@ -185,6 +185,10 @@ async def test_operation_type_scopes_same_client_key_and_stale_recovery() -> Non
 
 
 async def test_rls_and_cost_charge_uniqueness() -> None:
+    operation_id = new_uuid7()
+    first_charge_id = new_uuid7()
+    second_charge_id = new_uuid7()
+    idempotency_key = f"node20-charge-{new_uuid7()}"
     connection = await asyncpg.connect(APP_DSN)
     try:
         async with connection.transaction():
@@ -196,13 +200,14 @@ async def test_rls_and_cost_charge_uniqueness() -> None:
                   side_effect_kind,compensation_mode,paid,status,recovery_state,
                   created_at,updated_at,completed_at,version
                 ) VALUES(
-                  $1,$2,'node20-charge-key','billing.charge',$3,
+                  $1,$2,$3,'billing.charge',$4,
                   'billing_charge','reversible_by_new_operation',true,
-                  'succeeded','none',$4,$4,$4,1
+                  'succeeded','none',$5,$5,$5,1
                 )
                 """,
-                OP_CHARGE,
+                operation_id,
                 ORG_A,
+                idempotency_key,
                 "a" * 64,
                 NOW,
             )
@@ -213,10 +218,10 @@ async def test_rls_and_cost_charge_uniqueness() -> None:
                   entry_type,amount,currency,occurred_at
                 ) VALUES($1,$2,$3,$4,'charge',$5,'USD',$6)
                 """,
-                CHARGE_1,
+                first_charge_id,
                 ORG_A,
                 PROJECT_A,
-                OP_CHARGE,
+                operation_id,
                 Decimal("1.25"),
                 NOW,
             )
@@ -228,7 +233,7 @@ async def test_rls_and_cost_charge_uniqueness() -> None:
                       AND entry_type='charge'
                     """,
                     ORG_A,
-                    OP_CHARGE,
+                    operation_id,
                 )
                 == 1
             )
@@ -241,10 +246,10 @@ async def test_rls_and_cost_charge_uniqueness() -> None:
                           entry_type,amount,currency,occurred_at
                         ) VALUES($1,$2,$3,$4,'charge',$5,'USD',$6)
                         """,
-                        CHARGE_2,
+                        second_charge_id,
                         ORG_A,
                         PROJECT_A,
-                        OP_CHARGE,
+                        operation_id,
                         Decimal("1.25"),
                         NOW,
                     ),
@@ -257,7 +262,7 @@ async def test_rls_and_cost_charge_uniqueness() -> None:
             assert (
                 await connection.fetchval(
                     "SELECT count(*) FROM idempotency_operations WHERE id=$1",
-                    OP_CHARGE,
+                    operation_id,
                 )
                 == 0
             )
@@ -272,14 +277,14 @@ async def main() -> None:
         test_operation_type_scopes_same_client_key_and_stale_recovery,
         test_rls_and_cost_charge_uniqueness,
     )
-    await cleanup_fixtures()
+    await cleanup_unreferenced_claim_fixtures()
     try:
         for test in tests:
             await test()
             print(f"PASS {test.__name__}")
         print(f"NODE-20 PostgreSQL PASS: {len(tests)} invariant groups")
     finally:
-        await cleanup_fixtures()
+        await cleanup_unreferenced_claim_fixtures()
 
 
 if __name__ == "__main__":
