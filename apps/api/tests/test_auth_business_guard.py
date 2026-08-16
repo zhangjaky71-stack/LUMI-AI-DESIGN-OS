@@ -163,7 +163,7 @@ def test_cross_tenant_header_returns_not_found_category() -> None:
         },
         json=project_payload(),
     )
-    assert response.status_code in {401, 404}
+    assert response.status_code == 404
     assert response.json()["code"] == "tenant_resource_not_found"
 
 
