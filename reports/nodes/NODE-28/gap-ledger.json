@@ -1,0 +1,54 @@
+{
+  "node": "NODE-28",
+  "status": "IMPLEMENTED_VALIDATING_BLOCKED_EXTERNAL",
+  "gaps": [
+    {
+      "id": "GRAPH-CHECKPOINT-PACKAGE-001",
+      "owner": "NODE-28/platform",
+      "status": "open",
+      "detail": "langgraph-checkpoint-postgres is not formally declared/frozen for agent-runtime, so the production AsyncPostgresSaver path is fail-closed and not claimed deployable yet."
+    },
+    {
+      "id": "GRAPH-STORE-PACKAGE-002",
+      "owner": "NODE-28/platform",
+      "status": "open",
+      "detail": "asyncpg is lazy-loaded by PostgresRunControlStore but is not formally declared/frozen in apps/agent-runtime; workflow uses a test-only overlay."
+    },
+    {
+      "id": "GRAPH-COMPOSITION-003",
+      "owner": "runtime-composition",
+      "status": "open",
+      "detail": "API AgentRunControlService is a fail-closed dependency seam; production composition of graph registry, checkpointer, store, authorizers and service lifecycle is not yet installed."
+    },
+    {
+      "id": "GRAPH-IDEMPOTENCY-004",
+      "owner": "NODE-20/NODE-28 integration",
+      "status": "open",
+      "detail": "Control plane requires OperationGuard, but the production NODE-20 PostgreSQL idempotency adapter is not yet composed into agent-runtime."
+    },
+    {
+      "id": "GRAPH-APPROVAL-005",
+      "owner": "approval-domain",
+      "status": "open",
+      "detail": "ResumeAuthorizer contract exists, but production approval identity/token/version policy binding is not yet composed."
+    },
+    {
+      "id": "GRAPH-JOB-WAKE-006",
+      "owner": "NODE-19/NODE-28 integration",
+      "status": "open",
+      "detail": "ExternalJobPort supports checkpoint-and-wake semantics, but the production job.completed event to deterministic LangGraph resume adapter is not yet composed."
+    },
+    {
+      "id": "GRAPH-OBS-007",
+      "owner": "NODE-67/observability",
+      "status": "open",
+      "detail": "Safe event contracts exist, but durable realtime transport, LangSmith trace correlation, dashboards and alerts are not yet production-composed."
+    },
+    {
+      "id": "GRAPH-CI-008",
+      "owner": "external-account",
+      "status": "blocked_external",
+      "detail": "Hosted GitHub Actions cannot allocate a runner because of the repository account payment/spending-limit condition; no hosted PASS may be claimed."
+    }
+  ]
+}

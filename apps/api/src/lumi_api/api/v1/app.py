@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import Depends, FastAPI
 
+from .agent_run_routes import router as agent_run_router
 from .asset_routes import router as asset_router
 from .auth_guard import enforce_api_auth
 from .auth_routes import router as auth_router
@@ -25,6 +26,7 @@ def create_contract_app() -> FastAPI:
     app.include_router(router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(asset_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(cost_router, dependencies=[Depends(enforce_api_auth)])
+    app.include_router(agent_run_router, dependencies=[Depends(enforce_api_auth)])
     return app
 
 
