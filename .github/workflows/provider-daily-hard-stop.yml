@@ -5,6 +5,8 @@ on:
     paths:
       - "apps/api/alembic/versions/0018_provider_daily_cost_hard_stop.py"
       - "apps/api/src/lumi_api/costs/model_gateway_adapter.py"
+      - "apps/api/src/lumi_api/persistence/models/provider_cost_controls.py"
+      - "apps/api/src/lumi_api/persistence/models/__init__.py"
       - "scripts/validate_provider_daily_hard_stop.py"
       - "scripts/integration_provider_daily_hard_stop.py"
       - "docs/operations/PROVIDER-DAILY-HARD-STOP.md"
@@ -28,6 +30,7 @@ jobs:
           python -m compileall -q
           apps/api/alembic/versions/0018_provider_daily_cost_hard_stop.py
           apps/api/src/lumi_api/costs/model_gateway_adapter.py
+          apps/api/src/lumi_api/persistence/models/provider_cost_controls.py
           scripts/validate_provider_daily_hard_stop.py
           scripts/integration_provider_daily_hard_stop.py
       - name: Validate durable hard-stop contract
@@ -54,12 +57,14 @@ jobs:
           uv run ruff check
           apps/api/alembic/versions/0018_provider_daily_cost_hard_stop.py
           apps/api/src/lumi_api/costs/model_gateway_adapter.py
+          apps/api/src/lumi_api/persistence/models/provider_cost_controls.py
           scripts/validate_provider_daily_hard_stop.py
           scripts/integration_provider_daily_hard_stop.py
       - name: Pyright hard-stop gate
         run: >-
           uv run pyright
           apps/api/src/lumi_api/costs/model_gateway_adapter.py
+          apps/api/src/lumi_api/persistence/models/provider_cost_controls.py
           scripts/integration_provider_daily_hard_stop.py
 
   postgres-acceptance:
