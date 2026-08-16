@@ -20,6 +20,43 @@ FOR EACH ROW EXECUTE FUNCTION lumi_enforce_same_tenant_fk(
 
 -- statement-breakpoint
 
+CREATE OR REPLACE FUNCTION lumi_validate_agent_run_graph_definition() RETURNS trigger AS $$
+DECLARE
+  expected_hash text;
+  expected_sha text;
+  is_enabled boolean;
+BEGIN
+  SELECT content_hash, code_git_sha, enabled
+    INTO expected_hash, expected_sha, is_enabled
+  FROM agent_graph_definitions
+  WHERE graph_key = NEW.graph_key AND graph_version = NEW.graph_version;
+
+  IF expected_hash IS NULL THEN
+    RAISE EXCEPTION 'graph definition % @ % is not published', NEW.graph_key, NEW.graph_version
+      USING ERRCODE = '23514';
+  END IF;
+  IF NOT is_enabled THEN
+    RAISE EXCEPTION 'graph definition % @ % is disabled', NEW.graph_key, NEW.graph_version
+      USING ERRCODE = '23514';
+  END IF;
+  IF expected_hash <> NEW.graph_definition_hash OR expected_sha <> NEW.code_git_sha THEN
+    RAISE EXCEPTION 'graph definition provenance mismatch for % @ %',
+      NEW.graph_key, NEW.graph_version
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+-- statement-breakpoint
+
+CREATE TRIGGER trg_agent_run_control_graph_definition
+BEFORE INSERT OR UPDATE OF graph_key, graph_version, graph_definition_hash, code_git_sha
+ON agent_run_control
+FOR EACH ROW EXECUTE FUNCTION lumi_validate_agent_run_graph_definition();
+
+-- statement-breakpoint
+
 ALTER TABLE agent_run_control ENABLE ROW LEVEL SECURITY;
 
 -- statement-breakpoint
