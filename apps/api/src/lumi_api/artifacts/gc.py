@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from lumi_api.domain.ids import new_uuid7
 
@@ -24,8 +24,8 @@ class StoredObject(ArtifactContractModel):
 class GcCandidate(ArtifactContractModel):
     id: UUID
     organization_id: UUID
-    bucket: str
-    storage_key: str
+    bucket: str = Field(min_length=1, max_length=128)
+    storage_key: str = Field(min_length=1, max_length=2_000)
     checksum_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     marked_at: datetime
     not_before: datetime
@@ -43,6 +43,12 @@ class GcCandidate(ArtifactContractModel):
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("GC timestamps must be timezone-aware")
         return value
+
+    @model_validator(mode="after")
+    def require_positive_delay(self) -> GcCandidate:
+        if self.not_before <= self.marked_at:
+            raise ValueError("GC not_before must be later than marked_at")
+        return self
 
     @property
     def location(self) -> tuple[str, str]:
