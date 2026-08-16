@@ -70,6 +70,9 @@ CREATE TABLE agent_run_control (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   version INTEGER NOT NULL DEFAULT 1,
   CONSTRAINT uq_agent_run_control_thread UNIQUE (organization_id, thread_id),
+  CONSTRAINT fk_agent_run_control_graph_definition
+    FOREIGN KEY (graph_key, graph_version)
+    REFERENCES agent_graph_definitions(graph_key, graph_version) ON DELETE RESTRICT,
   CONSTRAINT ck_agent_run_control_hash CHECK (graph_definition_hash ~ '^[0-9a-f]{64}$'),
   CONSTRAINT ck_agent_run_control_status CHECK (
     control_status IN (
