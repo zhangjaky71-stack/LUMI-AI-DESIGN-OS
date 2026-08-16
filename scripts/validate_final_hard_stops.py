@@ -28,6 +28,12 @@ def main() -> int:
             "isolated_subnet_ids        = local.core.data_subnet_ids",
             "sandbox_security_group_id  = local.core.sandbox_security_group_id",
         )
+        app_output_path = f"infra/iac/environments/{environment}/app/outputs.tf"
+        require(
+            app_output_path,
+            'output "deployment_alert_topic_arn"',
+            'output "deployment_alert_evidence_queue_url"',
+        )
         core_output_path = f"infra/iac/environments/{environment}/core/outputs.tf"
         require(
             core_output_path,
@@ -66,6 +72,9 @@ def main() -> int:
         "each.value.isolated_network ? var.isolated_subnet_ids : var.private_subnet_ids",
         "each.value.isolated_network ? var.sandbox_security_group_id : var.app_security_group_id",
         "assign_public_ip = false",
+        'resource "aws_cloudwatch_metric_alarm" "public_canary_5xx"',
+        'resource "aws_cloudwatch_metric_alarm" "public_canary_unhealthy"',
+        "rollback = true",
     )
     require(
         "infra/iac/modules/compute/variables.tf",
@@ -73,6 +82,17 @@ def main() -> int:
         'variable "sandbox_security_group_id"',
         "isolated_network         = optional(bool, false)",
         'error_message = "sandbox-runtime must use isolated_network=true."',
+    )
+    require(
+        "infra/iac/modules/compute/alerting.tf",
+        'resource "aws_sns_topic" "deployment_alerts"',
+        'resource "aws_sqs_queue" "deployment_alert_evidence"',
+        'resource "aws_sns_topic_subscription" "deployment_alert_evidence"',
+        'resource "aws_cloudwatch_composite_alarm" "public_deployment"',
+        "alarm_actions     = [aws_sns_topic.deployment_alerts.arn]",
+        "ok_actions        = [aws_sns_topic.deployment_alerts.arn]",
+        'resource "aws_cloudwatch_event_rule" "ecs_deployment_failure"',
+        '"SERVICE_DEPLOYMENT_FAILED"',
     )
 
     data = read("infra/iac/modules/data/main.tf")
@@ -111,7 +131,50 @@ def main() -> int:
         "COST_PROVIDER_DAILY_BUDGET_EXCEEDED",
     )
 
-    print("Final provider-budget + sandbox-egress hard-stop source contracts: PASS")
+    deploy = read(".github/workflows/deploy-production.yml")
+    require(
+        ".github/workflows/deploy-production.yml",
+        "Initialize production app for rollback baseline",
+        "Freeze pre-deployment ECS rollback target",
+        "predeploy-ecs-state.json",
+        "Create and wait for pre-deployment RDS snapshot",
+    )
+    if deploy.index("Freeze pre-deployment ECS rollback target") > deploy.index(
+        "Create and wait for pre-deployment RDS snapshot"
+    ):
+        raise AssertionError("ECS rollback target must be frozen before production mutation")
+
+    require(
+        "scripts/alert-delivery-drill.sh",
+        "put-metric-alarm",
+        'wait_alarm_state "ALARM"',
+        'wait_delivery "ALARM"',
+        'wait_alarm_state "OK"',
+        'wait_delivery "OK"',
+        '"passed: true"',
+    )
+    require(
+        "scripts/ecs-rollback-to-state.sh",
+        "describe-task-definition",
+        "update-service",
+        "aws ecs wait services-stable",
+        "database_downgrade_attempted: false",
+        "target_restored",
+    )
+    require(
+        ".github/workflows/final-operational-drills.yml",
+        "environment: production",
+        "ALERT_DRILL:${DEPLOYMENT_ID}",
+        "ROLLBACK_PRODUCTION:${DEPLOYMENT_ID}:${DEPLOYMENT_RUN_ID}",
+        "actions/download-artifact@v4",
+        "predeploy-ecs-state.json",
+        "scripts/ecs-rollback-to-state.sh",
+        "scripts/alert-delivery-drill.sh",
+    )
+
+    print(
+        "Final provider-budget, sandbox-egress, rollback, and alert-delivery source contracts: PASS"
+    )
     return 0
 
 
