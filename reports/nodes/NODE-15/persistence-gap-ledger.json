@@ -1,0 +1,77 @@
+{
+  "schema_version": "lumi.node15-persistence-gap-ledger/1.0",
+  "baseline": "NODE-10 persistence schema",
+  "status": "TRACKED_CONTRACT_GAPS",
+  "gaps": [
+    {
+      "id": "PERSIST-15-01",
+      "table": "artifact_branches",
+      "contract_field": "base_version_id",
+      "baseline_state": "missing",
+      "required_followup": "add tenant-safe FK before Artifact runtime writes NODE-15 branches"
+    },
+    {
+      "id": "PERSIST-15-02",
+      "table": "artifact_versions",
+      "contract_field": "parent_version_id",
+      "baseline_state": "missing",
+      "required_followup": "persist direct same-artifact parent separately from general lineage"
+    },
+    {
+      "id": "PERSIST-15-03",
+      "table": "artifact_versions",
+      "contract_field": "primary_file_id",
+      "baseline_state": "missing",
+      "required_followup": "add version-to-file primary reference with same-version invariant"
+    },
+    {
+      "id": "PERSIST-15-04",
+      "table": "artifact_versions",
+      "contract_field": "design_document_version_id",
+      "baseline_state": "missing",
+      "required_followup": "bind DESIGN_DOCUMENT artifacts to immutable design_document_versions"
+    },
+    {
+      "id": "PERSIST-15-05",
+      "table": "artifact_versions",
+      "contract_field": "constraint_snapshot_hash",
+      "baseline_state": "missing",
+      "required_followup": "persist NODE-14 active-constraint hash as a first-class indexed value"
+    },
+    {
+      "id": "PERSIST-15-06",
+      "table": "artifact_edges",
+      "contract_field": "edge_type",
+      "baseline_state": "enum mismatch",
+      "required_followup": "replace GENERATED_FROM_ASSET with GENERATED_FROM and add REFERENCE_USED"
+    },
+    {
+      "id": "PERSIST-15-07",
+      "table": "artifact_files",
+      "contract_field": "role,width,height,duration_ms,metadata",
+      "baseline_state": "missing",
+      "required_followup": "persist file role and media dimensions/duration without signed URLs"
+    },
+    {
+      "id": "PERSIST-15-08",
+      "table": "artifacts/artifact_versions",
+      "contract_field": "rights snapshot",
+      "baseline_state": "missing",
+      "required_followup": "persist rights/license snapshot and review status used for approval/export"
+    },
+    {
+      "id": "PERSIST-15-09",
+      "table": "artifact_versions",
+      "contract_field": "ARCHIVED status",
+      "baseline_state": "status enum missing ARCHIVED",
+      "required_followup": "align lifecycle status while preserving APPROVED immutability semantics"
+    },
+    {
+      "id": "PERSIST-15-10",
+      "table": "artifact_provenance",
+      "contract_field": "queryable provenance identity fields",
+      "baseline_state": "JSON-only payload",
+      "required_followup": "decide indexed columns for generation/task/model/hash lookups before high-volume runtime"
+    }
+  ]
+}
