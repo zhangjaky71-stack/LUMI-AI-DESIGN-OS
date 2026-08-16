@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -152,20 +153,55 @@ class ApprovalModel(Base, UUIDPrimaryKeyMixin, TenantMixin, MutableMixin):
     )
 
 
-class IdempotencyOperationModel(Base, UUIDPrimaryKeyMixin, TenantMixin, CreatedAtMixin):
+class IdempotencyOperationModel(Base, UUIDPrimaryKeyMixin, TenantMixin, MutableMixin):
     __tablename__ = "idempotency_operations"
 
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
     operation_type: Mapped[str] = mapped_column(String(100), nullable=False)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="started")
+    business_scope_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    side_effect_kind: Mapped[str] = mapped_column(
+        String(64), nullable=False, server_default="generic_write"
+    )
+    compensation_mode: Mapped[str] = mapped_column(
+        String(64), nullable=False, server_default="non_compensatable"
+    )
+    paid: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="in_progress")
+    lease_owner: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    provider_request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    result_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
     response_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    error_category: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recovery_state: Mapped[str] = mapped_column(String(32), nullable=False, server_default="none")
+    recovery_detail: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=JSON_OBJECT_DEFAULT
+    )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     __table_args__ = (
         UniqueConstraint(
-            "organization_id", "idempotency_key", name="uq_idempotency_org_key"
+            "organization_id",
+            "operation_type",
+            "idempotency_key",
+            name="uq_idempotency_org_operation_key",
         ),
-        CheckConstraint("status IN ('started','completed','failed')", name="status"),
+        CheckConstraint(
+            "status IN ('new','in_progress','succeeded','failed_retryable','failed_final')",
+            name="status",
+        ),
+        CheckConstraint("request_hash ~ '^[0-9a-f]{64}$'", name="request_hash"),
+        CheckConstraint(
+            "(lease_owner IS NULL) = (lease_expires_at IS NULL)", name="lease_pair"
+        ),
+        CheckConstraint(
+            "response_status IS NULL OR response_status BETWEEN 100 AND 599",
+            name="response_status",
+        ),
     )
 
 
