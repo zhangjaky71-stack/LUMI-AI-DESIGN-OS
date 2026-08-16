@@ -233,7 +233,6 @@ class LangGraphControlPlane:
                 "resume_version": command.resume_version,
                 "kind": command.kind.value,
                 "value": command.value,
-                "checkpoint_id": current.checkpoint_id,
             }
         )
 
