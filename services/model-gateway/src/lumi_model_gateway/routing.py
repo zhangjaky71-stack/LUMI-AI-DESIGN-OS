@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from .models import CostConfidence, LatencyProfile, ModelRequest, QualityProfile, RouteCandidate, RouteDecision
+from .models import (
+    CostConfidence,
+    LatencyProfile,
+    ModelRequest,
+    ProviderModel,
+    QualityProfile,
+    RouteCandidate,
+    RouteDecision,
+)
 from .ports import HealthPort, ProviderAdapter
 
 
@@ -33,6 +41,13 @@ class ProviderRegistry:
             return self._adapters[provider]
         except KeyError as exc:
             raise KeyError(f"provider is not registered: {provider}") from exc
+
+    def model(self, provider: str, model_name: str) -> ProviderModel:
+        adapter = self.adapter(provider)
+        for model in adapter.models():
+            if model.model == model_name:
+                return model
+        raise KeyError(f"model is not registered: {provider}/{model_name}")
 
     def adapters(self) -> tuple[ProviderAdapter, ...]:
         return tuple(self._adapters[name] for name in sorted(self._adapters))
@@ -83,9 +98,14 @@ class ModelRouter:
                     adapter.validate(request, model)
                     estimate = adapter.estimate_cost(request, model)
                 except (TypeError, ValueError) as exc:
-                    rejected.append(f"{identity}:validation:{type(exc).__name__}")
+                    rejected.append(
+                        f"{identity}:validation:{type(exc).__name__}"
+                    )
                     continue
-                if estimate.amount_usd is None and not request.routing_hints.allow_unknown_cost:
+                if (
+                    estimate.amount_usd is None
+                    and not request.routing_hints.allow_unknown_cost
+                ):
                     rejected.append(f"{identity}:unknown_cost")
                     continue
                 if request.budget_limit is not None and estimate.amount_usd is not None:
@@ -104,14 +124,28 @@ class ModelRouter:
                     score += 5
                 elif estimate.confidence is CostConfidence.UNKNOWN:
                     score -= 30
-                accepted.append(RouteCandidate(model, estimate, snapshot, score, tuple(reasons)))
+                accepted.append(
+                    RouteCandidate(
+                        model,
+                        estimate,
+                        snapshot,
+                        score,
+                        tuple(reasons),
+                    )
+                )
         accepted.sort(
             key=lambda item: (
                 -item.score,
                 item.estimate.amount_usd is None,
-                item.estimate.amount_usd if item.estimate.amount_usd is not None else 0,
+                item.estimate.amount_usd
+                if item.estimate.amount_usd is not None
+                else 0,
                 item.model.provider,
                 item.model.model,
             )
         )
-        return RouteDecision(request.request_id, tuple(accepted), tuple(sorted(set(rejected))))
+        return RouteDecision(
+            request.request_id,
+            tuple(accepted),
+            tuple(sorted(set(rejected))),
+        )
