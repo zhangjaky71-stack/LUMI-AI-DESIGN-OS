@@ -19,6 +19,8 @@ from .models import (
     SideEffectOutcome,
 )
 
+CONFIRMED_NOT_ACCEPTED_CODE = "SIDE_EFFECT_CONFIRMED_NOT_ACCEPTED"
+
 
 class IdempotencyConflict(RuntimeError):
     code = "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST"
@@ -263,8 +265,12 @@ class SideEffectGateway:
         lease_owner: str,
         now: datetime,
     ) -> SideEffectOutcome | None:
+        confirmed_not_accepted = (
+            operation.error_code == CONFIRMED_NOT_ACCEPTED_CODE
+            and operation.provider_request_id is None
+        )
         provider_may_have_accepted = bool(operation.provider_request_id)
-        must_reconcile = request.paid or provider_may_have_accepted
+        must_reconcile = (request.paid and not confirmed_not_accepted) or provider_may_have_accepted
         if not must_reconcile:
             return None
         if reconciler is None:

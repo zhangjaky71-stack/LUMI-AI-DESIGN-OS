@@ -1,0 +1,143 @@
+name: NODE-22 Model Gateway
+
+on:
+  pull_request:
+    paths:
+      - "services/model-gateway/**"
+      - "apps/api/src/lumi_api/model_gateway_side_effects.py"
+      - "apps/api/src/lumi_api/idempotency/gateway.py"
+      - "apps/api/tests/test_model_gateway_side_effects.py"
+      - "tools/node22/**"
+      - "docs/models/**"
+      - "reports/nodes/NODE-22/**"
+      - ".github/workflows/node-22-model-gateway.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/model-gateway/**"
+      - "apps/api/src/lumi_api/model_gateway_side_effects.py"
+      - "apps/api/src/lumi_api/idempotency/gateway.py"
+      - "tools/node22/**"
+      - "docs/models/**"
+      - "reports/nodes/NODE-22/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  model-gateway:
+    name: model-gateway
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen workspace dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Validate Model Gateway architecture
+        run: |
+          PYTHONPATH=services/model-gateway/src:apps/api/src \
+            uv run python tools/node22/validate_model_gateway.py
+
+      - name: Run Model Gateway contract and provider tests
+        run: |
+          PYTHONPATH=services/model-gateway/src:apps/api/src \
+            uv run pytest -q services/model-gateway/tests
+
+      - name: Run NODE-20 paid side-effect bridge and regression
+        run: |
+          PYTHONPATH=services/model-gateway/src:apps/api/src \
+            uv run pytest -q \
+              apps/api/tests/test_model_gateway_side_effects.py \
+              apps/api/tests/test_idempotency_gateway_contract.py \
+              apps/api/tests/test_idempotency_http_contract.py
+
+      - name: Export and validate Model Gateway schemas
+        run: |
+          rm -rf reports/nodes/NODE-22/generated-schemas
+          uv run python tools/node22/export_model_gateway_schemas.py
+          count="$(find reports/nodes/NODE-22/generated-schemas \
+            -name '*.schema.json' | wc -l)"
+          test "$count" -eq 7
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("reports/nodes/NODE-22")
+          paths = sorted((root / "generated-schemas").glob("*.schema.json"))
+          assert len(paths) == 7
+          for path in paths:
+              payload = json.loads(path.read_text(encoding="utf-8"))
+              assert payload["$schema"].endswith("2020-12/schema")
+          ledger = json.loads((root / "gap-ledger.json").read_text())
+          assert len(ledger["gaps"]) == 8
+          print("NODE-22 schemas and gap ledger valid")
+          PY
+
+      - name: Ruff NODE-22 scope
+        run: |
+          uv run ruff check \
+            services/model-gateway/src \
+            services/model-gateway/tests \
+            tools/node22 \
+            apps/api/src/lumi_api/model_gateway_side_effects.py \
+            apps/api/src/lumi_api/idempotency/gateway.py \
+            apps/api/tests/test_model_gateway_side_effects.py
+
+      - name: Pyright NODE-22 scope
+        run: |
+          uv run pyright \
+            services/model-gateway/src \
+            services/model-gateway/tests \
+            tools/node22 \
+            apps/api/src/lumi_api/model_gateway_side_effects.py \
+            apps/api/src/lumi_api/idempotency/gateway.py \
+            apps/api/tests/test_model_gateway_side_effects.py
+
+      - name: Verify no live provider key is required
+        env:
+          OPENAI_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+        run: |
+          PYTHONPATH=services/model-gateway/src:apps/api/src \
+            uv run python - <<'PY'
+          from lumi_model_gateway.errors import SecretUnavailable
+          from lumi_model_gateway.secrets import EnvironmentSecretProvider
+
+          provider = EnvironmentSecretProvider()
+          for name in ("openai", "anthropic"):
+              try:
+                  provider.get_secret(name, "api_key")
+              except SecretUnavailable:
+                  pass
+              else:
+                  raise AssertionError(f"{name} unexpectedly had a live key")
+          print("NO_LIVE_PROVIDER_KEY_REQUIRED")
+          PY
+
+      - name: Upload NODE-22 evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-22-model-gateway-${{ github.run_id }}
+          path: |
+            reports/nodes/NODE-22/generated-schemas
+            reports/nodes/NODE-22/gap-ledger.json
+            reports/nodes/NODE-22/acceptance.md
+          if-no-files-found: ignore
+          retention-days: 14
