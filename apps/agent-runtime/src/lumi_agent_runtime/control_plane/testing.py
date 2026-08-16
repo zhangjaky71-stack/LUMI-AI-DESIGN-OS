@@ -12,8 +12,16 @@ class MemoryRunControlStore:
     def __init__(self) -> None:
         self.runs: dict[UUID, RunControlSnapshot] = {}
 
-    async def load(self, agent_run_id: UUID) -> RunControlSnapshot | None:
-        return self.runs.get(agent_run_id)
+    async def load(
+        self,
+        *,
+        organization_id: UUID,
+        agent_run_id: UUID,
+    ) -> RunControlSnapshot | None:
+        snapshot = self.runs.get(agent_run_id)
+        if snapshot is None or snapshot.organization_id != organization_id:
+            return None
+        return snapshot
 
     async def create(self, snapshot: RunControlSnapshot) -> None:
         if snapshot.agent_run_id in self.runs:
@@ -34,7 +42,7 @@ class MemoryRunControlStore:
         expected_resume_version: int,
     ) -> None:
         current = self.runs.get(snapshot.agent_run_id)
-        if current is None:
+        if current is None or current.organization_id != snapshot.organization_id:
             raise RunNotFound(str(snapshot.agent_run_id))
         if current.checkpoint_id != expected_checkpoint_id:
             raise RunConflict("CHECKPOINT_CAS_MISMATCH")
@@ -57,6 +65,7 @@ class MemoryOperationGuard:
         request_hash: str,
         invoke,
     ) -> RunControlSnapshot:
+        del organization_id
         key = (operation_id, operation_type)
         existing = self.results.get(key)
         if existing is not None:
