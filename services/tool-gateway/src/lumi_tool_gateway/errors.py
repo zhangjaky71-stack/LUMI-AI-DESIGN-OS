@@ -53,8 +53,16 @@ class ToolIdempotencyRequiredError(ToolGatewayError):
     code = "TOOL_IDEMPOTENCY_KEY_REQUIRED"
 
 
+class ToolIdempotencyConflictError(ToolGatewayError):
+    code = "TOOL_IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST"
+
+
 class ToolSideEffectGuardRequiredError(ToolGatewayError):
     code = "TOOL_SIDE_EFFECT_GUARD_REQUIRED"
+
+
+class ToolAuditSinkRequiredError(ToolGatewayError):
+    code = "TOOL_AUDIT_SINK_REQUIRED"
 
 
 class ToolOutputOffloadRequiredError(ToolGatewayError):
