@@ -1,3 +1,11 @@
+DROP POLICY IF EXISTS tenant_isolation_agent_run_project_context ON agent_run_project_context;
+
+-- statement-breakpoint
+
+DROP TABLE IF EXISTS agent_run_project_context;
+
+-- statement-breakpoint
+
 DROP POLICY IF EXISTS tenant_isolation_project_summaries ON project_summaries;
 
 -- statement-breakpoint
