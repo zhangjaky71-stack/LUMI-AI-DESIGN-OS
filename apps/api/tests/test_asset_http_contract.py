@@ -13,9 +13,7 @@ from lumi_api.assets.api import (
     AssetPreviewListResponse,
     AssetResponse,
     CompleteAssetUploadRequest,
-    CreateAssetUploadRequest,
     CreateAssetUploadResponse,
-    MultipartPartResponse,
     SignedRequestResponse,
 )
 from lumi_api.assets.models import AssetStatus, RightsAssertion
