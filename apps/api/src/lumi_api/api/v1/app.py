@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from fastapi import Depends, FastAPI
 
-from .asset_routes import router as asset_router
 from .auth_guard import enforce_api_auth
 from .auth_routes import router as auth_router
 from .errors import install_error_contract
@@ -20,7 +19,6 @@ def create_contract_app() -> FastAPI:
     install_error_contract(app)
     app.include_router(auth_router)
     app.include_router(router, dependencies=[Depends(enforce_api_auth)])
-    app.include_router(asset_router, dependencies=[Depends(enforce_api_auth)])
     return app
 
 

@@ -18,14 +18,7 @@ from .headers import OrganizationId
 
 
 def _permission_for_request(request: Request) -> Permission:
-    method = request.method.upper()
-    path = request.url.path
-    if method in {"POST", "PUT", "PATCH"} and (
-        path.endswith("/assets/uploads")
-        or "/assets/uploads/" in path
-    ):
-        return Permission.ASSET_UPLOAD
-    if method in {"GET", "HEAD"}:
+    if request.method.upper() in {"GET", "HEAD"}:
         return Permission.PROJECT_READ
     return Permission.PROJECT_WRITE
 
