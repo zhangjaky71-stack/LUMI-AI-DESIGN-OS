@@ -14,7 +14,10 @@ _NAME = re.compile(r"^[a-z][a-z0-9_-]{0,62}$")
 _VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,99}$")
 _TOOL = re.compile(r"^[a-z][a-z0-9_.-]{0,255}$")
 _REF = re.compile(r"^[a-z][a-z0-9+.-]*://[^\s]{1,2040}$")
-_MEMORY_SCOPE = re.compile(r"^(project|brand|user|organization)(:[A-Za-z0-9_.-]+)?$")
+_MEMORY_SCOPE = re.compile(
+    r"^(project|brand|user|organization)(:[A-Za-z0-9_.-]+)?$"
+)
+_HASH = re.compile(r"^[0-9a-f]{64}$")
 _MAX_TEXT = 64_000
 
 
@@ -53,15 +56,26 @@ class PermissionScope:
 
     def __post_init__(self) -> None:
         _unique(self.allowed_tools, "DEEP_PERMISSION_TOOL_DUPLICATE")
-        _unique(self.memory_read_scopes, "DEEP_PERMISSION_MEMORY_READ_DUPLICATE")
-        _unique(self.memory_write_scopes, "DEEP_PERMISSION_MEMORY_WRITE_DUPLICATE")
-        _unique(self.allowed_subagents, "DEEP_PERMISSION_SUBAGENT_DUPLICATE")
+        _unique(
+            self.memory_read_scopes,
+            "DEEP_PERMISSION_MEMORY_READ_DUPLICATE",
+        )
+        _unique(
+            self.memory_write_scopes,
+            "DEEP_PERMISSION_MEMORY_WRITE_DUPLICATE",
+        )
+        _unique(
+            self.allowed_subagents,
+            "DEEP_PERMISSION_SUBAGENT_DUPLICATE",
+        )
         for tool in self.allowed_tools:
             if not _TOOL.fullmatch(tool):
                 raise ValueError(f"DEEP_PERMISSION_TOOL_INVALID:{tool}")
         for scope in self.memory_read_scopes + self.memory_write_scopes:
             if not _MEMORY_SCOPE.fullmatch(scope):
-                raise ValueError(f"DEEP_PERMISSION_MEMORY_SCOPE_INVALID:{scope}")
+                raise ValueError(
+                    f"DEEP_PERMISSION_MEMORY_SCOPE_INVALID:{scope}"
+                )
         for agent in self.allowed_subagents:
             if not _NAME.fullmatch(agent):
                 raise ValueError(f"DEEP_PERMISSION_SUBAGENT_INVALID:{agent}")
@@ -87,14 +101,28 @@ class ResolvedSubagent:
         _agent_id(self.agent_id)
         _version(self.exact_version, "DEEP_SUBAGENT_VERSION_INVALID")
         _text(self.role, 500, "DEEP_SUBAGENT_ROLE_INVALID")
-        _text(self.description, 2_000, "DEEP_SUBAGENT_DESCRIPTION_INVALID")
-        _text(self.system_prompt, _MAX_TEXT, "DEEP_SUBAGENT_PROMPT_INVALID")
-        _version(self.model_profile, "DEEP_SUBAGENT_MODEL_PROFILE_INVALID")
+        _text(
+            self.description,
+            2_000,
+            "DEEP_SUBAGENT_DESCRIPTION_INVALID",
+        )
+        _text(
+            self.system_prompt,
+            _MAX_TEXT,
+            "DEEP_SUBAGENT_PROMPT_INVALID",
+        )
+        _version(
+            self.model_profile,
+            "DEEP_SUBAGENT_MODEL_PROFILE_INVALID",
+        )
         _tools(self.allowed_tools)
         if not 1 <= self.max_steps <= 128:
             raise ValueError("DEEP_SUBAGENT_MAX_STEPS_INVALID")
         if self.provenance_ref:
-            _ref(self.provenance_ref, "DEEP_SUBAGENT_PROVENANCE_REF_INVALID")
+            _ref(
+                self.provenance_ref,
+                "DEEP_SUBAGENT_PROVENANCE_REF_INVALID",
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,11 +159,16 @@ class ResolvedAgentConfig:
             sandbox_execute=self.sandbox_execute,
             memory_read_scopes=self.memory_read_scopes,
             memory_write_scopes=self.memory_write_scopes,
-            allowed_subagents=tuple(item.agent_id for item in self.subagents),
+            allowed_subagents=tuple(
+                item.agent_id for item in self.subagents
+            ),
         )
         if len(self.subagents) > self.delegation.max_children_per_agent:
             raise ValueError("DEEP_AGENT_CHILD_LIMIT_EXCEEDED")
-        _unique(tuple(item.agent_id for item in self.subagents), "DEEP_AGENT_SUBAGENT_DUPLICATE")
+        _unique(
+            tuple(item.agent_id for item in self.subagents),
+            "DEEP_AGENT_SUBAGENT_DUPLICATE",
+        )
         parent_tools = set(self.allowed_tools)
         for child in self.subagents:
             extra = set(child.allowed_tools) - parent_tools
@@ -147,8 +180,11 @@ class ResolvedAgentConfig:
         if not 1 <= self.max_steps <= 256:
             raise ValueError("DEEP_AGENT_MAX_STEPS_INVALID")
         if self.provenance_ref:
-            _ref(self.provenance_ref, "DEEP_AGENT_PROVENANCE_REF_INVALID")
-        if self.content_hash and not re.fullmatch(r"[0-9a-f]{64}", self.content_hash):
+            _ref(
+                self.provenance_ref,
+                "DEEP_AGENT_PROVENANCE_REF_INVALID",
+            )
+        if self.content_hash and not _HASH.fullmatch(self.content_hash):
             raise ValueError("DEEP_AGENT_CONTENT_HASH_INVALID")
 
     @property
@@ -171,11 +207,14 @@ class MaterializedSkill:
         _version(self.exact_version, "DEEP_SKILL_VERSION_INVALID")
         if not self.path.startswith("/skills/") or ".." in self.path.split("/"):
             raise ValueError("DEEP_SKILL_PATH_INVALID")
-        if not re.fullmatch(r"[0-9a-f]{64}", self.content_hash):
+        if not _HASH.fullmatch(self.content_hash):
             raise ValueError("DEEP_SKILL_HASH_INVALID")
         _tools(self.required_tools)
         if self.provenance_ref:
-            _ref(self.provenance_ref, "DEEP_SKILL_PROVENANCE_REF_INVALID")
+            _ref(
+                self.provenance_ref,
+                "DEEP_SKILL_PROVENANCE_REF_INVALID",
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,11 +229,21 @@ class PinnedContextBundle:
     def __post_init__(self) -> None:
         _ref(self.context_bundle_ref, "DEEP_CONTEXT_REF_INVALID")
         _version(self.version, "DEEP_CONTEXT_VERSION_INVALID")
-        _text(self.pinned_constraints, 128_000, "DEEP_CONTEXT_PINNED_INVALID", allow_empty=True)
-        _text(self.task_context, 128_000, "DEEP_CONTEXT_TASK_INVALID", allow_empty=True)
+        _text(
+            self.pinned_constraints,
+            128_000,
+            "DEEP_CONTEXT_PINNED_INVALID",
+            allow_empty=True,
+        )
+        _text(
+            self.task_context,
+            128_000,
+            "DEEP_CONTEXT_TASK_INVALID",
+            allow_empty=True,
+        )
         for item in self.source_refs:
             _ref(item, "DEEP_CONTEXT_SOURCE_REF_INVALID")
-        if not re.fullmatch(r"[0-9a-f]{64}", self.content_hash):
+        if not _HASH.fullmatch(self.content_hash):
             raise ValueError("DEEP_CONTEXT_HASH_INVALID")
 
 
@@ -248,7 +297,12 @@ class AgentTaskResult:
     def __post_init__(self) -> None:
         _text(self.summary, 16_000, "DEEP_RESULT_SUMMARY_INVALID")
         for value in self.decisions + self.open_questions:
-            _text(value, 4_000, "DEEP_RESULT_TEXT_INVALID", allow_empty=False)
+            _text(
+                value,
+                4_000,
+                "DEEP_RESULT_TEXT_INVALID",
+                allow_empty=False,
+            )
         for value in self.artifact_refs + self.knowledge_refs:
             _ref(value, "DEEP_RESULT_REF_INVALID")
         for value in self.proposed_operations:
@@ -259,7 +313,9 @@ class AgentTaskResult:
             confidence = Decimal(self.confidence)
         except (InvalidOperation, TypeError) as exc:
             raise ValueError("DEEP_RESULT_CONFIDENCE_INVALID") from exc
-        if not confidence.is_finite() or not Decimal("0") <= confidence <= Decimal("1"):
+        if not confidence.is_finite() or not (
+            Decimal("0") <= confidence <= Decimal("1")
+        ):
             raise ValueError("DEEP_RESULT_CONFIDENCE_INVALID")
 
     def as_dict(self) -> dict[str, Any]:
@@ -286,6 +342,18 @@ class DeepAgentProvenance:
     tool_versions: tuple[str, ...]
     model_profile: str
     sandbox_execute: bool
+
+    def __post_init__(self) -> None:
+        _agent_id(self.agent_id)
+        _version(self.agent_version, "DEEP_PROVENANCE_AGENT_VERSION_INVALID")
+        if not _HASH.fullmatch(self.agent_config_hash):
+            raise ValueError("DEEP_PROVENANCE_AGENT_HASH_INVALID")
+        _ref(self.context_bundle_ref, "DEEP_PROVENANCE_CONTEXT_REF_INVALID")
+        if not _HASH.fullmatch(self.context_hash):
+            raise ValueError("DEEP_PROVENANCE_CONTEXT_HASH_INVALID")
+        _unique(self.skill_versions, "DEEP_PROVENANCE_SKILL_DUPLICATE")
+        _unique(self.tool_versions, "DEEP_PROVENANCE_TOOL_DUPLICATE")
+        _version(self.model_profile, "DEEP_PROVENANCE_MODEL_PROFILE_INVALID")
 
 
 @dataclass(frozen=True, slots=True)
@@ -404,7 +472,8 @@ def _contains_private_reasoning_key(value: Any) -> bool:
     }
     if isinstance(value, dict):
         return any(
-            key.casefold() in forbidden or _contains_private_reasoning_key(child)
+            key.casefold() in forbidden
+            or _contains_private_reasoning_key(child)
             for key, child in value.items()
         )
     if isinstance(value, (list, tuple)):
