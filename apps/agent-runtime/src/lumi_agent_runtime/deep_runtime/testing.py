@@ -34,11 +34,21 @@ class FakeTool:
 
 
 class FakeModelProvider:
-    async def model_for_root(self, *, model_profile: str, context: Any) -> Any:
+    async def model_for_root(
+        self,
+        *,
+        model_profile: str,
+        context: Any,
+    ) -> Any:
         del model_profile, context
         return FakeModel()
 
-    async def model_for_subagent(self, *, definition: Any, context: Any) -> Any:
+    async def model_for_subagent(
+        self,
+        *,
+        definition: Any,
+        context: Any,
+    ) -> Any:
         del definition, context
         return FakeModel()
 
@@ -91,7 +101,12 @@ class FakeCheckpointerProvider:
 
 
 class MemoryBudgetMeter:
-    def __init__(self, *, tool_calls_left: int = 100, warning: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        tool_calls_left: int = 100,
+        warning: str | None = None,
+    ) -> None:
         self.tool_calls_left = tool_calls_left
         self.warning_text = warning
         self.calls: list[tuple[str, str]] = []
@@ -115,7 +130,9 @@ class MemoryBudgetMeter:
     ) -> None:
         del context
         if self.tool_calls_left <= 0:
-            raise DeepAgentBudgetExceeded("run budget exhausted before tool call")
+            raise DeepAgentBudgetExceeded(
+                "run budget exhausted before tool call"
+            )
         self.tool_calls_left -= 1
         self.calls.append((actor_agent, f"tool:{tool_name}"))
 
@@ -155,7 +172,9 @@ class MemoryOffloader:
         self.offloaded += 1
         return {
             "summary": f"Large {tool_name} result offloaded",
-            "ref": f"tool-result://{context.agent_run_id}/{self.offloaded}",
+            "ref": (
+                f"tool-result://{context.agent_run_id}/{self.offloaded}"
+            ),
         }
 
 
@@ -163,7 +182,12 @@ class MemoryOffloader:
 class StaticAgentResolver:
     config: ResolvedAgentConfig
 
-    async def resolve(self, *, agent_ref: str, context: Any) -> ResolvedAgentConfig:
+    async def resolve(
+        self,
+        *,
+        agent_ref: str,
+        context: Any,
+    ) -> ResolvedAgentConfig:
         del context
         if agent_ref != self.config.identity:
             raise KeyError(agent_ref)
@@ -206,8 +230,12 @@ class MemoryResultStore:
         result: AgentTaskResult,
         provenance: DeepAgentProvenance,
     ) -> StoredAgentResult:
+        result_ref = (
+            f"agent-result://{request.invocation.agent_run_id}/"
+            f"{len(self.items) + 1}"
+        )
         item = StoredAgentResult(
-            result_ref=f"agent-result://{request.invocation.agent_run_id}/{len(self.items) + 1}",
+            result_ref=result_ref,
             result=result,
             provenance=provenance,
         )
