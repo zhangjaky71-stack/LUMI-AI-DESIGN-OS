@@ -12,6 +12,7 @@ from lumi_api.domain.ids import new_uuid7
 from .models import (
     BriefVersion,
     DefaultProjectBranch,
+    ProjectAuditEntry,
     ProjectEvent,
     ProjectListQuery,
     ProjectPage,
@@ -36,6 +37,7 @@ class ProjectRepository(Protocol):
         default_branch: DefaultProjectBranch,
         summary: ProjectSummary,
         events: tuple[ProjectEvent, ...],
+        audits: tuple[ProjectAuditEntry, ...],
     ) -> None: ...
 
     def update_project(
@@ -45,6 +47,7 @@ class ProjectRepository(Protocol):
         expected_version: int,
         brief_version: BriefVersion | None,
         events: tuple[ProjectEvent, ...],
+        audits: tuple[ProjectAuditEntry, ...],
     ) -> None: ...
 
     def list_brief_versions(
@@ -59,6 +62,7 @@ class MemoryProjectRepository(ProjectRepository):
     branches: dict[UUID, DefaultProjectBranch] = field(default_factory=dict)
     summaries: dict[UUID, ProjectSummary] = field(default_factory=dict)
     outbox: list[ProjectEvent] = field(default_factory=list)
+    audits: list[ProjectAuditEntry] = field(default_factory=list)
     workspace_organizations: dict[UUID, UUID] = field(default_factory=dict)
     brand_organizations: dict[UUID, UUID] = field(default_factory=dict)
 
@@ -91,7 +95,10 @@ class MemoryProjectRepository(ProjectRepository):
         try:
             raw = base64.urlsafe_b64decode(cursor + padding).decode()
             timestamp, project_id = raw.split("|", 1)
-            return datetime.fromisoformat(timestamp), UUID(project_id)
+            parsed = datetime.fromisoformat(timestamp)
+            if parsed.tzinfo is None or parsed.utcoffset() is None:
+                raise ValueError("cursor timestamp must be timezone-aware")
+            return parsed, UUID(project_id)
         except (ValueError, UnicodeDecodeError) as exc:
             raise ValueError("INVALID_PROJECT_CURSOR") from exc
 
@@ -115,7 +122,7 @@ class MemoryProjectRepository(ProjectRepository):
             needle = query.name_query.casefold()
             rows = (project for project in rows if needle in project.name.casefold())
 
-        ordered = sorted(rows, key=lambda p: (p.updated_at, p.id), reverse=True)
+        ordered = sorted(rows, key=lambda project: (project.updated_at, project.id), reverse=True)
         if query.cursor:
             cursor_key = self._decode_cursor(query.cursor)
             ordered = [
@@ -139,10 +146,15 @@ class MemoryProjectRepository(ProjectRepository):
         default_branch: DefaultProjectBranch,
         summary: ProjectSummary,
         events: tuple[ProjectEvent, ...],
+        audits: tuple[ProjectAuditEntry, ...],
     ) -> None:
         if project.id in self.projects:
             raise ValueError("PROJECT_ALREADY_EXISTS")
-        if default_branch.project_id != project.id or summary.project_id != project.id:
+        scoped = (brief_version, default_branch, summary, *events, *audits)
+        if any(
+            item.project_id != project.id or item.organization_id != project.organization_id
+            for item in scoped
+        ):
             raise ValueError("PROJECT_BUNDLE_SCOPE_MISMATCH")
         snapshot = (
             dict(self.projects),
@@ -150,6 +162,7 @@ class MemoryProjectRepository(ProjectRepository):
             dict(self.branches),
             dict(self.summaries),
             list(self.outbox),
+            list(self.audits),
         )
         try:
             self.projects[project.id] = project
@@ -157,8 +170,16 @@ class MemoryProjectRepository(ProjectRepository):
             self.branches[default_branch.id] = default_branch
             self.summaries[project.id] = summary
             self.outbox.extend(events)
+            self.audits.extend(audits)
         except Exception:
-            self.projects, self.briefs, self.branches, self.summaries, self.outbox = snapshot
+            (
+                self.projects,
+                self.briefs,
+                self.branches,
+                self.summaries,
+                self.outbox,
+                self.audits,
+            ) = snapshot
             raise
 
     def update_project(
@@ -168,6 +189,7 @@ class MemoryProjectRepository(ProjectRepository):
         expected_version: int,
         brief_version: BriefVersion | None,
         events: tuple[ProjectEvent, ...],
+        audits: tuple[ProjectAuditEntry, ...],
     ) -> None:
         current = self.get(project.organization_id, project.id)
         if current is None:
@@ -176,6 +198,12 @@ class MemoryProjectRepository(ProjectRepository):
             raise ValueError("PROJECT_VERSION_CONFLICT")
         if project.version != expected_version + 1:
             raise ValueError("PROJECT_VERSION_MUST_INCREMENT")
+        scoped = (*events, *audits)
+        if any(
+            item.project_id != project.id or item.organization_id != project.organization_id
+            for item in scoped
+        ):
+            raise ValueError("PROJECT_UPDATE_SCOPE_MISMATCH")
         self.projects[project.id] = project
         if brief_version is not None:
             history = self.briefs.setdefault(project.id, [])
@@ -183,6 +211,7 @@ class MemoryProjectRepository(ProjectRepository):
                 raise ValueError("BRIEF_VERSION_MUST_INCREMENT")
             history.append(brief_version)
         self.outbox.extend(events)
+        self.audits.extend(audits)
         summary = self.summaries.get(project.id)
         if summary is not None:
             self.summaries[project.id] = summary.model_copy(
