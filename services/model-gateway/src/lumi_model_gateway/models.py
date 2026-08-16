@@ -165,6 +165,7 @@ class ProviderModel:
     regions: frozenset[str] = frozenset({"global"})
     paid: bool = True
     input_usd_per_million: Decimal | None = None
+    cached_input_usd_per_million: Decimal | None = None
     output_usd_per_million: Decimal | None = None
     fixed_request_usd: Decimal | None = None
     enabled: bool = True
