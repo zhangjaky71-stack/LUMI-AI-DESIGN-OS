@@ -1,0 +1,92 @@
+name: Tool Gateway Security
+
+on:
+  pull_request:
+    paths:
+      - "services/tool-gateway/**"
+      - "scripts/validate_tool_gateway_contract.py"
+      - "scripts/integration_tool_gateway.py"
+      - "docs/runtime/TOOL-GATEWAY-V1.md"
+      - "reports/nodes/NODE-25/**"
+      - "pyproject.toml"
+      - "Makefile"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tool-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile Tool Gateway
+        run: |
+          PYTHONPATH=services/tool-gateway/src python -m compileall -q \
+            services/tool-gateway/src \
+            services/tool-gateway/tests \
+            scripts/validate_tool_gateway_contract.py \
+            scripts/integration_tool_gateway.py
+      - name: Architecture and security contract
+        run: >-
+          PYTHONPATH=services/tool-gateway/src
+          python scripts/validate_tool_gateway_contract.py
+
+  tool-security:
+    needs: tool-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Revalidate NODE-20 idempotency boundary
+        run: python scripts/validate_idempotency_contract.py
+      - name: Revalidate NODE-21 sandbox boundary
+        run: >-
+          PYTHONPATH=services/sandbox-runtime/src
+          python scripts/validate_sandbox_runtime_contract.py
+      - name: Tool Gateway unit and security tests
+        run: >-
+          PYTHONPATH=services/tool-gateway/src
+          python -m unittest discover
+          -s services/tool-gateway/tests
+          -p 'test_*.py'
+      - name: Deterministic Tool Gateway integration
+        run: >-
+          PYTHONPATH=services/tool-gateway/src
+          python scripts/integration_tool_gateway.py
+
+  tool-quality:
+    needs: tool-security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Tool Gateway Ruff gate
+        run: >-
+          uv run ruff check
+          services/tool-gateway
+          scripts/validate_tool_gateway_contract.py
+          scripts/integration_tool_gateway.py
+      - name: Tool Gateway Pyright gate
+        run: >-
+          uv run pyright
+          services/tool-gateway/src/lumi_tool_gateway
+          services/tool-gateway/tests
+          scripts/integration_tool_gateway.py
