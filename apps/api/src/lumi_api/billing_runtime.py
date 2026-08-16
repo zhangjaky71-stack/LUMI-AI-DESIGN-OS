@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from datetime import UTC, datetime
 import json
 import os
-from typing import Any, Iterable, Mapping
+from typing import Any, Mapping
 from uuid import UUID, uuid4
 
 from anyio import to_thread
@@ -55,7 +54,10 @@ class AsyncStripeBillingRuntime:
                 for plan in self._catalog:
                     row = (
                         await session.execute(
-                            text("SELECT * FROM billing_plan_versions WHERE plan_version_id=:id"),
+                            text(
+                                "SELECT * FROM billing_plan_versions "
+                                "WHERE plan_version_id=:id"
+                            ),
                             {"id": plan.plan_version_id},
                         )
                     ).mappings().first()
@@ -74,13 +76,17 @@ class AsyncStripeBillingRuntime:
                             """),
                             {
                                 **_plan_params(plan),
-                                "entitlements": json.dumps(plan.entitlements, separators=(",", ":")),
+                                "entitlements": json.dumps(
+                                    plan.entitlements,
+                                    separators=(",", ":"),
+                                ),
                             },
                         )
                         continue
                     if _plan_from_row(row) != plan:
                         raise RuntimeError(
-                            f"configured plan drifted from immutable database row: {plan.plan_version_id}"
+                            "configured plan drifted from immutable database row: "
+                            f"{plan.plan_version_id}"
                         )
 
     async def summary(self, actor: BillingActor) -> BillingSummary:
@@ -118,7 +124,11 @@ class AsyncStripeBillingRuntime:
             provider_cost_reconciliation_available=True,
         )
 
-    async def create_checkout(self, actor: BillingActor, plan_version_id: str) -> HostedSession:
+    async def create_checkout(
+        self,
+        actor: BillingActor,
+        plan_version_id: str,
+    ) -> HostedSession:
         _require(actor, "billing.manage")
         async with self._sessions() as session:
             async with session.begin():
@@ -161,7 +171,9 @@ class AsyncStripeBillingRuntime:
         if account.payment_provider != self._provider.name:
             raise BillingError("BILLING_PAYMENT_PROVIDER_MISMATCH", 409)
         return await to_thread.run_sync(
-            self._provider.create_checkout, account.payment_customer_ref, plan
+            self._provider.create_checkout,
+            account.payment_customer_ref,
+            plan,
         )
 
     async def create_portal(self, actor: BillingActor) -> HostedSession:
@@ -175,7 +187,8 @@ class AsyncStripeBillingRuntime:
         if account.payment_provider != self._provider.name:
             raise BillingError("BILLING_PAYMENT_PROVIDER_MISMATCH", 409)
         return await to_thread.run_sync(
-            self._provider.create_portal_session, account.payment_customer_ref
+            self._provider.create_portal_session,
+            account.payment_customer_ref,
         )
 
     async def cancel_subscription(self, actor: BillingActor) -> Subscription:
@@ -187,7 +200,8 @@ class AsyncStripeBillingRuntime:
         if current is None:
             raise BillingError("BILLING_SUBSCRIPTION_NOT_FOUND", 404)
         provider_state = await to_thread.run_sync(
-            self._provider.cancel_subscription, current.provider_subscription_ref
+            self._provider.cancel_subscription,
+            current.provider_subscription_ref,
         )
         async with self._sessions() as session:
             async with session.begin():
@@ -216,9 +230,15 @@ class AsyncStripeBillingRuntime:
             raise BillingError("BILLING_SUBSCRIPTION_PERSIST_FAILED", 503)
         return updated
 
-    async def process_webhook(self, raw_body: bytes, signature: str) -> PaymentProcessResult:
+    async def process_webhook(
+        self,
+        raw_body: bytes,
+        signature: str,
+    ) -> PaymentProcessResult:
         normalized, payload_hash = await to_thread.run_sync(
-            self._provider.verify_webhook, raw_body, signature
+            self._provider.verify_webhook,
+            raw_body,
+            signature,
         )
         async with self._sessions() as session:
             async with session.begin():
@@ -273,14 +293,20 @@ class AsyncStripeBillingRuntime:
         )
 
     async def _apply_event(
-        self, session: AsyncSession, event: NormalizedPaymentEvent
+        self,
+        session: AsyncSession,
+        event: NormalizedPaymentEvent,
     ) -> None:
         if event.event_type in {
             "SUBSCRIPTION_CREATED",
             "SUBSCRIPTION_UPDATED",
             "SUBSCRIPTION_CANCELLED",
         }:
-            if not event.subscription_ref or not event.plan_version_id or not event.subscription_state:
+            if (
+                not event.subscription_ref
+                or not event.plan_version_id
+                or not event.subscription_state
+            ):
                 raise BillingError("BILLING_WEBHOOK_SUBSCRIPTION_INCOMPLETE")
             if await _get_plan(session, event.plan_version_id) is None:
                 raise BillingError("BILLING_WEBHOOK_PLAN_VERSION_UNKNOWN", 409)
@@ -335,7 +361,10 @@ class AsyncStripeBillingRuntime:
                 SELECT plan_version_id FROM billing_invoices
                 WHERE provider=:provider AND provider_invoice_ref=:invoice_ref
                 """),
-                {"provider": event.provider, "invoice_ref": event.invoice_ref},
+                {
+                    "provider": event.provider,
+                    "invoice_ref": event.invoice_ref,
+                },
             )
         ).scalar_one_or_none()
         if prior is not None and prior != event.plan_version_id:
@@ -394,29 +423,41 @@ class AsyncStripeBillingRuntime:
 
 
 def load_stripe_runtime_config(
-    *, environment: str
+    *,
+    environment: str,
 ) -> tuple[StripeProviderConfig, tuple[PlanVersion, ...]]:
     required = {
         "LUMI_STRIPE_SECRET_KEY": os.environ.get("LUMI_STRIPE_SECRET_KEY", ""),
         "LUMI_STRIPE_WEBHOOK_SECRET": os.environ.get("LUMI_STRIPE_WEBHOOK_SECRET", ""),
         "LUMI_STRIPE_CHECKOUT_SUCCESS_URL": os.environ.get(
-            "LUMI_STRIPE_CHECKOUT_SUCCESS_URL", ""
+            "LUMI_STRIPE_CHECKOUT_SUCCESS_URL",
+            "",
         ),
         "LUMI_STRIPE_CHECKOUT_CANCEL_URL": os.environ.get(
-            "LUMI_STRIPE_CHECKOUT_CANCEL_URL", ""
+            "LUMI_STRIPE_CHECKOUT_CANCEL_URL",
+            "",
         ),
-        "LUMI_STRIPE_PORTAL_RETURN_URL": os.environ.get("LUMI_STRIPE_PORTAL_RETURN_URL", ""),
-        "LUMI_STRIPE_PLAN_CATALOG_JSON": os.environ.get("LUMI_STRIPE_PLAN_CATALOG_JSON", ""),
+        "LUMI_STRIPE_PORTAL_RETURN_URL": os.environ.get(
+            "LUMI_STRIPE_PORTAL_RETURN_URL",
+            "",
+        ),
+        "LUMI_STRIPE_PLAN_CATALOG_JSON": os.environ.get(
+            "LUMI_STRIPE_PLAN_CATALOG_JSON",
+            "",
+        ),
     }
     missing = [name for name, value in required.items() if not value.strip()]
     if missing:
-        raise RuntimeError("Stripe billing configuration missing: " + ", ".join(sorted(missing)))
+        raise RuntimeError(
+            "Stripe billing configuration missing: " + ", ".join(sorted(missing))
+        )
     try:
         raw_catalog = json.loads(required["LUMI_STRIPE_PLAN_CATALOG_JSON"])
     except json.JSONDecodeError as error:
         raise RuntimeError("LUMI_STRIPE_PLAN_CATALOG_JSON is invalid JSON") from error
     if not isinstance(raw_catalog, list) or not raw_catalog:
         raise RuntimeError("LUMI_STRIPE_PLAN_CATALOG_JSON must be a non-empty array")
+
     plans: list[PlanVersion] = []
     price_map: dict[str, str] = {}
     for raw in raw_catalog:
@@ -445,6 +486,7 @@ def load_stripe_runtime_config(
             raise RuntimeError(f"duplicate plan_version_id: {plan.plan_version_id}")
         plans.append(plan)
         price_map[plan.plan_version_id] = price_id
+
     expected_livemode = environment == "production"
     return (
         StripeProviderConfig(
@@ -505,10 +547,16 @@ def _plan_from_row(row: Mapping[str, Any]) -> PlanVersion:
     )
 
 
-async def _get_plan(session: AsyncSession, plan_version_id: str) -> PlanVersion | None:
+async def _get_plan(
+    session: AsyncSession,
+    plan_version_id: str,
+) -> PlanVersion | None:
     row = (
         await session.execute(
-            text("SELECT * FROM billing_plan_versions WHERE plan_version_id=:id"),
+            text(
+                "SELECT * FROM billing_plan_versions "
+                "WHERE plan_version_id=:id"
+            ),
             {"id": plan_version_id},
         )
     ).mappings().first()
@@ -518,13 +566,19 @@ async def _get_plan(session: AsyncSession, plan_version_id: str) -> PlanVersion 
 async def _list_active_plans(session: AsyncSession) -> tuple[PlanVersion, ...]:
     rows = (
         await session.execute(
-            text("SELECT * FROM billing_plan_versions WHERE status='ACTIVE' ORDER BY name, version")
+            text(
+                "SELECT * FROM billing_plan_versions "
+                "WHERE status='ACTIVE' ORDER BY name, version"
+            )
         )
     ).mappings().all()
     return tuple(_plan_from_row(row) for row in rows)
 
 
-async def _get_account(session: AsyncSession, organization_id: str) -> BillingAccount | None:
+async def _get_account(
+    session: AsyncSession,
+    organization_id: str,
+) -> BillingAccount | None:
     row = (
         await session.execute(
             text("SELECT * FROM billing_accounts WHERE organization_id=:org"),
@@ -541,7 +595,10 @@ async def _get_account(session: AsyncSession, organization_id: str) -> BillingAc
     )
 
 
-async def _get_subscription(session: AsyncSession, organization_id: str) -> Subscription | None:
+async def _get_subscription(
+    session: AsyncSession,
+    organization_id: str,
+) -> Subscription | None:
     row = (
         await session.execute(
             text("SELECT * FROM billing_subscriptions WHERE organization_id=:org"),
@@ -563,7 +620,10 @@ async def _get_subscription(session: AsyncSession, organization_id: str) -> Subs
     )
 
 
-async def _credit_balance(session: AsyncSession, organization_id: str) -> int:
+async def _credit_balance(
+    session: AsyncSession,
+    organization_id: str,
+) -> int:
     value = await session.scalar(
         text(
             "SELECT COALESCE(sum(delta_credits),0) FROM billing_credit_ledger "
@@ -575,7 +635,10 @@ async def _credit_balance(session: AsyncSession, organization_id: str) -> int:
 
 
 async def _list_credits(
-    session: AsyncSession, organization_id: str, *, limit: int
+    session: AsyncSession,
+    organization_id: str,
+    *,
+    limit: int,
 ) -> tuple[CreditLedgerEntry, ...]:
     rows = (
         await session.execute(
@@ -600,7 +663,9 @@ async def _list_credits(
             project_id=str(row["project_id"]) if row["project_id"] else None,
             usage_record_id=row["usage_record_id"],
             reverses_entry_id=(
-                str(row["reverses_entry_id"]) if row["reverses_entry_id"] else None
+                str(row["reverses_entry_id"])
+                if row["reverses_entry_id"]
+                else None
             ),
         )
         for row in rows
@@ -608,7 +673,10 @@ async def _list_credits(
 
 
 async def _list_invoices(
-    session: AsyncSession, organization_id: str, *, limit: int
+    session: AsyncSession,
+    organization_id: str,
+    *,
+    limit: int,
 ) -> tuple[InvoiceRef, ...]:
     rows = (
         await session.execute(
