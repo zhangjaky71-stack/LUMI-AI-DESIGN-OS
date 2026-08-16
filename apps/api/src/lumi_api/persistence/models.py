@@ -1,6 +1,7 @@
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
 from sqlalchemy import Index
 
+from . import models_asset_storage as _models_asset_storage
 from . import models_auth as _models_auth
 from . import models_identity as _models_identity
 from . import models_project_core as _models_project_core
@@ -18,6 +19,7 @@ from .models_queue_runtime import DeadLetterRecordModel, RuntimeJobModel
 
 # Keep these referenced so linters see metadata-registration side effects as intentional.
 _METADATA_MODULES = (
+    _models_asset_storage,
     _models_auth,
     _models_identity,
     _models_project_core,
@@ -30,6 +32,7 @@ Index("ix_projects_org_status", ProjectModel.organization_id, ProjectModel.statu
 Index("ix_projects_org_updated", ProjectModel.organization_id, ProjectModel.updated_at)
 Index("ix_projects_workspace_updated", ProjectModel.workspace_id, ProjectModel.updated_at)
 Index("ix_assets_org_created", AssetModel.organization_id, AssetModel.created_at)
+Index("ix_assets_project_status", AssetModel.project_id, AssetModel.status)
 Index(
     "ix_artifact_versions_artifact_version",
     ArtifactVersionModel.artifact_id,
