@@ -1,45 +1,52 @@
 # NODE-25 Acceptance — Tool Gateway
 
-Status: **IMPLEMENTED / VALIDATING**
+Status: **IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL**
 
 ## Delivered
 
-- [x] provider-neutral ToolDefinition / ToolRequest / ToolResult contracts.
-- [x] versioned Tool Registry with exact and `major.x` resolution.
-- [x] risk tiers for read/write/destructive/financial/privileged tools.
-- [x] write-class definitions require idempotency at construction time.
+- [x] provider-neutral `ToolDefinition` / `ToolRequest` / `ToolResult` contracts.
+- [x] exact-semver and `major.x` Tool Registry resolution.
+- [x] frozen risk tiers: READ_INTERNAL / READ_EXTERNAL / WRITE_INTERNAL / WRITE_EXTERNAL / DESTRUCTIVE / FINANCIAL / PRIVILEGED.
+- [x] runtime types: native / mcp / sandbox; MCP activation explicitly deferred to NODE-26.
 - [x] default-deny Agent tool allowlist.
 - [x] Organization allow/deny narrowing.
-- [x] explicit root-vs-subagent parent-scope semantics.
-- [x] subagent permission non-escalation.
-- [x] input schema validation before approval/execution.
+- [x] root-vs-subagent parent scope semantics; child scope cannot widen parent scope.
+- [x] required permission-scope intersection.
+- [x] input schema validation before approval/effect execution.
 - [x] output schema validation before Agent return/offload.
-- [x] HITL contract for external/destructive/financial/privileged risks.
-- [x] approval cannot be inferred from token presence alone.
-- [x] SideEffectGuard port for NODE-20 idempotency/reconciliation.
-- [x] write calls require idempotency key + SideEffectGuard.
-- [x] duplicate write replay contract with one adapter invocation.
-- [x] bounded adapter timeout and normalized errors.
-- [x] large structured output offload with bounded inline preview.
+- [x] HITL contract before WRITE_EXTERNAL / DESTRUCTIVE / FINANCIAL / PRIVILEGED execution.
+- [x] approval token presence alone never counts as approval.
+- [x] every write-class definition must declare idempotency REQUIRED.
+- [x] Tool idempotency key maximum aligned to NODE-20 at 255 characters.
+- [x] Tool operation identity aligned to NODE-20 maximum 100 characters.
+- [x] write call requires SideEffectGuard.
+- [x] write call fails closed without AuditSink before approval/effect execution.
+- [x] deterministic reference guard uses semantic request hash and concurrency lock.
+- [x] duplicate same-semantic write replay invokes adapter once.
+- [x] same key + different semantic request raises stable Tool idempotency conflict.
+- [x] active NODE-20 bridge composes current `SideEffectGateway` + `MemoryIdempotencyStore` and proves replay/conflict semantics.
+- [x] bounded tool timeout and normalized adapter/internal errors.
+- [x] large structured output offload with bounded inline preview and `full_result_ref`.
 - [x] structured Audit with recursive secret-field redaction.
-- [x] P0 eight-tool catalog.
+- [x] adapter output bodies/raw exception messages are not copied into Audit.
+- [x] exact P0 eight-tool catalog.
 - [x] no unrestricted SQL tool.
 - [x] WebSearch adapter port.
-- [x] SafeWebFetch adapter with SSRF validation.
-- [x] all DNS answers validated; any unsafe address fails closed.
-- [x] validated IP pin passed to HTTP transport.
-- [x] redirect target revalidation on every hop.
-- [x] loopback/private/link-local/metadata/Docker host blocking.
-- [x] P0 port/content-type/response-size/redirect/time restrictions.
-- [x] no ambient Authorization/Cookie injection in fetch adapter.
-- [x] SandboxExecute adapter only calls NODE-21 service port with argv.
-- [x] Tool Gateway package retains zero third-party runtime dependencies.
-- [x] privileged import/secret/socket architecture validator authored.
-- [x] global pytest/Pyright discovery includes Tool Gateway.
-- [x] deterministic unit/security tests authored.
-- [x] deterministic cross-boundary integration smoke authored.
-- [x] local `make tool-gateway-contract` entry authored.
-- [x] dedicated staged GitHub Actions workflow authored.
+- [x] SafeWebFetch adapter with HTTP/HTTPS, port, DNS/IP, metadata/private/loopback protections.
+- [x] every DNS answer must be public; mixed public/private answers fail closed.
+- [x] validated IP is pinned into transport contract.
+- [x] every redirect target is revalidated before the next fetch.
+- [x] response byte/content-type/redirect/timeout limits.
+- [x] no ambient Authorization/Cookie injection.
+- [x] Sandbox adapter only calls a narrow NODE-21 executor port with argv; no host shell/Docker socket path.
+- [x] Tool Gateway reusable core retains `dependencies = []`.
+- [x] architecture validator rejects direct asyncpg/SQLAlchemy/psycopg/boto3/Docker/subprocess authority in Tool Gateway core.
+- [x] workspace pytest discovery includes Tool Gateway tests without restoring deprecated old-chain packages.
+- [x] deterministic unit/security/integration suites authored.
+- [x] six JSON Schema exports authored.
+- [x] active-chain cross-node integration mapping documented.
+- [x] exact seven-gap ledger authored.
+- [x] dedicated NODE-25 Hosted workflow authored.
 
 ## P0 catalog
 
@@ -54,63 +61,89 @@ sandbox.execute@1.0.0
 media.inspect@1.0.0
 ```
 
-## Security evidence authored
+## Security / correctness evidence authored
 
-The suites explicitly cover:
+The suites cover at least:
 
-1. input schema failure before adapter invocation;
-2. empty Agent allowlist default deny;
-3. wrong Agent tool pattern deny;
-4. subagent cannot expand parent tool scope;
-5. empty parent scope means a subagent has zero tools;
-6. high-risk HITL blocks adapter/SideEffect execution;
-7. write definition cannot opt out of idempotency;
-8. missing write idempotency key fails closed;
-9. missing SideEffectGuard fails closed;
-10. duplicate write replays without second adapter call;
-11. adapter timeout normalization;
-12. arbitrary adapter exception normalization and audit;
-13. malformed adapter output rejection;
-14. large output offload rather than Agent-context flooding;
-15. secret-like argument redaction;
-16. loopback/private/link-local/metadata SSRF blocking;
-17. mixed public/private DNS result fails closed;
-18. validated DNS IP is pinned into transport contract;
-19. public -> metadata redirect is rejected before second fetch;
-20. unsupported web content types are rejected;
-21. web response-size limit is enforced;
-22. Search result normalization/cap;
-23. Sandbox execute uses isolated service port and argv contract;
-24. P0 catalog has exactly eight intended tools and no SQL tool.
+1. exact and major-range version resolution;
+2. input schema failure before adapter;
+3. empty Agent allowlist default deny;
+4. forbidden tool pattern;
+5. subagent cannot expand parent scope;
+6. empty parent scope means zero child tools;
+7. high-risk HITL blocks side effect before approval;
+8. write definition cannot disable idempotency;
+9. write without AuditSink fails before approval/effect;
+10. missing idempotency key fails closed;
+11. missing SideEffectGuard fails closed;
+12. NODE-20-compatible 255-character idempotency maximum;
+13. NODE-20-compatible operation type maximum;
+14. duplicate write replay invokes adapter once;
+15. concurrent duplicate write invokes adapter once;
+16. same key / different semantic request conflict;
+17. real active NODE-20 SideEffectGateway bridge replay/conflict;
+18. adapter timeout normalization;
+19. arbitrary adapter exception normalization and safe Audit;
+20. invalid adapter output rejection;
+21. large output offload rather than Agent-context flooding;
+22. recursive secret-like argument redaction;
+23. loopback/private/link-local/metadata/Docker-host SSRF rejection;
+24. mixed DNS fail closed;
+25. validated IP pinned into transport contract;
+26. redirect-to-metadata rejected before second fetch;
+27. unsupported content type rejected;
+28. response size limit enforced;
+29. P0 catalog/no-SQL invariant;
+30. WebSearch normalization/cap;
+31. Sandbox argv/service-port boundary;
+32. Agent client exposes `invoke()` rather than server registry/adapters.
 
 ## Cross-node boundary
 
-NODE-25 intentionally does not duplicate upstream correctness ownership:
-
 ```text
-NODE-16 -> authenticated tenant / membership / RBAC
-NODE-20 -> durable write idempotency, lease, replay, reconciliation, ambiguity
-NODE-21 -> isolated process/filesystem/network execution
-NODE-18 -> object storage / Asset validation / Artifact storage
-NODE-25 -> tool versioning, permission, risk, HITL, validation, adapter orchestration, audit
+NODE-16 -> authenticated tenant / membership / RBAC source
+NODE-18 -> trusted Asset/Object storage and production large-result offload
+NODE-20 -> durable side-effect identity/replay/conflict/recovery
+NODE-21 -> isolated execution and resource/network/filesystem enforcement
+NODE-25 -> tool version/permission/risk/HITL/schema/adapter/orchestration/audit boundary
+NODE-26 -> MCP adapter and connection policy
+NODE-28/62 -> durable approval interrupt/resume and governance
+NODE-65 -> durable append-only audit retention/governance
 ```
 
-The Tool Gateway `SideEffectGuard`, `SandboxExecutor`, and `ResultOffloader` ports are the production composition seams for those upstream services.
+The active implementation deliberately does not grant Tool Gateway core database, object-store, provider, Docker or shell credentials.
+
+## Explicit unresolved gaps
+
+The source of truth is `reports/nodes/NODE-25/gap-ledger.json` and contains exactly:
+
+1. `TOOL-COMPOSITION-001`
+2. `TOOL-WEB-002`
+3. `TOOL-APPROVAL-003`
+4. `TOOL-MCP-004`
+5. `TOOL-AUDIT-005`
+6. `TOOL-NATIVE-006`
+7. `TOOL-CI-007`
+
+These gaps do not authorize bypassing the Gateway. Missing bindings remain unavailable/fail-closed.
 
 ## Required green evidence before COMPLETE
 
-- [ ] Python compile gate PASS.
-- [ ] NODE-25 architecture/security validator PASS.
-- [ ] Tool Gateway unit/security tests PASS.
-- [ ] deterministic Tool Gateway integration PASS.
-- [ ] NODE-20 idempotency static boundary remains consistent.
-- [ ] NODE-21 sandbox static boundary remains consistent.
+- [ ] active NODE-25 static architecture/security validator PASS on Hosted runner.
+- [ ] Tool Gateway unit/security tests PASS on Hosted runner.
+- [ ] deterministic Tool Gateway integration PASS on Hosted runner.
+- [ ] active NODE-20 bridge PASS on Hosted runner.
+- [ ] active NODE-20 validator remains consistent.
+- [ ] active NODE-21 sandbox validators remain consistent.
+- [ ] six schema exports validate.
 - [ ] frozen `uv sync --all-packages --frozen` PASS.
 - [ ] targeted Ruff PASS.
 - [ ] targeted Pyright PASS.
-- [ ] global repository test discovery includes NODE-25 tests.
-- [ ] hosted GitHub Actions jobs actually receive runners and execute.
+- [ ] Hosted GitHub Actions actually receives a runner and executes steps.
 
-NODE-25 must remain **not COMPLETE** until required gates execute green. If the repository-level GitHub Actions payment/spending-limit blocker persists, record the exact run/job annotation as external infrastructure evidence rather than describing it as a Tool Gateway test failure.
+No canonical pytest/Ruff/Pyright/security/integration PASS is claimed from source inspection alone. If GitHub reports the known payment/spending-limit condition with `runner_id=0` and `steps=[]`, classify it as **BLOCKED_EXTERNAL**, not a Tool Gateway source failure.
+
+Canonical runtime contract: `docs/runtime/TOOL-GATEWAY-V1.md`  
+Active integration mapping: `docs/runtime/TOOL-GATEWAY-INTEGRATION-V1.md`
 
 Next node: **NODE-26 — MCP Integration**.
