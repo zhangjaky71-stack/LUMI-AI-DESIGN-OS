@@ -52,7 +52,7 @@ def main() -> None:
     require(
         "services/project-core/src/lumi_project_core/stripe_provider.py",
         'api_version: str = "2026-02-25.clover"',
-        'headers["Stripe-Version"]',
+        '"Stripe-Version": self._config.api_version',
         "validate_plan_price",
         "BILLING_STRIPE_PRICE_AMOUNT_MISMATCH",
         "BILLING_STRIPE_PRICE_INTERVAL_MISMATCH",
