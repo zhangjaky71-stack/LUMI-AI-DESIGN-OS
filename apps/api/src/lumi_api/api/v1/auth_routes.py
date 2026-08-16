@@ -9,6 +9,7 @@ from lumi_api.auth import (
     HttpAuthInput,
     InvalidCredentials,
     authenticate_http_request,
+    hash_secret,
     validate_csrf,
 )
 
@@ -62,12 +63,13 @@ def login(
     auth: AuthServiceDependency,
     settings: AuthHttpSettingsDependency,
 ) -> LoginResponse:
+    user_agent = request.headers.get("User-Agent")
     try:
         grant = auth.login(
             email=payload.email,
             password=payload.password,
             now=_now(),
-            user_agent_hash=request.headers.get("User-Agent"),
+            user_agent_hash=hash_secret(user_agent) if user_agent else None,
         )
     except InvalidCredentials as exc:
         raise ApiProblem(
