@@ -22,6 +22,9 @@ class UserModel(Base, UUIDPrimaryKeyMixin, MutableMixin):
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    disabled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     __table_args__ = (CheckConstraint("status IN ('active','disabled')", name="status"),)
 
 
