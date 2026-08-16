@@ -1,0 +1,48 @@
+name: NODE-30 Agent Registry
+
+on:
+  pull_request:
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/agent_registry/**"
+      - "apps/agent-runtime/tests/test_agent_registry_node30.py"
+      - "docs/agents/AGENT-REGISTRY-V1.md"
+      - "reports/nodes/NODE-30/**"
+      - ".github/workflows/node-30-agent-registry.yml"
+  push:
+    branches:
+      - "feat/node-30-agent-registry"
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/agent_registry/**"
+      - "apps/agent-runtime/tests/test_agent_registry_node30.py"
+      - "docs/agents/AGENT-REGISTRY-V1.md"
+      - "reports/nodes/NODE-30/**"
+
+permissions:
+  contents: read
+
+jobs:
+  agent-registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install agent runtime and test tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e apps/agent-runtime
+          python -m pip install pytest ruff
+
+      - name: Ruff
+        run: |
+          ruff check \
+            apps/agent-runtime/src/lumi_agent_runtime/agent_registry \
+            apps/agent-runtime/tests/test_agent_registry_node30.py
+
+      - name: Pytest NODE-30
+        run: |
+          pytest -q apps/agent-runtime/tests/test_agent_registry_node30.py
