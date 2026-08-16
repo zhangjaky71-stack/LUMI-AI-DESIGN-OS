@@ -71,7 +71,10 @@ locals {
       min_capacity  = 2
       max_capacity  = 6
       environment = merge(local.common_environment, { LUMI_ROLE = "model-gateway" })
-      secret_arns = { LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"] }
+      secret_arns = {
+        LUMI_DATABASE_URL          = local.secret_arns["database/app"]
+        LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"]
+      }
       s3_bucket_arns         = []
       autoscale_metric_name  = "ModelGatewayInflight"
       autoscale_target_value = 40
@@ -113,12 +116,13 @@ locals {
     }
 
     sandbox-runtime = {
-      image         = var.sandbox_runtime_image
-      cpu           = 1024
-      memory        = 2048
-      desired_count = 2
-      min_capacity  = 2
-      max_capacity  = 6
+      image            = var.sandbox_runtime_image
+      cpu              = 1024
+      memory           = 2048
+      desired_count    = 2
+      min_capacity     = 2
+      max_capacity     = 6
+      isolated_network = true
       environment = merge(local.common_environment, { LUMI_ROLE = "sandbox-runtime" })
       secret_arns = {
         LUMI_REDIS_URL    = local.secret_arns["redis/url"]
@@ -139,7 +143,9 @@ module "platform_app" {
   vpc_id                     = local.core.vpc_id
   public_subnet_ids          = local.core.public_subnet_ids
   private_subnet_ids         = local.core.private_subnet_ids
+  isolated_subnet_ids        = local.core.data_subnet_ids
   app_security_group_id      = local.core.app_security_group_id
+  sandbox_security_group_id  = local.core.sandbox_security_group_id
   alb_security_group_id      = local.core.alb_security_group_id
   certificate_arn            = var.certificate_arn
   kms_key_arn                = local.core.kms_key_arn
