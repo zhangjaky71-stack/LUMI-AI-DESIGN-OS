@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from kombu import Connection, Producer
@@ -24,7 +25,7 @@ EVENT = UUID("01910000-0000-7000-8000-000000000811")
 JOB = UUID("01910000-0000-7000-8000-000000000812")
 
 
-def event_payload() -> dict[str, object]:
+def event_payload() -> dict[str, Any]:
     return {
         "spec_version": "lumi.events/1.0",
         "event_id": str(EVENT),
@@ -44,10 +45,12 @@ def event_payload() -> dict[str, object]:
 
 
 def main() -> None:
-    declare_topology(
-        Connection(BROKER_URL),
-        domain_consumers=(("node19-smoke.v1", "lumi.project.#"),),
-    )
+    with Connection(BROKER_URL) as connection:
+        declare_topology(
+            connection,
+            domain_consumers=(("node19-smoke.v1", "lumi.project.#"),),
+        )
+
     publisher = KombuDomainPublisher(BROKER_URL)
     publisher.publish(validate_event_envelope(event_payload()))
 
@@ -58,7 +61,9 @@ def main() -> None:
             assert message.payload["event_id"] == str(EVENT)
             message.ack()
 
-        image_queue = next(q for q in build_job_queues() if q.name == "lumi.media.image")
+        image_queue = next(
+            queue for queue in build_job_queues() if queue.name == "lumi.media.image"
+        )
         with connection.channel() as channel:
             producer = Producer(channel, serializer="json")
             producer.publish(
@@ -78,7 +83,11 @@ def main() -> None:
             assert message.payload["job_id"] == str(JOB)
             message.ack()
 
-        dlq = next(q for q in build_job_dlq_queues() if q.name == "lumi.media.image.dlq")
+        dlq = next(
+            queue
+            for queue in build_job_dlq_queues()
+            if queue.name == "lumi.media.image.dlq"
+        )
         with connection.channel() as channel:
             producer = Producer(channel, serializer="json")
             producer.publish(
