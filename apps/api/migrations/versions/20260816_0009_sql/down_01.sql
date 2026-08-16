@@ -14,6 +14,14 @@ DROP TRIGGER IF EXISTS trg_cost_ledger_immutable ON cost_ledger;
 
 -- statement-breakpoint
 
+DROP TRIGGER IF EXISTS trg_cost_ledger_normalize_status ON cost_ledger;
+
+-- statement-breakpoint
+
+DROP FUNCTION IF EXISTS lumi_normalize_cost_status();
+
+-- statement-breakpoint
+
 DROP TRIGGER IF EXISTS trg_cost_ledger_same_tenant ON cost_ledger;
 
 -- statement-breakpoint
