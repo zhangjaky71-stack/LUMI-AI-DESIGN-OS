@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
@@ -11,6 +12,7 @@ from .models import (
     CollectedArtifact,
     ExecResult,
     FileEntry,
+    ResourceUsage,
     SandboxAccessContext,
     SandboxAuditEvent,
     SandboxCommand,
@@ -39,6 +41,7 @@ class SandboxRuntimeService:
         self.redactor = redactor or SecretRedactor()
         self._handles: dict[str, SandboxHandle] = {}
         self._specs: dict[str, SandboxSpec] = {}
+        self._expiry_tasks: dict[str, asyncio.Task[None]] = {}
 
     async def create(self, spec: SandboxSpec, *, context: SandboxAccessContext) -> SandboxHandle:
         if spec.organization_id != context.organization_id or spec.agent_run_id != context.agent_run_id:
@@ -47,6 +50,10 @@ class SandboxRuntimeService:
         self._handles[handle.sandbox_id] = handle
         self._specs[handle.sandbox_id] = spec
         await self._emit(handle.sandbox_id, AuditAction.CREATE)
+        lifetime = max(1, min(spec.ttl_seconds, spec.timeout_seconds))
+        self._expiry_tasks[handle.sandbox_id] = asyncio.create_task(
+            self._expire(handle.sandbox_id, context, lifetime)
+        )
         return handle
 
     async def exec(
@@ -178,6 +185,10 @@ class SandboxRuntimeService:
         await self._emit(sandbox_id, AuditAction.TERMINATE)
         self._handles.pop(sandbox_id, None)
         self._specs.pop(sandbox_id, None)
+        task = self._expiry_tasks.pop(sandbox_id, None)
+        current = asyncio.current_task()
+        if task is not None and task is not current:
+            task.cancel()
 
     def _authorize(self, sandbox_id: str, context: SandboxAccessContext) -> SandboxHandle:
         handle = self._handles.get(sandbox_id)
@@ -207,6 +218,19 @@ class SandboxRuntimeService:
         await self._emit(sandbox_id, action, path=path)
         return result
 
+    async def _expire(
+        self,
+        sandbox_id: str,
+        context: SandboxAccessContext,
+        lifetime_seconds: int,
+    ) -> None:
+        try:
+            await asyncio.sleep(lifetime_seconds)
+            if sandbox_id in self._handles:
+                await self.terminate(sandbox_id, context=context)
+        except (asyncio.CancelledError, SandboxAccessDenied):
+            return
+
     async def _emit(
         self,
         sandbox_id: str,
@@ -214,7 +238,7 @@ class SandboxRuntimeService:
         *,
         command: tuple[str, ...] | None = None,
         exit_code: int | None = None,
-        usage=None,
+        usage: ResourceUsage | None = None,
         path: str | None = None,
         result_ref: str | None = None,
         detail: dict[str, object] | None = None,
