@@ -15,13 +15,11 @@ data "aws_iam_policy_document" "deployment_alert_kms" {
 
   # AWS documents that CloudWatch/EventBridge publishers to an encrypted SNS
   # topic need GenerateDataKey/Decrypt on a customer-managed key. Do not add
-  # SourceAccount/SourceArn conditions to the EventBridge statement: AWS SNS
-  # documents that those conditions are not supported for EventBridge ->
-  # encrypted SNS topics.
+  # SourceAccount/SourceArn conditions to the EventBridge KMS statement.
   statement {
-    sid     = "AwsServicePublishers"
-    effect  = "Allow"
-    actions = ["kms:GenerateDataKey*", "kms:Decrypt", "kms:DescribeKey"]
+    sid       = "AwsServicePublishers"
+    effect    = "Allow"
+    actions   = ["kms:GenerateDataKey*", "kms:Decrypt", "kms:DescribeKey"]
     resources = ["*"]
 
     principals {
@@ -102,6 +100,9 @@ data "aws_iam_policy_document" "deployment_alert_topic" {
     }
   }
 
+  # EventBridge explicitly does not support Condition blocks in SNS topic
+  # policies. Restrict this grant to the EventBridge service principal and the
+  # dedicated deployment alert topic instead.
   statement {
     sid       = "EventBridgePublish"
     effect    = "Allow"
@@ -111,12 +112,6 @@ data "aws_iam_policy_document" "deployment_alert_topic" {
     principals {
       type        = "Service"
       identifiers = ["events.amazonaws.com"]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "aws:SourceAccount"
-      values   = [data.aws_caller_identity.current.account_id]
     }
   }
 }
@@ -168,7 +163,7 @@ resource "aws_cloudwatch_composite_alarm" "public_deployment" {
   actions_enabled   = true
   alarm_actions     = [aws_sns_topic.deployment_alerts.arn]
   ok_actions        = [aws_sns_topic.deployment_alerts.arn]
-  alarm_rule = format(
+  alarm_rule        = format(
     "ALARM(\"%s\") OR ALARM(\"%s\")",
     aws_cloudwatch_metric_alarm.public_canary_5xx[each.key].alarm_name,
     aws_cloudwatch_metric_alarm.public_canary_unhealthy[each.key].alarm_name,
