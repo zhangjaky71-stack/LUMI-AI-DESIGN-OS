@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from .models import ArtifactContractModel, CreatedByType
 
@@ -45,6 +45,10 @@ class ProvenanceAnnotation(ArtifactContractModel):
         keys = [key for key, _ in value]
         if len(keys) != len(set(keys)):
             raise ValueError("annotation detail keys must be unique")
+        if any(not key.strip() or len(key) > 120 for key in keys):
+            raise ValueError("annotation detail keys must be non-empty and <=120 chars")
+        if any(len(item) > 2_000 for _, item in value):
+            raise ValueError("annotation detail values must be <=2000 chars")
         return tuple(sorted(value))
 
     @field_validator("occurred_at")
@@ -53,3 +57,9 @@ class ProvenanceAnnotation(ArtifactContractModel):
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("occurred_at must be timezone-aware")
         return value
+
+    @model_validator(mode="after")
+    def actor_identity_is_consistent(self) -> ProvenanceAnnotation:
+        if self.actor_type in {CreatedByType.USER, CreatedByType.AGENT} and not self.actor_id:
+            raise ValueError("user/agent annotation actor requires actor_id")
+        return self
