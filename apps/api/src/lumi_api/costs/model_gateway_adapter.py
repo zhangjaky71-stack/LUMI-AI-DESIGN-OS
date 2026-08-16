@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -22,6 +23,7 @@ from .contracts import (
     CostContext,
     ReservationHandle,
     UsageFact,
+    month_period_key,
 )
 from .gateway import PostgresCostGateway
 
@@ -39,6 +41,18 @@ class Node27BudgetPort:
         candidate: RouteCandidate,
     ) -> BudgetReservation:
         estimate = candidate.estimate
+        if estimate.amount_usd is None:
+            if request.budget_limit is not None:
+                return BudgetReservation(
+                    False,
+                    reason="COST_UNKNOWN_COST_OPERATION_BUDGET",
+                )
+            mode = await _unknown_cost_budget_mode(self.gateway.dsn, request)
+            if mode == "hard":
+                return BudgetReservation(False, reason="COST_UNKNOWN_COST_HARD_BUDGET")
+            if mode == "approval":
+                return BudgetReservation(False, reason="COST_BUDGET_APPROVAL_REQUIRED")
+
         amount = estimate.amount_usd or Decimal("0")
         reservation_request = BudgetReservationRequest(
             context=_context(request),
@@ -133,6 +147,45 @@ class Node27CostTelemetryPort:
         self.records.append(telemetry)
 
 
+async def _unknown_cost_budget_mode(dsn: str, request: ModelRequest) -> str | None:
+    scopes = [str(request.organization_id)]
+    scope_ids = [
+        request.project_id,
+        request.agent_run_id,
+        request.task_id,
+        request.operation_id,
+    ]
+    del scopes
+    connection = await asyncpg.connect(dsn)
+    try:
+        rows = await connection.fetch(
+            """
+            SELECT enforcement_mode
+            FROM cost_budget_limits
+            WHERE organization_id=$1 AND enabled
+              AND period_key = ANY($2::varchar[])
+              AND (
+                    (scope_type='organization' AND scope_id IS NULL)
+                 OR (scope_type='project' AND scope_id=$3)
+                 OR (scope_type='agent_run' AND scope_id=$4)
+                 OR (scope_type='task' AND scope_id=$5)
+                 OR (scope_type='operation' AND scope_id=$6)
+              )
+            """,
+            request.organization_id,
+            ["lifetime", month_period_key(datetime.now(UTC))],
+            *scope_ids,
+        )
+    finally:
+        await connection.close()
+    modes = {row["enforcement_mode"] for row in rows}
+    if "hard" in modes:
+        return "hard"
+    if "approval" in modes:
+        return "approval"
+    return None
+
+
 async def _load_reservation_handle(dsn: str, reservation_id: UUID) -> ReservationHandle:
     connection = await asyncpg.connect(dsn)
     try:
@@ -187,16 +240,28 @@ def _confidence(value: ModelCostConfidence) -> CostConfidence:
 def _usage_facts(usage: ModelUsage) -> tuple[UsageFact, ...]:
     values: list[UsageFact] = []
     if usage.input_tokens:
-        values.append(UsageFact("llm.input_tokens", Decimal(usage.input_tokens), "tokens"))
+        values.append(
+            UsageFact("llm.input_tokens", Decimal(usage.input_tokens), "tokens")
+        )
     if usage.cached_input_tokens:
         values.append(
-            UsageFact("llm.cached_input_tokens", Decimal(usage.cached_input_tokens), "tokens")
+            UsageFact(
+                "llm.cached_input_tokens",
+                Decimal(usage.cached_input_tokens),
+                "tokens",
+            )
         )
     if usage.output_tokens:
-        values.append(UsageFact("llm.output_tokens", Decimal(usage.output_tokens), "tokens"))
+        values.append(
+            UsageFact("llm.output_tokens", Decimal(usage.output_tokens), "tokens")
+        )
     if usage.images:
-        values.append(UsageFact("image.generations", Decimal(usage.images), "images"))
+        values.append(
+            UsageFact("image.generations", Decimal(usage.images), "images")
+        )
     if usage.video_seconds:
         values.append(UsageFact("video.seconds", usage.video_seconds, "seconds"))
-    values.append(UsageFact("provider.requests", Decimal(usage.requests), "requests"))
+    values.append(
+        UsageFact("provider.requests", Decimal(usage.requests), "requests")
+    )
     return tuple(values)
