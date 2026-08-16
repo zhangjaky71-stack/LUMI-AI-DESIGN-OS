@@ -98,7 +98,7 @@ class ProjectCoreService:
             permission=Permission.PROJECT_WRITE,
         )
         project_id = new_uuid7()
-        branch_id = new_uuid7()
+        default_branch_id = new_uuid7()
         project = ProjectRecord(
             id=project_id,
             organization_id=command.organization_id,
@@ -108,7 +108,7 @@ class ProjectCoreService:
             brief=command.brief,
             brief_version=1,
             brand_id=command.brand_id,
-            active_branch_id=branch_id,
+            active_branch_id=None,
             settings=command.settings,
             created_by=command.actor.user_id,
             version=1,
@@ -125,7 +125,7 @@ class ProjectCoreService:
             created_at=command.now,
         )
         branch = DefaultProjectBranch(
-            id=branch_id,
+            id=default_branch_id,
             organization_id=project.organization_id,
             project_id=project.id,
             created_at=command.now,
@@ -141,7 +141,11 @@ class ProjectCoreService:
             event_type=ProjectEventType.CREATED,
             actor_id=command.actor.actor_id,
             occurred_at=command.now,
-            payload={"workspace_id": str(project.workspace_id), "brief_version": 1},
+            payload={
+                "workspace_id": str(project.workspace_id),
+                "brief_version": 1,
+                "default_branch_name": branch.name,
+            },
         )
         self.repository.insert_creation_bundle(
             project,
