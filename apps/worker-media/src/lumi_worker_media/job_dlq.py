@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -8,6 +9,7 @@ from uuid import UUID
 from kombu import Connection, Producer
 
 from .event_runtime import DeadLetterRecord, DeadLetterStore
+from .job_runtime import MemoryJobStore
 from .queue_contracts import ErrorCategory, JobKind, JobMessage, queue_for, routing_key_for
 from .runtime_ids import new_uuid7
 from .topology import DEAD_LETTER_EXCHANGE
@@ -15,6 +17,59 @@ from .topology import DEAD_LETTER_EXCHANGE
 
 class JobSubmitter(Protocol):
     def submit(self, kind: JobKind, message: JobMessage) -> None: ...
+
+
+class JobReplayState(Protocol):
+    async def prepare_replay(self, message: JobMessage, *, now: datetime) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryJobReplayState(JobReplayState):
+    store: MemoryJobStore
+
+    async def prepare_replay(self, message: JobMessage, *, now: datetime) -> None:
+        self.store.requeue_failed(message, now=now)
+
+
+@dataclass(frozen=True, slots=True)
+class PostgresJobReplayState(JobReplayState):
+    dsn: str
+
+    async def prepare_replay(self, message: JobMessage, *, now: datetime) -> None:
+        try:
+            asyncpg = importlib.import_module("asyncpg")
+        except ModuleNotFoundError as exc:
+            raise RuntimeError(
+                "asyncpg is required for PostgreSQL Job replay state"
+            ) from exc
+        connection = await asyncpg.connect(self.dsn)
+        try:
+            async with connection.transaction():
+                await connection.execute(
+                    "SELECT set_config('app.current_organization_id', $1, true)",
+                    str(message.organization_id),
+                )
+                row = await connection.fetchval(
+                    """
+                    UPDATE runtime_jobs
+                    SET status='pending', attempt_count=0,
+                        started_at=NULL, finished_at=NULL, next_retry_at=NULL,
+                        cancellation_requested_at=NULL, output_json='{}'::jsonb,
+                        error_category=NULL, error_code=NULL, error_message=NULL,
+                        updated_at=$4, version=version+1
+                    WHERE id=$1 AND organization_id=$2 AND project_id=$3
+                      AND status IN ('failed','retrying','pending')
+                    RETURNING id
+                    """,
+                    message.job_id,
+                    message.organization_id,
+                    message.project_id,
+                    now,
+                )
+                if row is None:
+                    raise ValueError("JOB_NOT_REPLAYABLE")
+        finally:
+            await connection.close()
 
 
 class JobDeadLetterPublisher(Protocol):
@@ -117,6 +172,7 @@ class JobDeadLetterService:
 @dataclass(frozen=True, slots=True)
 class JobDeadLetterReplayService:
     store: DeadLetterStore
+    state: JobReplayState
     submitter: JobSubmitter
 
     async def replay(
@@ -141,8 +197,9 @@ class JobDeadLetterReplayService:
         message = JobMessage.from_mapping(dict(message_raw))
         if message.organization_id != organization_id or message.job_id != record.message_id:
             raise ValueError("JOB_DEAD_LETTER_IDENTITY_MISMATCH")
-        self.submitter.submit(kind, message)
         replayed_at = now or datetime.now(UTC)
+        await self.state.prepare_replay(message, now=replayed_at)
+        self.submitter.submit(kind, message)
         await self.store.mark_replayed(organization_id, record_id, now=replayed_at)
         updated = await self.store.get(organization_id, record_id)
         if updated is None:
