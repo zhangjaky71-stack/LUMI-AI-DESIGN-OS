@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 
 from lumi_api.api.v1.app import create_contract_app
+from lumi_api.api.v1.auth_guard import enforce_api_auth
 from lumi_api.api.v1.common import parse_if_match, version_etag
 from lumi_api.api.v1.dependencies import get_api_v1_service
 from lumi_api.api.v1.schemas import (
@@ -57,12 +58,20 @@ def _parameter_names(operation: dict[str, object]) -> set[str]:
     }
 
 
+def _node11_app():
+    app = create_contract_app()
+    # NODE-11 tests intentionally isolate the REST/ETag/idempotency contract.
+    # NODE-16 has a separate suite for the real auth guard.
+    app.dependency_overrides[enforce_api_auth] = lambda: None
+    return app
+
+
 def test_openapi_freezes_p0_paths_and_headers() -> None:
     app = create_contract_app()
     schema = app.openapi()
     paths = schema["paths"]
 
-    expected_paths = {
+    business_paths = {
         "/api/v1/projects",
         "/api/v1/projects/{project_id}",
         "/api/v1/projects/{project_id}/transitions",
@@ -75,10 +84,16 @@ def test_openapi_freezes_p0_paths_and_headers() -> None:
         "/api/v1/generations/{generation_id}",
         "/api/v1/artifact-versions/{artifact_version_id}",
     }
-    assert set(paths) == expected_paths
+    auth_paths = {
+        "/api/v1/auth/register",
+        "/api/v1/auth/login",
+        "/api/v1/auth/logout",
+        "/api/v1/auth/me",
+    }
+    assert set(paths) == business_paths | auth_paths
 
-    for path_item in paths.values():
-        for method, operation in path_item.items():
+    for path in business_paths | {"/api/v1/auth/me"}:
+        for method, operation in paths[path].items():
             if method not in {"get", "post", "patch", "put", "delete"}:
                 continue
             assert "X-Organization-ID" in _parameter_names(operation)
@@ -106,7 +121,7 @@ def test_domain_status_values_are_reused_by_openapi() -> None:
 
 
 def test_mutating_project_returns_location_and_etag() -> None:
-    app = create_contract_app()
+    app = _node11_app()
     app.dependency_overrides[get_api_v1_service] = lambda: FakeApiService()
     client = TestClient(app)
 
@@ -133,7 +148,7 @@ def test_mutating_project_returns_location_and_etag() -> None:
 
 
 def test_unconfigured_service_fails_explicitly() -> None:
-    client = TestClient(create_contract_app())
+    client = TestClient(_node11_app())
     response = client.get(
         "/api/v1/projects",
         headers={"X-Organization-ID": str(ORG_ID)},
@@ -147,7 +162,7 @@ def test_unconfigured_service_fails_explicitly() -> None:
 
 
 def test_request_validation_uses_problem_details() -> None:
-    client = TestClient(create_contract_app())
+    client = TestClient(_node11_app())
     response = client.get("/api/v1/projects")
 
     assert response.status_code == 422
