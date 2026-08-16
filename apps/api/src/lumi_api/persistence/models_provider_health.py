@@ -5,7 +5,16 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, Integer, Numeric, String, Text, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -63,25 +72,68 @@ class ProviderHealthSummaryModel(Base):
             "capability IS NULL OR model IS NOT NULL",
             name="ck_provider_health_summary_capability_scope",
         ),
+        Index(
+            "ix_provider_health_summary_scope_observed",
+            "provider",
+            "model",
+            "capability",
+            "observed_at",
+        ),
+        Index(
+            "ix_provider_health_summary_state_observed",
+            "state",
+            "observed_at",
+        ),
     )
 
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
-    provider: Mapped[str] = mapped_column(String(128), nullable=False)
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+    )
+    provider: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+    )
     model: Mapped[str | None] = mapped_column(String(255))
     capability: Mapped[str | None] = mapped_column(String(128))
     state: Mapped[str] = mapped_column(String(32), nullable=False)
     score: Mapped[int] = mapped_column(Integer, nullable=False)
-    sample_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    success_rate: Mapped[Decimal] = mapped_column(Numeric(7, 6), nullable=False)
-    failure_rate: Mapped[Decimal] = mapped_column(Numeric(7, 6), nullable=False)
-    rate_limit_rate: Mapped[Decimal] = mapped_column(Numeric(7, 6), nullable=False)
-    timeout_rate: Mapped[Decimal] = mapped_column(Numeric(7, 6), nullable=False)
+    sample_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+    success_rate: Mapped[Decimal] = mapped_column(
+        Numeric(7, 6),
+        nullable=False,
+    )
+    failure_rate: Mapped[Decimal] = mapped_column(
+        Numeric(7, 6),
+        nullable=False,
+    )
+    rate_limit_rate: Mapped[Decimal] = mapped_column(
+        Numeric(7, 6),
+        nullable=False,
+    )
+    timeout_rate: Mapped[Decimal] = mapped_column(
+        Numeric(7, 6),
+        nullable=False,
+    )
     latency_p50_ms: Mapped[int | None] = mapped_column(Integer)
     latency_p95_ms: Mapped[int | None] = mapped_column(Integer)
-    queue_completion_p95_ms: Mapped[int | None] = mapped_column(Integer)
-    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False)
-    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    source_instance: Mapped[str | None] = mapped_column(String(255))
+    queue_completion_p95_ms: Mapped[int | None] = mapped_column(
+        Integer
+    )
+    consecutive_failures: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    source_instance: Mapped[str | None] = mapped_column(
+        String(255)
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -112,17 +164,41 @@ class ProviderHealthOverrideAuditModel(Base):
             "expires_at IS NULL OR expires_at > observed_at",
             name="ck_provider_health_audit_expiry",
         ),
+        Index(
+            "ix_provider_health_audit_scope_observed",
+            "provider",
+            "model",
+            "capability",
+            "observed_at",
+        ),
     )
 
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
-    action: Mapped[str] = mapped_column(String(64), nullable=False)
-    provider: Mapped[str] = mapped_column(String(128), nullable=False)
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+    )
+    action: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+    )
     model: Mapped[str | None] = mapped_column(String(255))
     capability: Mapped[str | None] = mapped_column(String(128))
-    actor_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    actor_id: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
-    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
