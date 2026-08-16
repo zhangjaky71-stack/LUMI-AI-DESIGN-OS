@@ -50,6 +50,8 @@ jobs:
         run: |
           PYTHONPATH=services/sandbox-runtime/src \
             uv run python tools/node21/validate_sandbox_runtime.py
+          PYTHONPATH=services/sandbox-runtime/src \
+            uv run python tools/node21/validate_deepagents_protocol.py
 
       - name: Run sandbox contract tests
         run: |
@@ -65,11 +67,16 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          schemas = sorted(Path("reports/nodes/NODE-21/generated-schemas").glob("*.schema.json"))
+
+          schemas = sorted(
+              Path("reports/nodes/NODE-21/generated-schemas").glob("*.schema.json")
+          )
           assert len(schemas) == 7
           for path in schemas:
               json.loads(path.read_text(encoding="utf-8"))
-          ledger = json.loads(Path("reports/nodes/NODE-21/gap-ledger.json").read_text(encoding="utf-8"))
+          ledger = json.loads(
+              Path("reports/nodes/NODE-21/gap-ledger.json").read_text(encoding="utf-8")
+          )
           assert len(ledger["gaps"]) == 7
           print("NODE-21 schemas and gap ledger valid")
           PY
@@ -99,7 +106,10 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          data = json.loads(Path("reports/nodes/NODE-21/image-inspect.json").read_text())[0]
+
+          data = json.loads(
+              Path("reports/nodes/NODE-21/image-inspect.json").read_text()
+          )[0]
           config = data["Config"]
           assert config["User"] == "65532:65532", config["User"]
           env = config.get("Env") or []
@@ -145,9 +155,11 @@ jobs:
             > reports/nodes/NODE-21/runtime/sandbox-containers.txt 2>&1 || true
           ids="$(docker ps -aq --filter label=lumi.sandbox=true)"
           if [ -n "$ids" ]; then
-            docker inspect $ids > reports/nodes/NODE-21/runtime/sandbox-inspect.json 2>&1 || true
+            docker inspect $ids \
+              > reports/nodes/NODE-21/runtime/sandbox-inspect.json 2>&1 || true
             for id in $ids; do
-              docker logs "$id" >> reports/nodes/NODE-21/runtime/sandbox-logs.txt 2>&1 || true
+              docker logs "$id" \
+                >> reports/nodes/NODE-21/runtime/sandbox-logs.txt 2>&1 || true
             done
           fi
 
