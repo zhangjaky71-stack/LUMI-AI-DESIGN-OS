@@ -197,7 +197,10 @@ class LangGraphControlPlane:
         )
 
         async def invoke() -> RunControlSnapshot:
-            existing = await self.store.load(command.agent_run_id)
+            existing = await self.store.load(
+                organization_id=command.organization_id,
+                agent_run_id=command.agent_run_id,
+            )
             if existing is not None:
                 self._assert_start_identity(existing, command)
                 return existing
@@ -215,7 +218,10 @@ class LangGraphControlPlane:
         )
 
     async def resume(self, command: ResumeRunCommand) -> RunControlSnapshot:
-        current = await self.store.load(command.agent_run_id)
+        current = await self.store.load(
+            organization_id=command.organization_id,
+            agent_run_id=command.agent_run_id,
+        )
         if current is None:
             raise RunNotFound(str(command.agent_run_id))
         self._assert_resume_identity(current, command)
@@ -232,7 +238,10 @@ class LangGraphControlPlane:
         )
 
         async def invoke() -> RunControlSnapshot:
-            fresh = await self.store.load(command.agent_run_id)
+            fresh = await self.store.load(
+                organization_id=command.organization_id,
+                agent_run_id=command.agent_run_id,
+            )
             if fresh is None:
                 raise RunNotFound(str(command.agent_run_id))
             self._assert_resume_identity(fresh, command)
@@ -280,13 +289,19 @@ class LangGraphControlPlane:
         agent_run_id: UUID,
         operation_id: UUID,
     ) -> RunControlSnapshot:
-        current = await self.store.load(agent_run_id)
-        if current is None or current.organization_id != organization_id or current.project_id != project_id:
+        current = await self.store.load(
+            organization_id=organization_id,
+            agent_run_id=agent_run_id,
+        )
+        if current is None or current.project_id != project_id:
             raise RunNotFound(str(agent_run_id))
         request_hash = _hash({"agent_run_id": str(agent_run_id), "action": "cancel"})
 
         async def invoke() -> RunControlSnapshot:
-            fresh = await self.store.load(agent_run_id)
+            fresh = await self.store.load(
+                organization_id=organization_id,
+                agent_run_id=agent_run_id,
+            )
             if fresh is None:
                 raise RunNotFound(str(agent_run_id))
             if fresh.status in _TERMINAL:
