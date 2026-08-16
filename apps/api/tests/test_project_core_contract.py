@@ -6,7 +6,6 @@ from uuid import UUID
 import pytest
 
 from lumi_api.auth import Permission, Principal
-from lumi_api.domain.ids import new_uuid7
 from lumi_api.domain.states import ProjectStatus
 from lumi_api.projects import (
     MemoryProjectRepository,
@@ -24,6 +23,9 @@ ORG_A = UUID("01910000-0000-7000-8000-000000000001")
 ORG_B = UUID("01910000-0000-7000-8000-000000000002")
 USER_A = UUID("01910000-0000-7000-8000-000000000011")
 WORKSPACE_A = UUID("01910000-0000-7000-8000-000000000021")
+WORKSPACE_B = UUID("01910000-0000-7000-8000-000000000022")
+BRAND_A = UUID("01910000-0000-7000-8000-000000000041")
+BRAND_B = UUID("01910000-0000-7000-8000-000000000042")
 
 
 def principal(org: UUID = ORG_A, *, write: bool = True) -> Principal:
@@ -40,7 +42,17 @@ def principal(org: UUID = ORG_A, *, write: bool = True) -> Principal:
     )
 
 
+def prepare_repo(repo: MemoryProjectRepository) -> None:
+    repo.register_workspace(ORG_A, WORKSPACE_A)
+    repo.register_workspace(ORG_B, WORKSPACE_B)
+    repo.register_brand(ORG_A, BRAND_A)
+    repo.register_brand(ORG_B, BRAND_B)
+
+
 def create_project(service: ProjectCoreService, *, name: str = "Coffee Rebrand"):
+    repo = service.repository
+    assert isinstance(repo, MemoryProjectRepository)
+    prepare_repo(repo)
     return service.create(
         ProjectCreateCommand(
             organization_id=ORG_A,
@@ -71,6 +83,50 @@ def test_create_is_single_bundle_with_brief_branch_summary_and_event() -> None:
     assert next(iter(repo.branches.values())).project_id == project.id
     assert repo.summaries[project.id].artifact_count == 0
     assert [event.event_type.value for event in repo.outbox] == ["project.created"]
+
+
+def test_create_rejects_cross_tenant_workspace_and_brand() -> None:
+    repo = MemoryProjectRepository()
+    prepare_repo(repo)
+    service = ProjectCoreService(repo)
+    with pytest.raises(ProjectCommandError, match="WORKSPACE_NOT_FOUND"):
+        service.create(
+            ProjectCreateCommand(
+                organization_id=ORG_A,
+                workspace_id=WORKSPACE_B,
+                name="Cross Tenant Workspace",
+                actor=principal(),
+                now=NOW,
+            )
+        )
+    with pytest.raises(ProjectCommandError, match="BRAND_NOT_FOUND"):
+        service.create(
+            ProjectCreateCommand(
+                organization_id=ORG_A,
+                workspace_id=WORKSPACE_A,
+                brand_id=BRAND_B,
+                name="Cross Tenant Brand",
+                actor=principal(),
+                now=NOW,
+            )
+        )
+
+
+def test_create_allows_same_tenant_brand() -> None:
+    repo = MemoryProjectRepository()
+    prepare_repo(repo)
+    service = ProjectCoreService(repo)
+    project = service.create(
+        ProjectCreateCommand(
+            organization_id=ORG_A,
+            workspace_id=WORKSPACE_A,
+            brand_id=BRAND_A,
+            name="Branded Project",
+            actor=principal(),
+            now=NOW,
+        )
+    )
+    assert project.brand_id == BRAND_A
 
 
 def test_structured_brief_version_increments_only_on_material_change() -> None:
@@ -208,6 +264,7 @@ def test_cross_tenant_lookup_is_indistinguishable_from_missing() -> None:
 
 def test_read_only_principal_cannot_mutate_project() -> None:
     repo = MemoryProjectRepository()
+    prepare_repo(repo)
     service = ProjectCoreService(repo)
     with pytest.raises(ProjectCommandError, match="PERMISSION_DENIED"):
         service.create(
