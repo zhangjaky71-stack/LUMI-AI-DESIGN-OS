@@ -40,6 +40,13 @@ class AuditAction(StrEnum):
     SECURITY_DENY = "security_deny"
 
 
+class SandboxAccessContext(FrozenModel):
+    organization_id: UUID
+    agent_run_id: UUID
+    actor_id: UUID | None = None
+    trace_id: str | None = Field(default=None, max_length=128)
+
+
 class SandboxSpec(FrozenModel):
     organization_id: UUID
     agent_run_id: UUID
