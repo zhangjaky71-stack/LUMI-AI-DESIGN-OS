@@ -11,6 +11,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from lumi_api.domain.ids import new_uuid7
+from lumi_api.idempotency.gateway import (
+    AmbiguousSideEffect,
+    IdempotencyConflict,
+    IdempotencyFinalFailure,
+    OperationInProgress,
+)
 
 from .common import ProblemDetail
 
@@ -68,6 +74,27 @@ def _problem_response(request: Request, problem: ProblemDetail) -> JSONResponse:
     )
 
 
+def _simple_problem(
+    request: Request,
+    *,
+    status: int,
+    code: str,
+    title: str,
+    detail: str,
+) -> JSONResponse:
+    return _problem_response(
+        request,
+        ProblemDetail(
+            title=title,
+            status=status,
+            detail=detail,
+            code=code,
+            request_id=_request_id(request),
+            instance=str(request.url.path),
+        ),
+    )
+
+
 def install_error_contract(app: FastAPI) -> None:
     app.add_middleware(RequestIdMiddleware)
 
@@ -85,6 +112,54 @@ def install_error_contract(app: FastAPI) -> None:
                 instance=str(request.url.path),
                 errors=exc.errors,
             ),
+        )
+
+    @app.exception_handler(IdempotencyConflict)
+    async def idempotency_conflict_handler(
+        request: Request, exc: IdempotencyConflict
+    ) -> JSONResponse:
+        return _simple_problem(
+            request,
+            status=409,
+            code=IdempotencyConflict.code,
+            title="Idempotency key conflict",
+            detail=str(exc),
+        )
+
+    @app.exception_handler(OperationInProgress)
+    async def idempotency_in_progress_handler(
+        request: Request, exc: OperationInProgress
+    ) -> JSONResponse:
+        return _simple_problem(
+            request,
+            status=409,
+            code=OperationInProgress.code,
+            title="Idempotent operation is still in progress",
+            detail=str(exc),
+        )
+
+    @app.exception_handler(IdempotencyFinalFailure)
+    async def idempotency_final_failure_handler(
+        request: Request, exc: IdempotencyFinalFailure
+    ) -> JSONResponse:
+        return _simple_problem(
+            request,
+            status=409,
+            code=IdempotencyFinalFailure.code,
+            title="Idempotent operation cannot be replayed",
+            detail=str(exc),
+        )
+
+    @app.exception_handler(AmbiguousSideEffect)
+    async def ambiguous_side_effect_handler(
+        request: Request, exc: AmbiguousSideEffect
+    ) -> JSONResponse:
+        return _simple_problem(
+            request,
+            status=503,
+            code=AmbiguousSideEffect.code,
+            title="Side effect state is ambiguous",
+            detail=str(exc),
         )
 
     @app.exception_handler(RequestValidationError)
