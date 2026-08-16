@@ -83,6 +83,7 @@ def main() -> int:
         "isolated_network         = optional(bool, false)",
         'error_message = "sandbox-runtime must use isolated_network=true."',
     )
+    alerting = read("infra/iac/modules/compute/alerting.tf")
     require(
         "infra/iac/modules/compute/alerting.tf",
         'data "aws_iam_policy_document" "deployment_alert_kms"',
@@ -101,6 +102,13 @@ def main() -> int:
         'resource "aws_cloudwatch_event_rule" "ecs_deployment_failure"',
         '"SERVICE_DEPLOYMENT_FAILED"',
     )
+    eventbridge_publish = alerting.split('sid       = "EventBridgePublish"', 1)[1].split(
+        "  }\n}\n\nresource \"aws_sns_topic_policy\"", 1
+    )[0]
+    if "condition {" in eventbridge_publish:
+        raise AssertionError(
+            "EventBridge -> SNS topic-policy statement must not contain a Condition block"
+        )
     require(
         "infra/iac/bootstrap/main.tf",
         '"cloudwatch:*"',
