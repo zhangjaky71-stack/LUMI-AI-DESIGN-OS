@@ -11,6 +11,7 @@ import asyncpg
 ORG_A = UUID("01910000-0000-7000-8000-000000000001")
 ORG_B = UUID("01910000-0000-7000-8000-000000000002")
 USER_A = UUID("01910000-0000-7000-8000-000000000011")
+USER_B = UUID("01910000-0000-7000-8000-000000000012")
 API_TOKEN_A = UUID("01910000-0000-7000-8000-000000000301")
 SECURITY_EVENT = UUID("01910000-0000-7000-8000-000000000302")
 APP_DSN = os.environ["LUMI_DATABASE_APP_URL"]
@@ -24,10 +25,19 @@ async def set_tenant(connection: asyncpg.Connection, organization_id: UUID) -> N
     )
 
 
-async def assert_database_rejects(operation: object, *, label: str) -> None:
+async def assert_database_rejects(
+    operation: object,
+    *,
+    label: str,
+    expected_sqlstates: set[str],
+) -> None:
     try:
         await operation  # type: ignore[misc]
-    except asyncpg.PostgresError:
+    except asyncpg.PostgresError as exc:
+        if exc.sqlstate not in expected_sqlstates:
+            raise AssertionError(
+                f"{label}: expected {sorted(expected_sqlstates)}, got {exc.sqlstate}: {exc}"
+            ) from exc
         return
     raise AssertionError(f"{label}: expected PostgreSQL rejection")
 
@@ -73,6 +83,7 @@ async def test_argon_and_hash_database_guards() -> None:
                 USER_A,
             ),
             label="plaintext password credential",
+            expected_sqlstates={"23514"},
         )
         await assert_database_rejects(
             connection.execute(
@@ -87,6 +98,7 @@ async def test_argon_and_hash_database_guards() -> None:
                 now + timedelta(hours=1),
             ),
             label="non-hash session key",
+            expected_sqlstates={"23514"},
         )
     finally:
         await connection.close()
@@ -156,6 +168,7 @@ async def test_auth_security_events_are_pre_tenant_and_append_only() -> None:
                 SECURITY_EVENT,
             ),
             label="auth security event update",
+            expected_sqlstates={"42501"},
         )
     finally:
         await connection.close()
@@ -173,9 +186,10 @@ async def test_role_constraint_is_node16_matrix() -> None:
                 """,
                 invalid_id,
                 ORG_A,
-                USER_A,
+                USER_B,
             ),
             label="legacy member role",
+            expected_sqlstates={"23514"},
         )
     finally:
         await connection.close()
