@@ -164,9 +164,9 @@ jobs:
             --with "asyncpg==${ASYNCPG_VERSION}" \
             python tools/node10/run_database_integration.py
 
-      - name: Run NODE-20 PostgreSQL invariants
+      - name: Run NODE-20 core PostgreSQL invariants before downgrade
         run: |
-          PYTHONPATH=apps/api/src uv run --no-project \
+          NODE20_SKIP_COST=1 PYTHONPATH=apps/api/src uv run --no-project \
             --with "asyncpg==${ASYNCPG_VERSION}" \
             --with "pydantic==2.13.4" \
             python tools/node20/test_idempotency_database.py
@@ -195,7 +195,7 @@ jobs:
           test "$lease_column" = "t"
           test "$cost_operation" = "t"
 
-      - name: Reapply NODE-20 and rerun invariants
+      - name: Reapply NODE-20 and run full PostgreSQL invariants
         working-directory: apps/api
         run: |
           PYTHONPATH=src uv run --no-project \
