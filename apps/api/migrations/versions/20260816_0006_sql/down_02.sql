@@ -8,6 +8,11 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'NODE-20 downgrade blocked: operation-scoped keys collide under NODE-10 uniqueness';
   END IF;
+  IF EXISTS (
+    SELECT 1 FROM cost_ledger WHERE operation_id IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'NODE-20 downgrade blocked: cost ledger operation lineage would be lost';
+  END IF;
 END $$;
 
 -- statement-breakpoint
