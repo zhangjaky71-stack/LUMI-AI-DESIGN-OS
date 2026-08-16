@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from uuid import uuid4
 
-from lumi_api.idempotency.gateway import SideEffectGateway
+from lumi_api.idempotency.gateway import IdempotencyConflict, SideEffectGateway
 from lumi_api.idempotency.hashing import canonical_request_hash
 from lumi_api.idempotency.memory import MemoryIdempotencyStore
 from lumi_api.idempotency.models import (
@@ -15,6 +15,7 @@ from lumi_api.idempotency.models import (
     SideEffectOutcome,
 )
 from lumi_tool_gateway.audit import MemoryAuditSink
+from lumi_tool_gateway.catalog import p0_tool_definitions
 from lumi_tool_gateway.contracts import (
     ToolAdapterOutput,
     ToolPermissionContext,
@@ -22,11 +23,10 @@ from lumi_tool_gateway.contracts import (
     ToolSideEffectContext,
     ToolSideEffectResponse,
 )
-from lumi_tool_gateway.errors import ToolInternalError
+from lumi_tool_gateway.errors import ToolIdempotencyConflictError
 from lumi_tool_gateway.gateway import ToolGateway
 from lumi_tool_gateway.registry import ToolRegistry
 from lumi_tool_gateway.testing import CountingAdapter
-from lumi_tool_gateway.catalog import p0_tool_definitions
 
 
 class Node20SideEffectGuard:
@@ -63,18 +63,25 @@ class Node20SideEffectGuard:
                 result_ref=output.side_effect_ref,
             )
 
-        outcome = await self.gateway.execute(
-            operation,
-            effect,
-            lease_owner="node25-tool-gateway-test",
-        )
+        try:
+            outcome = await self.gateway.execute(
+                operation,
+                effect,
+                lease_owner="node25-tool-gateway-test",
+            )
+        except IdempotencyConflict as exc:
+            raise ToolIdempotencyConflictError(
+                ToolIdempotencyConflictError.code
+            ) from exc
+
         payload = outcome.result
         return ToolSideEffectResponse(
             output=ToolAdapterOutput(
                 data=payload.get("data", {}),
                 summary=str(payload.get("summary", "")),
                 resource_refs=tuple(
-                    str(item) for item in payload.get("resource_refs", [])
+                    str(item)
+                    for item in payload.get("resource_refs", [])
                 ),
                 side_effect_ref=(
                     None
@@ -84,14 +91,17 @@ class Node20SideEffectGuard:
             ),
             replayed=outcome.replayed,
             operation_id=(
-                None if outcome.operation_id is None else str(outcome.operation_id)
+                None
+                if outcome.operation_id is None
+                else str(outcome.operation_id)
             ),
         )
 
 
 def build_request(*, value: str, idempotency_key: str) -> ToolRequest:
     definition = next(
-        item for item in p0_tool_definitions()
+        item
+        for item in p0_tool_definitions()
         if item.name == "asset.write-derived"
     )
     organization_id = uuid4()
@@ -121,7 +131,8 @@ def build_request(*, value: str, idempotency_key: str) -> ToolRequest:
 
 async def main_async() -> None:
     definition = next(
-        item for item in p0_tool_definitions()
+        item
+        for item in p0_tool_definitions()
         if item.name == "asset.write-derived"
     )
     adapter = CountingAdapter(
@@ -153,7 +164,9 @@ async def main_async() -> None:
     assert first.replayed is False
     assert replay.replayed is True
     assert first.data == replay.data == {"asset_id": "derived-asset-1"}
-    assert first.resource_refs == replay.resource_refs == ("asset://derived-asset-1",)
+    assert first.resource_refs == replay.resource_refs == (
+        "asset://derived-asset-1",
+    )
     assert adapter.calls == 1
 
     changed = replace(
@@ -166,13 +179,10 @@ async def main_async() -> None:
     )
     try:
         await gateway.invoke(changed)
-    except ToolInternalError as exc:
-        # The production composition root maps NODE-20's conflict to the public
-        # Tool Gateway error taxonomy. Until that mapping layer exists, the core
-        # gateway correctly fail-closes instead of running a second side effect.
-        assert str(exc) == "unexpected Tool Gateway execution failure"
+    except ToolIdempotencyConflictError as exc:
+        assert exc.code == "TOOL_IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST"
     else:
-        raise AssertionError("NODE-20 semantic conflict did not fail closed")
+        raise AssertionError("NODE-20 semantic conflict did not map to Tool contract")
     assert adapter.calls == 1
     print("NODE25_NODE20_SIDE_EFFECT_BRIDGE_VALID")
 
