@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "role": "PENDING",
+  "status": "PENDING",
+  "approver": "PENDING",
+  "approved_at_utc": "PENDING",
+  "release_candidate": {
+    "git_sha": "PENDING",
+    "version": "PENDING",
+    "migration_head": "PENDING"
+  },
+  "decision": "PENDING",
+  "evidence_refs": [
+    {"path": "PENDING", "sha256": "PENDING"}
+  ],
+  "notes": ""
+}
