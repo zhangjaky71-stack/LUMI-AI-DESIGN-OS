@@ -100,12 +100,30 @@ async def test_main_graph_completes_mock_run_and_replays_start_once() -> None:
 
 
 @pytest.mark.asyncio
-async def test_approval_interrupt_resume_and_stale_version_fence() -> None:
+async def test_approval_interrupt_resume_and_version_fence() -> None:
     plane, _, _, events, _, _ = _plane(["approval"])
     start = _start()
     waiting = await plane.start(start)
     assert waiting.status is RunStatus.WAITING_USER
     interrupt_id = str(waiting.interrupts[0]["id"])
+
+    stale = ResumeRunCommand(
+        organization_id=start.organization_id,
+        project_id=start.project_id,
+        agent_run_id=start.agent_run_id,
+        operation_id=uuid4(),
+        thread_id=start.effective_thread_id,
+        resume_version=waiting.resume_version + 1,
+        interrupt_id=interrupt_id,
+        kind=ResumeKind.APPROVAL,
+        value={"action": "approve"},
+        expected_graph_key=GRAPH_KEY,
+        expected_graph_version=GRAPH_VERSION,
+        expected_code_git_sha=CODE_SHA,
+    )
+    with pytest.raises(ResumeVersionConflict):
+        await plane.resume(stale)
+
     resume = ResumeRunCommand(
         organization_id=start.organization_id,
         project_id=start.project_id,
@@ -121,30 +139,15 @@ async def test_approval_interrupt_resume_and_stale_version_fence() -> None:
         expected_code_git_sha=CODE_SHA,
     )
     completed = await plane.resume(resume)
+    replayed = await plane.resume(resume)
     assert completed.status is RunStatus.SUCCEEDED
     assert completed.resume_version == waiting.resume_version + 1
+    assert replayed == completed
     assert "approval.required" in [event.event_type for event in events.events]
-
-    stale = ResumeRunCommand(
-        organization_id=start.organization_id,
-        project_id=start.project_id,
-        agent_run_id=start.agent_run_id,
-        operation_id=uuid4(),
-        thread_id=start.effective_thread_id,
-        resume_version=waiting.resume_version,
-        interrupt_id=interrupt_id,
-        kind=ResumeKind.APPROVAL,
-        value={"action": "approve"},
-        expected_graph_key=GRAPH_KEY,
-        expected_graph_version=GRAPH_VERSION,
-        expected_code_git_sha=CODE_SHA,
-    )
-    with pytest.raises((ResumeVersionConflict, Exception)):
-        await plane.resume(stale)
 
 
 @pytest.mark.asyncio
-async def test_external_job_wait_resumes_same_thread() -> None:
+async def test_external_job_wait_resumes_same_thread_without_new_job_identity() -> None:
     plane, _, _, events, external, _ = _plane(["wait_external"])
     start = _start()
     waiting = await plane.start(start)
@@ -168,6 +171,7 @@ async def test_external_job_wait_resumes_same_thread() -> None:
     completed = await plane.resume(resume)
     assert completed.status is RunStatus.SUCCEEDED
     assert completed.thread_id == waiting.thread_id
+    assert external.submit_calls == 2
     assert external.collect_calls == 1
     assert "run.waiting_external" in [event.event_type for event in events.events]
 
