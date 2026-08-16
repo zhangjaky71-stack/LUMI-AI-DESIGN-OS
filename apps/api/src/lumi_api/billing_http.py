@@ -28,7 +28,10 @@ def _problem(error: BillingError, request: Request) -> JSONResponse:
         status_code=error.status,
         media_type="application/problem+json",
         content={
-            "type": f"https://errors.lumi.dev/billing/{error.code.lower().replace('_', '-')}",
+            "type": (
+                "https://errors.lumi.dev/billing/"
+                f"{error.code.lower().replace('_', '-')}"
+            ),
             "title": "Billing request could not be completed",
             "status": error.status,
             "code": error.code,
@@ -41,7 +44,9 @@ def _problem(error: BillingError, request: Request) -> JSONResponse:
 
 def _allowed_origins() -> frozenset[str]:
     raw = os.environ.get("LUMI_ALLOWED_ORIGINS", "")
-    return frozenset(item.strip().rstrip("/") for item in raw.split(",") if item.strip())
+    return frozenset(
+        item.strip().rstrip("/") for item in raw.split(",") if item.strip()
+    )
 
 
 async def _actor(
@@ -60,7 +65,11 @@ async def _actor(
             raise BillingError("BILLING_ORGANIZATION_ID_INVALID", 400) from error
 
     authorization = request.headers.get("Authorization", "")
-    bearer = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+    bearer = (
+        authorization[7:].strip()
+        if authorization.lower().startswith("bearer ")
+        else ""
+    )
     session_token = request.cookies.get(SESSION_COOKIE)
     now = datetime.now(UTC)
     request_id = str(getattr(request.state, "request_id", "missing-request-id"))
@@ -76,7 +85,10 @@ async def _actor(
                         required_scope=permission,
                         now=now,
                     )
-                    if requested_org is not None and requested_org != principal.organization_id:
+                    if (
+                        requested_org is not None
+                        and requested_org != principal.organization_id
+                    ):
                         raise BillingError("BILLING_FORBIDDEN", 403)
                     return BillingActor(
                         actor_id=str(principal.created_by),
@@ -98,7 +110,8 @@ async def _actor(
                 if csrf_required:
                     csrf = request.headers.get(CSRF_HEADER, "")
                     if not csrf or not hmac.compare_digest(
-                        hash_token(csrf), principal.csrf_token_hash
+                        hash_token(csrf),
+                        principal.csrf_token_hash,
                     ):
                         raise BillingError("BILLING_CSRF_INVALID", 403)
                     allowed = _allowed_origins()
@@ -116,6 +129,15 @@ async def _actor(
                 raise BillingError("BILLING_FORBIDDEN", 403) from error
 
 
+def _checkout_idempotency_key(value: str | None) -> str:
+    if value is None:
+        raise BillingError("BILLING_IDEMPOTENCY_KEY_REQUIRED", 428)
+    normalized = value.strip()
+    if not 8 <= len(normalized) <= 128:
+        raise BillingError("BILLING_IDEMPOTENCY_KEY_INVALID", 400)
+    return normalized
+
+
 def create_stripe_billing_router(
     *,
     runtime: AsyncStripeBillingRuntime,
@@ -127,14 +149,20 @@ def create_stripe_billing_router(
     async def summary(request: Request):
         try:
             actor = await _actor(
-                request, sessions=sessions, permission="billing.read", csrf_required=False
+                request,
+                sessions=sessions,
+                permission="billing.read",
+                csrf_required=False,
             )
             return asdict(await runtime.summary(actor))
         except BillingError as error:
             return _problem(error, request)
 
     @router.post("/checkout")
-    async def checkout(request: Request):
+    async def checkout(
+        request: Request,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ):
         try:
             payload = await request.json()
             if not isinstance(payload, dict):
@@ -142,10 +170,20 @@ def create_stripe_billing_router(
             plan_version_id = payload.get("plan_version_id")
             if not isinstance(plan_version_id, str) or not plan_version_id.strip():
                 raise BillingError("BILLING_PLAN_VERSION_REQUIRED")
+            retry_key = _checkout_idempotency_key(idempotency_key)
             actor = await _actor(
-                request, sessions=sessions, permission="billing.manage", csrf_required=True
+                request,
+                sessions=sessions,
+                permission="billing.manage",
+                csrf_required=True,
             )
-            return asdict(await runtime.create_checkout(actor, plan_version_id))
+            return asdict(
+                await runtime.create_checkout(
+                    actor,
+                    plan_version_id,
+                    retry_key,
+                )
+            )
         except BillingError as error:
             return _problem(error, request)
         except ValueError:
@@ -155,7 +193,10 @@ def create_stripe_billing_router(
     async def portal(request: Request):
         try:
             actor = await _actor(
-                request, sessions=sessions, permission="billing.manage", csrf_required=True
+                request,
+                sessions=sessions,
+                permission="billing.manage",
+                csrf_required=True,
             )
             return asdict(await runtime.create_portal(actor))
         except BillingError as error:
@@ -165,7 +206,10 @@ def create_stripe_billing_router(
     async def cancel(request: Request):
         try:
             actor = await _actor(
-                request, sessions=sessions, permission="billing.manage", csrf_required=True
+                request,
+                sessions=sessions,
+                permission="billing.manage",
+                csrf_required=True,
             )
             return asdict(await runtime.cancel_subscription(actor))
         except BillingError as error:
@@ -177,7 +221,10 @@ def create_stripe_billing_router(
         stripe_signature: str | None = Header(default=None, alias="Stripe-Signature"),
     ):
         if not stripe_signature:
-            return _problem(BillingError("BILLING_WEBHOOK_SIGNATURE_REQUIRED", 401), request)
+            return _problem(
+                BillingError("BILLING_WEBHOOK_SIGNATURE_REQUIRED", 401),
+                request,
+            )
         raw_body = await request.body()
         try:
             return asdict(await runtime.process_webhook(raw_body, stripe_signature))
@@ -189,7 +236,11 @@ def create_stripe_billing_router(
     return router
 
 
-def install_stripe_billing(app: FastAPI, *, settings: Settings | None = None) -> None:
+def install_stripe_billing(
+    app: FastAPI,
+    *,
+    settings: Settings | None = None,
+) -> None:
     resolved = settings or get_settings()
     if resolved.lumi_env not in {"staging", "production"}:
         return
