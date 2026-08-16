@@ -1,0 +1,31 @@
+{
+  "node": "NODE-31",
+  "title": "Skill Registry",
+  "status": "IMPLEMENTED_VALIDATING_BLOCKED_EXTERNAL",
+  "gaps": [
+    {
+      "id": "SKILL-REGISTRY-BACKEND-001",
+      "owner": "NODE-21 / NODE-29 composition",
+      "status": "OPEN",
+      "detail": "AtomicDirectorySkillPackageSink stages immutable packages, but production sandbox/backend DI must map that trusted staging root to the virtual /skills filesystem used by Deep Agents."
+    },
+    {
+      "id": "SKILL-REGISTRY-EVAL-PRODUCER-002",
+      "owner": "Benchmark / Evaluation Harness",
+      "status": "OPEN",
+      "detail": "The publication gate validates content-bound evaluation evidence, but the production benchmark service that executes suites and persists signed/durable evidence refs remains a separate composition dependency."
+    },
+    {
+      "id": "SKILL-REGISTRY-AGENT-PREFLIGHT-003",
+      "owner": "Agent Registry / Control Plane composition",
+      "status": "OPEN",
+      "detail": "NODE-30 records exact Skill refs syntactically; production promotion should add a cross-registry preflight that proves every referenced Skill exact version exists and is visible before an Agent alias is promoted."
+    },
+    {
+      "id": "SKILL-REGISTRY-CI-004",
+      "owner": "External GitHub account",
+      "status": "BLOCKED_EXTERNAL",
+      "detail": "Hosted Actions remains externally blocked if GitHub allocates no runner (runner_id=0, steps=[]). No hosted Ruff/pytest result may be claimed until steps actually execute."
+    }
+  ]
+}

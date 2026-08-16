@@ -1,0 +1,48 @@
+name: NODE-31 Skill Registry
+
+on:
+  pull_request:
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/skill_registry/**"
+      - "apps/agent-runtime/tests/test_skill_registry_node31.py"
+      - "docs/agents/SKILL-REGISTRY-V1.md"
+      - "reports/nodes/NODE-31/**"
+      - ".github/workflows/node-31-skill-registry.yml"
+  push:
+    branches:
+      - "feat/node-31-skill-registry"
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/skill_registry/**"
+      - "apps/agent-runtime/tests/test_skill_registry_node31.py"
+      - "docs/agents/SKILL-REGISTRY-V1.md"
+      - "reports/nodes/NODE-31/**"
+
+permissions:
+  contents: read
+
+jobs:
+  skill-registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install agent runtime and test tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e apps/agent-runtime
+          python -m pip install pytest ruff
+
+      - name: Ruff
+        run: |
+          ruff check \
+            apps/agent-runtime/src/lumi_agent_runtime/skill_registry \
+            apps/agent-runtime/tests/test_skill_registry_node31.py
+
+      - name: Pytest NODE-31
+        run: |
+          pytest -q apps/agent-runtime/tests/test_skill_registry_node31.py
