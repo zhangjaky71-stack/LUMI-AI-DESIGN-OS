@@ -1,0 +1,30 @@
+{
+  "node": "NODE-17",
+  "status": "IMPLEMENTED_VALIDATING",
+  "gaps": [
+    {
+      "id": "PROJECT-PERSIST-001",
+      "severity": "P0_RUNTIME",
+      "status": "OPEN",
+      "description": "ProjectCoreService and ProjectApiAdapter are not yet bound to a production async PostgreSQL ProjectRepository/composite ApiV1Service. The PostgreSQL schema and integration invariants exist, but apps/api does not freeze the required persistence dependency set."
+    },
+    {
+      "id": "PROJECT-IDEMPOTENCY-002",
+      "severity": "P0_RUNTIME",
+      "status": "OPEN",
+      "description": "POST /projects accepts the NODE-11 Idempotency-Key contract, but ProjectApiAdapter does not yet persist/replay the key through idempotency_operations. Production binding must make project creation retry-safe."
+    },
+    {
+      "id": "PROJECT-PROJECTION-003",
+      "severity": "P1_RUNTIME",
+      "status": "OPEN",
+      "description": "project_summaries schema and deterministic seed/update contract exist; event-driven projector refresh for artifact_count, active_run_count and preview is not yet wired."
+    },
+    {
+      "id": "PROJECT-CI-004",
+      "severity": "EXTERNAL",
+      "status": "BLOCKED_EXTERNAL",
+      "description": "Canonical hosted execution is blocked while GitHub Actions cannot allocate runners because of the repository owner's payment/spending-limit condition."
+    }
+  ]
+}
