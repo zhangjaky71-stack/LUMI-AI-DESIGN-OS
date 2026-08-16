@@ -47,6 +47,7 @@ class IdempotencyStore(Protocol):
 
     async def record_provider_request(
         self,
+        organization_id: UUID,
         operation_id: UUID,
         *,
         provider_request_id: str,
@@ -56,6 +57,7 @@ class IdempotencyStore(Protocol):
 
     async def complete(
         self,
+        organization_id: UUID,
         operation_id: UUID,
         *,
         lease_owner: str,
@@ -65,6 +67,7 @@ class IdempotencyStore(Protocol):
 
     async def fail(
         self,
+        organization_id: UUID,
         operation_id: UUID,
         *,
         lease_owner: str,
@@ -77,6 +80,7 @@ class IdempotencyStore(Protocol):
 
     async def mark_ambiguous(
         self,
+        organization_id: UUID,
         operation_id: UUID,
         *,
         lease_owner: str,
@@ -103,6 +107,7 @@ class NoopMetrics:
 @dataclass(slots=True)
 class SideEffectExecutionContext:
     store: IdempotencyStore
+    organization_id: UUID
     operation_id: UUID
     lease_owner: str
 
@@ -113,6 +118,7 @@ class SideEffectExecutionContext:
         now: datetime | None = None,
     ) -> IdempotencyOperation:
         return await self.store.record_provider_request(
+            self.organization_id,
             self.operation_id,
             provider_request_id=provider_request_id,
             lease_owner=self.lease_owner,
@@ -145,11 +151,7 @@ class SideEffectGateway:
         now: datetime | None = None,
     ) -> SideEffectOutcome:
         current_time = now or datetime.now(UTC)
-        acquired = await self.store.acquire(
-            request,
-            lease_owner=lease_owner,
-            now=current_time,
-        )
+        acquired = await self.store.acquire(request, lease_owner=lease_owner, now=current_time)
         if acquired.action is AcquireAction.CONFLICT:
             self.metrics.increment("idempotency_conflict_total")
             raise IdempotencyConflict(IdempotencyConflict.code)
@@ -187,6 +189,7 @@ class SideEffectGateway:
 
         context = SideEffectExecutionContext(
             store=self.store,
+            organization_id=request.organization_id,
             operation_id=acquired.operation.id,
             lease_owner=lease_owner,
         )
@@ -197,6 +200,7 @@ class SideEffectGateway:
             retryable = bool(getattr(exc, "retryable", False))
             category = ErrorCategory.TRANSIENT if retryable else ErrorCategory.PERMANENT
             await self.store.fail(
+                request.organization_id,
                 acquired.operation.id,
                 lease_owner=lease_owner,
                 category=category,
@@ -207,6 +211,7 @@ class SideEffectGateway:
             )
             raise
         operation = await self.store.complete(
+            request.organization_id,
             acquired.operation.id,
             lease_owner=lease_owner,
             outcome=outcome,
@@ -230,6 +235,7 @@ class SideEffectGateway:
         if reconciler is None:
             detail = "provider reconciliation required before retrying ambiguous paid side effect"
             await self.store.mark_ambiguous(
+                request.organization_id,
                 operation.id,
                 lease_owner=lease_owner,
                 detail=detail,
@@ -250,6 +256,7 @@ class SideEffectGateway:
                 ),
             )
             completed = await self.store.complete(
+                request.organization_id,
                 operation.id,
                 lease_owner=lease_owner,
                 outcome=outcome,
@@ -263,6 +270,7 @@ class SideEffectGateway:
             if operation.provider_request_id:
                 detail = "provider could not prove whether an accepted request executed"
                 await self.store.mark_ambiguous(
+                    request.organization_id,
                     operation.id,
                     lease_owner=lease_owner,
                     detail=detail,
@@ -274,6 +282,7 @@ class SideEffectGateway:
 
         detail = reconciliation.detail or "provider reconciliation returned ambiguous state"
         await self.store.mark_ambiguous(
+            request.organization_id,
             operation.id,
             lease_owner=lease_owner,
             detail=detail,
