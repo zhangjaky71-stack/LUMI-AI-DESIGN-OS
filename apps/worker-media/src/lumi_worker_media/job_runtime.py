@@ -57,6 +57,8 @@ class JobStore(Protocol):
         error_message: str,
     ) -> JobRecord: ...
 
+    def requeue_failed(self, message: JobMessage, *, now: datetime) -> JobRecord: ...
+
     def succeed(
         self,
         message: JobMessage,
@@ -124,7 +126,11 @@ class MemoryJobStore(JobStore):
 
     def request_cancel(self, message: JobMessage, *, now: datetime) -> JobRecord | None:
         record = self.get(message)
-        if record is None or record.state in {JobState.SUCCEEDED, JobState.FAILED, JobState.CANCELLED}:
+        if record is None or record.state in {
+            JobState.SUCCEEDED,
+            JobState.FAILED,
+            JobState.CANCELLED,
+        }:
             return record
         updated = replace(record, cancellation_requested_at=now, updated_at=now)
         self.records[message.job_id] = updated
@@ -153,6 +159,26 @@ class MemoryJobStore(JobStore):
             error_category=category,
             error_code=code[:128],
             error_message=error_message[:2000],
+        )
+        self.records[message.job_id] = updated
+        return updated
+
+    def requeue_failed(self, message: JobMessage, *, now: datetime) -> JobRecord:
+        record = self.get(message)
+        if record is None:
+            raise ValueError("JOB_NOT_FOUND")
+        if record.state not in {JobState.FAILED, JobState.RETRYING}:
+            raise ValueError("JOB_NOT_REPLAYABLE")
+        updated = replace(
+            record,
+            state=JobState.RETRYING,
+            updated_at=now,
+            finished_at=None,
+            next_retry_at=now,
+            cancellation_requested_at=None,
+            error_category=None,
+            error_code=None,
+            error_message=None,
         )
         self.records[message.job_id] = updated
         return updated
@@ -279,12 +305,17 @@ def execute_job(
         validate_job_payload(output)
         if store.cancellation_requested(message):
             raise JobCancelled("JOB_CANCELLED")
-        return JobExecutionResult(store.succeed(message, now=current_time, output=output))
+        return JobExecutionResult(
+            store.succeed(message, now=current_time, output=output)
+        )
     except JobCancelled:
         return JobExecutionResult(store.cancel(message, now=current_time))
     except Exception as exc:
         code = str(getattr(exc, "code", type(exc).__name__))
-        category = classify_error(code=code, retryable=getattr(exc, "retryable", None))
+        category = classify_error(
+            code=code,
+            retryable=getattr(exc, "retryable", None),
+        )
         if category is ErrorCategory.CANCELLED:
             return JobExecutionResult(store.cancel(message, now=current_time))
         retry_allowed = (
