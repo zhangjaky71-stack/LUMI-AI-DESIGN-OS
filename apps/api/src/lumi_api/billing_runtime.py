@@ -28,12 +28,7 @@ from lumi_project_core.stripe_provider import StripePaymentProvider, StripeProvi
 
 
 class AsyncStripeBillingRuntime:
-    """Production Stripe billing service backed by PostgreSQL.
-
-    The legacy synchronous BillingEngine remains useful for pure domain tests. This runtime is
-    intentionally async so payment-event claiming and all entitlement/credit writes share the
-    same SQLAlchemy/asyncpg transaction used by the rest of the API.
-    """
+    """Production Stripe billing service backed by PostgreSQL."""
 
     def __init__(
         self,
@@ -51,7 +46,10 @@ class AsyncStripeBillingRuntime:
         return self._provider.name
 
     async def initialize_catalog(self) -> None:
-        """Insert immutable configured plan versions and reject configuration drift."""
+        """Validate Stripe Prices, then insert immutable plan versions or reject drift."""
+        for plan in self._catalog:
+            await to_thread.run_sync(self._provider.validate_plan_price, plan)
+
         async with self._sessions() as session:
             async with session.begin():
                 for plan in self._catalog:
@@ -130,10 +128,6 @@ class AsyncStripeBillingRuntime:
                     raise BillingError("BILLING_PLAN_VERSION_NOT_AVAILABLE", 404)
                 account = await _get_account(session, actor.organization_id)
                 if account is None:
-                    # Serialize first-customer creation per organization. The external Stripe call
-                    # happens while this transaction-scoped lock is held; Stripe also receives a
-                    # stable Idempotency-Key, covering a crash after provider success but before
-                    # the local billing_accounts row commits.
                     await session.execute(
                         text(
                             "SELECT pg_advisory_xact_lock("
@@ -443,6 +437,10 @@ def load_stripe_runtime_config(
             entitlements=dict(raw.get("entitlements", {})),
             status=str(raw.get("status", "ACTIVE")).upper(),  # type: ignore[arg-type]
         )
+        if plan.currency != "USD":
+            raise RuntimeError("Stripe billing V1 supports USD plans only")
+        if plan.price_microusd % 10_000 != 0:
+            raise RuntimeError("Stripe USD price_microusd must resolve to whole cents")
         if plan.plan_version_id in price_map:
             raise RuntimeError(f"duplicate plan_version_id: {plan.plan_version_id}")
         plans.append(plan)
