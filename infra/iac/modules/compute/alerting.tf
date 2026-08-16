@@ -7,18 +7,39 @@ resource "aws_sns_topic" "deployment_alerts" {
 }
 
 resource "aws_sqs_queue" "deployment_alert_evidence" {
-  name                      = "${local.name}-deployment-alert-evidence"
-  message_retention_seconds = 1209600
+  name                       = "${local.name}-deployment-alert-evidence"
+  message_retention_seconds  = 1209600
   visibility_timeout_seconds = 60
-  sqs_managed_sse_enabled   = true
-  tags                      = local.tags
+  sqs_managed_sse_enabled    = true
+  tags                       = local.tags
 }
 
 data "aws_iam_policy_document" "deployment_alert_topic" {
   statement {
-    sid     = "CloudWatchAlarmPublish"
-    effect  = "Allow"
-    actions = ["sns:Publish"]
+    sid    = "OwnerAccess"
+    effect = "Allow"
+    actions = [
+      "sns:GetTopicAttributes",
+      "sns:SetTopicAttributes",
+      "sns:AddPermission",
+      "sns:RemovePermission",
+      "sns:DeleteTopic",
+      "sns:Subscribe",
+      "sns:ListSubscriptionsByTopic",
+      "sns:Publish",
+    ]
+    resources = [aws_sns_topic.deployment_alerts.arn]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+  }
+
+  statement {
+    sid       = "CloudWatchAlarmPublish"
+    effect    = "Allow"
+    actions   = ["sns:Publish"]
     resources = [aws_sns_topic.deployment_alerts.arn]
 
     principals {
@@ -34,9 +55,9 @@ data "aws_iam_policy_document" "deployment_alert_topic" {
   }
 
   statement {
-    sid     = "EventBridgePublish"
-    effect  = "Allow"
-    actions = ["sns:Publish"]
+    sid       = "EventBridgePublish"
+    effect    = "Allow"
+    actions   = ["sns:Publish"]
     resources = [aws_sns_topic.deployment_alerts.arn]
 
     principals {
