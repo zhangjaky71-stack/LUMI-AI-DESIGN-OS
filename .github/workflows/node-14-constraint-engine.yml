@@ -1,0 +1,97 @@
+name: NODE-14 Constraint Engine
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/constraints/**"
+      - "apps/api/tests/test_constraint_engine_contract.py"
+      - "tools/node14/**"
+      - "benchmarks/constraints/**"
+      - "docs/constraints/**"
+      - "docs/nodes/NODE-14-CONSTRAINT-ENGINE.md"
+      - "reports/nodes/NODE-14/**"
+      - ".github/workflows/node-14-constraint-engine.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/src/lumi_api/constraints/**"
+      - "apps/api/tests/test_constraint_engine_contract.py"
+      - "tools/node14/**"
+      - "benchmarks/constraints/**"
+      - "docs/constraints/**"
+      - "reports/nodes/NODE-14/**"
+      - ".github/workflows/node-14-constraint-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  constraint-engine:
+    name: constraint-engine
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen workspace dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Validate Constraint Engine architecture and benchmark
+        run: |
+          PYTHONPATH=apps/api/src uv run python tools/node14/validate_constraint_engine.py
+
+      - name: Run executable Constraint Engine tests
+        run: |
+          PYTHONPATH=apps/api/src uv run pytest -q apps/api/tests/test_constraint_engine_contract.py
+
+      - name: Export machine-readable Constraint schemas
+        run: |
+          rm -rf reports/nodes/NODE-14/generated-schemas
+          PYTHONPATH=apps/api/src uv run python tools/node14/export_constraint_schemas.py
+          test -s reports/nodes/NODE-14/generated-schemas/constraint-set-v1.schema.json
+          test -s reports/nodes/NODE-14/generated-schemas/constraint-violation-v1.schema.json
+          test -s reports/nodes/NODE-14/generated-schemas/postflight-observation-v1.schema.json
+          test -s reports/nodes/NODE-14/generated-schemas/preflight-result-v1.schema.json
+
+      - name: Validate exported JSON schemas parse
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("reports/nodes/NODE-14/generated-schemas")
+          for path in sorted(root.glob("*.schema.json")):
+              with path.open("r", encoding="utf-8") as handle:
+                  json.load(handle)
+              print(f"validated {path}")
+          PY
+
+      - name: Lint and type-check NODE-14 scope
+        run: |
+          uv run ruff check apps/api/src/lumi_api/constraints \
+            apps/api/tests/test_constraint_engine_contract.py tools/node14
+          uv run pyright apps/api/src/lumi_api/constraints \
+            apps/api/tests/test_constraint_engine_contract.py tools/node14
+
+      - name: Upload generated Constraint schemas
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-14-constraint-schemas-${{ github.run_id }}
+          path: reports/nodes/NODE-14/generated-schemas
+          if-no-files-found: error
+          retention-days: 14
