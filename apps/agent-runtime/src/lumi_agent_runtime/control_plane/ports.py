@@ -9,7 +9,12 @@ from .contracts import LumiRunState, RunControlSnapshot, SafeRunEvent
 
 
 class RunControlStore(Protocol):
-    async def load(self, agent_run_id: UUID) -> RunControlSnapshot | None: ...
+    async def load(
+        self,
+        *,
+        organization_id: UUID,
+        agent_run_id: UUID,
+    ) -> RunControlSnapshot | None: ...
 
     async def create(self, snapshot: RunControlSnapshot) -> None: ...
 
