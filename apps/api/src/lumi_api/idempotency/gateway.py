@@ -45,6 +45,16 @@ class IdempotencyStore(Protocol):
         now: datetime,
     ) -> AcquireResult: ...
 
+    async def renew_lease(
+        self,
+        organization_id: UUID,
+        operation_id: UUID,
+        *,
+        lease_owner: str,
+        lease_seconds: int,
+        now: datetime,
+    ) -> IdempotencyOperation: ...
+
     async def record_provider_request(
         self,
         organization_id: UUID,
@@ -110,6 +120,20 @@ class SideEffectExecutionContext:
     organization_id: UUID
     operation_id: UUID
     lease_owner: str
+    lease_seconds: int
+
+    async def heartbeat(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> IdempotencyOperation:
+        return await self.store.renew_lease(
+            self.organization_id,
+            self.operation_id,
+            lease_owner=self.lease_owner,
+            lease_seconds=self.lease_seconds,
+            now=now or datetime.now(UTC),
+        )
 
     async def record_provider_request(
         self,
@@ -117,12 +141,14 @@ class SideEffectExecutionContext:
         *,
         now: datetime | None = None,
     ) -> IdempotencyOperation:
+        checkpoint_time = now or datetime.now(UTC)
+        await self.heartbeat(now=checkpoint_time)
         return await self.store.record_provider_request(
             self.organization_id,
             self.operation_id,
             provider_request_id=provider_request_id,
             lease_owner=self.lease_owner,
-            now=now or datetime.now(UTC),
+            now=checkpoint_time,
         )
 
 
@@ -151,7 +177,11 @@ class SideEffectGateway:
         now: datetime | None = None,
     ) -> SideEffectOutcome:
         current_time = now or datetime.now(UTC)
-        acquired = await self.store.acquire(request, lease_owner=lease_owner, now=current_time)
+        acquired = await self.store.acquire(
+            request,
+            lease_owner=lease_owner,
+            now=current_time,
+        )
         if acquired.action is AcquireAction.CONFLICT:
             self.metrics.increment("idempotency_conflict_total")
             raise IdempotencyConflict(IdempotencyConflict.code)
@@ -192,6 +222,7 @@ class SideEffectGateway:
             organization_id=request.organization_id,
             operation_id=acquired.operation.id,
             lease_owner=lease_owner,
+            lease_seconds=request.lease_seconds,
         )
         try:
             value = effect(context)
@@ -199,6 +230,7 @@ class SideEffectGateway:
         except Exception as exc:
             retryable = bool(getattr(exc, "retryable", False))
             category = ErrorCategory.TRANSIENT if retryable else ErrorCategory.PERMANENT
+            failed_at = now or datetime.now(UTC)
             await self.store.fail(
                 request.organization_id,
                 acquired.operation.id,
@@ -207,17 +239,20 @@ class SideEffectGateway:
                 code=str(getattr(exc, "code", type(exc).__name__))[:128],
                 message=str(exc)[:2000],
                 retryable=retryable,
-                now=current_time,
+                now=failed_at,
             )
             raise
+        completed_at = now or datetime.now(UTC)
         operation = await self.store.complete(
             request.organization_id,
             acquired.operation.id,
             lease_owner=lease_owner,
             outcome=outcome,
-            now=current_time,
+            now=completed_at,
         )
-        return outcome.model_copy(update={"operation_id": operation.id, "replayed": False})
+        return outcome.model_copy(
+            update={"operation_id": operation.id, "replayed": False}
+        )
 
     async def _reconcile_or_recover(
         self,
@@ -233,7 +268,9 @@ class SideEffectGateway:
         if not must_reconcile:
             return None
         if reconciler is None:
-            detail = "provider reconciliation required before retrying ambiguous paid side effect"
+            detail = (
+                "provider reconciliation required before retrying ambiguous paid side effect"
+            )
             await self.store.mark_ambiguous(
                 request.organization_id,
                 operation.id,
@@ -263,8 +300,17 @@ class SideEffectGateway:
                 now=now,
             )
             self.metrics.increment("duplicate_prevented_total")
-            return outcome.model_copy(update={"operation_id": completed.id, "replayed": True})
+            return outcome.model_copy(
+                update={"operation_id": completed.id, "replayed": True}
+            )
         if reconciliation.status is ProviderReconciliationStatus.RUNNING:
+            await self.store.renew_lease(
+                request.organization_id,
+                operation.id,
+                lease_owner=lease_owner,
+                lease_seconds=request.lease_seconds,
+                now=now,
+            )
             raise OperationInProgress("provider side effect is still running")
         if reconciliation.status is ProviderReconciliationStatus.NOT_FOUND:
             if operation.provider_request_id:
