@@ -51,6 +51,11 @@ from .registry import (
 from .registry_postgres import PostgresCapabilityRegistryStore
 from .registry_seed import load_seed_registry, load_seed_snapshot
 from .routing import ModelRouter, ProviderRegistry
+from .routing_profile_evaluator import (
+    ProfileEvaluation,
+    RoutingEvidence,
+    RoutingProfileEvaluator,
+)
 from .secrets import EnvironmentSecretProvider, MappingSecretProvider
 
 __all__ = [
@@ -92,6 +97,7 @@ __all__ = [
     "PaidSideEffectSemanticConflict",
     "PostgresCapabilityRegistryStore",
     "PricingSnapshot",
+    "ProfileEvaluation",
     "ProviderAcceptance",
     "ProviderCallError",
     "ProviderModel",
@@ -100,8 +106,10 @@ __all__ = [
     "RegistrySnapshot",
     "ResultStatus",
     "RetryPolicy",
+    "RoutingEvidence",
     "RoutingHints",
     "RoutingProfile",
+    "RoutingProfileEvaluator",
     "RoutingWeights",
     "load_seed_registry",
     "load_seed_snapshot",
