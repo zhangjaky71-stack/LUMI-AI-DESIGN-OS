@@ -19,7 +19,10 @@ from .billing import (
     ProviderSubscription,
 )
 
-StripeTransport = Callable[[str, str, list[tuple[str, str]] | None, str], dict[str, object]]
+StripeTransport = Callable[
+    [str, str, list[tuple[str, str]] | None, str, str | None],
+    dict[str, object],
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,7 +84,12 @@ class StripePaymentProvider:
         fields: list[tuple[str, str]] = [("metadata[organization_id]", organization_id)]
         if billing_email:
             fields.append(("email", billing_email))
-        body = self._api("POST", "/customers", fields)
+        body = self._api(
+            "POST",
+            "/customers",
+            fields,
+            idempotency_key=f"lumi-customer:{organization_id}"[:255],
+        )
         return _required_string(body, "id", "BILLING_STRIPE_CUSTOMER_INVALID")
 
     def create_checkout(self, customer_ref: str, plan: PlanVersion) -> HostedSession:
@@ -98,9 +106,6 @@ class StripePaymentProvider:
             ("metadata[plan_version_id]", plan.plan_version_id),
             ("subscription_data[metadata][plan_version_id]", plan.plan_version_id),
         ]
-        # The customer was created for one organization and that identity is copied to the
-        # subscription metadata by Stripe Checkout. It is resolved from customer metadata in
-        # live flows through checkout setup rather than accepting a client-supplied amount.
         customer = self._api("GET", f"/customers/{quote(customer_ref, safe='')}", None)
         customer_metadata = _mapping(customer.get("metadata"))
         organization_id = _optional_string(customer_metadata.get("organization_id"))
@@ -240,29 +245,48 @@ class StripePaymentProvider:
         )
 
     def _api(
-        self, method: str, path: str, fields: list[tuple[str, str]] | None
+        self,
+        method: str,
+        path: str,
+        fields: list[tuple[str, str]] | None,
+        *,
+        idempotency_key: str | None = None,
     ) -> dict[str, object]:
         try:
-            return self._transport(method, path, fields, self._config.secret_key)
+            return self._transport(
+                method,
+                path,
+                fields,
+                self._config.secret_key,
+                idempotency_key,
+            )
         except BillingError:
             raise
         except Exception as error:  # pragma: no cover - defensive boundary around injected transports
             raise BillingError("BILLING_STRIPE_UNAVAILABLE", 503) from error
 
     def _default_transport(
-        self, method: str, path: str, fields: list[tuple[str, str]] | None, secret_key: str
+        self,
+        method: str,
+        path: str,
+        fields: list[tuple[str, str]] | None,
+        secret_key: str,
+        idempotency_key: str | None,
     ) -> dict[str, object]:
         url = self._config.api_base.rstrip("/") + path
         data = urlencode(fields).encode("utf-8") if fields is not None else None
+        headers = {
+            "Authorization": f"Bearer {secret_key}",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "lumi-ai-design-os/stripe-adapter",
+        }
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
         request = Request(
             url,
             data=data,
             method=method,
-            headers={
-                "Authorization": f"Bearer {secret_key}",
-                "Content-Type": "application/x-www-form-urlencoded",
-                "User-Agent": "lumi-ai-design-os/stripe-adapter",
-            },
+            headers=headers,
         )
         try:
             with urlopen(request, timeout=15) as response:  # noqa: S310 - fixed HTTPS API base
@@ -324,8 +348,6 @@ def _subscription_state(value: Mapping[str, object]) -> str:
 def _invoice_subscription_identity(
     invoice: Mapping[str, object],
 ) -> tuple[Mapping[str, object], str | None]:
-    # Current Stripe API versions expose parent.subscription_details; older pinned versions
-    # expose subscription_details directly. Supporting both makes webhook upgrades explicit and safe.
     parent = _mapping(invoice.get("parent"))
     details = _mapping(parent.get("subscription_details"))
     if not details:
