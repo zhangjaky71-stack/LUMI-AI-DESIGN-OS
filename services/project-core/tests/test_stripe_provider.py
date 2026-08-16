@@ -147,9 +147,10 @@ def test_checkout_uses_server_owned_price_and_retry_key() -> None:
     assert posted["client_reference_id"] == "org-1"
     assert posted["subscription_data[metadata][organization_id]"] == "org-1"
     assert posted["subscription_data[metadata][plan_version_id]"] == "pro-v1"
-    assert calls[-1][3] is not None
-    assert calls[-1][3].startswith("lumi-checkout:cus_1:pro-v1:")
-    assert "checkout-retry-key-0001" not in calls[-1][3]
+    stripe_key = calls[-1][3]
+    assert stripe_key is not None
+    assert stripe_key.startswith("lumi-checkout:cus_1:pro-v1:")
+    assert "checkout-retry-key-0001" not in stripe_key
     assert not any("amount" in key for key in posted)
 
 
