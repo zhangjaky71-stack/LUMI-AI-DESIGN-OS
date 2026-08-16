@@ -1,0 +1,105 @@
+name: NODE-15 Artifact Version Provenance
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/artifacts/**"
+      - "apps/api/tests/test_artifact_version_provenance_contract.py"
+      - "tools/node15/**"
+      - "benchmarks/artifacts/**"
+      - "docs/artifacts/**"
+      - "docs/nodes/NODE-15-ARTIFACT-VERSION-PROVENANCE.md"
+      - "reports/nodes/NODE-15/**"
+      - ".github/workflows/node-15-artifact-provenance.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/src/lumi_api/artifacts/**"
+      - "apps/api/tests/test_artifact_version_provenance_contract.py"
+      - "tools/node15/**"
+      - "benchmarks/artifacts/**"
+      - "docs/artifacts/**"
+      - "reports/nodes/NODE-15/**"
+      - ".github/workflows/node-15-artifact-provenance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  artifact-contract:
+    name: artifact-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen workspace dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Validate Artifact contract architecture and persistence mapping
+        run: |
+          PYTHONPATH=apps/api/src uv run python tools/node15/validate_artifact_contract.py
+
+      - name: Run executable Artifact contract tests
+        run: |
+          PYTHONPATH=apps/api/src uv run pytest -q apps/api/tests/test_artifact_version_provenance_contract.py
+
+      - name: Export machine-readable Artifact schemas
+        run: |
+          rm -rf reports/nodes/NODE-15/generated-schemas
+          PYTHONPATH=apps/api/src uv run python tools/node15/export_artifact_schemas.py
+          test "$(find reports/nodes/NODE-15/generated-schemas -name '*.schema.json' | wc -l)" -eq 8
+
+      - name: Validate exported JSON schemas and persistence gap ledger parse
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("reports/nodes/NODE-15/generated-schemas")
+          paths = sorted(root.glob("*.schema.json"))
+          assert len(paths) == 8, len(paths)
+          for path in paths:
+              with path.open("r", encoding="utf-8") as handle:
+                  json.load(handle)
+              print(f"validated {path}")
+          with Path("reports/nodes/NODE-15/persistence-gap-ledger.json").open(
+              "r", encoding="utf-8"
+          ) as handle:
+              ledger = json.load(handle)
+          assert len(ledger["gaps"]) == 10
+          print("validated persistence-gap-ledger.json")
+          PY
+
+      - name: Lint and type-check NODE-15 scope
+        run: |
+          uv run ruff check apps/api/src/lumi_api/artifacts \
+            apps/api/tests/test_artifact_version_provenance_contract.py tools/node15
+          uv run pyright apps/api/src/lumi_api/artifacts \
+            apps/api/tests/test_artifact_version_provenance_contract.py tools/node15
+
+      - name: Upload Artifact contract evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-15-artifact-contract-${{ github.run_id }}
+          path: |
+            reports/nodes/NODE-15/generated-schemas
+            reports/nodes/NODE-15/persistence-gap-ledger.json
+            benchmarks/artifacts/lineage-fixtures-v1.jsonl
+          if-no-files-found: error
+          retention-days: 14
