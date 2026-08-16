@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import UUID
 
 from lumi_api.assets import (
@@ -26,7 +27,7 @@ USER = UUID("01910000-0000-7000-8000-000000000011")
 
 
 class CleanScanner:
-    def scan(self, _path):
+    def scan(self, _path: Path) -> FileScanResult:
         return FileScanResult(status=ScanStatus.CLEAN, engine="test")
 
 
@@ -41,8 +42,8 @@ def principal() -> Principal:
 
 
 def test_multipart_sign_complete_and_validate() -> None:
-    part1 = b"\x89PNG\r\n\x1a\n" + b"a" * 64
-    part2 = b"b" * 64
+    part1 = b"\x89PNG\r\n\x1a\n" + b"a" * (3 * 1024 * 1024)
+    part2 = b"b" * (3 * 1024 * 1024)
     payload = part1 + part2
     checksum = hashlib.sha256(payload).hexdigest()
     repository = MemoryAssetRepository(projects={(ORG, PROJECT)})
@@ -52,11 +53,11 @@ def test_multipart_sign_complete_and_validate() -> None:
         object_store,
         scanner=CleanScanner(),
         quota=QuotaPolicy(
-            max_file_bytes=1024,
-            max_org_storage_bytes=4096,
+            max_file_bytes=8 * 1024 * 1024,
+            max_org_storage_bytes=16 * 1024 * 1024,
             multipart_threshold_bytes=5 * 1024 * 1024,
             require_scanner=True,
-        ).model_copy(update={"multipart_threshold_bytes": 1}),
+        ),
     )
     grant = service.create_upload(
         CreateUploadCommand(
@@ -81,10 +82,18 @@ def test_multipart_sign_complete_and_validate() -> None:
         expires_seconds=900,
     )
     signed1 = service.sign_multipart_part(
-        ORG, grant.upload.id, part_number=1, actor=principal(), now=NOW
+        ORG,
+        grant.upload.id,
+        part_number=1,
+        actor=principal(),
+        now=NOW,
     )
     signed2 = service.sign_multipart_part(
-        ORG, grant.upload.id, part_number=2, actor=principal(), now=NOW
+        ORG,
+        grant.upload.id,
+        part_number=2,
+        actor=principal(),
+        now=NOW,
     )
     assert "partNumber=1" in signed1.url
     assert "partNumber=2" in signed2.url
@@ -100,7 +109,9 @@ def test_multipart_sign_complete_and_validate() -> None:
         )
     )
     report = service.validate_upload(
-        ORG, grant.upload.id, now=NOW + timedelta(seconds=2)
+        ORG,
+        grant.upload.id,
+        now=NOW + timedelta(seconds=2),
     )
     assert report.accepted is True
     assert object_store.head(intent.bucket, intent.key, now=NOW).byte_size == len(payload)
