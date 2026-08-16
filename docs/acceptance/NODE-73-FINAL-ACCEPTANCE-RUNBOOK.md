@@ -4,7 +4,7 @@
 
 ## 1. Purpose
 
-This is the final Go/No-Go procedure for LUMI AI Design OS. It freezes and re-validates the real NODE-66～72 evidence together with product UAT, production safety drills, Stripe live billing, documentation, browser/accessibility evidence and cross-functional signoff.
+This is the final Go/No-Go procedure for LUMI AI Design OS. It re-validates NODE-66～72 evidence together with product UAT, production safety drills, Stripe live billing, browser/accessibility evidence and cross-functional signoff.
 
 Default outcome:
 
@@ -12,14 +12,19 @@ Default outcome:
 NOT ACCEPTED — SEE BLOCKING GAPS
 ```
 
-`LUMI AI DESIGN OS — PRODUCT ACCEPTED` is reserved for a machine decision with `accepted=true`, `passed=true`, `blockers=[]` against one exact release candidate.
+`LUMI AI DESIGN OS — PRODUCT ACCEPTED` is reserved for a machine decision with `accepted=true`, `passed=true`, `blockers=[]` against one frozen **source release candidate (source RC)**.
 
-## 2. Freeze one exact release candidate
+## 2. Identity model: source RC + evidence checkout
 
-Freeze exactly one identity before final evidence is accepted:
+Final Acceptance uses two Git identities for different purposes:
+
+1. **source RC SHA** — the immutable product/source commit that is deployed and tested;
+2. **evidence checkout SHA** — a descendant commit that may add frozen acceptance material under `reports/` only.
+
+The release candidate identity is:
 
 ```text
-git_sha
+source_rc_git_sha
 version
 migration_head
 production deployment_id
@@ -27,26 +32,78 @@ production domain
 immutable image/task-definition identities
 ```
 
-Do not mix evidence from different commits, migration heads or deployment sets. Any candidate change invalidates affected evidence and signoffs.
+The canonical runner requires:
 
-The exact Production deployment manifest must exist under `reports/production-deployments/` and match the same RC.
+- the source RC commit exists locally;
+- the source RC is an ancestor of the evidence checkout;
+- root `VERSION` still equals the source RC release version;
+- the repository still has the same unique Alembic head;
+- every committed path between `source_rc_git_sha..HEAD` is under `reports/`;
+- the working tree is clean.
 
-## 3. Resolve source and external blockers first
+Therefore, **after source RC freeze, do not change `apps/`, `services/`, `scripts/`, `infra/`, workflows, `final/`, `VERSION`, `uv.lock`, or any other non-`reports/` path**. Any such source change invalidates the RC and requires a new freeze and rerun of affected evidence/signoffs.
 
-STOP final acceptance while any mandatory blocker remains, including:
+This model intentionally allows evidence/signoff commits without creating an impossible self-referential rule where a release manifest would have to name the commit that contains itself.
+
+## 3. Resolve source blockers before freezing the source RC
+
+STOP before source RC freeze while any source blocker remains, including:
 
 - stale root `uv.lock`;
-- GitHub Actions runner/account Billing blocker;
-- unexecuted canonical frozen install/CI/release gate;
-- missing production-like Staging decision;
-- missing production deployment/canary evidence;
-- unresolved Critical/High security or reliability issue.
+- incomplete source changes;
+- unresolved Critical/High code/security/reliability issues;
+- inconsistent release version or migration graph.
 
-`SOURCE_IMPLEMENTED`, `VALIDATION_PENDING`, zero-step CI, mock tests or test-mode provider evidence are not PASS.
+The current root lock must be repaired **before** source RC freeze using:
 
-## 4. Collect six upstream machine decisions
+```bash
+scripts/regenerate-root-uv-lock.sh
+```
 
-Freeze these six required upstream gates:
+The helper requires Python 3.12.x and uv exactly 0.11.28, runs `uv lock`, `uv lock --check`, `uv sync --all-packages --frozen`, checks every workspace member, requires an actual lock change and rejects collateral source changes. Never hand-edit `uv.lock`.
+
+External blockers such as GitHub hosted-runner Billing/spending limits may remain `BLOCKED_EXTERNAL`, but they cannot be converted to PASS.
+
+## 4. Freeze one exact source RC
+
+Only after all source changes—including the regenerated `uv.lock`—are committed, record the current source RC.
+
+At this point the repository facts become authoritative:
+
+```text
+git rev-parse HEAD
+cat VERSION
+unique Alembic head
+```
+
+Do not manually invent these values in evidence files. The repository tooling derives them.
+
+From this point until final authorization, subsequent Git commits must be `reports/` evidence-only commits. If a source change is needed, stop, make the source change, freeze a new source RC and invalidate/re-evaluate affected candidate-bound evidence.
+
+## 5. Create the 50-scenario evidence skeleton at source-RC freeze time
+
+Run on the source RC checkout:
+
+```bash
+python3 scripts/create-final-acceptance-evidence.py \
+  --release-id <release-id>
+```
+
+By default this creates:
+
+```text
+reports/final-acceptance/<release-id>/acceptance-evidence.json
+```
+
+The generator automatically derives the current Git SHA, root `VERSION` and unique Alembic head, reads `final/acceptance/manifest-v1.json`, creates all **50 scenarios** as `NOT_RUN`, and refuses to overwrite an existing evidence file.
+
+Optional `--git-sha`, `--version` and `--migration-head` flags are assertions only; if supplied they must equal repository truth.
+
+Commit the generated skeleton as an evidence-only `reports/` commit. `NOT_RUN` cannot satisfy Final Acceptance.
+
+## 6. Collect all six upstream machine decisions for the same source RC
+
+Freeze exactly these required upstream gates:
 
 ```text
 security
@@ -57,28 +114,29 @@ staging_acceptance
 production_deployment
 ```
 
-Each decision must include a concrete `decision_id`, `passed=true`, non-empty frozen `evidence_refs[]`, and no release blocker. Performance, AI Regression, Staging Acceptance and Production Deployment must match the exact final RC identity.
+**All six**, including Security and Recovery, must contain the same full `release_candidate` tuple as the final source RC:
 
-## 5. Create the final evidence skeleton
-
-Run:
-
-```bash
-python3 scripts/create-final-acceptance-evidence.py \
-  --release-id <release-id> \
-  --git-sha <git-sha> \
-  --version <version> \
-  --migration-head <migration-head> \
-  --output reports/final-acceptance/<release-id>/acceptance-evidence.json
+```text
+git_sha
+version
+migration_head
 ```
 
-The generator reads `final/acceptance/manifest-v1.json` and currently creates **50 scenarios** as `NOT_RUN`. Never replace unexecuted work with PASS to complete the matrix.
+Each decision must also contain a concrete `decision_id`, `passed=true`, and non-empty frozen `evidence_refs[]`. The canonical runner fails closed on any stale upstream RC.
 
-`release_id` must use only letters, digits, `.`, `_` and `-`, start with a letter/digit, and be at most 120 characters.
+## 7. Production deployment identity
 
-## 6. Execute Golden Journey A — Zero-to-Brand
+The exact Production deployment manifest must exist under:
 
-Use a production-scope test account and the frozen RC. Prove the complete flow:
+```text
+reports/production-deployments/
+```
+
+It must bind the same source RC and deployment identity. Freeze it by path + SHA-256 in the final release manifest.
+
+## 8. Execute Golden Journey A — Zero-to-Brand
+
+Use a production-scope test account and the frozen source RC. Prove:
 
 ```text
 Create Project -> Brief Agent -> sourced research -> strategy -> creative directions
@@ -89,7 +147,7 @@ Create Project -> Brief Agent -> sourced research -> strategy -> creative direct
 
 A rendered image alone is insufficient. Final assets must remain structurally editable, versioned and traceable.
 
-## 7. Execute Golden Journey B — Precision Local Edit
+## 9. Execute Golden Journey B — Precision Local Edit
 
 Use an approved version and execute a constrained instruction such as:
 
@@ -97,17 +155,17 @@ Use an approved version and execute a constrained instruction such as:
 
 Prove product/logo/QR invariants, structural title/background edit, QR scanability, new immutable version, old-version restore and quality/constraint PASS.
 
-## 8. Execute Golden Journey C — Multi-size Campaign
+## 10. Execute Golden Journey C — Multi-size Campaign
 
 Adapt one approved design to 1:1, 4:5, 9:16 and 16:9. Prove real layout adaptation rather than naive stretching and preserve Brand/Product constraints.
 
-## 9. Execute Golden Journey D — Failure Recovery
+## 11. Execute Golden Journey D — Failure Recovery
 
 Inject controlled worker restart, provider timeout/429/5xx, duplicate request/event and SSE disconnect/reconnect. Prove explicit recovery without duplicate paid generation, corrupt Artifact, approved-version loss or blind ambiguous provider retry.
 
-## 10. Execute explicit product UAT
+## 12. Execute explicit product UAT
 
-`UAT-01` is a P0/Critical independent final gate. Execute the exact RC across:
+`UAT-01` is P0/Critical. Execute:
 
 ```text
 project -> agent -> generation -> canvas -> artifact/version -> compare/restore -> export
@@ -127,9 +185,9 @@ error-retry-reconnect
 
 Follow `docs/acceptance/NODE-73-UAT-SIGNOFF-MATRIX.md`.
 
-## 11. Execute Billing UX and Stripe live purchase
+## 13. Execute Billing UX and Stripe live purchase
 
-`BILLING-UX-01` is P0/High. Its structured record must include PASS checks for:
+`BILLING-UX-01` is P0/High. Required checks:
 
 ```text
 plan-display
@@ -143,12 +201,12 @@ csrf-origin
 error-states
 ```
 
-The real-charge gate is separate and mandatory. Execute `docs/operations/STRIPE-LIVE-PURCHASE-DRILL.md` and prove:
+The real-charge gate is separately mandatory. Execute `docs/operations/STRIPE-LIVE-PURCHASE-DRILL.md` and prove:
 
-- approved `sk_live_` production mode;
+- approved production `sk_live_` mode;
 - source-supported Stripe API version;
 - startup Price reconciliation;
-- one bounded approved real payment;
+- one bounded Finance/Operations-approved real payment;
 - signed live subscription/invoice webhooks;
 - ACTIVE subscription;
 - PAID invoice at exact configured amount/currency;
@@ -157,11 +215,11 @@ The real-charge gate is separate and mandatory. Execute `docs/operations/STRIPE-
 
 Mock/test-mode evidence cannot satisfy the live-payment gate.
 
-## 12. Execute browser matrix
+## 14. Execute browser matrix
 
-`BROWSER-01` is P0/High and requires real current supported Chrome and Edge. `BROWSER-02` is P0/High and requires real current supported Safari and Firefox; Safari is no longer a deferrable P1 final-acceptance item.
+`BROWSER-01` is P0/High and requires real current supported Chrome and Edge. `BROWSER-02` is P0/High and requires real current supported Safari and Firefox.
 
-For each required browser, structured evidence must contain:
+For each browser capture:
 
 ```text
 browser
@@ -172,42 +230,30 @@ real_browser = true
 status = PASS
 ```
 
-For Safari, `engine_preflight_only=true` is explicitly rejected. Playwright WebKit is a useful automated Safari-engine preflight but cannot satisfy real macOS Safari evidence.
+For Safari, Playwright WebKit is preflight evidence only and cannot substitute for real macOS Safari.
 
-The automated preflight lives in `playwright.final-acceptance.config.ts` and `.github/workflows/final-browser-preflight.yml`; it complements, but does not replace, exact-browser final evidence.
+The automated preflight lives in `playwright.final-acceptance.config.ts` and `.github/workflows/final-browser-preflight.yml`.
 
-## 13. Execute responsive/mobile scope
+## 15. Execute responsive/mobile scope
 
-`RESPONSIVE-01` is P1/Medium. If mobile/responsive is launch scope, a PASS requires at least one real tested client/device with device, browser/browser version, OS/OS version and `real_browser=true`.
+`RESPONSIVE-01` is P1/Medium. If mobile/responsive is launch scope, PASS requires real device/client evidence. If release scope is explicitly desktop-only, defer only with complete non-critical gap metadata and a supported-device statement.
 
-If the release is explicitly desktop-only, a defer is allowed only with complete non-critical gap metadata and a documented supported-device statement.
+## 16. Execute accessibility critical paths
 
-## 14. Execute accessibility critical paths
+`A11Y-01` is P0/High. Require zero unresolved High/Critical accessibility blocker and verify:
 
-`A11Y-01` is P0/High. Require zero unresolved High/Critical accessibility blocker and verify at minimum:
-
-- keyboard reachability and no traps;
+- keyboard reachability/no traps;
 - visible/logical focus;
-- accessible names and semantic structure;
+- accessible names/semantic structure;
 - contrast/focus/error visibility;
 - supported zoom/reflow;
-- critical screen-reader smoke path.
+- a real critical screen-reader smoke path.
 
-The structured manual record must include PASS manual checks for:
+The manual record must identify the assistive technology and exact version. Automated DOM/keyboard checks do not replace the real screen-reader test.
 
-```text
-keyboard
-focus
-semantics
-contrast
-screen-reader
-```
+## 17. Freeze structured manual evidence
 
-The `screen-reader` check must identify the real assistive technology and its version. Automated DOM/keyboard preflight cannot replace the manual screen-reader check.
-
-## 15. Freeze structured manual UAT evidence
-
-For each of the five mandatory manual P0 scenarios, copy `final/acceptance/manual-evidence-record-template.json` into the exact release directory:
+For mandatory manual P0 scenarios create:
 
 ```text
 reports/final-acceptance/<release-id>/manual/uat-01.json
@@ -217,36 +263,17 @@ reports/final-acceptance/<release-id>/manual/browser-02.json
 reports/final-acceptance/<release-id>/manual/a11y-01.json
 ```
 
-If `RESPONSIVE-01` is PASS, also create:
+If `RESPONSIVE-01` is PASS, also create `manual/responsive-01.json`.
 
-```text
-reports/final-acceptance/<release-id>/manual/responsive-01.json
-```
+Every record must contain the **source RC** tuple, not the later evidence checkout SHA. It must also contain exact release/scenario identity, tester, UTC timestamps, environment, scenario-specific checks/clients and frozen nested evidence hashes.
 
-Every structured record must contain:
+Add each structured JSON to the matching `acceptance-evidence.json` scenario as `{path, sha256}`. Commit these files only under `reports/`.
 
-- `schema_version: 1`;
-- exact `release_id`;
-- exact scenario ID;
-- `status: PASS`;
-- exact Git SHA/version/migration head;
-- `environment` equal to `production` or `production-like-staging`;
-- named tester;
-- valid UTC start/end timestamps ending in `Z`;
-- scenario-specific clients/checks/manual_checks;
-- at least one nested evidence ref with path + SHA-256.
+## 18. Execute remaining canonical matrix
 
-Then add that JSON itself to the matching scenario's `acceptance-evidence.json` `evidence_refs[]` as `{path, sha256}`. Each mandatory scenario must contain exactly one structured manual JSON under its release `manual/` directory. Duplicate scenario IDs, duplicate browser/check IDs, wrong RC, hash mismatch or malformed release directory identity fail closed.
+`final/acceptance/manifest-v1.json` is the only scenario authority. Every PASS needs at least one frozen evidence reference.
 
-## 16. Execute remaining canonical matrix
-
-Use `final/acceptance/manifest-v1.json` as the only scenario authority. It also covers architecture, Agent authority, Design/Canvas quality, security, reliability, provenance/data lifecycle, cost controls, performance/capacity, recovery, observability, production operations, documentation and operational handoff.
-
-Every PASS requires at least one frozen evidence reference with path + SHA-256.
-
-## 17. Gap policy
-
-Only genuinely non-critical P1/P2 items may use `DEFERRED_NON_CRITICAL` or `BLOCKED_EXTERNAL`, and must include:
+Only genuinely non-critical P1/P2 items may use `DEFERRED_NON_CRITICAL` or `BLOCKED_EXTERNAL`, with:
 
 ```text
 owner
@@ -256,9 +283,9 @@ target_release
 workaround
 ```
 
-P0 and Critical/High items cannot be deferred or externally blocked into a green release.
+P0 and Critical/High items cannot be deferred/blocked into a green release.
 
-## 18. Production safety proof
+## 19. Production safety proof
 
 Final evidence must include real runtime proof for:
 
@@ -271,25 +298,29 @@ Final evidence must include real runtime proof for:
 - exact immutable image digests and migrations;
 - production smoke/canary/steady state.
 
-Source Terraform and runbooks alone are not production evidence.
+Terraform/source/runbooks alone are not production evidence.
 
-## 19. Cost and billing reconciliation
+## 20. Cost and billing reconciliation
 
-For real accepted runs, reconcile Provider Request -> Generation -> Idempotency Operation -> Cost Ledger -> AgentRun/Task -> Billing/Credit. Any estimated value must expose confidence/reconciliation status. Unexplained material spend blocks release.
+For accepted runs reconcile Provider Request -> Generation -> Idempotency Operation -> Cost Ledger -> AgentRun/Task -> Billing/Credit. The platform-wide daily provider-dollar hard stop must be proven at a durable runtime boundary.
 
-The platform-wide daily provider-dollar hard stop must be proven at a durable runtime boundary.
+## 21. Security STOP-SHIP conditions
 
-## 20. Security STOP-SHIP conditions
+Stop on cross-tenant leak, sandbox escape, secret exposure, prompt-injection authority escalation, SSRF to metadata/private targets, payment/credit replay, or unresolved Critical/High release blockers.
 
-Stop on cross-tenant leak, sandbox escape, secret exposure, prompt-injection authority escalation, SSRF to metadata/private targets, payment/credit replay, or any unresolved Critical/High issue not permitted by an explicit release policy.
+## 22. Freeze acceptance evidence and release manifest
 
-## 21. Freeze acceptance evidence
+When scenario statuses are final:
 
-When all scenario statuses are final, compute the exact SHA-256 of `acceptance-evidence.json` and freeze its path/hash in `release-manifest.json`. Any subsequent edit requires a new hash and re-evaluation.
+1. compute the exact SHA-256 of `acceptance-evidence.json`;
+2. freeze its path/hash in `release-manifest.json`;
+3. freeze all six upstream decisions and the Production deployment manifest by path/hash;
+4. keep `release_candidate.git_sha` equal to the **source RC SHA**, even though the release manifest itself is committed later as evidence;
+5. commit only under `reports/`.
 
-Freeze all upstream decisions and the Production deployment manifest the same way.
+Any evidence edit requires recomputing affected hashes and re-evaluating downstream signoffs.
 
-## 22. Complete eight evidence-backed signoffs
+## 23. Complete eight evidence-backed signoffs
 
 Required roles are exactly:
 
@@ -304,32 +335,23 @@ finance_billing
 release_owner
 ```
 
-For each role, copy `final/acceptance/signoff-record-template.json` to:
+Store completed records at:
 
 ```text
 reports/final-acceptance/<release-id>/signoffs/<role>.json
 ```
 
-Each record must bind the same `release_id`, Git SHA, version and migration head; identify a named approver; contain `status: APPROVED`; include an ISO-8601 UTC `Z` timestamp, a concrete decision and at least one frozen evidence reference.
+Each signoff must bind the same **source RC** release ID/Git SHA/version/migration head; include a named approver, `status: APPROVED`, UTC `Z` timestamp, concrete decision and frozen evidence references.
 
-Freeze every signoff record in `release-manifest.json` as `{path, sha256}`. Missing Design, Legal/Privacy, Finance/Billing or any other required role blocks release. The gate validates records; it never impersonates or auto-approves a human role.
+Freeze each signoff in `release-manifest.json` as `{path, sha256}`. The gate never auto-signs or impersonates a human.
 
-## 23. Complete operational handoff
+## 24. Complete operational handoff
 
-Assign:
+Assign on-call, support, incident commander rotation, first-day watch, quality/cost review, security/dependency review, DR drill and capacity review owners.
 
-- on-call owner;
-- support owner;
-- incident commander rotation;
-- first-day watch owner;
-- quality/cost review owner;
-- security/dependency review owner;
-- DR drill owner;
-- capacity review owner.
+## 25. Run canonical source/lock/browser gates
 
-## 24. Run canonical final source gate
-
-The GitHub `Final Product Acceptance Gate` must execute on an allocated runner using Python 3.12 and uv 0.11.28 with:
+GitHub hosted jobs must actually receive a runner. Required source-side commands include:
 
 ```bash
 uv sync --all-packages --frozen
@@ -337,15 +359,22 @@ python3 scripts/validate_final_acceptance_contract.py
 python3 scripts/validate_final_manual_evidence_contract.py
 python3 scripts/validate_final_browser_preflight.py
 python3 scripts/validate_final_upstream_lock_contract.py
+python3 scripts/validate_final_runner_checkout_binding.py
+bash -n scripts/regenerate-root-uv-lock.sh
 ```
 
-The separate `Final Browser Preflight` should also run the selected multi-browser regression corpus. Its WebKit result is not real Safari evidence.
+The separate Final Browser Preflight must run its multi-browser corpus. A `runner_id=0 / steps=[]` Billing/spending-limit failure is `BLOCKED_EXTERNAL`, not source validation.
 
-A `runner_id=0 / steps=[]` account Billing failure is `BLOCKED_EXTERNAL`, not source validation.
+## 26. Run the canonical final decision from a clean evidence checkout
 
-## 25. Run final decision through the canonical runner
+The checkout used to authorize the release must:
 
-Do **not** call the low-level `final-acceptance-gate.py` by itself for release authorization. The canonical runner always evaluates structured manual evidence first:
+- descend from the source RC;
+- contain only `reports/` committed changes after the source RC;
+- have no uncommitted/untracked files;
+- retain the same `VERSION` and unique Alembic head.
+
+Run:
 
 ```bash
 python3 scripts/run-final-acceptance.py \
@@ -355,31 +384,31 @@ python3 scripts/run-final-acceptance.py \
   --output reports/final-acceptance/<release-id>/final-decision.json
 ```
 
-Or use the manual `Final Product Acceptance Gate` workflow with the two frozen files; that workflow calls the same canonical runner.
+Do not call low-level `final-acceptance-gate.py` alone for release authorization.
 
-## 26. Decision handling
+The canonical runner first validates source-RC/evidence-checkout identity and all six upstream RC bindings, then evaluates structured manual evidence, then the low-level final matrix.
 
-If the structured manual gate or final gate exits non-zero or reports any blocker, the required headline remains:
+After the command writes decision files, those decision files may be committed as final evidence under `reports/`, but if a final decision is re-run later, the same source-RC/evidence-only rules still apply.
+
+## 27. Decision handling
+
+If any gate reports a blocker, the headline remains:
 
 ```text
 NOT ACCEPTED — SEE BLOCKING GAPS
 ```
 
-Do not delete scenarios, weaken P0 priorities, substitute WebKit for Safari, invent browser/assistive-technology versions, or edit signoff/evidence hashes to obtain green.
+Do not delete scenarios, weaken P0 priorities, substitute WebKit for Safari, invent browser/assistive-technology versions, alter hashes, reuse stale upstream decisions or change source files after RC freeze to obtain green.
 
-Only a canonical run where manual evidence passes and the final decision has `accepted=true`, `passed=true` and `blockers=[]` may emit:
+Only a canonical run where manual evidence passes and the final decision has `accepted=true`, `passed=true`, `blockers=[]` may emit:
 
 ```text
 LUMI AI DESIGN OS — PRODUCT ACCEPTED
 ```
 
-## 27. Post-acceptance cadence
-
-After a real accepted release, continue weekly provider/cost/quality review, monthly security/dependency review, quarterly DR drills, AI release gates for production AI changes, capacity review and governed customer-feedback learning.
-
 ## 28. Current project state
 
-Current source work does **not** satisfy runtime/manual acceptance. GitHub hosted jobs remain externally blocked before runner allocation by the account Billing/spending-limit condition, root `uv.lock` remains stale, and required real cloud/payment/UAT/signoff evidence is still pending.
+Current source work does **not** satisfy runtime/manual acceptance. GitHub hosted jobs remain externally blocked before runner allocation by the account Billing/spending-limit condition, the root `uv.lock` remains stale, and required real cloud/payment/UAT/signoff evidence is still pending.
 
 Therefore the current outcome remains:
 
