@@ -3,9 +3,10 @@ from __future__ import annotations
 import inspect
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Awaitable, Callable, Protocol
+from typing import Awaitable, Callable, Protocol
 from uuid import UUID
 
+from .http_context import mark_replayed
 from .models import (
     AcquireAction,
     AcquireResult,
@@ -15,7 +16,6 @@ from .models import (
     OperationStatus,
     ProviderReconciliation,
     ProviderReconciliationStatus,
-    RecoveryState,
     SideEffectOutcome,
 )
 
@@ -156,12 +156,17 @@ class SideEffectGateway:
         if acquired.action is AcquireAction.REPLAY:
             self.metrics.increment("idempotency_replay_total")
             self.metrics.increment("duplicate_prevented_total")
+            mark_replayed()
             return self._replay(acquired.operation)
         if acquired.action is AcquireAction.WAIT:
             self.metrics.increment("duplicate_prevented_total")
             raise OperationInProgress(OperationInProgress.code)
         if acquired.action is AcquireAction.FINAL_FAILURE:
             self.metrics.increment("duplicate_prevented_total")
+            if acquired.operation.error_category is ErrorCategory.AMBIGUOUS:
+                raise AmbiguousSideEffect(
+                    acquired.operation.error_message or AmbiguousSideEffect.code
+                )
             raise IdempotencyFinalFailure(
                 acquired.operation.error_code or IdempotencyFinalFailure.code
             )
@@ -175,6 +180,7 @@ class SideEffectGateway:
                 now=current_time,
             )
             if recovered is not None:
+                mark_replayed()
                 return recovered
         if acquired.action not in {AcquireAction.EXECUTE, AcquireAction.RECOVER}:
             raise RuntimeError(f"unsupported acquire action: {acquired.action}")
