@@ -4,6 +4,7 @@ from sqlalchemy import Index
 from . import models_asset_storage as _models_asset_storage
 from . import models_auth as _models_auth
 from . import models_capability_registry as _models_capability_registry
+from . import models_costs as _models_costs
 from . import models_identity as _models_identity
 from . import models_project_core as _models_project_core
 from . import models_provider_health as _models_provider_health
@@ -24,6 +25,7 @@ _METADATA_MODULES = (
     _models_asset_storage,
     _models_auth,
     _models_capability_registry,
+    _models_costs,
     _models_identity,
     _models_project_core,
     _models_provider_health,
