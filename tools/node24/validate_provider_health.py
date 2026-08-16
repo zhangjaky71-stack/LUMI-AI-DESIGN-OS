@@ -33,6 +33,7 @@ PYTHON_SCOPE = (
     "services/model-gateway/src/lumi_model_gateway/memory.py",
     "services/model-gateway/tests/test_provider_health.py",
     "services/model-gateway/tests/test_provider_health_gateway.py",
+    "services/model-gateway/tests/test_provider_health_store_failure.py",
     "services/model-gateway/tests/test_synthetic_probe.py",
     "apps/api/src/lumi_api/persistence/models_provider_health.py",
     "tools/node24/test_provider_health_redis.py",
@@ -107,7 +108,9 @@ def require_gateway_integration() -> None:
         "record_all_candidates_unavailable(",
     ):
         if marker not in gateway:
-            raise AssertionError(f"Gateway health marker missing: {marker}")
+            raise AssertionError(
+                f"Gateway health marker missing: {marker}"
+            )
     if "request.capability.value" not in routing:
         raise AssertionError(
             "Router health query is not capability scoped"
@@ -141,12 +144,13 @@ def require_failure_attribution() -> None:
         "budget_exceeded",
         "hard_constraint_invalid",
     ):
-        if excluded in source.split("_PROVIDER_ATTRIBUTABLE", 1)[1].split(
-            "_PROVIDER_WIDE",
+        if excluded in source.split(
+            "_PROVIDER_ATTRIBUTABLE",
             1,
-        )[0]:
+        )[1].split("_PROVIDER_WIDE", 1)[0]:
             raise AssertionError(
-                f"local/user failure polluted health attribution: {excluded}"
+                "local/user failure polluted health attribution: "
+                f"{excluded}"
             )
 
 
@@ -155,7 +159,9 @@ def require_probe_fail_safe() -> None:
 
     policy = SyntheticProbePolicy()
     if policy.enabled:
-        raise AssertionError("synthetic probes must be disabled by default")
+        raise AssertionError(
+            "synthetic probes must be disabled by default"
+        )
     if policy.allow_paid_probes:
         raise AssertionError("paid synthetic probes must be opt-in")
     if str(policy.max_estimated_cost_usd) != "0":
@@ -163,7 +169,8 @@ def require_probe_fail_safe() -> None:
             "default synthetic probe cost limit must be zero"
         )
     source = read(
-        "services/model-gateway/src/lumi_model_gateway/synthetic_probe.py"
+        "services/model-gateway/src/"
+        "lumi_model_gateway/synthetic_probe.py"
     )
     for marker in (
         "provider_terms_allowed",
