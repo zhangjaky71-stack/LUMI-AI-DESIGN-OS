@@ -4,10 +4,10 @@ Revision ID: 0018_provider_daily_cost_hard_stop
 Revises: 0017_knowledge_engine
 
 The control is intentionally enforced in PostgreSQL before a cost reservation can
-become active.  This keeps the denial-of-wallet boundary durable across API/model
+become active. This keeps the denial-of-wallet boundary durable across API/model
 Gateway process restarts and serializes concurrent reservations across tenants.
 Production activation is explicit: operators configure provider caps first, then
-flip the singleton policy row.  Once enabled, a missing provider cap fails closed.
+flip the singleton policy row. Once enabled, a missing provider cap fails closed.
 """
 
 from __future__ import annotations
@@ -99,8 +99,8 @@ UPGRADE_STATEMENTS = (
         active_amount numeric(20,8);
         utc_day date := (now() AT TIME ZONE 'UTC')::date;
     BEGIN
-        -- budget_day_utc is assigned by the database.  Callers cannot move an
-        -- active reservation to another day to evade the cap.
+        -- The database owns the accounting day. Callers cannot move an active
+        -- reservation to another day to evade the cap.
         IF TG_OP = 'INSERT' THEN
             NEW.budget_day_utc := utc_day;
         ELSIF NEW.status = 'active' AND OLD.status IS DISTINCT FROM 'active' THEN
@@ -123,7 +123,8 @@ UPGRADE_STATEMENTS = (
         END IF;
 
         IF NEW.currency <> 'USD' THEN
-            RAISE EXCEPTION 'COST_PROVIDER_DAILY_CURRENCY_UNSUPPORTED provider=% currency=%',
+            RAISE EXCEPTION
+                'COST_PROVIDER_DAILY_CURRENCY_UNSUPPORTED provider=% currency=%',
                 NEW.provider, NEW.currency
                 USING ERRCODE = 'P0001';
         END IF;
@@ -133,9 +134,9 @@ UPGRADE_STATEMENTS = (
                 USING ERRCODE = 'P0001';
         END IF;
 
-        -- Serialize all tenants for the same provider/day.  The lock name is
-        -- deterministic and UTC-scoped, so concurrent reservations cannot both
-        -- observe the same remaining amount and oversubscribe it.
+        -- Serialize every tenant for the same provider/day. A second transaction
+        -- waits until the first reservation or settlement is visible before it
+        -- computes remaining budget.
         PERFORM pg_advisory_xact_lock(
             hashtextextended(
                 'provider-daily:' || NEW.provider || ':' || NEW.budget_day_utc::text,
@@ -238,6 +239,20 @@ UPGRADE_STATEMENTS = (
                 reservation_day,
                 (NEW.occurred_at AT TIME ZONE 'UTC')::date
             );
+
+            -- A settlement may exceed its estimate after the provider accepted.
+            -- Never reject that sunk cost, but serialize the settlement with new
+            -- reservations so the next admission observes the larger actual.
+            IF COALESCE(enforcement_enabled, false)
+               AND NEW.provider IS NOT NULL THEN
+                PERFORM pg_advisory_xact_lock(
+                    hashtextextended(
+                        'provider-daily:' || NEW.provider || ':'
+                        || NEW.budget_day_utc::text,
+                        0
+                    )
+                );
+            END IF;
         ELSE
             NEW.budget_day_utc := (NEW.occurred_at AT TIME ZONE 'UTC')::date;
         END IF;
