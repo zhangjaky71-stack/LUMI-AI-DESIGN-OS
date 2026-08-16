@@ -49,6 +49,7 @@ def test_topology_is_idempotently_declarable_on_memory_transport() -> None:
     }
     queue = domain_queue("asset-indexer.v1", "lumi.asset.#")
     assert queue.name == "lumi.domain.asset-indexer.v1"
+    assert queue.queue_arguments is not None
     assert queue.queue_arguments["x-queue-type"] == "quorum"
     assert domain_dlq("asset-indexer.v1").name == "lumi.domain.asset-indexer.v1.dlq"
     with Connection("memory://") as connection:
