@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -12,7 +13,9 @@ from .contracts import (
     ToolRequest,
     ToolSideEffectContext,
     ToolSideEffectResponse,
+    canonical_json_bytes,
 )
+from .errors import ToolIdempotencyConflictError
 
 
 class MemoryResultOffloader:
@@ -34,12 +37,16 @@ class MemoryResultOffloader:
 
 
 class MemoryIdempotentSideEffectGuard:
-    """Deterministic test double mirroring NODE-20 replay semantics."""
+    """Deterministic reference mirroring NODE-20 replay/conflict semantics."""
 
     def __init__(self) -> None:
-        self._results: dict[tuple[str, str, str], ToolSideEffectResponse] = {}
+        self._results: dict[
+            tuple[str, str, str],
+            tuple[str, ToolSideEffectResponse],
+        ] = {}
         self.invocations = 0
         self.replays = 0
+        self._lock = asyncio.Lock()
 
     async def execute(
         self,
@@ -51,23 +58,32 @@ class MemoryIdempotentSideEffectGuard:
             context.operation_type,
             context.idempotency_key,
         )
-        existing = self._results.get(key)
-        if existing is not None:
-            self.replays += 1
-            return ToolSideEffectResponse(
-                output=existing.output,
-                replayed=True,
-                operation_id=existing.operation_id,
+        semantic_hash = hashlib.sha256(
+            canonical_json_bytes(context.request)
+        ).hexdigest()
+        async with self._lock:
+            existing = self._results.get(key)
+            if existing is not None:
+                existing_hash, response = existing
+                if existing_hash != semantic_hash:
+                    raise ToolIdempotencyConflictError(
+                        ToolIdempotencyConflictError.code
+                    )
+                self.replays += 1
+                return ToolSideEffectResponse(
+                    output=response.output,
+                    replayed=True,
+                    operation_id=response.operation_id,
+                )
+            self.invocations += 1
+            output = await invoke()
+            response = ToolSideEffectResponse(
+                output=output,
+                replayed=False,
+                operation_id=f"test-op-{self.invocations}",
             )
-        self.invocations += 1
-        output = await invoke()
-        response = ToolSideEffectResponse(
-            output=output,
-            replayed=False,
-            operation_id=f"test-op-{self.invocations}",
-        )
-        self._results[key] = response
-        return response
+            self._results[key] = (semantic_hash, response)
+            return response
 
 
 @dataclass(slots=True)
