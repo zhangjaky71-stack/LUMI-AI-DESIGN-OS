@@ -6,39 +6,73 @@ This record closes release-authorization identity gaps discovered during Final A
 
 ## Gaps found
 
-The prior source contract strongly bound evidence records to each other, but the canonical release authorization path still had three reuse risks:
+The prior source contract strongly bound evidence records to each other, but the canonical release authorization path still had four identity/reuse risks:
 
-1. a complete evidence/signoff package for an older Git SHA could be evaluated from a newer checkout because the release manifest SHA was not compared to the actual repository HEAD;
+1. a complete evidence/signoff package for an older source RC could be evaluated without proving that current source still represented that RC;
 2. `version` and `migration_head` could be internally consistent across JSON evidence while not matching the repository root `VERSION` or the actual Alembic graph head;
-3. only a subset of required upstream decisions were forced to carry exact release-candidate identity, allowing old Security or Recovery decisions to be reused with a newer candidate.
+3. only a subset of required upstream decisions were forced to carry exact release-candidate identity, allowing old Security or Recovery decisions to be reused with a newer candidate;
+4. a naive rule requiring the release manifest Git SHA to equal the checkout HEAD would be impossible once the manifest/evidence/signoff files themselves are committed, because those evidence commits necessarily change HEAD.
 
-The acceptance invariant requires one exact RC, so all three are release-authority gaps.
+The acceptance invariant requires one exact **source RC** while still allowing later evidence commits. The implementation therefore uses a source-RC/evidence-checkout model rather than a self-referential single SHA.
 
 ## Source closure implemented
 
-### Repository identity binding
+### Source RC plus evidence checkout
 
-The canonical `scripts/run-final-acceptance.py` now computes repository truth using only local immutable source state:
+The canonical `scripts/run-final-acceptance.py` now distinguishes:
 
-- Git SHA from `git rev-parse HEAD`;
+- `release_candidate.git_sha`: the frozen product/source RC commit;
+- current checkout HEAD: the evidence checkout containing frozen reports/signoffs for that RC.
+
+The source RC must:
+
+1. exist as a local Git commit;
+2. be an ancestor of the evidence checkout HEAD;
+3. have the same root `VERSION` and unique Alembic head as the evidence checkout;
+4. have **no post-RC source changes**.
+
+The only committed paths permitted between:
+
+```text
+release_candidate.git_sha .. current HEAD
+```
+
+are paths under:
+
+```text
+reports/
+```
+
+This allows release evidence, production deployment manifests, structured UAT evidence and signoff records to be committed after the source RC freeze without changing the product RC.
+
+Any post-RC change to application/service code, workflows, scripts, IaC, lockfiles, `VERSION`, Final Acceptance definitions or other non-report source invalidates the frozen RC and fails closed with:
+
+```text
+FINAL_ACCEPTANCE_POST_RC_SOURCE_CHANGE
+```
+
+The canonical runner also requires a clean Git worktree before release authorization so local uncommitted source/evidence cannot silently influence the decision.
+
+### Repository version and migration binding
+
+The runner derives repository source facts using only local source state:
+
 - release version from root `VERSION`;
 - migration head by statically parsing every `apps/api/alembic/versions/*.py` revision/down-revision edge and requiring exactly one graph head.
 
-Before any manual-evidence or final-decision evaluator runs, the release manifest must match the exact tuple:
+The release manifest's version and migration head must equal those repository facts. Mismatch fails closed with:
 
 ```text
-(git_sha, VERSION, unique_alembic_head)
+FINAL_ACCEPTANCE_REPOSITORY_IDENTITY_MISMATCH
 ```
 
-Mismatch fails closed with `FINAL_ACCEPTANCE_REPOSITORY_IDENTITY_MISMATCH`.
+The migration resolver rejects duplicate revisions, unknown parents, unsupported down-revision shapes and multiple heads.
 
-The migration resolver also rejects duplicate revisions, unknown parents, unsupported down-revision shapes and multiple heads.
-
-### All upstream gates bind the same RC
+### All upstream gates bind the same source RC
 
 The canonical runner reads `required_upstream_gates` from `final/acceptance/manifest-v1.json` instead of maintaining a partial hard-coded identity list.
 
-Every required upstream decision must now contain a `release_candidate` tuple equal to the final release manifest. At the current matrix this includes exactly:
+Every required upstream decision must carry the same full `release_candidate` tuple as the final release manifest. At the current matrix this includes exactly:
 
 - Security;
 - Recovery;
@@ -47,20 +81,24 @@ Every required upstream decision must now contain a `release_candidate` tuple eq
 - Staging Acceptance;
 - Production Deployment.
 
-Any mismatch fails closed with `FINAL_ACCEPTANCE_UPSTREAM_RC_MISMATCH` before the final decision gate runs.
+Any mismatch fails closed with:
 
-The existing frozen-file SHA validation in the low-level final gate remains mandatory; this new preflight adds exact-RC identity, it does not replace evidence hashing.
+```text
+FINAL_ACCEPTANCE_UPSTREAM_RC_MISMATCH
+```
+
+The existing frozen-file SHA validation in the low-level final gate remains mandatory; exact-RC preflight adds identity binding and does not replace evidence hashing.
 
 ### Negative contract proof
 
-`scripts/validate_final_runner_checkout_binding.py` now proves that the canonical runner rejects:
+`scripts/validate_final_runner_checkout_binding.py` now proves that:
 
-- a stale Git SHA;
-- a release version different from root `VERSION`;
-- a migration head different from the repository's unique Alembic head;
-- a stale Security upstream decision bound to another RC.
-
-It also proves the clean current repository identity and all required upstream bindings are accepted by the source preflight.
+- `reports/` is the only accepted post-RC evidence namespace;
+- changes to `scripts/`, `apps/`, `services/`, `infra/`, `VERSION`, `uv.lock` or `final/acceptance/` are not evidence-only changes;
+- a release version different from root `VERSION` is rejected;
+- a migration head different from the repository's unique Alembic head is rejected;
+- a stale Security upstream decision bound to another RC is rejected;
+- all required upstream decisions bind successfully for a clean matching source fixture.
 
 The `Final Product Acceptance Gate` source-contract job runs this validator and compiles the runner/validator sources.
 
@@ -68,9 +106,9 @@ The `Final Product Acceptance Gate` source-contract job runs this validator and 
 
 `scripts/create-final-acceptance-evidence.py` no longer requires the operator to manually copy Git SHA, version or migration head.
 
-It now:
+At source-RC freeze time it:
 
-- derives the exact repository identity using the canonical runner;
+- derives the exact current Git SHA, root `VERSION` and unique Alembic head using the canonical runner;
 - optionally accepts identity CLI flags only as assertions that must equal repository truth;
 - validates a safe release ID;
 - generates all scenario IDs from the canonical matrix;
@@ -79,13 +117,13 @@ It now:
 - refuses to overwrite an existing evidence file;
 - initializes every scenario to `NOT_RUN`, which cannot satisfy Final Acceptance.
 
-This reduces operator error without manufacturing PASS evidence.
+After that source freeze, subsequent commits used for final authorization must be evidence-only `reports/` commits or the RC must be frozen again.
 
 ## Dependency lock repair guard
 
 The root `uv.lock` remains a real source blocker because the current ChatGPT execution environment does not have the required canonical uv version.
 
-`scripts/regenerate-root-uv-lock.sh` now provides the only documented repair procedure for this branch. It requires:
+`scripts/regenerate-root-uv-lock.sh` provides the guarded repair procedure for this branch. It requires:
 
 - Python 3.12.x;
 - uv exactly 0.11.28;
@@ -97,22 +135,23 @@ The root `uv.lock` remains a real source blocker because the current ChatGPT exe
 - an actual `uv.lock` change;
 - no collateral source-file changes.
 
-The upstream-lock static validator and Final Product Acceptance workflow both enforce the helper contract/syntax.
+The upstream-lock static validator and Final Product Acceptance workflow enforce the helper contract/syntax.
 
 The current model execution environment exposes uv 0.10.0, therefore it is intentionally not used to regenerate the release lock.
 
 ## Still required before acceptance
 
 - regenerate and commit `uv.lock` using the canonical helper on Python 3.12 + uv 0.11.28;
+- complete any remaining source changes before freezing the final source RC;
+- create the 50-scenario evidence skeleton at that source RC;
+- after RC freeze, commit only `reports/` evidence/signoff material or deliberately invalidate and refreeze the RC;
 - restore hosted GitHub Actions runner allocation;
-- execute the checkout/upstream identity negative contract on a real runner;
-- freeze one final candidate only after all source changes are complete;
-- generate the initial 50-scenario evidence skeleton from that exact checkout;
+- execute the release identity/upstream negative contract on a real runner;
 - collect and hash all required automated/manual/runtime evidence;
-- bind all six upstream decisions to that exact tuple;
-- bind all eight human signoff records to that exact tuple;
-- rerun the canonical final runner after the final evidence/signoff change.
+- bind all six upstream decisions to the frozen source RC tuple;
+- bind all eight human signoff records to the frozen source RC tuple;
+- run the canonical final runner from a clean evidence checkout descended from the source RC with reports-only changes.
 
 ## Final status
 
-NODE-73 remains **NOT ACCEPTED**. These changes prevent a prior release package, stale Security/Recovery decision, mistyped version or mistyped migration head from authorizing a different checkout.
+NODE-73 remains **NOT ACCEPTED**. The corrected model prevents stale RC reuse and source drift while avoiding an impossible self-referential Git SHA requirement for evidence commits.
