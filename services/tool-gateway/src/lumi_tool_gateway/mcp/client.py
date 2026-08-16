@@ -131,13 +131,21 @@ class MCPClient:
             )
             return result
 
-        tools, list_ttl, cache_scope = await self._list_tools_2026(
+        discover_ttl, discover_scope = _cache_hints_2026(
+            discovery,
+            max_ttl_seconds=server.discovery_ttl_seconds,
+        )
+        tools, list_ttl, list_scope = await self._list_tools_2026(
             server,
             organization_id=organization_id,
             protocol_version=protocol_version,
         )
-        discover_ttl = _ttl_seconds(discovery, default=server.discovery_ttl_seconds)
         ttl = min(server.discovery_ttl_seconds, discover_ttl, list_ttl)
+        cache_scope = (
+            "private"
+            if "private" in {discover_scope, list_scope}
+            else "public"
+        )
         meta = discovery.get("_meta")
         server_info: dict[str, Any] = {}
         if isinstance(meta, dict):
@@ -200,7 +208,7 @@ class MCPClient:
         tools: list[MCPDiscoveredTool] = []
         cursor: str | None = None
         ttl = server.discovery_ttl_seconds
-        cache_scope = "private"
+        cache_scope = "public"
         for _ in range(10):
             params: dict[str, Any] = {}
             if cursor:
@@ -220,10 +228,13 @@ class MCPClient:
                 tools.append(_parse_discovered_tool(raw_tool))
                 if len(tools) > 512:
                     raise MCPProtocolMismatchError("MCP tool catalog exceeds safe limit")
-            ttl = min(ttl, _ttl_seconds(result, default=server.discovery_ttl_seconds))
-            raw_scope = result.get("cacheScope")
-            if isinstance(raw_scope, str) and raw_scope in {"private", "public"}:
-                cache_scope = raw_scope
+            page_ttl, page_scope = _cache_hints_2026(
+                result,
+                max_ttl_seconds=server.discovery_ttl_seconds,
+            )
+            ttl = min(ttl, page_ttl)
+            if page_scope == "private":
+                cache_scope = "private"
             next_cursor = result.get("nextCursor")
             if next_cursor is None:
                 return tuple(tools), ttl, cache_scope
@@ -356,6 +367,10 @@ def _parse_call_result_2026(result: dict[str, Any]) -> MCPCallResult:
     request_state = result.get("requestState")
     if request_state is not None and not isinstance(request_state, str):
         raise MCPProtocolMismatchError("MCP requestState invalid")
+    if result_type == "input_required" and not input_requests and request_state is None:
+        raise MCPProtocolMismatchError(
+            "MCP input_required result missing inputRequests/requestState"
+        )
     return MCPCallResult(
         structured_content=result.get("structuredContent"),
         structured_content_present="structuredContent" in result,
@@ -367,8 +382,16 @@ def _parse_call_result_2026(result: dict[str, Any]) -> MCPCallResult:
     )
 
 
-def _ttl_seconds(result: dict[str, Any], *, default: int) -> int:
+def _cache_hints_2026(
+    result: dict[str, Any],
+    *,
+    max_ttl_seconds: int,
+) -> tuple[int, str]:
     ttl_ms = result.get("ttlMs")
-    if isinstance(ttl_ms, int) and ttl_ms >= 0:
-        return max(1, min(default, max(1, ttl_ms // 1000)))
-    return default
+    cache_scope = result.get("cacheScope")
+    if not isinstance(ttl_ms, int) or isinstance(ttl_ms, bool) or ttl_ms < 0:
+        raise MCPProtocolMismatchError("2026 cacheable result ttlMs invalid")
+    if cache_scope not in {"private", "public"}:
+        raise MCPProtocolMismatchError("2026 cacheable result cacheScope invalid")
+    ttl_seconds = min(max_ttl_seconds, ttl_ms // 1000)
+    return ttl_seconds, str(cache_scope)
