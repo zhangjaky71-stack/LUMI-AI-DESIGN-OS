@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from .contracts import AgentTaskStatus, DeepAgentTaskRequest, MaterializedSkill
+from .contracts import (
+    AgentTaskStatus,
+    DeepAgentTaskRequest,
+    MaterializedSkill,
+)
 from .errors import DeepAgentConfigurationError, DeepAgentExecutionError
 from .factory import LumiDeepAgentFactory
 from .ports import (
@@ -46,7 +50,9 @@ class DeepAgentTaskExecutor:
             context=request.invocation,
         )
         if request.agent_ref != config.identity:
-            raise DeepAgentConfigurationError("agent resolver must freeze an exact version")
+            raise DeepAgentConfigurationError(
+                "agent resolver must freeze an exact version"
+            )
         skill_refs = _selected_skill_refs(config, request)
         materialized = await self.skills.materialize(
             skill_refs=skill_refs,
@@ -59,30 +65,32 @@ class DeepAgentTaskExecutor:
             context=request.invocation,
         )
         if bundle.context_bundle_ref != request.context_bundle_ref:
-            raise DeepAgentConfigurationError("Context Compiler returned a different bundle")
+            raise DeepAgentConfigurationError(
+                "Context Compiler returned a different bundle"
+            )
         compiled = await self.factory.compile(
             config=config,
             context=request.invocation,
             bundle=bundle,
             skills=materialized,
         )
-        task_message = build_user_task(objective=request.objective, bundle=bundle)
-        invoke_input = {"messages": [{"role": "user", "content": task_message}]}
-        invoke_config = {
-            "configurable": {"thread_id": compiled.thread_id},
-            "recursion_limit": config.max_steps,
-            "metadata": {
-                "lumi_agent_run_id": str(request.invocation.agent_run_id),
-                "lumi_task_id": str(request.invocation.task_id or ""),
-                "lumi_agent_id": config.agent_id,
-                "lumi_agent_version": config.exact_version,
-            },
+        task_message = build_user_task(
+            objective=request.objective,
+            bundle=bundle,
+        )
+        invoke_input = {
+            "messages": [{"role": "user", "content": task_message}]
         }
         try:
-            raw = await compiled.compiled_graph.ainvoke(invoke_input, config=invoke_config)
+            raw = await compiled.ainvoke(invoke_input)
         except Exception as exc:
-            raise DeepAgentExecutionError("Deep Agent task invocation failed") from exc
-        result = await self.parser.parse(raw_result=raw, context=request.invocation)
+            raise DeepAgentExecutionError(
+                "Deep Agent task invocation failed"
+            ) from exc
+        result = await self.parser.parse(
+            raw_result=raw,
+            context=request.invocation,
+        )
         stored = await self.results.store(
             request=request,
             result=result,
@@ -91,7 +99,10 @@ class DeepAgentTaskExecutor:
         return _safe_control_delta(state, stored.result_ref, result)
 
 
-def _assert_state_identity(state: dict[str, Any], request: DeepAgentTaskRequest) -> None:
+def _assert_state_identity(
+    state: dict[str, Any],
+    request: DeepAgentTaskRequest,
+) -> None:
     expected = {
         "run_id": str(request.invocation.agent_run_id),
         "organization_id": str(request.invocation.organization_id),
@@ -99,14 +110,25 @@ def _assert_state_identity(state: dict[str, Any], request: DeepAgentTaskRequest)
     }
     for key, value in expected.items():
         if str(state.get(key)) != value:
-            raise DeepAgentConfigurationError(f"NODE-28 state mismatch: {key}")
+            raise DeepAgentConfigurationError(
+                f"NODE-28 state mismatch: {key}"
+            )
     task_id = state.get("task_id")
-    expected_task = str(request.invocation.task_id) if request.invocation.task_id else None
+    expected_task = (
+        str(request.invocation.task_id)
+        if request.invocation.task_id
+        else None
+    )
     if task_id != expected_task:
-        raise DeepAgentConfigurationError("NODE-28 state mismatch: task_id")
+        raise DeepAgentConfigurationError(
+            "NODE-28 state mismatch: task_id"
+        )
 
 
-def _selected_skill_refs(config: Any, request: DeepAgentTaskRequest) -> tuple[str, ...]:
+def _selected_skill_refs(
+    config: Any,
+    request: DeepAgentTaskRequest,
+) -> tuple[str, ...]:
     allowed_subagents = set(request.invocation.permissions.allowed_subagents)
     values = list(config.skill_refs)
     for child in config.subagents:
@@ -120,10 +142,14 @@ def _assert_exact_skills(
     materialized: tuple[MaterializedSkill, ...],
 ) -> None:
     expected = set(requested)
-    actual = {f"{item.skill_id}@{item.exact_version}" for item in materialized}
+    actual = {
+        f"{item.skill_id}@{item.exact_version}"
+        for item in materialized
+    }
     if expected != actual:
         raise DeepAgentConfigurationError(
-            f"Skill Registry exact resolution mismatch: {sorted(expected)} != {sorted(actual)}"
+            "Skill Registry exact resolution mismatch: "
+            f"{sorted(expected)} != {sorted(actual)}"
         )
 
 
@@ -143,6 +169,11 @@ def _safe_control_delta(
     }
     if result.status is AgentTaskStatus.FAILED:
         errors = list(state.get("errors", []))
-        errors.append({"code": "DEEP_AGENT_TASK_FAILED", "result_ref": result_ref})
+        errors.append(
+            {
+                "code": "DEEP_AGENT_TASK_FAILED",
+                "result_ref": result_ref,
+            }
+        )
         delta["errors"] = errors
     return delta
