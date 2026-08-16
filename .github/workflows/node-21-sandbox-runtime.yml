@@ -54,7 +54,7 @@ jobs:
       - name: Run sandbox contract tests
         run: |
           PYTHONPATH=services/sandbox-runtime/src \
-            uv run pytest -q services/sandbox-runtime/tests/test_sandbox_contract.py
+            uv run pytest -q services/sandbox-runtime/tests
 
       - name: Export and validate sandbox schemas
         run: |
@@ -103,7 +103,13 @@ jobs:
           config = data["Config"]
           assert config["User"] == "65532:65532", config["User"]
           env = config.get("Env") or []
-          forbidden = ("OPENAI_API_KEY=", "ANTHROPIC_API_KEY=", "DATABASE_URL=", "PGPASSWORD=", "AWS_SECRET_ACCESS_KEY=")
+          forbidden = (
+              "OPENAI_API_KEY=",
+              "ANTHROPIC_API_KEY=",
+              "DATABASE_URL=",
+              "PGPASSWORD=",
+              "AWS_SECRET_ACCESS_KEY=",
+          )
           assert not any(item.startswith(forbidden) for item in env), env
           print("image id", data["Id"])
           PY
