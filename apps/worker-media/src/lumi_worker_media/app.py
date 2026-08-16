@@ -5,7 +5,7 @@ from typing import Any, Callable
 
 from celery import Celery
 
-from .job_runtime import JobExecutionResult, JobRecord, execute_job
+from .job_runtime import JobExecutionResult, execute_job
 from .postgres_runtime import PostgresJobStore
 from .queue_contracts import (
     JobKind,
