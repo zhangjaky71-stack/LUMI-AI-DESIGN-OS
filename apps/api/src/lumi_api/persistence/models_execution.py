@@ -31,9 +31,15 @@ class AgentRunModel(Base, UUIDPrimaryKeyMixin, TenantMixin, MutableMixin):
     project_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
     )
-    thread_id: Mapped[str] = mapped_column(String(200), nullable=False)
-    graph_version: Mapped[str] = mapped_column(String(80), nullable=False)
-    agent_config_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    thread_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    graph_key: Mapped[str] = mapped_column(
+        String(128), nullable=False, server_default="lumi.main"
+    )
+    graph_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    agent_config_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    code_git_sha: Mapped[str] = mapped_column(
+        String(80), nullable=False, server_default="unknown"
+    )
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending")
     budget_amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     budget_currency: Mapped[str] = mapped_column(String(3), nullable=False)
@@ -45,8 +51,8 @@ class AgentRunModel(Base, UUIDPrimaryKeyMixin, TenantMixin, MutableMixin):
     )
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending','running','waiting_user','cancel_requested','cancelled',"
-            "'paused','succeeded','failed')",
+            "status IN ('pending','running','waiting_user','waiting_external',"
+            "'cancel_requested','cancelled','paused','succeeded','failed')",
             name="status",
         ),
         CheckConstraint("budget_amount >= 0", name="budget_nonnegative"),
