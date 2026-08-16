@@ -1,6 +1,7 @@
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -8,11 +9,13 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    DateTime,
     ForeignKey,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -118,6 +121,7 @@ class ProjectModel(Base, UUIDPrimaryKeyMixin, TenantMixin, MutableMixin, SoftDel
     brief_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=JSON_OBJECT_DEFAULT
     )
+    brief_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     brand_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("brands.id", ondelete="SET NULL"), nullable=True
     )
@@ -137,8 +141,53 @@ class ProjectModel(Base, UUIDPrimaryKeyMixin, TenantMixin, MutableMixin, SoftDel
     created_by: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     __table_args__ = (
         CheckConstraint("status IN ('draft','active','paused','archived')", name="status"),
+        CheckConstraint("brief_version > 0", name="brief_version_positive"),
+        CheckConstraint(
+            "(status = 'archived' AND archived_at IS NOT NULL) OR "
+            "(status <> 'archived' AND archived_at IS NULL)",
+            name="archive_timestamp_consistency",
+        ),
+    )
+
+
+class ProjectBriefVersionModel(Base, UUIDPrimaryKeyMixin, TenantMixin, CreatedAtMixin):
+    __tablename__ = "project_brief_versions"
+
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    brief_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    changed_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    change_reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    __table_args__ = (
+        UniqueConstraint("project_id", "version_number", name="uq_project_brief_version"),
+        CheckConstraint("version_number > 0", name="version_number_positive"),
+    )
+
+
+class ProjectSummaryModel(Base, TenantMixin):
+    __tablename__ = "project_summaries"
+
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    latest_artifact_preview_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    last_activity_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    active_run_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    artifact_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    projection_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    __table_args__ = (
+        CheckConstraint("active_run_count >= 0", name="active_run_count_nonnegative"),
+        CheckConstraint("artifact_count >= 0", name="artifact_count_nonnegative"),
+        CheckConstraint("projection_version > 0", name="projection_version_positive"),
     )
 
 
