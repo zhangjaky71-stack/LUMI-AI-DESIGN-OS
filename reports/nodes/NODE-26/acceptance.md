@@ -1,139 +1,136 @@
 # NODE-26 Acceptance — MCP Integration
 
-Status: **IMPLEMENTED / VALIDATING**
+Status: **IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL**
 
 ## Delivered
 
-- [x] MCP 2026-07-28 protocol constant and stateless request path.
-- [x] isolated 2025-11-25 legacy initialize/session compatibility path.
-- [x] administrator-approved MCP Server Registry.
-- [x] enabled/approved server enforcement.
+- [x] MCP `2026-07-28` frozen protocol constant and stateless modern request path.
+- [x] isolated `2025-11-25` initialize/session compatibility path.
+- [x] administrator-controlled MCP Server Registry.
+- [x] registered + approved + enabled server requirement.
 - [x] global vs organization-scoped server enforcement.
-- [x] server tool-pattern allowlist.
-- [x] registration-time SSRF validation.
-- [x] request-time DNS/IP revalidation.
-- [x] pinned `ValidatedTarget` HTTP transport port.
+- [x] server remote-tool allow patterns.
+- [x] registration-time and request-time SSRF/DNS/IP validation.
+- [x] HTTPS-only remote MCP endpoints.
+- [x] 2026 protocol restricted to Streamable HTTP.
+- [x] trusted `ValidatedTarget` transport contract.
 - [x] Agent never supplies MCP base URL.
-- [x] tenant-bound credential provider contract.
-- [x] auth headers cannot override MCP routing/security headers or Cookie/Host.
-- [x] modern `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name` header contract.
+- [x] credentials bound to both organization and server ID.
+- [x] auth cannot override Host/Cookie/MCP routing/session/content headers.
+- [x] modern protocol/method/name header contract.
 - [x] modern `_meta` protocolVersion/clientCapabilities/clientInfo envelope.
-- [x] fresh JSON-RPC request ID for each modern request.
-- [x] `server/discover` protocol/capability path.
-- [x] bounded/paginated `tools/list` discovery.
-- [x] tenant-scoped discovery cache with TTL.
+- [x] fresh JSON-RPC request ID per modern request.
+- [x] no modern `Mcp-Session-Id` state.
+- [x] `server/discover` and bounded `tools/list` discovery.
+- [x] strict modern `ttlMs/cacheScope` validation.
+- [x] `ttlMs=0` produces no discovery cache entry.
+- [x] tenant-keyed discovery cache.
 - [x] execution results excluded from discovery cache.
-- [x] MCP tool descriptors treated as untrusted metadata.
-- [x] exact admin `MCPToolPolicy` required before ToolDefinition publication.
-- [x] namespaced `mcp.<server>.<tool>` LUMI definitions.
-- [x] normalized-name collision rejection.
-- [x] server annotations cannot determine LUMI risk/idempotency.
-- [x] write-class MCP policies require idempotency.
-- [x] schema byte/depth limits.
-- [x] unsupported JSON Schema semantics fail closed.
-- [x] P0 `x-mcp-header` mapping rejected.
-- [x] MCPToolAdapter implements NODE-25 ToolAdapter boundary.
-- [x] Tool Gateway HITL remains before MCP external writes.
-- [x] Tool Gateway SideEffect guard remains around MCP writes.
-- [x] MRTR `input_required` fails closed through sanitized `MCP_INPUT_REQUIRED`.
-- [x] raw elicitation/sampling prompt bodies are not auto-forwarded to Agent/user.
-- [x] complete structured MCP output passes back through NODE-25 output schema/offload.
+- [x] discovered tool requires exact LUMI `MCPToolPolicy` before publication.
+- [x] namespaced `mcp.<server>.<tool>` definitions and collision rejection.
+- [x] server annotations cannot choose LUMI risk/idempotency.
+- [x] MCP write policies require idempotency.
+- [x] safe JSON Schema subset enforcement with byte/depth checks.
+- [x] unsupported JSON Schema 2020-12 semantics fail closed rather than being ignored.
+- [x] untrusted `x-mcp-header` mapping rejected.
+- [x] MCPToolAdapter remains behind NODE-25 Tool Gateway.
+- [x] NODE-25 Audit/HITL remains before MCP write side effects.
+- [x] NODE-20 SideEffect guard remains around MCP writes.
+- [x] MRTR `input_required` fails closed with sanitized correlation metadata.
+- [x] malformed `input_required` without inputRequests/requestState rejected.
+- [x] raw remote prompts/requestState content are not auto-forwarded.
 - [x] raw JSON-RPC errors sanitized.
-- [x] deterministic modern mock transport tests.
-- [x] different modern fake instances can serve consecutive calls with no session.
-- [x] deterministic legacy session fixture.
-- [x] MCP -> Tool Gateway integration smoke authored.
-- [x] architecture/security validator authored.
-- [x] detailed runtime specification authored.
-- [x] dedicated CI workflow authored.
+- [x] modern/legacy deterministic fixtures authored.
+- [x] six NODE-26 contract schema exports authored.
+- [x] exactly seven explicit NODE-26 gaps recorded.
+- [x] one canonical active validator: `tools/node26/validate_mcp.py`.
+- [x] one canonical active workflow: `.github/workflows/node-26-mcp-integration.yml`.
 
-## Current protocol evidence
+## Failure-injection / security evidence authored
 
-NODE-26 is implemented against the MCP **2026-07-28** wire model verified against the current official specification/schema during implementation. The code freezes the protocol string so future spec revisions do not silently change runtime semantics.
+The suites and validator explicitly cover:
 
-Modern requests prove:
-
-```text
-MCP-Protocol-Version == params._meta protocolVersion
-Mcp-Method == JSON-RPC method
-Mcp-Name == remote tool name for tools/call
-fresh JSON-RPC id per request
-no Mcp-Session-Id
-```
-
-## Security evidence authored
-
-The deterministic suites verify:
-
-1. unregistered MCP server is unusable;
-2. unapproved MCP server is unusable;
-3. disabled MCP server is unusable;
-4. organization-scoped MCP server cannot cross tenants;
-5. private/internal server target is rejected by SSRF policy;
-6. server DNS/IP is revalidated at runtime rather than permanently cached;
+1. unregistered, unapproved and disabled server denial;
+2. cross-tenant server denial;
+3. private/internal server destination rejection;
+4. cleartext MCP endpoint rejection;
+5. 2026 + legacy HTTP/SSE transport rejection;
+6. runtime DNS/IP revalidation;
 7. transport receives a validated/pinned target;
-8. credential object is organization-bound;
-9. credential tenant mismatch fails closed;
-10. auth cannot override Host/Cookie/MCP routing headers;
-11. current MCP headers and `_meta` are consistent;
-12. current calls have no session header;
-13. consecutive modern calls may hit different server instances;
-14. discovery cache avoids repeated list/discover calls;
-15. discovery cache remains organization scoped;
-16. cache expires deterministically;
-17. `tools/call` does not use discovery result cache;
-18. newly discovered tool without admin policy is not registered;
-19. MCP read-only/destructive annotations do not override LUMI admin risk;
-20. MCP write policy cannot set idempotency NOT_REQUIRED;
-21. MCP write still returns Tool Gateway APPROVAL_REQUIRED before network call;
-22. approved duplicate MCP write replays with one remote invocation;
-23. malicious remote tool name is rejected;
-24. namespacing collision is rejected;
-25. unsupported schema semantics are rejected;
-26. untrusted `x-mcp-header` is rejected;
-27. input/output schema still pass through NODE-25 validation;
-28. `input_required` exposes only correlation keys / state presence to LUMI policy;
-29. raw MRTR prompt content is not surfaced by the exception;
-30. HTTP auth failure is normalized;
-31. raw JSON-RPC error message/data do not escape;
-32. legacy initialize occurs once per legacy server/organization session;
-33. legacy session headers stay in `legacy.py`, not modern client;
-34. MCP credential value is absent from Tool Audit.
+8. credential organization mismatch rejected before network;
+9. credential server mismatch rejected before network;
+10. auth cannot overwrite MCP/security headers;
+11. modern header/body/_meta consistency;
+12. independent modern calls without session state;
+13. strict cache hint validation;
+14. zero-TTL discovery is not cached;
+15. tenant-scoped cache isolation/expiry;
+16. tool execution results are never discovery-cached;
+17. newly discovered unapproved tool remains unavailable;
+18. server `readOnlyHint` cannot downgrade an admin-classified write;
+19. write MCP policy cannot opt out of idempotency;
+20. NODE-25 HITL prevents network call before approval;
+21. approved duplicate write replays rather than performing a second remote write;
+22. malicious remote names and normalized namespace collisions are rejected;
+23. unsupported schema constraints are rejected;
+24. `x-mcp-header` cannot promote Agent input into transport headers;
+25. MRTR raw prompt text does not escape through the exception;
+26. malformed MRTR result is rejected;
+27. HTTP auth failure and JSON-RPC error bodies are sanitized;
+28. legacy initialize/session state remains isolated in `legacy.py`;
+29. credential value is not copied into Tool Audit.
 
-## Cross-node correctness boundary
+## Cross-node boundary
 
 ```text
 NODE-16 -> identity / organization membership / RBAC
-NODE-20 -> durable side-effect idempotency / replay / reconciliation
+NODE-20 -> durable write idempotency / replay / reconciliation
 NODE-21 -> isolated code execution
-NODE-25 -> tool permission / risk / HITL / validation / audit
-NODE-26 -> approved MCP server discovery, wire compatibility and adapter mapping
+NODE-25 -> tool permission / risk / HITL / schema / offload / audit
+NODE-26 -> approved MCP registry, protocol compatibility and MCP adapter mapping
 ```
 
-MCP is not permitted to bypass any prior boundary.
+MCP never replaces these upstream boundaries.
 
-## P0 limitations / deliberate follow-ups
+## Contract artifacts
 
-- MCP Server Registry and MCPToolPolicy are runtime/in-memory contracts; durable admin persistence comes later.
-- No Agent-controlled MCP server URL.
-- No stdio MCP transport in P0 Tool Gateway.
-- No public LUMI MCP server.
-- No automatic MRTR elicitation/sampling fulfillment; `input_required` is fail-closed until a LUMI-owned HITL/input resume flow is implemented.
-- No live MCP credential/server is needed for deterministic acceptance.
-- HTTP/SSE parsing and TLS/pinned-IP connection implementation live behind `MCPHTTPTransport`.
+`tools/node26/export_mcp_schemas.py` emits exactly six schemas:
+
+```text
+mcp-server-definition.schema.json
+mcp-tool-policy.schema.json
+mcp-discovered-tool.schema.json
+mcp-discovery-result.schema.json
+mcp-request-auth.schema.json
+mcp-call-result.schema.json
+```
+
+## Explicit limitations / gaps
+
+The canonical `gap-ledger.json` contains exactly seven items:
+
+1. `MCP-COMPOSITION-001` — durable Registry/Policy/admin persistence and DI not composed.
+2. `MCP-TRANSPORT-002` — production TLS/SNI-aware pinned-IP HTTP/SSE transport and byte-budget hardening not bound.
+3. `MCP-SCHEMA-003` — full JSON Schema 2020-12 execution is not implemented; unsupported semantics fail closed.
+4. `MCP-MRTR-004` — durable LUMI-owned input/HITL resume is not implemented.
+5. `MCP-AUTH-005` — real Secret Manager/OAuth refresh/revocation/principal mapping not composed.
+6. `MCP-COMPAT-006` — broader real MCP server/SDK compatibility matrix remains future validation.
+7. `MCP-CI-007` — Hosted Actions remain blocked by account billing/spending-limit state.
 
 ## Required green evidence before COMPLETE
 
-- [ ] Python compile gate PASS.
-- [ ] NODE-26 MCP architecture/security validator PASS.
-- [ ] NODE-25 Tool Gateway architecture/security validator remains PASS.
-- [ ] all Tool Gateway/MCP unit/security tests PASS.
-- [ ] MCP -> Tool Gateway deterministic integration PASS.
-- [ ] frozen `uv sync --all-packages --frozen` PASS.
-- [ ] targeted Ruff PASS.
-- [ ] targeted Pyright PASS.
-- [ ] hosted GitHub Actions jobs actually receive runners and execute.
+- [ ] frozen `uv sync --all-packages --frozen` actually executes and passes;
+- [ ] NODE-25 active validator actually executes and passes;
+- [ ] NODE-26 active architecture/security validator actually executes and passes;
+- [ ] Tool Gateway + MCP pytest suite actually executes and passes;
+- [ ] deterministic MCP → Tool Gateway integration actually executes and passes;
+- [ ] six schemas + seven gaps validation actually executes and passes;
+- [ ] targeted Ruff actually executes and passes;
+- [ ] targeted Pyright actually executes and passes;
+- [ ] hosted job receives a runner (`runner_id != 0`) and contains executed steps.
 
-NODE-26 is not COMPLETE until required hosted gates execute green. If the repository-level GitHub Actions payment/spending-limit blocker persists, record exact run/job evidence and keep status **IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL / not COMPLETE**.
+No hosted PASS may be inferred from workflow configuration alone. If GitHub reports `runner_id=0` and `steps=[]`, the node remains `BLOCKED_EXTERNAL` rather than being classified as source failure or PASS.
 
-Next node: **NODE-27 — Cost Ledger**.
+## Next
+
+**NODE-27 — Cost Ledger**.
