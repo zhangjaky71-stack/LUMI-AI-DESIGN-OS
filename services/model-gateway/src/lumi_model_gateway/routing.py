@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from .models import (
+    Capability,
     CostConfidence,
     LatencyProfile,
     ModelRequest,
@@ -11,6 +14,7 @@ from .models import (
 )
 from .ports import HealthPort, ProviderAdapter
 from .registry import CapabilityRegistry
+from .registry_projection import provider_model_from_record
 
 
 _QUALITY_MIN = {
@@ -57,6 +61,17 @@ class ProviderRegistry:
     def has_adapter(self, provider: str) -> bool:
         return provider in self._adapters
 
+    def supports_capability(
+        self,
+        provider: str,
+        capability: Capability,
+    ) -> bool:
+        adapter = self.adapter(provider)
+        return any(
+            capability in model.capabilities
+            for model in adapter.models()
+        )
+
     def model(self, provider: str, model_name: str) -> ProviderModel:
         if self._capability_registry is not None:
             snapshot = self._capability_registry.capture_snapshot()
@@ -65,8 +80,9 @@ class ProviderRegistry:
                     record.provider == provider
                     and record.model == model_name
                 ):
-                    return record.to_provider_model(
-                        registry_snapshot_id=snapshot.snapshot_id
+                    return provider_model_from_record(
+                        record,
+                        registry_snapshot_id=snapshot.snapshot_id,
                     )
         adapter = self.adapter(provider)
         for model in adapter.models():
@@ -118,6 +134,7 @@ class ModelRouter:
         if self.capability_registry is not None:
             snapshot = self.capability_registry.capture_snapshot()
             registry_snapshot_id = snapshot.snapshot_id
+            pricing_at = datetime.now(UTC)
             policy = self.capability_registry.policy_for(
                 request.organization_id
             )
@@ -133,8 +150,10 @@ class ModelRouter:
                 allow_partial=allow_partial,
             )
             models = tuple(
-                record.to_provider_model(
-                    registry_snapshot_id=snapshot.snapshot_id
+                provider_model_from_record(
+                    record,
+                    registry_snapshot_id=snapshot.snapshot_id,
+                    pricing_at=pricing_at,
                 )
                 for record in records
             )
@@ -159,6 +178,14 @@ class ModelRouter:
             reasons.append("capability_match")
             if not self.registry.has_adapter(model.provider):
                 rejected.append(f"{identity}:adapter_unavailable")
+                continue
+            if not self.registry.supports_capability(
+                model.provider,
+                request.capability,
+            ):
+                rejected.append(
+                    f"{identity}:adapter_capability_unavailable"
+                )
                 continue
             adapter = self.registry.adapter(model.provider)
 
