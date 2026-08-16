@@ -22,9 +22,16 @@ async def set_tenant(connection: asyncpg.Connection, organization_id: UUID) -> N
     )
 
 
-async def reject(operation: object, *, sqlstates: set[str], label: str) -> None:
+async def reject(
+    connection: asyncpg.Connection,
+    operation: object,
+    *,
+    sqlstates: set[str],
+    label: str,
+) -> None:
     try:
-        await operation  # type: ignore[misc]
+        async with connection.transaction():
+            await operation  # type: ignore[misc]
     except asyncpg.PostgresError as exc:
         if exc.sqlstate not in sqlstates:
             raise AssertionError(
@@ -99,12 +106,49 @@ async def test_project_core_rls_hides_other_tenant() -> None:
         await connection.close()
 
 
+async def test_same_tenant_trigger_rejects_cross_tenant_relation() -> None:
+    connection = await asyncpg.connect(MIGRATION_DSN)
+    project_id = UUID("01910000-0000-7000-8000-000000000420")
+    default_id = UUID("01910000-0000-7000-8000-000000000421")
+    try:
+        await connection.execute(
+            """
+            INSERT INTO projects(
+              id, organization_id, workspace_id, name, status,
+              brief_json, brief_version, settings_json, created_by
+            ) VALUES($1,$2,$3,'Same Tenant Guard','draft','{}'::jsonb,1,'{}'::jsonb,$4)
+            """,
+            project_id,
+            ORG_A,
+            WORKSPACE_A,
+            USER_A,
+        )
+        await reject(
+            connection,
+            connection.execute(
+                """
+                INSERT INTO project_branch_defaults(id,organization_id,project_id,name)
+                VALUES($1,$2,$3,'main')
+                """,
+                default_id,
+                ORG_B,
+                project_id,
+            ),
+            sqlstates={"23514"},
+            label="cross-tenant project branch default",
+        )
+    finally:
+        await connection.execute("DELETE FROM projects WHERE id=$1", project_id)
+        await connection.close()
+
+
 async def test_brief_history_is_append_only_for_app_role() -> None:
     connection = await asyncpg.connect(APP_DSN)
     try:
         async with connection.transaction():
             await set_tenant(connection, ORG_A)
             await reject(
+                connection,
                 connection.execute(
                     "UPDATE project_brief_versions SET change_reason = 'mutated' WHERE project_id = $1",
                     PROJECT_A,
@@ -128,6 +172,7 @@ async def test_paid_execution_guard_blocks_archived_project() -> None:
                 PROJECT_A,
             )
             await reject(
+                connection,
                 connection.execute(
                     """
                     INSERT INTO agent_runs(
@@ -293,6 +338,7 @@ async def main() -> None:
         test_head_and_project_core_objects,
         test_baseline_backfill_and_projection,
         test_project_core_rls_hides_other_tenant,
+        test_same_tenant_trigger_rejects_cross_tenant_relation,
         test_brief_history_is_append_only_for_app_role,
         test_paid_execution_guard_blocks_archived_project,
         test_agent_run_context_freezes_brief_version,
