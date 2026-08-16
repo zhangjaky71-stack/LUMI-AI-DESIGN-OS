@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from uuid import uuid4
 
+from lumi_tool_gateway.audit import MemoryAuditSink
 from lumi_tool_gateway.contracts import (
     ApprovalDecision,
     ToolCallStatus,
@@ -25,6 +26,7 @@ from lumi_tool_gateway.mcp.errors import (
     MCPAuthFailedError,
     MCPInputRequiredError,
     MCPPolicyDeniedError,
+    MCPProtocolMismatchError,
     MCPSchemaInvalidError,
 )
 from lumi_tool_gateway.mcp.integration import MCPIntegrationBuilder
@@ -48,21 +50,35 @@ class StaticResolver:
 
 
 class TenantCredentialProvider:
-    def __init__(self, *, wrong_tenant: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        wrong_tenant: bool = False,
+        wrong_server: bool = False,
+    ) -> None:
         self.wrong_tenant = wrong_tenant
+        self.wrong_server = wrong_server
 
     async def credentials_for(self, server, *, organization_id):
-        del server
         return MCPRequestAuth(
             organization_id=(uuid4() if self.wrong_tenant else organization_id),
+            server_id=("other-server" if self.wrong_server else server.server_id),
             headers={"Authorization": "Bearer server-only-token"},
             subject="delegated-user",
         )
 
 
 class ModernTransport:
-    def __init__(self, *, auth_failure: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        auth_failure: bool = False,
+        cache_ttl_ms: int = 5000,
+        omit_discover_cache_scope: bool = False,
+    ) -> None:
         self.auth_failure = auth_failure
+        self.cache_ttl_ms = cache_ttl_ms
+        self.omit_discover_cache_scope = omit_discover_cache_scope
         self.calls: list[dict[str, object]] = []
         self.instances = ["instance-a", "instance-b"]
         self.tool_calls = 0
@@ -94,7 +110,8 @@ class ModernTransport:
                 "resultType": "complete",
                 "supportedVersions": [MCP_PROTOCOL_2026_07_28],
                 "capabilities": {"tools": {}},
-                "ttlMs": 5000,
+                "ttlMs": self.cache_ttl_ms,
+                "cacheScope": "private",
                 "_meta": {
                     "io.modelcontextprotocol/serverInfo": {
                         "name": "fixture-server",
@@ -102,10 +119,12 @@ class ModernTransport:
                     }
                 },
             }
+            if self.omit_discover_cache_scope:
+                result.pop("cacheScope")
         elif method == "tools/list":
             result = {
                 "resultType": "complete",
-                "ttlMs": 5000,
+                "ttlMs": self.cache_ttl_ms,
                 "cacheScope": "private",
                 "tools": [
                     {
@@ -326,6 +345,22 @@ class ModernMCPTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tool_calls[0]["headers"]["Mcp-Name"], "search")
         self.assertNotIn("Mcp-Session-Id", tool_calls[0]["headers"])
 
+    async def test_zero_ttl_is_not_cached(self) -> None:
+        transport = ModernTransport(cache_ttl_ms=0)
+        mcp = client(transport)
+        organization_id = uuid4()
+        first = await mcp.discover_tools("design", organization_id=organization_id)
+        calls_after_first = len(transport.calls)
+        second = await mcp.discover_tools("design", organization_id=organization_id)
+        self.assertIsNot(first, second)
+        self.assertEqual(len(transport.calls), calls_after_first * 2)
+
+    async def test_missing_2026_cache_scope_fails_closed(self) -> None:
+        transport = ModernTransport(omit_discover_cache_scope=True)
+        mcp = client(transport)
+        with self.assertRaises(MCPProtocolMismatchError):
+            await mcp.discover_tools("design", organization_id=uuid4())
+
     async def test_discovered_tool_is_not_registered_without_admin_policy(self) -> None:
         transport = ModernTransport()
         mcp = client(transport)
@@ -363,10 +398,12 @@ class ModernMCPTests(unittest.IsolatedAsyncioTestCase):
         )
         registry = ToolRegistry(plan.definitions)
         guard = MemoryIdempotentSideEffectGuard()
+        audit = MemoryAuditSink()
         gateway = ToolGateway(
             registry=registry,
             adapters=plan.adapters,
             side_effect_guard=guard,
+            audit_sink=audit,
         )
         delete = next(item for item in plan.definitions if item.name.endswith("delete_item"))
         before = transport.tool_calls
@@ -386,6 +423,7 @@ class ModernMCPTests(unittest.IsolatedAsyncioTestCase):
             adapters=plan.adapters,
             side_effect_guard=guard,
             approval_resolver=StaticApprovalResolver(ApprovalDecision.APPROVED),
+            audit_sink=audit,
         )
         req = tool_request(
             delete,
@@ -451,10 +489,35 @@ class ModernMCPTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(MCPAuthFailedError):
             await wrong_auth.discover_tools("design", organization_id=organization_id)
 
+    async def test_server_bound_credential_mismatch_fails_before_transport(self) -> None:
+        transport = ModernTransport()
+        wrong_auth = client(
+            transport,
+            credentials=TenantCredentialProvider(wrong_server=True),
+        )
+        with self.assertRaises(MCPAuthFailedError):
+            await wrong_auth.discover_tools("design", organization_id=uuid4())
+        self.assertEqual(transport.calls, [])
+
     async def test_http_auth_failure_is_sanitized(self) -> None:
         mcp = client(ModernTransport(auth_failure=True))
         with self.assertRaises(MCPAuthFailedError):
             await mcp.discover_tools("design", organization_id=uuid4())
+
+    def test_2026_protocol_rejects_legacy_http_sse_transport(self) -> None:
+        with self.assertRaisesRegex(ValueError, "MCP_2026_TRANSPORT_INVALID"):
+            MCPServerDefinition(
+                server_id="bad-modern",
+                name="Bad Modern",
+                base_url="https://mcp.example/mcp",
+                transport=MCPTransportKind.LEGACY_HTTP_SSE,
+                enabled=True,
+                approved=True,
+                trust_level=MCPTrustLevel.PLATFORM_APPROVED,
+                organization_id=None,
+                allowed_tool_patterns=("*",),
+                protocol_versions=(MCP_PROTOCOL_2026_07_28,),
+            )
 
     def test_private_server_url_rejected_during_registry_creation(self) -> None:
         definition = MCPServerDefinition(
