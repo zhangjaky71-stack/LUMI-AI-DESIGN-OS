@@ -14,7 +14,9 @@ from lumi_agent_runtime.deep_runtime.contracts import (
     ResolvedAgentConfig,
 )
 from lumi_agent_runtime.deep_runtime.executor import DeepAgentTaskExecutor
-from lumi_agent_runtime.deep_runtime.structured_result import StructuredResultParser
+from lumi_agent_runtime.deep_runtime.structured_result import (
+    StructuredResultParser,
+)
 from lumi_agent_runtime.deep_runtime.testing import (
     FakeCompiledGraph,
     MemoryResultStore,
@@ -44,7 +46,10 @@ def test_autonomous_agentic_task_returns_only_safe_node28_delta() -> None:
     )
     request = DeepAgentTaskRequest(
         agent_ref="critic@1.0.0",
-        objective="Critique the current poster and propose the most important correction.",
+        objective=(
+            "Critique the current poster and propose the most important "
+            "correction."
+        ),
         context_bundle_ref="context://eval/poster-1",
         invocation=invocation,
     )
@@ -52,7 +57,9 @@ def test_autonomous_agentic_task_returns_only_safe_node28_delta() -> None:
         agent_id="critic",
         exact_version="1.0.0",
         role="Visual Critic",
-        system_prompt="Evaluate hierarchy, readability, brand fit, and production risk.",
+        system_prompt=(
+            "Evaluate hierarchy, readability, brand fit, and production risk."
+        ),
         model_profile="balanced",
         allowed_tools=("asset.read",),
         skill_refs=("visual-critique@1.0.0",),
@@ -81,12 +88,20 @@ def test_autonomous_agentic_task_returns_only_safe_node28_delta() -> None:
     raw_result = {
         "structured_response": {
             "status": "succeeded",
-            "summary": "Hierarchy is too flat; strengthen the primary headline.",
-            "decisions": ["Increase headline contrast before adding decoration"],
+            "summary": (
+                "Hierarchy is too flat; strengthen the primary headline."
+            ),
+            "decisions": [
+                "Increase headline contrast before adding decoration"
+            ],
             "artifact_refs": ["artifact://poster/critique-overlay"],
             "knowledge_refs": ["knowledge://critique/poster-1"],
             "proposed_operations": [
-                {"type": "design.adjust", "target": "headline", "priority": 1}
+                {
+                    "type": "design.adjust",
+                    "target": "headline",
+                    "priority": 1,
+                }
             ],
             "open_questions": [],
             "confidence": "0.92",
@@ -138,5 +153,6 @@ def test_autonomous_agentic_task_returns_only_safe_node28_delta() -> None:
     assert stored.result.proposed_operations[0]["type"] == "design.adjust"
     assert "proposed_operations" not in delta
     invocation_message, invocation_config = graph.invocations[0]
-    assert "Logo geometry is immutable" in invocation_message["messages"][0]["content"]
+    task_content = invocation_message["messages"][0]["content"]
+    assert "Logo geometry is immutable" in task_content
     assert invocation_config["configurable"]["thread_id"].startswith("deep:")
