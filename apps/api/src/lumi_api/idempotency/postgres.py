@@ -27,7 +27,9 @@ def _asyncpg() -> Any:
     try:
         return importlib.import_module("asyncpg")
     except ModuleNotFoundError as exc:
-        raise RuntimeError("asyncpg is required for PostgreSQL idempotency storage") from exc
+        raise RuntimeError(
+            "asyncpg is required for PostgreSQL idempotency storage"
+        ) from exc
 
 
 async def _set_tenant(connection: Any, organization_id: UUID) -> None:
@@ -68,7 +70,9 @@ def _operation(row: Any) -> IdempotencyOperation:
         result_ref=row["result_ref"],
         response_status=row["response_status"],
         response_json=_json_object(row["response_json"]),
-        error_category=(ErrorCategory(row["error_category"]) if row["error_category"] else None),
+        error_category=(
+            ErrorCategory(row["error_category"]) if row["error_category"] else None
+        ),
         error_code=row["error_code"],
         error_message=row["error_message"],
         recovery_detail=_json_object(row["recovery_detail"]) or {},
@@ -125,7 +129,10 @@ class PostgresIdempotencyStore:
                     now,
                 )
                 if row is not None:
-                    return AcquireResult(action=AcquireAction.EXECUTE, operation=_operation(row))
+                    return AcquireResult(
+                        action=AcquireAction.EXECUTE,
+                        operation=_operation(row),
+                    )
 
                 row = await connection.fetchrow(
                     """
@@ -141,25 +148,43 @@ class PostgresIdempotencyStore:
                     raise RuntimeError("IDEMPOTENCY_CONFLICT_ROW_NOT_VISIBLE")
                 current = _operation(row)
                 if current.request_hash != request.request_hash:
-                    return AcquireResult(action=AcquireAction.CONFLICT, operation=current)
+                    return AcquireResult(
+                        action=AcquireAction.CONFLICT,
+                        operation=current,
+                    )
                 if current.recovery_state is RecoveryState.AMBIGUOUS:
-                    return AcquireResult(action=AcquireAction.FINAL_FAILURE, operation=current)
+                    return AcquireResult(
+                        action=AcquireAction.FINAL_FAILURE,
+                        operation=current,
+                    )
                 if current.status is OperationStatus.SUCCEEDED:
-                    return AcquireResult(action=AcquireAction.REPLAY, operation=current)
+                    return AcquireResult(
+                        action=AcquireAction.REPLAY,
+                        operation=current,
+                    )
                 if current.status is OperationStatus.FAILED_FINAL:
-                    return AcquireResult(action=AcquireAction.FINAL_FAILURE, operation=current)
+                    return AcquireResult(
+                        action=AcquireAction.FINAL_FAILURE,
+                        operation=current,
+                    )
                 if (
                     current.status is OperationStatus.IN_PROGRESS
                     and current.lease_expires_at is not None
                     and current.lease_expires_at > now
                 ):
-                    return AcquireResult(action=AcquireAction.WAIT, operation=current)
+                    return AcquireResult(
+                        action=AcquireAction.WAIT,
+                        operation=current,
+                    )
                 if current.status not in {
                     OperationStatus.NEW,
                     OperationStatus.IN_PROGRESS,
                     OperationStatus.FAILED_RETRYABLE,
                 }:
-                    return AcquireResult(action=AcquireAction.FINAL_FAILURE, operation=current)
+                    return AcquireResult(
+                        action=AcquireAction.FINAL_FAILURE,
+                        operation=current,
+                    )
                 recovery_state = (
                     RecoveryState.RECONCILING
                     if request.paid or current.provider_request_id
@@ -183,9 +208,37 @@ class PostgresIdempotencyStore:
                 )
                 if row is None:
                     raise RuntimeError("IDEMPOTENCY_RECOVERY_CLAIM_LOST")
-                return AcquireResult(action=AcquireAction.RECOVER, operation=_operation(row))
+                return AcquireResult(
+                    action=AcquireAction.RECOVER,
+                    operation=_operation(row),
+                )
         finally:
             await connection.close()
+
+    async def renew_lease(
+        self,
+        organization_id: UUID,
+        operation_id: UUID,
+        *,
+        lease_owner: str,
+        lease_seconds: int,
+        now: datetime,
+    ) -> IdempotencyOperation:
+        if not 5 <= lease_seconds <= 3600:
+            raise ValueError("IDEMPOTENCY_LEASE_SECONDS_INVALID")
+        return await self._owned_update(
+            organization_id,
+            operation_id,
+            lease_owner=lease_owner,
+            sql="""
+            UPDATE idempotency_operations
+            SET lease_expires_at=$4, updated_at=$5, version=version+1
+            WHERE id=$1 AND organization_id=$2 AND status='in_progress'
+              AND lease_owner=$3
+            RETURNING *
+            """,
+            args=(now + timedelta(seconds=lease_seconds), now),
+        )
 
     async def record_provider_request(
         self,
