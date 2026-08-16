@@ -89,12 +89,21 @@ class PricingSnapshot:
         if self.expires_at is not None and self.expires_at.tzinfo is None:
             raise ValueError("pricing expiry must be timezone aware")
 
-    def effective_at(self, at_time: datetime, *, allow_stale: bool = False) -> bool:
+    def effective_at(
+        self,
+        at_time: datetime,
+        *,
+        allow_stale: bool = False,
+    ) -> bool:
         if at_time.tzinfo is None:
             raise ValueError("pricing query time must be timezone aware")
         if at_time < self.effective_from:
             return False
-        if not allow_stale and self.expires_at is not None and at_time > self.expires_at:
+        if (
+            not allow_stale
+            and self.expires_at is not None
+            and at_time > self.expires_at
+        ):
             return False
         return True
 
@@ -122,11 +131,18 @@ class BenchmarkScore:
         if self.observed_at.tzinfo is None:
             raise ValueError("benchmark observed_at must be timezone aware")
         if (self.confidence_low is None) != (self.confidence_high is None):
-            raise ValueError("benchmark confidence interval must be a complete pair")
+            raise ValueError(
+                "benchmark confidence interval must be a complete pair"
+            )
         if self.confidence_low is not None:
             assert self.confidence_high is not None
-            if self.confidence_low > self.score or self.confidence_high < self.score:
-                raise ValueError("benchmark confidence interval must contain score")
+            if (
+                self.confidence_low > self.score
+                or self.confidence_high < self.score
+            ):
+                raise ValueError(
+                    "benchmark confidence interval must contain score"
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,7 +181,10 @@ class RoutingProfile:
     def __post_init__(self) -> None:
         if not self.name or not self.candidate_model_keys:
             raise ValueError("routing profile requires name and candidates")
-        if self.minimum_quality is not None and not Decimal("0") <= self.minimum_quality <= 100:
+        if (
+            self.minimum_quality is not None
+            and not Decimal("0") <= self.minimum_quality <= Decimal("100")
+        ):
             raise ValueError("minimum quality must be 0..100")
 
 
@@ -220,7 +239,12 @@ class ModelRecord:
                 return claim
         return None
 
-    def supports(self, capability: Capability, *, allow_partial: bool = False) -> bool:
+    def supports(
+        self,
+        capability: Capability,
+        *,
+        allow_partial: bool = False,
+    ) -> bool:
         claim = self.claim(capability)
         if claim is None:
             return False
@@ -229,10 +253,19 @@ class ModelRecord:
         return allow_partial and claim.support is CapabilitySupport.PARTIAL
 
     def benchmark(self, profile: str) -> BenchmarkScore | None:
-        matches = [item for item in self.benchmarks if item.profile == profile]
+        matches = [
+            item for item in self.benchmarks if item.profile == profile
+        ]
         if not matches:
             return None
-        return max(matches, key=lambda item: (item.observed_at, item.dataset_version, item.run_id))
+        return max(
+            matches,
+            key=lambda item: (
+                item.observed_at,
+                item.dataset_version,
+                item.run_id,
+            ),
+        )
 
     def pricing(
         self,
@@ -245,18 +278,31 @@ class ModelRecord:
             price
             for price in self.prices
             if price.effective_at(at_time, allow_stale=allow_stale)
-            and (price.region is None or region is None or price.region == region)
+            and (
+                price.region is None
+                or region is None
+                or price.region == region
+            )
         ]
-        return tuple(sorted(matches, key=lambda item: (item.metric, item.effective_from)))
+        return tuple(
+            sorted(
+                matches,
+                key=lambda item: (item.metric, item.effective_from),
+            )
+        )
 
     def to_provider_model(self, *, registry_snapshot_id: str) -> ProviderModel:
         capabilities = frozenset(
             claim.capability
             for claim in self.claims
-            if claim.support in {CapabilitySupport.FULL, CapabilitySupport.PARTIAL}
+            if claim.support
+            in {CapabilitySupport.FULL, CapabilitySupport.PARTIAL}
         )
         if not capabilities:
-            capabilities = frozenset({Capability.LLM_REASONING})
+            raise ValueError(
+                "registry model has no executable capability claims: "
+                f"{self.model_key}"
+            )
         return ProviderModel(
             provider=self.provider,
             model=self.model,
@@ -285,11 +331,18 @@ class RegistrySnapshot:
     source_ref: str
 
     def __post_init__(self) -> None:
-        if self.observed_at.tzinfo is None or self.published_at.tzinfo is None:
+        if (
+            self.observed_at.tzinfo is None
+            or self.published_at.tzinfo is None
+        ):
             raise ValueError("registry timestamps must be timezone aware")
         if len(self.checksum_sha256) != 64:
             raise ValueError("registry checksum must be sha256 hex")
-        object.__setattr__(self, "models", MappingProxyType(dict(self.models)))
+        object.__setattr__(
+            self,
+            "models",
+            MappingProxyType(dict(self.models)),
+        )
         object.__setattr__(
             self,
             "routing_profiles",
@@ -307,14 +360,22 @@ class RegistrySnapshot:
         for record in self.models.values():
             if not record.route_eligible:
                 continue
-            if not record.supports(capability, allow_partial=allow_partial):
+            if not record.supports(
+                capability,
+                allow_partial=allow_partial,
+            ):
                 continue
             if policy is not None:
                 if record.provider in policy.disabled_providers:
                     continue
-                if policy.allowed_regions and "global" not in record.regions:
-                    if not record.regions.intersection(policy.allowed_regions):
-                        continue
+                if (
+                    policy.allowed_regions
+                    and "global" not in record.regions
+                    and not record.regions.intersection(
+                        policy.allowed_regions
+                    )
+                ):
+                    continue
             records.append(record)
         preferred = set(policy.preferred_models if policy else ())
         return tuple(
@@ -365,13 +426,18 @@ class CapabilityRegistry:
     def publish(self, snapshot: RegistrySnapshot) -> None:
         if snapshot.snapshot_id == self._snapshot.snapshot_id:
             if snapshot.checksum_sha256 != self._snapshot.checksum_sha256:
-                raise ValueError("published registry snapshot identity is immutable")
+                raise ValueError(
+                    "published registry snapshot identity is immutable"
+                )
             return
         self._snapshot = snapshot
         self._generation += 1
 
     def invalidate(self, expected_snapshot_id: str | None = None) -> int:
-        if expected_snapshot_id is not None and expected_snapshot_id != self._snapshot.snapshot_id:
+        if (
+            expected_snapshot_id is not None
+            and expected_snapshot_id != self._snapshot.snapshot_id
+        ):
             return self._generation
         self._generation += 1
         return self._generation
@@ -379,11 +445,16 @@ class CapabilityRegistry:
     def set_policy(self, policy: OrganizationModelPolicy) -> None:
         current = self._policies.get(policy.organization_id)
         if current is not None and policy.version <= current.version:
-            raise ValueError("organization model policy version must increase")
+            raise ValueError(
+                "organization model policy version must increase"
+            )
         self._policies[policy.organization_id] = policy
         self._generation += 1
 
-    def policy_for(self, organization_id: UUID) -> OrganizationModelPolicy | None:
+    def policy_for(
+        self,
+        organization_id: UUID,
+    ) -> OrganizationModelPolicy | None:
         return self._policies.get(organization_id)
 
     def list_models(
@@ -428,7 +499,9 @@ class CapabilityRegistry:
         try:
             profile = snapshot.routing_profiles[profile_name]
         except KeyError as exc:
-            raise KeyError(f"unknown routing profile: {profile_name}") from exc
+            raise KeyError(
+                f"unknown routing profile: {profile_name}"
+            ) from exc
         policy = self.policy_for(organization_id)
         by_key = snapshot.models
         eligible: list[ModelRecord] = []
@@ -436,9 +509,15 @@ class CapabilityRegistry:
             record = by_key.get(model_key)
             if record is None or not record.route_eligible:
                 continue
-            if any(not record.supports(capability) for capability in profile.required_capabilities):
+            if any(
+                not record.supports(capability)
+                for capability in profile.required_capabilities
+            ):
                 continue
-            if policy is not None and record.provider in policy.disabled_providers:
+            if (
+                policy is not None
+                and record.provider in policy.disabled_providers
+            ):
                 continue
             eligible.append(record)
         return tuple(eligible)
@@ -466,4 +545,7 @@ def _json_default(value: Any) -> Any:
         return value.value
     if isinstance(value, (set, frozenset, tuple)):
         return list(value)
-    raise TypeError(f"unsupported registry checksum value: {type(value).__name__}")
+    raise TypeError(
+        "unsupported registry checksum value: "
+        f"{type(value).__name__}"
+    )
