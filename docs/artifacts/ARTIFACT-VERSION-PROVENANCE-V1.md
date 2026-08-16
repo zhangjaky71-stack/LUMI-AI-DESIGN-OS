@@ -152,6 +152,18 @@ If `generation_id` exists, provider, model and prompt hash are mandatory. Sensit
 
 If both ArtifactVersion and Provenance carry a constraint snapshot hash, they must match exactly.
 
+### Provenance corrections are append-only
+
+A historical ArtifactVersion's provenance is never edited in place. Later audit findings or metadata corrections are expressed as immutable `lumi.provenance-annotation/1.0` records bound to the ArtifactVersion.
+
+V1 annotation types are:
+
+- `PROVENANCE_CORRECTION`
+- `RIGHTS_REVIEW_NOTE`
+- `OPERATOR_NOTE`
+
+An annotation freezes actor, reason, bounded details and occurrence time. User/Agent annotations require an actor ID. This preserves the original historical fact while making later corrections auditable.
+
 ## 9. Rights / licensing
 
 `lumi.rights/1.0` freezes the rights state used when a version is created or approved:
@@ -208,11 +220,11 @@ V1 GC contract is two-phase:
 2. exclude all live DB references;
 3. exclude retention references;
 4. exclude legal-hold references;
-5. mark the remaining objects with a positive delay;
+5. mark the remaining objects with a strictly positive delay;
 6. after the delay, perform a second current-reference/retention/legal-hold check;
 7. only then return deletion-safe candidates.
 
-If an object becomes live again after mark, confirmation removes it from the deletion set.
+`GcCandidate` itself requires `not_before > marked_at`, so direct construction cannot bypass the delay invariant. If an object becomes live again after mark, confirmation removes it from the deletion set.
 
 ## 13. API/runtime boundary
 
@@ -226,6 +238,7 @@ restore
 approve/reject
 get lineage
 get provenance
+append provenance annotations
 archive
 GC orchestration
 ```
@@ -234,13 +247,14 @@ The contract package must not import ORM, queue, LangGraph, provider, image-proc
 
 ## 14. Machine-readable schemas
 
-`tools/node15/export_artifact_schemas.py` emits:
+`tools/node15/export_artifact_schemas.py` emits exactly nine schemas:
 
 - `artifact-v1.schema.json`
 - `artifact-branch-v1.schema.json`
 - `artifact-version-v1.schema.json`
 - `lineage-edge-v1.schema.json`
 - `provenance-v1.schema.json`
+- `provenance-annotation-v1.schema.json`
 - `rights-v1.schema.json`
 - `export-provenance-manifest-v1.schema.json`
 - `gc-candidate-v1.schema.json`
