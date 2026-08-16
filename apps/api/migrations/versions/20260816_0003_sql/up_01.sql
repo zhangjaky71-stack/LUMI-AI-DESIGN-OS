@@ -112,6 +112,29 @@ ON CONFLICT (project_id) DO NOTHING;
 
 -- statement-breakpoint
 
+CREATE TABLE agent_run_project_context (
+  organization_id UUID NOT NULL,
+  agent_run_id UUID NOT NULL,
+  project_id UUID NOT NULL,
+  project_brief_version INTEGER NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+  CONSTRAINT pk_agent_run_project_context PRIMARY KEY (agent_run_id),
+  CONSTRAINT ck_agent_run_project_context_brief_version_positive CHECK (project_brief_version > 0),
+  CONSTRAINT fk_agent_run_project_context_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT,
+  CONSTRAINT fk_agent_run_project_context_agent_run_id_agent_runs FOREIGN KEY (agent_run_id) REFERENCES agent_runs(id) ON DELETE CASCADE,
+  CONSTRAINT fk_agent_run_project_context_project_id_projects FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+-- statement-breakpoint
+
+INSERT INTO agent_run_project_context (organization_id, agent_run_id, project_id, project_brief_version, created_at)
+SELECT r.organization_id, r.id, r.project_id, p.brief_version, r.created_at
+FROM agent_runs r
+JOIN projects p ON p.id = r.project_id AND p.organization_id = r.organization_id
+ON CONFLICT (agent_run_id) DO NOTHING;
+
+-- statement-breakpoint
+
 CREATE INDEX ix_projects_org_updated ON projects (organization_id, updated_at DESC, id DESC);
 
 -- statement-breakpoint
@@ -154,11 +177,22 @@ WITH CHECK (organization_id = lumi_current_organization_id());
 
 -- statement-breakpoint
 
+ALTER TABLE agent_run_project_context ENABLE ROW LEVEL SECURITY;
+
+-- statement-breakpoint
+
+CREATE POLICY tenant_isolation_agent_run_project_context ON agent_run_project_context
+USING (organization_id = lumi_current_organization_id())
+WITH CHECK (organization_id = lumi_current_organization_id());
+
+-- statement-breakpoint
+
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app') THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE project_brief_versions, project_branch_defaults TO lumi_app;
     GRANT SELECT, INSERT, UPDATE ON TABLE project_summaries TO lumi_app;
+    GRANT SELECT, INSERT ON TABLE agent_run_project_context TO lumi_app;
   END IF;
 END;
 $$;
