@@ -64,7 +64,6 @@ def assert_architecture_boundaries() -> None:
     for path in PROJECT_DIR.glob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
-            module = None
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     module = alias.name.split(".")[0]
@@ -78,10 +77,10 @@ def assert_migration_contract() -> None:
     source = MIGRATION.read_text(encoding="utf-8")
     assert 'revision = "20260816_0003"' in source
     assert 'down_revision = "20260816_0002"' in source
-    assert '"up_01.sql", "up_02.sql", "up_03.sql"' in source
+    assert '"up_01.sql", "up_02.sql", "up_03.sql", "up_04.sql"' in source
     snapshot = "\n".join(
         (SQL_DIR / name).read_text(encoding="utf-8")
-        for name in ("up_01.sql", "up_02.sql", "up_03.sql")
+        for name in ("up_01.sql", "up_02.sql", "up_03.sql", "up_04.sql")
     )
     for fragment in (
         "project_brief_versions",
@@ -94,6 +93,7 @@ def assert_migration_contract() -> None:
         "lumi_project_core_same_tenant_guard",
         "project_brief_version",
         "REVOKE UPDATE, DELETE ON TABLE project_brief_versions",
+        "SET id = project_id",
     ):
         assert fragment in snapshot, fragment
     assert len(re.findall(r"ENABLE ROW LEVEL SECURITY", snapshot)) >= 4
