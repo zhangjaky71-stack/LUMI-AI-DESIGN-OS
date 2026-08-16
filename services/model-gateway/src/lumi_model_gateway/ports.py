@@ -11,6 +11,7 @@ from .models import (
     HealthSnapshot,
     ModelRequest,
     ModelStreamChunk,
+    ModelUsage,
     NormalizedResult,
     ProviderModel,
     RouteCandidate,
@@ -82,6 +83,8 @@ class BudgetPort(Protocol):
         reservation: BudgetReservation,
         *,
         actual: CostEstimate,
+        usage: ModelUsage,
+        provider_request_id: str | None,
     ) -> None: ...
 
     async def release(self, reservation: BudgetReservation) -> None: ...

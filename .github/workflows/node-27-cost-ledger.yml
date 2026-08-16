@@ -1,0 +1,239 @@
+name: NODE-27 Cost Ledger
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/costs/**"
+      - "apps/api/src/lumi_api/api/v1/cost_*.py"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/src/lumi_api/persistence/models_costs.py"
+      - "apps/api/src/lumi_api/persistence/models_platform.py"
+      - "apps/api/migrations/versions/20260816_0009_cost_ledger.py"
+      - "apps/api/migrations/versions/20260816_0009_sql/**"
+      - "apps/api/tests/test_cost_*.py"
+      - "services/model-gateway/src/lumi_model_gateway/models.py"
+      - "services/model-gateway/src/lumi_model_gateway/ports.py"
+      - "services/model-gateway/src/lumi_model_gateway/memory.py"
+      - "services/model-gateway/src/lumi_model_gateway/gateway.py"
+      - "tools/node27/**"
+      - "docs/runtime/COST-LEDGER-V1.md"
+      - "reports/nodes/NODE-27/**"
+      - ".github/workflows/node-27-cost-ledger.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/src/lumi_api/costs/**"
+      - "apps/api/migrations/versions/20260816_0009_cost_ledger.py"
+      - "apps/api/migrations/versions/20260816_0009_sql/**"
+      - "services/model-gateway/src/lumi_model_gateway/models.py"
+      - "services/model-gateway/src/lumi_model_gateway/ports.py"
+      - "services/model-gateway/src/lumi_model_gateway/gateway.py"
+      - "tools/node27/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  SQLALCHEMY_VERSION: "2.0.51"
+  ALEMBIC_VERSION: "1.18.5"
+  ASYNCPG_VERSION: "0.31.0"
+  LUMI_DATABASE_MIGRATION_URL: >-
+    postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+  LUMI_DATABASE_MIGRATION_URL_ASYNCPG: >-
+    postgresql://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+  LUMI_DATABASE_APP_URL_ASYNCPG: >-
+    postgresql://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+
+jobs:
+  cost-ledger:
+    name: cost-ledger
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen workspace dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Validate NODE-27 financial architecture
+        run: |
+          PYTHONPATH=apps/api/src:services/model-gateway/src \
+            uv run python tools/node27/validate_cost_ledger.py
+
+      - name: Run cost contracts and Model Gateway regressions
+        run: |
+          PYTHONPATH=apps/api/src:services/model-gateway/src \
+            uv run --with "asyncpg==${ASYNCPG_VERSION}" pytest -q \
+              apps/api/tests/test_cost_contracts_node27.py \
+              apps/api/tests/test_cost_model_gateway_adapter.py \
+              apps/api/tests/test_cost_api_node27.py \
+              services/model-gateway/tests
+
+      - name: Export and validate NODE-27 schemas and gaps
+        run: |
+          rm -rf reports/nodes/NODE-27/generated-schemas
+          uv run python tools/node27/export_cost_schemas.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("reports/nodes/NODE-27")
+          schemas = sorted((root / "generated-schemas").glob("*.schema.json"))
+          assert len(schemas) == 6
+          for path in schemas:
+              payload = json.loads(path.read_text(encoding="utf-8"))
+              assert payload["$schema"].endswith("2020-12/schema")
+          ledger = json.loads((root / "gap-ledger.json").read_text(encoding="utf-8"))
+          assert len(ledger["gaps"]) == 8
+          print("NODE-27 schemas and gap ledger valid")
+          PY
+
+      - name: Ruff NODE-27 affected scope
+        run: |
+          uv run ruff check \
+            apps/api/src/lumi_api/costs \
+            apps/api/src/lumi_api/api/v1/cost_dependencies.py \
+            apps/api/src/lumi_api/api/v1/cost_routes.py \
+            apps/api/src/lumi_api/api/v1/cost_schemas.py \
+            apps/api/src/lumi_api/api/v1/app.py \
+            apps/api/src/lumi_api/persistence/models.py \
+            apps/api/src/lumi_api/persistence/models_costs.py \
+            apps/api/src/lumi_api/persistence/models_platform.py \
+            apps/api/tests/test_cost_contracts_node27.py \
+            apps/api/tests/test_cost_model_gateway_adapter.py \
+            apps/api/tests/test_cost_api_node27.py \
+            services/model-gateway/src/lumi_model_gateway/models.py \
+            services/model-gateway/src/lumi_model_gateway/ports.py \
+            services/model-gateway/src/lumi_model_gateway/memory.py \
+            services/model-gateway/src/lumi_model_gateway/gateway.py \
+            tools/node27
+
+      - name: Pyright NODE-27 affected scope
+        run: |
+          PYTHONPATH=apps/api/src:services/model-gateway/src \
+            uv run --with "asyncpg==${ASYNCPG_VERSION}" pyright \
+              apps/api/src/lumi_api/costs \
+              apps/api/src/lumi_api/api/v1/cost_dependencies.py \
+              apps/api/src/lumi_api/api/v1/cost_routes.py \
+              apps/api/src/lumi_api/api/v1/cost_schemas.py \
+              apps/api/src/lumi_api/persistence/models_costs.py \
+              apps/api/src/lumi_api/persistence/models_platform.py \
+              services/model-gateway/src/lumi_model_gateway/models.py \
+              services/model-gateway/src/lumi_model_gateway/ports.py \
+              services/model-gateway/src/lumi_model_gateway/memory.py \
+              services/model-gateway/src/lumi_model_gateway/gateway.py \
+              tools/node27
+
+      - name: Start PostgreSQL
+        run: |
+          cp infra/compose/env.local.example infra/compose/.env
+          docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml \
+            up -d --wait --wait-timeout 180 postgres
+
+      - name: Upgrade through NODE-24 baseline
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade 20260816_0008
+
+      - name: Seed a NODE-20-era charge before NODE-27
+        run: |
+          PYTHONPATH=apps/api/src \
+            uv run --no-project --with "asyncpg==${ASYNCPG_VERSION}" \
+            python tools/node27/seed_cost_baseline.py \
+              --dsn "${LUMI_DATABASE_MIGRATION_URL_ASYNCPG}"
+
+      - name: Upgrade PostgreSQL to NODE-27 head
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+
+      - name: Validate current ORM metadata
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            python tools/node10/validate_schema.py
+
+      - name: Verify lossless pre-fact downgrade and reapply
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic downgrade 20260816_0008
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+
+      - name: Run PostgreSQL financial/RLS failure injection
+        run: |
+          PYTHONPATH=apps/api/src:services/model-gateway/src:tools/node27 \
+            uv run --no-project \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            python tools/node27/test_cost_database.py \
+              --migration-dsn "${LUMI_DATABASE_MIGRATION_URL_ASYNCPG}" \
+              --app-dsn "${LUMI_DATABASE_APP_URL_ASYNCPG}"
+
+      - name: Prove lossy downgrade is refused after NODE-27 facts
+        working-directory: apps/api
+        run: |
+          set +e
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic downgrade 20260816_0008
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          echo "NODE-27 loss-aware downgrade guard rejected data loss as expected"
+
+      - name: Capture infrastructure diagnostics on failure
+        if: failure()
+        run: |
+          docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml ps || true
+          docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml logs --no-color postgres || true
+
+      - name: Upload NODE-27 evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-27-cost-ledger-${{ github.run_id }}
+          path: |
+            reports/nodes/NODE-27/generated-schemas
+            reports/nodes/NODE-27/gap-ledger.json
+            reports/nodes/NODE-27/acceptance.md
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml down -v --remove-orphans || true

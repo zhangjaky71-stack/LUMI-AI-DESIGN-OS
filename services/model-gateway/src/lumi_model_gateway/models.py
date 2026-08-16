@@ -110,6 +110,8 @@ class ModelRequest:
     budget_limit: Decimal | None = None
     project_id: UUID | None = None
     task_id: UUID | None = None
+    agent_run_id: UUID | None = None
+    generation_id: UUID | None = None
     structured_output_schema: dict[str, Any] | None = None
     reference_assets: tuple[str, ...] = ()
     constraints: dict[str, Any] = field(default_factory=dict)
@@ -140,6 +142,8 @@ class ModelRequest:
             "budget_limit": self.budget_limit,
             "project_id": self.project_id,
             "task_id": self.task_id,
+            "agent_run_id": self.agent_run_id,
+            "generation_id": self.generation_id,
             "structured_output_schema": self.structured_output_schema,
             "reference_assets": self.reference_assets,
             "constraints": self.constraints,

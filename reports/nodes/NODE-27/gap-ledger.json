@@ -1,0 +1,54 @@
+{
+  "node": "NODE-27",
+  "status": "IMPLEMENTED_VALIDATING_BLOCKED_EXTERNAL",
+  "gaps": [
+    {
+      "id": "COST-COMPOSITION-001",
+      "owner": "runtime-composition",
+      "severity": "P0",
+      "description": "PostgresCostGateway financial writes still need the production tenant-aware pool/service-role composition. HTTP reads are RLS-aware, but the writer currently uses its supplied DSN directly and is not claimed ready with lumi_app RLS sessions."
+    },
+    {
+      "id": "COST-PACKAGE-002",
+      "owner": "packaging",
+      "severity": "P0",
+      "description": "apps/api does not yet formally declare asyncpg and the lumi-model-gateway workspace edge in project dependencies/uv.lock. Hosted tests use an explicit test-only asyncpg overlay; standalone lumi-api frozen deployment is not claimed."
+    },
+    {
+      "id": "COST-RECONCILE-003",
+      "owner": "cost-reconciliation",
+      "severity": "P1",
+      "description": "Provider invoice/raw billing reconciliation and automatic discrepancy ingestion are not composed. Immutable ADJUSTMENT/REVERSAL primitives exist."
+    },
+    {
+      "id": "COST-UNKNOWN-004",
+      "owner": "cost-reconciliation",
+      "severity": "P1",
+      "description": "Unknown-cost Actual rows are preserved with zero amount plus unknown confidence/provenance, but the background reconciler that later appends ADJUSTMENT facts is not scheduled."
+    },
+    {
+      "id": "COST-BUDGET-ADMIN-005",
+      "owner": "admin-control-plane",
+      "severity": "P1",
+      "description": "Budget/quota tables and immutable change-audit schema exist, but reviewed administrator create/update/approval workflows are not exposed in the P0 public API."
+    },
+    {
+      "id": "COST-QUOTA-006",
+      "owner": "downstream-runtime",
+      "severity": "P1",
+      "description": "Quota lease/check primitives exist, but Asset Storage, image/video generation and other downstream call sites are not all wired to them yet."
+    },
+    {
+      "id": "COST-OBS-007",
+      "owner": "NODE-67",
+      "severity": "P2",
+      "description": "Cost anomaly dashboards, budget burn alerts and reconciliation SLOs are not composed; NODE-67 owns production observability."
+    },
+    {
+      "id": "COST-CI-008",
+      "owner": "external-account",
+      "severity": "BLOCKED_EXTERNAL",
+      "description": "Hosted GitHub Actions cannot start while the repository account payment/spending-limit condition prevents runner allocation. No hosted gate may be claimed PASS until runner_id is non-zero and steps execute."
+    }
+  ]
+}

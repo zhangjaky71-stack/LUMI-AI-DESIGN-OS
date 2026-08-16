@@ -5,6 +5,7 @@ from fastapi import Depends, FastAPI
 from .asset_routes import router as asset_router
 from .auth_guard import enforce_api_auth
 from .auth_routes import router as auth_router
+from .cost_routes import router as cost_router
 from .errors import install_error_contract
 from .idempotency_middleware import IdempotencyReplayMiddleware
 from .routes import router
@@ -23,6 +24,7 @@ def create_contract_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(asset_router, dependencies=[Depends(enforce_api_auth)])
+    app.include_router(cost_router, dependencies=[Depends(enforce_api_auth)])
     return app
 
 

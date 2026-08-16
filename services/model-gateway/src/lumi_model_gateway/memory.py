@@ -10,6 +10,7 @@ from .models import (
     CostEstimate,
     HealthSnapshot,
     ModelRequest,
+    ModelUsage,
     NormalizedResult,
     RouteCandidate,
 )
@@ -117,6 +118,9 @@ class MemoryBudgetPort:
     def __init__(self, remaining_usd: Decimal | None = None) -> None:
         self.remaining_usd = remaining_usd
         self.reserved: dict[str, Decimal] = {}
+        self.settlements: list[
+            tuple[CostEstimate, ModelUsage, str | None]
+        ] = []
 
     async def reserve(
         self,
@@ -162,7 +166,12 @@ class MemoryBudgetPort:
         reservation: BudgetReservation,
         *,
         actual: CostEstimate,
+        usage: ModelUsage,
+        provider_request_id: str | None,
     ) -> None:
+        self.settlements.append(
+            (actual, usage, provider_request_id)
+        )
         if not reservation.reservation_ref:
             return
         estimated = self.reserved.pop(

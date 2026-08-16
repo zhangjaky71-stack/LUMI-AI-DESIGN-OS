@@ -179,6 +179,8 @@ class ModelGateway:
             await self.budget.settle(
                 reservation,
                 actual=result.cost,
+                usage=result.usage,
+                provider_request_id=result.provider_request_id,
             )
             latency_ms = (
                 result.timing.total_ms
@@ -322,6 +324,8 @@ class ModelGateway:
         await self.budget.settle(
             reservation,
             actual=result.cost,
+            usage=usage,
+            provider_request_id=provider_request_id,
         )
         self.router.health.record_success(
             candidate.model.provider,
