@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -153,13 +154,15 @@ def artifact_fixture(
 
 def test_canvas_is_not_an_artifact_type() -> None:
     with pytest.raises(ValidationError):
-        Artifact(
-            id=new_uuid7(),
-            organization_id=new_uuid7(),
-            project_id=new_uuid7(),
-            type="CANVAS",
-            name="not durable truth",
-            rights=rights(),
+        Artifact.model_validate(
+            {
+                "id": str(new_uuid7()),
+                "organization_id": str(new_uuid7()),
+                "project_id": str(new_uuid7()),
+                "type": "CANVAS",
+                "name": "not durable truth",
+                "rights": rights().model_dump(mode="json"),
+            }
         )
 
 
@@ -205,7 +208,7 @@ def test_constraint_snapshot_must_match_provenance() -> None:
 def test_version_model_is_frozen() -> None:
     _, _, version = artifact_fixture()
     with pytest.raises(ValidationError):
-        version.content_hash = SHA_B  # type: ignore[misc]
+        version.__setattr__("content_hash", SHA_B)
 
 
 def test_only_status_may_change_for_same_version_identity() -> None:
@@ -296,13 +299,12 @@ def test_restore_creates_new_version_and_lineage_edge() -> None:
         primary_file_id=file2.id,
         constraint_snapshot_hash=SHA_C,
     )
-    restore_provenance = provenance(input_versions=(version1.id,))
     restored, branch, edge = restore_version(
         version1,
         branch,
         (version1, version2),
         version_id=new_uuid7(),
-        provenance=restore_provenance,
+        provenance=provenance(input_versions=(version1.id,)),
         created_by_type=CreatedByType.USER,
         created_by_id="user-1",
         created_at=NOW + timedelta(minutes=2),
