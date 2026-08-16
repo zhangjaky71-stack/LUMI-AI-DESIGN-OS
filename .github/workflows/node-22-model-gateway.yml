@@ -64,22 +64,27 @@ jobs:
           PYTHONPATH=services/model-gateway/src:apps/api/src \
             uv run pytest -q \
               apps/api/tests/test_model_gateway_side_effects.py \
-              apps/api/tests/test_idempotency_contract.py
+              apps/api/tests/test_idempotency_gateway_contract.py \
+              apps/api/tests/test_idempotency_http_contract.py
 
       - name: Export and validate Model Gateway schemas
         run: |
           rm -rf reports/nodes/NODE-22/generated-schemas
           uv run python tools/node22/export_model_gateway_schemas.py
-          test "$(find reports/nodes/NODE-22/generated-schemas -name '*.schema.json' | wc -l)" -eq 7
+          count="$(find reports/nodes/NODE-22/generated-schemas \
+            -name '*.schema.json' | wc -l)"
+          test "$count" -eq 7
           python - <<'PY'
           import json
           from pathlib import Path
-          paths = sorted(Path("reports/nodes/NODE-22/generated-schemas").glob("*.schema.json"))
+
+          root = Path("reports/nodes/NODE-22")
+          paths = sorted((root / "generated-schemas").glob("*.schema.json"))
           assert len(paths) == 7
           for path in paths:
               payload = json.loads(path.read_text(encoding="utf-8"))
               assert payload["$schema"].endswith("2020-12/schema")
-          ledger = json.loads(Path("reports/nodes/NODE-22/gap-ledger.json").read_text())
+          ledger = json.loads((root / "gap-ledger.json").read_text())
           assert len(ledger["gaps"]) == 7
           print("NODE-22 schemas and gap ledger valid")
           PY
@@ -111,8 +116,9 @@ jobs:
         run: |
           PYTHONPATH=services/model-gateway/src:apps/api/src \
             uv run python - <<'PY'
-          from lumi_model_gateway.secrets import EnvironmentSecretProvider
           from lumi_model_gateway.errors import SecretUnavailable
+          from lumi_model_gateway.secrets import EnvironmentSecretProvider
+
           provider = EnvironmentSecretProvider()
           for name in ("openai", "anthropic"):
               try:

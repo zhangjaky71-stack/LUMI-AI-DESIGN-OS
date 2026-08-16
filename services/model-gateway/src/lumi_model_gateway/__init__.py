@@ -1,8 +1,20 @@
 from .anthropic_adapter import AnthropicMessagesAdapter
 from .client import InProcessModelGatewayClient, ModelGatewayClient
-from .errors import ErrorCategory, NoRouteAvailable, PaidSideEffectGuardRequired, ProviderCallError
+from .errors import (
+    ErrorCategory,
+    NoRouteAvailable,
+    PaidSideEffectGuardRequired,
+    PaidSideEffectSemanticConflict,
+    ProviderAcceptance,
+    ProviderCallError,
+)
 from .gateway import ModelGateway, RetryPolicy
-from .memory import MemoryBudgetPort, MemoryCostTelemetryPort, MemoryHealthPort, MemoryPaidSideEffectPort
+from .memory import (
+    MemoryBudgetPort,
+    MemoryCostTelemetryPort,
+    MemoryHealthPort,
+    MemoryPaidSideEffectPort,
+)
 from .mock_provider import MockProvider
 from .models import (
     Capability,
@@ -53,6 +65,8 @@ __all__ = [
     "NormalizedResult",
     "OpenAIResponsesAdapter",
     "PaidSideEffectGuardRequired",
+    "PaidSideEffectSemanticConflict",
+    "ProviderAcceptance",
     "ProviderCallError",
     "ProviderModel",
     "ProviderRegistry",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from decimal import Decimal
 from typing import Any
 
@@ -26,10 +27,22 @@ class MockProvider:
     def __init__(self) -> None:
         self._jobs: dict[str, tuple[int, ProviderModel]] = {}
         all_llm = frozenset(
-            {Capability.LLM_REASONING, Capability.LLM_STRUCTURED_OUTPUT, Capability.LLM_VISION}
+            {
+                Capability.LLM_REASONING,
+                Capability.LLM_STRUCTURED_OUTPUT,
+                Capability.LLM_VISION,
+            }
         )
         self._models = (
-            ProviderModel("mock", "mock-llm-v1", all_llm, 75, 95, paid=False, fixed_request_usd=Decimal("0.001")),
+            ProviderModel(
+                "mock",
+                "mock-llm-v1",
+                all_llm,
+                75,
+                95,
+                paid=False,
+                fixed_request_usd=Decimal("0.001"),
+            ),
             ProviderModel(
                 "mock",
                 "mock-image-v1",
@@ -50,7 +63,12 @@ class MockProvider:
             ProviderModel(
                 "mock",
                 "mock-video-v1",
-                frozenset({Capability.VIDEO_TEXT_TO_VIDEO, Capability.VIDEO_IMAGE_TO_VIDEO}),
+                frozenset(
+                    {
+                        Capability.VIDEO_TEXT_TO_VIDEO,
+                        Capability.VIDEO_IMAGE_TO_VIDEO,
+                    }
+                ),
                 65,
                 50,
                 paid=False,
@@ -81,24 +99,41 @@ class MockProvider:
         if request.capability not in model.capabilities:
             raise ValueError("mock model capability mismatch")
 
-    def estimate_cost(self, request: ModelRequest, model: ProviderModel) -> CostEstimate:
+    def estimate_cost(
+        self,
+        request: ModelRequest,
+        model: ProviderModel,
+    ) -> CostEstimate:
         del request
-        return CostEstimate(model.fixed_request_usd or Decimal("0"), CostConfidence.EXACT, "mock-v1")
+        return CostEstimate(
+            model.fixed_request_usd or Decimal("0"),
+            CostConfidence.EXACT,
+            "mock-v1",
+        )
 
-    async def invoke(self, request: ModelRequest, model: ProviderModel) -> NormalizedResult:
+    async def invoke(
+        self,
+        request: ModelRequest,
+        model: ProviderModel,
+    ) -> NormalizedResult:
         self.validate(request, model)
         self.invocations += 1
         simulated = request.constraints.get("simulate_error")
         if simulated:
             category = ErrorCategory(str(simulated))
-            acceptance_value = request.constraints.get("simulate_acceptance") or "not_accepted"
+            acceptance_value = (
+                request.constraints.get("simulate_acceptance") or "not_accepted"
+            )
             acceptance = ProviderAcceptance(str(acceptance_value))
             raise ProviderCallError(
                 category,
                 f"simulated {category.value}",
                 provider=self.provider_name,
-                status_code=429 if category is ErrorCategory.RATE_LIMIT else 503,
-                retryable=category in {
+                status_code=(
+                    429 if category is ErrorCategory.RATE_LIMIT else 503
+                ),
+                retryable=category
+                in {
                     ErrorCategory.RATE_LIMIT,
                     ErrorCategory.TIMEOUT,
                     ErrorCategory.PROVIDER_5XX,
@@ -124,14 +159,27 @@ class MockProvider:
                 cost=estimate,
             )
         if request.capability.value.startswith("image."):
-            output = ModelOutput(kind="asset", asset_ref=f"fixture://mock/image/{digest}.png")
+            output = ModelOutput(
+                kind="asset",
+                asset_ref=f"fixture://mock/image/{digest}.png",
+            )
         elif request.capability.value.startswith("embedding."):
-            output = ModelOutput(kind="json", json_value={"embedding": [0.1, 0.2, 0.3], "digest": digest})
+            output = ModelOutput(
+                kind="json",
+                json_value={
+                    "embedding": [0.1, 0.2, 0.3],
+                    "digest": digest,
+                },
+            )
         elif request.capability is Capability.OCR_DOCUMENT:
             output = ModelOutput(kind="text", text=f"mock-ocr:{digest}")
         elif request.structured_output_schema:
             value = _synthesize(request.structured_output_schema)
-            output = ModelOutput(kind="json", json_value=value, text=json.dumps(value, sort_keys=True))
+            output = ModelOutput(
+                kind="json",
+                json_value=value,
+                text=json.dumps(value, sort_keys=True),
+            )
         else:
             output = ModelOutput(kind="text", text=f"mock:{digest}")
         return NormalizedResult(
@@ -145,18 +193,50 @@ class MockProvider:
             cost=estimate,
         )
 
-    async def stream(self, request: ModelRequest, model: ProviderModel):
+    async def stream(
+        self,
+        request: ModelRequest,
+        model: ProviderModel,
+    ) -> AsyncIterator[ModelStreamChunk]:
         self.validate(request, model)
         digest = request.semantic_hash()[:12]
         request_id = f"mock-stream-{digest}"
-        yield ModelStreamChunk(StreamEventType.STARTED, self.provider_name, model.model, provider_request_id=request_id)
+        yield ModelStreamChunk(
+            StreamEventType.STARTED,
+            self.provider_name,
+            model.model,
+            provider_request_id=request_id,
+        )
         for part in ("mock", ":", digest):
-            yield ModelStreamChunk(StreamEventType.TEXT_DELTA, self.provider_name, model.model, text_delta=part, provider_request_id=request_id)
+            yield ModelStreamChunk(
+                StreamEventType.TEXT_DELTA,
+                self.provider_name,
+                model.model,
+                text_delta=part,
+                provider_request_id=request_id,
+            )
         usage = ModelUsage(input_tokens=7, output_tokens=5)
-        yield ModelStreamChunk(StreamEventType.USAGE, self.provider_name, model.model, usage=usage, provider_request_id=request_id)
-        yield ModelStreamChunk(StreamEventType.COMPLETED, self.provider_name, model.model, usage=usage, provider_request_id=request_id, finish_reason="stop")
+        yield ModelStreamChunk(
+            StreamEventType.USAGE,
+            self.provider_name,
+            model.model,
+            usage=usage,
+            provider_request_id=request_id,
+        )
+        yield ModelStreamChunk(
+            StreamEventType.COMPLETED,
+            self.provider_name,
+            model.model,
+            usage=usage,
+            provider_request_id=request_id,
+            finish_reason="stop",
+        )
 
-    async def get_async_status(self, provider_request_id: str, model: ProviderModel) -> NormalizedResult:
+    async def get_async_status(
+        self,
+        provider_request_id: str,
+        model: ProviderModel,
+    ) -> NormalizedResult:
         state = self._jobs.get(provider_request_id)
         if state is None:
             raise ProviderCallError(
@@ -180,26 +260,46 @@ class MockProvider:
                 self.provider_name,
                 model.model,
                 provider_request_id=provider_request_id,
-                cost=CostEstimate(model.fixed_request_usd, CostConfidence.EXACT, "mock-v1"),
+                cost=CostEstimate(
+                    model.fixed_request_usd,
+                    CostConfidence.EXACT,
+                    "mock-v1",
+                ),
             )
         digest = provider_request_id.removeprefix("mock-video-")
+        output = ModelOutput(
+            kind="asset",
+            asset_ref=f"fixture://mock/video/{digest}.mp4",
+        )
         return NormalizedResult(
             ResultStatus.COMPLETED,
             self.provider_name,
             model.model,
-            outputs=(ModelOutput(kind="asset", asset_ref=f"fixture://mock/video/{digest}.mp4"),),
+            outputs=(output,),
             provider_request_id=provider_request_id,
-            cost=CostEstimate(model.fixed_request_usd, CostConfidence.EXACT, "mock-v1"),
+            cost=CostEstimate(
+                model.fixed_request_usd,
+                CostConfidence.EXACT,
+                "mock-v1",
+            ),
         )
 
-    async def cancel(self, provider_request_id: str, model: ProviderModel) -> bool:
+    async def cancel(
+        self,
+        provider_request_id: str,
+        model: ProviderModel,
+    ) -> bool:
         del model
         return self._jobs.pop(provider_request_id, None) is not None
 
     def normalize_error(self, error: BaseException) -> ProviderCallError:
         if isinstance(error, ProviderCallError):
             return error
-        return ProviderCallError(ErrorCategory.UNKNOWN, str(error), provider=self.provider_name)
+        return ProviderCallError(
+            ErrorCategory.UNKNOWN,
+            str(error),
+            provider=self.provider_name,
+        )
 
 
 def _synthesize(schema: dict[str, Any]) -> Any:
@@ -207,7 +307,11 @@ def _synthesize(schema: dict[str, Any]) -> Any:
     if schema_type == "object" or "properties" in schema:
         properties = schema.get("properties") or {}
         required = set(schema.get("required") or properties.keys())
-        return {key: _synthesize(value) for key, value in sorted(properties.items()) if key in required}
+        return {
+            key: _synthesize(value)
+            for key, value in sorted(properties.items())
+            if key in required
+        }
     if schema_type == "array":
         return [_synthesize(schema.get("items") or {})]
     if schema_type == "integer":
