@@ -97,6 +97,15 @@ class ProjectCoreService:
             organization_id=command.organization_id,
             permission=Permission.PROJECT_WRITE,
         )
+        if not self.repository.workspace_exists(
+            command.organization_id, command.workspace_id
+        ):
+            raise ProjectCommandError("WORKSPACE_NOT_FOUND")
+        if command.brand_id is not None and not self.repository.brand_exists(
+            command.organization_id, command.brand_id
+        ):
+            raise ProjectCommandError("BRAND_NOT_FOUND")
+
         project_id = new_uuid7()
         default_branch_id = new_uuid7()
         project = ProjectRecord(
@@ -169,6 +178,10 @@ class ProjectCoreService:
             raise ProjectCommandError("PROJECT_ARCHIVED")
         if current.version != command.expected_version:
             raise ProjectCommandError("PROJECT_VERSION_CONFLICT")
+        if command.update_brand and command.brand_id is not None and not self.repository.brand_exists(
+            command.organization_id, command.brand_id
+        ):
+            raise ProjectCommandError("BRAND_NOT_FOUND")
 
         update: dict[str, object] = {
             "version": current.version + 1,
