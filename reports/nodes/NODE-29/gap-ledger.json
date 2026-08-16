@@ -1,0 +1,55 @@
+{
+  "node": "NODE-29",
+  "title": "Deep Agents Runtime",
+  "status": "IMPLEMENTED_VALIDATING_BLOCKED_EXTERNAL",
+  "gaps": [
+    {
+      "id": "DEEP-AGENT-REGISTRY-001",
+      "owner": "NODE-30",
+      "status": "OPEN",
+      "detail": "Production Git-backed Agent Registry exact-version resolution, promotion, rollback, and durable provenance are not yet composed. NODE-29 consumes an AgentConfigResolver port."
+    },
+    {
+      "id": "DEEP-SKILL-REGISTRY-002",
+      "owner": "NODE-31",
+      "status": "OPEN",
+      "detail": "Production Skill Registry dependency DAG, eval gate, exact-version loader, and materialization service are not yet composed. NODE-29 consumes a SkillMaterializer port."
+    },
+    {
+      "id": "DEEP-CONTEXT-003",
+      "owner": "Context Compiler",
+      "status": "OPEN",
+      "detail": "Production Context Compiler binding that creates immutable pinned project/brand constraint bundles is not yet composed; NODE-29 only defines and enforces the PinnedContextBundle boundary."
+    },
+    {
+      "id": "DEEP-MEMORY-004",
+      "owner": "Memory Runtime",
+      "status": "OPEN",
+      "detail": "Durable scoped memory backend and policy-enforced project/brand/user/organization persistence are not yet wired. NODE-29 refuses write scopes outside the invocation permission set."
+    },
+    {
+      "id": "DEEP-SANDBOX-005",
+      "owner": "NODE-21 / composition",
+      "status": "OPEN",
+      "detail": "NODE-21 has a real DeepAgentsSandboxAdapter, but production dependency/DI composition from agent-runtime to the chosen remote/strong-isolation backend remains open. NODE-29 fails closed if execute is exposed without a sandbox grant/binding."
+    },
+    {
+      "id": "DEEP-MODEL-BUDGET-006",
+      "owner": "NODE-22 / NODE-27 composition",
+      "status": "OPEN",
+      "detail": "The production LangChain chat-model adapter that proves every Deep Agent model call traverses Model Gateway and server-side run-budget metering is not yet composed. NODE-29 requires both trusted markers and never accepts provider-native model strings."
+    },
+    {
+      "id": "DEEP-COMPOSITION-007",
+      "owner": "NODE-28 runtime composition",
+      "status": "OPEN",
+      "detail": "Production DI that installs DeepAgentTaskExecutor into ControlServices.agentic and binds result/timeline persistence is not yet activated. The TaskPort-compatible executor and safe state delta are implemented."
+    },
+    {
+      "id": "DEEP-CI-008",
+      "owner": "External GitHub account",
+      "status": "BLOCKED_EXTERNAL",
+      "detail": "Hosted GitHub Actions cannot allocate a runner while the account payment/spending-limit condition persists. No hosted pytest/Ruff/Pyright result may be claimed until a runner executes steps."
+    }
+  ]
+}
