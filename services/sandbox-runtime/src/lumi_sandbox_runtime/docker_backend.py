@@ -61,7 +61,9 @@ def build_docker_run_args(
     input_dir: Path,
 ) -> tuple[str, ...]:
     if spec.network_policy.value != "none":
-        raise SandboxPolicyDenied("local Docker backend only supports enforced network NONE")
+        raise SandboxPolicyDenied(
+            "local Docker backend only supports enforced network NONE"
+        )
     work_mb = max(32, int(spec.disk_limit_mb * 0.7))
     output_mb = max(16, spec.disk_limit_mb - work_mb)
     memory = f"{spec.memory_limit_mb}m"
@@ -94,9 +96,15 @@ def build_docker_run_args(
         "--tmpfs",
         "/tmp:rw,nosuid,nodev,noexec,size=64m",
         "--tmpfs",
-        f"/workspace/work:rw,nosuid,nodev,size={work_mb}m,uid=65532,gid=65532,mode=0700",
+        (
+            f"/workspace/work:rw,nosuid,nodev,size={work_mb}m,"
+            "uid=65532,gid=65532,mode=0700"
+        ),
         "--tmpfs",
-        f"/workspace/output:rw,nosuid,nodev,size={output_mb}m,uid=65532,gid=65532,mode=0700",
+        (
+            f"/workspace/output:rw,nosuid,nodev,size={output_mb}m,"
+            "uid=65532,gid=65532,mode=0700"
+        ),
         "--mount",
         f"type=bind,src={input_dir},dst=/workspace/input,readonly",
         "--env",
@@ -116,7 +124,10 @@ def build_docker_run_args(
     )
 
 
-async def _read_limited(stream: asyncio.StreamReader | None, limit: int) -> tuple[bytes, int, bool]:
+async def _read_limited(
+    stream: asyncio.StreamReader | None,
+    limit: int,
+) -> tuple[bytes, int, bool]:
     if stream is None:
         return b"", 0, False
     kept = bytearray()
@@ -144,7 +155,11 @@ async def _run_process(
 ) -> tuple[int, bytes, bytes, int, int, bool, bool]:
     process = await asyncio.create_subprocess_exec(
         *argv,
-        stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
+        stdin=(
+            asyncio.subprocess.PIPE
+            if stdin is not None
+            else asyncio.subprocess.DEVNULL
+        ),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -179,6 +194,12 @@ async def _run_process(
     )
 
 
+def _base64_transport_budget(raw_bytes: int) -> int:
+    encoded = ((raw_bytes + 2) // 3) * 4
+    stdout_budget = encoded + 131_072
+    return stdout_budget * 2
+
+
 class DockerSandboxBackend:
     def __init__(
         self,
@@ -198,7 +219,10 @@ class DockerSandboxBackend:
         self._registry_lock = asyncio.Lock()
 
     async def create(self, spec: SandboxSpec) -> SandboxHandle:
-        validate_network_policy(spec, egress_enforcer_available=self.egress_enforcer_available)
+        validate_network_policy(
+            spec,
+            egress_enforcer_available=self.egress_enforcer_available,
+        )
         if spec.network_policy.value != "none":
             raise SandboxPolicyDenied(
                 "local backend refuses proxy/allowlist mode until a real network enforcer is bound"
@@ -208,14 +232,23 @@ class DockerSandboxBackend:
         input_dir = root / "input"
         input_dir.mkdir(mode=0o755)
         container_name = f"lumi-{sandbox_id}"
-        args = list(build_docker_run_args(spec, container_name=container_name, input_dir=input_dir))
+        args = list(
+            build_docker_run_args(
+                spec,
+                container_name=container_name,
+                input_dir=input_dir,
+            )
+        )
         args[0] = self.docker_binary
-        code, stdout, stderr, *_ = await _run_process(tuple(args), timeout=60, max_output_bytes=65536)
+        code, stdout, stderr, *_ = await _run_process(
+            tuple(args),
+            timeout=60,
+            max_output_bytes=65536,
+        )
         if code != 0:
             shutil.rmtree(root, ignore_errors=True)
-            raise SandboxRuntimeError(
-                f"docker create failed: {self.redactor.redact(stderr.decode('utf-8', 'replace'))}"
-            )
+            error = self.redactor.redact(stderr.decode("utf-8", "replace"))
+            raise SandboxRuntimeError(f"docker create failed: {error}")
         if not stdout.strip():
             shutil.rmtree(root, ignore_errors=True)
             raise SandboxRuntimeError("docker did not return a container id")
@@ -238,10 +271,16 @@ class DockerSandboxBackend:
         )
         async with self._registry_lock:
             self._sessions[sandbox_id] = session
-        session.expiry_task = asyncio.create_task(self._expire(sandbox_id, spec.ttl_seconds))
+        session.expiry_task = asyncio.create_task(
+            self._expire(sandbox_id, spec.ttl_seconds)
+        )
         return handle
 
-    async def exec(self, sandbox_id: str, command: SandboxCommand) -> ExecResult:
+    async def exec(
+        self,
+        sandbox_id: str,
+        command: SandboxCommand,
+    ) -> ExecResult:
         session = self._get(sandbox_id)
         self.command_policy.validate(command)
         cwd = normalize_workspace_path(command.cwd)
@@ -262,7 +301,15 @@ class DockerSandboxBackend:
             argv.append(session.container_name)
             argv.extend(command.argv)
             started = time.monotonic()
-            code, stdout, stderr, stdout_seen, stderr_seen, truncated, timed_out = await _run_process(
+            (
+                code,
+                stdout,
+                stderr,
+                stdout_seen,
+                stderr_seen,
+                truncated,
+                timed_out,
+            ) = await _run_process(
                 tuple(argv),
                 timeout=timeout,
                 max_output_bytes=session.spec.max_output_bytes,
@@ -275,8 +322,12 @@ class DockerSandboxBackend:
                 session.state = SandboxState.IDLE
             return ExecResult(
                 exit_code=124 if timed_out else code,
-                stdout=self.redactor.redact(stdout.decode("utf-8", "replace")),
-                stderr=self.redactor.redact(stderr.decode("utf-8", "replace")),
+                stdout=self.redactor.redact(
+                    stdout.decode("utf-8", "replace")
+                ),
+                stderr=self.redactor.redact(
+                    stderr.decode("utf-8", "replace")
+                ),
                 timed_out=timed_out,
                 usage=ResourceUsage(
                     wall_time_ms=wall_ms,
@@ -291,10 +342,27 @@ class DockerSandboxBackend:
         normalized = normalize_workspace_path(path)
         async with session.lock:
             self._assert_live(session)
-            payload = await self._helper(session, "read", normalized, "--max-bytes", str(session.spec.max_output_bytes))
-            return base64.b64decode(payload.strip().encode("ascii"), validate=True)
+            payload = await self._helper(
+                session,
+                "read",
+                normalized,
+                "--max-bytes",
+                str(session.spec.max_output_bytes),
+                transport_limit=_base64_transport_budget(
+                    session.spec.max_output_bytes
+                ),
+            )
+            return base64.b64decode(
+                payload.strip().encode("ascii"),
+                validate=True,
+            )
 
-    async def write_file(self, sandbox_id: str, path: str, content: bytes) -> None:
+    async def write_file(
+        self,
+        sandbox_id: str,
+        path: str,
+        content: bytes,
+    ) -> None:
         session = self._get(sandbox_id)
         normalized = normalize_workspace_path(path)
         if normalized.startswith("/workspace/input/"):
@@ -310,7 +378,11 @@ class DockerSandboxBackend:
                 stdin=base64.b64encode(content) + b"\n",
             )
 
-    async def list_files(self, sandbox_id: str, path: str) -> list[FileEntry]:
+    async def list_files(
+        self,
+        sandbox_id: str,
+        path: str,
+    ) -> list[FileEntry]:
         session = self._get(sandbox_id)
         normalized = normalize_workspace_path(path)
         async with session.lock:
@@ -319,16 +391,27 @@ class DockerSandboxBackend:
             data = json.loads(raw)
             return [FileEntry.model_validate(item) for item in data]
 
-    async def upload_asset(self, sandbox_id: str, asset: AssetInputRef) -> str:
+    async def upload_asset(
+        self,
+        sandbox_id: str,
+        asset: AssetInputRef,
+    ) -> str:
         session = self._get(sandbox_id)
-        if "/" in asset.filename or "\\" in asset.filename or asset.filename in {".", ".."}:
+        invalid_name = (
+            "/" in asset.filename
+            or "\\" in asset.filename
+            or asset.filename in {".", ".."}
+        )
+        if invalid_name:
             raise SandboxPolicyDenied("asset filename must be a basename")
         validate_archive_bytes(asset.filename, asset.content)
         async with session.lock:
             self._assert_live(session)
             next_total = session.input_bytes + len(asset.content)
             if next_total > session.spec.disk_limit_mb * 1024 * 1024:
-                raise SandboxPolicyDenied("input assets exceed sandbox disk budget")
+                raise SandboxPolicyDenied(
+                    "input assets exceed sandbox disk budget"
+                )
             target = session.input_dir / asset.filename
             if target.exists():
                 raise SandboxPolicyDenied("input filename already exists")
@@ -337,11 +420,17 @@ class DockerSandboxBackend:
             session.input_bytes = next_total
             return f"/workspace/input/{asset.filename}"
 
-    async def collect_artifact(self, sandbox_id: str, path: str) -> CollectedArtifact:
+    async def collect_artifact(
+        self,
+        sandbox_id: str,
+        path: str,
+    ) -> CollectedArtifact:
         session = self._get(sandbox_id)
         normalized = normalize_workspace_path(path)
         if not normalized.startswith("/workspace/output/"):
-            raise SandboxPolicyDenied("only /workspace/output files may be collected")
+            raise SandboxPolicyDenied(
+                "only /workspace/output files may be collected"
+            )
         async with session.lock:
             self._assert_live(session)
             raw = await self._helper(
@@ -349,10 +438,16 @@ class DockerSandboxBackend:
                 "inspect",
                 normalized,
                 "--max-bytes",
-                str(session.spec.disk_limit_mb * 1024 * 1024),
+                str(session.spec.max_artifact_bytes),
+                transport_limit=_base64_transport_budget(
+                    session.spec.max_artifact_bytes
+                ),
             )
             metadata: dict[str, Any] = json.loads(raw)
-            content = base64.b64decode(metadata.pop("content_b64").encode("ascii"), validate=True)
+            content = base64.b64decode(
+                metadata.pop("content_b64").encode("ascii"),
+                validate=True,
+            )
             storage_ref = None
             if self.storage is not None:
                 storage_ref = await self.storage.put_validated_output(
@@ -377,13 +472,19 @@ class DockerSandboxBackend:
         if session is None:
             return
         async with session.lock:
-            if session.state in {SandboxState.TERMINATED, SandboxState.TERMINATING}:
+            if session.state in {
+                SandboxState.TERMINATED,
+                SandboxState.TERMINATING,
+            }:
                 return
             session.state = SandboxState.TERMINATING
             await self._kill_container(session)
             session.state = SandboxState.TERMINATED
         current = asyncio.current_task()
-        if session.expiry_task is not None and session.expiry_task is not current:
+        if (
+            session.expiry_task is not None
+            and session.expiry_task is not current
+        ):
             session.expiry_task.cancel()
         shutil.rmtree(session.root_dir, ignore_errors=True)
         async with self._registry_lock:
@@ -415,8 +516,21 @@ class DockerSandboxBackend:
         session: _Session,
         *args: str,
         stdin: bytes | None = None,
+        transport_limit: int | None = None,
     ) -> str:
-        code, stdout, stderr, *_ = await _run_process(
+        limit = transport_limit or max(
+            session.spec.max_output_bytes,
+            4_194_304,
+        )
+        (
+            code,
+            stdout,
+            stderr,
+            _stdout_seen,
+            _stderr_seen,
+            truncated,
+            timed_out,
+        ) = await _run_process(
             (
                 self.docker_binary,
                 "exec",
@@ -429,18 +543,31 @@ class DockerSandboxBackend:
             ),
             stdin=stdin,
             timeout=30,
-            max_output_bytes=max(session.spec.max_output_bytes, 4_194_304),
+            max_output_bytes=limit,
         )
-        if code != 0:
+        if timed_out:
+            raise SandboxRuntimeError("trusted workspace helper timed out")
+        if truncated:
             raise SandboxPolicyDenied(
-                self.redactor.redact(stderr.decode("utf-8", "replace")).strip()
-                or "trusted workspace helper rejected operation"
+                "trusted workspace helper output exceeded transport limit"
+            )
+        if code != 0:
+            detail = self.redactor.redact(
+                stderr.decode("utf-8", "replace")
+            ).strip()
+            raise SandboxPolicyDenied(
+                detail or "trusted workspace helper rejected operation"
             )
         return stdout.decode("utf-8", "strict")
 
     async def _kill_container(self, session: _Session) -> None:
         await _run_process(
-            (self.docker_binary, "rm", "-f", session.container_name),
+            (
+                self.docker_binary,
+                "rm",
+                "-f",
+                session.container_name,
+            ),
             timeout=30,
             max_output_bytes=65536,
         )
@@ -460,5 +587,11 @@ class DockerSandboxBackend:
 
     @staticmethod
     def _assert_live(session: _Session) -> None:
-        if session.state in {SandboxState.TERMINATED, SandboxState.TERMINATING, SandboxState.FAILED}:
-            raise SandboxRuntimeError(f"sandbox is not executable in state {session.state}")
+        if session.state in {
+            SandboxState.TERMINATED,
+            SandboxState.TERMINATING,
+            SandboxState.FAILED,
+        }:
+            raise SandboxRuntimeError(
+                f"sandbox is not executable in state {session.state}"
+            )
