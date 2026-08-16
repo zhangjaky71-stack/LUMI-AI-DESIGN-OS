@@ -11,8 +11,8 @@ branch_labels = None
 depends_on = None
 
 _SNAPSHOT_DIR = Path(__file__).with_name("20260816_0009_sql")
-_UP_FILES = ("up_01.sql", "up_02.sql")
-_DOWN_FILES = ("down_02.sql", "down_01.sql")
+_UP_FILES = ("up_01.sql", "up_01a_legacy.sql", "up_02.sql")
+_DOWN_FILES = ("down_03_guard.sql", "down_02.sql", "down_01.sql")
 _BREAKPOINT = "-- statement-breakpoint"
 
 
