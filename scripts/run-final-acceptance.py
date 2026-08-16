@@ -173,6 +173,23 @@ def evidence_only_path(path: str) -> bool:
     return any(normalized.startswith(prefix) for prefix in EVIDENCE_ONLY_PREFIXES)
 
 
+def post_rc_touched_paths(release_sha: str) -> tuple[str, ...]:
+    """Return every path touched by any commit after RC, including later-reverted changes."""
+    history = git(
+        [
+            "log",
+            "-m",
+            "--format=",
+            "--name-only",
+            f"{release_sha}..HEAD",
+            "--",
+        ]
+    )
+    if history.returncode != 0:
+        raise SystemExit("unable to inspect post-RC commit history")
+    return tuple(sorted({line.strip() for line in history.stdout.splitlines() if line.strip()}))
+
+
 def require_evidence_only_descendant(release_sha: str) -> tuple[str, tuple[str, ...]]:
     exists = git(["cat-file", "-e", f"{release_sha}^{{commit}}"])
     if exists.returncode != 0:
@@ -185,15 +202,13 @@ def require_evidence_only_descendant(release_sha: str) -> tuple[str, tuple[str, 
             "the evidence checkout"
         )
 
-    changed = git(["diff", "--name-only", f"{release_sha}..HEAD", "--"])
-    if changed.returncode != 0:
-        raise SystemExit("unable to inspect post-RC changes")
-    paths = tuple(line.strip() for line in changed.stdout.splitlines() if line.strip())
+    paths = post_rc_touched_paths(release_sha)
     invalid = tuple(path for path in paths if not evidence_only_path(path))
     if invalid:
         raise SystemExit(
-            "FINAL_ACCEPTANCE_POST_RC_SOURCE_CHANGE: only reports/ evidence commits are "
-            f"allowed after source RC freeze; invalid paths={list(invalid)}"
+            "FINAL_ACCEPTANCE_POST_RC_SOURCE_CHANGE: every commit after source RC must be "
+            "reports/-only evidence, even if a source change was later reverted; "
+            f"invalid paths={list(invalid)}"
         )
     return current_git_sha(), paths
 
