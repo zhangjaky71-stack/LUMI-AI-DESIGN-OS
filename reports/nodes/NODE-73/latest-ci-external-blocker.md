@@ -2,57 +2,66 @@
 
 Status: **BLOCKED_EXTERNAL**
 
-This record captures the latest hosted execution state observed after the NODE-73 Final Acceptance hard-stop/UAT/signoff/manual-evidence source changes. It is not a test PASS or source-code FAIL.
+This record captures the latest hosted execution state observed after the NODE-73 Final Acceptance hard-stop/UAT/signoff/manual-evidence/Stripe source changes and the canonical lock-regeneration helper. It is not a test PASS or source-code FAIL.
 
 ## Exact observed head
 
 - branch: `fix/final-acceptance-hard-stops`
-- head SHA: `fe7d3d67e2f6dd029ec2b5d40f71a11fca41da5f`
-- observed at GitHub after structured manual UAT evidence, browser/a11y preflight, canonical runner and release-ledger updates.
+- head SHA observed for this record: `5fb99259b4395ef25c0c552b2ed3c9cad10971e2`
+- PR: `#80`
+- PR mergeability at observation: `mergeable=true`
 
-## Final Product Acceptance Gate
+## Final Production Safety Hard Stops
 
-- workflow: `Final Product Acceptance Gate`
-- run id: `31928719962`
-- head SHA: `fe7d3d67e2f6dd029ec2b5d40f71a11fca41da5f`
-- source-contract job id: `95120244686`
-- source-contract conclusion: `failure`
-- runner id: `0`
-- runner name: empty
-- executed steps: `[]`
-- canonical-lock-gate: `failure` before executable steps
-- final-decision: skipped on pull request by design
-- contract-gate: fails because prerequisite jobs never executed.
+- workflow: `Final Production Safety Hard Stops`
+- run id: `31930129068`
+- head SHA: `5fb99259b4395ef25c0c552b2ed3c9cad10971e2`
+- `static-contract` job id: `95123554417`
+- job conclusion: `failure`
+- executable steps returned by GitHub: `null`
+- downstream `terraform-format`, `quality`, and `postgres-acceptance`: skipped
 
-GitHub check annotation:
+The immediately preceding exact-head run on SHA `b749920df0aee6d83764c60cb4ff37cf7ab43524` established the same account-level failure shape with:
+
+- `runner_id=0`;
+- `runner_name=""`;
+- `steps=[]`;
+- one GitHub check annotation stating:
 
 ```text
 The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
 ```
 
-Because no runner was allocated and no source-contract step executed, this run does **not** establish whether any of the following pass or fail:
-
-- 50-scenario Final Acceptance source contract;
-- eight-role evidence-backed signoff negative drills;
-- structured manual UAT/browser/a11y evidence gate;
-- WebKit-for-Safari substitution rejection;
-- duplicate/malformed manual evidence rejection;
-- upstream canonical lock validator;
-- Python 3.12 / uv 0.11.28 frozen workspace install.
-
-## Final Browser Preflight
-
-- workflow: `Final Browser Preflight`
-- run id: `31928720015`
-- browser-preflight job id: `95120244726`
-- conclusion: `failure`
-- executable steps: none returned by GitHub (`steps=null`)
-
-Therefore no Chrome Stable, Edge Stable, Firefox or WebKit browser command ran for this hosted attempt. The red workflow status is not browser-regression evidence.
+The new head continues the same zero-execution pattern across repository workflows. No evidence indicates that an executable source step ran and failed.
 
 ## Other workflows on the same head
 
-The same head also produced zero-runner/account-blocked failures across many normal repository workflows, including CI, Security Release Gate, AI Regression Release Gate, Staging Acceptance Gate, Recovery/Performance contracts, Database Schema and Final Production Safety Hard Stops. This broad pattern is consistent with the account-level hosted-runner payment/spending-limit blocker rather than an individual source test failure.
+The same SHA produced completed red runs across canonical CI, Database Schema, Production IaC, Model Gateway, Observability, browser preflight, security-adjacent and multiple subsystem workflows while several other runs remained queued/in-progress at observation time. The completed failures share the hosted-runner non-execution pattern seen on the prior exact head.
+
+Do not infer a source regression from the red status until a job has both:
+
+1. a non-zero allocated runner; and
+2. actual executable steps.
+
+## Known independent source blocker
+
+The root `uv.lock` remains stale relative to the current workspace manifest. That is independent of the GitHub account blocker and is expected to fail canonical frozen installation once hosted runners are restored unless repaired first.
+
+A guarded regeneration entry point now exists:
+
+```bash
+scripts/regenerate-root-uv-lock.sh
+```
+
+The script refuses to run unless:
+
+- Python is `3.12.x`;
+- uv is exactly `0.11.28`;
+- manifest/lock inputs are clean before regeneration.
+
+It then runs `uv lock`, `uv lock --check`, `uv sync --all-packages --frozen`, verifies every workspace member exists in `uv.lock`, requires the lock to actually change, and rejects collateral file changes. It does not hand-edit or synthesize the lock.
+
+This ChatGPT execution environment currently exposes uv `0.10.0`, not the required `0.11.28`, so regenerating and committing a release lock from this environment would violate the canonical dependency contract.
 
 ## Classification rule
 
@@ -62,25 +71,25 @@ Use:
 BLOCKED_EXTERNAL
 ```
 
-Do not use:
+for hosted jobs that do not receive a runner.
+
+Keep the stale dependency lock separately classified as:
 
 ```text
-PASS
-FAIL_CODE
-SOURCE_TEST_FAILED
-BROWSER_REGRESSION_FAILED
+FAIL / SOURCE BLOCKER
 ```
 
-for a zero-runner / zero-step account Billing failure.
+Do not use `PASS`, `FAIL_CODE`, `SOURCE_TEST_FAILED`, or `BROWSER_REGRESSION_FAILED` for a zero-runner / zero-step account Billing failure.
 
 ## Required recovery
 
-1. restore GitHub Actions account payment/spending-limit ability;
-2. trigger fresh runs for the exact current release candidate;
-3. verify `runner_id != 0` and actual steps execute;
-4. run Final Product Acceptance source-contract and canonical-lock-gate;
-5. run Final Browser Preflight and archive exact browser/runtime inventory;
-6. classify real source/test results only after executable steps exist;
-7. separately resolve the known stale root `uv.lock` before expecting canonical frozen Python gates to pass.
+1. on a clean checkout, install/use Python 3.12 and uv 0.11.28;
+2. run `scripts/regenerate-root-uv-lock.sh`, review the generated `uv.lock` diff, and commit the generated lock normally;
+3. restore GitHub Actions account payment/spending-limit ability;
+4. trigger fresh workflows for the exact post-lock release candidate;
+5. verify `runner_id != 0` and actual steps execute;
+6. run canonical CI, Security, AI Regression, Staging Acceptance, Final Production Safety Hard Stops, Final Browser Preflight and Final Product Acceptance source contracts;
+7. classify real source/test results only after executable steps exist;
+8. continue the separate real AWS/Stripe/UAT/signoff evidence plan only against that exact frozen candidate.
 
 NODE-73 remains **NOT ACCEPTED**.
