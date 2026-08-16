@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import inspect
+import re
 from dataclasses import dataclass
 from importlib import import_module
-from typing import Any
+from typing import Any, AsyncIterator
 
 from .contracts import (
     DeepAgentInvocationContext,
@@ -40,6 +41,26 @@ class CompiledDeepAgent:
     thread_id: str
     effective_tools: tuple[str, ...]
 
+    async def ainvoke(self, value: Any) -> Any:
+        return await self.compiled_graph.ainvoke(value, config=self._runtime_config())
+
+    async def astream(self, value: Any) -> AsyncIterator[Any]:
+        async for chunk in self.compiled_graph.astream(
+            value,
+            config=self._runtime_config(),
+        ):
+            yield chunk
+
+    def _runtime_config(self) -> dict[str, Any]:
+        return {
+            "configurable": {"thread_id": self.thread_id},
+            "recursion_limit": self.config.max_steps,
+            "metadata": {
+                "lumi_agent_id": self.config.agent_id,
+                "lumi_agent_version": self.config.exact_version,
+            },
+        }
+
 
 class LumiDeepAgentFactory:
     def __init__(
@@ -69,7 +90,9 @@ class LumiDeepAgentFactory:
     ) -> CompiledDeepAgent:
         _validate_permissions(config, context)
         effective_tools = tuple(
-            item for item in config.allowed_tools if item in context.permissions.allowed_tools
+            item
+            for item in config.allowed_tools
+            if item in context.permissions.allowed_tools
         )
         _validate_skills(skills, effective_tools, context)
         warning = await self.budget.warning(context=context)
@@ -132,8 +155,8 @@ class LumiDeepAgentFactory:
                 }
             )
 
-        factory = _load_create_deep_agent()
-        parameters = _require_factory_contract(factory)
+        deep_factory = _load_create_deep_agent()
+        parameters = _require_factory_contract(deep_factory)
         system_prompt = build_system_prompt(
             config=config,
             context=context,
@@ -155,8 +178,6 @@ class LumiDeepAgentFactory:
             if "skills" not in parameters:
                 raise DeepAgentFactoryError("installed Deep Agents lacks native skills")
             kwargs["skills"] = ["/skills/"]
-        if context.permissions.memory_read_scopes and "memory" in parameters:
-            kwargs["memory"] = ["/memory/"]
         if "response_format" in parameters:
             kwargs["response_format"] = AGENT_TASK_RESULT_SCHEMA
         if store is not None:
@@ -164,7 +185,7 @@ class LumiDeepAgentFactory:
                 raise DeepAgentFactoryError("installed Deep Agents lacks store support")
             kwargs["store"] = store
         try:
-            compiled = factory(**kwargs)
+            compiled = deep_factory(**kwargs)
         except Exception as exc:
             raise DeepAgentFactoryError("Deep Agents factory compilation failed") from exc
         if getattr(compiled, "checkpointer", None) is None:
@@ -173,7 +194,8 @@ class LumiDeepAgentFactory:
         skill_versions = tuple(
             f"{item.skill_id}@{item.exact_version}" for item in skills
         )
-        tool_versions = tuple(dict.fromkeys(root_tool_versions + tuple(subagent_tool_versions)))
+        all_tool_versions = root_tool_versions + tuple(subagent_tool_versions)
+        tool_versions = tuple(dict.fromkeys(all_tool_versions))
         provenance = DeepAgentProvenance(
             agent_id=config.agent_id,
             agent_version=config.exact_version,
@@ -205,6 +227,12 @@ def _validate_permissions(
     scope = context.permissions
     if context.root_agent != config.agent_id:
         raise DeepAgentPermissionError("runtime root agent differs from resolved config")
+    if not re.fullmatch(r"[0-9a-f]{64}", config.content_hash):
+        raise DeepAgentPermissionError("resolved agent config lacks immutable content hash")
+    if config.output_schema != "AgentTaskResult":
+        raise DeepAgentPermissionError("NODE-29 requires AgentTaskResult output schema")
+    if config.delegation.max_depth > 1:
+        raise DeepAgentDelegationDeniedError("NODE-29 P0 allows root-to-leaf delegation only")
     if not set(scope.allowed_tools) <= set(config.allowed_tools):
         raise DeepAgentPermissionError("runtime tool scope expands agent config")
     if scope.sandbox_execute and not config.sandbox_execute:
@@ -268,7 +296,14 @@ def _require_factory_contract(factory: Any) -> dict[str, inspect.Parameter]:
         parameters = dict(inspect.signature(factory).parameters)
     except (TypeError, ValueError) as exc:
         raise DeepAgentFactoryError("cannot inspect create_deep_agent signature") from exc
-    required = {"model", "tools", "system_prompt", "subagents", "backend", "checkpointer"}
+    required = {
+        "model",
+        "tools",
+        "system_prompt",
+        "subagents",
+        "backend",
+        "checkpointer",
+    }
     missing = required - set(parameters)
     if missing:
         raise DeepAgentFactoryError(
