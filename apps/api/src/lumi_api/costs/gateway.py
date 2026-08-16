@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-import asyncpg  # pyright: ignore[reportMissingImports]
+import asyncpg
 from lumi_domain import new_uuid7
 
 from .contracts import (
@@ -32,10 +32,10 @@ from .contracts import (
 
 
 class PostgresCostGateway:
-    """Durable provider-cost truth plus budget/quota reservations.
+    """Durable provider-cost truth plus P0 budget/quota reservations.
 
-    Financial facts are append-only. Reservation/quota rows are occupancy state and
-    may transition under a transaction-local organization advisory lock.
+    ``cost_ledger`` and ``usage_ledger`` are append-only facts. ``cost_reservations``
+    and ``quota_leases`` are transient occupancy state and may be released/expired.
     """
 
     def __init__(self, dsn: str) -> None:
@@ -48,8 +48,11 @@ class PostgresCostGateway:
                 await self._lock_budget_domain(connection, request.context.organization_id)
                 await self._expire_reservations(connection, request.context.organization_id)
                 existing = await connection.fetchrow(
-                    "SELECT * FROM cost_reservations WHERE operation_id=$1 "
-                    "AND reservation_key=$2 FOR UPDATE",
+                    """
+                    SELECT * FROM cost_reservations
+                    WHERE operation_id=$1 AND reservation_key=$2
+                    FOR UPDATE
+                    """,
                     request.context.operation_id,
                     request.key,
                 )
@@ -57,7 +60,9 @@ class PostgresCostGateway:
                     self._assert_reservation_identity(existing, request)
                     if existing["status"] in {"active", "committed"}:
                         return ReservationHandle(
-                            reservation_id=existing["id"], request=request, replayed=True
+                            reservation_id=existing["id"],
+                            request=request,
+                            replayed=True,
                         )
                     if existing["status"] not in {"released", "expired"}:
                         raise ReservationConflict("unsupported reservation state")
@@ -80,7 +85,9 @@ class PostgresCostGateway:
                         expires_at,
                     )
                     return ReservationHandle(
-                        reservation_id=existing["id"], request=request, replayed=False
+                        reservation_id=existing["id"],
+                        request=request,
+                        replayed=False,
                     )
 
                 await self._check_budget_limits(
@@ -121,15 +128,19 @@ class PostgresCostGateway:
                     _json(request.metadata),
                 )
                 return ReservationHandle(
-                    reservation_id=reservation_id, request=request, replayed=False
+                    reservation_id=reservation_id,
+                    request=request,
+                    replayed=False,
                 )
         finally:
             await connection.close()
 
     async def commit(
-        self, handle: ReservationHandle, actual: ActualCost
+        self,
+        handle: ReservationHandle,
+        actual: ActualCost,
     ) -> LedgerWriteResult:
-        """Append sunk provider cost and usage atomically with reservation settlement."""
+        """Append sunk provider cost; never reject a paid fact because budget was exceeded."""
         self._assert_commit_context(handle, actual)
         connection = await asyncpg.connect(self.dsn)
         try:
@@ -152,6 +163,7 @@ class PostgresCostGateway:
                     raise ReservationConflict(
                         f"reservation cannot commit from {reservation['status']}"
                     )
+
                 result = await self._insert_actual(connection, actual)
                 await self._insert_usage_facts(connection, actual, result.entry_id)
                 await connection.execute(
@@ -178,7 +190,8 @@ class PostgresCostGateway:
         try:
             async with connection.transaction():
                 await self._lock_budget_domain(
-                    connection, handle.request.context.organization_id
+                    connection,
+                    handle.request.context.organization_id,
                 )
                 reservation = await connection.fetchrow(
                     "SELECT * FROM cost_reservations WHERE id=$1 FOR UPDATE",
@@ -225,7 +238,8 @@ class PostgresCostGateway:
         try:
             async with connection.transaction():
                 target = await connection.fetchrow(
-                    "SELECT * FROM cost_ledger WHERE id=$1", target_entry_id
+                    "SELECT * FROM cost_ledger WHERE id=$1",
+                    target_entry_id,
                 )
                 if target is None:
                     raise CostLedgerConflict("reversal target not found")
@@ -267,12 +281,9 @@ class PostgresCostGateway:
             row = await connection.fetchrow(
                 f"""
                 SELECT
-                    COALESCE(sum(amount) FILTER (WHERE entry_type='actual_cost'),0)
-                        AS actual_cost,
-                    COALESCE(sum(amount) FILTER (WHERE entry_type='adjustment'),0)
-                        AS adjustments,
-                    COALESCE(sum(amount) FILTER (WHERE entry_type='reversal'),0)
-                        AS reversals,
+                    COALESCE(sum(amount) FILTER (WHERE entry_type='actual_cost'),0) AS actual_cost,
+                    COALESCE(sum(amount) FILTER (WHERE entry_type='adjustment'),0) AS adjustments,
+                    COALESCE(sum(amount) FILTER (WHERE entry_type='reversal'),0) AS reversals,
                     count(*) FILTER (
                         WHERE entry_type='actual_cost' AND confidence <> 'exact'
                     ) AS unknown_cost_entries
@@ -342,7 +353,8 @@ class PostgresCostGateway:
                 WHERE organization_id=$1
                   AND occurred_at >= $2 AND occurred_at < $3
                   {project_clause}
-                GROUP BY metric, unit ORDER BY metric, unit
+                GROUP BY metric, unit
+                ORDER BY metric, unit
                 """,
                 *args,
             )
@@ -362,7 +374,8 @@ class PostgresCostGateway:
             await connection.close()
 
     async def remaining_budget(
-        self, request: BudgetReservationRequest
+        self,
+        request: BudgetReservationRequest,
     ) -> Decimal | None:
         connection = await asyncpg.connect(self.dsn)
         try:
@@ -375,7 +388,10 @@ class PostgresCostGateway:
                 for limit in limits:
                     spent = await self._scope_cost(connection, limit, request)
                     active = await self._scope_active_reservations(
-                        connection, limit, request, exclude_reservation_id=None
+                        connection,
+                        limit,
+                        request,
+                        exclude_reservation_id=None,
                     )
                     remainings.append(
                         Decimal(limit["amount_limit"])
@@ -398,7 +414,7 @@ class PostgresCostGateway:
         ttl_seconds: int = 900,
         period_key: str = "lifetime",
     ) -> QuotaLease:
-        if not isinstance(quantity, Decimal) or quantity <= 0:
+        if quantity <= 0:
             raise ValueError("QUOTA_LEASE_QUANTITY_INVALID")
         if not 5 <= ttl_seconds <= 86_400:
             raise ValueError("QUOTA_LEASE_TTL_INVALID")
@@ -513,22 +529,62 @@ class PostgresCostGateway:
         connection = await asyncpg.connect(self.dsn)
         try:
             await connection.execute(
-                "UPDATE quota_leases SET released_at=COALESCE(released_at,now()) "
-                "WHERE id=$1 AND organization_id=$2",
+                """
+                UPDATE quota_leases SET released_at=COALESCE(released_at,now())
+                WHERE id=$1 AND organization_id=$2
+                """,
                 lease.lease_id,
                 lease.organization_id,
             )
         finally:
             await connection.close()
 
+    async def check_quantity_quota(
+        self,
+        *,
+        organization_id: UUID,
+        metric: str,
+        current_quantity: Decimal,
+        requested_delta: Decimal,
+        unit: str,
+        period_key: str = "lifetime",
+    ) -> None:
+        """Read-only hook for externally measured quota facts, e.g. Asset bytes."""
+        if current_quantity < 0 or requested_delta < 0:
+            raise ValueError("QUOTA_QUANTITY_INVALID")
+        connection = await asyncpg.connect(self.dsn)
+        try:
+            row = await connection.fetchrow(
+                """
+                SELECT quantity_limit, unit FROM quota_limits
+                WHERE organization_id=$1 AND scope_type='organization'
+                  AND scope_id IS NULL AND metric=$2 AND period_key=$3 AND enabled
+                """,
+                organization_id,
+                metric,
+                period_key,
+            )
+            if row is None:
+                return
+            if row["unit"] != unit:
+                raise QuotaExceeded("quota unit mismatch")
+            if current_quantity + requested_delta > Decimal(row["quantity_limit"]):
+                raise QuotaExceeded(f"quota {metric} exceeded")
+        finally:
+            await connection.close()
+
     async def _record_correction(
-        self, adjustment: CostAdjustment, *, entry_type: str
+        self,
+        adjustment: CostAdjustment,
+        *,
+        entry_type: str,
     ) -> LedgerWriteResult:
         connection = await asyncpg.connect(self.dsn)
         try:
             async with connection.transaction():
                 target = await connection.fetchrow(
-                    "SELECT * FROM cost_ledger WHERE id=$1", adjustment.target_entry_id
+                    "SELECT * FROM cost_ledger WHERE id=$1",
+                    adjustment.target_entry_id,
                 )
                 if target is None:
                     raise CostLedgerConflict("adjustment target not found")
@@ -552,10 +608,10 @@ class PostgresCostGateway:
 
     async def _insert_correction_row(
         self,
-        connection: Any,
+        connection: asyncpg.Connection,
         *,
         context: CostContext,
-        target: Any,
+        target: asyncpg.Record,
         entry_type: str,
         amount: Decimal,
         reason: str,
@@ -603,8 +659,11 @@ class PostgresCostGateway:
         if inserted is not None:
             return LedgerWriteResult(entry_id=inserted["id"], inserted=True)
         existing = await connection.fetchrow(
-            "SELECT id, amount, currency, reverses_entry_id FROM cost_ledger "
-            "WHERE operation_id=$1 AND entry_type=$2 AND entry_key=$3",
+            """
+            SELECT id, amount, currency, reverses_entry_id
+            FROM cost_ledger
+            WHERE operation_id=$1 AND entry_type=$2 AND entry_key=$3
+            """,
             context.operation_id,
             entry_type,
             entry_key,
@@ -619,7 +678,9 @@ class PostgresCostGateway:
         return LedgerWriteResult(entry_id=existing["id"], inserted=False)
 
     async def _insert_actual(
-        self, connection: Any, actual: ActualCost
+        self,
+        connection: asyncpg.Connection,
+        actual: ActualCost,
     ) -> LedgerWriteResult:
         entry_id = new_uuid7()
         inserted = await connection.fetchrow(
@@ -659,37 +720,40 @@ class PostgresCostGateway:
         return await self._existing_actual_result(connection, actual)
 
     async def _existing_actual_result(
-        self, connection: Any, actual: ActualCost
+        self,
+        connection: asyncpg.Connection,
+        actual: ActualCost,
     ) -> LedgerWriteResult:
         existing = await connection.fetchrow(
             """
             SELECT id, organization_id, amount, currency, provider, model,
                    pricing_snapshot_id, external_provider_request_id, confidence
             FROM cost_ledger
-            WHERE organization_id=$1 AND operation_id=$2
-              AND entry_type='actual_cost' AND entry_key=$3
+            WHERE operation_id=$1 AND entry_type='actual_cost' AND entry_key=$2
             """,
-            actual.context.organization_id,
             actual.context.operation_id,
             actual.entry_key,
         )
         if existing is None:
             raise CostLedgerConflict("actual cost conflict row disappeared")
         if (
-            Decimal(existing["amount"]) != actual.amount
+            existing["organization_id"] != actual.context.organization_id
+            or Decimal(existing["amount"]) != actual.amount
             or existing["currency"] != actual.currency
             or existing["provider"] != actual.provider
             or existing["model"] != actual.model
             or existing["pricing_snapshot_id"] != actual.pricing_snapshot_id
-            or existing["external_provider_request_id"]
-            != actual.external_provider_request_id
+            or existing["external_provider_request_id"] != actual.external_provider_request_id
             or existing["confidence"] != actual.confidence.value
         ):
             raise CostLedgerConflict("actual replay differs from immutable financial fact")
         return LedgerWriteResult(entry_id=existing["id"], inserted=False)
 
     async def _insert_usage_facts(
-        self, connection: Any, actual: ActualCost, cost_entry_id: UUID
+        self,
+        connection: asyncpg.Connection,
+        actual: ActualCost,
+        cost_entry_id: UUID,
     ) -> None:
         for fact in actual.usage:
             inserted = await connection.fetchrow(
@@ -727,14 +791,17 @@ class PostgresCostGateway:
                 await self._assert_usage_fact(connection, actual, fact, cost_entry_id)
 
     async def _assert_existing_usage(
-        self, connection: Any, actual: ActualCost, cost_entry_id: UUID
+        self,
+        connection: asyncpg.Connection,
+        actual: ActualCost,
+        cost_entry_id: UUID,
     ) -> None:
         for fact in actual.usage:
             await self._assert_usage_fact(connection, actual, fact, cost_entry_id)
 
     async def _assert_usage_fact(
         self,
-        connection: Any,
+        connection: asyncpg.Connection,
         actual: ActualCost,
         fact: UsageFact,
         cost_entry_id: UUID,
@@ -742,9 +809,8 @@ class PostgresCostGateway:
         existing = await connection.fetchrow(
             """
             SELECT quantity, unit, cost_entry_id FROM usage_ledger
-            WHERE organization_id=$1 AND operation_id=$2 AND metric=$3 AND entry_key=$4
+            WHERE operation_id=$1 AND metric=$2 AND entry_key=$3
             """,
-            actual.context.organization_id,
             actual.context.operation_id,
             fact.metric,
             fact.entry_key,
@@ -759,7 +825,7 @@ class PostgresCostGateway:
 
     async def _check_budget_limits(
         self,
-        connection: Any,
+        connection: asyncpg.Connection,
         *,
         request: BudgetReservationRequest,
         projected_amount: Decimal,
@@ -782,8 +848,10 @@ class PostgresCostGateway:
                 )
 
     async def _applicable_budget_limits(
-        self, connection: Any, request: BudgetReservationRequest
-    ) -> list[Any]:
+        self,
+        connection: asyncpg.Connection,
+        request: BudgetReservationRequest,
+    ) -> list[asyncpg.Record]:
         periods = (lifetime_period_key(), month_period_key(datetime.now(UTC)))
         context = request.context
         rows = await connection.fetch(
@@ -811,7 +879,10 @@ class PostgresCostGateway:
         return list(rows)
 
     async def _scope_cost(
-        self, connection: Any, limit: Any, request: BudgetReservationRequest
+        self,
+        connection: asyncpg.Connection,
+        limit: asyncpg.Record,
+        request: BudgetReservationRequest,
     ) -> Decimal:
         where, values = self._scope_clause(limit, request, table_alias="c")
         args: list[Any] = [request.context.organization_id, request.currency, *values]
@@ -837,8 +908,8 @@ class PostgresCostGateway:
 
     async def _scope_active_reservations(
         self,
-        connection: Any,
-        limit: Any,
+        connection: asyncpg.Connection,
+        limit: asyncpg.Record,
         request: BudgetReservationRequest,
         *,
         exclude_reservation_id: UUID | None,
@@ -862,7 +933,11 @@ class PostgresCostGateway:
         return Decimal(value)
 
     def _scope_clause(
-        self, limit: Any, request: BudgetReservationRequest, *, table_alias: str
+        self,
+        limit: asyncpg.Record,
+        request: BudgetReservationRequest,
+        *,
+        table_alias: str,
     ) -> tuple[str, list[Any]]:
         scope = BudgetScope(limit["scope_type"])
         if scope == BudgetScope.ORGANIZATION:
@@ -878,7 +953,9 @@ class PostgresCostGateway:
         return f" AND {table_alias}.{field}=$3", [value]
 
     async def _expire_reservations(
-        self, connection: Any, organization_id: UUID
+        self,
+        connection: asyncpg.Connection,
+        organization_id: UUID,
     ) -> None:
         await connection.execute(
             """
@@ -890,90 +967,114 @@ class PostgresCostGateway:
             organization_id,
         )
 
-    async def _lock_budget_domain(self, connection: Any, organization_id: UUID) -> None:
+    async def _lock_budget_domain(
+        self,
+        connection: asyncpg.Connection,
+        organization_id: UUID,
+    ) -> None:
         await connection.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
             f"cost-budget:{organization_id}",
         )
 
-    async def _record_correction(
-        self, adjustment: CostAdjustment, *, entry_type: str
-    ) -> LedgerWriteResult:
-        connection = await asyncpg.connect(self.dsn)
-        try:
-            async with connection.transaction():
-                target = await connection.fetchrow(
-                    "SELECT * FROM cost_ledger WHERE id=$1", adjustment.target_entry_id
-                )
-                if target is None:
-                    raise CostLedgerConflict("adjustment target not found")
-                self._assert_correction_target(target, adjustment.context)
-                if target["entry_type"] != "actual_cost":
-                    raise CostLedgerConflict("adjustment must target actual cost")
-                return await self._insert_correction_row(
-                    connection,
-                    context=adjustment.context,
-                    target=target,
-                    entry_type=entry_type,
-                    amount=adjustment.amount_delta,
-                    reason=adjustment.reason,
-                    entry_key=adjustment.entry_key,
-                    confidence=adjustment.confidence,
-                    occurred_at=adjustment.occurred_at,
-                    metadata=adjustment.metadata,
-                )
-        finally:
-            await connection.close()
-
     def _assert_reservation_identity(
-        self, row: Any, request: BudgetReservationRequest
+        self,
+        row: asyncpg.Record,
+        request: BudgetReservationRequest,
     ) -> None:
+        context = request.context
         if (
-            row["organization_id"] != request.context.organization_id
-            or row["operation_id"] != request.context.operation_id
+            row["organization_id"] != context.organization_id
+            or row["operation_id"] != context.operation_id
+            or row["project_id"] != context.project_id
+            or row["task_id"] != context.task_id
+            or row["agent_run_id"] != context.agent_run_id
+            or row["generation_id"] != context.generation_id
             or row["provider"] != request.provider
             or row["model"] != request.model
+            or row["reservation_key"] != request.key
             or Decimal(row["estimated_amount"]) != request.estimated_amount
             or row["currency"] != request.currency
             or row["pricing_snapshot_id"] != request.pricing_snapshot_id
         ):
-            raise ReservationConflict("reservation replay differs from immutable intent")
+            raise ReservationConflict("reservation replay differs from original semantics")
 
     def _assert_commit_context(
-        self, handle: ReservationHandle, actual: ActualCost
+        self,
+        handle: ReservationHandle,
+        actual: ActualCost,
     ) -> None:
         request = handle.request
-        if (
-            actual.context != request.context
-            or actual.provider != request.provider
-            or actual.model != request.model
-            or actual.currency != request.currency
-        ):
-            raise ReservationConflict("actual cost does not match reservation identity")
+        if actual.context != request.context:
+            raise ReservationConflict("actual cost context differs from reservation")
+        if actual.provider != request.provider or actual.model != request.model:
+            raise ReservationConflict("actual provider/model differs from reservation")
+        if actual.currency != request.currency:
+            raise ReservationConflict("actual currency differs from reservation")
 
-    def _assert_correction_target(self, row: Any, context: CostContext) -> None:
+    def _assert_correction_target(
+        self,
+        target: asyncpg.Record,
+        context: CostContext,
+    ) -> None:
         if (
-            row["organization_id"] != context.organization_id
-            or row["operation_id"] != context.operation_id
+            target["organization_id"] != context.organization_id
+            or target["operation_id"] != context.operation_id
         ):
             raise CostLedgerConflict("correction target context mismatch")
 
 
-def _json(value: dict[str, Any]) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
-
-def _validate_range(from_time: datetime, to_time: datetime) -> None:
-    if from_time.tzinfo is None or to_time.tzinfo is None or from_time >= to_time:
-        raise ValueError("COST_TIME_RANGE_INVALID")
+def usage_facts_from_values(
+    *,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    total_tokens: int | None = None,
+    cached_input_tokens: int | None = None,
+    image_input_tokens: int | None = None,
+    image_output_tokens: int | None = None,
+    seconds: Decimal | None = None,
+    units: dict[str, Decimal] | None = None,
+) -> tuple[UsageFact, ...]:
+    facts: list[UsageFact] = []
+    pairs: tuple[tuple[str, int | Decimal | None, str], ...] = (
+        ("input_tokens", input_tokens, "tokens"),
+        ("output_tokens", output_tokens, "tokens"),
+        ("total_tokens", total_tokens, "tokens"),
+        ("cached_input_tokens", cached_input_tokens, "tokens"),
+        ("image_input_tokens", image_input_tokens, "tokens"),
+        ("image_output_tokens", image_output_tokens, "tokens"),
+        ("seconds", seconds, "seconds"),
+    )
+    for metric, value, unit in pairs:
+        if value is not None:
+            facts.append(UsageFact(metric=metric, quantity=Decimal(value), unit=unit))
+    for metric, value in sorted((units or {}).items()):
+        facts.append(UsageFact(metric=metric, quantity=Decimal(value), unit="units"))
+    return tuple(facts)
 
 
 def _month_bounds(period_key: str) -> tuple[datetime, datetime]:
-    _, value = period_key.split(":", 1)
-    year, month = (int(part) for part in value.split("-", 1))
-    start = datetime(year, month, 1, tzinfo=UTC)
+    if not period_key.startswith("month:"):
+        raise ValueError("COST_MONTH_PERIOD_INVALID")
+    try:
+        year_text, month_text = period_key.removeprefix("month:").split("-", 1)
+        year, month = int(year_text), int(month_text)
+        start = datetime(year, month, 1, tzinfo=UTC)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("COST_MONTH_PERIOD_INVALID") from exc
     if month == 12:
         end = datetime(year + 1, 1, 1, tzinfo=UTC)
     else:
         end = datetime(year, month + 1, 1, tzinfo=UTC)
     return start, end
+
+
+def _validate_range(from_time: datetime, to_time: datetime) -> None:
+    if from_time.tzinfo is None or to_time.tzinfo is None:
+        raise ValueError("COST_SUMMARY_RANGE_TZ_REQUIRED")
+    if from_time >= to_time:
+        raise ValueError("COST_SUMMARY_RANGE_INVALID")
+
+
+def _json(value: dict[str, Any]) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
