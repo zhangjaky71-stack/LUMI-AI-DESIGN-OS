@@ -9,6 +9,7 @@ const finalAcceptanceSpecs = [
   "versions-ui.spec.ts",
   "export-ui.spec.ts",
   "billing.spec.ts",
+  "final-accessibility-preflight.spec.ts",
 ];
 
 export default defineConfig({
