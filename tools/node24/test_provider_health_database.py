@@ -20,9 +20,14 @@ async def require_schema(connection: object) -> None:
         "provider_health_summaries",
         "provider_health_override_audit",
     ):
-        exists = await fetchval("SELECT to_regclass($1)", f"public.{table}")
+        exists = await fetchval(
+            "SELECT to_regclass($1)",
+            f"public.{table}",
+        )
         if exists != table:
-            raise AssertionError(f"missing NODE-24 table: {table}")
+            raise AssertionError(
+                f"missing NODE-24 table: {table}"
+            )
     trigger_count = await fetchval(
         """
         SELECT count(*)
@@ -32,13 +37,17 @@ async def require_schema(connection: object) -> None:
         """
     )
     if int(trigger_count or 0) != 1:
-        raise AssertionError("provider health audit immutable trigger missing")
+        raise AssertionError(
+            "provider health audit immutable trigger missing"
+        )
 
 
 async def require_runtime_grants(connection: object) -> None:
     fetchval = getattr(connection, "fetchval")
     role_exists = await fetchval(
-        "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')"
+        "SELECT EXISTS("
+        "SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app'"
+        ")"
     )
     if not role_exists:
         return
@@ -63,13 +72,18 @@ async def require_runtime_grants(connection: object) -> None:
             table,
         )
         if select_ok is not True or insert_ok is not True:
-            raise AssertionError(f"lumi_app missing health read/append grant: {table}")
+            raise AssertionError(
+                "lumi_app missing health read/append grant: "
+                f"{table}"
+            )
         if update_ok is True or delete_ok is True:
-            raise AssertionError(f"lumi_app health history is not append-only: {table}")
+            raise AssertionError(
+                "lumi_app health history is not append-only: "
+                f"{table}"
+            )
 
 
 async def require_append_only_persistence(connection: object) -> None:
-    execute = getattr(connection, "execute")
     persistence = PostgresProviderHealthPersistence()
     observed = time.time()
     snapshot = ProviderHealthSnapshot(
@@ -116,38 +130,58 @@ async def require_append_only_persistence(connection: object) -> None:
 
     fetchval = getattr(connection, "fetchval")
     summary_count = await fetchval(
-        "SELECT count(*) FROM provider_health_summaries WHERE id = $1::uuid",
+        "SELECT count(*) FROM provider_health_summaries "
+        "WHERE id = $1::uuid",
         summary_id,
     )
     audit_count = await fetchval(
-        "SELECT count(*) FROM provider_health_override_audit WHERE id = $1::uuid",
+        "SELECT count(*) FROM provider_health_override_audit "
+        "WHERE id = $1::uuid",
         audit_id,
     )
-    if int(summary_count or 0) != 1 or int(audit_count or 0) != 1:
-        raise AssertionError("provider health append persistence failed")
-
-    try:
-        await execute(
-            "UPDATE provider_health_override_audit SET reason = 'mutated' "
-            "WHERE id = $1::uuid",
-            audit_id,
+    if (
+        int(summary_count or 0) != 1
+        or int(audit_count or 0) != 1
+    ):
+        raise AssertionError(
+            "provider health append persistence failed"
         )
+
+    await require_statement_rejected(
+        connection,
+        "UPDATE provider_health_override_audit "
+        "SET reason = 'mutated' WHERE id = $1::uuid",
+        audit_id,
+        label="UPDATE",
+    )
+    await require_statement_rejected(
+        connection,
+        "DELETE FROM provider_health_override_audit "
+        "WHERE id = $1::uuid",
+        audit_id,
+        label="DELETE",
+    )
+
+
+async def require_statement_rejected(
+    connection: object,
+    query: str,
+    audit_id: str,
+    *,
+    label: str,
+) -> None:
+    execute = getattr(connection, "execute")
+    transaction = getattr(connection, "transaction")
+    try:
+        async with transaction():
+            await execute(query, audit_id)
     except Exception as exc:
         if "append-only" not in str(exc):
             raise
     else:
-        raise AssertionError("provider health audit UPDATE was accepted")
-
-    try:
-        await execute(
-            "DELETE FROM provider_health_override_audit WHERE id = $1::uuid",
-            audit_id,
+        raise AssertionError(
+            f"provider health audit {label} was accepted"
         )
-    except Exception as exc:
-        if "append-only" not in str(exc):
-            raise
-    else:
-        raise AssertionError("provider health audit DELETE was accepted")
 
 
 async def run(dsn: str) -> None:
