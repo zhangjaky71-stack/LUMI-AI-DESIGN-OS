@@ -10,6 +10,7 @@ from lumi_api.idempotency import (
     AmbiguousSideEffect,
     CompensationMode,
     IdempotencyConflict,
+    IdempotencyOperation,
     MemoryIdempotencyStore,
     MemoryMetrics,
     OperationInProgress,
@@ -37,13 +38,18 @@ def request(
     lease_seconds: int = 5,
 ) -> OperationRequest:
     body = payload or {"project_id": str(PROJECT), "prompt": "hello"}
+    side_effect = (
+        SideEffectKind.PAID_MODEL_INVOCATION
+        if paid
+        else SideEffectKind.GENERIC_WRITE
+    )
     return OperationRequest(
         organization_id=ORG,
         operation_type=operation_type,
         idempotency_key=key,
         request_hash=canonical_request_hash(body),
         business_scope_id=str(PROJECT),
-        side_effect_kind=SideEffectKind.PAID_MODEL_INVOCATION if paid else SideEffectKind.GENERIC_WRITE,
+        side_effect_kind=side_effect,
         compensation_mode=CompensationMode.NON_COMPENSATABLE,
         paid=paid,
         lease_seconds=lease_seconds,
@@ -93,11 +99,21 @@ def test_completed_operation_replays_without_second_effect() -> None:
     async def effect(_context):
         nonlocal calls
         calls += 1
-        return SideEffectOutcome(result={"generation_id": "g-1"}, response_status=202)
+        return SideEffectOutcome(
+            result={"generation_id": "g-1"},
+            response_status=202,
+        )
 
-    first = asyncio.run(gateway.execute(request(), effect, lease_owner="worker-a", now=NOW))
+    first = asyncio.run(
+        gateway.execute(request(), effect, lease_owner="worker-a", now=NOW)
+    )
     second = asyncio.run(
-        gateway.execute(request(), effect, lease_owner="worker-b", now=NOW + timedelta(seconds=1))
+        gateway.execute(
+            request(),
+            effect,
+            lease_owner="worker-b",
+            now=NOW + timedelta(seconds=1),
+        )
     )
     assert calls == 1
     assert first.replayed is False
@@ -115,13 +131,21 @@ def test_same_key_different_request_is_conflict() -> None:
     async def effect(_context):
         return SideEffectOutcome(result={"ok": True})
 
-    asyncio.run(gateway.execute(request(), effect, lease_owner="worker-a", now=NOW))
+    asyncio.run(
+        gateway.execute(request(), effect, lease_owner="worker-a", now=NOW)
+    )
     changed = request({"project_id": str(PROJECT), "prompt": "different"})
     with pytest.raises(
-        IdempotencyConflict, match="IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST"
+        IdempotencyConflict,
+        match="IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST",
     ):
         asyncio.run(
-            gateway.execute(changed, effect, lease_owner="worker-b", now=NOW + timedelta(seconds=1))
+            gateway.execute(
+                changed,
+                effect,
+                lease_owner="worker-b",
+                now=NOW + timedelta(seconds=1),
+            )
         )
 
 
@@ -163,20 +187,95 @@ def test_two_concurrent_same_key_only_one_enters_business_effect() -> None:
             return SideEffectOutcome(result={"ok": True})
 
         first = asyncio.create_task(
-            gateway.execute(request(), effect, lease_owner="worker-a", now=NOW)
+            gateway.execute(
+                request(),
+                effect,
+                lease_owner="worker-a",
+                now=NOW,
+            )
         )
         await entered.wait()
         with pytest.raises(OperationInProgress):
-            await gateway.execute(request(), effect, lease_owner="worker-b", now=NOW)
+            await gateway.execute(
+                request(),
+                effect,
+                lease_owner="worker-b",
+                now=NOW,
+            )
         release.set()
         await first
         replay = await gateway.execute(
-            request(), effect, lease_owner="worker-c", now=NOW + timedelta(seconds=1)
+            request(),
+            effect,
+            lease_owner="worker-c",
+            now=NOW + timedelta(seconds=1),
         )
         assert replay.replayed is True
         assert calls == 1
 
     asyncio.run(scenario())
+
+
+def test_heartbeat_extends_lease_and_blocks_premature_recovery() -> None:
+    async def scenario() -> None:
+        store = MemoryIdempotencyStore()
+        req = request(key="idem-heartbeat-0001", lease_seconds=5)
+        acquired = await store.acquire(req, lease_owner="worker-a", now=NOW)
+        operation = acquired.operation
+        renewed = await store.renew_lease(
+            ORG,
+            operation.id,
+            lease_owner="worker-a",
+            lease_seconds=5,
+            now=NOW + timedelta(seconds=4),
+        )
+        assert renewed.lease_expires_at == NOW + timedelta(seconds=9)
+        contender = await store.acquire(
+            req,
+            lease_owner="worker-b",
+            now=NOW + timedelta(seconds=6),
+        )
+        assert contender.action.value == "wait"
+        assert contender.operation.lease_owner == "worker-a"
+
+    asyncio.run(scenario())
+
+
+def test_langgraph_resume_uses_same_business_key_and_replays() -> None:
+    logical_key = deterministic_operation_key(
+        organization_id=ORG,
+        operation_type="graph.provider.generate",
+        business_scope_id=str(PROJECT),
+        logical_key="run-7:node-image:slot-1",
+        policy_version="graph-v1",
+    )
+    req = request(
+        key=logical_key,
+        operation_type="graph.provider.generate",
+    )
+    store = MemoryIdempotencyStore()
+    gateway = SideEffectGateway(store)
+    calls = 0
+
+    async def effect(_context):
+        nonlocal calls
+        calls += 1
+        return SideEffectOutcome(result={"artifact_version_id": "v1"})
+
+    first = asyncio.run(
+        gateway.execute(req, effect, lease_owner="graph-before-interrupt", now=NOW)
+    )
+    resumed = asyncio.run(
+        gateway.execute(
+            req,
+            effect,
+            lease_owner="graph-after-resume",
+            now=NOW + timedelta(seconds=1),
+        )
+    )
+    assert first.operation_id == resumed.operation_id
+    assert resumed.replayed is True
+    assert calls == 1
 
 
 class SimulatedHardCrash(BaseException):
@@ -187,7 +286,10 @@ class SuccessfulReconciler:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def reconcile(self, operation):
+    async def reconcile(
+        self,
+        operation: IdempotencyOperation,
+    ) -> ProviderReconciliation:
         self.calls += 1
         assert operation.provider_request_id == "provider-accepted-123"
         return ProviderReconciliation(
@@ -208,8 +310,13 @@ def test_provider_success_then_process_crash_reconciles_without_second_paid_call
     async def crashing_effect(context):
         nonlocal provider_calls
         provider_calls += 1
-        await context.record_provider_request("provider-accepted-123", now=NOW)
-        raise SimulatedHardCrash("process died after provider success before DB completion")
+        await context.record_provider_request(
+            "provider-accepted-123",
+            now=NOW,
+        )
+        raise SimulatedHardCrash(
+            "process died after provider success before DB completion"
+        )
 
     with pytest.raises(SimulatedHardCrash):
         asyncio.run(
@@ -250,13 +357,19 @@ def test_paid_stale_lease_without_reconciler_fails_ambiguous_not_duplicate() -> 
     async def crashing_effect(context):
         nonlocal provider_calls
         provider_calls += 1
-        await context.record_provider_request("provider-unknown-1", now=NOW)
+        await context.record_provider_request(
+            "provider-unknown-1",
+            now=NOW,
+        )
         raise SimulatedHardCrash()
 
     with pytest.raises(SimulatedHardCrash):
         asyncio.run(
             gateway.execute(
-                request(paid=True), crashing_effect, lease_owner="one", now=NOW
+                request(paid=True),
+                crashing_effect,
+                lease_owner="one",
+                now=NOW,
             )
         )
     with pytest.raises(AmbiguousSideEffect):
