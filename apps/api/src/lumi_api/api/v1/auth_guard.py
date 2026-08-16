@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import Request
 
 from lumi_api.auth import (
@@ -40,7 +42,7 @@ def enforce_api_auth(
                 csrf_header=request.headers.get("X-CSRF-Token"),
             ),
             auth_service=auth,
-            now=__import__("datetime").datetime.now(__import__("datetime").UTC),
+            now=datetime.now(UTC),
             allowed_origins=settings.allowed_origins,
         )
     except InvalidCredentials as exc:
