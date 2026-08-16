@@ -11,8 +11,15 @@ from lumi_worker_media.job_dlq import (
     JobDeadLetterReplayService,
     JobDeadLetterService,
     MemoryJobDeadLetterPublisher,
+    MemoryJobReplayState,
 )
-from lumi_worker_media.queue_contracts import ErrorCategory, JobKind, JobMessage
+from lumi_worker_media.job_runtime import JobRecord, MemoryJobStore
+from lumi_worker_media.queue_contracts import (
+    ErrorCategory,
+    JobKind,
+    JobMessage,
+    JobState,
+)
 
 NOW = datetime(2026, 8, 16, 9, 20, tzinfo=UTC)
 ORG = UUID("01910000-0000-7000-8000-000000000001")
@@ -57,10 +64,10 @@ def test_permanent_job_failure_is_persisted_and_published_to_dlq() -> None:
     assert asyncio.run(store.get(ORG, record.id)) == record
 
 
-def test_job_dlq_replay_uses_submitter_and_preserves_job_identity() -> None:
-    store = MemoryDeadLetterStore()
+def test_job_dlq_replay_reopens_state_and_preserves_job_identity() -> None:
+    dead_letters = MemoryDeadLetterStore()
     publisher = MemoryJobDeadLetterPublisher()
-    writer = JobDeadLetterService(store=store, publisher=publisher)
+    writer = JobDeadLetterService(store=dead_letters, publisher=publisher)
     record = asyncio.run(
         writer.record_failure(
             kind=JobKind.ASSET_VALIDATE,
@@ -68,16 +75,43 @@ def test_job_dlq_replay_uses_submitter_and_preserves_job_identity() -> None:
             category=ErrorCategory.PERMANENT,
             error_code="INVALID_ASSET",
             error_message="fixture",
-            attempts=1,
+            attempts=4,
             now=NOW,
         )
     )
-    submitter = MemorySubmitter()
-    replay = JobDeadLetterReplayService(store=store, submitter=submitter)
-    updated = asyncio.run(
-        replay.replay(ORG, record.id, now=NOW + timedelta(minutes=1))
+
+    jobs = MemoryJobStore()
+    jobs.create(
+        JobRecord(
+            message=message(),
+            kind=JobKind.ASSET_VALIDATE,
+            state=JobState.FAILED,
+            attempt_count=4,
+            max_attempts=4,
+            created_at=NOW,
+            updated_at=NOW,
+            finished_at=NOW,
+            error_category=ErrorCategory.PERMANENT,
+            error_code="INVALID_ASSET",
+            error_message="fixture",
+        )
     )
-    assert updated.replayed_at == NOW + timedelta(minutes=1)
+    submitter = MemorySubmitter()
+    replay = JobDeadLetterReplayService(
+        store=dead_letters,
+        state=MemoryJobReplayState(jobs),
+        submitter=submitter,
+    )
+    replayed_at = NOW + timedelta(minutes=1)
+    updated = asyncio.run(replay.replay(ORG, record.id, now=replayed_at))
+
+    assert updated.replayed_at == replayed_at
+    reopened = jobs.get(message())
+    assert reopened is not None
+    assert reopened.state is JobState.PENDING
+    assert reopened.attempt_count == 0
+    assert reopened.finished_at is None
+    assert reopened.error_code is None
     assert len(submitter.calls) == 1
     kind, replayed_message = submitter.calls[0]
     assert kind is JobKind.ASSET_VALIDATE
