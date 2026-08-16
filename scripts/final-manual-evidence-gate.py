@@ -11,6 +11,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+RELEASE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
+ALLOWED_ENVIRONMENTS = {"production", "production-like-staging"}
 P0_MANUAL_SCENARIOS = (
     "UAT-01",
     "BILLING-UX-01",
@@ -69,7 +71,11 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def present(value: Any) -> bool:
-    return isinstance(value, str) and bool(value.strip()) and value.strip().upper() != "PENDING"
+    return (
+        isinstance(value, str)
+        and bool(value.strip())
+        and value.strip().upper() != "PENDING"
+    )
 
 
 def parse_utc(value: Any, *, label: str) -> datetime:
@@ -78,7 +84,9 @@ def parse_utc(value: Any, *, label: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(value[:-1] + "+00:00")
     except ValueError as exc:
-        raise ManualEvidenceError(f"{label} must be an ISO-8601 UTC Z timestamp") from exc
+        raise ManualEvidenceError(
+            f"{label} must be an ISO-8601 UTC Z timestamp"
+        ) from exc
     if parsed.utcoffset() is None or parsed.utcoffset().total_seconds() != 0:
         raise ManualEvidenceError(f"{label} must be UTC")
     return parsed
@@ -90,14 +98,22 @@ def repo_file(value: str, *, allowed_prefixes: tuple[str, ...]) -> Path:
         relative = path.relative_to(ROOT).as_posix()
     except ValueError as exc:
         raise ManualEvidenceError(f"path escapes repository: {value}") from exc
-    if not any(relative == prefix.rstrip("/") or relative.startswith(prefix) for prefix in allowed_prefixes):
+    if not any(
+        relative == prefix.rstrip("/") or relative.startswith(prefix)
+        for prefix in allowed_prefixes
+    ):
         raise ManualEvidenceError(f"path outside allowed evidence roots: {value}")
     if not path.is_file():
         raise ManualEvidenceError(f"evidence file missing: {value}")
     return path
 
 
-def verify_ref(ref: Any, *, label: str, allowed_prefixes: tuple[str, ...]) -> Path:
+def verify_ref(
+    ref: Any,
+    *,
+    label: str,
+    allowed_prefixes: tuple[str, ...],
+) -> Path:
     if not isinstance(ref, dict):
         raise ManualEvidenceError(f"{label} must be an object")
     path_value = ref.get("path")
@@ -130,7 +146,12 @@ def scenario_items(evidence: dict[str, Any]) -> dict[str, dict[str, Any]]:
     for item in items:
         if not isinstance(item, dict) or not isinstance(item.get("id"), str):
             raise ManualEvidenceError("acceptance evidence contains invalid item")
-        result[item["id"]] = item
+        scenario_id = item["id"]
+        if scenario_id in result:
+            raise ManualEvidenceError(
+                f"acceptance evidence contains duplicate scenario id {scenario_id}"
+            )
+        result[scenario_id] = item
     return result
 
 
@@ -154,7 +175,8 @@ def find_manual_record(
     ]
     if len(candidates) != 1:
         raise ManualEvidenceError(
-            f"{scenario_id} requires exactly one structured manual JSON under {expected_prefix}"
+            f"{scenario_id} requires exactly one structured manual JSON under "
+            f"{expected_prefix}"
         )
     path = verify_ref(
         candidates[0],
@@ -181,13 +203,20 @@ def validate_common(
         blockers.append(f"{scenario_id}: manual record status must be PASS")
     if rc_identity(record) != rc_identity(release):
         blockers.append(f"{scenario_id}: manual record RC identity mismatch")
-    for field in ("environment", "tester"):
-        if not present(record.get(field)):
-            blockers.append(f"{scenario_id}: {field} is missing/PENDING")
+    if record.get("environment") not in ALLOWED_ENVIRONMENTS:
+        blockers.append(
+            f"{scenario_id}: environment must be one of {sorted(ALLOWED_ENVIRONMENTS)}"
+        )
+    if not present(record.get("tester")):
+        blockers.append(f"{scenario_id}: tester is missing/PENDING")
     try:
-        started = parse_utc(record.get("started_at_utc"), label=f"{scenario_id}.started_at_utc")
+        started = parse_utc(
+            record.get("started_at_utc"),
+            label=f"{scenario_id}.started_at_utc",
+        )
         completed = parse_utc(
-            record.get("completed_at_utc"), label=f"{scenario_id}.completed_at_utc"
+            record.get("completed_at_utc"),
+            label=f"{scenario_id}.completed_at_utc",
         )
         if completed < started:
             blockers.append(f"{scenario_id}: completed_at_utc precedes started_at_utc")
@@ -216,17 +245,35 @@ def validate_common(
     return blockers
 
 
+def keyed_records(
+    values: Any,
+    *,
+    key: str,
+    label: str,
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    if not isinstance(values, list):
+        return {}, [f"{label} must be an array"]
+    result: dict[str, dict[str, Any]] = {}
+    blockers: list[str] = []
+    for index, value in enumerate(values):
+        if not isinstance(value, dict) or not isinstance(value.get(key), str):
+            blockers.append(f"{label}[{index}] must contain string {key}")
+            continue
+        identity = value[key]
+        if identity in result:
+            blockers.append(f"{label} contains duplicate {key} {identity}")
+            continue
+        result[identity] = value
+    return result, blockers
+
+
 def validate_check_list(record: dict[str, Any], *, scenario_id: str) -> list[str]:
     required = REQUIRED_CHECKS[scenario_id]
-    checks = record.get("checks")
-    if not isinstance(checks, list):
-        return [f"{scenario_id}: checks must be an array"]
-    by_id = {
-        check.get("id"): check
-        for check in checks
-        if isinstance(check, dict) and isinstance(check.get("id"), str)
-    }
-    blockers: list[str] = []
+    by_id, blockers = keyed_records(
+        record.get("checks"),
+        key="id",
+        label=f"{scenario_id}.checks",
+    )
     missing = sorted(required - set(by_id))
     if missing:
         blockers.append(f"{scenario_id}: missing required checks {missing}")
@@ -238,15 +285,11 @@ def validate_check_list(record: dict[str, Any], *, scenario_id: str) -> list[str
 
 def validate_browser_record(record: dict[str, Any], *, scenario_id: str) -> list[str]:
     required = REQUIRED_BROWSERS[scenario_id]
-    clients = record.get("clients")
-    if not isinstance(clients, list):
-        return [f"{scenario_id}: clients must be an array"]
-    by_browser = {
-        client.get("browser"): client
-        for client in clients
-        if isinstance(client, dict) and isinstance(client.get("browser"), str)
-    }
-    blockers: list[str] = []
+    by_browser, blockers = keyed_records(
+        record.get("clients"),
+        key="browser",
+        label=f"{scenario_id}.clients",
+    )
     missing = sorted(required - set(by_browser))
     if missing:
         blockers.append(f"{scenario_id}: missing required real browsers {missing}")
@@ -261,21 +304,18 @@ def validate_browser_record(record: dict[str, Any], *, scenario_id: str) -> list
                 blockers.append(f"{scenario_id}: {browser}.{field} missing/PENDING")
         if browser == "safari" and client.get("engine_preflight_only") is True:
             blockers.append(
-                "BROWSER-02: Safari cannot be satisfied by WebKit engine_preflight_only evidence"
+                "BROWSER-02: Safari cannot be satisfied by WebKit "
+                "engine_preflight_only evidence"
             )
     return blockers
 
 
 def validate_a11y(record: dict[str, Any]) -> list[str]:
-    checks = record.get("manual_checks")
-    if not isinstance(checks, list):
-        return ["A11Y-01: manual_checks must be an array"]
-    by_id = {
-        check.get("id"): check
-        for check in checks
-        if isinstance(check, dict) and isinstance(check.get("id"), str)
-    }
-    blockers: list[str] = []
+    by_id, blockers = keyed_records(
+        record.get("manual_checks"),
+        key="id",
+        label="A11Y-01.manual_checks",
+    )
     missing = sorted(REQUIRED_A11Y_MANUAL - set(by_id))
     if missing:
         blockers.append(f"A11Y-01: missing required manual checks {missing}")
@@ -285,17 +325,57 @@ def validate_a11y(record: dict[str, Any]) -> list[str]:
     screen_reader = by_id.get("screen-reader")
     if isinstance(screen_reader, dict):
         if not present(screen_reader.get("assistive_technology")):
-            blockers.append("A11Y-01: screen-reader assistive_technology missing/PENDING")
+            blockers.append(
+                "A11Y-01: screen-reader assistive_technology missing/PENDING"
+            )
         if not present(screen_reader.get("assistive_technology_version")):
-            blockers.append("A11Y-01: screen-reader assistive_technology_version missing/PENDING")
+            blockers.append(
+                "A11Y-01: screen-reader assistive_technology_version missing/PENDING"
+            )
+    return blockers
+
+
+def validate_responsive(record: dict[str, Any]) -> list[str]:
+    clients = record.get("clients")
+    if not isinstance(clients, list) or not clients:
+        return ["RESPONSIVE-01: PASS requires at least one tested client/device"]
+    blockers: list[str] = []
+    identities: set[tuple[str, str, str]] = set()
+    for index, client in enumerate(clients):
+        if not isinstance(client, dict):
+            blockers.append(f"RESPONSIVE-01: clients[{index}] must be an object")
+            continue
+        identity = (
+            str(client.get("device", "")),
+            str(client.get("browser", "")),
+            str(client.get("os", "")),
+        )
+        if identity in identities:
+            blockers.append(f"RESPONSIVE-01: duplicate client identity {identity}")
+        identities.add(identity)
+        if client.get("status") != "PASS":
+            blockers.append(f"RESPONSIVE-01: clients[{index}] must PASS")
+        if client.get("real_browser") is not True:
+            blockers.append(f"RESPONSIVE-01: clients[{index}] must be real_browser=true")
+        for field in (
+            "device",
+            "browser",
+            "browser_version",
+            "os",
+            "os_version",
+        ):
+            if not present(client.get(field)):
+                blockers.append(f"RESPONSIVE-01: clients[{index}].{field} missing/PENDING")
     return blockers
 
 
 def evaluate(release: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
     blockers: list[str] = []
     release_id = release.get("release_id")
-    if not present(release_id):
-        blockers.append("release_id missing/PENDING")
+    if not isinstance(release_id, str) or not RELEASE_ID.fullmatch(release_id):
+        blockers.append(
+            "release_id must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$"
+        )
         release_id = "PENDING"
     if evidence.get("release_id") != release.get("release_id"):
         blockers.append("acceptance evidence release_id mismatch")
@@ -305,7 +385,11 @@ def evaluate(release: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any
     try:
         items = scenario_items(evidence)
     except ManualEvidenceError as exc:
-        return {"schema_version": 1, "passed": False, "blockers": [str(exc)]}
+        return {
+            "schema_version": 1,
+            "passed": False,
+            "blockers": [str(exc)],
+        }
 
     scenarios = list(P0_MANUAL_SCENARIOS)
     responsive = items.get("RESPONSIVE-01")
@@ -322,12 +406,20 @@ def evaluate(release: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any
             continue
         try:
             record, _ = find_manual_record(
-                release_id=str(release_id), scenario_id=scenario_id, item=item
+                release_id=str(release_id),
+                scenario_id=scenario_id,
+                item=item,
             )
         except (ManualEvidenceError, OSError, json.JSONDecodeError) as exc:
             blockers.append(str(exc))
             continue
-        blockers.extend(validate_common(record=record, release=release, scenario_id=scenario_id))
+        blockers.extend(
+            validate_common(
+                record=record,
+                release=release,
+                scenario_id=scenario_id,
+            )
+        )
         if scenario_id in REQUIRED_CHECKS:
             blockers.extend(validate_check_list(record, scenario_id=scenario_id))
         if scenario_id in REQUIRED_BROWSERS:
@@ -335,13 +427,7 @@ def evaluate(release: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any
         if scenario_id == "A11Y-01":
             blockers.extend(validate_a11y(record))
         if scenario_id == "RESPONSIVE-01":
-            clients = record.get("clients")
-            if not isinstance(clients, list) or not clients:
-                blockers.append("RESPONSIVE-01: PASS requires at least one tested client/device")
-            else:
-                for index, client in enumerate(clients):
-                    if not isinstance(client, dict) or client.get("status") != "PASS":
-                        blockers.append(f"RESPONSIVE-01: clients[{index}] must PASS")
+            blockers.extend(validate_responsive(record))
 
     blockers = sorted(set(blockers))
     canonical = json.dumps(
@@ -364,15 +450,23 @@ def evaluate(release: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate structured NODE-73 manual UAT evidence")
+    parser = argparse.ArgumentParser(
+        description="Validate structured NODE-73 manual UAT evidence"
+    )
     parser.add_argument("--release", required=True)
     parser.add_argument("--evidence", required=True)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
     try:
-        release_path = repo_file(args.release, allowed_prefixes=("reports/final-acceptance/",))
-        evidence_path = repo_file(args.evidence, allowed_prefixes=("reports/final-acceptance/",))
+        release_path = repo_file(
+            args.release,
+            allowed_prefixes=("reports/final-acceptance/",),
+        )
+        evidence_path = repo_file(
+            args.evidence,
+            allowed_prefixes=("reports/final-acceptance/",),
+        )
         result = evaluate(load_json(release_path), load_json(evidence_path))
     except (OSError, json.JSONDecodeError, ManualEvidenceError) as exc:
         raise SystemExit(f"manual evidence input invalid: {exc}") from exc
@@ -383,10 +477,22 @@ def main() -> int:
     except ValueError as exc:
         raise SystemExit("manual evidence output escapes repository") from exc
     if not relative.startswith("reports/final-acceptance/"):
-        raise SystemExit("manual evidence output must be under reports/final-acceptance/")
+        raise SystemExit(
+            "manual evidence output must be under reports/final-acceptance/"
+        )
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({"passed": result["passed"], "decision_id": result["decision_id"]}))
+    output.write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    print(
+        json.dumps(
+            {
+                "passed": result["passed"],
+                "decision_id": result["decision_id"],
+            }
+        )
+    )
     return 0 if result["passed"] else 2
 
 
