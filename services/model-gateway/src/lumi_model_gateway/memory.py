@@ -10,15 +10,11 @@ from .models import (
     CostEstimate,
     HealthSnapshot,
     ModelRequest,
+    ModelUsage,
     NormalizedResult,
     RouteCandidate,
 )
-from .ports import (
-    BudgetReservation,
-    CostTelemetry,
-    PaidEffect,
-    ReconcileEffect,
-)
+from .ports import BudgetReservation, CostTelemetry, PaidEffect, ReconcileEffect
 
 
 class MemoryHealthPort:
@@ -32,25 +28,14 @@ class MemoryHealthPort:
         self.fallback_total = 0
         self.all_candidates_unavailable_total = 0
 
-    def set(
-        self,
-        provider: str,
-        model: str,
-        snapshot: HealthSnapshot,
-    ) -> None:
+    def set(self, provider: str, model: str, snapshot: HealthSnapshot) -> None:
         self._snapshots[(provider, model)] = snapshot
 
     def snapshot(
-        self,
-        provider: str,
-        model: str,
-        capability: str | None = None,
+        self, provider: str, model: str, capability: str | None = None
     ) -> HealthSnapshot:
         del capability
-        return self._snapshots.get(
-            (provider, model),
-            HealthSnapshot(),
-        )
+        return self._snapshots.get((provider, model), HealthSnapshot())
 
     def record_success(
         self,
@@ -117,31 +102,24 @@ class MemoryBudgetPort:
     def __init__(self, remaining_usd: Decimal | None = None) -> None:
         self.remaining_usd = remaining_usd
         self.reserved: dict[str, Decimal] = {}
+        self.settlements: list[tuple[CostEstimate, ModelUsage, str | None]] = []
 
     async def reserve(
-        self,
-        request: ModelRequest,
-        candidate: RouteCandidate,
+        self, request: ModelRequest, candidate: RouteCandidate
     ) -> BudgetReservation:
         amount = candidate.estimate.amount_usd
         effective_limit = request.budget_limit
         if amount is None:
             if not request.routing_hints.allow_unknown_cost:
                 return BudgetReservation(False, reason="unknown_cost")
-            return BudgetReservation(
-                True,
-                reservation_ref=f"unknown:{uuid4()}",
-            )
+            return BudgetReservation(True, reservation_ref=f"unknown:{uuid4()}")
         if effective_limit is not None and amount > effective_limit:
             return BudgetReservation(
                 False,
                 remaining_usd=effective_limit,
                 reason="operation_budget",
             )
-        if (
-            self.remaining_usd is not None
-            and amount > self.remaining_usd
-        ):
+        if self.remaining_usd is not None and amount > self.remaining_usd:
             return BudgetReservation(
                 False,
                 remaining_usd=self.remaining_usd,
@@ -162,26 +140,20 @@ class MemoryBudgetPort:
         reservation: BudgetReservation,
         *,
         actual: CostEstimate,
+        usage: ModelUsage,
+        provider_request_id: str | None,
     ) -> None:
+        self.settlements.append((actual, usage, provider_request_id))
         if not reservation.reservation_ref:
             return
-        estimated = self.reserved.pop(
-            reservation.reservation_ref,
-            Decimal("0"),
-        )
-        if (
-            self.remaining_usd is not None
-            and actual.amount_usd is not None
-        ):
+        estimated = self.reserved.pop(reservation.reservation_ref, Decimal("0"))
+        if self.remaining_usd is not None and actual.amount_usd is not None:
             self.remaining_usd += estimated - actual.amount_usd
 
     async def release(self, reservation: BudgetReservation) -> None:
         if not reservation.reservation_ref:
             return
-        amount = self.reserved.pop(
-            reservation.reservation_ref,
-            Decimal("0"),
-        )
+        amount = self.reserved.pop(reservation.reservation_ref, Decimal("0"))
         if self.remaining_usd is not None:
             self.remaining_usd += amount
 
@@ -199,8 +171,7 @@ class MemoryPaidSideEffectPort:
 
     def __init__(self) -> None:
         self._results: dict[
-            tuple[str, str, str, str],
-            tuple[str, NormalizedResult],
+            tuple[str, str, str, str], tuple[str, NormalizedResult]
         ] = {}
         self.executions = 0
         self._lock = asyncio.Lock()
@@ -226,9 +197,7 @@ class MemoryPaidSideEffectPort:
             if existing is not None:
                 existing_hash, result = existing
                 if existing_hash != semantic_hash:
-                    raise PaidSideEffectSemanticConflict(
-                        PaidSideEffectSemanticConflict.code
-                    )
+                    raise PaidSideEffectSemanticConflict(PaidSideEffectSemanticConflict.code)
                 return result
             self.executions += 1
             result = await effect()
