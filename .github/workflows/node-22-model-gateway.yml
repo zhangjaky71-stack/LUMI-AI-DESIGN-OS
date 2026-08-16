@@ -85,7 +85,7 @@ jobs:
               payload = json.loads(path.read_text(encoding="utf-8"))
               assert payload["$schema"].endswith("2020-12/schema")
           ledger = json.loads((root / "gap-ledger.json").read_text())
-          assert len(ledger["gaps"]) == 7
+          assert len(ledger["gaps"]) == 8
           print("NODE-22 schemas and gap ledger valid")
           PY
 

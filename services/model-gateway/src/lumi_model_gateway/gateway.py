@@ -14,7 +14,15 @@ from .errors import (
     ProviderAcceptance,
     ProviderCallError,
 )
-from .models import ModelRequest, ModelStreamChunk, NormalizedResult, RouteCandidate
+from .models import (
+    ModelRequest,
+    ModelStreamChunk,
+    ModelTiming,
+    ModelUsage,
+    NormalizedResult,
+    ResultStatus,
+    RouteCandidate,
+)
 from .ports import (
     BudgetPort,
     CostTelemetry,
@@ -119,7 +127,8 @@ class ModelGateway:
         raise NoRouteAvailable("all routes were filtered or budget rejected")
 
     async def stream(
-        self, request: ModelRequest
+        self,
+        request: ModelRequest,
     ) -> AsyncIterator[ModelStreamChunk]:
         decision = self.router.route(request)
         if not decision.candidates:
@@ -140,13 +149,63 @@ class ModelGateway:
                 acceptance=ProviderAcceptance.NOT_ACCEPTED,
             )
         adapter = self.registry.adapter(candidate.model.provider)
+        started = monotonic()
+        usage = ModelUsage()
+        provider_request_id: str | None = None
+        finish_reason: str | None = None
         try:
             async for chunk in adapter.stream(request, candidate.model):
+                if chunk.usage is not None:
+                    usage = chunk.usage
+                if chunk.provider_request_id:
+                    provider_request_id = chunk.provider_request_id
+                if chunk.finish_reason:
+                    finish_reason = chunk.finish_reason
                 yield chunk
+        except ProviderCallError as exc:
+            await self.budget.release(reservation)
+            self.router.health.record_failure(
+                candidate.model.provider,
+                candidate.model.model,
+                exc.category.value,
+            )
+            raise
         except BaseException:
             await self.budget.release(reservation)
+            self.router.health.record_failure(
+                candidate.model.provider,
+                candidate.model.model,
+                ErrorCategory.UNKNOWN.value,
+            )
             raise
-        await self.budget.settle(reservation, actual=candidate.estimate)
+        timing = ModelTiming(
+            total_ms=int((monotonic() - started) * 1000)
+        )
+        result = NormalizedResult(
+            status=ResultStatus.COMPLETED,
+            provider=candidate.model.provider,
+            model=candidate.model.model,
+            provider_request_id=provider_request_id,
+            usage=usage,
+            timing=timing,
+            finish_reason=finish_reason,
+            cost=candidate.estimate,
+        )
+        await self.budget.settle(reservation, actual=result.cost)
+        self.router.health.record_success(
+            candidate.model.provider,
+            candidate.model.model,
+            timing.total_ms,
+        )
+        await self.telemetry.record(
+            CostTelemetry(
+                request=request,
+                candidate=candidate,
+                result=result,
+                fallback_index=0,
+                retry_count=0,
+            )
+        )
 
     async def get_async_status(
         self,

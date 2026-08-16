@@ -89,7 +89,7 @@ def test_openai_responses_payload_and_normalization_do_not_leak_secret() -> None
             },
         )
 
-    openai_module.json_request = fake_request
+    setattr(openai_module, "json_request", fake_request)
     try:
         result = asyncio.run(
             adapter.invoke(
@@ -98,7 +98,7 @@ def test_openai_responses_payload_and_normalization_do_not_leak_secret() -> None
             )
         )
     finally:
-        openai_module.json_request = original
+        setattr(openai_module, "json_request", original)
 
     assert str(captured["url"]).endswith("/v1/responses")
     payload = captured["payload"]
@@ -146,7 +146,7 @@ def test_anthropic_messages_headers_and_normalization_do_not_leak_secret() -> No
             },
         )
 
-    anthropic_module.json_request = fake_request
+    setattr(anthropic_module, "json_request", fake_request)
     try:
         result = asyncio.run(
             adapter.invoke(
@@ -155,7 +155,7 @@ def test_anthropic_messages_headers_and_normalization_do_not_leak_secret() -> No
             )
         )
     finally:
-        anthropic_module.json_request = original
+        setattr(anthropic_module, "json_request", original)
 
     assert str(captured["url"]).endswith("/v1/messages")
     headers = captured["headers"]

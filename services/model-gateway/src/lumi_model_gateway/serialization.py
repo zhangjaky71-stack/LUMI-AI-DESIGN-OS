@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
+import math
 from decimal import Decimal
+from enum import StrEnum
 from typing import Any
+from uuid import UUID
 
 from .models import (
     CostConfidence,
@@ -29,7 +33,7 @@ def result_to_dict(result: NormalizedResult) -> dict[str, Any]:
             {
                 "kind": output.kind,
                 "text": output.text,
-                "json_value": output.json_value,
+                "json_value": _json_safe(output.json_value),
                 "asset_ref": output.asset_ref,
             }
             for output in result.outputs
@@ -44,7 +48,7 @@ def result_to_dict(result: NormalizedResult) -> dict[str, Any]:
             "requests": result.usage.requests,
         },
         "timing": timing,
-        "safety_metadata": dict(result.safety_metadata),
+        "safety_metadata": _json_safe(result.safety_metadata),
         "finish_reason": result.finish_reason,
         "raw_response_ref": result.raw_response_ref,
         "cost": {
@@ -55,7 +59,7 @@ def result_to_dict(result: NormalizedResult) -> dict[str, Any]:
             ),
             "confidence": result.cost.confidence.value,
             "pricing_snapshot_id": result.cost.pricing_snapshot_id,
-            "detail": dict(result.cost.detail),
+            "detail": _json_safe(result.cost.detail),
         },
     }
 
@@ -113,4 +117,43 @@ def result_from_dict(data: dict[str, Any]) -> NormalizedResult:
             cost_data.get("pricing_snapshot_id"),
             dict(cost_data.get("detail") or {}),
         ),
+    )
+
+
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, StrEnum):
+        return value.value
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise ValueError("non-finite Decimal cannot be persisted")
+        return format(value, "f")
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("non-finite float cannot be persisted")
+        return value
+    if isinstance(value, dict):
+        return {
+            str(key): _json_safe(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        converted = [_json_safe(item) for item in value]
+        return sorted(
+            converted,
+            key=lambda item: json.dumps(
+                item,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ),
+        )
+    raise TypeError(
+        f"value is not safe for durable model result JSON: {type(value).__name__}"
     )

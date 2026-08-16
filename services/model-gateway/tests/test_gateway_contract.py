@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from decimal import Decimal
 from uuid import UUID
 
@@ -134,7 +135,7 @@ def test_mock_structured_response_is_deterministic_and_telemetry_records() -> No
 
 
 def test_standard_stream_chunks_and_async_video_lifecycle() -> None:
-    gateway, _, _, _ = build_gateway()
+    gateway, _, health, telemetry = build_gateway()
 
     async def run():
         chunks = [chunk async for chunk in gateway.stream(request())]
@@ -164,6 +165,8 @@ def test_standard_stream_chunks_and_async_video_lifecycle() -> None:
     assert second.status is ResultStatus.COMPLETED
     assert second.outputs[0].asset_ref is not None
     assert second.outputs[0].asset_ref.endswith(".mp4")
+    assert health.successes[("mock", "mock-llm-v1")] == 1
+    assert telemetry.records[0].result.usage.input_tokens == 7
 
 
 def test_semantic_hash_is_order_stable_and_rejects_non_finite_values() -> None:
@@ -201,6 +204,37 @@ def test_normalized_result_round_trip_preserves_decimal_usage_and_outputs() -> N
     )
     restored = result_from_dict(result_to_dict(value))
     assert restored == value
+
+
+def test_durable_result_json_normalizes_uuid_decimal_and_sets() -> None:
+    value = NormalizedResult(
+        status=ResultStatus.COMPLETED,
+        provider="json-safe",
+        model="model-v1",
+        outputs=(
+            ModelOutput(
+                kind="json",
+                json_value={
+                    "operation": OP,
+                    "amount": Decimal("1.25"),
+                },
+            ),
+        ),
+        safety_metadata={"labels": {"safe", "review"}},
+        cost=CostEstimate(
+            Decimal("0.5"),
+            CostConfidence.EXACT,
+            detail={"trace": REQ},
+        ),
+    )
+    encoded = result_to_dict(value)
+    json.dumps(encoded, allow_nan=False)
+    assert encoded["outputs"][0]["json_value"] == {
+        "operation": str(OP),
+        "amount": "1.25",
+    }
+    assert encoded["safety_metadata"]["labels"] == ["review", "safe"]
+    assert encoded["cost"]["detail"]["trace"] == str(REQ)
 
 
 def test_memory_paid_reference_rejects_semantic_reuse() -> None:

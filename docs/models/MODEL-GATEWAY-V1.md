@@ -38,69 +38,30 @@ not create accidental semantic identities.
 
 ## 3. Capabilities
 
-V1 recognizes:
-
-- `llm.reasoning`, `llm.structured_output`, `llm.vision`;
-- image generate/edit/mask/reference-consistency/transparent-background;
-- text-to-video and image-to-video;
-- text/multimodal embeddings;
-- document OCR.
-
-NODE-23 becomes the durable Capability/Model/Pricing Registry. NODE-22 deliberately keeps the
-catalog injectable rather than treating hard-coded provider tables or today's prices as
-permanent truth.
+V1 recognizes reasoning/structured-output/vision LLM calls, image generation/editing,
+text/image-to-video, embeddings and document OCR. NODE-23 becomes the durable
+Capability/Model/Pricing Registry; NODE-22 keeps the catalog injectable rather than treating
+provider tables or today's prices as permanent truth.
 
 ## 4. Provider adapter contract
 
-A ProviderAdapter owns:
+A ProviderAdapter owns `models`, validation, cost estimation, invoke/stream, async status,
+cancel and error normalization. Provider secrets and native request/response mapping remain
+inside the adapter.
 
-```text
-models()
-validate(request, model)
-estimate_cost(request, model)
-invoke(request, model)
-stream(request, model)
-get_async_status(provider_request_id, model)
-cancel(provider_request_id, model)
-normalize_error(error)
-```
-
-Provider secrets and provider-native request/response mapping stay inside the adapter.
-
-V1 includes:
-
-- `OpenAIResponsesAdapter` for reasoning, structured output and vision;
-- `AnthropicMessagesAdapter` for reasoning and vision;
-- deterministic `MockProvider` for all CI capabilities including image/video/embedding/OCR.
-
-No live provider key is required by CI.
+V1 includes OpenAI Responses, Anthropic Messages and deterministic Mock adapters. The Mock
+provider covers all NODE-22 capabilities without network access or live provider credentials.
 
 ## 5. Routing
 
-`ModelRouter` produces an ordered and explainable candidate list. It filters:
-
-1. disabled/excluded providers;
-2. capability mismatch;
-3. quality threshold;
-4. latency threshold;
-5. region mismatch;
-6. unhealthy provider/model;
-7. adapter validation failure;
-8. unknown cost when policy forbids it;
-9. request budget overflow.
-
-Each accepted candidate has `reason_codes`; rejections are also recorded. Preference bonuses do
-not override hard capability, quality, region, health or budget filters.
+`ModelRouter` filters disabled/excluded providers, capability mismatch, quality/latency/region,
+health, provider validation, unknown-cost policy and request budget. Accepted candidates and
+rejections retain explainable reason codes. Preference bonuses never override hard constraints.
 
 ## 6. Retry versus fallback
 
-Provider-local retry and cross-provider fallback are different mechanisms.
-
-Fallback taxonomy permits rate limit, timeout, provider 5xx and temporary capability
-unavailability in principle. Auth errors, invalid requests, user policy blocks, budget failures
-and hard constraint failures do not fallback.
-
-For paid effects there is an additional correctness rule:
+Provider-local retry and cross-provider fallback are separate. For paid effects the correctness
+rule is stricter than the error category:
 
 ```text
 provider acceptance = NOT_ACCEPTED -> retry/fallback may proceed
@@ -108,109 +69,86 @@ provider acceptance = ACCEPTED     -> never call a second paid effect
 provider acceptance = UNKNOWN      -> stop and reconcile / mark ambiguous
 ```
 
-A generic network timeout is `UNKNOWN`, because the request may have reached the provider.
-A 429 is an explicit rejection and is `NOT_ACCEPTED`. Generic 5xx remains `UNKNOWN` unless a
-provider-specific adapter can prove the request was not accepted.
-
-This rule is stricter than error taxonomy alone and prevents a timeout from becoming two paid
-generations at two providers.
+A network timeout is `UNKNOWN`. A 429 is a confirmed rejection and `NOT_ACCEPTED`. Generic 5xx
+remains `UNKNOWN` unless a provider-specific adapter can prove the request was not accepted.
+This prevents a timeout from becoming two paid generations at two providers.
 
 ## 7. NODE-20 paid side-effect bridge
 
-`Node20ModelSideEffectBridge` converts a paid candidate into a durable NODE-20 operation.
-Provider/model are part of candidate identity while the caller's logical `operation_id` remains
-the business scope.
+`Node20ModelSideEffectBridge` turns each paid candidate into a durable NODE-20 operation.
+Provider/model form candidate identity while the caller's `operation_id` remains the business
+scope. Provider request IDs are checkpointed before operation completion and replay returns a
+serialized `NormalizedResult` rather than invoking the provider again.
 
-When the provider returns an ID, it is checkpointed before operation completion. Replay returns
-a serialized `NormalizedResult`, not a second provider invocation.
+A proven `NOT_ACCEPTED` error is stored with `SIDE_EFFECT_CONFIRMED_NOT_ACCEPTED`; NODE-20 only
+uses this recovery exception when no provider request ID exists. All other paid retryable
+failures still require reconciliation and become ambiguous when acceptance cannot be proved.
 
-A provider error proven `NOT_ACCEPTED` is stored with
-`SIDE_EFFECT_CONFIRMED_NOT_ACCEPTED`. NODE-20 recognizes that marker only when no
-`provider_request_id` exists and allows safe recovery. Other paid retryable failures still
-require reconciliation and become ambiguous when acceptance cannot be established.
+Durable replay serialization recursively converts UUID, Decimal, enum, sequence, mapping and
+set-like values into deterministic JSON-safe forms and rejects non-finite or unsupported values.
 
 ## 8. Async jobs
 
 Long-running providers may return `PENDING + provider_request_id`. Gateway exposes normalized
-`get_async_status` and `cancel` entry points. Mock video exercises `PENDING -> COMPLETED` without
-provider credentials.
-
-Production poll/webhook scheduling belongs to the Worker/Event runtime composition. Model
-Gateway only owns provider normalization.
+`get_async_status` and `cancel`. Mock video exercises `PENDING -> COMPLETED` without provider
+credentials. Production poll/webhook scheduling belongs to Worker/Event runtime composition.
 
 ## 9. Streaming
 
-LLM stream chunks are normalized to `started`, `text_delta`, `usage`, `completed`, `error`.
-Provider-specific event classes never escape the Gateway.
-
-Paid provider streaming is intentionally **fail-closed in V1** until the streaming transport can
-checkpoint provider acceptance and usage through NODE-20. Mock/unpaid streaming is executable
-for contract tests. This is a safety limitation, not a claim of completed paid streaming.
+Stream chunks are normalized to started/text-delta/usage/completed/error. Unpaid streaming
+records final usage, timing, health and cost telemetry. Paid streaming is deliberately
+**fail-closed in V1** until provider acceptance and usage can be checkpointed through a
+streaming-aware NODE-20 bridge.
 
 ## 10. Secrets
 
-Provider credentials are resolved only in Gateway adapters through `SecretProvider`.
-`EnvironmentSecretProvider` is a local/runtime reference; production secret manager/KMS
-rotation is a separate composition step.
-
-Secrets are never fields on `ModelRequest`, `NormalizedResult`, telemetry or Sandbox specs.
-NODE-21 sandbox therefore has no reason to receive long-lived provider keys.
+Provider credentials are resolved only by Gateway adapters through `SecretProvider`. The
+Environment implementation is a local/runtime reference; production secret manager/KMS
+rotation remains a separate composition step. Secrets are never ModelRequest/Result/telemetry
+or Sandbox fields.
 
 ## 11. Cost and budget boundary
 
-NODE-22 can estimate candidate cost, reserve through `BudgetPort`, settle/release a reference
-reservation and emit `CostTelemetry` with normalized usage/cost.
-
-This is **not** the NODE-27 financial truth. NODE-27 owns PostgreSQL concurrency-safe budget
-reservation, immutable actual-cost entries, pricing snapshots, adjustments and rollups.
-Prices in real adapters are injected; NODE-22 does not freeze today's public provider prices in
-source code.
+NODE-22 estimates candidate cost, reserves through `BudgetPort`, settles/releases a reference
+reservation and emits `CostTelemetry`. This is **not** NODE-27 financial truth. NODE-27 owns
+PostgreSQL concurrency-safe reservations, immutable actual cost, pricing snapshots, adjustments
+and rollups. Real adapter prices are injected rather than frozen in NODE-22 source.
 
 ## 12. Provider mappings
 
-OpenAI adapter uses the Responses API mapping and explicitly disables provider-side response
-storage in its request. Structured-output requests are formatted as provider JSON Schema
-output. Anthropic uses the Messages API contract and only advertises capabilities implemented
-and tested in V1; it does not claim structured output merely to increase coverage.
-
-Raw provider responses are not returned to callers. A future restricted `raw_response_ref` may
-point to controlled debug evidence, subject to data-retention policy.
+OpenAI uses the Responses API mapping, explicitly disables provider-side response storage and
+maps JSON Schema structured output. Anthropic uses the Messages API and only advertises
+capabilities implemented in V1. Raw provider responses are not returned to callers.
 
 ## 13. Observability
 
-The normalized telemetry boundary contains request/candidate/result, fallback index, retry
-count, model/provider, usage, cost and timing. HealthPort receives success/failure feedback.
+Telemetry contains request/candidate/result, fallback index, retry count, provider/model, usage,
+cost and timing. Health receives success/failure feedback. Full prompts, raw user image URLs and
+provider secrets are not required telemetry fields and must not be logged by default.
 
-Full prompts, raw user image URLs and provider secrets are not required telemetry fields and
-must not be logged by default.
+## 14. Packaging boundary
 
-Durable metrics/traces, redacted raw-response storage and alerting are production composition
-gaps, not hidden inside request models.
+`apps/api` now imports the Model Gateway bridge at runtime, but this connector-only environment
+cannot safely regenerate and review the complete `uv.lock` after adding the formal
+`lumi-api -> lumi-model-gateway` workspace dependency edge. The existing full-workspace frozen
+install includes both packages, so NODE-22 validation can exercise the integration, but
+standalone `uv sync --package lumi-api` deployment is **not claimed**.
 
-## 14. CI / deterministic mode
+Before production standalone API packaging, a trusted checkout must add the workspace dependency
+to `apps/api/pyproject.toml`, run `uv lock`, review the resulting lock diff and then add a
+single-package frozen installation gate. This is `MODEL-PACKAGE-008`, not a hidden assumption.
 
-MockProvider supplies deterministic:
+## 15. CI / deterministic mode
 
-- reasoning and structured JSON;
-- image fixture refs;
-- async video lifecycle;
-- embeddings and OCR;
-- normalized streaming;
-- simulated rate-limit/timeout/5xx behavior.
+MockProvider supplies deterministic reasoning/structured JSON, image refs, async video,
+embeddings/OCR, streaming and simulated provider failures. Provider adapter tests monkeypatch
+the internal HTTP transport with canary keys; CI never calls public model endpoints.
 
-Provider adapter tests monkeypatch the internal HTTP transport and use canary keys. CI never
-calls public model endpoints and never requires real provider credentials.
+## 16. Explicit non-claims
 
-## 15. Explicit non-claims
-
-NODE-22 does not claim:
-
-- NODE-23 persistent model/capability/pricing registry is complete;
-- NODE-27 financial ledger/reservation is complete;
-- live provider requests are part of CI;
-- paid provider streaming is safe before a checkpoint-aware streaming bridge exists;
-- production secret manager rotation is wired;
-- async provider webhook/poll workers are wired;
-- hosted tests passed while GitHub assigned no runner.
+NODE-22 does not claim NODE-23 registry persistence, NODE-27 financial persistence, live
+provider CI, safe paid streaming, production secret rotation, async provider worker scheduling,
+durable observability, standalone `lumi-api` package deployment, or hosted test PASS when GitHub
+assigned no runner.
 
 Next: **NODE-23 — Capability Registry**.

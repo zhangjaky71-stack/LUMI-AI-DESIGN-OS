@@ -22,7 +22,9 @@ CAPABILITIES = [
     "ocr.document",
 ]
 
-BASE = {"$schema": "https://json-schema.org/draft/2020-12/schema"}
+BASE = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema"
+}
 
 SCHEMAS = {
     "model-request": {
@@ -37,11 +39,18 @@ SCHEMAS = {
         ],
         "properties": {
             "request_id": {"type": "string", "format": "uuid"},
-            "organization_id": {"type": "string", "format": "uuid"},
+            "organization_id": {
+                "type": "string",
+                "format": "uuid",
+            },
             "operation_id": {"type": "string", "format": "uuid"},
             "capability": {"enum": CAPABILITIES},
-            "quality_profile": {"enum": ["draft", "balanced", "high", "max"]},
-            "latency_profile": {"enum": ["interactive", "standard", "batch"]},
+            "quality_profile": {
+                "enum": ["draft", "balanced", "high", "max"]
+            },
+            "latency_profile": {
+                "enum": ["interactive", "standard", "batch"]
+            },
             "budget_limit": {"type": ["string", "null"]},
             "inputs": {"type": "array", "minItems": 1},
         },
@@ -50,9 +59,18 @@ SCHEMAS = {
     "normalized-result": {
         **BASE,
         "type": "object",
-        "required": ["status", "provider", "model", "outputs", "usage", "cost"],
+        "required": [
+            "status",
+            "provider",
+            "model",
+            "outputs",
+            "usage",
+            "cost",
+        ],
         "properties": {
-            "status": {"enum": ["completed", "pending", "failed", "cancelled"]},
+            "status": {
+                "enum": ["completed", "pending", "failed", "cancelled"]
+            },
             "provider": {"type": "string"},
             "model": {"type": "string"},
             "provider_request_id": {"type": ["string", "null"]},
@@ -66,7 +84,15 @@ SCHEMAS = {
         "type": "object",
         "required": ["event", "provider", "model"],
         "properties": {
-            "event": {"enum": ["started", "text_delta", "usage", "completed", "error"]},
+            "event": {
+                "enum": [
+                    "started",
+                    "text_delta",
+                    "usage",
+                    "completed",
+                    "error",
+                ]
+            },
             "provider": {"type": "string"},
             "model": {"type": "string"},
         },
@@ -74,22 +100,37 @@ SCHEMAS = {
     "provider-model": {
         **BASE,
         "type": "object",
-        "required": ["provider", "model", "capabilities", "paid"],
+        "required": [
+            "provider",
+            "model",
+            "capabilities",
+            "paid",
+        ],
         "properties": {
             "provider": {"type": "string"},
             "model": {"type": "string"},
-            "capabilities": {"type": "array", "items": {"enum": CAPABILITIES}},
+            "capabilities": {
+                "type": "array",
+                "items": {"enum": CAPABILITIES},
+            },
             "paid": {"type": "boolean"},
         },
     },
     "route-decision": {
         **BASE,
         "type": "object",
-        "required": ["request_id", "candidates", "rejected_reason_codes"],
+        "required": [
+            "request_id",
+            "candidates",
+            "rejected_reason_codes",
+        ],
         "properties": {
             "request_id": {"type": "string", "format": "uuid"},
             "candidates": {"type": "array"},
-            "rejected_reason_codes": {"type": "array", "items": {"type": "string"}},
+            "rejected_reason_codes": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
         },
     },
     "provider-error": {
@@ -98,14 +139,22 @@ SCHEMAS = {
         "required": ["category", "acceptance", "retryable"],
         "properties": {
             "category": {"type": "string"},
-            "acceptance": {"enum": ["not_accepted", "accepted", "unknown"]},
+            "acceptance": {
+                "enum": ["not_accepted", "accepted", "unknown"]
+            },
             "retryable": {"type": "boolean"},
         },
     },
     "cost-telemetry": {
         **BASE,
         "type": "object",
-        "required": ["request", "candidate", "result", "fallback_index", "retry_count"],
+        "required": [
+            "request",
+            "candidate",
+            "result",
+            "fallback_index",
+            "retry_count",
+        ],
         "properties": {
             "fallback_index": {"type": "integer", "minimum": 0},
             "retry_count": {"type": "integer", "minimum": 0},

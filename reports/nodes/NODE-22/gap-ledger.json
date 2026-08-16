@@ -43,6 +43,12 @@
       "owner": "External GitHub account",
       "severity": "BLOCKED_EXTERNAL",
       "description": "Hosted GitHub Actions cannot be treated as PASS while the account billing/spending-limit condition prevents runner allocation."
+    },
+    {
+      "id": "MODEL-PACKAGE-008",
+      "owner": "Platform Packaging",
+      "severity": "P1",
+      "description": "apps/api imports lumi-model-gateway at runtime, but the formal lumi-api -> lumi-model-gateway workspace dependency edge has not been regenerated into the reviewed uv.lock in this connector-only environment. Full-workspace frozen install includes both packages; standalone lumi-api package deployment is not yet claimed until uv lock is regenerated in a trusted checkout."
     }
   ]
 }
