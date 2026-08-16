@@ -65,13 +65,13 @@ ON provider_health_summaries (
   provider,
   model,
   capability,
-  observed_at DESC
+  observed_at
 );
 
 -- statement-breakpoint
 
 CREATE INDEX ix_provider_health_summary_state_observed
-ON provider_health_summaries (state, observed_at DESC);
+ON provider_health_summaries (state, observed_at);
 
 -- statement-breakpoint
 
@@ -111,5 +111,5 @@ ON provider_health_override_audit (
   provider,
   model,
   capability,
-  observed_at DESC
+  observed_at
 );
