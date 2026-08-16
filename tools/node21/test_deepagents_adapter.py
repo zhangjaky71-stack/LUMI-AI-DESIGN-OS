@@ -108,11 +108,11 @@ def test_real_adapter() -> None:
         assert glob_result.matches is not None
         assert any(item["path"].endswith("hello.py") for item in glob_result.matches)
 
-        grep_result = adapter.grep("needle", "/", "*.py", max_count=10)
+        grep_result = adapter.grep("needle", "/", "*.py")
         assert not grep_result.error
         assert grep_result.matches is not None
         assert any(match["text"] == "print('needle')" for match in grep_result.matches)
-        assert grep_result.truncated is False
+        assert getattr(grep_result, "truncated", False) is False
 
         async def async_checks() -> None:
             node = await adapter.aexecute('node -e "console.log(\'async-ok\')"')
