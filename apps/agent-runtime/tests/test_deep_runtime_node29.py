@@ -15,6 +15,7 @@ from lumi_agent_runtime.deep_runtime.contracts import (
     ResolvedSubagent,
 )
 from lumi_agent_runtime.deep_runtime.errors import (
+    DeepAgentDelegationDeniedError,
     DeepAgentFilesystemError,
     DeepAgentPermissionError,
 )
@@ -116,6 +117,17 @@ def _skill() -> MaterializedSkill:
     )
 
 
+def _research_skill() -> MaterializedSkill:
+    return MaterializedSkill(
+        skill_id="web-research",
+        exact_version="1.0.0",
+        path="/skills/web-research/1.0.0/SKILL.md",
+        content_hash="d" * 64,
+        required_tools=("web.search",),
+        provenance_ref="skill://web-research/1.0.0",
+    )
+
+
 def test_permission_and_filesystem_boundaries() -> None:
     policy = ScopedWorkspacePolicy(_permission())
     assert (
@@ -176,7 +188,7 @@ def test_structured_result_repairs_once() -> None:
     assert repairer.calls == 1
 
 
-def test_factory_uses_native_skills_and_hard_permission_scope(
+def test_factory_uses_exact_skills_and_disables_general_purpose(
     monkeypatch,
 ) -> None:
     captured: dict[str, object] = {}
@@ -187,12 +199,13 @@ def test_factory_uses_native_skills_and_hard_permission_scope(
         *,
         system_prompt,
         subagents,
-        backend,
-        checkpointer,
         skills=None,
+        permissions=None,
+        backend=None,
         response_format=None,
-        name=None,
+        checkpointer=None,
         store=None,
+        name=None,
     ):
         captured.update(
             {
@@ -200,12 +213,13 @@ def test_factory_uses_native_skills_and_hard_permission_scope(
                 "tools": tools,
                 "system_prompt": system_prompt,
                 "subagents": subagents,
-                "backend": backend,
-                "checkpointer": checkpointer,
                 "skills": skills,
+                "permissions": permissions,
+                "backend": backend,
                 "response_format": response_format,
-                "name": name,
+                "checkpointer": checkpointer,
                 "store": store,
+                "name": name,
             }
         )
         graph = FakeCompiledGraph({})
@@ -228,13 +242,30 @@ def test_factory_uses_native_skills_and_hard_permission_scope(
             config=_config(),
             context=_context(),
             bundle=_bundle(),
-            skills=(_skill(),),
+            skills=(_skill(), _research_skill()),
         )
     )
-    assert captured["skills"] == ["/skills/"]
+    assert captured["skills"] == [
+        "/skills/creative-direction/1.0.0/"
+    ]
+    assert captured["permissions"]
     assert captured["name"] == "creative-director"
+    subagents = captured["subagents"]
+    assert isinstance(subagents, list)
+    safety = subagents[0]
+    researcher = subagents[1]
+    assert safety["name"] == "general-purpose"
+    assert "runnable" in safety
+    assert researcher["name"] == "researcher"
+    assert researcher["skills"] == [
+        "/skills/web-research/1.0.0/"
+    ]
+    assert researcher["permissions"]
+    assert researcher["response_format"]
+    assert "Never alter the logo geometry" in researcher["system_prompt"]
     assert compiled.provenance.skill_versions == (
         "creative-direction@1.0.0",
+        "web-research@1.0.0",
     )
     assert compiled.thread_id.startswith("deep:")
 
@@ -245,6 +276,25 @@ def test_factory_uses_native_skills_and_hard_permission_scope(
                 config=_config(execute=False),
                 context=expanded,
                 bundle=_bundle(),
-                skills=(_skill(),),
+                skills=(_skill(), _research_skill()),
+            )
+        )
+
+
+def test_p0_rejects_shell_execute_plus_synchronous_subagent() -> None:
+    factory = LumiDeepAgentFactory(
+        models=FakeModelProvider(),
+        tools=FakeToolProvider(),
+        backends=FakeBackendProvider(),
+        checkpointers=StaticCheckpointerProvider(object()),
+        budget=MemoryBudgetMeter(),
+    )
+    with pytest.raises(DeepAgentDelegationDeniedError):
+        asyncio.run(
+            factory.compile(
+                config=_config(execute=True),
+                context=_context(execute=True),
+                bundle=_bundle(),
+                skills=(_skill(), _research_skill()),
             )
         )
