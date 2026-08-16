@@ -1,0 +1,222 @@
+name: NODE-28 LangGraph Control Plane
+
+on:
+  pull_request:
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/control_plane/**"
+      - "apps/agent-runtime/tests/test_control_plane_node28.py"
+      - "apps/api/src/lumi_api/api/v1/agent_run_*.py"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/src/lumi_api/persistence/models_control_plane.py"
+      - "apps/api/src/lumi_api/persistence/models_execution.py"
+      - "apps/api/migrations/versions/20260816_0010_langgraph_control_plane.py"
+      - "apps/api/migrations/versions/20260816_0010_sql/**"
+      - "apps/api/tests/test_agent_run_control_node28.py"
+      - "tools/node28/**"
+      - "docs/runtime/LANGGRAPH-CONTROL-PLANE-V1.md"
+      - "reports/nodes/NODE-28/**"
+      - ".github/workflows/node-28-langgraph-control-plane.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/control_plane/**"
+      - "apps/api/migrations/versions/20260816_0010_langgraph_control_plane.py"
+      - "apps/api/migrations/versions/20260816_0010_sql/**"
+      - "tools/node28/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  SQLALCHEMY_VERSION: "2.0.51"
+  ALEMBIC_VERSION: "1.18.5"
+  ASYNCPG_VERSION: "0.31.0"
+  LUMI_DATABASE_MIGRATION_URL: >-
+    postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+  LUMI_DATABASE_MIGRATION_URL_ASYNCPG: >-
+    postgresql://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+  LUMI_DATABASE_APP_URL_ASYNCPG: >-
+    postgresql://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+
+jobs:
+  langgraph-control-plane:
+    name: langgraph-control-plane
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen workspace dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Validate NODE-28 orchestration architecture
+        run: uv run python tools/node28/validate_langgraph_control_plane.py
+
+      - name: Run LangGraph behavior and API contract tests
+        run: |
+          PYTHONPATH=apps/agent-runtime/src:apps/api/src \
+            uv run pytest -q \
+              apps/agent-runtime/tests/test_control_plane_node28.py \
+              apps/api/tests/test_agent_run_control_node28.py
+
+      - name: Export and validate NODE-28 schemas and gaps
+        run: |
+          rm -rf reports/nodes/NODE-28/generated-schemas
+          uv run python tools/node28/export_control_plane_schemas.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("reports/nodes/NODE-28")
+          schemas = sorted((root / "generated-schemas").glob("*.schema.json"))
+          assert len(schemas) == 6
+          for path in schemas:
+              payload = json.loads(path.read_text(encoding="utf-8"))
+              assert payload["$schema"].endswith("2020-12/schema")
+          ledger = json.loads((root / "gap-ledger.json").read_text(encoding="utf-8"))
+          assert len(ledger["gaps"]) == 8
+          print("NODE-28 schemas and gap ledger valid")
+          PY
+
+      - name: Ruff NODE-28 affected scope
+        run: |
+          uv run ruff check \
+            apps/agent-runtime/src/lumi_agent_runtime/control_plane \
+            apps/agent-runtime/tests/test_control_plane_node28.py \
+            apps/api/src/lumi_api/api/v1/agent_run_dependencies.py \
+            apps/api/src/lumi_api/api/v1/agent_run_routes.py \
+            apps/api/src/lumi_api/api/v1/agent_run_schemas.py \
+            apps/api/src/lumi_api/api/v1/app.py \
+            apps/api/src/lumi_api/persistence/models.py \
+            apps/api/src/lumi_api/persistence/models_control_plane.py \
+            apps/api/src/lumi_api/persistence/models_execution.py \
+            apps/api/tests/test_agent_run_control_node28.py \
+            tools/node28
+
+      - name: Pyright NODE-28 affected scope
+        run: |
+          PYTHONPATH=apps/agent-runtime/src:apps/api/src \
+            uv run pyright \
+              apps/agent-runtime/src/lumi_agent_runtime/control_plane \
+              apps/agent-runtime/tests/test_control_plane_node28.py \
+              apps/api/src/lumi_api/api/v1/agent_run_dependencies.py \
+              apps/api/src/lumi_api/api/v1/agent_run_routes.py \
+              apps/api/src/lumi_api/api/v1/agent_run_schemas.py \
+              apps/api/src/lumi_api/persistence/models_control_plane.py \
+              apps/api/src/lumi_api/persistence/models_execution.py \
+              tools/node28
+
+      - name: Verify no live provider key is required
+        env:
+          OPENAI_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+          GOOGLE_API_KEY: ""
+        run: |
+          PYTHONPATH=apps/agent-runtime/src \
+            uv run pytest -q apps/agent-runtime/tests/test_control_plane_node28.py
+
+      - name: Start PostgreSQL
+        run: |
+          cp infra/compose/env.local.example infra/compose/.env
+          docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml \
+            up -d --wait --wait-timeout 180 postgres
+
+      - name: Upgrade PostgreSQL through NODE-27
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade 20260816_0009
+
+      - name: Upgrade PostgreSQL to NODE-28 head
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+
+      - name: Validate current ORM metadata
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            python tools/node10/validate_schema.py
+
+      - name: Verify lossless pre-control downgrade and reapply
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic downgrade 20260816_0009
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+
+      - name: Run PostgreSQL RLS and resume-CAS failure injection
+        run: |
+          PYTHONPATH=apps/agent-runtime/src \
+            uv run --with "asyncpg==${ASYNCPG_VERSION}" \
+            python tools/node28/test_control_plane_database.py \
+              --migration-dsn "${LUMI_DATABASE_MIGRATION_URL_ASYNCPG}" \
+              --app-dsn "${LUMI_DATABASE_APP_URL_ASYNCPG}"
+
+      - name: Prove lossy downgrade is refused after durable control state
+        working-directory: apps/api
+        run: |
+          set +e
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic downgrade 20260816_0009
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          echo "NODE-28 loss-aware downgrade guard rejected data loss as expected"
+
+      - name: Capture infrastructure diagnostics on failure
+        if: failure()
+        run: |
+          docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml ps || true
+          docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml logs --no-color postgres || true
+
+      - name: Upload NODE-28 evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-28-langgraph-control-plane-${{ github.run_id }}
+          path: |
+            reports/nodes/NODE-28/generated-schemas
+            reports/nodes/NODE-28/gap-ledger.json
+            reports/nodes/NODE-28/acceptance.md
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose --env-file infra/compose/.env \
+            -f infra/compose/docker-compose.yml down -v --remove-orphans || true
