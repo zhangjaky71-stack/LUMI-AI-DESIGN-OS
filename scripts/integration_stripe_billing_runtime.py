@@ -19,6 +19,7 @@ from lumi_project_core.stripe_provider import StripePaymentProvider, StripeProvi
 
 
 WEBHOOK_SECRET = "whsec_local_acceptance"
+API_VERSION = "2026-02-25.clover"
 
 
 class FakeStripeTransport:
@@ -30,6 +31,7 @@ class FakeStripeTransport:
         self._customer_organizations: dict[str, str] = {}
         self.customer_posts = 0
         self.checkout_posts = 0
+        self.price_reads = 0
 
     def __call__(
         self,
@@ -40,6 +42,24 @@ class FakeStripeTransport:
         idempotency_key: str | None,
     ) -> dict[str, object]:
         values = dict(fields or [])
+        if method == "GET" and path == "/prices/price_acceptance":
+            with self._lock:
+                self.price_reads += 1
+            return {
+                "id": "price_acceptance",
+                "active": True,
+                "livemode": False,
+                "type": "recurring",
+                "billing_scheme": "per_unit",
+                "currency": "usd",
+                "unit_amount": 200,
+                "recurring": {
+                    "interval": "month",
+                    "interval_count": 1,
+                    "usage_type": "licensed",
+                },
+            }
+
         if method == "POST" and path == "/customers":
             organization_id = values["metadata[organization_id]"]
             if idempotency_key != f"lumi-customer:{organization_id}":
@@ -178,6 +198,7 @@ async def main() -> None:
             checkout_cancel_url="https://acceptance.example.test/billing",
             portal_return_url="https://acceptance.example.test/billing",
             expected_livemode=False,
+            api_version=API_VERSION,
         ),
         transport=transport,
     )
@@ -198,6 +219,7 @@ async def main() -> None:
 
     try:
         await runtime.initialize_catalog()
+        assert transport.price_reads == 1
 
         first, second = await asyncio.gather(
             runtime.create_checkout(actor, plan_version_id),
@@ -215,6 +237,7 @@ async def main() -> None:
             {
                 "id": subscription_event_id,
                 "type": "customer.subscription.created",
+                "api_version": API_VERSION,
                 "livemode": False,
                 "data": {
                     "object": {
@@ -243,6 +266,7 @@ async def main() -> None:
             {
                 "id": invoice_event_id,
                 "type": "invoice.paid",
+                "api_version": API_VERSION,
                 "livemode": False,
                 "data": {
                     "object": {
@@ -339,6 +363,7 @@ async def main() -> None:
                 "status": "STRIPE_BILLING_POSTGRES_ACCEPTANCE_PASS",
                 "organization_id": organization_id,
                 "plan_version_id": plan_version_id,
+                "stripe_price_reads": transport.price_reads,
                 "stripe_customer_posts": transport.customer_posts,
                 "checkout_posts": transport.checkout_posts,
                 "webhook_replay": "DUPLICATE",
