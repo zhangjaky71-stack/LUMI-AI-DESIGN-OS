@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import json
 import re
 import subprocess
@@ -71,13 +72,16 @@ def rc_identity(payload: dict[str, Any]) -> tuple[str, str, str]:
     return sha.lower(), version.strip(), migration.strip()
 
 
-def release_manifest(release_arg: str) -> dict[str, Any]:
-    path = canonical_path(
+def release_manifest_path(release_arg: str) -> Path:
+    return canonical_path(
         release_arg,
         root=ROOT / "reports" / "final-acceptance",
         expected_name="release-manifest.json",
     )
-    return load_object(path)
+
+
+def release_manifest(release_arg: str) -> dict[str, Any]:
+    return load_object(release_manifest_path(release_arg))
 
 
 def current_git_sha() -> str:
@@ -249,6 +253,39 @@ def require_all_upstream_rc_binding(release_arg: str, matrix_arg: str) -> tuple[
     return tuple(bound)
 
 
+def write_identity_decision(
+    *,
+    release_arg: str,
+    release_identity: tuple[str, str, str],
+    evidence_checkout_sha: str,
+    evidence_paths: tuple[str, ...],
+    upstream: tuple[str, ...],
+) -> Path:
+    release_path = release_manifest_path(release_arg)
+    payload = {
+        "schema_version": 1,
+        "passed": True,
+        "release_candidate": {
+            "git_sha": release_identity[0],
+            "version": release_identity[1],
+            "migration_head": release_identity[2],
+        },
+        "evidence_checkout_sha": evidence_checkout_sha,
+        "post_rc_evidence_paths": list(evidence_paths),
+        "allowed_post_rc_prefixes": list(EVIDENCE_ONLY_PREFIXES),
+        "upstream_rc_bound": list(upstream),
+        "worktree_clean_at_evaluation_start": True,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    decision = {
+        "decision_id": hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:24],
+        **payload,
+    }
+    output = release_path.parent / "release-identity-decision.json"
+    output.write_text(json.dumps(decision, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return output
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -268,6 +305,13 @@ def main() -> int:
         args.release
     )
     upstream = require_all_upstream_rc_binding(args.release, args.matrix)
+    identity_output = write_identity_decision(
+        release_arg=args.release,
+        release_identity=release_identity,
+        evidence_checkout_sha=evidence_checkout_sha,
+        evidence_paths=evidence_paths,
+        upstream=upstream,
+    )
     print(
         json.dumps(
             {
@@ -279,6 +323,7 @@ def main() -> int:
                 "evidence_checkout_sha": evidence_checkout_sha,
                 "post_rc_evidence_paths": list(evidence_paths),
                 "upstream_rc_bound": list(upstream),
+                "identity_decision": identity_output.relative_to(ROOT).as_posix(),
             },
             sort_keys=True,
         )
