@@ -2,96 +2,111 @@
 
 > NODE-26 runtime/security contract.  
 > Depends on NODE-25 Tool Gateway.  
-> Protocol baseline verified against the MCP **2026-07-28** specification and official schema; `2025-11-25` is retained only behind a compatibility adapter.
+> Preferred protocol baseline: **MCP 2026-07-28**.  
+> Legacy `2025-11-25` support is compatibility-only and isolated behind the legacy adapter.
 
-## 1. Architectural rule
+## 1. Responsibility
 
-MCP is an integration transport, **not** a second authorization plane.
+MCP is an integration protocol, not a second authorization or execution authority.
 
-The only allowed Agent flow is:
+The only Agent-facing flow is:
 
 ```text
 Agent
-  -> ToolGatewayClient
-  -> NODE-25 Tool Gateway
-       Registry/version resolution
-       tenant/tool permission
-       risk/HITL
-       input schema
-       NODE-20 SideEffect guard for writes
-       MCPToolAdapter
-          approved MCP Server Registry
-          trusted credential provider
-          SSRF-validated/pinned transport
-          MCP protocol
-       output schema
-       offload
-       Audit
-  -> Agent
+→ ToolGatewayClient
+→ NODE-25 Tool Gateway
+   → Registry/version resolution
+   → tenant/tool permissions
+   → risk + HITL
+   → input validation
+   → NODE-20 SideEffect guard for writes
+   → MCPToolAdapter
+      → approved MCP Server Registry
+      → tenant/server-bound credential provider
+      → SSRF validated runtime target
+      → trusted pinned transport
+      → MCP wire protocol
+   → output validation/offload
+   → Audit
+→ Agent
 ```
 
-The following is forbidden:
+Forbidden paths include:
 
 ```text
-Agent -> arbitrary MCP URL
-Agent -> MCP SDK directly
-Agent -> MCP credential
-Agent -> MCP-discovered tool without Tool Gateway policy
+Agent → arbitrary MCP URL
+Agent → MCP SDK directly
+Agent → MCP server credential
+Agent → discovered-but-unapproved MCP tool
+Agent → production DB/storage/network authority through MCP
 ```
 
-NODE-26 therefore extends the NODE-25 adapter surface without changing NODE-25 permission, HITL, idempotency, timeout, output or audit semantics.
+NODE-26 does not weaken any NODE-25 permission, HITL, timeout, audit or idempotency invariant.
 
-## 2. Protocol strategy
+## 2. Protocol baseline
 
-### 2.1 Preferred protocol
+### 2.1 Modern path — 2026-07-28
 
-The preferred wire revision is:
+The preferred path is stateless per request. Each request uses:
+
+- a fresh JSON-RPC request ID;
+- `MCP-Protocol-Version: 2026-07-28`;
+- `Mcp-Method` matching the JSON-RPC method;
+- `Mcp-Name` for named calls such as `tools/call`;
+- `params._meta` containing protocol version, client capabilities and client info;
+- no modern `Mcp-Session-Id` state.
+
+The modern client supports:
 
 ```text
-2026-07-28
+server/discover
+tools/list
+tools/call
 ```
 
-The NODE-26 modern path follows the current protocol model:
+`resultType` is mandatory on 2026-era results. Header routing is treated only as a routing aid; response/body structure is still validated.
 
-- each client request is independent;
-- JSON-RPC requests use fresh request IDs;
-- HTTP carries `MCP-Protocol-Version`;
-- `Mcp-Method` mirrors the JSON-RPC method;
-- `Mcp-Name` is supplied for named operations such as `tools/call`;
-- request `params._meta` carries the protocol version and client capability envelope;
-- `resultType` is required on 2026-era results;
-- `server/discover` is used for protocol/capability discovery;
-- tool metadata is obtained through `tools/list`;
-- `input_required` is the multi-round-trip result form;
-- modern execution does not rely on `Mcp-Session-Id`.
+### 2.2 Modern transport
 
-`MCPHTTPTransport` normalizes either JSON or request-scoped SSE into an `MCPHTTPResponse`; JSON/SSE parsing is a transport concern and does not leak into Tool Gateway domain models.
+A server advertising `2026-07-28` must be configured with:
 
-### 2.2 Legacy compatibility
+```text
+transport = streamable_http
+```
 
-`2025-11-25` support is isolated in `mcp/legacy.py`.
+`legacy_http_sse` + `2026-07-28` fails construction with:
 
-The legacy compatibility client owns:
+```text
+MCP_2026_TRANSPORT_INVALID
+```
+
+P0 remote MCP endpoints must use HTTPS. Cleartext HTTP fails construction with:
+
+```text
+MCP_SERVER_TLS_REQUIRED
+```
+
+The trusted `MCPHTTPTransport` port receives a `ValidatedTarget` containing the approved host and pinned public IP. A production implementation must preserve TLS certificate validation/SNI for the approved hostname while connecting to the validated IP and must not silently re-resolve the host.
+
+### 2.3 Legacy compatibility
+
+`2025-11-25` compatibility lives only in `mcp/legacy.py` and owns:
 
 ```text
 initialize
 notifications/initialized
-optional Mcp-Session-Id
-legacy tools/list
+Mcp-Session-Id when provided
+tools/list
 tools/call
 ```
 
-Modern `mcp/client.py` contains no `Mcp-Session-Id` state.
+Legacy session state is keyed by MCP server and organization. Modern `mcp/client.py` contains no session ID state.
 
-A server configured for both eras is attempted through the current discovery path first. If the current discovery method is unavailable/protocol-incompatible and the administrator explicitly allowed the legacy revision, the client may fall back to the legacy adapter.
-
-Legacy compatibility is not permission compatibility: every resulting remote tool is still mapped through the same NODE-25 policy pipeline.
+A server can use the legacy path only when the administrator explicitly configured the legacy protocol version. Compatibility never changes LUMI permissions or risk classification.
 
 ## 3. MCP Server Registry
 
-Agents never provide an MCP base URL.
-
-`MCPServerRegistry` stores administrator-controlled definitions:
+Agents do not provide base URLs. `MCPServerRegistry` contains administrator-controlled definitions:
 
 ```text
 server_id
@@ -105,301 +120,152 @@ organization_id | global
 allowed_tool_patterns
 protocol_versions
 auth_profile
+auth_header_names
 network_policy
 discovery_ttl_seconds
 ```
 
-A server must be both:
+A server must be both approved and enabled. Organization-scoped servers reject other tenants.
+
+### 3.1 Network validation
+
+Server registration immediately validates the URL through NODE-25 `SSRFPolicy`.
+
+Every runtime request validates the same URL again:
 
 ```text
-approved == true
-enabled == true
+runtime_target()
+→ SSRFPolicy.validate()
+→ ValidatedTarget
 ```
 
-If `organization_id` is set, any other tenant is rejected.
+This prevents registration-time DNS results from becoming permanent trust. Loopback, private, link-local, metadata, Docker-host aliases and non-global IPs remain blocked by NODE-25.
 
-The server allowlist controls which remote tool names are even eligible for mapping.
+## 4. Credentials
 
-## 4. Network / SSRF boundary
-
-NODE-26 reuses NODE-25 `SSRFPolicy`.
-
-### 4.1 Admin registration
-
-When a server definition is registered, its base URL is validated immediately.
-
-### 4.2 Runtime revalidation
-
-Registration-time validation is not trusted forever.
-
-Every MCP request calls:
-
-```text
-MCPServerRegistry.runtime_target(...)
--> SSRFPolicy.validate(base_url)
--> ValidatedTarget(pinned_ip, hostname, port, ...)
-```
-
-Thus DNS/IP policy is re-evaluated at request time.
-
-### 4.3 Transport rule
-
-`MCPHTTPTransport.post()` receives a `ValidatedTarget` instead of an arbitrary URL string.
-
-A production transport MUST:
-
-- connect to the validated/pinned IP;
-- preserve TLS certificate validation/SNI for the approved hostname;
-- disable automatic redirect following, or return the redirect to a trusted layer that performs the same SSRF validation before a new request;
-- not re-resolve the hostname behind the security layer;
-- not use ambient browser cookies or application credentials.
-
-NODE-26 treats unexpected 3xx responses as protocol failures; it does not provide an Agent-controlled redirect path.
-
-## 5. Authentication boundary
-
-MCP credentials are injected through:
+Credentials are injected server-side through:
 
 ```text
 MCPCredentialProvider.credentials_for(server, organization_id)
 ```
 
-The provider returns `MCPRequestAuth` bound to the same `organization_id`.
-
-A credential with a mismatched organization is rejected before transport execution.
-
-`MCPRequestAuth` cannot override routing/security headers including:
+`MCPRequestAuth` is bound to both:
 
 ```text
-Host
-Cookie
-MCP-Protocol-Version
-Mcp-Method
-Mcp-Name
-Mcp-Session-Id
-Content-Type
-Accept
+organization_id
+server_id
 ```
 
-Authorization or other explicitly trusted auth headers may be returned by the credential provider, but credentials are never fields in `ToolRequest`, `ToolDefinition`, Tool Audit, or MCP-discovered metadata.
+A tenant mismatch or server mismatch fails before transport execution.
 
-A production credential provider should return short-lived delegated/scoped credentials rather than exposing long-lived server secrets to Agents.
+Credential material is not present in `ToolRequest`, Agent context or Tool Audit. Credential providers cannot override reserved routing/security headers such as Host, Cookie, MCP protocol/method/name/session headers, Content-Type or Accept.
 
-## 6. Modern request envelope
+Production Secret Manager/OAuth refresh/revocation is outside this node and remains explicit in the gap ledger.
 
-Every 2026-era request creates a fresh JSON-RPC ID and contains:
+## 5. Discovery and cache
 
-```text
-params._meta[io.modelcontextprotocol/protocolVersion]
-params._meta[io.modelcontextprotocol/clientCapabilities]
-params._meta[io.modelcontextprotocol/clientInfo]
-```
-
-The HTTP headers contain matching protocol/method/name bookkeeping.
-
-The test suite verifies header/body consistency and proves two consecutive `tools/call` requests can be served by different fake MCP server instances without a session identifier.
-
-## 7. Discovery does not authorize tools
-
-MCP discovery is evidence about what a server claims to expose. It is **not** an allowlist.
-
-The flow is:
+Discovery is metadata, never authorization.
 
 ```text
 server/discover
--> tools/list
--> MCPDiscoveredTool[]
--> exact administrator MCPToolPolicy lookup
--> ToolDefinition[]
+→ tools/list
+→ MCPDiscoveredTool[]
+→ exact MCPToolPolicy lookup
+→ approved ToolDefinition[]
 ```
 
-If a discovered tool has no administrator `MCPToolPolicy`, it is not published into the LUMI Tool Registry.
+A newly discovered tool without an administrator policy receives no Tool Gateway registration.
 
-A newly appearing remote tool therefore has zero Agent permissions by default.
+### 5.1 2026 cacheable-result rules
 
-## 8. Tool mapping and namespacing
+For the modern path, `server/discover` and each `tools/list` page require valid:
 
-Approved remote tools are namespaced as:
+```text
+ttlMs >= 0
+cacheScope = private | public
+```
+
+Malformed/missing cache hints fail closed with `MCP_PROTOCOL_MISMATCH` rather than silently inventing cache semantics.
+
+`ttlMs = 0` means immediately stale and therefore is not inserted into the discovery cache.
+
+Cache keys always include:
+
+```text
+server_id + organization_id
+```
+
+Even when remote metadata says `public`, P0 remains tenant-keyed. Tool execution results are never stored in `MCPDiscoveryCache`; write replay belongs only to NODE-20.
+
+## 6. Tool mapping
+
+Discovered remote tools are mapped to namespaced LUMI tools:
 
 ```text
 mcp.<server_id>.<normalized-remote-name>
 ```
 
-Example:
+The mapper rejects namespace collisions.
 
-```text
-server_id = design
-remote name = assets.search
--> mcp.design.assets.search
-```
-
-Remote names are normalized into NODE-25-compatible lowercase segments. If two remote names normalize to the same LUMI name, discovery fails with a namespace-collision policy error rather than silently choosing one.
-
-Malicious/invalid remote names are rejected before registration.
-
-## 9. Risk is LUMI policy, not MCP metadata
-
-`MCPToolPolicy` is the only authority for:
+The server's description and annotations do not control security. `MCPToolPolicy` is the authority for:
 
 ```text
 risk
 permissions
 idempotency
 timeout
-inline output limit
+max inline output
 sensitive fields
 ```
 
-NODE-26 deliberately does **not** infer risk from:
+Write/destructive/financial/privileged tools must declare `idempotency=REQUIRED`. NODE-25 still applies approval and NODE-20 still owns durable replay/reconciliation.
 
-```text
-description
-annotations
-readOnlyHint
-destructiveHint
-server self-description
-```
+## 7. JSON Schema trust boundary
 
-For example, a server may label a tool `readOnlyHint=true`, while LUMI administrators classify it `WRITE_EXTERNAL`; the resulting ToolDefinition remains a write and still requires NODE-25 HITL/idempotency.
+MCP 2026 tool schemas are JSON Schema 2020-12 data, but the current NODE-25 validator intentionally implements a deterministic safe subset.
 
-Every write-class MCP policy must set `idempotency=REQUIRED`, or construction fails.
+NODE-26 therefore does **not** claim full JSON Schema 2020-12 execution support.
 
-## 10. MCP schema trust boundary
+The mapper checks schema JSON serializability, byte limits, recursion depth and supported keywords. Unsupported semantics such as `$ref`, combinators, `pattern`, `format` or untrusted `x-mcp-header` mappings fail closed instead of being silently ignored.
 
-MCP input/output schemas are untrusted server input.
+This prevents a remote server from advertising a stricter schema than LUMI can actually enforce.
 
-Before a remote tool is mapped, NODE-26 checks:
+Full JSON Schema 2020-12 compatibility remains `MCP-SCHEMA-003`.
 
-- JSON serializability with non-finite values rejected;
-- total schema byte limit;
-- recursion depth limit;
-- schema key/value structure;
-- compatibility with the JSON Schema subset NODE-25 can actually enforce.
+## 8. MRTR / input_required
 
-Unsupported semantic constraints such as `$ref`, `oneOf`, `pattern`, `format`, and similar keywords fail closed rather than being silently ignored.
-
-This prevents the system from showing a restrictive remote schema while locally validating only a weaker subset.
-
-### 10.1 `x-mcp-header`
-
-NODE-26 P0 rejects `x-mcp-header` mappings.
-
-This is intentional: an untrusted MCP server must not cause arbitrary Agent arguments to be promoted into transport headers. A future trusted implementation may add a separately reviewed header-mapping policy behind the same Tool Gateway boundary.
-
-## 11. Discovery cache
-
-`MCPDiscoveryCache` stores only server/tool metadata.
-
-Cache keys include:
-
-```text
-server_id
-organization_id
-```
-
-TTL is bounded by the LUMI server definition and remote cache hints.
-
-Even if a server marks metadata cacheable as `public`, the P0 in-memory implementation remains tenant-keyed to avoid accidental cross-tenant metadata coupling.
-
-`tools/call` never reads or writes the discovery cache.
-
-Tool execution results—especially writes—are never cached by the MCP integration layer. Write replay remains NODE-20 SideEffect Gateway territory.
-
-## 12. `server/discover` and `tools/list`
-
-The modern client:
-
-1. checks the tenant-approved server definition;
-2. uses `server/discover` with the current protocol envelope;
-3. negotiates the highest mutually configured supported version;
-4. retrieves `tools/list` metadata;
-5. follows bounded list pagination;
-6. caps discovered tool count;
-7. caches only normalized discovery metadata;
-8. maps only explicitly approved tools.
-
-A server discovery cache hit never means a tool is authorized—the mapping policy is applied when building the integration plan.
-
-## 13. Multi-round-trip / `input_required`
-
-The current protocol can return:
+A modern tool may return:
 
 ```text
 resultType = input_required
-inputRequests = { ... }
+inputRequests = {...}?
 requestState = opaque string?
 ```
 
-NODE-26 P0 intentionally disables automatic fulfillment.
+An `input_required` response with neither `inputRequests` nor `requestState` is rejected as malformed.
 
-When `MCPToolAdapter` receives `input_required`, it raises a sanitized:
+P0 does not automatically fulfill remote elicitation/sampling requests. `MCPToolAdapter` raises sanitized:
 
 ```text
 MCP_INPUT_REQUIRED
 ```
 
-The exception contains only:
+Only safe correlation metadata is surfaced:
 
-```text
-server_id
-remote tool name
-input request correlation keys
-whether requestState exists
-```
+- server ID;
+- remote tool name;
+- input request keys;
+- whether opaque requestState exists.
 
-It does **not** forward raw elicitation/sampling prompts, schemas, or requestState content directly to the Agent/user.
+Raw prompt bodies and requestState contents are not forwarded directly to the Agent/user. Durable LUMI-owned HITL/input collection and bounded resume belongs to later orchestration work.
 
-This creates a safe bridge point for LUMI's own HITL/input policy. A future resume flow may:
+## 9. Output and error normalization
 
-1. inspect the input request under trusted policy;
-2. obtain user/admin approval or controlled input;
-3. build `inputResponses`;
-4. echo the opaque `requestState` byte-for-byte;
-5. retry the original MCP request with a **new** JSON-RPC ID;
-6. cap the number of rounds.
+Complete MCP results are normalized into `ToolAdapterOutput` and then pass through NODE-25 output validation and large-result offload.
 
-Until that bridge is implemented and reviewed, `input_required` is fail-closed rather than auto-fulfilled by an untrusted server.
+Raw JSON-RPC `message`/`data`, credentials and protocol internals are not returned to Agent context.
 
-## 14. Tool execution adapter
-
-`MCPToolAdapter` implements the existing NODE-25 `ToolAdapter` protocol.
-
-Before calling the MCP client it verifies:
-
-```text
-ToolDefinition.runtime == MCP
-resolved LUMI tool name matches adapter mapping
-server/tool mapping is exact
-```
-
-The client again verifies:
-
-```text
-server approved/enabled
-tenant scope
-remote tool allowed by server policy
-protocol version
-credential tenant binding
-runtime SSRF target
-```
-
-Defense-in-depth checks do not replace NODE-25 permission/HITL; they protect the integration boundary itself.
-
-## 15. Output normalization
-
-Complete MCP results are normalized as:
-
-- `structuredContent` when present;
-- otherwise a bounded JSON object containing normalized MCP content blocks;
-- text content contributes to a bounded Tool summary;
-- resource URIs may become `resource_refs`;
-- raw protocol headers, credentials, server errors and session metadata are not included.
-
-The resulting value still passes NODE-25 output schema validation and large-result offload policy before it can return to an Agent.
-
-## 16. Error normalization
-
-NODE-26 defines stable error codes including:
+Stable MCP errors include:
 
 ```text
 MCP_SERVER_UNAVAILABLE
@@ -411,27 +277,9 @@ MCP_POLICY_DENIED
 MCP_INPUT_REQUIRED
 ```
 
-Raw JSON-RPC error `message` and `data` are not propagated.
+## 10. Integration plan
 
-The test suite injects a remote error containing a fake secret and verifies the secret does not appear in the raised error.
-
-## 17. Legacy security boundary
-
-Legacy compatibility does not relax any LUMI policy.
-
-The only session state lives inside `LegacyMCPClient`, keyed by:
-
-```text
-server_id + organization_id
-```
-
-The outer ToolDefinition, permission context, HITL, idempotency and audit contracts remain exactly the same as modern MCP.
-
-The legacy fixture verifies `initialize` happens once and subsequent legacy calls use only the isolated session adapter.
-
-## 18. Integration planning
-
-`MCPIntegrationBuilder.prepare()` produces:
+`MCPIntegrationBuilder.prepare()` returns:
 
 ```text
 MCPIntegrationPlan {
@@ -442,103 +290,79 @@ MCPIntegrationPlan {
 }
 ```
 
-The application composition root can merge these definitions/adapters with native NODE-25 tools before constructing Tool Gateway.
+Only explicitly approved remote tools can appear in the plan. The application composition root can merge the plan with native NODE-25 definitions/adapters before constructing Tool Gateway.
 
-`MCPIntegrationBuilder` cannot publish an unapproved discovered tool because the mapper only returns definitions with exact administrator policies.
+## 11. P0 security invariants
 
-## 19. Control-plane persistence boundary
+1. Agent never supplies an MCP server URL.
+2. MCP server must be registered, approved and enabled.
+3. Organization scope must match.
+4. Remote endpoint must be HTTPS and SSRF-safe.
+5. 2026 protocol uses Streamable HTTP only.
+6. DNS/IP policy is rechecked on every request.
+7. Credential is bound to both organization and server.
+8. Discovered tool is not authorization.
+9. Risk/idempotency come from LUMI policy, not MCP annotations.
+10. Write MCP tools still require NODE-25 Audit/HITL and NODE-20 SideEffect semantics.
+11. Modern tool execution results are not cached by MCP integration.
+12. MRTR does not bypass LUMI-owned user-input policy.
+13. Unsupported schema semantics fail closed.
+14. Modern path contains no legacy session state.
+15. MCP core does not import HTTP clients, DB drivers, Docker, subprocess or an MCP SDK directly.
 
-NODE-26 P0 implements an immutable/in-memory MCP Server Registry contract and integration planner.
+## 12. Acceptance assets
 
-Production persistence for:
-
-```text
-approved servers
-organization scopes
-auth profile references
-allowed remote-tool patterns
-MCPToolPolicy versions
-admin change audit
-```
-
-belongs in a later control-plane/admin persistence layer. It must preserve the same runtime interfaces.
-
-P0 intentionally avoids introducing a second ad-hoc database schema merely to make the MCP client functional.
-
-## 20. Public MCP server is not NODE-26
-
-NODE-26 implements LUMI as an MCP **client/integration consumer** only.
-
-Exposing LUMI itself as a public MCP server is a separate P2 product/security surface and is not implicitly enabled by these classes.
-
-## 21. Deterministic acceptance
-
-The NODE-26 test suite covers:
-
-- current protocol constants;
-- server registration SSRF checks;
-- request-time DNS/IP revalidation;
-- approved/enabled server requirement;
-- cross-tenant server denial;
-- tenant-bound credentials;
-- 2026 header / `_meta` consistency;
-- no modern session header;
-- independent modern calls served by different instances;
-- discovery metadata cache hit and tenant scoping;
-- discovery cache expiry;
-- no execution-result caching;
-- `server/discover` + `tools/list` path;
-- exact admin policy requirement for discovered tools;
-- server annotations do not control LUMI risk;
-- write MCP policy requires idempotency;
-- NODE-25 HITL runs before MCP write;
-- NODE-20-style replay executes one MCP write;
-- malicious remote names rejected;
-- namespace collision rejected;
-- unsupported schema semantics rejected;
-- `x-mcp-header` rejected;
-- MRTR `input_required` fails closed with sanitized metadata;
-- HTTP authentication failure normalization;
-- raw JSON-RPC error sanitization;
-- direct 2025 legacy initialize/session compatibility;
-- legacy session state isolated from modern path.
-
-The integration smoke additionally proves:
+Canonical active assets:
 
 ```text
-MCP discovery
--> approved ToolDefinitions
--> Tool Gateway read execution
--> modern stateless second instance
--> Tool Gateway HITL for MCP write
--> SideEffect replay
--> Audit without MCP credential leakage
+services/tool-gateway/src/lumi_tool_gateway/mcp/**
+services/tool-gateway/tests/test_mcp_*.py
+scripts/integration_mcp_tool_gateway.py
+tools/node26/validate_mcp.py
+tools/node26/export_mcp_schemas.py
+reports/nodes/NODE-26/acceptance.md
+reports/nodes/NODE-26/gap-ledger.json
+.github/workflows/node-26-mcp-integration.yml
 ```
 
-## 22. CI gates
+The schema exporter emits six contract schemas. The gap ledger contains exactly seven explicit gaps.
 
-NODE-26 has three sequential gates:
+The dedicated hosted workflow is intended to run:
 
 ```text
-mcp-contract
-  Python 3.12 compile
-  MCP architecture/security validator
-
-mcp-security
-  revalidate NODE-25 Tool Gateway contract
-  all Tool Gateway/MCP deterministic tests
-  MCP -> Tool Gateway integration smoke
-
-mcp-quality
-  frozen uv workspace install
-  Ruff
-  Pyright
+frozen uv sync
+compile
+NODE-25 validator recheck
+NODE-26 architecture/security validator
+Tool Gateway + MCP tests
+deterministic MCP→Tool Gateway integration
+6 schema + 7 gap validation
+Ruff
+Pyright
 ```
 
-No live MCP server or credential is required for acceptance.
+No live MCP server or production credential is required for deterministic acceptance.
 
-No hosted PASS may be claimed until GitHub Actions actually receives a runner and executes these jobs.
+## 13. Explicit gaps
 
-## 23. Next node
+The canonical gap ledger owns:
 
-After NODE-26 required gates execute green: **NODE-27 — Cost Ledger**.
+```text
+MCP-COMPOSITION-001
+MCP-TRANSPORT-002
+MCP-SCHEMA-003
+MCP-MRTR-004
+MCP-AUTH-005
+MCP-COMPAT-006
+MCP-CI-007
+```
+
+NODE-26 remains **IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL** until hosted gates actually receive a runner and execute.
+
+## 14. Scope boundary
+
+NODE-26 implements LUMI as an MCP client/integration consumer only. A public LUMI MCP server is a separate P2 surface and is not activated here.
+
+## 15. Next node
+
+**NODE-27 — Cost Ledger**.
