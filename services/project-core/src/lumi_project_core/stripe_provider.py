@@ -91,7 +91,11 @@ class StripePaymentProvider:
             raise BillingError("BILLING_STRIPE_PRICE_NOT_RECURRING", 409)
         if _optional_string(price.get("billing_scheme")) != "per_unit":
             raise BillingError("BILLING_STRIPE_PRICE_BILLING_SCHEME_UNSUPPORTED", 409)
-        currency = _required_string(price, "currency", "BILLING_STRIPE_PRICE_INVALID").upper()
+        currency = _required_string(
+            price,
+            "currency",
+            "BILLING_STRIPE_PRICE_INVALID",
+        ).upper()
         if currency != plan.currency or currency != "USD":
             raise BillingError("BILLING_STRIPE_PRICE_CURRENCY_MISMATCH", 409)
         unit_amount = price.get("unit_amount")
@@ -119,7 +123,12 @@ class StripePaymentProvider:
         )
         return _required_string(body, "id", "BILLING_STRIPE_CUSTOMER_INVALID")
 
-    def create_checkout(self, customer_ref: str, plan: PlanVersion) -> HostedSession:
+    def create_checkout(
+        self,
+        customer_ref: str,
+        plan: PlanVersion,
+        idempotency_key: str | None = None,
+    ) -> HostedSession:
         price_id = self._config.price_ids_by_plan_version.get(plan.plan_version_id)
         if not price_id:
             raise BillingError("BILLING_STRIPE_PRICE_NOT_CONFIGURED", 409)
@@ -140,11 +149,25 @@ class StripePaymentProvider:
             raise BillingError("BILLING_STRIPE_CUSTOMER_ORGANIZATION_MISSING", 409)
         fields.extend(
             [
+                ("client_reference_id", organization_id),
                 ("metadata[organization_id]", organization_id),
                 ("subscription_data[metadata][organization_id]", organization_id),
             ]
         )
-        body = self._api("POST", "/checkout/sessions", fields)
+        stripe_idempotency_key = None
+        if idempotency_key is not None:
+            if not 8 <= len(idempotency_key) <= 128:
+                raise BillingError("BILLING_IDEMPOTENCY_KEY_INVALID", 400)
+            key_digest = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:32]
+            stripe_idempotency_key = (
+                f"lumi-checkout:{customer_ref}:{plan.plan_version_id}:{key_digest}"
+            )[:255]
+        body = self._api(
+            "POST",
+            "/checkout/sessions",
+            fields,
+            idempotency_key=stripe_idempotency_key,
+        )
         return HostedSession(
             provider=self.name,
             session_ref=_required_string(body, "id", "BILLING_STRIPE_CHECKOUT_INVALID"),
@@ -165,7 +188,9 @@ class StripePaymentProvider:
 
     def get_subscription(self, provider_subscription_ref: str) -> ProviderSubscription:
         body = self._api(
-            "GET", f"/subscriptions/{quote(provider_subscription_ref, safe='')}", None
+            "GET",
+            f"/subscriptions/{quote(provider_subscription_ref, safe='')}",
+            None,
         )
         return self._provider_subscription(body)
 
@@ -178,7 +203,9 @@ class StripePaymentProvider:
         return self._provider_subscription(body)
 
     def verify_webhook(
-        self, raw_body: bytes, signature: str
+        self,
+        raw_body: bytes,
+        signature: str,
     ) -> tuple[NormalizedPaymentEvent, str]:
         timestamp, signatures = _parse_signature_header(signature)
         now = int(self._now())
@@ -186,9 +213,13 @@ class StripePaymentProvider:
             raise BillingError("BILLING_WEBHOOK_SIGNATURE_STALE", 401)
         signed_payload = str(timestamp).encode("ascii") + b"." + raw_body
         expected = hmac.new(
-            self._config.webhook_secret.encode("utf-8"), signed_payload, hashlib.sha256
+            self._config.webhook_secret.encode("utf-8"),
+            signed_payload,
+            hashlib.sha256,
         ).hexdigest()
-        if not signatures or not any(hmac.compare_digest(expected, item) for item in signatures):
+        if not signatures or not any(
+            hmac.compare_digest(expected, item) for item in signatures
+        ):
             raise BillingError("BILLING_WEBHOOK_SIGNATURE_INVALID", 401)
         try:
             event = json.loads(raw_body.decode("utf-8"))
@@ -218,7 +249,11 @@ class StripePaymentProvider:
         }:
             metadata = _mapping(obj.get("metadata"))
             organization_id, plan_version_id = _billing_identity(metadata)
-            state = "CANCELLED" if stripe_type.endswith(".deleted") else _subscription_state(obj)
+            state = (
+                "CANCELLED"
+                if stripe_type.endswith(".deleted")
+                else _subscription_state(obj)
+            )
             return NormalizedPaymentEvent(
                 provider=self.name,
                 provider_event_id=event_id,
@@ -233,7 +268,9 @@ class StripePaymentProvider:
                 plan_version_id=plan_version_id,
                 customer_ref=_optional_string(obj.get("customer")),
                 subscription_ref=_required_string(
-                    obj, "id", "BILLING_WEBHOOK_SUBSCRIPTION_INCOMPLETE"
+                    obj,
+                    "id",
+                    "BILLING_WEBHOOK_SUBSCRIPTION_INCOMPLETE",
                 ),
                 subscription_state=state,
                 period_start=_stripe_time(obj.get("current_period_start")),
@@ -244,20 +281,36 @@ class StripePaymentProvider:
             metadata, subscription_ref = _invoice_subscription_identity(obj)
             organization_id, plan_version_id = _billing_identity(metadata)
             amount_due = obj.get("amount_due")
-            if isinstance(amount_due, bool) or not isinstance(amount_due, int) or amount_due < 0:
+            if (
+                isinstance(amount_due, bool)
+                or not isinstance(amount_due, int)
+                or amount_due < 0
+            ):
                 raise BillingError("BILLING_WEBHOOK_INVOICE_INCOMPLETE")
-            currency = _required_string(obj, "currency", "BILLING_WEBHOOK_INVOICE_INCOMPLETE")
+            currency = _required_string(
+                obj,
+                "currency",
+                "BILLING_WEBHOOK_INVOICE_INCOMPLETE",
+            )
             if currency.lower() != "usd":
                 raise BillingError("BILLING_STRIPE_CURRENCY_UNSUPPORTED", 409)
             return NormalizedPaymentEvent(
                 provider=self.name,
                 provider_event_id=event_id,
-                event_type="INVOICE_PAID" if stripe_type == "invoice.paid" else "INVOICE_PAYMENT_FAILED",
+                event_type=(
+                    "INVOICE_PAID"
+                    if stripe_type == "invoice.paid"
+                    else "INVOICE_PAYMENT_FAILED"
+                ),
                 organization_id=organization_id,
                 plan_version_id=plan_version_id,
                 customer_ref=_optional_string(obj.get("customer")),
                 subscription_ref=subscription_ref,
-                invoice_ref=_required_string(obj, "id", "BILLING_WEBHOOK_INVOICE_INCOMPLETE"),
+                invoice_ref=_required_string(
+                    obj,
+                    "id",
+                    "BILLING_WEBHOOK_INVOICE_INCOMPLETE",
+                ),
                 amount_due_microusd=amount_due * 10_000,
                 currency=currency.upper(),
                 hosted_invoice_url=_optional_string(obj.get("hosted_invoice_url")),
@@ -268,7 +321,9 @@ class StripePaymentProvider:
     def _provider_subscription(self, body: dict[str, object]) -> ProviderSubscription:
         return ProviderSubscription(
             provider_subscription_ref=_required_string(
-                body, "id", "BILLING_STRIPE_SUBSCRIPTION_INVALID"
+                body,
+                "id",
+                "BILLING_STRIPE_SUBSCRIPTION_INVALID",
             ),
             state=_subscription_state(body),
             cancel_at_period_end=body.get("cancel_at_period_end") is True,
@@ -439,6 +494,8 @@ def _stripe_error_code(payload: bytes) -> str | None:
         return None
     code = error.get("code")
     if isinstance(code, str) and code:
-        safe = "".join(character if character.isalnum() else "_" for character in code.upper())
+        safe = "".join(
+            character if character.isalnum() else "_" for character in code.upper()
+        )
         return f"BILLING_STRIPE_{safe}"[:128]
     return None
