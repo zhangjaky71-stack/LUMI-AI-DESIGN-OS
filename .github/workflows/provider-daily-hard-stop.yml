@@ -22,6 +22,7 @@ on:
       - "scripts/validate_stripe_billing_runtime.py"
       - "scripts/integration_provider_daily_hard_stop.py"
       - "scripts/integration_stripe_billing_runtime.py"
+      - "scripts/verify_stripe_live_purchase_db.py"
       - "scripts/alert-delivery-drill.sh"
       - "scripts/ecs-rollback-to-state.sh"
       - "docs/operations/PROVIDER-DAILY-HARD-STOP.md"
@@ -67,6 +68,7 @@ jobs:
           scripts/validate_stripe_billing_runtime.py
           scripts/integration_provider_daily_hard_stop.py
           scripts/integration_stripe_billing_runtime.py
+          scripts/verify_stripe_live_purchase_db.py
       - name: Validate shell drill syntax
         run: >-
           bash -n
@@ -128,6 +130,7 @@ jobs:
           scripts/validate_stripe_billing_runtime.py
           scripts/integration_provider_daily_hard_stop.py
           scripts/integration_stripe_billing_runtime.py
+          scripts/verify_stripe_live_purchase_db.py
       - name: Pyright hard-stop gate
         run: >-
           uv run pyright
@@ -143,6 +146,7 @@ jobs:
           services/project-core/tests/test_stripe_provider.py
           scripts/integration_provider_daily_hard_stop.py
           scripts/integration_stripe_billing_runtime.py
+          scripts/verify_stripe_live_purchase_db.py
       - name: Model Gateway production guard unit tests
         run: >-
           PYTHONPATH=services/model-gateway/src
