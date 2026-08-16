@@ -82,14 +82,12 @@ class LumiToolGatewayProvider:
         allowed_tools: tuple[str, ...],
     ) -> tuple[Any, ...]:
         return tuple(
-            [
-                await self._tool(
-                    canonical_name=name,
-                    context=context,
-                    actor_agent=context.root_agent,
-                )
-                for name in allowed_tools
-            ]
+            await self._tool(
+                canonical_name=name,
+                context=context,
+                actor_agent=context.root_agent,
+            )
+            for name in allowed_tools
         )
 
     async def tools_for_subagent(
@@ -100,14 +98,12 @@ class LumiToolGatewayProvider:
         allowed_tools: tuple[str, ...],
     ) -> tuple[Any, ...]:
         return tuple(
-            [
-                await self._tool(
-                    canonical_name=name,
-                    context=context,
-                    actor_agent=definition.agent_id,
-                )
-                for name in allowed_tools
-            ]
+            await self._tool(
+                canonical_name=name,
+                context=context,
+                actor_agent=definition.agent_id,
+            )
+            for name in allowed_tools
         )
 
     async def _tool(
@@ -121,7 +117,9 @@ class LumiToolGatewayProvider:
             raise DeepAgentToolScopeError(f"tool not granted: {canonical_name}")
         definition = await self.definitions.resolve(canonical_name)
         if definition.name != canonical_name:
-            raise DeepAgentToolScopeError("tool catalog returned a different canonical name")
+            raise DeepAgentToolScopeError(
+                "tool catalog returned a different canonical name"
+            )
         injected_type, structured_tool_type = _langchain_tool_types()
 
         async def call(payload: dict[str, Any], tool_call_id: str) -> Any:
@@ -130,10 +128,13 @@ class LumiToolGatewayProvider:
             reserved = _reserved_keys(payload)
             if reserved:
                 raise DeepAgentToolScopeError(
-                    "model payload attempted scope injection: " + ",".join(sorted(reserved))
+                    "model payload attempted scope injection: "
+                    + ",".join(sorted(reserved))
                 )
             if not tool_call_id or len(tool_call_id) > 512:
-                raise DeepAgentToolScopeError("stable framework tool_call_id is required")
+                raise DeepAgentToolScopeError(
+                    "stable framework tool_call_id is required"
+                )
             await self.budget.before_tool_call(
                 context=context,
                 actor_agent=actor_agent,
@@ -194,7 +195,10 @@ class LumiToolGatewayProvider:
         return tool
 
 
-def assert_gateway_tools(tools: tuple[Any, ...], expected: tuple[str, ...]) -> tuple[str, ...]:
+def assert_gateway_tools(
+    tools: tuple[Any, ...],
+    expected: tuple[str, ...],
+) -> tuple[str, ...]:
     versions: list[str] = []
     names: list[str] = []
     for tool in tools:
@@ -207,7 +211,9 @@ def assert_gateway_tools(tools: tuple[Any, ...], expected: tuple[str, ...]) -> t
         names.append(name)
         versions.append(f"{name}@{version}")
     if tuple(names) != expected:
-        raise DeepAgentToolScopeError(f"unexpected tool scope: {names!r} != {expected!r}")
+        raise DeepAgentToolScopeError(
+            f"unexpected tool scope: {names!r} != {expected!r}"
+        )
     return tuple(versions)
 
 
@@ -275,7 +281,8 @@ def _trusted_description(definition: BoundToolDefinition) -> str:
     return (
         f"{definition.description}\n"
         f"Canonical LUMI tool: {definition.name}@{definition.version}. "
-        "Pass business arguments only inside `payload`; tenant/run/task scope is server-injected. "
+        "Pass business arguments only inside `payload`; tenant/run/task scope "
+        "is server-injected. "
         f"Trusted input schema: {schema}"
     )
 
@@ -284,4 +291,6 @@ def _mark(obj: Any, name: str, value: Any) -> None:
     try:
         object.__setattr__(obj, name, value)
     except Exception as exc:
-        raise DeepAgentToolScopeError("cannot mark trusted Tool Gateway wrapper") from exc
+        raise DeepAgentToolScopeError(
+            "cannot mark trusted Tool Gateway wrapper"
+        ) from exc
