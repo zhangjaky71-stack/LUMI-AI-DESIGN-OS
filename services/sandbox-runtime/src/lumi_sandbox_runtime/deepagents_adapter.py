@@ -40,7 +40,11 @@ class DeepAgentsCommandRejected(ValueError):
 class _LoopBridge:
     def __init__(self) -> None:
         self.loop = asyncio.new_event_loop()
-        self.thread = threading.Thread(target=self._run, name="lumi-sandbox-loop", daemon=True)
+        self.thread = threading.Thread(
+            target=self._run,
+            name="lumi-sandbox-loop",
+            daemon=True,
+        )
         self.thread.start()
 
     def _run(self) -> None:
@@ -57,6 +61,8 @@ class _LoopBridge:
         return await asyncio.wrap_future(self.submit(coroutine))
 
     def close(self) -> None:
+        if self.loop.is_closed():
+            return
         self.loop.call_soon_threadsafe(self.loop.stop)
         self.thread.join(timeout=5)
         self.loop.close()
@@ -71,15 +77,18 @@ def parse_deepagents_command(command: str) -> tuple[str, ...]:
     if not tokens:
         raise DeepAgentsCommandRejected("command is empty")
     if any(token in _SHELL_OPERATORS for token in tokens):
-        raise DeepAgentsCommandRejected("shell operators are not allowed; execute one approved command at a time")
+        raise DeepAgentsCommandRejected(
+            "shell operators are not allowed; execute one approved command at a time"
+        )
     return tokens
 
 
 class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
-    """Deep Agents backend backed by a LUMI isolated sandbox.
+    """Deep Agents protocol adapter backed by the isolated LUMI sandbox runtime.
 
-    The adapter owns a dedicated event-loop thread so both the synchronous and asynchronous
-    Deep Agents APIs use the same sandbox loop and never deadlock a caller's event loop.
+    Both sync and async Deep Agents methods are bridged to one dedicated asyncio loop. File
+    operations are implemented through the safe workspace API and never through shell
+    redirection or host filesystem calls.
     """
 
     def __init__(
@@ -130,7 +139,9 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
     async def aexecute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
         return await self._bridge.arun(self._aexecute_impl(command, timeout=timeout))
 
-    async def _aexecute_impl(self, command: str, *, timeout: int | None) -> ExecuteResponse:
+    async def _aexecute_impl(
+        self, command: str, *, timeout: int | None
+    ) -> ExecuteResponse:
         argv = parse_deepagents_command(command)
         result = await self._runtime.exec(
             self._sandbox_id,
@@ -156,12 +167,18 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
         mapped = self._map_path(path)
         try:
             entries = await self._runtime.list_files(
-                self._sandbox_id, mapped, context=self._context
+                self._sandbox_id,
+                mapped,
+                context=self._context,
             )
         except Exception as exc:
             return LsResult(error=str(exc), entries=None)
         infos: list[FileInfo] = [
-            {"path": entry.path, "is_dir": entry.is_directory, "size": entry.size}
+            {
+                "path": entry.path,
+                "is_dir": entry.is_directory,
+                "size": entry.size,
+            }
             for entry in entries
         ]
         return LsResult(entries=infos)
@@ -169,14 +186,26 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
     def read(self, file_path: str, offset: int = 0, limit: int = 2000) -> ReadResult:
         return self._bridge.run(self._aread_impl(file_path, offset, limit))
 
-    async def aread(self, file_path: str, offset: int = 0, limit: int = 2000) -> ReadResult:
+    async def aread(
+        self,
+        file_path: str,
+        offset: int = 0,
+        limit: int = 2000,
+    ) -> ReadResult:
         return await self._bridge.arun(self._aread_impl(file_path, offset, limit))
 
-    async def _aread_impl(self, file_path: str, offset: int, limit: int) -> ReadResult:
+    async def _aread_impl(
+        self,
+        file_path: str,
+        offset: int,
+        limit: int,
+    ) -> ReadResult:
         mapped = self._map_path(file_path)
         try:
             payload = await self._runtime.read_file(
-                self._sandbox_id, mapped, context=self._context
+                self._sandbox_id,
+                mapped,
+                context=self._context,
             )
         except Exception as exc:
             return ReadResult(error=str(exc))
@@ -190,11 +219,9 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
                 }
             )
         lines = text.splitlines(keepends=True)
-        if not lines:
-            return ReadResult(file_data={"content": "", "encoding": "utf-8"})
         if offset < 0 or limit <= 0:
             return ReadResult(error="offset must be >= 0 and limit must be > 0")
-        if offset >= len(lines):
+        if not lines or offset >= len(lines):
             return ReadResult(file_data={"content": "", "encoding": "utf-8"})
         selected = lines[offset : offset + limit]
         start_line = offset + 1
@@ -261,7 +288,9 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
         mapped = self._map_path(file_path)
         try:
             payload = await self._runtime.read_file(
-                self._sandbox_id, mapped, context=self._context
+                self._sandbox_id,
+                mapped,
+                context=self._context,
             )
             text = payload.decode("utf-8")
         except Exception as exc:
@@ -270,7 +299,9 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
         if count == 0:
             return EditResult(error="old_string not found")
         if not replace_all and count != 1:
-            return EditResult(error="old_string must be unique unless replace_all=true")
+            return EditResult(
+                error="old_string must be unique unless replace_all=true"
+            )
         updated = text.replace(old_string, new_string, -1 if replace_all else 1)
         try:
             await self._runtime.write_file(
@@ -292,7 +323,7 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
     async def _aglob_impl(self, pattern: str, path: str | None) -> GlobResult:
         root = self._map_path(path or "/")
         try:
-            files = await self._walk(root)
+            files, walk_truncated = await self._walk(root)
         except Exception as exc:
             return GlobResult(error=str(exc), matches=None)
         matches: list[FileInfo] = []
@@ -301,7 +332,7 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
             relative = candidate.removeprefix(root.rstrip("/") + "/")
             if fnmatch.fnmatch(relative, pattern) or fnmatch.fnmatch(candidate, pattern):
                 matches.append(info)
-        return GlobResult(matches=matches, truncated=False)
+        return GlobResult(matches=matches, truncated=walk_truncated)
 
     def grep(
         self,
@@ -330,13 +361,14 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
         glob_pattern: str | None,
         max_count: int | None,
     ) -> GrepResult:
+        if max_count is not None and max_count <= 0:
+            return GrepResult(error="max_count must be > 0", matches=None)
         root = self._map_path(path or "/")
         try:
-            files = await self._walk(root)
+            files, walk_truncated = await self._walk(root)
         except Exception as exc:
             return GrepResult(error=str(exc), matches=None)
         matches: list[GrepMatch] = []
-        truncated = False
         for info in files:
             if info.get("is_dir"):
                 continue
@@ -349,34 +381,52 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
                 continue
             try:
                 payload = await self._runtime.read_file(
-                    self._sandbox_id, candidate, context=self._context
+                    self._sandbox_id,
+                    candidate,
+                    context=self._context,
                 )
                 text = payload.decode("utf-8")
-            except (UnicodeDecodeError, Exception):
+            except Exception:
                 continue
             for line_number, line in enumerate(text.splitlines(), start=1):
-                if pattern in line:
-                    matches.append({"path": candidate, "line": line_number, "text": line})
-                    if max_count is not None and len(matches) >= max_count:
-                        truncated = True
-                        return GrepResult(matches=matches, truncated=truncated)
-        return GrepResult(matches=matches, truncated=truncated)
+                if pattern not in line:
+                    continue
+                matches.append(
+                    {
+                        "path": candidate,
+                        "line": line_number,
+                        "text": line,
+                    }
+                )
+                if max_count is not None and len(matches) > max_count:
+                    return GrepResult(
+                        matches=matches[:max_count],
+                        truncated=True,
+                    )
+        return GrepResult(matches=matches, truncated=walk_truncated)
 
     def upload_files(self, files: list[tuple[str, bytes]]) -> list[FileUploadResponse]:
         return self._bridge.run(self._aupload_files_impl(files))
 
-    async def aupload_files(self, files: list[tuple[str, bytes]]) -> list[FileUploadResponse]:
+    async def aupload_files(
+        self,
+        files: list[tuple[str, bytes]],
+    ) -> list[FileUploadResponse]:
         return await self._bridge.arun(self._aupload_files_impl(files))
 
     async def _aupload_files_impl(
-        self, files: list[tuple[str, bytes]]
+        self,
+        files: list[tuple[str, bytes]],
     ) -> list[FileUploadResponse]:
         responses: list[FileUploadResponse] = []
         for path, content in files:
             mapped = self._map_path(path)
             try:
                 await self._runtime.write_file(
-                    self._sandbox_id, mapped, content, context=self._context
+                    self._sandbox_id,
+                    mapped,
+                    content,
+                    context=self._context,
                 )
             except Exception as exc:
                 responses.append(FileUploadResponse(path=path, error=str(exc)))
@@ -387,16 +437,24 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
     def download_files(self, paths: list[str]) -> list[FileDownloadResponse]:
         return self._bridge.run(self._adownload_files_impl(paths))
 
-    async def adownload_files(self, paths: list[str]) -> list[FileDownloadResponse]:
+    async def adownload_files(
+        self,
+        paths: list[str],
+    ) -> list[FileDownloadResponse]:
         return await self._bridge.arun(self._adownload_files_impl(paths))
 
-    async def _adownload_files_impl(self, paths: list[str]) -> list[FileDownloadResponse]:
+    async def _adownload_files_impl(
+        self,
+        paths: list[str],
+    ) -> list[FileDownloadResponse]:
         responses: list[FileDownloadResponse] = []
         for path in paths:
             mapped = self._map_path(path)
             try:
                 content = await self._runtime.read_file(
-                    self._sandbox_id, mapped, context=self._context
+                    self._sandbox_id,
+                    mapped,
+                    context=self._context,
                 )
             except Exception as exc:
                 responses.append(FileDownloadResponse(path=path, error=str(exc)))
@@ -409,7 +467,10 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
             return
         try:
             self._bridge.run(
-                self._runtime.terminate(self._sandbox_id, context=self._context)
+                self._runtime.terminate(
+                    self._sandbox_id,
+                    context=self._context,
+                )
             )
         finally:
             self._closed = True
@@ -421,13 +482,20 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
     def __exit__(self, *_exc: object) -> None:
         self.close()
 
-    async def _walk(self, root: str, *, max_entries: int = 5000) -> list[FileInfo]:
+    async def _walk(
+        self,
+        root: str,
+        *,
+        max_entries: int = 5000,
+    ) -> tuple[list[FileInfo], bool]:
         pending = [root]
         results: list[FileInfo] = []
         while pending:
             current = pending.pop()
             entries = await self._runtime.list_files(
-                self._sandbox_id, current, context=self._context
+                self._sandbox_id,
+                current,
+                context=self._context,
             )
             for entry in entries:
                 info: FileInfo = {
@@ -437,16 +505,18 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
                 }
                 results.append(info)
                 if len(results) >= max_entries:
-                    return results
+                    return results, True
                 if entry.is_directory:
                     pending.append(entry.path)
-        return results
+        return results, False
 
     @staticmethod
     def _map_path(path: str) -> str:
         if path in {"", "/", "/workspace", "/workspace/"}:
             return "/workspace/work"
-        if path.startswith("/workspace/input/") or path.startswith("/workspace/work/") or path.startswith("/workspace/output/"):
+        if path.startswith(
+            ("/workspace/input/", "/workspace/work/", "/workspace/output/")
+        ):
             return path
         if path.startswith("/"):
             return "/workspace/work/" + path.lstrip("/")
