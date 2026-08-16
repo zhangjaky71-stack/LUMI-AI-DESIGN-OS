@@ -21,6 +21,10 @@ from .models import (
 
 
 class ProjectRepository(Protocol):
+    def workspace_exists(self, organization_id: UUID, workspace_id: UUID) -> bool: ...
+
+    def brand_exists(self, organization_id: UUID, brand_id: UUID) -> bool: ...
+
     def get(self, organization_id: UUID, project_id: UUID) -> ProjectRecord | None: ...
 
     def list(self, query: ProjectListQuery) -> ProjectPage: ...
@@ -55,6 +59,20 @@ class MemoryProjectRepository(ProjectRepository):
     branches: dict[UUID, DefaultProjectBranch] = field(default_factory=dict)
     summaries: dict[UUID, ProjectSummary] = field(default_factory=dict)
     outbox: list[ProjectEvent] = field(default_factory=list)
+    workspace_organizations: dict[UUID, UUID] = field(default_factory=dict)
+    brand_organizations: dict[UUID, UUID] = field(default_factory=dict)
+
+    def register_workspace(self, organization_id: UUID, workspace_id: UUID) -> None:
+        self.workspace_organizations[workspace_id] = organization_id
+
+    def register_brand(self, organization_id: UUID, brand_id: UUID) -> None:
+        self.brand_organizations[brand_id] = organization_id
+
+    def workspace_exists(self, organization_id: UUID, workspace_id: UUID) -> bool:
+        return self.workspace_organizations.get(workspace_id) == organization_id
+
+    def brand_exists(self, organization_id: UUID, brand_id: UUID) -> bool:
+        return self.brand_organizations.get(brand_id) == organization_id
 
     def get(self, organization_id: UUID, project_id: UUID) -> ProjectRecord | None:
         project = self.projects.get(project_id)
