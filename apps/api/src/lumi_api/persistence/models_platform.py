@@ -47,8 +47,8 @@ class CostLedgerModel(Base, UUIDPrimaryKeyMixin, TenantMixin, CreatedAtMixin):
     reverses_entry_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("cost_ledger.id", ondelete="RESTRICT"), nullable=True
     )
-    provider: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    model: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    provider: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     entry_type: Mapped[str] = mapped_column(String(32), nullable=False)
     entry_key: Mapped[str] = mapped_column(String(128), nullable=False, server_default="primary")
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
