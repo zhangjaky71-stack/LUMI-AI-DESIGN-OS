@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .contracts import AgentTaskResult, AgentTaskStatus, DeepAgentInvocationContext
+from .contracts import (
+    AgentTaskResult,
+    AgentTaskStatus,
+    DeepAgentInvocationContext,
+)
 from .errors import DeepAgentStructuredOutputError
 from .ports import StructuredOutputRepairer
 
@@ -26,11 +30,26 @@ AGENT_TASK_RESULT_SCHEMA: dict[str, Any] = {
             "enum": [item.value for item in AgentTaskStatus],
         },
         "summary": {"type": "string"},
-        "decisions": {"type": "array", "items": {"type": "string"}},
-        "artifact_refs": {"type": "array", "items": {"type": "string"}},
-        "knowledge_refs": {"type": "array", "items": {"type": "string"}},
-        "proposed_operations": {"type": "array", "items": {"type": "object"}},
-        "open_questions": {"type": "array", "items": {"type": "string"}},
+        "decisions": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "artifact_refs": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "knowledge_refs": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "proposed_operations": {
+            "type": "array",
+            "items": {"type": "object"},
+        },
+        "open_questions": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
         "confidence": {"type": ["string", "number"]},
     },
 }
@@ -51,7 +70,9 @@ class StructuredResultParser:
             return _parse(candidate)
         except (TypeError, ValueError, KeyError) as exc:
             if self.repairer is None:
-                raise DeepAgentStructuredOutputError("structured task result invalid") from exc
+                raise DeepAgentStructuredOutputError(
+                    "structured task result invalid"
+                ) from exc
             repaired = await self.repairer.repair(
                 context=context,
                 invalid_value=candidate,
@@ -71,9 +92,10 @@ def _candidate(raw_result: Any) -> Any:
     if isinstance(raw_result, dict):
         messages = raw_result.get("messages")
         if isinstance(messages, list) and messages:
-            content = getattr(messages[-1], "content", None)
-            if content is None and isinstance(messages[-1], dict):
-                content = messages[-1].get("content")
+            last = messages[-1]
+            content = getattr(last, "content", None)
+            if content is None and isinstance(last, dict):
+                content = last.get("content")
             return _decode(content)
     return _decode(raw_result)
 
@@ -102,11 +124,21 @@ def _parse(value: Any) -> AgentTaskResult:
     return AgentTaskResult(
         status=AgentTaskStatus(str(value["status"])),
         summary=str(value["summary"]),
-        decisions=tuple(str(item) for item in _list(value["decisions"])),
-        artifact_refs=tuple(str(item) for item in _list(value["artifact_refs"])),
-        knowledge_refs=tuple(str(item) for item in _list(value["knowledge_refs"])),
-        proposed_operations=tuple(_dict(item) for item in _list(value["proposed_operations"])),
-        open_questions=tuple(str(item) for item in _list(value["open_questions"])),
+        decisions=tuple(
+            str(item) for item in _list(value["decisions"])
+        ),
+        artifact_refs=tuple(
+            str(item) for item in _list(value["artifact_refs"])
+        ),
+        knowledge_refs=tuple(
+            str(item) for item in _list(value["knowledge_refs"])
+        ),
+        proposed_operations=tuple(
+            _dict(item) for item in _list(value["proposed_operations"])
+        ),
+        open_questions=tuple(
+            str(item) for item in _list(value["open_questions"])
+        ),
         confidence=str(value["confidence"]),
     )
 
