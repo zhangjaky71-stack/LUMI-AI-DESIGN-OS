@@ -103,6 +103,27 @@ class MemoryIdempotencyStore:
             self.records[key] = claimed
             return AcquireResult(action=AcquireAction.RECOVER, operation=claimed)
 
+    async def renew_lease(
+        self,
+        organization_id: UUID,
+        operation_id: UUID,
+        *,
+        lease_owner: str,
+        lease_seconds: int,
+        now: datetime,
+    ) -> IdempotencyOperation:
+        async with self._lock:
+            record, key = self._owned(organization_id, operation_id, lease_owner)
+            updated = record.model_copy(
+                update={
+                    "lease_expires_at": lease_expiry(now, lease_seconds),
+                    "updated_at": now,
+                    "version": record.version + 1,
+                }
+            )
+            self.records[key] = updated
+            return updated
+
     async def record_provider_request(
         self,
         organization_id: UUID,
