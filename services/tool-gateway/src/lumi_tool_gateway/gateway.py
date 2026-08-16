@@ -20,6 +20,7 @@ from .contracts import (
 from .errors import (
     ToolAdapterExecutionError,
     ToolApprovalDeniedError,
+    ToolAuditSinkRequiredError,
     ToolGatewayError,
     ToolIdempotencyRequiredError,
     ToolInternalError,
@@ -54,6 +55,7 @@ class ToolGateway:
         self.approval_resolver = approval_resolver
         self.side_effect_guard = side_effect_guard
         self.result_offloader = result_offloader
+        self._audit_enabled = audit_sink is not None
         self.audit_sink = audit_sink or NullAuditSink()
         self.schema_validator = schema_validator or SchemaValidator()
 
@@ -63,7 +65,14 @@ class ToolGateway:
         approval_id: str | None = None
         try:
             self.permission_policy.require(definition, request.permission_context)
-            self.schema_validator.validate_input(definition.input_schema, request.arguments)
+            self.schema_validator.validate_input(
+                definition.input_schema,
+                request.arguments,
+            )
+            if definition.is_write and not self._audit_enabled:
+                raise ToolAuditSinkRequiredError(
+                    f"audit sink required before write-class tool {definition.key}"
+                )
 
             approval = await self._approval(definition, request)
             approval_id = approval.approval_id
@@ -94,10 +103,15 @@ class ToolGateway:
 
             adapter = self.adapters.get(definition.key)
             if adapter is None:
-                raise ToolGatewayError(f"TOOL_ADAPTER_NOT_REGISTERED:{resolved_tool}")
+                raise ToolGatewayError(
+                    f"TOOL_ADAPTER_NOT_REGISTERED:{resolved_tool}"
+                )
 
             response = await self._execute(definition, request, adapter)
-            self.schema_validator.validate_output(definition.output_schema, response.output.data)
+            self.schema_validator.validate_output(
+                definition.output_schema,
+                response.output.data,
+            )
             result = await self._normalize_result(
                 definition=definition,
                 request=request,
@@ -130,7 +144,9 @@ class ToolGateway:
                 error_code=ToolInternalError.code,
                 approval_id=approval_id,
             )
-            raise ToolInternalError("unexpected Tool Gateway execution failure") from exc
+            raise ToolInternalError(
+                "unexpected Tool Gateway execution failure"
+            ) from exc
 
     async def _approval(
         self,
@@ -177,7 +193,10 @@ class ToolGateway:
                 ) from exc
 
         if definition.idempotency == ToolIdempotency.NOT_REQUIRED:
-            return ToolSideEffectResponse(await call_adapter(), replayed=False)
+            return ToolSideEffectResponse(
+                await call_adapter(),
+                replayed=False,
+            )
         if not request.idempotency_key:
             raise ToolIdempotencyRequiredError(
                 f"idempotency key required for {definition.key}"
@@ -188,7 +207,7 @@ class ToolGateway:
             )
         context = ToolSideEffectContext(
             organization_id=request.organization_id,
-            operation_type=f"tool:{definition.name}:{definition.version}",
+            operation_type=definition.operation_type,
             idempotency_key=request.idempotency_key,
             request={
                 "tool": definition.key,
@@ -199,7 +218,10 @@ class ToolGateway:
             },
             business_scope_id=request.task_id,
         )
-        return await self.side_effect_guard.execute(context, call_adapter)
+        return await self.side_effect_guard.execute(
+            context,
+            call_adapter,
+        )
 
     async def _normalize_result(
         self,
@@ -238,7 +260,10 @@ class ToolGateway:
             status=ToolCallStatus.SUCCEEDED,
             resolved_name=definition.name,
             resolved_version=definition.version,
-            summary=output.summary or "Full tool result stored outside Agent context.",
+            summary=(
+                output.summary
+                or "Full tool result stored outside Agent context."
+            ),
             data=_inline_preview(output.data),
             resource_refs=output.resource_refs,
             truncated=True,
@@ -323,7 +348,10 @@ def _inline_preview(value: Any, *, depth: int = 0) -> Any:
             for key, child in list(value.items())[:20]
         }
     if isinstance(value, list):
-        return [_inline_preview(child, depth=depth + 1) for child in value[:20]]
+        return [
+            _inline_preview(child, depth=depth + 1)
+            for child in value[:20]
+        ]
     if isinstance(value, str) and len(value) > 1024:
         return value[:1024] + "…"
     return value
