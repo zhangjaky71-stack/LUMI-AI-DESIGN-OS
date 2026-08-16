@@ -86,13 +86,17 @@ def load_snapshot() -> str:
 
 def assert_metadata_contract() -> None:
     tables = Base.metadata.tables
-    assert set(tables) == EXPECTED_TABLES
+    current = set(tables)
+    missing = EXPECTED_TABLES - current
+    assert not missing, f"current metadata lost NODE-10 baseline tables: {sorted(missing)}"
 
     for table_name in TENANT_TABLES:
         column = tables[table_name].columns.get("organization_id")
         assert column is not None, f"{table_name} must carry organization_id"
         assert not column.nullable, f"{table_name}.organization_id must be NOT NULL"
 
+    # Numeric safety is a forward-compatible global invariant, so inspect all
+    # currently registered tables rather than only the frozen NODE-10 set.
     for table in tables.values():
         for column in table.columns:
             assert not isinstance(column.type, Float), (
@@ -163,10 +167,13 @@ def main() -> None:
     snapshot = load_snapshot()
     assert_frozen_snapshot_contract(snapshot)
     assert_revision_is_frozen()
+    current_table_count = len(Base.metadata.tables)
     print(
         "NODE-10 schema validation PASS: "
-        f"{len(EXPECTED_TABLES)} tables, {len(TENANT_TABLES)} tenant tables, "
-        "exact money, frozen migration, RLS, DAG/lineage, immutability, "
+        f"{len(EXPECTED_TABLES)} frozen baseline tables preserved; "
+        f"{current_table_count} current metadata tables compile; "
+        f"{len(TENANT_TABLES)} baseline tenant tables retain exact RLS snapshot; "
+        "exact money, frozen migration, DAG/lineage, immutability, "
         "tenant-reference guards, outbox/idempotency"
     )
 
