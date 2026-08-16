@@ -51,6 +51,7 @@ class ProviderHealthPolicy:
     recovering_successes_to_close: int = 2
     recovering_max_probes: int = 1
     degraded_latency_p95_ms: int = 8_000
+    degraded_queue_completion_p95_ms: int = 180_000
     state_ttl_seconds: float = 600.0
     unknown_score: int = 55
     recovering_score: int = 15
@@ -58,6 +59,11 @@ class ProviderHealthPolicy:
     def __post_init__(self) -> None:
         if self.window_seconds <= 0 or self.state_ttl_seconds <= 0:
             raise ValueError("PROVIDER_HEALTH_WINDOW_INVALID")
+        if self.state_ttl_seconds < max(
+            self.window_seconds,
+            self.open_cooldown_seconds,
+        ):
+            raise ValueError("PROVIDER_HEALTH_STATE_TTL_TOO_SHORT")
         if self.max_samples < 1 or self.minimum_samples < 1:
             raise ValueError("PROVIDER_HEALTH_SAMPLE_LIMIT_INVALID")
         if self.minimum_samples > self.max_samples:
@@ -67,17 +73,29 @@ class ProviderHealthPolicy:
             (self.degraded_rate_limit_rate, self.open_rate_limit_rate),
             (self.degraded_timeout_rate, self.open_timeout_rate),
         )
-        if any(not 0 <= degraded <= opened <= 1 for degraded, opened in pairs):
+        if any(
+            not 0 <= degraded <= opened <= 1
+            for degraded, opened in pairs
+        ):
             raise ValueError("PROVIDER_HEALTH_RATE_THRESHOLD_INVALID")
         if self.consecutive_failures_open < 1:
             raise ValueError("PROVIDER_HEALTH_CONSECUTIVE_FAILURES_INVALID")
         if self.open_cooldown_seconds <= 0:
             raise ValueError("PROVIDER_HEALTH_COOLDOWN_INVALID")
-        if self.recovering_successes_to_close < 1 or self.recovering_max_probes < 1:
+        if (
+            self.recovering_successes_to_close < 1
+            or self.recovering_max_probes < 1
+        ):
             raise ValueError("PROVIDER_HEALTH_RECOVERY_POLICY_INVALID")
-        if self.degraded_latency_p95_ms < 1:
+        if (
+            self.degraded_latency_p95_ms < 1
+            or self.degraded_queue_completion_p95_ms < 1
+        ):
             raise ValueError("PROVIDER_HEALTH_LATENCY_INVALID")
-        if not 1 <= self.unknown_score <= 99 or not 1 <= self.recovering_score <= 99:
+        if (
+            not 1 <= self.unknown_score <= 99
+            or not 1 <= self.recovering_score <= 99
+        ):
             raise ValueError("PROVIDER_HEALTH_SCORE_INVALID")
 
 
@@ -93,7 +111,10 @@ class CapacityHint:
             raise ValueError("PROVIDER_HEALTH_CAPACITY_REMAINING_INVALID")
         if self.limit is not None and self.limit < 0:
             raise ValueError("PROVIDER_HEALTH_CAPACITY_LIMIT_INVALID")
-        if self.retry_after_seconds is not None and self.retry_after_seconds < 0:
+        if (
+            self.retry_after_seconds is not None
+            and self.retry_after_seconds < 0
+        ):
             raise ValueError("PROVIDER_HEALTH_RETRY_AFTER_INVALID")
 
 
@@ -111,6 +132,7 @@ class ProviderHealthSnapshot:
     timeout_rate: float
     latency_p50_ms: int | None
     latency_p95_ms: int | None
+    queue_completion_p95_ms: int | None
     consecutive_failures: int
     open_until_epoch: float | None
     recovering_inflight: int
@@ -212,9 +234,9 @@ _TIMEOUT = frozenset({"timeout"})
 class AdaptiveProviderHealthRegistry:
     """Shared-store-backed operational health and circuit breaker.
 
-    Health is deliberately soft state. Store loss returns UNKNOWN and never blocks business
-    correctness. The store is expected to be Redis in a multi-replica deployment and the
-    in-memory implementation in deterministic tests.
+    Health is soft state. Store loss returns UNKNOWN and never blocks business
+    correctness. Redis is the intended multi-replica store; the memory store is
+    the deterministic reference for tests and single-process development.
     """
 
     def __init__(
@@ -223,7 +245,10 @@ class AdaptiveProviderHealthRegistry:
         store: HealthStateStore,
         policy: ProviderHealthPolicy | None = None,
         clock: HealthClock | None = None,
-        policy_resolver: Callable[[str, str | None, str | None], ProviderHealthPolicy]
+        policy_resolver: Callable[
+            [str, str | None, str | None],
+            ProviderHealthPolicy,
+        ]
         | None = None,
         transition_sink: ProviderHealthTransitionSink | None = None,
         audit_sink: ProviderHealthAuditSink | None = None,
@@ -235,6 +260,8 @@ class AdaptiveProviderHealthRegistry:
         self.transition_sink = transition_sink
         self.audit_sink = audit_sink
         self.store_error_total = 0
+        self.fallback_total = 0
+        self.all_candidates_unavailable_total = 0
 
     def snapshot(
         self,
@@ -242,7 +269,11 @@ class AdaptiveProviderHealthRegistry:
         model: str,
         capability: str | None = None,
     ) -> HealthSnapshot:
-        return self.detailed_snapshot(provider, model, capability).to_gateway_snapshot()
+        return self.detailed_snapshot(
+            provider,
+            model,
+            capability,
+        ).to_gateway_snapshot()
 
     def detailed_snapshot(
         self,
@@ -252,13 +283,28 @@ class AdaptiveProviderHealthRegistry:
     ) -> ProviderHealthSnapshot:
         now = self.clock.now()
         try:
-            provider_snapshot = self._scope_snapshot(provider, None, None, now)
+            provider_snapshot = self._scope_snapshot(
+                provider,
+                None,
+                None,
+                now,
+            )
             endpoint_snapshot = (
                 None
                 if model is None
-                else self._scope_snapshot(provider, model, capability, now)
+                else self._scope_snapshot(
+                    provider,
+                    model,
+                    capability,
+                    now,
+                )
             )
-            override = self._effective_override(provider, model, capability, now)
+            override = self._effective_override(
+                provider,
+                model,
+                capability,
+                now,
+            )
         except Exception:
             self.store_error_total += 1
             return self._unknown_snapshot(
@@ -269,7 +315,10 @@ class AdaptiveProviderHealthRegistry:
                 reason="health_store_unavailable",
                 store_available=False,
             )
-        combined = _combine_snapshots(provider_snapshot, endpoint_snapshot)
+        combined = _combine_snapshots(
+            provider_snapshot,
+            endpoint_snapshot,
+        )
         if override is None:
             return combined
         mode = ManualOverrideMode(str(override["mode"]))
@@ -279,7 +328,11 @@ class AdaptiveProviderHealthRegistry:
             if mode is ManualOverrideMode.DISABLED
             else ProviderHealthState.DEGRADED
         )
-        score = 0 if state is ProviderHealthState.DISABLED else min(combined.score, 35)
+        score = (
+            0
+            if state is ProviderHealthState.DISABLED
+            else min(combined.score, 35)
+        )
         return ProviderHealthSnapshot(
             provider=provider,
             model=model,
@@ -293,12 +346,16 @@ class AdaptiveProviderHealthRegistry:
             timeout_rate=combined.timeout_rate,
             latency_p50_ms=combined.latency_p50_ms,
             latency_p95_ms=combined.latency_p95_ms,
+            queue_completion_p95_ms=combined.queue_completion_p95_ms,
             consecutive_failures=combined.consecutive_failures,
             open_until_epoch=combined.open_until_epoch,
             recovering_inflight=combined.recovering_inflight,
             recovering_successes=combined.recovering_successes,
             capacity_hint=combined.capacity_hint,
-            updated_at_epoch=max(combined.updated_at_epoch, float(override["updated_at"])),
+            updated_at_epoch=max(
+                combined.updated_at_epoch,
+                float(override["updated_at"]),
+            ),
             reason=f"manual_{mode.value}:{reason}",
             store_available=combined.store_available,
         )
@@ -314,8 +371,24 @@ class AdaptiveProviderHealthRegistry:
         latency = 0 if latency_ms is None else latency_ms
         if latency < 0:
             raise ValueError("PROVIDER_HEALTH_LATENCY_NEGATIVE")
-        self._record(provider, None, None, True, latency, None, None)
-        self._record(provider, model, capability, True, latency, None, None)
+        self._record(
+            provider,
+            None,
+            None,
+            success=True,
+            latency_ms=latency,
+            category=None,
+            retry_after_seconds=None,
+        )
+        self._record(
+            provider,
+            model,
+            capability,
+            success=True,
+            latency_ms=latency,
+            category=None,
+            retry_after_seconds=None,
+        )
 
     def record_failure(
         self,
@@ -340,20 +413,68 @@ class AdaptiveProviderHealthRegistry:
                 provider,
                 None,
                 None,
-                False,
-                latency,
-                normalized,
-                retry_after_seconds,
+                success=False,
+                latency_ms=latency,
+                category=normalized,
+                retry_after_seconds=retry_after_seconds,
             )
         self._record(
             provider,
             model,
             capability,
-            False,
-            latency,
-            normalized,
-            retry_after_seconds,
+            success=False,
+            latency_ms=latency,
+            category=normalized,
+            retry_after_seconds=retry_after_seconds,
         )
+
+    def record_queue_completion(
+        self,
+        provider: str,
+        model: str,
+        completion_ms: int,
+        *,
+        capability: str | None = None,
+    ) -> None:
+        if completion_ms < 0:
+            raise ValueError("PROVIDER_HEALTH_QUEUE_COMPLETION_INVALID")
+        now = self.clock.now()
+        for scope_model, scope_capability in (
+            (None, None),
+            (model, capability),
+        ):
+            policy = self._policy(
+                provider,
+                scope_model,
+                scope_capability,
+            )
+            key = _state_key(
+                provider,
+                scope_model,
+                scope_capability,
+            )
+            try:
+                result = self.store.atomic_update(
+                    key,
+                    ttl_seconds=policy.state_ttl_seconds,
+                    mutator=lambda raw, policy=policy: _apply_queue_completion(
+                        raw,
+                        now=now,
+                        policy=policy,
+                        completion_ms=completion_ms,
+                    ),
+                )
+            except Exception:
+                self.store_error_total += 1
+                continue
+            self._emit_transition_if_changed(
+                provider,
+                scope_model,
+                scope_capability,
+                result.previous,
+                result.current,
+                now,
+            )
 
     def record_capacity_hint(
         self,
@@ -364,17 +485,42 @@ class AdaptiveProviderHealthRegistry:
         capability: str | None = None,
     ) -> None:
         now = self.clock.now()
-        for scope_model, scope_capability in ((None, None), (model, capability)):
-            key = _state_key(provider, scope_model, scope_capability)
-            policy = self._policy(provider, scope_model, scope_capability)
+        for scope_model, scope_capability in (
+            (None, None),
+            (model, capability),
+        ):
+            key = _state_key(
+                provider,
+                scope_model,
+                scope_capability,
+            )
+            policy = self._policy(
+                provider,
+                scope_model,
+                scope_capability,
+            )
             try:
-                self.store.atomic_update(
+                result = self.store.atomic_update(
                     key,
                     ttl_seconds=policy.state_ttl_seconds,
-                    mutator=lambda raw, now=now, hint=hint: _apply_capacity_hint(raw, now, hint),
+                    mutator=lambda raw, policy=policy: _apply_capacity_hint(
+                        raw,
+                        now=now,
+                        policy=policy,
+                        hint=hint,
+                    ),
                 )
             except Exception:
                 self.store_error_total += 1
+                continue
+            self._emit_transition_if_changed(
+                provider,
+                scope_model,
+                scope_capability,
+                result.previous,
+                result.current,
+                now,
+            )
 
     def acquire_probe(
         self,
@@ -384,32 +530,55 @@ class AdaptiveProviderHealthRegistry:
         capability: str | None = None,
     ) -> bool:
         now = self.clock.now()
-        keys = (
-            _state_key(provider, None, None),
-            _state_key(provider, model, capability),
+        acquired: list[tuple[str, ProviderHealthPolicy]] = []
+        scopes = (
+            (None, None),
+            (model, capability),
         )
-        acquired: list[str] = []
         try:
-            for key, scope_model, scope_capability in (
-                (keys[0], None, None),
-                (keys[1], model, capability),
-            ):
-                policy = self._policy(provider, scope_model, scope_capability)
+            for scope_model, scope_capability in scopes:
+                policy = self._policy(
+                    provider,
+                    scope_model,
+                    scope_capability,
+                )
+                key = _state_key(
+                    provider,
+                    scope_model,
+                    scope_capability,
+                )
                 result = self.store.atomic_update(
                     key,
                     ttl_seconds=policy.state_ttl_seconds,
-                    mutator=lambda raw, now=now, policy=policy: _acquire_probe(raw, now, policy),
+                    mutator=lambda raw, policy=policy: _acquire_probe(
+                        raw,
+                        now,
+                        policy,
+                    ),
                 )
-                current = result.current
-                if current is not None and current.get("probe_denied") is True:
-                    for acquired_key in acquired:
-                        self._release_probe_key(acquired_key, policy)
+                decision = _probe_decision(
+                    result.previous,
+                    result.current,
+                    now,
+                    policy,
+                )
+                if decision == "denied":
+                    for acquired_key, acquired_policy in acquired:
+                        self._release_probe_key(
+                            acquired_key,
+                            acquired_policy,
+                        )
                     return False
-                if current is not None and current.get("probe_acquired") is True:
-                    acquired.append(key)
+                if decision == "acquired":
+                    acquired.append((key, policy))
             return True
         except Exception:
             self.store_error_total += 1
+            for acquired_key, acquired_policy in acquired:
+                self._release_probe_key(
+                    acquired_key,
+                    acquired_policy,
+                )
             return True
 
     def release_probe(
@@ -419,11 +588,28 @@ class AdaptiveProviderHealthRegistry:
         *,
         capability: str | None = None,
     ) -> None:
-        for key, scope_model, scope_capability in (
-            (_state_key(provider, None, None), None, None),
-            (_state_key(provider, model, capability), model, capability),
+        for scope_model, scope_capability in (
+            (None, None),
+            (model, capability),
         ):
-            self._release_probe_key(key, self._policy(provider, scope_model, scope_capability))
+            self._release_probe_key(
+                _state_key(
+                    provider,
+                    scope_model,
+                    scope_capability,
+                ),
+                self._policy(
+                    provider,
+                    scope_model,
+                    scope_capability,
+                ),
+            )
+
+    def record_fallback(self) -> None:
+        self.fallback_total += 1
+
+    def record_all_candidates_unavailable(self) -> None:
+        self.all_candidates_unavailable_total += 1
 
     def disable(
         self,
@@ -475,7 +661,9 @@ class AdaptiveProviderHealthRegistry:
         capability: str | None = None,
     ) -> None:
         self._require_audit(actor_id, reason)
-        self.store.delete(_override_key(provider, model, capability))
+        self.store.delete(
+            _override_key(provider, model, capability)
+        )
         self._emit_audit(
             "clear_override",
             provider,
@@ -496,7 +684,9 @@ class AdaptiveProviderHealthRegistry:
         capability: str | None = None,
     ) -> None:
         self._require_audit(actor_id, reason)
-        self.store.delete(_state_key(provider, model, capability))
+        self.store.delete(
+            _state_key(provider, model, capability)
+        )
         self._emit_audit(
             "clear_breaker",
             provider,
@@ -512,6 +702,7 @@ class AdaptiveProviderHealthRegistry:
         provider: str,
         model: str | None,
         capability: str | None,
+        *,
         success: bool,
         latency_ms: int,
         category: str | None,
@@ -558,10 +749,19 @@ class AdaptiveProviderHealthRegistry:
         result = self.store.atomic_update(
             key,
             ttl_seconds=policy.state_ttl_seconds,
-            mutator=lambda raw: _refresh_record(raw, now, policy),
+            mutator=lambda raw: _refresh_record(
+                raw,
+                now,
+                policy,
+            ),
         )
         if result.current is None:
-            return self._unknown_snapshot(provider, model, capability, now)
+            return self._unknown_snapshot(
+                provider,
+                model,
+                capability,
+                now,
+            )
         self._emit_transition_if_changed(
             provider,
             model,
@@ -585,15 +785,35 @@ class AdaptiveProviderHealthRegistry:
         capability: str | None,
         now: float,
     ) -> dict[str, Any] | None:
-        endpoint = None
-        if model is not None:
-            endpoint = self.store.read(_override_key(provider, model, capability))
-        provider_override = self.store.read(_override_key(provider, None, None))
-        candidates = [item for item in (provider_override, endpoint) if item is not None]
-        live = [item for item in candidates if float(item["expires_at"]) > now]
-        if not live:
+        endpoint = (
+            None
+            if model is None
+            else self.store.read(
+                _override_key(provider, model, capability)
+            )
+        )
+        provider_override = self.store.read(
+            _override_key(provider, None, None)
+        )
+        candidates = [
+            item
+            for item in (provider_override, endpoint)
+            if item is not None
+            and float(item["expires_at"]) > now
+        ]
+        if not candidates:
             return None
-        return max(live, key=lambda item: float(item["updated_at"]))
+        severity = {
+            ManualOverrideMode.DISABLED.value: 2,
+            ManualOverrideMode.DEGRADED.value: 1,
+        }
+        return max(
+            candidates,
+            key=lambda item: (
+                severity[str(item["mode"])],
+                float(item["updated_at"]),
+            ),
+        )
 
     def _set_override(
         self,
@@ -633,7 +853,11 @@ class AdaptiveProviderHealthRegistry:
             expires,
         )
 
-    def _release_probe_key(self, key: str, policy: ProviderHealthPolicy) -> None:
+    def _release_probe_key(
+        self,
+        key: str,
+        policy: ProviderHealthPolicy,
+    ) -> None:
         try:
             self.store.atomic_update(
                 key,
@@ -651,7 +875,11 @@ class AdaptiveProviderHealthRegistry:
     ) -> ProviderHealthPolicy:
         if self.policy_resolver is None:
             return self.default_policy
-        return self.policy_resolver(provider, model, capability)
+        return self.policy_resolver(
+            provider,
+            model,
+            capability,
+        )
 
     def _unknown_snapshot(
         self,
@@ -677,6 +905,7 @@ class AdaptiveProviderHealthRegistry:
             timeout_rate=0.0,
             latency_p50_ms=None,
             latency_p95_ms=None,
+            queue_completion_p95_ms=None,
             consecutive_failures=0,
             open_until_epoch=None,
             recovering_inflight=0,
@@ -701,9 +930,13 @@ class AdaptiveProviderHealthRegistry:
         previous_state = (
             ProviderHealthState.UNKNOWN
             if previous is None
-            else ProviderHealthState(str(previous.get("state", "unknown")))
+            else ProviderHealthState(
+                str(previous.get("state", "unknown"))
+            )
         )
-        current_state = ProviderHealthState(str(current.get("state", "unknown")))
+        current_state = ProviderHealthState(
+            str(current.get("state", "unknown"))
+        )
         if previous_state is current_state:
             return
         snapshot = _snapshot_from_record(
@@ -729,11 +962,19 @@ class AdaptiveProviderHealthRegistry:
             )
         )
 
-    def _require_audit(self, actor_id: str, reason: str) -> None:
+    def _require_audit(
+        self,
+        actor_id: str,
+        reason: str,
+    ) -> None:
         if self.audit_sink is None:
-            raise RuntimeError("PROVIDER_HEALTH_MANUAL_OVERRIDE_AUDIT_REQUIRED")
+            raise RuntimeError(
+                "PROVIDER_HEALTH_MANUAL_OVERRIDE_AUDIT_REQUIRED"
+            )
         if not actor_id.strip() or not reason.strip():
-            raise ValueError("PROVIDER_HEALTH_MANUAL_OVERRIDE_REASON_REQUIRED")
+            raise ValueError(
+                "PROVIDER_HEALTH_MANUAL_OVERRIDE_REASON_REQUIRED"
+            )
 
     def _emit_audit(
         self,
@@ -764,6 +1005,7 @@ def _default_record(now: float) -> dict[str, Any]:
     return {
         "state": ProviderHealthState.UNKNOWN.value,
         "samples": [],
+        "queue_samples": [],
         "consecutive_failures": 0,
         "open_until": None,
         "recovering_inflight": 0,
@@ -782,7 +1024,14 @@ def _refresh_record(
         return None
     record = raw
     _prune(record, now, policy)
-    state = ProviderHealthState(str(record.get("state", "unknown")))
+    hint = record.get("capacity_hint")
+    if isinstance(hint, dict):
+        reset_at = hint.get("reset_at_epoch")
+        if reset_at is not None and now >= float(reset_at):
+            record["capacity_hint"] = None
+    state = ProviderHealthState(
+        str(record.get("state", "unknown"))
+    )
     open_until = record.get("open_until")
     if (
         state is ProviderHealthState.OPEN_CIRCUIT
@@ -794,6 +1043,18 @@ def _refresh_record(
         record["recovering_inflight"] = 0
         record["recovering_successes"] = 0
         record["updated_at"] = now
+        return record
+    if state not in {
+        ProviderHealthState.OPEN_CIRCUIT,
+        ProviderHealthState.RECOVERING,
+    }:
+        if (
+            not record.get("samples")
+            and not record.get("queue_samples")
+            and record.get("capacity_hint") is None
+        ):
+            record["state"] = ProviderHealthState.UNKNOWN.value
+            record["consecutive_failures"] = 0
     return record
 
 
@@ -822,10 +1083,13 @@ def _apply_observation(
     )
     record["samples"] = samples
     _prune(record, now, policy)
-    while len(record["samples"]) > policy.max_samples:
-        record["samples"].pop(0)
+    record["samples"] = list(record["samples"])[
+        -policy.max_samples :
+    ]
 
-    state = ProviderHealthState(str(record.get("state", "unknown")))
+    state = ProviderHealthState(
+        str(record.get("state", "unknown"))
+    )
     if success:
         record["consecutive_failures"] = 0
         if state is ProviderHealthState.RECOVERING:
@@ -833,21 +1097,42 @@ def _apply_observation(
                 0,
                 int(record.get("recovering_inflight", 0)) - 1,
             )
-            record["recovering_successes"] = int(record.get("recovering_successes", 0)) + 1
-            if int(record["recovering_successes"]) >= policy.recovering_successes_to_close:
+            record["recovering_successes"] = (
+                int(record.get("recovering_successes", 0)) + 1
+            )
+            if (
+                int(record["recovering_successes"])
+                >= policy.recovering_successes_to_close
+            ):
                 _close_record(record, now)
                 return record
     else:
-        record["consecutive_failures"] = int(record.get("consecutive_failures", 0)) + 1
+        record["consecutive_failures"] = (
+            int(record.get("consecutive_failures", 0)) + 1
+        )
         if state is ProviderHealthState.RECOVERING:
             record["recovering_inflight"] = max(
                 0,
                 int(record.get("recovering_inflight", 0)) - 1,
             )
-            _open_record(record, now, policy, retry_after_seconds)
+            _open_record(
+                record,
+                now,
+                policy,
+                retry_after_seconds,
+            )
             return record
-        if category in _RATE_LIMIT and retry_after_seconds and retry_after_seconds > 0:
-            _open_record(record, now, policy, retry_after_seconds)
+        if (
+            category in _RATE_LIMIT
+            and retry_after_seconds is not None
+            and retry_after_seconds > 0
+        ):
+            _open_record(
+                record,
+                now,
+                policy,
+                retry_after_seconds,
+            )
             return record
 
     _evaluate_record(record, now, policy)
@@ -855,31 +1140,135 @@ def _apply_observation(
     return record
 
 
-def _evaluate_record(record: dict[str, Any], now: float, policy: ProviderHealthPolicy) -> None:
-    state = ProviderHealthState(str(record.get("state", "unknown")))
-    if state in {ProviderHealthState.OPEN_CIRCUIT, ProviderHealthState.RECOVERING}:
+def _apply_queue_completion(
+    raw: dict[str, Any] | None,
+    *,
+    now: float,
+    policy: ProviderHealthPolicy,
+    completion_ms: int,
+) -> dict[str, Any]:
+    record = _default_record(now) if raw is None else raw
+    refreshed = _refresh_record(record, now, policy)
+    assert refreshed is not None
+    record = refreshed
+    queue_samples = list(record.get("queue_samples", []))
+    queue_samples.append(
+        {
+            "at": now,
+            "completion_ms": completion_ms,
+        }
+    )
+    record["queue_samples"] = queue_samples[-policy.max_samples :]
+    _prune(record, now, policy)
+    _evaluate_record(record, now, policy)
+    record["updated_at"] = now
+    return record
+
+
+def _apply_capacity_hint(
+    raw: dict[str, Any] | None,
+    *,
+    now: float,
+    policy: ProviderHealthPolicy,
+    hint: CapacityHint,
+) -> dict[str, Any]:
+    record = _default_record(now) if raw is None else raw
+    refreshed = _refresh_record(record, now, policy)
+    assert refreshed is not None
+    record = refreshed
+    record["capacity_hint"] = {
+        "remaining": hint.remaining,
+        "limit": hint.limit,
+        "reset_at_epoch": hint.reset_at_epoch,
+        "retry_after_seconds": hint.retry_after_seconds,
+    }
+    if (
+        hint.retry_after_seconds is not None
+        and hint.retry_after_seconds > 0
+    ):
+        _open_record(
+            record,
+            now,
+            policy,
+            hint.retry_after_seconds,
+        )
+        return record
+    _evaluate_record(record, now, policy)
+    record["updated_at"] = now
+    return record
+
+
+def _evaluate_record(
+    record: dict[str, Any],
+    now: float,
+    policy: ProviderHealthPolicy,
+) -> None:
+    state = ProviderHealthState(
+        str(record.get("state", "unknown"))
+    )
+    if state in {
+        ProviderHealthState.OPEN_CIRCUIT,
+        ProviderHealthState.RECOVERING,
+    }:
         return
     metrics = _metrics(record)
-    if int(record.get("consecutive_failures", 0)) >= policy.consecutive_failures_open:
+    if (
+        int(record.get("consecutive_failures", 0))
+        >= policy.consecutive_failures_open
+    ):
         _open_record(record, now, policy, None)
         return
-    if metrics["sample_count"] >= policy.minimum_samples and (
+    enough = metrics["sample_count"] >= policy.minimum_samples
+    if enough and (
         metrics["failure_rate"] >= policy.open_failure_rate
         or metrics["rate_limit_rate"] >= policy.open_rate_limit_rate
         or metrics["timeout_rate"] >= policy.open_timeout_rate
     ):
         _open_record(record, now, policy, None)
         return
-    degraded = metrics["sample_count"] >= policy.minimum_samples and (
+    if not enough and metrics["sample_count"] > 0:
+        record["state"] = ProviderHealthState.UNKNOWN.value
+        return
+    degraded = enough and (
         metrics["failure_rate"] >= policy.degraded_failure_rate
-        or metrics["rate_limit_rate"] >= policy.degraded_rate_limit_rate
+        or metrics["rate_limit_rate"]
+        >= policy.degraded_rate_limit_rate
         or metrics["timeout_rate"] >= policy.degraded_timeout_rate
     )
-    if metrics["latency_p95_ms"] is not None:
-        degraded = degraded or metrics["latency_p95_ms"] >= policy.degraded_latency_p95_ms
-    record["state"] = (
-        ProviderHealthState.DEGRADED.value if degraded else ProviderHealthState.HEALTHY.value
+    p95 = metrics["latency_p95_ms"]
+    if p95 is not None:
+        degraded = (
+            degraded
+            or p95 >= policy.degraded_latency_p95_ms
+        )
+    queue_p95 = metrics["queue_completion_p95_ms"]
+    if queue_p95 is not None:
+        degraded = (
+            degraded
+            or queue_p95
+            >= policy.degraded_queue_completion_p95_ms
+        )
+    hint = record.get("capacity_hint")
+    if isinstance(hint, dict):
+        remaining = hint.get("remaining")
+        reset_at = hint.get("reset_at_epoch")
+        if remaining == 0 and (
+            reset_at is None or now < float(reset_at)
+        ):
+            degraded = True
+    has_evidence = bool(
+        metrics["sample_count"]
+        or metrics["queue_sample_count"]
+        or record.get("capacity_hint") is not None
     )
+    if not has_evidence:
+        record["state"] = ProviderHealthState.UNKNOWN.value
+    else:
+        record["state"] = (
+            ProviderHealthState.DEGRADED.value
+            if degraded
+            else ProviderHealthState.HEALTHY.value
+        )
 
 
 def _open_record(
@@ -888,7 +1277,10 @@ def _open_record(
     policy: ProviderHealthPolicy,
     retry_after_seconds: float | None,
 ) -> None:
-    cooldown = max(policy.open_cooldown_seconds, retry_after_seconds or 0.0)
+    cooldown = max(
+        policy.open_cooldown_seconds,
+        retry_after_seconds or 0.0,
+    )
     record["state"] = ProviderHealthState.OPEN_CIRCUIT.value
     record["open_until"] = now + cooldown
     record["recovering_inflight"] = 0
@@ -896,9 +1288,13 @@ def _open_record(
     record["updated_at"] = now
 
 
-def _close_record(record: dict[str, Any], now: float) -> None:
+def _close_record(
+    record: dict[str, Any],
+    now: float,
+) -> None:
     record["state"] = ProviderHealthState.HEALTHY.value
     record["samples"] = []
+    record["queue_samples"] = []
     record["consecutive_failures"] = 0
     record["open_until"] = None
     record["recovering_inflight"] = 0
@@ -914,75 +1310,131 @@ def _acquire_probe(
     refreshed = _refresh_record(raw, now, policy)
     if refreshed is None:
         return None
-    state = ProviderHealthState(str(refreshed.get("state", "unknown")))
-    refreshed.pop("probe_denied", None)
-    refreshed.pop("probe_acquired", None)
+    state = ProviderHealthState(
+        str(refreshed.get("state", "unknown"))
+    )
     if state is ProviderHealthState.OPEN_CIRCUIT:
-        refreshed["probe_denied"] = True
         return refreshed
     if state is not ProviderHealthState.RECOVERING:
         return refreshed
     inflight = int(refreshed.get("recovering_inflight", 0))
     if inflight >= policy.recovering_max_probes:
-        refreshed["probe_denied"] = True
         return refreshed
     refreshed["recovering_inflight"] = inflight + 1
-    refreshed["probe_acquired"] = True
     refreshed["updated_at"] = now
     return refreshed
 
 
-def _release_probe(raw: dict[str, Any] | None) -> dict[str, Any] | None:
+def _probe_decision(
+    previous: dict[str, Any] | None,
+    current: dict[str, Any] | None,
+    now: float,
+    policy: ProviderHealthPolicy,
+) -> str:
+    if current is None:
+        return "allowed"
+    current_state = ProviderHealthState(
+        str(current.get("state", "unknown"))
+    )
+    if current_state is ProviderHealthState.OPEN_CIRCUIT:
+        return "denied"
+    if current_state is not ProviderHealthState.RECOVERING:
+        return "allowed"
+    previous_refreshed = _refresh_record(
+        None if previous is None else dict(previous),
+        now,
+        policy,
+    )
+    previous_inflight = (
+        0
+        if previous_refreshed is None
+        else int(previous_refreshed.get("recovering_inflight", 0))
+    )
+    current_inflight = int(
+        current.get("recovering_inflight", 0)
+    )
+    return (
+        "acquired"
+        if current_inflight > previous_inflight
+        else "denied"
+    )
+
+
+def _release_probe(
+    raw: dict[str, Any] | None,
+) -> dict[str, Any] | None:
     if raw is None:
         return None
-    raw["recovering_inflight"] = max(0, int(raw.get("recovering_inflight", 0)) - 1)
-    raw.pop("probe_denied", None)
-    raw.pop("probe_acquired", None)
+    raw["recovering_inflight"] = max(
+        0,
+        int(raw.get("recovering_inflight", 0)) - 1,
+    )
     return raw
 
 
-def _apply_capacity_hint(
-    raw: dict[str, Any] | None,
+def _prune(
+    record: dict[str, Any],
     now: float,
-    hint: CapacityHint,
-) -> dict[str, Any]:
-    record = _default_record(now) if raw is None else raw
-    record["capacity_hint"] = {
-        "remaining": hint.remaining,
-        "limit": hint.limit,
-        "reset_at_epoch": hint.reset_at_epoch,
-        "retry_after_seconds": hint.retry_after_seconds,
-    }
-    record["updated_at"] = now
-    return record
-
-
-def _prune(record: dict[str, Any], now: float, policy: ProviderHealthPolicy) -> None:
+    policy: ProviderHealthPolicy,
+) -> None:
     cutoff = now - policy.window_seconds
-    samples = [
+    record["samples"] = [
         item
         for item in list(record.get("samples", []))
         if float(item["at"]) >= cutoff
-    ]
-    record["samples"] = samples[-policy.max_samples :]
+    ][-policy.max_samples :]
+    record["queue_samples"] = [
+        item
+        for item in list(record.get("queue_samples", []))
+        if float(item["at"]) >= cutoff
+    ][-policy.max_samples :]
 
 
 def _metrics(record: dict[str, Any]) -> dict[str, Any]:
     samples = list(record.get("samples", []))
+    queue_samples = list(record.get("queue_samples", []))
     count = len(samples)
-    failures = [item for item in samples if not bool(item["success"])]
-    successes = [item for item in samples if bool(item["success"])]
-    rate_limits = [item for item in failures if item.get("category") in _RATE_LIMIT]
-    timeouts = [item for item in failures if item.get("category") in _TIMEOUT]
-    latencies = [int(item["latency_ms"]) for item in successes if int(item["latency_ms"]) >= 0]
+    failures = [
+        item for item in samples if not bool(item["success"])
+    ]
+    successes = [
+        item for item in samples if bool(item["success"])
+    ]
+    rate_limits = [
+        item
+        for item in failures
+        if item.get("category") in _RATE_LIMIT
+    ]
+    timeouts = [
+        item
+        for item in failures
+        if item.get("category") in _TIMEOUT
+    ]
+    latencies = [
+        int(item["latency_ms"])
+        for item in successes
+        if int(item["latency_ms"]) >= 0
+    ]
+    queue_latencies = [
+        int(item["completion_ms"])
+        for item in queue_samples
+        if int(item["completion_ms"]) >= 0
+    ]
     return {
         "sample_count": count,
+        "queue_sample_count": len(queue_samples),
         "success_rate": len(successes) / count if count else 0.0,
         "failure_rate": len(failures) / count if count else 0.0,
-        "rate_limit_rate": len(rate_limits) / count if count else 0.0,
+        "rate_limit_rate": (
+            len(rate_limits) / count if count else 0.0
+        ),
         "timeout_rate": len(timeouts) / count if count else 0.0,
         "latency_p50_ms": _percentile(latencies, 0.50),
         "latency_p95_ms": _percentile(latencies, 0.95),
+        "queue_completion_p95_ms": _percentile(
+            queue_latencies,
+            0.95,
+        ),
     }
 
 
@@ -994,8 +1446,9 @@ def _snapshot_from_record(
     policy: ProviderHealthPolicy,
 ) -> ProviderHealthSnapshot:
     metrics = _metrics(record)
-    state = ProviderHealthState(str(record.get("state", "unknown")))
-    score = _score(state, metrics, policy)
+    state = ProviderHealthState(
+        str(record.get("state", "unknown"))
+    )
     hint_payload = record.get("capacity_hint")
     hint = None
     if isinstance(hint_payload, dict):
@@ -1003,15 +1456,16 @@ def _snapshot_from_record(
             remaining=hint_payload.get("remaining"),
             limit=hint_payload.get("limit"),
             reset_at_epoch=hint_payload.get("reset_at_epoch"),
-            retry_after_seconds=hint_payload.get("retry_after_seconds"),
+            retry_after_seconds=hint_payload.get(
+                "retry_after_seconds"
+            ),
         )
-    reason = _reason(state, metrics, policy)
     return ProviderHealthSnapshot(
         provider=provider,
         model=model,
         capability=capability,
         state=state,
-        score=score,
+        score=_score(state, metrics, policy),
         sample_count=int(metrics["sample_count"]),
         success_rate=float(metrics["success_rate"]),
         failure_rate=float(metrics["failure_rate"]),
@@ -1019,15 +1473,26 @@ def _snapshot_from_record(
         timeout_rate=float(metrics["timeout_rate"]),
         latency_p50_ms=metrics["latency_p50_ms"],
         latency_p95_ms=metrics["latency_p95_ms"],
-        consecutive_failures=int(record.get("consecutive_failures", 0)),
-        open_until_epoch=(
-            None if record.get("open_until") is None else float(record["open_until"])
+        queue_completion_p95_ms=metrics[
+            "queue_completion_p95_ms"
+        ],
+        consecutive_failures=int(
+            record.get("consecutive_failures", 0)
         ),
-        recovering_inflight=int(record.get("recovering_inflight", 0)),
-        recovering_successes=int(record.get("recovering_successes", 0)),
+        open_until_epoch=(
+            None
+            if record.get("open_until") is None
+            else float(record["open_until"])
+        ),
+        recovering_inflight=int(
+            record.get("recovering_inflight", 0)
+        ),
+        recovering_successes=int(
+            record.get("recovering_successes", 0)
+        ),
         capacity_hint=hint,
         updated_at_epoch=float(record.get("updated_at", 0.0)),
-        reason=reason,
+        reason=_reason(state, metrics, policy, record),
     )
 
 
@@ -1045,7 +1510,10 @@ def _combine_snapshots(
         ProviderHealthState.UNKNOWN: 2,
         ProviderHealthState.HEALTHY: 1,
     }
-    selected = max((provider_snapshot, endpoint_snapshot), key=lambda item: severity[item.state])
+    selected = max(
+        (provider_snapshot, endpoint_snapshot),
+        key=lambda item: severity[item.state],
+    )
     return ProviderHealthSnapshot(
         provider=endpoint_snapshot.provider,
         model=endpoint_snapshot.model,
@@ -1059,6 +1527,9 @@ def _combine_snapshots(
         timeout_rate=endpoint_snapshot.timeout_rate,
         latency_p50_ms=endpoint_snapshot.latency_p50_ms,
         latency_p95_ms=endpoint_snapshot.latency_p95_ms,
+        queue_completion_p95_ms=(
+            endpoint_snapshot.queue_completion_p95_ms
+        ),
         consecutive_failures=max(
             provider_snapshot.consecutive_failures,
             endpoint_snapshot.consecutive_failures,
@@ -1066,13 +1537,19 @@ def _combine_snapshots(
         open_until_epoch=selected.open_until_epoch,
         recovering_inflight=selected.recovering_inflight,
         recovering_successes=selected.recovering_successes,
-        capacity_hint=endpoint_snapshot.capacity_hint or provider_snapshot.capacity_hint,
+        capacity_hint=(
+            endpoint_snapshot.capacity_hint
+            or provider_snapshot.capacity_hint
+        ),
         updated_at_epoch=max(
             provider_snapshot.updated_at_epoch,
             endpoint_snapshot.updated_at_epoch,
         ),
         reason=f"combined:{selected.reason}",
-        store_available=provider_snapshot.store_available and endpoint_snapshot.store_available,
+        store_available=(
+            provider_snapshot.store_available
+            and endpoint_snapshot.store_available
+        ),
     )
 
 
@@ -1081,7 +1558,10 @@ def _score(
     metrics: dict[str, Any],
     policy: ProviderHealthPolicy,
 ) -> int:
-    if state in {ProviderHealthState.OPEN_CIRCUIT, ProviderHealthState.DISABLED}:
+    if state in {
+        ProviderHealthState.OPEN_CIRCUIT,
+        ProviderHealthState.DISABLED,
+    }:
         return 0
     if state is ProviderHealthState.RECOVERING:
         return policy.recovering_score
@@ -1090,7 +1570,15 @@ def _score(
     penalty = round(float(metrics["failure_rate"]) * 65)
     p95 = metrics["latency_p95_ms"]
     if p95 is not None and p95 > policy.degraded_latency_p95_ms:
-        penalty += min(25, round((p95 / policy.degraded_latency_p95_ms - 1) * 20))
+        penalty += min(
+            25,
+            round(
+                (
+                    p95 / policy.degraded_latency_p95_ms - 1
+                )
+                * 20
+            ),
+        )
     score = max(1, 100 - penalty)
     if state is ProviderHealthState.DEGRADED:
         score = min(score, 65)
@@ -1101,6 +1589,7 @@ def _reason(
     state: ProviderHealthState,
     metrics: dict[str, Any],
     policy: ProviderHealthPolicy,
+    record: dict[str, Any],
 ) -> str:
     if state is ProviderHealthState.OPEN_CIRCUIT:
         return "circuit_open"
@@ -1109,45 +1598,96 @@ def _reason(
     if state is ProviderHealthState.UNKNOWN:
         return "no_recent_health_evidence"
     if state is ProviderHealthState.DEGRADED:
-        if float(metrics["failure_rate"]) >= policy.degraded_failure_rate:
+        hint = record.get("capacity_hint")
+        if isinstance(hint, dict) and hint.get("remaining") == 0:
+            return "capacity_exhausted"
+        if (
+            float(metrics["failure_rate"])
+            >= policy.degraded_failure_rate
+        ):
             return "failure_rate_degraded"
-        if metrics["latency_p95_ms"] is not None and metrics["latency_p95_ms"] >= policy.degraded_latency_p95_ms:
-            return "latency_p95_degraded"
-        if float(metrics["rate_limit_rate"]) >= policy.degraded_rate_limit_rate:
+        if (
+            float(metrics["rate_limit_rate"])
+            >= policy.degraded_rate_limit_rate
+        ):
             return "rate_limit_degraded"
-        if float(metrics["timeout_rate"]) >= policy.degraded_timeout_rate:
+        if (
+            float(metrics["timeout_rate"])
+            >= policy.degraded_timeout_rate
+        ):
             return "timeout_degraded"
+        if (
+            metrics["latency_p95_ms"] is not None
+            and metrics["latency_p95_ms"]
+            >= policy.degraded_latency_p95_ms
+        ):
+            return "latency_p95_degraded"
+        if (
+            metrics["queue_completion_p95_ms"] is not None
+            and metrics["queue_completion_p95_ms"]
+            >= policy.degraded_queue_completion_p95_ms
+        ):
+            return "queue_completion_p95_degraded"
     return "healthy"
 
 
-def _state_key(provider: str, model: str | None, capability: str | None) -> str:
+def _state_key(
+    provider: str,
+    model: str | None,
+    capability: str | None,
+) -> str:
     _validate_identity(provider, model, capability)
     scope = "provider" if model is None else "endpoint"
-    raw = f"{scope}|{provider}|{model or '*'}|{capability or '*'}"
-    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+    raw = (
+        f"{scope}|{provider}|{model or '*'}|{capability or '*'}"
+    )
+    digest = hashlib.sha256(
+        raw.encode("utf-8")
+    ).hexdigest()[:24]
     return f"state:{scope}:{digest}"
 
 
-def _override_key(provider: str, model: str | None, capability: str | None) -> str:
+def _override_key(
+    provider: str,
+    model: str | None,
+    capability: str | None,
+) -> str:
     _validate_identity(provider, model, capability)
     scope = "provider" if model is None else "endpoint"
-    raw = f"override|{scope}|{provider}|{model or '*'}|{capability or '*'}"
-    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+    raw = (
+        f"override|{scope}|{provider}|"
+        f"{model or '*'}|{capability or '*'}"
+    )
+    digest = hashlib.sha256(
+        raw.encode("utf-8")
+    ).hexdigest()[:24]
     return f"override:{scope}:{digest}"
 
 
-def _validate_identity(provider: str, model: str | None, capability: str | None) -> None:
+def _validate_identity(
+    provider: str,
+    model: str | None,
+    capability: str | None,
+) -> None:
     if not provider.strip():
         raise ValueError("PROVIDER_HEALTH_PROVIDER_INVALID")
     if model is None and capability is not None:
-        raise ValueError("PROVIDER_HEALTH_CAPABILITY_REQUIRES_MODEL")
+        raise ValueError(
+            "PROVIDER_HEALTH_CAPABILITY_REQUIRES_MODEL"
+        )
     if model is not None and not model.strip():
         raise ValueError("PROVIDER_HEALTH_MODEL_INVALID")
 
 
-def _percentile(values: list[int], fraction: float) -> int | None:
+def _percentile(
+    values: list[int],
+    fraction: float,
+) -> int | None:
     if not values:
         return None
     ordered = sorted(values)
-    index = max(0, math.ceil(len(ordered) * fraction) - 1)
+    index = max(
+        0,
+        math.ceil(len(ordered) * fraction) - 1,
+    )
     return ordered[index]
