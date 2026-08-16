@@ -11,6 +11,7 @@ from lumi_project_core.stripe_provider import StripePaymentProvider, StripeProvi
 
 
 SECRET = "whsec_test_secret"
+API_VERSION = "2026-02-25.clover"
 
 
 def config(*, live: bool = False) -> StripeProviderConfig:
@@ -22,6 +23,7 @@ def config(*, live: bool = False) -> StripeProviderConfig:
         checkout_cancel_url="https://app.example.test/billing/cancel",
         portal_return_url="https://app.example.test/settings/billing",
         expected_livemode=live,
+        api_version=API_VERSION,
     )
 
 
@@ -44,6 +46,23 @@ def signature(raw: bytes, timestamp: int, *, secret: str = SECRET) -> str:
         secret.encode(), str(timestamp).encode() + b"." + raw, hashlib.sha256
     ).hexdigest()
     return f"t={timestamp},v1=invalid,v1={digest}"
+
+
+def stripe_price(*, live: bool = False, unit_amount: int = 200) -> dict[str, object]:
+    return {
+        "id": "price_server_owned",
+        "active": True,
+        "livemode": live,
+        "type": "recurring",
+        "billing_scheme": "per_unit",
+        "currency": "usd",
+        "unit_amount": unit_amount,
+        "recurring": {
+            "interval": "month",
+            "interval_count": 1,
+            "usage_type": "licensed",
+        },
+    }
 
 
 def test_mode_key_must_match_environment() -> None:
@@ -79,6 +98,29 @@ def test_customer_creation_uses_stable_idempotency_key() -> None:
             "lumi-customer:org-1",
         )
     ]
+
+
+def test_plan_price_reconciliation_accepts_exact_recurring_contract() -> None:
+    def transport(method, path, _fields, _secret, _idempotency_key):
+        assert method == "GET"
+        assert path == "/prices/price_server_owned"
+        return stripe_price()
+
+    StripePaymentProvider(config(), transport=transport).validate_plan_price(plan())
+
+
+def test_plan_price_reconciliation_rejects_amount_drift() -> None:
+    provider = StripePaymentProvider(
+        config(), transport=lambda *_: stripe_price(unit_amount=201)
+    )
+    with pytest.raises(BillingError, match="BILLING_STRIPE_PRICE_AMOUNT_MISMATCH"):
+        provider.validate_plan_price(plan())
+
+
+def test_plan_price_reconciliation_rejects_mode_drift() -> None:
+    provider = StripePaymentProvider(config(), transport=lambda *_: stripe_price(live=True))
+    with pytest.raises(BillingError, match="BILLING_STRIPE_PRICE_MODE_MISMATCH"):
+        provider.validate_plan_price(plan())
 
 
 def test_checkout_uses_server_owned_price_and_subscription_metadata() -> None:
@@ -126,6 +168,7 @@ def test_webhook_accepts_any_valid_v1_and_rejects_stale_timestamp() -> None:
         {
             "id": "evt_1",
             "type": "customer.subscription.updated",
+            "api_version": API_VERSION,
             "livemode": False,
             "data": {
                 "object": {
@@ -154,6 +197,22 @@ def test_webhook_accepts_any_valid_v1_and_rejects_stale_timestamp() -> None:
         provider.verify_webhook(raw, signature(raw, now - 301))
 
 
+def test_webhook_api_version_mismatch_fails_closed() -> None:
+    now = 1_800_000_000
+    raw = json.dumps(
+        {
+            "id": "evt_old_api",
+            "type": "customer.subscription.updated",
+            "api_version": "2025-12-15.clover",
+            "livemode": False,
+            "data": {"object": {}},
+        }
+    ).encode()
+    provider = StripePaymentProvider(config(), transport=lambda *_: {}, now=lambda: now)
+    with pytest.raises(BillingError, match="BILLING_STRIPE_EVENT_API_VERSION_MISMATCH"):
+        provider.verify_webhook(raw, signature(raw, now))
+
+
 def test_invalid_signature_is_rejected_before_json_parse() -> None:
     now = 1_800_000_000
     provider = StripePaymentProvider(config(), transport=lambda *_: {}, now=lambda: now)
@@ -164,7 +223,13 @@ def test_invalid_signature_is_rejected_before_json_parse() -> None:
 def test_livemode_mismatch_fails_closed() -> None:
     now = 1_800_000_000
     raw = json.dumps(
-        {"id": "evt_live", "type": "invoice.paid", "livemode": True, "data": {"object": {}}}
+        {
+            "id": "evt_live",
+            "type": "invoice.paid",
+            "api_version": API_VERSION,
+            "livemode": True,
+            "data": {"object": {}},
+        }
     ).encode()
     provider = StripePaymentProvider(config(), transport=lambda *_: {}, now=lambda: now)
     with pytest.raises(BillingError, match="BILLING_STRIPE_EVENT_MODE_MISMATCH"):
@@ -177,6 +242,7 @@ def test_invoice_paid_normalizes_subscription_metadata_and_microusd() -> None:
         {
             "id": "evt_invoice",
             "type": "invoice.paid",
+            "api_version": API_VERSION,
             "livemode": False,
             "data": {
                 "object": {
