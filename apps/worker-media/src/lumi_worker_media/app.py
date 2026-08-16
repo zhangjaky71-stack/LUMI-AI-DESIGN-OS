@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any, Callable
 
 from celery import Celery
 
+from .job_dlq import JobDeadLetterService, KombuJobDeadLetterPublisher
 from .job_runtime import JobExecutionResult, execute_job
-from .postgres_runtime import PostgresJobStore
+from .postgres_runtime import PostgresDeadLetterStore, PostgresJobStore
 from .queue_contracts import (
+    ErrorCategory,
     JobKind,
     JobMessage,
     JobState,
@@ -90,6 +93,29 @@ def _runtime_handler(kind: JobKind) -> Callable[[JobMessage], dict[str, Any]]:
     return handler
 
 
+def _record_permanent_job_failure(
+    *,
+    dsn: str,
+    kind: JobKind,
+    message: JobMessage,
+    result: JobExecutionResult,
+) -> None:
+    service = JobDeadLetterService(
+        store=PostgresDeadLetterStore(dsn),
+        publisher=KombuJobDeadLetterPublisher(broker),
+    )
+    asyncio.run(
+        service.record_failure(
+            kind=kind,
+            message=message,
+            category=result.record.error_category or ErrorCategory.PERMANENT,
+            error_code=result.record.error_code or "JOB_FAILED",
+            error_message=result.record.error_message or "job failed",
+            attempts=result.record.attempt_count,
+        )
+    )
+
+
 def _execute_bound_task(task: Any, kind: JobKind, payload: dict[str, Any]) -> dict[str, Any]:
     message = JobMessage.from_mapping(payload)
     dsn = os.getenv("LUMI_RUNTIME_DATABASE_URL")
@@ -109,6 +135,17 @@ def _execute_bound_task(task: Any, kind: JobKind, payload: dict[str, Any]) -> di
             max_retries=policy.max_attempts - 1,
         )
     if result.record.state is JobState.FAILED:
+        try:
+            _record_permanent_job_failure(
+                dsn=dsn,
+                kind=kind,
+                message=message,
+                result=result,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"JOB_FAILED_DLQ_RECORD_FAILED:{type(exc).__name__}:{exc}"
+            ) from exc
         raise RuntimeError(result.record.error_code or "JOB_FAILED")
     return result.record.output or {
         "job_id": str(message.job_id),
