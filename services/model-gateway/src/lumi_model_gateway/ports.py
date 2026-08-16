@@ -26,19 +26,35 @@ class ProviderAdapter(Protocol):
 
     def validate(self, request: ModelRequest, model: ProviderModel) -> None: ...
 
-    def estimate_cost(self, request: ModelRequest, model: ProviderModel) -> CostEstimate: ...
+    def estimate_cost(
+        self,
+        request: ModelRequest,
+        model: ProviderModel,
+    ) -> CostEstimate: ...
 
-    async def invoke(self, request: ModelRequest, model: ProviderModel) -> NormalizedResult: ...
+    async def invoke(
+        self,
+        request: ModelRequest,
+        model: ProviderModel,
+    ) -> NormalizedResult: ...
 
     def stream(
-        self, request: ModelRequest, model: ProviderModel
+        self,
+        request: ModelRequest,
+        model: ProviderModel,
     ) -> AsyncIterator[ModelStreamChunk]: ...
 
     async def get_async_status(
-        self, provider_request_id: str, model: ProviderModel
+        self,
+        provider_request_id: str,
+        model: ProviderModel,
     ) -> NormalizedResult: ...
 
-    async def cancel(self, provider_request_id: str, model: ProviderModel) -> bool: ...
+    async def cancel(
+        self,
+        provider_request_id: str,
+        model: ProviderModel,
+    ) -> bool: ...
 
     def normalize_error(self, error: BaseException) -> ProviderCallError: ...
 
