@@ -34,7 +34,7 @@ class HealthStateStore(Protocol):
 
 
 class MemoryHealthStateStore:
-    """Deterministic reference store used by unit tests and single-process dev."""
+    """Deterministic reference store for tests and single-process development."""
 
     def __init__(self, *, now: Callable[[], float]) -> None:
         self._now = now
@@ -60,13 +60,25 @@ class MemoryHealthStateStore:
             self._expire(key)
             item = self._values.get(key)
             previous = None if item is None else _copy_json(item[1])
-            current = mutator(None if previous is None else _copy_json(previous))
+            current = mutator(
+                None if previous is None else _copy_json(previous)
+            )
             if current is None:
                 self._values.pop(key, None)
                 return AtomicStateUpdate(previous, None)
             serializable = _copy_json(current)
-            self._values[key] = (self._now() + ttl_seconds, serializable)
-            return AtomicStateUpdate(previous, _copy_json(serializable))
+            effective_ttl = _effective_ttl_seconds(
+                serializable,
+                ttl_seconds,
+            )
+            self._values[key] = (
+                self._now() + effective_ttl,
+                serializable,
+            )
+            return AtomicStateUpdate(
+                previous,
+                _copy_json(serializable),
+            )
 
     def delete(self, key: str) -> None:
         with self._lock:
@@ -105,12 +117,12 @@ class RedisClientLike(Protocol):
 
 
 class RedisHealthStateStore:
-    """redis-py compatible shared operational store without importing redis here.
+    """redis-py-compatible shared operational store with injected client.
 
-    The caller owns client construction, authentication, TLS and pooling. A distributed
-    per-key lock makes the Python state-machine load/modify/save step atomic across Gateway
-    replicas. If Redis is unavailable the registry catches the exception and treats health as
-    UNKNOWN; callers must never use this store for financial or provenance correctness.
+    The caller owns client construction, authentication, TLS and pooling. A
+    distributed per-key lock makes each Python load/modify/save mutation atomic
+    across Gateway replicas. Redis failure is handled by the registry as UNKNOWN;
+    this store is never used for financial, idempotency or provenance truth.
     """
 
     def __init__(
@@ -123,7 +135,10 @@ class RedisHealthStateStore:
     ) -> None:
         if not prefix:
             raise ValueError("PROVIDER_HEALTH_REDIS_PREFIX_INVALID")
-        if lock_timeout_seconds <= 0 or blocking_timeout_seconds <= 0:
+        if (
+            lock_timeout_seconds <= 0
+            or blocking_timeout_seconds <= 0
+        ):
             raise ValueError("PROVIDER_HEALTH_REDIS_LOCK_INVALID")
         self.client = client
         self.prefix = prefix.rstrip(":")
@@ -158,25 +173,65 @@ class RedisHealthStateStore:
         )
         with lock:
             previous = self.read(key)
-            current = mutator(None if previous is None else _copy_json(previous))
+            current = mutator(
+                None if previous is None else _copy_json(previous)
+            )
             if current is None:
                 self.client.delete(redis_key)
                 return AtomicStateUpdate(previous, None)
+            serializable = _copy_json(current)
             encoded = json.dumps(
-                current,
+                serializable,
                 sort_keys=True,
                 separators=(",", ":"),
                 ensure_ascii=False,
                 allow_nan=False,
             )
-            self.client.set(redis_key, encoded, ex=max(1, math.ceil(ttl_seconds)))
-            return AtomicStateUpdate(previous, _copy_json(current))
+            effective_ttl = _effective_ttl_seconds(
+                serializable,
+                ttl_seconds,
+            )
+            self.client.set(
+                redis_key,
+                encoded,
+                ex=max(1, math.ceil(effective_ttl)),
+            )
+            return AtomicStateUpdate(
+                previous,
+                _copy_json(serializable),
+            )
 
     def delete(self, key: str) -> None:
         self.client.delete(self._key(key))
 
     def _key(self, key: str) -> str:
         return f"{self.prefix}:{key}"
+
+
+def _effective_ttl_seconds(
+    value: JsonObject,
+    requested_ttl: float,
+) -> float:
+    """Keep explicit cooldown/reset/override horizons from expiring early."""
+
+    anchor = value.get("updated_at")
+    if not isinstance(anchor, (int, float)):
+        return requested_ttl
+    horizons: list[float] = []
+    for field in ("open_until", "expires_at"):
+        candidate = value.get(field)
+        if isinstance(candidate, (int, float)):
+            horizons.append(float(candidate))
+    capacity = value.get("capacity_hint")
+    if isinstance(capacity, dict):
+        reset_at = capacity.get("reset_at_epoch")
+        if isinstance(reset_at, (int, float)):
+            horizons.append(float(reset_at))
+    required = max(
+        (horizon - float(anchor) for horizon in horizons),
+        default=0.0,
+    )
+    return max(requested_ttl, required)
 
 
 def _copy_json(value: JsonObject) -> JsonObject:
