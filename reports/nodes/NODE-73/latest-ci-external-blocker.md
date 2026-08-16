@@ -2,66 +2,92 @@
 
 Status: **BLOCKED_EXTERNAL**
 
-This record captures the latest hosted execution state observed after the NODE-73 Final Acceptance hard-stop/UAT/signoff/manual-evidence/Stripe source changes and the canonical lock-regeneration helper. It is not a test PASS or source-code FAIL.
+This record captures the latest hosted execution state observed after the NODE-73 Final Acceptance hard-stop/UAT/signoff/Stripe/source-RC identity and canonical lock-repair changes. It is not a test PASS or source-code FAIL.
 
 ## Exact observed head
 
 - branch: `fix/final-acceptance-hard-stops`
-- head SHA observed for this record: `5fb99259b4395ef25c0c552b2ed3c9cad10971e2`
+- head SHA observed for this record: `d76cea2cb1dc7753b7af2f341717206705f646b0`
 - PR: `#80`
-- PR mergeability at observation: `mergeable=true`
+- PR state at observation: open, `mergeable=true`
 
-## Final Production Safety Hard Stops
+## Final Product Acceptance Gate
 
-- workflow: `Final Production Safety Hard Stops`
-- run id: `31930129068`
-- head SHA: `5fb99259b4395ef25c0c552b2ed3c9cad10971e2`
-- `static-contract` job id: `95123554417`
-- job conclusion: `failure`
-- executable steps returned by GitHub: `null`
-- downstream `terraform-format`, `quality`, and `postgres-acceptance`: skipped
+- workflow: `Final Product Acceptance Gate`
+- run id: `31930871336`
+- head SHA: `d76cea2cb1dc7753b7af2f341717206705f646b0`
+- `canonical-lock-gate` job id: `95125379164` — failure before executable steps;
+- `source-contract` job id: `95125379185` — failure before executable steps;
+- `lock-repair-artifact` job id: `95125379254` — failure before executable steps;
+- `final-decision` — skipped because this was not a manual final-decision dispatch;
+- `contract-gate` — cannot become green while its required upstream jobs never start.
 
-The immediately preceding exact-head run on SHA `b749920df0aee6d83764c60cb4ff37cf7ab43524` established the same account-level failure shape with:
+The `lock-repair-artifact` job is particularly useful diagnostic evidence because it does **not** depend on the stale committed lock being valid before it can regenerate it. GitHub nevertheless reports:
 
-- `runner_id=0`;
-- `runner_name=""`;
-- `steps=[]`;
-- one GitHub check annotation stating:
+```text
+runner_id=0
+runner_name=""
+runner_group_id=0
+steps=[]
+```
+
+and the check annotation is exactly:
 
 ```text
 The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
 ```
 
-The new head continues the same zero-execution pattern across repository workflows. No evidence indicates that an executable source step ran and failed.
+Therefore the repair job did not execute `uv`, the regeneration script, dependency resolution, frozen sync, or artifact upload. This is an account-level hosted-runner blocker, not a lock-generation failure.
 
-## Other workflows on the same head
+## Same-head workflow pattern
 
-The same SHA produced completed red runs across canonical CI, Database Schema, Production IaC, Model Gateway, Observability, browser preflight, security-adjacent and multiple subsystem workflows while several other runs remained queued/in-progress at observation time. The completed failures share the hosted-runner non-execution pattern seen on the prior exact head.
+The same SHA produced completed red runs across CI, Database Schema, Production IaC, Model Gateway, Recovery, Performance, Observability, Security Release Gate, AI Regression, Staging Acceptance, Final Browser Preflight, Final Production Safety Hard Stops and many subsystem workflows. This broad simultaneous zero-execution pattern is consistent with the confirmed account Billing/spending-limit failure above.
 
-Do not infer a source regression from the red status until a job has both:
+Do not infer source regressions from those red statuses until a job has both:
 
 1. a non-zero allocated runner; and
 2. actual executable steps.
 
-## Known independent source blocker
+## Independent source blocker: stale root `uv.lock`
 
-The root `uv.lock` remains stale relative to the current workspace manifest. That is independent of the GitHub account blocker and is expected to fail canonical frozen installation once hosted runners are restored unless repaired first.
+The root `uv.lock` remains stale relative to the current workspace manifest. That is independent of the GitHub account blocker and remains:
 
-A guarded regeneration entry point now exists:
+```text
+FAIL / SOURCE BLOCKER
+```
+
+The guarded local regeneration entry point is:
 
 ```bash
 scripts/regenerate-root-uv-lock.sh
 ```
 
-The script refuses to run unless:
+It requires:
 
-- Python is `3.12.x`;
-- uv is exactly `0.11.28`;
-- manifest/lock inputs are clean before regeneration.
+- Python `3.12.x`;
+- uv exactly `0.11.28`;
+- clean manifest/lock inputs;
+- `uv lock`;
+- `uv lock --check`;
+- `uv sync --all-packages --frozen`;
+- every workspace member represented in `uv.lock`;
+- an actual lock change;
+- no collateral source changes.
 
-It then runs `uv lock`, `uv lock --check`, `uv sync --all-packages --frozen`, verifies every workspace member exists in `uv.lock`, requires the lock to actually change, and rejects collateral file changes. It does not hand-edit or synthesize the lock.
+The `Final Product Acceptance Gate` also contains an independent `lock-repair-artifact` job that uses Python 3.12 + uv 0.11.28, runs the same canonical repair guard when the lock is stale, re-validates frozen installation, and uploads `canonical-root-uv-lock-<run-id>` for review. It has read-only repository permissions and is statically forbidden from `git commit`/`git push`; producing an artifact does not make the canonical lock gate PASS.
 
-This ChatGPT execution environment currently exposes uv `0.10.0`, not the required `0.11.28`, so regenerating and committing a release lock from this environment would violate the canonical dependency contract.
+The current ChatGPT container exposes Python `3.13.5` and uv `0.10.0`. Attempts to obtain the required binary/repository through the isolated container network are blocked by DNS/download restrictions. Generating and committing a release lock with these non-canonical local tools would violate the release contract, so it is intentionally not done.
+
+## Final Acceptance identity source closure
+
+The canonical runner now separates:
+
+- frozen **source RC SHA**;
+- later **evidence checkout SHA**.
+
+The source RC must be an ancestor of the evidence checkout. Every commit after source-RC freeze is audited with Git history and may touch only `reports/`; a source path changed and later reverted still invalidates the RC. Root `VERSION` and the unique Alembic head must remain the same. All six upstream decisions must carry the same source-RC tuple. The final-decision workflow uses full Git history (`fetch-depth: 0`) and persists `release-identity-decision.json` alongside manual/final decisions.
+
+These source controls are still **VALIDATION_PENDING** until a real runner executes their negative contracts.
 
 ## Classification rule
 
@@ -81,15 +107,16 @@ FAIL / SOURCE BLOCKER
 
 Do not use `PASS`, `FAIL_CODE`, `SOURCE_TEST_FAILED`, or `BROWSER_REGRESSION_FAILED` for a zero-runner / zero-step account Billing failure.
 
-## Required recovery
+## Required recovery order
 
-1. on a clean checkout, install/use Python 3.12 and uv 0.11.28;
-2. run `scripts/regenerate-root-uv-lock.sh`, review the generated `uv.lock` diff, and commit the generated lock normally;
-3. restore GitHub Actions account payment/spending-limit ability;
-4. trigger fresh workflows for the exact post-lock release candidate;
-5. verify `runner_id != 0` and actual steps execute;
-6. run canonical CI, Security, AI Regression, Staging Acceptance, Final Production Safety Hard Stops, Final Browser Preflight and Final Product Acceptance source contracts;
-7. classify real source/test results only after executable steps exist;
-8. continue the separate real AWS/Stripe/UAT/signoff evidence plan only against that exact frozen candidate.
+1. restore GitHub Actions account payment/spending-limit ability **or** obtain a clean external environment with Python 3.12 + uv 0.11.28;
+2. run the canonical lock repair path and review the generated `uv.lock`;
+3. commit the genuinely generated lock before source-RC freeze;
+4. trigger fresh workflows and verify `runner_id != 0` plus real steps;
+5. run canonical CI, Security, Recovery, Performance, AI Regression, Staging Acceptance, Final Production Safety Hard Stops, Final Browser Preflight and Final Product Acceptance source contracts;
+6. fix any real executable source/test failures that appear;
+7. only then freeze the final source RC and create its 50-scenario evidence skeleton;
+8. collect real AWS/Stripe/UAT/browser/accessibility/signoff evidence using reports-only commits after the source RC;
+9. run the canonical final decision from a clean full-history evidence checkout.
 
 NODE-73 remains **NOT ACCEPTED**.
