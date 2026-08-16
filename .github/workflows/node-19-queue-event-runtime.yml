@@ -1,0 +1,278 @@
+name: NODE-19 Queue Event Runtime
+
+on:
+  pull_request:
+    paths:
+      - "apps/worker-media/src/lumi_worker_media/**"
+      - "apps/worker-media/tests/**"
+      - "apps/api/src/lumi_api/events/**"
+      - "apps/api/src/lumi_api/queueing/**"
+      - "apps/api/src/lumi_api/persistence/models_queue_runtime.py"
+      - "apps/api/src/lumi_api/persistence/models_platform.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260816_0005_queue_event_runtime.py"
+      - "apps/api/migrations/versions/20260816_0005_sql/**"
+      - "apps/api/tests/test_queue_event_bridge.py"
+      - "tools/node19/**"
+      - "docs/runtime/**"
+      - "reports/nodes/NODE-19/**"
+      - ".github/workflows/node-19-queue-event-runtime.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/worker-media/src/lumi_worker_media/**"
+      - "apps/worker-media/tests/**"
+      - "apps/api/src/lumi_api/events/**"
+      - "apps/api/src/lumi_api/queueing/**"
+      - "apps/api/src/lumi_api/persistence/models_queue_runtime.py"
+      - "apps/api/src/lumi_api/persistence/models_platform.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260816_0005_queue_event_runtime.py"
+      - "apps/api/migrations/versions/20260816_0005_sql/**"
+      - "apps/api/tests/test_queue_event_bridge.py"
+      - "tools/node19/**"
+      - "docs/runtime/**"
+      - "reports/nodes/NODE-19/**"
+      - ".github/workflows/node-19-queue-event-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  SQLALCHEMY_VERSION: "2.0.51"
+  ALEMBIC_VERSION: "1.18.5"
+  ASYNCPG_VERSION: "0.31.0"
+  LUMI_DATABASE_MIGRATION_URL: "postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi"
+  LUMI_DATABASE_MIGRATION_URL_ASYNCPG: "postgresql://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi"
+  LUMI_DATABASE_APP_URL: "postgresql://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi"
+  RABBITMQ_URL: "amqp://lumi:lumi_rabbit_local_only@127.0.0.1:5672//"
+  CELERY_RESULT_BACKEND: "rpc://"
+
+jobs:
+  queue-event-runtime:
+    name: queue-event-runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen workspace dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Validate queue/event architecture
+        run: |
+          PYTHONPATH=apps/worker-media/src:apps/api/src \
+            uv run python tools/node19/validate_queue_runtime.py
+
+      - name: Run queue/event failure-injection contracts
+        run: |
+          PYTHONPATH=apps/worker-media/src:apps/api/src uv run pytest -q \
+            apps/worker-media/tests/test_queue_runtime_contract.py \
+            apps/worker-media/tests/test_event_runtime_contract.py \
+            apps/worker-media/tests/test_safe_consumer_contract.py \
+            apps/worker-media/tests/test_queue_topology_and_celery.py \
+            apps/api/tests/test_queue_event_bridge.py
+
+      - name: Export runtime schemas
+        run: |
+          rm -rf reports/nodes/NODE-19/generated-schemas
+          PYTHONPATH=apps/api/src uv run python tools/node19/export_queue_schemas.py
+          test "$(find reports/nodes/NODE-19/generated-schemas -name '*.schema.json' | wc -l)" -eq 3
+
+      - name: Validate schemas and gap ledger
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          schemas = sorted(Path("reports/nodes/NODE-19/generated-schemas").glob("*.schema.json"))
+          assert len(schemas) == 3
+          for path in schemas:
+              json.loads(path.read_text(encoding="utf-8"))
+          ledger = json.loads(Path("reports/nodes/NODE-19/gap-ledger.json").read_text(encoding="utf-8"))
+          assert len(ledger["gaps"]) == 5
+          print("NODE-19 schemas and gap ledger valid")
+          PY
+
+      - name: Lint and type-check NODE-19 scope
+        run: |
+          uv run ruff check \
+            apps/worker-media/src/lumi_worker_media \
+            apps/worker-media/tests/test_queue_runtime_contract.py \
+            apps/worker-media/tests/test_event_runtime_contract.py \
+            apps/worker-media/tests/test_safe_consumer_contract.py \
+            apps/worker-media/tests/test_queue_topology_and_celery.py \
+            apps/api/src/lumi_api/events/runtime_bridge.py \
+            apps/api/src/lumi_api/queueing \
+            apps/api/src/lumi_api/persistence/models_queue_runtime.py \
+            apps/api/tests/test_queue_event_bridge.py \
+            tools/node19
+          uv run pyright \
+            apps/worker-media/src/lumi_worker_media \
+            apps/worker-media/tests/test_queue_runtime_contract.py \
+            apps/worker-media/tests/test_event_runtime_contract.py \
+            apps/worker-media/tests/test_safe_consumer_contract.py \
+            apps/worker-media/tests/test_queue_topology_and_celery.py \
+            apps/api/src/lumi_api/events/runtime_bridge.py \
+            apps/api/src/lumi_api/queueing \
+            apps/api/src/lumi_api/persistence/models_queue_runtime.py \
+            apps/api/tests/test_queue_event_bridge.py \
+            tools/node19
+
+      - name: Start PostgreSQL and RabbitMQ
+        run: |
+          cp infra/compose/env.local.example infra/compose/.env
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            up -d --wait --wait-timeout 240 postgres rabbitmq
+
+      - name: Upgrade through NODE-18 baseline
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade 20260816_0004
+
+      - name: Load deterministic two-tenant fixture before NODE-19
+        run: |
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -v ON_ERROR_STOP=1 -U lumi_migration -d lumi \
+            < apps/api/migrations/seeds/p0_local_fixture.sql
+
+      - name: Upgrade PostgreSQL to NODE-19 head
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+
+      - name: Validate frozen NODE-10 baseline plus current metadata
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            python tools/node10/validate_schema.py
+
+      - name: Re-run baseline PostgreSQL invariants
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            python tools/node10/run_database_integration.py
+
+      - name: Run NODE-19 PostgreSQL invariants
+        run: |
+          PYTHONPATH=apps/worker-media/src:apps/api/src uv run --no-project \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            --with "celery==5.6.3" \
+            python tools/node19/test_queue_database.py
+
+      - name: Real RabbitMQ topology/routing/DLQ round trip
+        run: |
+          PYTHONPATH=apps/worker-media/src uv run python tools/node19/test_rabbitmq_runtime.py
+
+      - name: Start real Celery worker
+        run: |
+          mkdir -p reports/nodes/NODE-19/runtime
+          PYTHONPATH=apps/worker-media/src uv run celery \
+            -A lumi_worker_media.app:celery_app worker \
+            --loglevel=INFO --pool=solo --concurrency=1 \
+            -Q lumi.media.image,lumi.media.video,lumi.media.export,lumi.asset.processing \
+            > reports/nodes/NODE-19/runtime/celery.log 2>&1 &
+          echo $! > reports/nodes/NODE-19/runtime/celery.pid
+          for attempt in $(seq 1 30); do
+            if PYTHONPATH=apps/worker-media/src uv run celery \
+              -A lumi_worker_media.app:celery_app inspect ping --timeout=2 \
+              | grep -q pong; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat reports/nodes/NODE-19/runtime/celery.log
+          exit 1
+
+      - name: Real Celery task smoke
+        run: PYTHONPATH=apps/worker-media/src uv run python tools/node19/test_celery_worker.py
+
+      - name: Stop Celery worker
+        if: always()
+        run: |
+          if test -f reports/nodes/NODE-19/runtime/celery.pid; then
+            kill "$(cat reports/nodes/NODE-19/runtime/celery.pid)" 2>/dev/null || true
+          fi
+
+      - name: Downgrade NODE-19 migration only
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic downgrade 20260816_0004
+
+      - name: Verify NODE-19 rollback preserves NODE-18
+        run: |
+          runtime_job="$(docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c "SELECT to_regclass('public.runtime_jobs') IS NULL")"
+          asset_upload="$(docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c "SELECT to_regclass('public.asset_upload_sessions') IS NOT NULL")"
+          test "$runtime_job" = "t"
+          test "$asset_upload" = "t"
+
+      - name: Reapply NODE-19 and rerun DB invariants
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+          cd ../..
+          PYTHONPATH=apps/worker-media/src:apps/api/src uv run --no-project \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            --with "celery==5.6.3" \
+            python tools/node19/test_queue_database.py
+
+      - name: Capture service diagnostics on failure
+        if: failure()
+        run: |
+          mkdir -p reports/nodes/NODE-19/runtime
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml ps \
+            > reports/nodes/NODE-19/runtime/compose-ps.txt 2>&1 || true
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml logs \
+            --no-color --tail=400 postgres rabbitmq \
+            > reports/nodes/NODE-19/runtime/services.log 2>&1 || true
+
+      - name: Upload NODE-19 evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-19-queue-event-runtime-${{ github.run_id }}
+          path: |
+            reports/nodes/NODE-19/generated-schemas
+            reports/nodes/NODE-19/gap-ledger.json
+            reports/nodes/NODE-19/runtime
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            down --volumes --remove-orphans || true

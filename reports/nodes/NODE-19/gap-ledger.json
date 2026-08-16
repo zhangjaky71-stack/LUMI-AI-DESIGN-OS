@@ -1,0 +1,36 @@
+{
+  "node": "NODE-19",
+  "status": "IMPLEMENTED_VALIDATING",
+  "gaps": [
+    {
+      "id": "QUEUE-DEP-001",
+      "status": "OPEN",
+      "description": "asyncpg is lazy-loaded by the worker PostgreSQL adapters but is not yet a frozen production dependency of lumi-worker-media.",
+      "closure": "Add the runtime DB dependency through the deployment/package dependency lock and run the real worker with LUMI_RUNTIME_DATABASE_URL."
+    },
+    {
+      "id": "QUEUE-HANDLER-002",
+      "status": "OPEN",
+      "description": "Celery task registration, routing, durable job state and retry logic are implemented, but media handlers are placeholder orchestration handlers rather than final image/video/export implementations.",
+      "closure": "Bind job kinds to production media/AssetStorage handlers as those runtime adapters land."
+    },
+    {
+      "id": "QUEUE-COMPOSE-003",
+      "status": "OPEN",
+      "description": "QueuedAssetApiService provides the NODE-18 to NODE-19 scheduling boundary, but production FastAPI composition plus an atomic PostgreSQL JobScheduler is not wired while the NODE-18 production SQL repository remains open.",
+      "closure": "Bind Asset completion and runtime_jobs creation in one application transaction boundary, then let the dispatcher publish from durable state."
+    },
+    {
+      "id": "QUEUE-OBS-004",
+      "status": "OPEN",
+      "description": "Queue depth, retry, DLQ age and oldest-message SLO dashboards/alerts are not productionized in this node.",
+      "closure": "NODE-67 observability wires RabbitMQ/Celery/PostgreSQL runtime metrics and alerts."
+    },
+    {
+      "id": "QUEUE-CI-005",
+      "status": "OPEN",
+      "description": "Canonical hosted validation is pending while GitHub Actions cannot allocate a runner because of the account billing/spending-limit condition.",
+      "closure": "Fix GitHub Billing/spending limit and execute the committed NODE-19 workflow without source-only substitution."
+    }
+  ]
+}
