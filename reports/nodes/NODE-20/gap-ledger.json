@@ -1,0 +1,36 @@
+{
+  "node": "NODE-20",
+  "status": "IMPLEMENTED_VALIDATING",
+  "gaps": [
+    {
+      "id": "IDEMP-API-001",
+      "status": "OPEN",
+      "description": "IdempotentApiService, replay middleware, PostgresIdempotencyStore and the atomic PostgresTransactionalSideEffectGateway are implemented, but the production composite ApiV1Service/PostgreSQL repositories are not installed by default while upstream NODE-16/17/18 SQL stores remain open; asyncpg is also still supplied to acceptance through an explicit runtime extra rather than the frozen lumi-api dependency set.",
+      "closure": "Install the upstream transactional SQL repositories, make database runtime dependencies part of the production lock, and compose DB mutations through PostgresTransactionalSideEffectGateway so the business write and operation ledger share one transaction."
+    },
+    {
+      "id": "IDEMP-PROVIDER-002",
+      "status": "OPEN",
+      "description": "The paid SideEffectGateway, renewable lease/heartbeat boundary and reconciliation contract are implemented, but no production image/video/model provider is activated through it yet.",
+      "closure": "NODE-22 Model Gateway and provider adapters must record provider acceptance before the crash window, heartbeat long-running calls, implement native status/idempotency reconciliation, and forbid direct paid SDK calls outside SideEffectGateway."
+    },
+    {
+      "id": "IDEMP-RETENTION-003",
+      "status": "OPEN",
+      "description": "expires_at is a replay/retention horizon, but reference-aware physical cleanup of idempotency rows is intentionally not implemented because Generation, Cost Ledger and audit/provenance references may remain live.",
+      "closure": "Add retention/GC only after reference checks and legal/audit requirements are defined; never delete solely because TTL elapsed."
+    },
+    {
+      "id": "IDEMP-OBS-004",
+      "status": "OPEN",
+      "description": "The six required metric names and in-process metric boundary are frozen, but production counters, dashboards and ambiguous-side-effect alerting are not wired.",
+      "closure": "NODE-67 observability exports gateway counters and alerts whenever ambiguous_side_effect_total increases."
+    },
+    {
+      "id": "IDEMP-CI-005",
+      "status": "OPEN",
+      "description": "Canonical hosted validation remains pending while GitHub Actions cannot allocate a runner because of the account billing/spending-limit condition.",
+      "closure": "Fix GitHub Billing/spending limit and execute the committed NODE-20 workflow without treating runner_id=0 as source validation."
+    }
+  ]
+}
