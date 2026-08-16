@@ -98,7 +98,6 @@ def main() -> None:
             for queue in build_job_dlq_queues()
             if queue.name == "lumi.media.image.dlq"
         )
-        dlq(channel=connection.default_channel).declare()
         failed_at = datetime.now(UTC)
         KombuJobDeadLetterPublisher(BROKER_URL).publish(
             DeadLetterRecord(
