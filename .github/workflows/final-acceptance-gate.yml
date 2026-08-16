@@ -37,6 +37,8 @@ jobs:
         run: python3 scripts/validate_final_acceptance_contract.py
       - name: Validate final browser preflight contract
         run: python3 scripts/validate_final_browser_preflight.py
+      - name: Validate upstream canonical lock contract
+        run: python3 scripts/validate_final_upstream_lock_contract.py
       - name: Validate JSON and Python syntax
         run: |
           python3 -m json.tool final/acceptance/manifest-v1.json >/dev/null
@@ -47,7 +49,8 @@ jobs:
             scripts/final-acceptance-gate.py \
             scripts/create-final-acceptance-evidence.py \
             scripts/validate_final_acceptance_contract.py \
-            scripts/validate_final_browser_preflight.py
+            scripts/validate_final_browser_preflight.py \
+            scripts/validate_final_upstream_lock_contract.py
 
   canonical-lock-gate:
     runs-on: ubuntu-24.04
