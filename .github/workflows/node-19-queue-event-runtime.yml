@@ -81,6 +81,7 @@ jobs:
           PYTHONPATH=apps/worker-media/src:apps/api/src uv run pytest -q \
             apps/worker-media/tests/test_queue_runtime_contract.py \
             apps/worker-media/tests/test_event_runtime_contract.py \
+            apps/worker-media/tests/test_event_schema_coverage.py \
             apps/worker-media/tests/test_safe_consumer_contract.py \
             apps/worker-media/tests/test_queue_topology_and_celery.py \
             apps/api/tests/test_queue_event_bridge.py
@@ -112,6 +113,7 @@ jobs:
             apps/worker-media/src/lumi_worker_media \
             apps/worker-media/tests/test_queue_runtime_contract.py \
             apps/worker-media/tests/test_event_runtime_contract.py \
+            apps/worker-media/tests/test_event_schema_coverage.py \
             apps/worker-media/tests/test_safe_consumer_contract.py \
             apps/worker-media/tests/test_queue_topology_and_celery.py \
             apps/api/src/lumi_api/events/runtime_bridge.py \
@@ -123,6 +125,7 @@ jobs:
             apps/worker-media/src/lumi_worker_media \
             apps/worker-media/tests/test_queue_runtime_contract.py \
             apps/worker-media/tests/test_event_runtime_contract.py \
+            apps/worker-media/tests/test_event_schema_coverage.py \
             apps/worker-media/tests/test_safe_consumer_contract.py \
             apps/worker-media/tests/test_queue_topology_and_celery.py \
             apps/api/src/lumi_api/events/runtime_bridge.py \
