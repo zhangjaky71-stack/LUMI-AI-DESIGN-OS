@@ -1,3 +1,5 @@
+from .clamd import ClamdFileScanner
+from .ffmpeg_preview import FfmpegPreviewRenderer
 from .models import (
     AssetAuditEntry,
     AssetEvent,
@@ -54,9 +56,11 @@ __all__ = [
     "AssetStorageError",
     "AssetStorageService",
     "ClamAVFileScanner",
+    "ClamdFileScanner",
     "CompleteUploadCommand",
     "CreateUploadCommand",
     "DeterministicPreviewRenderer",
+    "FfmpegPreviewRenderer",
     "FileScanResult",
     "FileScanner",
     "MediaKind",
