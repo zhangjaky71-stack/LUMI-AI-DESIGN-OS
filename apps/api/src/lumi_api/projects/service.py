@@ -11,6 +11,7 @@ from lumi_api.domain.states import ProjectStatus
 from .models import (
     BriefVersion,
     DefaultProjectBranch,
+    ProjectAuditEntry,
     ProjectBrief,
     ProjectCommandError,
     ProjectEvent,
@@ -76,8 +77,29 @@ class ProjectCoreService:
         if not decision.allowed:
             raise ProjectCommandError(decision.reason_code)
 
-    def get(self, organization_id: UUID, project_id: UUID, *, actor: Principal) -> ProjectRecord:
-        self._authorize(actor, organization_id=organization_id, permission=Permission.PROJECT_READ)
+    @staticmethod
+    def _audit_for_event(event: ProjectEvent) -> ProjectAuditEntry:
+        return ProjectAuditEntry(
+            organization_id=event.organization_id,
+            project_id=event.project_id,
+            actor_id=event.actor_id,
+            action=event.event_type,
+            occurred_at=event.occurred_at,
+            details=event.payload,
+        )
+
+    def get(
+        self,
+        organization_id: UUID,
+        project_id: UUID,
+        *,
+        actor: Principal,
+    ) -> ProjectRecord:
+        self._authorize(
+            actor,
+            organization_id=organization_id,
+            permission=Permission.PROJECT_READ,
+        )
         project = self.repository.get(organization_id, project_id)
         if project is None:
             raise ProjectCommandError("PROJECT_NOT_FOUND")
@@ -98,11 +120,13 @@ class ProjectCoreService:
             permission=Permission.PROJECT_WRITE,
         )
         if not self.repository.workspace_exists(
-            command.organization_id, command.workspace_id
+            command.organization_id,
+            command.workspace_id,
         ):
             raise ProjectCommandError("WORKSPACE_NOT_FOUND")
         if command.brand_id is not None and not self.repository.brand_exists(
-            command.organization_id, command.brand_id
+            command.organization_id,
+            command.brand_id,
         ):
             raise ProjectCommandError("BRAND_NOT_FOUND")
 
@@ -162,6 +186,7 @@ class ProjectCoreService:
             branch,
             summary,
             (event,),
+            (self._audit_for_event(event),),
         )
         return project
 
@@ -178,8 +203,13 @@ class ProjectCoreService:
             raise ProjectCommandError("PROJECT_ARCHIVED")
         if current.version != command.expected_version:
             raise ProjectCommandError("PROJECT_VERSION_CONFLICT")
-        if command.update_brand and command.brand_id is not None and not self.repository.brand_exists(
-            command.organization_id, command.brand_id
+        if (
+            command.update_brand
+            and command.brand_id is not None
+            and not self.repository.brand_exists(
+                command.organization_id,
+                command.brand_id,
+            )
         ):
             raise ProjectCommandError("BRAND_NOT_FOUND")
 
@@ -230,11 +260,13 @@ class ProjectCoreService:
             )
         )
         updated = current.model_copy(update=update)
+        event_tuple = tuple(events)
         self.repository.update_project(
             updated,
             expected_version=command.expected_version,
             brief_version=brief_version,
-            events=tuple(events),
+            events=event_tuple,
+            audits=tuple(self._audit_for_event(event) for event in event_tuple),
         )
         return updated
 
@@ -248,7 +280,11 @@ class ProjectCoreService:
         expected_version: int,
         now: datetime,
     ) -> ProjectRecord:
-        self._authorize(actor, organization_id=organization_id, permission=Permission.PROJECT_WRITE)
+        self._authorize(
+            actor,
+            organization_id=organization_id,
+            permission=Permission.PROJECT_WRITE,
+        )
         current = self.repository.get(organization_id, project_id)
         if current is None:
             raise ProjectCommandError("PROJECT_NOT_FOUND")
@@ -256,9 +292,15 @@ class ProjectCoreService:
             raise ProjectCommandError("PROJECT_VERSION_CONFLICT")
 
         allowed: dict[ProjectStatus, frozenset[ProjectStatus]] = {
-            ProjectStatus.DRAFT: frozenset({ProjectStatus.ACTIVE, ProjectStatus.ARCHIVED}),
-            ProjectStatus.ACTIVE: frozenset({ProjectStatus.PAUSED, ProjectStatus.ARCHIVED}),
-            ProjectStatus.PAUSED: frozenset({ProjectStatus.ACTIVE, ProjectStatus.ARCHIVED}),
+            ProjectStatus.DRAFT: frozenset(
+                {ProjectStatus.ACTIVE, ProjectStatus.ARCHIVED}
+            ),
+            ProjectStatus.ACTIVE: frozenset(
+                {ProjectStatus.PAUSED, ProjectStatus.ARCHIVED}
+            ),
+            ProjectStatus.PAUSED: frozenset(
+                {ProjectStatus.ACTIVE, ProjectStatus.ARCHIVED}
+            ),
             ProjectStatus.ARCHIVED: frozenset({ProjectStatus.ACTIVE}),
         }
         if target not in allowed[current.status]:
@@ -295,6 +337,7 @@ class ProjectCoreService:
             expected_version=expected_version,
             brief_version=None,
             events=(event,),
+            audits=(self._audit_for_event(event),),
         )
         return updated
 
