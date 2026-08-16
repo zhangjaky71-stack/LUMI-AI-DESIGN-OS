@@ -1,3 +1,28 @@
+CREATE OR REPLACE FUNCTION lumi_normalize_cost_status() RETURNS trigger AS $$
+BEGIN
+  IF NEW.entry_type = 'actual_cost' THEN
+    NEW.status := CASE NEW.confidence
+      WHEN 'exact' THEN 'final'
+      WHEN 'estimated' THEN 'estimated'
+      ELSE 'unknown'
+    END;
+  ELSIF NEW.entry_type IN ('adjustment','reversal') THEN
+    NEW.status := 'reconciled';
+  ELSIF NEW.entry_type IN ('estimate','reservation') THEN
+    NEW.status := 'estimated';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- statement-breakpoint
+
+CREATE TRIGGER trg_cost_ledger_normalize_status
+BEFORE INSERT ON cost_ledger
+FOR EACH ROW EXECUTE FUNCTION lumi_normalize_cost_status();
+
+-- statement-breakpoint
+
 CREATE TRIGGER trg_cost_ledger_immutable
 BEFORE UPDATE OR DELETE ON cost_ledger
 FOR EACH ROW EXECUTE FUNCTION lumi_forbid_mutation();
@@ -75,9 +100,7 @@ FOR EACH ROW EXECUTE FUNCTION lumi_enforce_same_tenant_fk(
 
 CREATE TRIGGER trg_quota_leases_same_tenant
 BEFORE INSERT OR UPDATE ON quota_leases
-FOR EACH ROW EXECUTE FUNCTION lumi_enforce_same_tenant_fk(
-  'operation_id', 'idempotency_operations'
-);
+FOR EACH ROW EXECUTE FUNCTION lumi_enforce_same_tenant_fk('operation_id', 'idempotency_operations');
 
 -- statement-breakpoint
 
