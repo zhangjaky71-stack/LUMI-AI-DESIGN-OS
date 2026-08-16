@@ -64,6 +64,10 @@ class NoRouteAvailable(RuntimeError):
     code = "MODEL_GATEWAY_NO_ROUTE"
 
 
+class ModelCapabilityTemporarilyUnavailable(NoRouteAvailable):
+    code = "MODEL_CAPABILITY_TEMPORARILY_UNAVAILABLE"
+
+
 class PaidSideEffectGuardRequired(RuntimeError):
     code = "MODEL_GATEWAY_PAID_SIDE_EFFECT_GUARD_REQUIRED"
 

@@ -6,29 +6,111 @@ from decimal import Decimal
 from uuid import uuid4
 
 from .errors import PaidSideEffectSemanticConflict
-from .models import CostEstimate, HealthSnapshot, ModelRequest, NormalizedResult, RouteCandidate
-from .ports import BudgetReservation, CostTelemetry, PaidEffect, ReconcileEffect
+from .models import (
+    CostEstimate,
+    HealthSnapshot,
+    ModelRequest,
+    NormalizedResult,
+    RouteCandidate,
+)
+from .ports import (
+    BudgetReservation,
+    CostTelemetry,
+    PaidEffect,
+    ReconcileEffect,
+)
 
 
 class MemoryHealthPort:
+    """Simple compatibility port; NODE-24 tests use AdaptiveProviderHealthRegistry."""
+
     def __init__(self) -> None:
         self._snapshots: dict[tuple[str, str], HealthSnapshot] = {}
         self.successes: dict[tuple[str, str], int] = defaultdict(int)
         self.failures: dict[tuple[str, str], int] = defaultdict(int)
+        self.queue_completions: dict[tuple[str, str], list[int]] = defaultdict(list)
+        self.fallback_total = 0
+        self.all_candidates_unavailable_total = 0
 
-    def set(self, provider: str, model: str, snapshot: HealthSnapshot) -> None:
+    def set(
+        self,
+        provider: str,
+        model: str,
+        snapshot: HealthSnapshot,
+    ) -> None:
         self._snapshots[(provider, model)] = snapshot
 
-    def snapshot(self, provider: str, model: str) -> HealthSnapshot:
-        return self._snapshots.get((provider, model), HealthSnapshot())
+    def snapshot(
+        self,
+        provider: str,
+        model: str,
+        capability: str | None = None,
+    ) -> HealthSnapshot:
+        del capability
+        return self._snapshots.get(
+            (provider, model),
+            HealthSnapshot(),
+        )
 
-    def record_success(self, provider: str, model: str, latency_ms: int | None) -> None:
-        del latency_ms
+    def record_success(
+        self,
+        provider: str,
+        model: str,
+        latency_ms: int | None,
+        *,
+        capability: str | None = None,
+    ) -> None:
+        del latency_ms, capability
         self.successes[(provider, model)] += 1
 
-    def record_failure(self, provider: str, model: str, category: str) -> None:
-        del category
+    def record_failure(
+        self,
+        provider: str,
+        model: str,
+        category: str,
+        *,
+        capability: str | None = None,
+        latency_ms: int | None = None,
+        retry_after_seconds: float | None = None,
+    ) -> None:
+        del category, capability, latency_ms, retry_after_seconds
         self.failures[(provider, model)] += 1
+
+    def record_queue_completion(
+        self,
+        provider: str,
+        model: str,
+        completion_ms: int,
+        *,
+        capability: str | None = None,
+    ) -> None:
+        del capability
+        self.queue_completions[(provider, model)].append(completion_ms)
+
+    def acquire_probe(
+        self,
+        provider: str,
+        model: str,
+        *,
+        capability: str | None = None,
+    ) -> bool:
+        del provider, model, capability
+        return True
+
+    def release_probe(
+        self,
+        provider: str,
+        model: str,
+        *,
+        capability: str | None = None,
+    ) -> None:
+        del provider, model, capability
+
+    def record_fallback(self) -> None:
+        self.fallback_total += 1
+
+    def record_all_candidates_unavailable(self) -> None:
+        self.all_candidates_unavailable_total += 1
 
 
 class MemoryBudgetPort:
@@ -37,21 +119,29 @@ class MemoryBudgetPort:
         self.reserved: dict[str, Decimal] = {}
 
     async def reserve(
-        self, request: ModelRequest, candidate: RouteCandidate
+        self,
+        request: ModelRequest,
+        candidate: RouteCandidate,
     ) -> BudgetReservation:
         amount = candidate.estimate.amount_usd
         effective_limit = request.budget_limit
         if amount is None:
             if not request.routing_hints.allow_unknown_cost:
                 return BudgetReservation(False, reason="unknown_cost")
-            return BudgetReservation(True, reservation_ref=f"unknown:{uuid4()}")
+            return BudgetReservation(
+                True,
+                reservation_ref=f"unknown:{uuid4()}",
+            )
         if effective_limit is not None and amount > effective_limit:
             return BudgetReservation(
                 False,
                 remaining_usd=effective_limit,
                 reason="operation_budget",
             )
-        if self.remaining_usd is not None and amount > self.remaining_usd:
+        if (
+            self.remaining_usd is not None
+            and amount > self.remaining_usd
+        ):
             return BudgetReservation(
                 False,
                 remaining_usd=self.remaining_usd,
@@ -68,18 +158,30 @@ class MemoryBudgetPort:
         )
 
     async def settle(
-        self, reservation: BudgetReservation, *, actual: CostEstimate
+        self,
+        reservation: BudgetReservation,
+        *,
+        actual: CostEstimate,
     ) -> None:
         if not reservation.reservation_ref:
             return
-        estimated = self.reserved.pop(reservation.reservation_ref, Decimal("0"))
-        if self.remaining_usd is not None and actual.amount_usd is not None:
+        estimated = self.reserved.pop(
+            reservation.reservation_ref,
+            Decimal("0"),
+        )
+        if (
+            self.remaining_usd is not None
+            and actual.amount_usd is not None
+        ):
             self.remaining_usd += estimated - actual.amount_usd
 
     async def release(self, reservation: BudgetReservation) -> None:
         if not reservation.reservation_ref:
             return
-        amount = self.reserved.pop(reservation.reservation_ref, Decimal("0"))
+        amount = self.reserved.pop(
+            reservation.reservation_ref,
+            Decimal("0"),
+        )
         if self.remaining_usd is not None:
             self.remaining_usd += amount
 
@@ -93,11 +195,12 @@ class MemoryCostTelemetryPort:
 
 
 class MemoryPaidSideEffectPort:
-    """Deterministic CI reference only. Production must bind NODE-20 SideEffectGateway."""
+    """Deterministic CI reference; production must bind NODE-20 gateway."""
 
     def __init__(self) -> None:
         self._results: dict[
-            tuple[str, str, str, str], tuple[str, NormalizedResult]
+            tuple[str, str, str, str],
+            tuple[str, NormalizedResult],
         ] = {}
         self.executions = 0
         self._lock = asyncio.Lock()

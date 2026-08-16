@@ -6,6 +6,7 @@ from . import models_auth as _models_auth
 from . import models_capability_registry as _models_capability_registry
 from . import models_identity as _models_identity
 from . import models_project_core as _models_project_core
+from . import models_provider_health as _models_provider_health
 from . import models_queue_runtime as _models_queue_runtime
 from .models_artifacts import ArtifactEdgeModel, ArtifactVersionModel
 from .models_execution import (
@@ -25,6 +26,7 @@ _METADATA_MODULES = (
     _models_capability_registry,
     _models_identity,
     _models_project_core,
+    _models_provider_health,
     _models_queue_runtime,
 )
 

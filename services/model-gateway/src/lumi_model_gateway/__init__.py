@@ -2,6 +2,7 @@ from .anthropic_adapter import AnthropicMessagesAdapter
 from .client import InProcessModelGatewayClient, ModelGatewayClient
 from .errors import (
     ErrorCategory,
+    ModelCapabilityTemporarilyUnavailable,
     NoRouteAvailable,
     PaidSideEffectGuardRequired,
     PaidSideEffectSemanticConflict,
@@ -34,6 +35,26 @@ from .models import (
     RoutingHints,
 )
 from .openai_adapter import OpenAIResponsesAdapter
+from .provider_health import (
+    AdaptiveProviderHealthRegistry,
+    CapacityHint,
+    ManualOverrideMode,
+    MemoryProviderHealthAuditSink,
+    MemoryProviderHealthTransitionSink,
+    ProviderHealthAuditEvent,
+    ProviderHealthPolicy,
+    ProviderHealthSnapshot,
+    ProviderHealthState,
+    ProviderHealthTransition,
+)
+from .provider_health_postgres import (
+    PostgresProviderHealthPersistence,
+    summary_payload,
+)
+from .provider_health_store import (
+    MemoryHealthStateStore,
+    RedisHealthStateStore,
+)
 from .registry import (
     BenchmarkScore,
     CapabilityClaim,
@@ -57,14 +78,23 @@ from .routing_profile_evaluator import (
     RoutingProfileEvaluator,
 )
 from .secrets import EnvironmentSecretProvider, MappingSecretProvider
+from .synthetic_probe import (
+    SyntheticProbeDefinition,
+    SyntheticProbePolicy,
+    SyntheticProbeResult,
+    SyntheticProbeRunner,
+    SyntheticProbeStatus,
+)
 
 __all__ = [
+    "AdaptiveProviderHealthRegistry",
     "AnthropicMessagesAdapter",
     "BenchmarkScore",
     "Capability",
     "CapabilityClaim",
     "CapabilityRegistry",
     "CapabilitySupport",
+    "CapacityHint",
     "ClaimConfidence",
     "CostConfidence",
     "CostEstimate",
@@ -73,12 +103,17 @@ __all__ = [
     "InProcessModelGatewayClient",
     "InputKind",
     "LatencyProfile",
+    "ManualOverrideMode",
     "MappingSecretProvider",
     "MemoryBudgetPort",
     "MemoryCostTelemetryPort",
     "MemoryHealthPort",
+    "MemoryHealthStateStore",
     "MemoryPaidSideEffectPort",
+    "MemoryProviderHealthAuditSink",
+    "MemoryProviderHealthTransitionSink",
     "MockProvider",
+    "ModelCapabilityTemporarilyUnavailable",
     "ModelGateway",
     "ModelGatewayClient",
     "ModelInput",
@@ -96,13 +131,20 @@ __all__ = [
     "PaidSideEffectGuardRequired",
     "PaidSideEffectSemanticConflict",
     "PostgresCapabilityRegistryStore",
+    "PostgresProviderHealthPersistence",
     "PricingSnapshot",
     "ProfileEvaluation",
     "ProviderAcceptance",
     "ProviderCallError",
+    "ProviderHealthAuditEvent",
+    "ProviderHealthPolicy",
+    "ProviderHealthSnapshot",
+    "ProviderHealthState",
+    "ProviderHealthTransition",
     "ProviderModel",
     "ProviderRegistry",
     "QualityProfile",
+    "RedisHealthStateStore",
     "RegistrySnapshot",
     "ResultStatus",
     "RetryPolicy",
@@ -111,6 +153,12 @@ __all__ = [
     "RoutingProfile",
     "RoutingProfileEvaluator",
     "RoutingWeights",
+    "SyntheticProbeDefinition",
+    "SyntheticProbePolicy",
+    "SyntheticProbeResult",
+    "SyntheticProbeRunner",
+    "SyntheticProbeStatus",
     "load_seed_registry",
     "load_seed_snapshot",
+    "summary_payload",
 ]

@@ -1,0 +1,48 @@
+{
+  "node": "NODE-24",
+  "status": "IMPLEMENTED/VALIDATING",
+  "gaps": [
+    {
+      "id": "HEALTH-REDIS-001",
+      "owner": "AI Infrastructure / Platform Packaging",
+      "severity": "P0",
+      "description": "A redis-py-compatible shared HealthStateStore and real Redis integration verifier exist, but the production redis client dependency, TLS/auth credential binding, connection pool sizing and service bootstrap wiring are not frozen into the Model Gateway runtime package. Redis remains short-lived operational state only; store failure falls back to UNKNOWN."
+    },
+    {
+      "id": "HEALTH-PROBE-002",
+      "owner": "AI Infrastructure / Provider Integrations",
+      "severity": "P1",
+      "description": "Synthetic probe policy and runner are implemented with explicit enabled, provider-terms, side-effect-free and cost gates. No live third-party synthetic probe is enabled until a provider-specific endpoint and terms are verified. Default policy executes nothing and permits no paid probe."
+    },
+    {
+      "id": "HEALTH-ADMIN-003",
+      "owner": "Platform Admin",
+      "severity": "P1",
+      "description": "Manual disable, force-degraded, clear-override and clear-breaker contracts require actor/reason/TTL audit evidence, and PostgreSQL append-only audit persistence exists. Production authenticated Admin API/UI orchestration that persists the durable audit then applies the Redis override is not yet composed."
+    },
+    {
+      "id": "HEALTH-OBS-004",
+      "owner": "Observability",
+      "severity": "P1",
+      "description": "Health snapshots, transitions, append-only summaries and runtime counters expose the data required for provider_success_rate, provider_p95_latency, provider_429_rate, provider_circuit_state, fallback_rate and all_candidates_unavailable_total. Production metrics export, dashboards and critical-capability alert routing are deferred to NODE-67."
+    },
+    {
+      "id": "HEALTH-TUNING-005",
+      "owner": "AI Infrastructure / Evaluation",
+      "severity": "P1",
+      "description": "ProviderHealthPolicy supports per-provider/model/capability resolution, rolling windows, failure/rate-limit/timeout thresholds, latency and queue completion thresholds. Default values are safe engineering defaults, not production-calibrated SLOs; real traffic and provider behavior must calibrate profiles."
+    },
+    {
+      "id": "HEALTH-PACKAGE-006",
+      "owner": "Platform Packaging",
+      "severity": "P1",
+      "description": "The inherited NODE-22 standalone lumi-api -> lumi-model-gateway workspace dependency/lock edge remains open. NODE-24 does not hand-edit uv.lock or claim a reviewed standalone service packaging boundary that has not been generated and validated."
+    },
+    {
+      "id": "HEALTH-CI-007",
+      "owner": "External GitHub account",
+      "severity": "BLOCKED_EXTERNAL",
+      "description": "Hosted GitHub Actions cannot be treated as PASS while the account payment/spending-limit condition prevents runner allocation. A job with runner_id=0 and steps=[] is external infrastructure evidence, not a source-code failure and not PASS."
+    }
+  ]
+}

@@ -154,6 +154,9 @@ class ModelRouter:
                     record,
                     registry_snapshot_id=snapshot.snapshot_id,
                     pricing_at=pricing_at,
+                    pricing_region=(
+                        request.routing_hints.required_region
+                    ),
                 )
                 for record in records
             )
@@ -233,11 +236,31 @@ class ModelRouter:
             health_snapshot = self.health.snapshot(
                 model.provider,
                 model.model,
+                request.capability.value,
             )
-            if not health_snapshot.healthy or health_snapshot.score <= 0:
+            if (
+                not health_snapshot.healthy
+                or health_snapshot.score <= 0
+            ):
                 rejected.append(f"{identity}:health_filtered")
                 continue
-            reasons.append("health_ok")
+            if (
+                health_snapshot.reason is not None
+                and ":unknown:" in health_snapshot.reason
+            ):
+                reasons.append("health_unknown_conservative")
+            elif (
+                health_snapshot.reason is not None
+                and ":degraded:" in health_snapshot.reason
+            ):
+                reasons.append("health_degraded")
+            elif (
+                health_snapshot.reason is not None
+                and ":recovering:" in health_snapshot.reason
+            ):
+                reasons.append("health_recovering_probe_only")
+            else:
+                reasons.append("health_ok")
 
             try:
                 adapter.validate(request, model)
