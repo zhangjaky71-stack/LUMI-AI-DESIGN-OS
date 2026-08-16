@@ -236,6 +236,8 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
         limit: int,
     ) -> ReadResult:
         mapped = self._map_path(file_path)
+        if offset < 0 or limit <= 0:
+            return ReadResult(error="offset must be >= 0 and limit must be > 0")
         try:
             payload = await self._runtime.read_file(
                 self._sandbox_id,
@@ -253,21 +255,13 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
                     "encoding": "base64",
                 }
             )
-        if offset < 0 or limit <= 0:
-            return ReadResult(error="offset must be >= 0 and limit must be > 0")
         lines = text.splitlines(keepends=True)
-        if not lines or offset >= len(lines):
-            return ReadResult(file_data={"content": "", "encoding": "utf-8"})
         selected = lines[offset : offset + limit]
-        start_line = offset + 1
-        end_line = offset + len(selected)
-        next_offset = end_line if end_line < len(lines) else None
         return ReadResult(
-            file_data={"content": "".join(selected), "encoding": "utf-8"},
-            total_lines=len(lines),
-            start_line=start_line,
-            end_line=end_line,
-            next_offset=next_offset,
+            file_data={
+                "content": "".join(selected),
+                "encoding": "utf-8",
+            }
         )
 
     def write(self, file_path: str, content: str) -> WriteResult:
@@ -374,32 +368,23 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
         pattern: str,
         path: str | None = None,
         glob: str | None = None,
-        *,
-        max_count: int | None = None,
     ) -> GrepResult:
-        return self._bridge.run(self._agrep_impl(pattern, path, glob, max_count))
+        return self._bridge.run(self._agrep_impl(pattern, path, glob))
 
     async def agrep(
         self,
         pattern: str,
         path: str | None = None,
         glob: str | None = None,
-        *,
-        max_count: int | None = None,
     ) -> GrepResult:
-        return await self._bridge.arun(
-            self._agrep_impl(pattern, path, glob, max_count)
-        )
+        return await self._bridge.arun(self._agrep_impl(pattern, path, glob))
 
     async def _agrep_impl(
         self,
         pattern: str,
         path: str | None,
         glob_pattern: str | None,
-        max_count: int | None,
     ) -> GrepResult:
-        if max_count is not None and max_count <= 0:
-            return _grep_result(error="max_count must be > 0", matches=None)
         root = self._map_path(path or "/")
         try:
             files, walk_truncated = await self._walk(root)
@@ -426,19 +411,13 @@ class DeepAgentsSandboxAdapter(SandboxBackendProtocol):
             except Exception:
                 continue
             for line_number, line in enumerate(text.splitlines(), start=1):
-                if pattern not in line:
-                    continue
-                matches.append(
-                    {
-                        "path": candidate,
-                        "line": line_number,
-                        "text": line,
-                    }
-                )
-                if max_count is not None and len(matches) > max_count:
-                    return _grep_result(
-                        matches=matches[:max_count],
-                        truncated=True,
+                if pattern in line:
+                    matches.append(
+                        {
+                            "path": candidate,
+                            "line": line_number,
+                            "text": line,
+                        }
                     )
         return _grep_result(matches=matches, truncated=walk_truncated)
 
