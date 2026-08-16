@@ -13,7 +13,10 @@ ALTER TABLE idempotency_operations
   DROP CONSTRAINT IF EXISTS ck_idempotency_operations_response_status,
   DROP CONSTRAINT IF EXISTS ck_idempotency_operations_error_category,
   DROP CONSTRAINT IF EXISTS ck_idempotency_operations_recovery_state,
+  DROP CONSTRAINT IF EXISTS ck_idempotency_operations_recovery_consistency,
+  DROP CONSTRAINT IF EXISTS ck_idempotency_operations_side_effect_kind,
   DROP CONSTRAINT IF EXISTS ck_idempotency_operations_compensation_mode,
+  DROP CONSTRAINT IF EXISTS ck_idempotency_operations_terminal_completion,
   DROP CONSTRAINT IF EXISTS ck_idempotency_operations_version_positive,
   DROP CONSTRAINT IF EXISTS uq_idempotency_org_operation_key;
 
