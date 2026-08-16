@@ -79,7 +79,12 @@ class ModelInput:
             raise ValueError("text input requires text")
         if self.kind in {InputKind.IMAGE, InputKind.DOCUMENT} and not self.uri:
             raise ValueError(f"{self.kind.value} input requires uri")
-        if self.role not in {"user", "assistant", "system", "developer"}:
+        if self.role not in {
+            "user",
+            "assistant",
+            "system",
+            "developer",
+        }:
             raise ValueError("unsupported input role")
 
 
@@ -120,7 +125,9 @@ class ModelRequest:
             self.capability is Capability.LLM_STRUCTURED_OUTPUT
             and not self.structured_output_schema
         ):
-            raise ValueError("structured output capability requires a schema")
+            raise ValueError(
+                "structured output capability requires a schema"
+            )
 
     def semantic_hash(self) -> str:
         payload = {
@@ -163,6 +170,8 @@ class ProviderModel:
     enabled: bool = True
     registry_snapshot_id: str | None = None
     model_revision_id: str | None = None
+    pricing_snapshot_id: str | None = None
+    pricing_snapshot_ids: tuple[str, ...] = ()
     quality_measured: bool = True
     latency_measured: bool = True
 
@@ -170,11 +179,30 @@ class ProviderModel:
         if not self.provider or not self.model:
             raise ValueError("provider and model are required")
         if not self.capabilities:
-            raise ValueError("provider model must expose at least one capability")
-        if not 0 <= self.quality_score <= 100 or not 0 <= self.latency_score <= 100:
-            raise ValueError("quality_score and latency_score must be 0..100")
-        if self.registry_snapshot_id is not None and not self.model_revision_id:
-            raise ValueError("registry-backed model requires model_revision_id")
+            raise ValueError(
+                "provider model must expose at least one capability"
+            )
+        if (
+            not 0 <= self.quality_score <= 100
+            or not 0 <= self.latency_score <= 100
+        ):
+            raise ValueError(
+                "quality_score and latency_score must be 0..100"
+            )
+        if (
+            self.registry_snapshot_id is not None
+            and not self.model_revision_id
+        ):
+            raise ValueError(
+                "registry-backed model requires model_revision_id"
+            )
+        if (
+            self.pricing_snapshot_id is not None
+            and not self.pricing_snapshot_ids
+        ):
+            raise ValueError(
+                "pricing_snapshot_id requires pricing_snapshot_ids"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,7 +234,10 @@ class ModelUsage:
             self.images,
             self.requests,
         )
-        if any(value < 0 for value in values) or self.video_seconds < 0:
+        if (
+            any(value < 0 for value in values)
+            or self.video_seconds < 0
+        ):
             raise ValueError("usage values cannot be negative")
 
 
@@ -237,7 +268,10 @@ class NormalizedResult:
     finish_reason: str | None = None
     raw_response_ref: str | None = None
     cost: CostEstimate = field(
-        default_factory=lambda: CostEstimate(None, CostConfidence.UNKNOWN)
+        default_factory=lambda: CostEstimate(
+            None,
+            CostConfidence.UNKNOWN,
+        )
     )
 
 
@@ -292,7 +326,10 @@ def _jsonable(value: Any) -> Any:
     if is_dataclass(value):
         return _jsonable(asdict(value))
     if isinstance(value, dict):
-        return {str(key): _jsonable(item) for key, item in value.items()}
+        return {
+            str(key): _jsonable(item)
+            for key, item in value.items()
+        }
     if isinstance(value, (set, frozenset)):
         converted = [_jsonable(item) for item in value]
         return sorted(
