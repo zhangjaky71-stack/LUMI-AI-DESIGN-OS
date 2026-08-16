@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Awaitable
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -87,9 +88,12 @@ async def _configure_limit(
     )
 
 
-async def _expect_budget_denied(awaitable: object, label: str) -> None:
+async def _expect_budget_denied(
+    awaitable: Awaitable[str],
+    label: str,
+) -> None:
     try:
-        await awaitable  # type: ignore[misc]
+        await awaitable
     except BudgetExceeded:
         return
     raise AssertionError(f"{label} must fail closed with BudgetExceeded")
