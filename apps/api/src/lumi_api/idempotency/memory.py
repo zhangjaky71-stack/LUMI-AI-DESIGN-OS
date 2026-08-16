@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from .gateway import lease_expiry
@@ -15,6 +16,15 @@ from .models import (
     RecoveryState,
     SideEffectOutcome,
 )
+
+
+def _validated_update(
+    record: IdempotencyOperation,
+    **updates: Any,
+) -> IdempotencyOperation:
+    payload = record.model_dump(mode="python")
+    payload.update(updates)
+    return IdempotencyOperation.model_validate(payload)
 
 
 class MemoryMetrics:
@@ -86,19 +96,19 @@ class MemoryIdempotencyStore:
                 OperationStatus.FAILED_RETRYABLE,
             }:
                 return AcquireResult(action=AcquireAction.FINAL_FAILURE, operation=record)
-            claimed = record.model_copy(
-                update={
-                    "status": OperationStatus.IN_PROGRESS,
-                    "recovery_state": (
-                        RecoveryState.RECONCILING
-                        if request.paid or record.provider_request_id
-                        else RecoveryState.NONE
-                    ),
-                    "lease_owner": lease_owner,
-                    "lease_expires_at": lease_expiry(now, request.lease_seconds),
-                    "updated_at": now,
-                    "version": record.version + 1,
-                }
+            claimed = _validated_update(
+                record,
+                status=OperationStatus.IN_PROGRESS,
+                recovery_state=(
+                    RecoveryState.RECONCILING
+                    if request.paid or record.provider_request_id
+                    else RecoveryState.NONE
+                ),
+                lease_owner=lease_owner,
+                lease_expires_at=lease_expiry(now, request.lease_seconds),
+                completed_at=None,
+                updated_at=now,
+                version=record.version + 1,
             )
             self.records[key] = claimed
             return AcquireResult(action=AcquireAction.RECOVER, operation=claimed)
@@ -114,12 +124,11 @@ class MemoryIdempotencyStore:
     ) -> IdempotencyOperation:
         async with self._lock:
             record, key = self._owned(organization_id, operation_id, lease_owner)
-            updated = record.model_copy(
-                update={
-                    "lease_expires_at": lease_expiry(now, lease_seconds),
-                    "updated_at": now,
-                    "version": record.version + 1,
-                }
+            updated = _validated_update(
+                record,
+                lease_expires_at=lease_expiry(now, lease_seconds),
+                updated_at=now,
+                version=record.version + 1,
             )
             self.records[key] = updated
             return updated
@@ -137,12 +146,11 @@ class MemoryIdempotencyStore:
             record, key = self._owned(organization_id, operation_id, lease_owner)
             if record.provider_request_id not in {None, provider_request_id}:
                 raise ValueError("PROVIDER_REQUEST_ID_IMMUTABLE")
-            updated = record.model_copy(
-                update={
-                    "provider_request_id": provider_request_id,
-                    "updated_at": now,
-                    "version": record.version + 1,
-                }
+            updated = _validated_update(
+                record,
+                provider_request_id=provider_request_id,
+                updated_at=now,
+                version=record.version + 1,
             )
             self.records[key] = updated
             return updated
@@ -164,23 +172,22 @@ class MemoryIdempotencyStore:
                 and provider_request_id != record.provider_request_id
             ):
                 raise ValueError("PROVIDER_REQUEST_ID_IMMUTABLE")
-            updated = record.model_copy(
-                update={
-                    "status": OperationStatus.SUCCEEDED,
-                    "recovery_state": RecoveryState.NONE,
-                    "provider_request_id": provider_request_id,
-                    "result_ref": outcome.result_ref,
-                    "response_status": outcome.response_status,
-                    "response_json": dict(outcome.result),
-                    "error_category": None,
-                    "error_code": None,
-                    "error_message": None,
-                    "lease_owner": None,
-                    "lease_expires_at": None,
-                    "updated_at": now,
-                    "completed_at": now,
-                    "version": record.version + 1,
-                }
+            updated = _validated_update(
+                record,
+                status=OperationStatus.SUCCEEDED,
+                recovery_state=RecoveryState.NONE,
+                provider_request_id=provider_request_id,
+                result_ref=outcome.result_ref,
+                response_status=outcome.response_status,
+                response_json=dict(outcome.result),
+                error_category=None,
+                error_code=None,
+                error_message=None,
+                lease_owner=None,
+                lease_expires_at=None,
+                updated_at=now,
+                completed_at=now,
+                version=record.version + 1,
             )
             self.records[key] = updated
             return updated
@@ -204,19 +211,20 @@ class MemoryIdempotencyStore:
                 if retryable
                 else OperationStatus.FAILED_FINAL
             )
-            updated = record.model_copy(
-                update={
-                    "status": status,
-                    "recovery_state": RecoveryState.NONE,
-                    "error_category": category,
-                    "error_code": code[:128],
-                    "error_message": message[:2000],
-                    "lease_owner": None,
-                    "lease_expires_at": None,
-                    "updated_at": now,
-                    "completed_at": now if status is OperationStatus.FAILED_FINAL else None,
-                    "version": record.version + 1,
-                }
+            updated = _validated_update(
+                record,
+                status=status,
+                recovery_state=RecoveryState.NONE,
+                error_category=category,
+                error_code=code[:128],
+                error_message=message[:2000],
+                lease_owner=None,
+                lease_expires_at=None,
+                updated_at=now,
+                completed_at=(
+                    now if status is OperationStatus.FAILED_FINAL else None
+                ),
+                version=record.version + 1,
             )
             self.records[key] = updated
             return updated
@@ -232,25 +240,28 @@ class MemoryIdempotencyStore:
     ) -> IdempotencyOperation:
         async with self._lock:
             record, key = self._owned(organization_id, operation_id, lease_owner)
-            updated = record.model_copy(
-                update={
-                    "status": OperationStatus.FAILED_RETRYABLE,
-                    "recovery_state": RecoveryState.AMBIGUOUS,
-                    "error_category": ErrorCategory.AMBIGUOUS,
-                    "error_code": "AMBIGUOUS_SIDE_EFFECT",
-                    "error_message": detail[:2000],
-                    "recovery_detail": {"requires_operator_review": True},
-                    "lease_owner": None,
-                    "lease_expires_at": None,
-                    "updated_at": now,
-                    "version": record.version + 1,
-                }
+            updated = _validated_update(
+                record,
+                status=OperationStatus.FAILED_RETRYABLE,
+                recovery_state=RecoveryState.AMBIGUOUS,
+                error_category=ErrorCategory.AMBIGUOUS,
+                error_code="AMBIGUOUS_SIDE_EFFECT",
+                error_message=detail[:2000],
+                recovery_detail={"requires_operator_review": True},
+                lease_owner=None,
+                lease_expires_at=None,
+                completed_at=None,
+                updated_at=now,
+                version=record.version + 1,
             )
             self.records[key] = updated
             return updated
 
     def _owned(
-        self, organization_id: UUID, operation_id: UUID, lease_owner: str
+        self,
+        organization_id: UUID,
+        operation_id: UUID,
+        lease_owner: str,
     ) -> tuple[IdempotencyOperation, tuple[UUID, str, str]]:
         key = self.by_id.get(operation_id)
         if key is None or key[0] != organization_id:
