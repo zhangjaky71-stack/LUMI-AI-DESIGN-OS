@@ -49,7 +49,9 @@ def build_registry() -> CapabilityRegistry:
             ),
             revision_id=f"revision:{key}",
         )
-    checksum = registry_checksum({"models": sorted(models)})
+    checksum = registry_checksum(
+        {"models": sorted(models)}
+    )
     snapshot = RegistrySnapshot(
         snapshot_id=f"registry:test:{checksum[:8]}",
         version="test",
@@ -61,7 +63,10 @@ def build_registry() -> CapabilityRegistry:
             "image-edit-precision": RoutingProfile(
                 name="image-edit-precision",
                 required_capabilities=(Capability.IMAGE_EDIT,),
-                candidate_model_keys=("alpha:a", "beta:b"),
+                candidate_model_keys=(
+                    "alpha:a",
+                    "beta:b",
+                ),
                 selection_gate="image-edit-v1",
             )
         },
@@ -77,10 +82,19 @@ def test_incomplete_evidence_does_not_create_a_winner() -> None:
         organization_id=ORG,
         evidence={},
     )
-    assert [item.model_key for item in result] == ["alpha:a", "beta:b"]
-    assert all(item.score is None and not item.complete for item in result)
+    assert [item.model_key for item in result] == [
+        "alpha:a",
+        "beta:b",
+    ]
     assert all(
-        any(code.startswith("insufficient_evidence:") for code in item.reason_codes)
+        item.score is None and not item.complete
+        for item in result
+    )
+    assert all(
+        any(
+            code.startswith("insufficient_evidence:")
+            for code in item.reason_codes
+        )
         for item in result
     )
 
@@ -107,7 +121,10 @@ def test_complete_evidence_uses_versioned_profile_weights() -> None:
             ),
         },
     )
-    assert all(item.complete and item.score is not None for item in result)
+    assert all(
+        item.complete and item.score is not None
+        for item in result
+    )
     assert result[0].score is not None
     assert result[1].score is not None
     assert result[0].score > result[1].score
