@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 import ast
@@ -102,7 +103,9 @@ def validate_frozen_enums() -> None:
 def validate_persistence_gap_ledger() -> None:
     persistence_text = PERSISTENCE.read_text(encoding="utf-8")
     missing_tables = sorted(
-        marker for marker in REQUIRED_PERSISTENCE_TABLE_MARKERS if marker not in persistence_text
+        marker
+        for marker in REQUIRED_PERSISTENCE_TABLE_MARKERS
+        if marker not in persistence_text
     )
     if missing_tables:
         raise SystemExit(f"NODE-10 artifact persistence baseline changed: {missing_tables}")
@@ -110,8 +113,8 @@ def validate_persistence_gap_ledger() -> None:
     gap_ids = {item["id"] for item in ledger["gaps"]}
     if gap_ids != EXPECTED_GAPS:
         raise SystemExit(
-            f"NODE-15 persistence gap ledger mismatch missing={sorted(EXPECTED_GAPS-gap_ids)} "
-            f"extra={sorted(gap_ids-EXPECTED_GAPS)}"
+            f"NODE-15 persistence gap ledger mismatch missing={sorted(EXPECTED_GAPS - gap_ids)} "
+            f"extra={sorted(gap_ids - EXPECTED_GAPS)}"
         )
     if ledger["status"] != "TRACKED_CONTRACT_GAPS":
         raise SystemExit("persistence gap ledger must remain explicitly non-closed")
