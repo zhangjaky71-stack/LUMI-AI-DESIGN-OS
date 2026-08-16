@@ -1,0 +1,134 @@
+name: NODE-25 Tool Gateway
+
+on:
+  pull_request:
+    paths:
+      - "services/tool-gateway/**"
+      - "tools/node25/**"
+      - "scripts/integration_tool_gateway.py"
+      - "scripts/validate_tool_gateway_contract.py"
+      - "docs/runtime/TOOL-GATEWAY-*.md"
+      - "reports/nodes/NODE-25/**"
+      - "pyproject.toml"
+      - ".github/workflows/node-25-tool-gateway.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/tool-gateway/**"
+      - "tools/node25/**"
+      - "docs/runtime/TOOL-GATEWAY-*.md"
+      - "reports/nodes/NODE-25/**"
+      - ".github/workflows/node-25-tool-gateway.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  tool-gateway:
+    name: tool-gateway
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen workspace dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Validate active NODE-25 architecture and security boundary
+        run: |
+          PYTHONPATH=services/tool-gateway/src:apps/api/src \
+            uv run python tools/node25/validate_tool_gateway.py
+          PYTHONPATH=services/tool-gateway/src \
+            uv run python scripts/validate_tool_gateway_contract.py
+
+      - name: Revalidate NODE-20 side-effect boundary
+        run: |
+          PYTHONPATH=apps/api/src \
+            uv run python tools/node20/validate_idempotency.py
+
+      - name: Revalidate NODE-21 sandbox boundary
+        run: |
+          PYTHONPATH=services/sandbox-runtime/src \
+            uv run python tools/node21/validate_sandbox_runtime.py
+          PYTHONPATH=services/sandbox-runtime/src \
+            uv run python tools/node21/validate_deepagents_protocol.py
+
+      - name: Run Tool Gateway unit and security tests
+        run: |
+          PYTHONPATH=services/tool-gateway/src:apps/api/src \
+            uv run pytest -q services/tool-gateway/tests
+
+      - name: Run deterministic Tool Gateway integration
+        run: |
+          PYTHONPATH=services/tool-gateway/src \
+            uv run python scripts/integration_tool_gateway.py
+
+      - name: Prove active NODE-20 write composition
+        run: |
+          PYTHONPATH=services/tool-gateway/src:apps/api/src \
+            uv run python tools/node25/test_node20_side_effect_bridge.py
+
+      - name: Export and validate Tool Gateway schemas and gaps
+        run: |
+          rm -rf reports/nodes/NODE-25/generated-schemas
+          uv run python tools/node25/export_tool_schemas.py
+          count="$(find reports/nodes/NODE-25/generated-schemas -name '*.schema.json' | wc -l)"
+          test "$count" -eq 6
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("reports/nodes/NODE-25")
+          schemas = sorted((root / "generated-schemas").glob("*.schema.json"))
+          assert len(schemas) == 6
+          for path in schemas:
+              payload = json.loads(path.read_text(encoding="utf-8"))
+              assert payload["$schema"].endswith("2020-12/schema")
+          ledger = json.loads((root / "gap-ledger.json").read_text(encoding="utf-8"))
+          assert len(ledger["gaps"]) == 7
+          print("NODE25_TOOL_GATEWAY_SCHEMAS_AND_GAPS_VALID")
+          PY
+
+      - name: Ruff NODE-25 affected scope
+        run: |
+          uv run ruff check \
+            services/tool-gateway \
+            tools/node25 \
+            scripts/integration_tool_gateway.py \
+            scripts/validate_tool_gateway_contract.py
+
+      - name: Pyright NODE-25 affected scope
+        run: |
+          uv run pyright \
+            services/tool-gateway/src/lumi_tool_gateway \
+            services/tool-gateway/tests \
+            tools/node25 \
+            scripts/integration_tool_gateway.py
+
+      - name: Upload NODE-25 evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-25-tool-gateway-${{ github.run_id }}
+          path: |
+            reports/nodes/NODE-25/generated-schemas
+            reports/nodes/NODE-25/gap-ledger.json
+            reports/nodes/NODE-25/acceptance.md
+            docs/runtime/TOOL-GATEWAY-V1.md
+            docs/runtime/TOOL-GATEWAY-INTEGRATION-V1.md
+          if-no-files-found: ignore
+          retention-days: 14
