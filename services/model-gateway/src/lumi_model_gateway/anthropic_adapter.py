@@ -5,7 +5,11 @@ from decimal import Decimal
 from time import monotonic
 from typing import Any
 
-from .errors import ErrorCategory, ProviderCallError, UnsupportedProviderOperation
+from .errors import (
+    ErrorCategory,
+    ProviderCallError,
+    UnsupportedProviderOperation,
+)
 from .http_common import json_request
 from .models import (
     Capability,
@@ -43,7 +47,10 @@ class AnthropicMessagesAdapter:
                 provider=self.provider_name,
                 model=model,
                 capabilities=frozenset(
-                    {Capability.LLM_REASONING, Capability.LLM_VISION}
+                    {
+                        Capability.LLM_REASONING,
+                        Capability.LLM_VISION,
+                    }
                 ),
                 quality_score=88,
                 latency_score=68,
@@ -56,14 +63,19 @@ class AnthropicMessagesAdapter:
     def models(self) -> tuple[ProviderModel, ...]:
         return self._models
 
-    def validate(self, request: ModelRequest, model: ProviderModel) -> None:
+    def validate(
+        self,
+        request: ModelRequest,
+        model: ProviderModel,
+    ) -> None:
         if request.capability not in model.capabilities:
             raise ValueError(
                 "requested capability is not supported by Anthropic model"
             )
         if request.structured_output_schema is not None:
             raise ValueError(
-                "Anthropic structured-output mapping is not claimed in NODE-22"
+                "Anthropic structured-output mapping is not claimed "
+                "in NODE-22"
             )
 
     def estimate_cost(
@@ -71,12 +83,21 @@ class AnthropicMessagesAdapter:
         request: ModelRequest,
         model: ProviderModel,
     ) -> CostEstimate:
+        provenance = _cost_provenance(model)
         if (
             model.input_usd_per_million is None
             or model.output_usd_per_million is None
         ):
-            return CostEstimate(None, CostConfidence.UNKNOWN)
-        characters = sum(len(item.text or "") for item in request.inputs)
+            return CostEstimate(
+                None,
+                CostConfidence.UNKNOWN,
+                model.pricing_snapshot_id,
+                provenance,
+            )
+        characters = sum(
+            len(item.text or "")
+            for item in request.inputs
+        )
         estimated_input = int(
             request.constraints.get("estimated_input_tokens")
             or max(1, characters // 4)
@@ -85,10 +106,21 @@ class AnthropicMessagesAdapter:
             request.constraints.get("max_output_tokens") or 1024
         )
         amount = (
-            Decimal(estimated_input) * model.input_usd_per_million
-            + Decimal(estimated_output) * model.output_usd_per_million
+            Decimal(estimated_input)
+            * model.input_usd_per_million
+            + Decimal(estimated_output)
+            * model.output_usd_per_million
         ) / Decimal(1_000_000)
-        return CostEstimate(amount, CostConfidence.ESTIMATED)
+        return CostEstimate(
+            amount,
+            CostConfidence.ESTIMATED,
+            model.pricing_snapshot_id,
+            {
+                **provenance,
+                "estimated_input_tokens": estimated_input,
+                "estimated_output_tokens": estimated_output,
+            },
+        )
 
     async def invoke(
         self,
@@ -96,7 +128,10 @@ class AnthropicMessagesAdapter:
         model: ProviderModel,
     ) -> NormalizedResult:
         self.validate(request, model)
-        key = self.secrets.get_secret(self.provider_name, "api_key")
+        key = self.secrets.get_secret(
+            self.provider_name,
+            "api_key",
+        )
         system_parts: list[str] = []
         messages: list[dict[str, Any]] = []
         for item in request.inputs:
@@ -107,8 +142,17 @@ class AnthropicMessagesAdapter:
                 system_parts.append(item.text or "")
                 continue
             if item.kind is InputKind.TEXT:
-                role = item.role if item.role in {"user", "assistant"} else "user"
-                messages.append({"role": role, "content": item.text or ""})
+                role = (
+                    item.role
+                    if item.role in {"user", "assistant"}
+                    else "user"
+                )
+                messages.append(
+                    {
+                        "role": role,
+                        "content": item.text or "",
+                    }
+                )
             elif item.kind is InputKind.IMAGE:
                 messages.append(
                     {
@@ -126,12 +170,14 @@ class AnthropicMessagesAdapter:
                 )
             else:
                 raise ValueError(
-                    "document URI mapping is not enabled for Anthropic NODE-22"
+                    "document URI mapping is not enabled "
+                    "for Anthropic NODE-22"
                 )
         payload: dict[str, Any] = {
             "model": model.model,
             "max_tokens": int(
-                request.constraints.get("max_output_tokens") or 1024
+                request.constraints.get("max_output_tokens")
+                or 1024
             ),
             "messages": messages,
         }
@@ -149,7 +195,10 @@ class AnthropicMessagesAdapter:
             },
             payload=payload,
             timeout_seconds=float(
-                request.constraints.get("provider_timeout_seconds") or 60
+                request.constraints.get(
+                    "provider_timeout_seconds"
+                )
+                or 60
             ),
         )
         total_ms = int((monotonic() - started) * 1000)
@@ -157,12 +206,17 @@ class AnthropicMessagesAdapter:
         text_parts = [
             block.get("text", "")
             for block in data.get("content") or []
-            if isinstance(block, dict) and block.get("type") == "text"
+            if isinstance(block, dict)
+            and block.get("type") == "text"
         ]
         usage_data = data.get("usage") or {}
         usage = ModelUsage(
-            input_tokens=int(usage_data.get("input_tokens") or 0),
-            output_tokens=int(usage_data.get("output_tokens") or 0),
+            input_tokens=int(
+                usage_data.get("input_tokens") or 0
+            ),
+            output_tokens=int(
+                usage_data.get("output_tokens") or 0
+            ),
             cached_input_tokens=int(
                 usage_data.get("cache_read_input_tokens") or 0
             ),
@@ -171,9 +225,16 @@ class AnthropicMessagesAdapter:
             status=ResultStatus.COMPLETED,
             provider=self.provider_name,
             model=model.model,
-            outputs=(ModelOutput(kind="text", text="".join(text_parts)),),
+            outputs=(
+                ModelOutput(
+                    kind="text",
+                    text="".join(text_parts),
+                ),
+            ),
             provider_request_id=(
-                str(data.get("id")) if data.get("id") else None
+                str(data.get("id"))
+                if data.get("id")
+                else None
             ),
             usage=usage,
             timing=ModelTiming(total_ms=total_ms),
@@ -192,7 +253,8 @@ class AnthropicMessagesAdapter:
     ) -> AsyncIterator[ModelStreamChunk]:
         del request, model
         raise UnsupportedProviderOperation(
-            "Anthropic streaming transport is not enabled in NODE-22 v1"
+            "Anthropic streaming transport is not enabled "
+            "in NODE-22 v1"
         )
         yield  # pragma: no cover
 
@@ -203,7 +265,8 @@ class AnthropicMessagesAdapter:
     ) -> NormalizedResult:
         del provider_request_id, model
         raise UnsupportedProviderOperation(
-            "Anthropic Messages calls are synchronous in NODE-22 v1"
+            "Anthropic Messages calls are synchronous "
+            "in NODE-22 v1"
         )
 
     async def cancel(
@@ -216,7 +279,10 @@ class AnthropicMessagesAdapter:
             "Anthropic cancellation is not enabled in NODE-22 v1"
         )
 
-    def normalize_error(self, error: BaseException) -> ProviderCallError:
+    def normalize_error(
+        self,
+        error: BaseException,
+    ) -> ProviderCallError:
         if isinstance(error, ProviderCallError):
             return error
         return ProviderCallError(
@@ -226,14 +292,42 @@ class AnthropicMessagesAdapter:
         )
 
 
-def _actual_cost(model: ProviderModel, usage: ModelUsage) -> CostEstimate:
+def _actual_cost(
+    model: ProviderModel,
+    usage: ModelUsage,
+) -> CostEstimate:
+    provenance = _cost_provenance(model)
     if (
         model.input_usd_per_million is None
         or model.output_usd_per_million is None
     ):
-        return CostEstimate(None, CostConfidence.UNKNOWN)
+        return CostEstimate(
+            None,
+            CostConfidence.UNKNOWN,
+            model.pricing_snapshot_id,
+            provenance,
+        )
     amount = (
-        Decimal(usage.input_tokens) * model.input_usd_per_million
-        + Decimal(usage.output_tokens) * model.output_usd_per_million
+        Decimal(usage.input_tokens)
+        * model.input_usd_per_million
+        + Decimal(usage.output_tokens)
+        * model.output_usd_per_million
     ) / Decimal(1_000_000)
-    return CostEstimate(amount, CostConfidence.EXACT)
+    return CostEstimate(
+        amount,
+        CostConfidence.EXACT,
+        model.pricing_snapshot_id,
+        provenance,
+    )
+
+
+def _cost_provenance(
+    model: ProviderModel,
+) -> dict[str, Any]:
+    return {
+        "pricing_snapshot_ids": list(
+            model.pricing_snapshot_ids
+        ),
+        "registry_snapshot_id": model.registry_snapshot_id,
+        "model_revision_id": model.model_revision_id,
+    }

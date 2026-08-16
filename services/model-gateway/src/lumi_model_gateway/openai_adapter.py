@@ -6,7 +6,11 @@ from decimal import Decimal
 from time import monotonic
 from typing import Any
 
-from .errors import ErrorCategory, ProviderCallError, UnsupportedProviderOperation
+from .errors import (
+    ErrorCategory,
+    ProviderCallError,
+    UnsupportedProviderOperation,
+)
 from .http_common import json_request
 from .models import (
     Capability,
@@ -61,7 +65,11 @@ class OpenAIResponsesAdapter:
     def models(self) -> tuple[ProviderModel, ...]:
         return self._models
 
-    def validate(self, request: ModelRequest, model: ProviderModel) -> None:
+    def validate(
+        self,
+        request: ModelRequest,
+        model: ProviderModel,
+    ) -> None:
         if request.capability not in model.capabilities:
             raise ValueError(
                 "requested capability is not supported by OpenAI model"
@@ -71,18 +79,26 @@ class OpenAIResponsesAdapter:
                 item.kind in {InputKind.IMAGE, InputKind.DOCUMENT}
                 and not item.uri
             ):
-                raise ValueError("OpenAI multimodal input requires URI")
+                raise ValueError(
+                    "OpenAI multimodal input requires URI"
+                )
 
     def estimate_cost(
         self,
         request: ModelRequest,
         model: ProviderModel,
     ) -> CostEstimate:
+        provenance = _cost_provenance(model)
         if (
             model.input_usd_per_million is None
             or model.output_usd_per_million is None
         ):
-            return CostEstimate(None, CostConfidence.UNKNOWN)
+            return CostEstimate(
+                None,
+                CostConfidence.UNKNOWN,
+                model.pricing_snapshot_id,
+                provenance,
+            )
         estimated_input = int(
             request.constraints.get("estimated_input_tokens")
             or _estimate_input_tokens(request)
@@ -94,7 +110,16 @@ class OpenAIResponsesAdapter:
             Decimal(estimated_input) * model.input_usd_per_million
             + Decimal(estimated_output) * model.output_usd_per_million
         ) / Decimal(1_000_000)
-        return CostEstimate(amount, CostConfidence.ESTIMATED)
+        return CostEstimate(
+            amount,
+            CostConfidence.ESTIMATED,
+            model.pricing_snapshot_id,
+            {
+                **provenance,
+                "estimated_input_tokens": estimated_input,
+                "estimated_output_tokens": estimated_output,
+            },
+        )
 
     async def invoke(
         self,
@@ -102,7 +127,10 @@ class OpenAIResponsesAdapter:
         model: ProviderModel,
     ) -> NormalizedResult:
         self.validate(request, model)
-        key = self.secrets.get_secret(self.provider_name, "api_key")
+        key = self.secrets.get_secret(
+            self.provider_name,
+            "api_key",
+        )
         payload: dict[str, Any] = {
             "model": model.model,
             "input": _openai_inputs(request),
@@ -133,7 +161,10 @@ class OpenAIResponsesAdapter:
             },
             payload=payload,
             timeout_seconds=float(
-                request.constraints.get("provider_timeout_seconds") or 60
+                request.constraints.get(
+                    "provider_timeout_seconds"
+                )
+                or 60
             ),
         )
         total_ms = int((monotonic() - started) * 1000)
@@ -155,7 +186,10 @@ class OpenAIResponsesAdapter:
         provider_request_id: str,
         model: ProviderModel,
     ) -> NormalizedResult:
-        key = self.secrets.get_secret(self.provider_name, "api_key")
+        key = self.secrets.get_secret(
+            self.provider_name,
+            "api_key",
+        )
         response = await json_request(
             provider=self.provider_name,
             method="GET",
@@ -174,10 +208,14 @@ class OpenAIResponsesAdapter:
     ) -> bool:
         del provider_request_id, model
         raise UnsupportedProviderOperation(
-            "OpenAI cancellation is not enabled for synchronous NODE-22 calls"
+            "OpenAI cancellation is not enabled for "
+            "synchronous NODE-22 calls"
         )
 
-    def normalize_error(self, error: BaseException) -> ProviderCallError:
+    def normalize_error(
+        self,
+        error: BaseException,
+    ) -> ProviderCallError:
         if isinstance(error, ProviderCallError):
             return error
         return ProviderCallError(
@@ -208,17 +246,29 @@ class OpenAIResponsesAdapter:
             try:
                 parsed = json.loads(text)
             except (json.JSONDecodeError, TypeError):
-                outputs.append(ModelOutput(kind="text", text=text))
+                outputs.append(
+                    ModelOutput(kind="text", text=text)
+                )
             else:
                 outputs.append(
-                    ModelOutput(kind="json", json_value=parsed, text=text)
+                    ModelOutput(
+                        kind="json",
+                        json_value=parsed,
+                        text=text,
+                    )
                 )
         usage_data = data.get("usage") or {}
         details = usage_data.get("input_tokens_details") or {}
         usage = ModelUsage(
-            input_tokens=int(usage_data.get("input_tokens") or 0),
-            output_tokens=int(usage_data.get("output_tokens") or 0),
-            cached_input_tokens=int(details.get("cached_tokens") or 0),
+            input_tokens=int(
+                usage_data.get("input_tokens") or 0
+            ),
+            output_tokens=int(
+                usage_data.get("output_tokens") or 0
+            ),
+            cached_input_tokens=int(
+                details.get("cached_tokens") or 0
+            ),
         )
         return NormalizedResult(
             status=status,
@@ -226,7 +276,9 @@ class OpenAIResponsesAdapter:
             model=model.model,
             outputs=tuple(outputs),
             provider_request_id=(
-                str(data.get("id")) if data.get("id") else None
+                str(data.get("id"))
+                if data.get("id")
+                else None
             ),
             usage=usage,
             timing=ModelTiming(total_ms=total_ms),
@@ -235,30 +287,49 @@ class OpenAIResponsesAdapter:
         )
 
 
-def _openai_inputs(request: ModelRequest) -> list[dict[str, Any]]:
+def _openai_inputs(
+    request: ModelRequest,
+) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
     for item in request.inputs:
         if item.kind is InputKind.TEXT:
-            messages.append({"role": item.role, "content": item.text or ""})
+            messages.append(
+                {
+                    "role": item.role,
+                    "content": item.text or "",
+                }
+            )
             continue
         content_type = (
-            "input_image" if item.kind is InputKind.IMAGE else "input_file"
+            "input_image"
+            if item.kind is InputKind.IMAGE
+            else "input_file"
         )
         content: dict[str, Any] = {"type": content_type}
         if item.kind is InputKind.IMAGE:
             content["image_url"] = item.uri
         else:
             content["file_url"] = item.uri
-        messages.append({"role": item.role, "content": [content]})
+        messages.append(
+            {
+                "role": item.role,
+                "content": [content],
+            }
+        )
     return messages
 
 
-def _extract_output_text(data: dict[str, Any]) -> str | None:
+def _extract_output_text(
+    data: dict[str, Any],
+) -> str | None:
     if isinstance(data.get("output_text"), str):
         return data["output_text"]
     parts: list[str] = []
     for item in data.get("output") or []:
-        if not isinstance(item, dict) or item.get("type") != "message":
+        if (
+            not isinstance(item, dict)
+            or item.get("type") != "message"
+        ):
             continue
         for content in item.get("content") or []:
             if (
@@ -272,18 +343,49 @@ def _extract_output_text(data: dict[str, Any]) -> str | None:
 
 
 def _estimate_input_tokens(request: ModelRequest) -> int:
-    characters = sum(len(item.text or "") for item in request.inputs)
+    characters = sum(
+        len(item.text or "")
+        for item in request.inputs
+    )
     return max(1, characters // 4)
 
 
-def _actual_cost(model: ProviderModel, usage: ModelUsage) -> CostEstimate:
+def _actual_cost(
+    model: ProviderModel,
+    usage: ModelUsage,
+) -> CostEstimate:
+    provenance = _cost_provenance(model)
     if (
         model.input_usd_per_million is None
         or model.output_usd_per_million is None
     ):
-        return CostEstimate(None, CostConfidence.UNKNOWN)
+        return CostEstimate(
+            None,
+            CostConfidence.UNKNOWN,
+            model.pricing_snapshot_id,
+            provenance,
+        )
     amount = (
-        Decimal(usage.input_tokens) * model.input_usd_per_million
-        + Decimal(usage.output_tokens) * model.output_usd_per_million
+        Decimal(usage.input_tokens)
+        * model.input_usd_per_million
+        + Decimal(usage.output_tokens)
+        * model.output_usd_per_million
     ) / Decimal(1_000_000)
-    return CostEstimate(amount, CostConfidence.EXACT)
+    return CostEstimate(
+        amount,
+        CostConfidence.EXACT,
+        model.pricing_snapshot_id,
+        provenance,
+    )
+
+
+def _cost_provenance(
+    model: ProviderModel,
+) -> dict[str, Any]:
+    return {
+        "pricing_snapshot_ids": list(
+            model.pricing_snapshot_ids
+        ),
+        "registry_snapshot_id": model.registry_snapshot_id,
+        "model_revision_id": model.model_revision_id,
+    }
