@@ -171,6 +171,13 @@ jobs:
             --with "pydantic==2.13.4" \
             python tools/node20/test_idempotency_database.py
 
+      - name: Prove atomic DB side-effect crash recovery
+        run: |
+          PYTHONPATH=apps/api/src uv run --no-project \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            --with "pydantic==2.13.4" \
+            python tools/node20/test_transactional_gateway_database.py
+
       - name: Downgrade NODE-20 migration only
         working-directory: apps/api
         run: |
