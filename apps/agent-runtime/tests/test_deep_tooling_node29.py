@@ -6,10 +6,22 @@ from uuid import uuid4
 
 import pytest
 
-from lumi_agent_runtime.deep_runtime.contracts import DeepAgentInvocationContext, PermissionScope
-from lumi_agent_runtime.deep_runtime.errors import DeepAgentBudgetExceeded, DeepAgentToolScopeError
-from lumi_agent_runtime.deep_runtime.testing import MemoryBudgetMeter, MemoryOffloader
-from lumi_agent_runtime.deep_runtime.tooling import BoundToolDefinition, LumiToolGatewayProvider
+from lumi_agent_runtime.deep_runtime.contracts import (
+    DeepAgentInvocationContext,
+    PermissionScope,
+)
+from lumi_agent_runtime.deep_runtime.errors import (
+    DeepAgentBudgetExceeded,
+    DeepAgentToolScopeError,
+)
+from lumi_agent_runtime.deep_runtime.testing import (
+    MemoryBudgetMeter,
+    MemoryOffloader,
+)
+from lumi_agent_runtime.deep_runtime.tooling import (
+    BoundToolDefinition,
+    LumiToolGatewayProvider,
+)
 
 
 class Definitions:
@@ -34,7 +46,11 @@ class Gateway:
 class FakeStructuredTool:
     @classmethod
     def from_function(cls, *, coroutine, name, description):
-        return SimpleNamespace(coroutine=coroutine, name=name, description=description)
+        return SimpleNamespace(
+            coroutine=coroutine,
+            name=name,
+            description=description,
+        )
 
 
 def _context() -> DeepAgentInvocationContext:
@@ -68,13 +84,20 @@ def _provider(monkeypatch, *, calls_left: int = 2):
     return provider, gateway, budget, offloader
 
 
-def test_tool_scope_is_server_injected_and_large_result_is_offloaded(monkeypatch) -> None:
+def test_tool_scope_is_server_injected_and_large_result_is_offloaded(
+    monkeypatch,
+) -> None:
     provider, gateway, _, offloader = _provider(monkeypatch)
     context = _context()
     tools = asyncio.run(
-        provider.tools_for_root(context=context, allowed_tools=("web.search",))
+        provider.tools_for_root(
+            context=context,
+            allowed_tools=("web.search",),
+        )
     )
-    result = asyncio.run(tools[0].coroutine({"query": "layout"}, "call-1"))
+    result = asyncio.run(
+        tools[0].coroutine({"query": "layout"}, "call-1")
+    )
     assert result["ref"].startswith("tool-result://")
     assert offloader.offloaded == 1
     call = gateway.calls[0]
@@ -84,17 +107,25 @@ def test_tool_scope_is_server_injected_and_large_result_is_offloaded(monkeypatch
     with pytest.raises(DeepAgentToolScopeError, match="scope injection"):
         asyncio.run(
             tools[0].coroutine(
-                {"query": "x", "nested": {"organization_id": str(uuid4())}},
+                {
+                    "query": "x",
+                    "nested": {"organization_id": str(uuid4())},
+                },
                 "call-2",
             )
         )
     assert len(gateway.calls) == 1
 
 
-def test_tool_call_is_blocked_by_server_budget_before_gateway(monkeypatch) -> None:
+def test_tool_call_is_blocked_by_server_budget_before_gateway(
+    monkeypatch,
+) -> None:
     provider, gateway, _, _ = _provider(monkeypatch, calls_left=0)
     tools = asyncio.run(
-        provider.tools_for_root(context=_context(), allowed_tools=("web.search",))
+        provider.tools_for_root(
+            context=_context(),
+            allowed_tools=("web.search",),
+        )
     )
     with pytest.raises(DeepAgentBudgetExceeded):
         asyncio.run(tools[0].coroutine({"query": "x"}, "call-1"))
