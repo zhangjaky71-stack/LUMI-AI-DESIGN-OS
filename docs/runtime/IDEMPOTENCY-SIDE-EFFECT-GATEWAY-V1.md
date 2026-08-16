@@ -11,8 +11,8 @@ silently create duplicate critical side effects when the client retries, a broke
 a worker crashes, or LangGraph resumes a node.
 
 This is **not** a distributed exactly-once claim. Delivery may occur more than once; the
-correctness boundary is the durable operation ledger plus side-effect-specific uniqueness
-and provider reconciliation.
+correctness boundary is the durable operation ledger plus side-effect-specific uniqueness,
+shared database transactions where possible, and provider reconciliation where not.
 
 ## 2. Operations that must use the gateway
 
@@ -32,7 +32,9 @@ Pure reads do not require an idempotency operation.
 
 ## 3. Identity
 
-HTTP commands use `Idempotency-Key`.
+HTTP commands use `Idempotency-Key`. The existing NODE-11 compatibility rule remains: a key
+must be non-empty and at most 255 characters. NODE-20 does not invent a stronger minimum
+length.
 
 The durable uniqueness scope is:
 
@@ -125,7 +127,7 @@ NEW -> IN_PROGRESS -> SUCCEEDED
                   -> FAILED_RETRYABLE
                   -> FAILED_FINAL
 
-FAILED_RETRYABLE -> IN_PROGRESS   # recovery claim
+FAILED_RETRYABLE -> IN_PROGRESS    # recovery claim
 expired IN_PROGRESS -> IN_PROGRESS # recovery claim, new lease
 ```
 
@@ -139,7 +141,7 @@ ambiguous
 
 An ambiguous operation is fail-safe: it is not automatically executed again.
 
-## 7. Claim and lease
+## 7. Claim, lease and heartbeat
 
 Correctness uses the database unique constraint and row lock. Redis may later reduce
 contention but may never replace the database constraint.
@@ -156,22 +158,30 @@ PostgreSQL acquisition is:
 
 All writes require `organization_id + operation_id + lease_owner`.
 
+A side effect that can run longer than its lease must periodically call
+`SideEffectExecutionContext.heartbeat()`. `record_provider_request()` refreshes the lease
+before persisting provider acceptance. Provider reconciliation returning `RUNNING` also
+renews the lease. A second worker must not steal a healthy long-running operation merely
+because its original lease duration elapsed.
+
 ## 8. Provider crash window
 
 The critical window is:
 
 ```text
 provider accepts paid request
--> provider_request_id is persisted
+-> provider acceptance checkpoint is persisted
 -> process dies before local success commit
 ```
 
-On lease expiry the next caller must reconcile before another paid call.
+On lease expiry the next caller must reconcile before another paid call. `paid=true` itself
+forces reconciliation after an ambiguous hard-crash window even when no provider request ID
+was persisted, so the adapter can reconcile by the provider-native/client idempotency key.
 
 Reconciliation results:
 
 - `SUCCEEDED`: converge the provider result into the same operation; do not call provider again.
-- `RUNNING`: keep waiting; do not call provider again.
+- `RUNNING`: renew the lease and keep waiting; do not call provider again.
 - `NOT_FOUND`: safe re-execution is allowed only when the reconciler can establish that no
   prior provider operation exists. If a previously accepted provider request ID exists but
   status cannot be proven, the operation becomes ambiguous.
@@ -181,16 +191,26 @@ Reconciliation results:
 
 ## 9. Hard crash semantics
 
-A true process kill may occur outside Python exception handling. Therefore the gateway does
-not pretend it can always mark failure. The lease remains `IN_PROGRESS`; after expiry,
-recovery owns the next decision.
+A true process kill may occur outside Python exception handling. Therefore the external
+SideEffectGateway does not pretend it can always mark failure. The lease remains
+`IN_PROGRESS`; after expiry, reconciliation/recovery owns the next decision.
 
 Failure-injection tests use a `BaseException` crash to exercise this exact window.
 
-## 10. HTTP replay
+For a database-only mutation, LUMI provides `PostgresTransactionalSideEffectGateway`.
+The operation claim, business SQL and operation completion share one outer PostgreSQL
+transaction. The business callback runs in a savepoint: a normal business exception rolls
+back its SQL while allowing the outer transaction to persist FAILED_RETRYABLE/FAILED_FINAL;
+a `BaseException`-level process crash unwinds the outer transaction, so both the business
+mutation and newly claimed operation roll back together.
 
-`IdempotentApiService` is a decorator for the current API mutation methods that already
-require `Idempotency-Key`:
+The database callback receives the existing connection and must not commit/replace the
+transaction. External provider/object-store calls are rejected from this gateway.
+
+## 10. HTTP replay and DB mutation composition
+
+`IdempotentApiService` is a reference decorator for the current API mutation methods that
+already require `Idempotency-Key`:
 
 - create Project;
 - create Task;
@@ -208,6 +228,12 @@ Idempotent-Replayed: true
 ```
 
 when the request completed from the operation ledger.
+
+The decorator alone is **not** claimed to make an independently committing repository
+crash-atomic. Production PostgreSQL mutation composition must execute through
+`PostgresTransactionalSideEffectGateway` or an equivalent adapter that shares the operation
+transaction with the repository write. This wiring remains explicit while upstream
+NODE-16/17/18 production SQL repositories are still open.
 
 The HTTP generation-create command is only the durable command/write operation. Actual paid
 provider execution must have a separate internal side-effect operation so an HTTP request
@@ -235,7 +261,8 @@ WHERE entry_type = 'charge' AND operation_id IS NOT NULL
 Therefore one logical operation cannot create two charge rows even under racing writers.
 
 Reversal/adjustment is a new append-only ledger entry referencing the old entry. Historical
-charge rows are never mutated to simulate compensation.
+charge rows are never mutated to simulate compensation. NODE-10's immutable Cost Ledger
+trigger remains active during NODE-20 tests and runtime.
 
 ## 13. Compensation modes
 
@@ -289,7 +316,9 @@ It:
 
 Downgrade is fail-closed. If NODE-20 data contains the same client key in more than one
 operation type, downgrade raises instead of deleting or silently merging operations that
-cannot fit the NODE-10 uniqueness rule.
+cannot fit the NODE-10 uniqueness rule. Downgrade also raises if any Cost Ledger row already
+contains `operation_id`, because dropping that column would destroy append-only billing
+audit lineage.
 
 ## 17. Required failure injection
 
@@ -301,7 +330,9 @@ NODE-20 evidence must cover:
 - LangGraph resume using the same deterministic operation key;
 - same key with different request hash;
 - two concurrent same-key callers;
+- heartbeat preventing premature stale recovery;
 - stale lease recovery;
+- atomic DB mutation hard-crash rollback and retry;
 - duplicate Cost Ledger charge;
 - cross-tenant access rejection.
 
@@ -311,8 +342,10 @@ NODE-20 does not claim:
 
 - broker exactly-once delivery;
 - universal rollback of external systems;
+- that the reference HTTP decorator alone is crash-atomic with an independently committing repository;
 - provider reconciliation support for providers that have not yet been integrated;
 - production activation of paid providers before NODE-22 binds them through this gateway;
-- safe physical deletion merely because `expires_at` passed.
+- safe physical deletion merely because `expires_at` passed;
+- lossless downgrade after NODE-20 Cost Ledger operation lineage has been written.
 
 Next: **NODE-21 — Sandbox Runtime**.
