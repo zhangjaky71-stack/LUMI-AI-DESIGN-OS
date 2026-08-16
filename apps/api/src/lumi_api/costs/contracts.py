@@ -9,9 +9,9 @@ from uuid import UUID
 
 
 class CostEntryType(StrEnum):
-    ACTUAL_COST = "actual_cost"
+    ESTIMATE = "estimate"
     RESERVATION = "reservation"
-    RESERVATION_RELEASE = "reservation_release"
+    ACTUAL_COST = "actual_cost"
     ADJUSTMENT = "adjustment"
     REVERSAL = "reversal"
 
@@ -20,6 +20,14 @@ class CostConfidence(StrEnum):
     EXACT = "exact"
     ESTIMATED = "estimated"
     UNKNOWN = "unknown"
+
+
+class CostStatus(StrEnum):
+    UNKNOWN = "unknown"
+    ESTIMATED = "estimated"
+    PARTIAL = "partial"
+    FINAL = "final"
+    RECONCILED = "reconciled"
 
 
 class CostBasis(StrEnum):
