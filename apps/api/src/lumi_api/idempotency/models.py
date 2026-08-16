@@ -83,6 +83,7 @@ class OperationRequest(FrozenModel):
     compensation_mode: CompensationMode
     paid: bool = False
     lease_seconds: int = Field(default=60, ge=5, le=3600)
+    ttl_seconds: int = Field(default=86400, ge=300, le=2592000)
 
 
 class IdempotencyOperation(FrozenModel):
