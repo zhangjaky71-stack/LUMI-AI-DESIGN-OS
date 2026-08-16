@@ -150,3 +150,17 @@ CREATE INDEX ix_auth_security_events_occurred_at ON auth_security_events (occurr
 -- statement-breakpoint
 
 CREATE INDEX ix_auth_security_events_organization_id ON auth_security_events (organization_id);
+
+-- statement-breakpoint
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app') THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+      password_credentials, auth_sessions, auth_one_time_tokens, api_tokens
+      TO lumi_app;
+    GRANT SELECT, INSERT ON TABLE auth_security_events TO lumi_app;
+    REVOKE UPDATE, DELETE ON TABLE auth_security_events FROM lumi_app;
+  END IF;
+END;
+$$;
