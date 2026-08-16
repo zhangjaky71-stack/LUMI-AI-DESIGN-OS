@@ -6,6 +6,7 @@ import math
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import Any, TypedDict
 from uuid import UUID, uuid4
@@ -13,6 +14,15 @@ from uuid import UUID, uuid4
 _GRAPH_KEY = re.compile(r"^[a-z][a-z0-9_.-]{0,127}$")
 _VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,99}$")
 _MAX_STATE_BYTES = 1_048_576
+_EVENT_FORBIDDEN_KEYS = {
+    "prompt",
+    "messages",
+    "reasoning",
+    "chain_of_thought",
+    "scratchpad",
+    "raw_response",
+    "tool_output",
+}
 
 
 class RunStatus(StrEnum):
@@ -61,6 +71,9 @@ class LumiRunState(TypedDict, total=False):
     external_job_id: str | None
     repair_iteration: int
     max_repair_iterations: int
+
+
+_STATE_KEYS = frozenset(LumiRunState.__annotations__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +139,7 @@ class StartRunCommand:
             raise ValueError("GRAPH_VERSION_INVALID")
         if self.thread_id is not None and (not self.thread_id or len(self.thread_id) > 255):
             raise ValueError("GRAPH_THREAD_ID_INVALID")
+        _validate_budget(self.budget_remaining)
 
     @property
     def effective_thread_id(self) -> str:
@@ -209,6 +223,8 @@ class RunControlSnapshot:
     def __post_init__(self) -> None:
         validate_run_state(self.state)
         _validate_json(list(self.interrupts), "$.interrupts")
+        if self.resume_version < 1:
+            raise ValueError("GRAPH_RESUME_VERSION_INVALID")
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,9 +252,16 @@ class SafeRunEvent:
         }:
             raise ValueError("GRAPH_EVENT_TYPE_INVALID")
         _validate_json(self.payload, "$.event")
+        if _contains_forbidden_key(self.payload):
+            raise ValueError("GRAPH_EVENT_PRIVATE_REASONING_FORBIDDEN")
 
 
 def validate_run_state(state: LumiRunState) -> None:
+    unknown = set(state) - _STATE_KEYS
+    if unknown:
+        raise ValueError(f"GRAPH_STATE_UNKNOWN_KEYS:{','.join(sorted(unknown))}")
+    if "budget_remaining" in state:
+        _validate_budget(state["budget_remaining"])
     normalized = _jsonable(dict(state))
     encoded = json.dumps(
         normalized, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -255,6 +278,15 @@ def _validate_json(value: Any, path: str) -> None:
         _jsonable(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"GRAPH_JSON_INVALID:{path}") from exc
+
+
+def _validate_budget(value: str) -> None:
+    try:
+        amount = Decimal(value)
+    except (InvalidOperation, TypeError) as exc:
+        raise ValueError("GRAPH_BUDGET_INVALID") from exc
+    if not amount.is_finite() or amount < 0:
+        raise ValueError("GRAPH_BUDGET_INVALID")
 
 
 def _jsonable(value: Any) -> Any:
@@ -280,6 +312,16 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, (bytes, bytearray, memoryview)):
         raise TypeError("GRAPH_BINARY_VALUE_FORBIDDEN")
     raise TypeError(f"GRAPH_JSON_VALUE_UNSUPPORTED:{type(value).__name__}")
+
+
+def _contains_forbidden_key(value: Any) -> bool:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key.casefold() in _EVENT_FORBIDDEN_KEYS or _contains_forbidden_key(child):
+                return True
+    elif isinstance(value, (list, tuple)):
+        return any(_contains_forbidden_key(child) for child in value)
+    return False
 
 
 def _walk_values(value: Any):
