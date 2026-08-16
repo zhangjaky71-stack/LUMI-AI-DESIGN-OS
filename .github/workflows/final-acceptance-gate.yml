@@ -35,6 +35,8 @@ jobs:
           python-version: "3.12"
       - name: Validate final acceptance contract
         run: python3 scripts/validate_final_acceptance_contract.py
+      - name: Validate structured manual evidence contract
+        run: python3 scripts/validate_final_manual_evidence_contract.py
       - name: Validate final browser preflight contract
         run: python3 scripts/validate_final_browser_preflight.py
       - name: Validate upstream canonical lock contract
@@ -44,11 +46,14 @@ jobs:
           python3 -m json.tool final/acceptance/manifest-v1.json >/dev/null
           python3 -m json.tool final/acceptance/release-manifest-template.json >/dev/null
           python3 -m json.tool final/acceptance/signoff-record-template.json >/dev/null
+          python3 -m json.tool final/acceptance/manual-evidence-record-template.json >/dev/null
           python3 -m json.tool final/acceptance/upstream-decision-template.json >/dev/null
           python3 -m py_compile \
             scripts/final-acceptance-gate.py \
+            scripts/final-manual-evidence-gate.py \
             scripts/create-final-acceptance-evidence.py \
             scripts/validate_final_acceptance_contract.py \
+            scripts/validate_final_manual_evidence_contract.py \
             scripts/validate_final_browser_preflight.py \
             scripts/validate_final_upstream_lock_contract.py
 
@@ -100,12 +105,20 @@ jobs:
               raise SystemExit('final acceptance input file is missing')
           if release.parent != evidence.parent:
               raise SystemExit('release manifest and acceptance evidence must be in the same release directory')
+          manual_output = release.parent / 'manual-evidence-decision.json'
           output = release.parent / 'final-decision.json'
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
               fh.write(f'FINAL_RELEASE={release.relative_to(root).as_posix()}\n')
               fh.write(f'FINAL_EVIDENCE={evidence.relative_to(root).as_posix()}\n')
+              fh.write(f'FINAL_MANUAL_OUTPUT={manual_output.relative_to(root).as_posix()}\n')
               fh.write(f'FINAL_OUTPUT={output.relative_to(root).as_posix()}\n')
           PY
+      - name: Require structured manual UAT, browser and accessibility evidence
+        run: |
+          python3 scripts/final-manual-evidence-gate.py \
+            --release "$FINAL_RELEASE" \
+            --evidence "$FINAL_EVIDENCE" \
+            --output "$FINAL_MANUAL_OUTPUT"
       - name: Evaluate final product acceptance
         run: |
           python3 scripts/final-acceptance-gate.py \
@@ -116,7 +129,9 @@ jobs:
         if: always()
         with:
           name: final-acceptance-${{ github.run_id }}
-          path: reports/final-acceptance/**/final-decision.json
+          path: |
+            reports/final-acceptance/**/manual-evidence-decision.json
+            reports/final-acceptance/**/final-decision.json
           if-no-files-found: error
           retention-days: 180
 
