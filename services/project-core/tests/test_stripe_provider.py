@@ -123,23 +123,33 @@ def test_plan_price_reconciliation_rejects_mode_drift() -> None:
         provider.validate_plan_price(plan())
 
 
-def test_checkout_uses_server_owned_price_and_subscription_metadata() -> None:
-    calls: list[tuple[str, str, list[tuple[str, str]] | None]] = []
+def test_checkout_uses_server_owned_price_and_retry_key() -> None:
+    calls: list[
+        tuple[str, str, list[tuple[str, str]] | None, str | None]
+    ] = []
 
-    def transport(method, path, fields, _secret, _idempotency_key):
-        calls.append((method, path, fields))
+    def transport(method, path, fields, _secret, idempotency_key):
+        calls.append((method, path, fields, idempotency_key))
         if method == "GET":
             return {"id": "cus_1", "metadata": {"organization_id": "org-1"}}
         return {"id": "cs_1", "url": "https://checkout.stripe.com/c/pay/cs_1"}
 
     provider = StripePaymentProvider(config(), transport=transport)
-    session = provider.create_checkout("cus_1", plan())
+    session = provider.create_checkout(
+        "cus_1",
+        plan(),
+        "checkout-retry-key-0001",
+    )
     assert session.session_ref == "cs_1"
     posted = dict(calls[-1][2] or [])
     assert posted["mode"] == "subscription"
     assert posted["line_items[0][price]"] == "price_server_owned"
+    assert posted["client_reference_id"] == "org-1"
     assert posted["subscription_data[metadata][organization_id]"] == "org-1"
     assert posted["subscription_data[metadata][plan_version_id]"] == "pro-v1"
+    assert calls[-1][3] is not None
+    assert calls[-1][3].startswith("lumi-checkout:cus_1:pro-v1:")
+    assert "checkout-retry-key-0001" not in calls[-1][3]
     assert not any("amount" in key for key in posted)
 
 
