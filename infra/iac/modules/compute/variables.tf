@@ -10,6 +10,23 @@ variable "alb_security_group_id" { type = string }
 variable "certificate_arn" { type = string }
 variable "kms_key_arn" { type = string }
 
+variable "deployment_alert_email_endpoints" {
+  description = "Human on-call email endpoints subscribed to deployment alerts. Every endpoint must be confirmed in SNS before Final Acceptance."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = (
+      length(distinct(var.deployment_alert_email_endpoints)) == length(var.deployment_alert_email_endpoints) &&
+      alltrue([
+        for endpoint in var.deployment_alert_email_endpoints :
+        can(regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", trimspace(endpoint)))
+      ])
+    )
+    error_message = "deployment_alert_email_endpoints must contain unique valid email addresses."
+  }
+}
+
 variable "public_canary_percent" {
   type    = number
   default = 5
