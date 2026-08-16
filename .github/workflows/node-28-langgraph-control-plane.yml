@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - "apps/agent-runtime/src/lumi_agent_runtime/control_plane/**"
-      - "apps/agent-runtime/tests/test_control_plane_node28.py"
+      - "apps/agent-runtime/tests/test_control_plane_*node28.py"
       - "apps/api/src/lumi_api/api/v1/agent_run_*.py"
       - "apps/api/src/lumi_api/api/v1/app.py"
       - "apps/api/src/lumi_api/persistence/models.py"
@@ -21,6 +21,7 @@ on:
     branches: [main]
     paths:
       - "apps/agent-runtime/src/lumi_agent_runtime/control_plane/**"
+      - "apps/agent-runtime/tests/test_control_plane_*node28.py"
       - "apps/api/migrations/versions/20260816_0010_langgraph_control_plane.py"
       - "apps/api/migrations/versions/20260816_0010_sql/**"
       - "tools/node28/**"
@@ -69,7 +70,7 @@ jobs:
         run: |
           PYTHONPATH=apps/agent-runtime/src:apps/api/src \
             uv run pytest -q \
-              apps/agent-runtime/tests/test_control_plane_node28.py \
+              apps/agent-runtime/tests/test_control_plane_*node28.py \
               apps/api/tests/test_agent_run_control_node28.py
 
       - name: Export and validate NODE-28 schemas and gaps
@@ -95,7 +96,7 @@ jobs:
         run: |
           uv run ruff check \
             apps/agent-runtime/src/lumi_agent_runtime/control_plane \
-            apps/agent-runtime/tests/test_control_plane_node28.py \
+            apps/agent-runtime/tests/test_control_plane_*node28.py \
             apps/api/src/lumi_api/api/v1/agent_run_dependencies.py \
             apps/api/src/lumi_api/api/v1/agent_run_routes.py \
             apps/api/src/lumi_api/api/v1/agent_run_schemas.py \
@@ -111,7 +112,7 @@ jobs:
           PYTHONPATH=apps/agent-runtime/src:apps/api/src \
             uv run pyright \
               apps/agent-runtime/src/lumi_agent_runtime/control_plane \
-              apps/agent-runtime/tests/test_control_plane_node28.py \
+              apps/agent-runtime/tests/test_control_plane_*node28.py \
               apps/api/src/lumi_api/api/v1/agent_run_dependencies.py \
               apps/api/src/lumi_api/api/v1/agent_run_routes.py \
               apps/api/src/lumi_api/api/v1/agent_run_schemas.py \
@@ -126,7 +127,7 @@ jobs:
           GOOGLE_API_KEY: ""
         run: |
           PYTHONPATH=apps/agent-runtime/src \
-            uv run pytest -q apps/agent-runtime/tests/test_control_plane_node28.py
+            uv run pytest -q apps/agent-runtime/tests/test_control_plane_*node28.py
 
       - name: Start PostgreSQL
         run: |
