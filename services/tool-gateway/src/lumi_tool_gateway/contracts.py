@@ -13,6 +13,8 @@ _SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 _MAX_JSON_DEPTH = 24
 _MAX_PURPOSE_LENGTH = 1000
 _MAX_SUMMARY_LENGTH = 8000
+_MAX_OPERATION_TYPE_LENGTH = 100
+_MAX_IDEMPOTENCY_KEY_LENGTH = 255
 
 
 class ToolRisk(StrEnum):
@@ -71,6 +73,8 @@ class ToolDefinition:
             raise ValueError("TOOL_NAME_INVALID")
         if not _SEMVER.fullmatch(self.version):
             raise ValueError("TOOL_VERSION_INVALID")
+        if len(self.operation_type) > _MAX_OPERATION_TYPE_LENGTH:
+            raise ValueError("TOOL_OPERATION_TYPE_TOO_LONG")
         if not self.description or len(self.description) > 2000:
             raise ValueError("TOOL_DESCRIPTION_INVALID")
         if not self.permissions:
@@ -90,6 +94,10 @@ class ToolDefinition:
     @property
     def key(self) -> str:
         return f"{self.name}@{self.version}"
+
+    @property
+    def operation_type(self) -> str:
+        return f"tool:{self.name}:{self.version}"
 
     @property
     def major(self) -> int:
@@ -158,7 +166,10 @@ class ToolRequest:
         if self.organization_id != self.permission_context.organization_id:
             raise ValueError("TOOL_TENANT_CONTEXT_MISMATCH")
         if self.idempotency_key is not None:
-            if not self.idempotency_key or len(self.idempotency_key) > 512:
+            if (
+                not self.idempotency_key
+                or len(self.idempotency_key) > _MAX_IDEMPOTENCY_KEY_LENGTH
+            ):
                 raise ValueError("TOOL_IDEMPOTENCY_KEY_INVALID")
         if self.approval_token is not None and len(self.approval_token) > 1024:
             raise ValueError("TOOL_APPROVAL_TOKEN_INVALID")
@@ -259,13 +270,23 @@ def _normalize_json(value: Any, *, path: str, depth: int) -> Any:
         for key, child in value.items():
             if not isinstance(key, str):
                 raise ValueError(f"TOOL_JSON_NON_STRING_KEY:{path}")
-            result[key] = _normalize_json(child, path=f"{path}.{key}", depth=depth + 1)
+            result[key] = _normalize_json(
+                child,
+                path=f"{path}.{key}",
+                depth=depth + 1,
+            )
         return result
     if isinstance(value, (list, tuple)):
         return [
-            _normalize_json(child, path=f"{path}[{index}]", depth=depth + 1)
+            _normalize_json(
+                child,
+                path=f"{path}[{index}]",
+                depth=depth + 1,
+            )
             for index, child in enumerate(value)
         ]
     if isinstance(value, (bytes, bytearray, memoryview)):
         raise ValueError(f"TOOL_BINARY_VALUE_FORBIDDEN:{path}")
-    raise ValueError(f"TOOL_JSON_VALUE_UNSUPPORTED:{path}:{type(value).__name__}")
+    raise ValueError(
+        f"TOOL_JSON_VALUE_UNSUPPORTED:{path}:{type(value).__name__}"
+    )
