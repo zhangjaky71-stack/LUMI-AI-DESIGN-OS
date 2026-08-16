@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+from typing import Any
 from uuid import uuid4
-
-import pytest
 
 from lumi_agent_runtime.control_plane.checkpointing import memory_checkpointer
 from lumi_agent_runtime.control_plane.contracts import (
@@ -49,7 +49,7 @@ def _services(events: MemoryEventSink, cancellation: MemoryCancellationPort) -> 
     )
 
 
-def _runtime(services: ControlServices, saver, code_sha: str) -> LangGraphRuntime:
+def _runtime(services: ControlServices, saver: Any, code_sha: str) -> LangGraphRuntime:
     graph = build_main_graph(services=services, checkpointer=saver)
     registry = CompiledGraphRegistry()
     registry.register(
@@ -63,8 +63,11 @@ def _runtime(services: ControlServices, saver, code_sha: str) -> LangGraphRuntim
     return LangGraphRuntime(registry)
 
 
-@pytest.mark.asyncio
-async def test_resume_survives_control_plane_process_reconstruction() -> None:
+def test_resume_survives_control_plane_process_reconstruction() -> None:
+    asyncio.run(_assert_resume_survives_control_plane_process_reconstruction())
+
+
+async def _assert_resume_survives_control_plane_process_reconstruction() -> None:
     saver = memory_checkpointer()
     store = MemoryRunControlStore()
     guard = MemoryOperationGuard()
