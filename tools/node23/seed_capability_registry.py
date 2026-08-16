@@ -91,6 +91,23 @@ async def publish_snapshot(
                 record.model_key,
             )
             definition_ids[record.model_key] = definition_id
+            existing_definition = await connection.fetchrow(
+                """
+                SELECT provider_id, provider_model_id
+                FROM model_definitions
+                WHERE model_key = $1
+                """,
+                record.model_key,
+            )
+            if existing_definition is not None and (
+                existing_definition["provider_id"] != provider_id
+                or str(existing_definition["provider_model_id"])
+                != record.model
+            ):
+                raise RuntimeError(
+                    "MODEL_DEFINITION_IDENTITY_CONFLICT: "
+                    f"{record.model_key} changed provider/native model ID"
+                )
             await connection.execute(
                 """
                 INSERT INTO model_definitions
