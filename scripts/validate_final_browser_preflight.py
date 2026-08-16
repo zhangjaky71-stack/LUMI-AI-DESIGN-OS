@@ -29,7 +29,17 @@ def main() -> None:
         '"versions-ui.spec.ts"',
         '"export-ui.spec.ts"',
         '"billing.spec.ts"',
+        '"final-accessibility-preflight.spec.ts"',
         "not accepted as",
+    )
+    require(
+        "apps/web/e2e/final-accessibility-preflight.spec.ts",
+        "unnamedInteractiveControls",
+        "imagesMissingAlternative",
+        'page.locator("main")',
+        'name: "跳到主要内容"',
+        'name: "命令面板"',
+        'name: "用量与账单"',
     )
     require(
         ".github/workflows/final-browser-preflight.yml",
@@ -47,8 +57,10 @@ def main() -> None:
         "docs/acceptance/NODE-73-UAT-SIGNOFF-MATRIX.md",
         "BROWSER-01",
         "BROWSER-02",
+        "A11Y-01",
         "Safari is no longer a deferrable P1 item",
         "exact browser version",
+        "Manual keyboard and screen-reader checks are required",
     )
     require(
         "final/acceptance/manifest-v1.json",
