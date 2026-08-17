@@ -49,14 +49,7 @@ class SourceImageRef:
     rights_snapshot_id: str
 
     def __post_init__(self) -> None:
-        if len(self.checksum_sha256) != 64:
-            raise ValueError("source checksum must be sha256")
-        try:
-            int(self.checksum_sha256, 16)
-        except ValueError as exc:
-            raise ValueError("source checksum must be lowercase hex sha256") from exc
-        if self.checksum_sha256.lower() != self.checksum_sha256:
-            raise ValueError("source checksum must be lowercase hex sha256")
+        _require_sha256(self.checksum_sha256, "source checksum")
         if not self.durable_ref:
             raise ValueError("source durable_ref is required")
 
@@ -120,14 +113,7 @@ class VideoTaskSpec:
         if self.budget_limit_usd is not None and self.budget_limit_usd < 0:
             raise ValueError("budget limit cannot be negative")
         if self.git_commit is not None:
-            if len(self.git_commit) != 40:
-                raise ValueError("git_commit must be a 40-character git sha")
-            try:
-                int(self.git_commit, 16)
-            except ValueError as exc:
-                raise ValueError("git_commit must be lowercase hexadecimal") from exc
-            if self.git_commit.lower() != self.git_commit:
-                raise ValueError("git_commit must be lowercase hexadecimal")
+            _require_git_sha(self.git_commit)
 
     @property
     def total_duration_seconds(self) -> Decimal:
@@ -197,6 +183,24 @@ class VideoProbeResult:
 
 
 @dataclass(frozen=True, slots=True)
+class DurableVideoObject:
+    durable_ref: str
+    bucket: str
+    storage_key: str
+    size_bytes: int
+
+    def __post_init__(self) -> None:
+        if not self.durable_ref or "://" in self.durable_ref:
+            raise ValueError("durable video ref must be internal")
+        if not self.bucket or not self.storage_key:
+            raise ValueError("durable video bucket/key are required")
+        if self.storage_key.startswith("http") or "?X-Amz-Signature=" in self.storage_key:
+            raise ValueError("durable video storage key cannot be a URL")
+        if self.size_bytes <= 0:
+            raise ValueError("durable video size must be positive")
+
+
+@dataclass(frozen=True, slots=True)
 class ShotValidationReport:
     decision: ValidationDecision
     reason_codes: tuple[str, ...]
@@ -207,12 +211,19 @@ class ShotValidationReport:
 @dataclass(frozen=True, slots=True)
 class StoredVideoClip:
     shot_id: str
-    durable_ref: str
+    object: DurableVideoObject
     checksum_sha256: str
     probe: VideoProbeResult
     provider: str
     model: str
     provider_request_id: str
+
+    def __post_init__(self) -> None:
+        _require_sha256(self.checksum_sha256, "video clip checksum")
+
+    @property
+    def durable_ref(self) -> str:
+        return self.object.durable_ref
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,10 +259,17 @@ class VideoTimeline:
 
 @dataclass(frozen=True, slots=True)
 class RenderedVideo:
-    durable_ref: str
+    object: DurableVideoObject
     checksum_sha256: str
     probe: VideoProbeResult
     renderer_version: str
+
+    def __post_init__(self) -> None:
+        _require_sha256(self.checksum_sha256, "rendered video checksum")
+
+    @property
+    def durable_ref(self) -> str:
+        return self.object.durable_ref
 
 
 @dataclass(frozen=True, slots=True)
@@ -292,6 +310,24 @@ class VideoJob:
     provenance: FinalVideoProvenance | None = None
     final_artifact_version_id: str | None = None
     error_code: str | None = None
+
+
+def _require_sha256(value: str, label: str) -> None:
+    if len(value) != 64 or value.lower() != value:
+        raise ValueError(f"{label} must be lowercase hex sha256")
+    try:
+        int(value, 16)
+    except ValueError as exc:
+        raise ValueError(f"{label} must be lowercase hex sha256") from exc
+
+
+def _require_git_sha(value: str) -> None:
+    if len(value) != 40 or value.lower() != value:
+        raise ValueError("git_commit must be a 40-character lowercase hex sha")
+    try:
+        int(value, 16)
+    except ValueError as exc:
+        raise ValueError("git_commit must be a 40-character lowercase hex sha") from exc
 
 
 def _jsonable(value: Any) -> Any:
