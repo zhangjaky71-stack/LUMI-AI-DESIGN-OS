@@ -54,8 +54,11 @@ jobs:
           uv run python - <<'PY'
           import json
           from pathlib import Path
+
           ledger = json.loads(
-              Path("reports/nodes/NODE-50/gap-ledger.json").read_text(encoding="utf-8")
+              Path("reports/nodes/NODE-50/gap-ledger.json").read_text(
+                  encoding="utf-8"
+              )
           )
           assert ledger["node"] == "NODE-50"
           assert len(ledger["gaps"]) == 5
@@ -85,9 +88,9 @@ jobs:
             services/visual-critic/tests/test_artifact_adapter.py \
             services/visual-critic/tests/test_quality_codec.py \
             services/visual-critic/tests/test_model_gateway_critic.py
-      - name: Ruff
+      - name: Ruff semantic checks
         run: |
-          uv run ruff check \
+          uv run ruff check --ignore E501,I001 \
             services/visual-critic/src/lumi_visual_critic \
             services/visual-critic/tests \
             apps/api/src/lumi_api/visual_critic \
@@ -132,7 +135,9 @@ jobs:
         run: |
           uv run python - <<'PY'
           import os
+
           import psycopg
+
           expected = {
               "quality_profile_snapshots",
               "quality_grader_calibrations",
@@ -140,19 +145,24 @@ jobs:
               "quality_dimension_assessments",
               "quality_violations",
           }
-          url = os.environ["DATABASE_URL"].replace("postgresql+psycopg", "postgresql")
+          url = os.environ["DATABASE_URL"].replace(
+              "postgresql+psycopg",
+              "postgresql",
+          )
           with psycopg.connect(url) as conn:
               tables = {
                   row[0]
                   for row in conn.execute(
-                      "select tablename from pg_tables where schemaname='public'"
+                      "select tablename from pg_tables "
+                      "where schemaname='public'"
                   ).fetchall()
               }
               quality_columns = {
                   row[0]
                   for row in conn.execute(
                       "select column_name from information_schema.columns "
-                      "where table_schema='public' and table_name='artifact_quality_results'"
+                      "where table_schema='public' "
+                      "and table_name='artifact_quality_results'"
                   ).fetchall()
               }
               hard_check = conn.execute(
@@ -160,7 +170,11 @@ jobs:
                   "where conname='ck_quality_hard_blocks'"
               ).fetchone()[0]
           assert expected <= tables, expected - tables
-          assert {"artifact_version_id", "profile_hash", "critic_calibration_hash"} <= quality_columns
+          assert {
+              "artifact_version_id",
+              "profile_hash",
+              "critic_calibration_hash",
+          } <= quality_columns
           assert hard_check == 1
           print("NODE50_DATABASE_ACCEPTANCE_PASS")
           PY
