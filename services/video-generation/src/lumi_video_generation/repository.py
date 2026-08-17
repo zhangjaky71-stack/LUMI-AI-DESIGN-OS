@@ -11,7 +11,7 @@ class InMemoryVideoRepository:
     def __init__(self) -> None:
         self._jobs: dict[str, VideoJob] = {}
         self._operation_index: dict[tuple[str, str], str] = {}
-        self._webhooks: set[tuple[str, str]] = set()
+        self._webhooks: set[tuple[str, str, str]] = set()
 
     def create(self, job: VideoJob) -> VideoJob:
         operation_key = (job.spec.organization_id, job.spec.operation_id)
@@ -19,7 +19,9 @@ class InMemoryVideoRepository:
         if existing_id is not None:
             existing = self._jobs[existing_id]
             if existing.spec.semantic_hash() != job.spec.semantic_hash():
-                raise VideoOperationConflict("VIDEO_OPERATION_ID_REUSED_WITH_DIFFERENT_SPEC")
+                raise VideoOperationConflict(
+                    "VIDEO_OPERATION_ID_REUSED_WITH_DIFFERENT_SPEC"
+                )
             return existing
         if job.job_id in self._jobs:
             raise VideoOperationConflict("VIDEO_JOB_ID_ALREADY_EXISTS")
@@ -39,8 +41,13 @@ class InMemoryVideoRepository:
         self._jobs[job.job_id] = job
         return job
 
-    def claim_webhook(self, provider: str, event_id: str) -> bool:
-        key = (provider, event_id)
+    def claim_webhook(
+        self,
+        organization_id: str,
+        provider: str,
+        event_id: str,
+    ) -> bool:
+        key = (organization_id, provider, event_id)
         if key in self._webhooks:
             return False
         self._webhooks.add(key)
