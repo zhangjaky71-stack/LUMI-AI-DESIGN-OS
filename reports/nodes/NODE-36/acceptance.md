@@ -2,11 +2,11 @@
 
 ## Status
 
-`IMPLEMENTED / VALIDATING / not COMPLETE`
+`IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL / not COMPLETE`
 
-The current branch contains changes newer than the earlier hosted run. No hosted PASS or current-head
-`BLOCKED_EXTERNAL` classification is claimed until the latest head receives its own workflow/job
-evidence.
+Hosted PASS is not claimed. The latest required NODE-36 workflow for head
+`9afd24fb664f29822b2fe39577e87c2fc97d92c0` did not receive a runner, so no checkout, compile,
+validator, pytest, Ruff, Pyright, or durable test step executed.
 
 ## Delivered
 
@@ -22,6 +22,7 @@ evidence.
 ### Ingestion
 
 - `KnowledgeExtractionPort` for trusted Asset/Tool/Sandbox composition;
+- source authorization before extractor I/O;
 - native extraction always attempted before OCR;
 - OCR accepted only as an explicit fallback result;
 - extraction completes before durable Knowledge mutation;
@@ -78,7 +79,7 @@ evidence.
 - durable restart/extraction/reindex/rollback tests;
 - static architecture validator;
 - gap ledger distinguishing P0 correctness from external adapters/scale optimizations;
-- dedicated Python 3.12 + frozen uv + pytest + Ruff + Pyright workflow.
+- three-stage `knowledge-contract -> knowledge-quality -> knowledge-durable` CI.
 
 ## Required tests authored
 
@@ -97,6 +98,7 @@ The test suite covers at least:
 - deletion propagation;
 - native-before-OCR;
 - OCR fallback;
+- unauthorized source rejected before extractor I/O;
 - durable store restart;
 - reindex retaining history and moving active head;
 - active head surviving restart;
@@ -106,12 +108,39 @@ The test suite covers at least:
 ## Security assertions
 
 - Tenant/project/brand/scope selection occurs before lexical/vector scoring.
+- Source authorization occurs before extraction/source I/O.
 - Only active source heads enter retrieval candidates.
 - Knowledge content never receives system/agent/user instruction authority.
 - Knowledge package imports no provider SDK, SQL/vector DB SDK, subprocess, or broad HTTP client.
 - Extraction adapters operate through explicit ports instead of ambient host/source authority.
 - Production embedding is represented by a provider-neutral port.
 - Old index replay cannot silently alter active source selection.
+
+## Current hosted Actions evidence
+
+PR: `#103`  
+Branch: `feat/node-36-knowledge-engine`  
+Head: `9afd24fb664f29822b2fe39577e87c2fc97d92c0`  
+Workflow run: `32006525761`  
+Required first job: `knowledge-contract` / job `95317031697`
+
+Observed job state:
+
+```text
+status=completed
+conclusion=failure
+steps=[]
+runner_id=0
+runner_name=""
+```
+
+GitHub check-run annotation:
+
+> The job was not started because recent account payments have failed or your spending limit needs
+> to be increased. Please check the 'Billing & plans' section in your settings
+
+Therefore this run is **BLOCKED_EXTERNAL**, not a code/test failure. `knowledge-quality` and
+`knowledge-durable` were skipped because their prerequisite job never started.
 
 ## Remaining external/composition boundaries
 
@@ -123,15 +152,11 @@ The test suite covers at least:
 - PostgreSQL FTS/pgvector remains an optional scale backend, not a canonical P0 correctness
   dependency in the current Git-workspace Agent-stack.
 
-## Hosted validation discipline
+## Completion rule
 
-The previous NODE-36 head had a runner-allocation failure before checkout. That historical result does
-not validate this newer head. After the current Draft PR head is observed:
-
-- if a runner executes and a step fails, it is an engineering defect to fix;
-- if `steps=[]`, `runner_id=0`, and the GitHub billing/spending annotation is present, classify the
-  latest head as `BLOCKED_EXTERNAL`;
-- only all required green jobs may move NODE-36 to COMPLETE.
+NODE-36 remains `not COMPLETE` until all required latest-head hosted gates execute green on a real
+runner. If a future run starts and a test/lint/type step fails, that is an engineering defect and must
+be fixed rather than classified external.
 
 Canonical design: `docs/runtime/KNOWLEDGE-ENGINE-V1.md`
 
