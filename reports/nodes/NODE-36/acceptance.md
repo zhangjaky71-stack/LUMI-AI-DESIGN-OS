@@ -2,11 +2,10 @@
 
 ## Status
 
-`IMPLEMENTED -> VALIDATING`
+`IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL`
 
-Hosted PASS is not claimed until GitHub allocates a real runner and the NODE-36 workflow executes.
-As with preceding nodes, a job that fails before checkout with `steps=[]` is
-`BLOCKED_EXTERNAL`, not a code failure.
+Hosted PASS is not claimed. The first NODE-36 PR workflow attempt was blocked before checkout and
+before any repository test or lint step could execute.
 
 ## Delivered
 
@@ -46,6 +45,23 @@ Current evidence:
 
 Local Ruff/Pyright are not claimed because those tools were not available in the isolated scratch
 runtime. They remain mandatory hosted gates.
+
+## Hosted Actions evidence
+
+PR #103 first triggered dedicated workflow run `32005584825` at head
+`e9f8f78d96435e4549b2aa537669492c0091adb1`.
+
+The `knowledge-engine` job `95314273504` ended with:
+
+```text
+status=completed
+conclusion=failure
+steps=[]
+```
+
+No checkout, frozen install, pytest, Ruff, Pyright, benchmark parsing, or validator step ran. This is
+therefore classified as `BLOCKED_EXTERNAL`, consistent with the hosted runner-allocation blocker on
+the preceding stacked nodes. It must not be represented as a code or test failure.
 
 ## Security assertions
 
