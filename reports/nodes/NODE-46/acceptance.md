@@ -2,7 +2,7 @@
 
 ## Status
 
-`IMPLEMENTED / VALIDATING`
+`IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL`
 
 Hosted GitHub Actions PASS and live-provider visual-quality acceptance are not claimed.
 
@@ -57,6 +57,27 @@ The isolated environment does not contain the complete repository workspace, so 
 stack integration tests for NODE-22 Model Gateway and NODE-42 Artifact Engine are authored for the
 dedicated hosted workflow but are not claimed as locally executed. No repository-pinned Python
 3.12/uv, Ruff or Pyright PASS is claimed locally.
+
+## Hosted acceptance evidence
+
+Implementation head `d2f1dbcd36a6be3a253e30300f25318b985c5525` is published on PR #113.
+The connected GitHub App can read PR metadata and repository contents and can write the branch,
+but its Actions/checks read endpoints currently return:
+
+```text
+403 Resource not accessible by integration
+```
+
+for both commit workflow-run inspection and commit check-run inspection. The combined-status API
+returns no visible statuses. Therefore this acceptance record does **not** claim that the dedicated
+NODE-46 workflow received a runner, executed any step, passed, or failed. The hosted acceptance
+evidence itself is externally unavailable to the current integration and is classified
+`BLOCKED_EXTERNAL`; this is not evidence of an Image Generation code, migration, provider, test,
+Ruff or Pyright failure.
+
+Before NODE-46 can be COMPLETE, the dedicated hosted workflow must be inspectable and must execute
+the frozen workspace install, NODE-46 runtime/current-stack adapter tests, deterministic eval,
+smoke, static validator, migration/runtime compile, gap parse, Ruff and Pyright.
 
 ## Safety and correctness boundaries
 
