@@ -2,9 +2,9 @@
 
 ## Status
 
-`IMPLEMENTED / VALIDATING`
+`IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL`
 
-NODE-41 is stacked on `feat/node-40-canvas-engine`. Hosted GitHub Actions PASS is not claimed until an allocated runner executes the dedicated workflow.
+NODE-41 is stacked on `feat/node-40-canvas-engine`. Hosted GitHub Actions PASS is not claimed.
 
 ## Delivered
 
@@ -33,6 +33,7 @@ The exact NODE-41 candidate source was exercised in an isolated workspace:
 NODE41_TS_STRICT_COMPILE_PASS
 NODE41_TS_TEST_SUITE_STRICT_COMPILE_PASS
 NODE41_CANVAS_COMPILER_SMOKE_PASS
+NODE41_CANVAS_COMPILER_VALIDATION_PASS
 ```
 
 Local compiler: TypeScript 5.8.3 with repository-equivalent strict options. Node runtime: 22.16.0. Repository TypeScript 6.0.3, pnpm 11.4.0 and actual Vitest execution are not claimed locally.
@@ -47,6 +48,20 @@ Incremental 10k single-node change: ~159 ms; patch upserts=1
 ```
 
 These are isolated CPU reference measurements only. They are not browser/GPU/standard-hardware release SLO evidence.
+
+## Hosted runner evidence
+
+The first dedicated workflow attempt for PR #108 is run `32015218627`. Its `canvas-compiler` job `95343138487` ended before runner allocation with:
+
+```text
+status=completed
+conclusion=failure
+runner_id=0
+runner_name=""
+steps=[]
+```
+
+No checkout, Node setup, frozen pnpm install, repository TypeScript 6.0.3 package typecheck, Vitest, Python setup, static validator, fixture/gap validation, or lock reproducibility step executed. This is classified as `BLOCKED_EXTERNAL`, consistent with the runner-allocation blocker on preceding stacked nodes. It is not a NODE-41 compiler code or test failure.
 
 ## Correctness assertions exercised locally
 
@@ -72,6 +87,6 @@ See `reports/nodes/NODE-41/gap-ledger.json`.
 
 ## Hosted acceptance gate
 
-An allocated runner must execute frozen pnpm install, repository TypeScript 6.0.3 package typecheck, the NODE-41 Vitest suite, static validator, fixture/gap validation, and lock reproducibility. Browser/font/Pixi gaps require separate real-browser evidence rather than inference from headless tests.
+Before NODE-41 can become COMPLETE, an allocated runner must execute frozen pnpm install, repository TypeScript 6.0.3 package typecheck, the NODE-41 Vitest suite, static validator, fixture/gap validation, and lock reproducibility. Browser/font/Pixi gaps require separate real-browser evidence rather than inference from headless tests.
 
 Next node: **NODE-42 — Artifact Engine**.
