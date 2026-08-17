@@ -84,11 +84,7 @@ jobs:
             services/video-generation/tests \
             tools/node48
       - name: Pyright
-        run: |
-          uv run pyright \
-            services/video-generation/src/lumi_video_generation \
-            services/video-generation/tests \
-            tools/node48
+        run: uv run pyright -p services/video-generation/pyrightconfig.json
 
   video-db:
     needs: video-quality
@@ -136,7 +132,8 @@ jobs:
               "video_generation_cost_projection",
               "video_webhook_dedupe",
           }
-          with psycopg.connect(os.environ["DATABASE_URL"].replace("postgresql+psycopg", "postgresql")) as conn:
+          url = os.environ["DATABASE_URL"].replace("postgresql+psycopg", "postgresql")
+          with psycopg.connect(url) as conn:
               rows = conn.execute(
                   "select tablename from pg_tables where schemaname='public'"
               ).fetchall()
