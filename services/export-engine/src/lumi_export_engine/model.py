@@ -42,8 +42,7 @@ class ExportSourceFile:
         _sha256(self.checksum_sha256, "source checksum")
         if not self.bucket or not self.storage_key or self.size_bytes < 0:
             raise ValueError("invalid source storage metadata")
-        if self.storage_key.startswith("http") or "?X-Amz-Signature=" in self.storage_key:
-            raise ValueError("source storage key cannot be a URL")
+        _internal_storage_key(self.storage_key)
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,8 +92,9 @@ class ExportRequestItem:
     output_name: str
 
     def __post_init__(self) -> None:
-        if not self.artifact_version_id or not self.output_name.strip():
-            raise ValueError("export item requires exact version id and output name")
+        if not self.artifact_version_id:
+            raise ValueError("exact ArtifactVersion id is required")
+        _safe_name(self.output_name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +117,8 @@ class ExportTaskSpec:
             raise ValueError("export item count must be between 1 and 500")
         if len({item.artifact_version_id for item in self.items}) != len(self.items):
             raise ValueError("duplicate ArtifactVersion ids are not allowed")
+        if len({item.output_name for item in self.items}) != len(self.items):
+            raise ValueError("duplicate export output names are not allowed")
         if self.download_ttl_seconds < 60 or self.download_ttl_seconds > 3600:
             raise ValueError("download TTL must be between 60 and 3600 seconds")
         if self.max_total_bytes <= 0 or self.max_total_bytes > 10_000_000_000:
@@ -152,8 +154,7 @@ class ExportedFile:
         _sha256(self.checksum_sha256, "export checksum")
         if self.size_bytes < 0 or not self.bucket or not self.storage_key:
             raise ValueError("invalid exported file storage metadata")
-        if self.storage_key.startswith("http") or "?X-Amz-Signature=" in self.storage_key:
-            raise ValueError("export storage key cannot be a URL")
+        _internal_storage_key(self.storage_key)
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,6 +183,7 @@ class ExportManifest:
 
 @dataclass(frozen=True, slots=True)
 class DownloadPackage:
+    package_id: str
     bucket: str
     storage_key: str
     filename: str
@@ -190,6 +192,11 @@ class DownloadPackage:
     checksum_sha256: str
     manifest: ExportManifest
     is_archive: bool
+
+    def __post_init__(self) -> None:
+        _safe_name(self.filename)
+        _sha256(self.checksum_sha256, "package checksum")
+        _internal_storage_key(self.storage_key)
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +220,7 @@ class ExportJob:
     spec: ExportTaskSpec
     status: ExportJobStatus
     items: tuple[ExportItemRuntime, ...]
+    runtime_job_id: str | None = None
     outputs: tuple[ExportedFile, ...] = ()
     package: DownloadPackage | None = None
     error_code: str | None = None
@@ -225,6 +233,11 @@ def _safe_name(value: str) -> str:
     if any(token in stripped for token in ("/", "\\", "\x00", "\n", "\r")):
         raise ValueError("EXPORT_FILENAME_INVALID")
     return stripped
+
+
+def _internal_storage_key(value: str) -> None:
+    if not value or value.startswith("http") or "://" in value or "?X-Amz-Signature=" in value:
+        raise ValueError("export storage key must be internal")
 
 
 def _sha256(value: str, label: str) -> None:
