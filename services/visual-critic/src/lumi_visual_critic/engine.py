@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from uuid import NAMESPACE_URL, uuid5
 
 from .model import (
@@ -8,11 +7,13 @@ from .model import (
     DimensionAssessment,
     QualityDimension,
     QualityGateStatus,
+    QualityProfileSnapshot,
     QualityResult,
     QualitySeverity,
     QualitySignalBundle,
     QualityTaskSpec,
     QualityViolation,
+    RepairAction,
     VisualGraderResult,
 )
 from .ports import (
@@ -55,10 +56,16 @@ class VisualCriticEngine:
             organization_id=spec.organization_id,
             operation_id=spec.operation_id,
         )
+        expected_calibration_hash = (
+            spec.critic_calibration.semantic_hash()
+            if spec.critic_calibration is not None
+            else None
+        )
         if existing is not None:
             if (
                 existing.artifact_version_id != spec.artifact_version_id
                 or existing.profile_hash != spec.profile.semantic_hash()
+                or existing.critic_calibration_hash != expected_calibration_hash
             ):
                 raise QualityOperationConflict(
                     "QUALITY_OPERATION_ID_REUSED_WITH_DIFFERENT_SPEC"
@@ -138,7 +145,9 @@ class VisualCriticEngine:
                         visual = None
                         visual_failure = "QUALITY_CRITIC_GRADER_ID_MISMATCH"
                 except Exception as exc:
-                    visual_failure = f"QUALITY_VISUAL_GRADER_FAILED:{type(exc).__name__}"
+                    visual_failure = (
+                        f"QUALITY_VISUAL_GRADER_FAILED:{type(exc).__name__}"
+                    )
 
         forced_status: QualityGateStatus | None = None
         reasons: list[str] = []
@@ -224,13 +233,13 @@ class VisualCriticEngine:
             status = QualityGateStatus.REVIEW_REQUIRED
             reasons.append("QUALITY_LOW_CONFIDENCE_HIGH_IMPACT")
         elif status is None:
-            below = tuple(
+            below_dimensions = tuple(
                 item
                 for item in assessments
                 if item.score < spec.profile.thresholds[item.dimension]
             )
             repairable = any(item.repair_actions for item in all_violations)
-            if below or score < spec.profile.overall_pass_threshold:
+            if below_dimensions or score < spec.profile.warning_threshold:
                 status = (
                     QualityGateStatus.FAIL_REPAIRABLE
                     if repairable
@@ -242,9 +251,10 @@ class VisualCriticEngine:
                     else "QUALITY_FAILURE_WITHOUT_REGISTERED_REPAIR"
                 )
             elif (
-                score < spec.profile.warning_threshold
+                score < spec.profile.overall_pass_threshold
                 or any(
-                    item.severity in {QualitySeverity.WARNING, QualitySeverity.ERROR}
+                    item.severity
+                    in {QualitySeverity.WARNING, QualitySeverity.ERROR}
                     for item in all_violations
                 )
             ):
@@ -260,7 +270,10 @@ class VisualCriticEngine:
             quality_result_id=str(
                 uuid5(
                     NAMESPACE_URL,
-                    f"lumi:quality-result:{spec.organization_id}:{spec.operation_id}",
+                    (
+                        "lumi:quality-result:"
+                        f"{spec.organization_id}:{spec.operation_id}"
+                    ),
                 )
             ),
             organization_id=spec.organization_id,
@@ -282,7 +295,9 @@ class VisualCriticEngine:
             strengths=strengths,
             repair_actions=repair_actions,
             critic_grader_id=(visual.grader_id if visual else None),
-            critic_calibration_id=(calibration.calibration_id if calibration else None),
+            critic_calibration_id=(
+                calibration.calibration_id if calibration else None
+            ),
             critic_calibration_hash=(
                 calibration.semantic_hash() if calibration else None
             ),
@@ -294,7 +309,7 @@ class VisualCriticEngine:
         assessments: tuple[DimensionAssessment, ...],
         *,
         deterministic_sources: tuple[QualitySignalBundle, ...],
-        profile,
+        profile: QualityProfileSnapshot,
     ) -> tuple[DimensionAssessment, ...]:
         deterministic_ids = {
             assessment.grader_id
@@ -314,7 +329,9 @@ class VisualCriticEngine:
             evidence_ids: list[str] = []
             severity = QualitySeverity.INFO
             for item in values:
-                priority = 2.0 if item.grader_id in deterministic_ids else 1.0
+                priority = (
+                    2.0 if item.grader_id in deterministic_ids else 1.0
+                )
                 weight = max(item.confidence, 0.05) * priority
                 total_weight += weight
                 score_sum += item.score * weight
@@ -377,7 +394,8 @@ class VisualCriticEngine:
             ):
                 return True
         return any(
-            violation.severity in {QualitySeverity.ERROR, QualitySeverity.HARD}
+            violation.severity
+            in {QualitySeverity.ERROR, QualitySeverity.HARD}
             and violation.confidence < low_confidence_threshold
             for violation in violations
         )
@@ -385,9 +403,9 @@ class VisualCriticEngine:
     @staticmethod
     def _dedupe_repairs(
         violations: tuple[QualityViolation, ...],
-    ):
+    ) -> tuple[RepairAction, ...]:
         seen: set[tuple[str, str, str]] = set()
-        result = []
+        result: list[RepairAction] = []
         for violation in violations:
             for action in violation.repair_actions:
                 key = (
@@ -401,7 +419,10 @@ class VisualCriticEngine:
         return tuple(result)
 
 
-def _max_severity(left: QualitySeverity, right: QualitySeverity) -> QualitySeverity:
+def _max_severity(
+    left: QualitySeverity,
+    right: QualitySeverity,
+) -> QualitySeverity:
     rank = {
         QualitySeverity.INFO: 0,
         QualitySeverity.WARNING: 1,
