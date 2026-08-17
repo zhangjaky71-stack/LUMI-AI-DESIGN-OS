@@ -2,10 +2,10 @@
 
 ## Status
 
-`IMPLEMENTED / VALIDATING`
+`IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL`
 
-The current implementation is intended to stack on `feat/node-38-design-ir-runtime`. Hosted GitHub
-Actions PASS is not claimed until an allocated runner executes the dedicated workflow.
+The current implementation is stacked on `feat/node-38-design-ir-runtime`. Hosted GitHub Actions PASS
+is not claimed.
 
 ## Delivered
 
@@ -40,6 +40,7 @@ The exact NODE-39 candidate source was validated in an isolated scratch workspac
 PYTHONPATH=apps/api/src pytest -q apps/api/tests/test_constraint_validator_node39.py
 16 passed
 python -m compileall: PASS
+NODE39_CONSTRAINT_VALIDATOR_VALIDATION_PASS
 ```
 
 The tests cover prospective geometry, lock mutation/facet behavior, CJK measurement unavailable,
@@ -54,6 +55,7 @@ flags:
 
 ```text
 NODE39_TS_STRICT_COMPILE_PASS
+NODE39_TS_RUNTIME_SMOKE_PASS
 ```
 
 Four violation identity vectors were independently evaluated in TypeScript and Python:
@@ -79,6 +81,24 @@ full nodes scanned = 2001
 
 The incremental path includes private prospective candidate projection; this measurement is diagnostic,
 not a release SLO. Production thresholds require the NODE-08 standard-machine benchmark contract.
+
+## Hosted runner evidence
+
+The first dedicated hosted workflow attempt for PR #106 is run `32011017239`. Its
+`constraint-validator` job `95330369896` ended with:
+
+```text
+status=completed
+conclusion=failure
+runner_id=0
+runner_name=""
+steps=[]
+```
+
+No checkout, pnpm install, TypeScript typecheck, Vitest, uv install, Python tests, static validator,
+Ruff or Pyright step executed. This is classified as `BLOCKED_EXTERNAL`, consistent with the hosted
+runner-allocation failures already observed on preceding nodes. It is not a NODE-39 code or test
+failure.
 
 ## Correctness and safety assertions
 
@@ -111,8 +131,5 @@ See `reports/nodes/NODE-39/gap-ledger.json`.
 Before NODE-39 may become COMPLETE, an allocated GitHub runner must execute frozen pnpm install,
 TypeScript 6.0.3 typecheck, Vitest, frozen uv install, Python 3.12 tests,
 `NODE39_CONSTRAINT_VALIDATOR_VALIDATION_PASS`, gap-ledger parse, Ruff and Pyright.
-
-If a job ends before checkout with `runner_id=0` and `steps=[]`, record it as `BLOCKED_EXTERNAL`, not as
-a NODE-39 code failure.
 
 Next node after acceptance: **NODE-40 — Canvas Renderer V1**.
