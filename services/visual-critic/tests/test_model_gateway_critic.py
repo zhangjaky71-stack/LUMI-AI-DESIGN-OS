@@ -156,7 +156,10 @@ def test_visual_model_cannot_emit_hard_gate():
             gateway,  # type: ignore[arg-type]
             Resolver(),
         )
-        with pytest.raises(KeyError):
+        with pytest.raises(
+            ValueError,
+            match="QUALITY_HARD_VIOLATION_MUST_BLOCK",
+        ):
             await adapter.grade(
                 spec=task(),
                 artifact=artifact(),
