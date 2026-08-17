@@ -1,0 +1,41 @@
+{
+  "node": "NODE-37",
+  "status": "IMPLEMENTED_CONTRACT_WITH_RUNTIME_GAPS",
+  "gaps": [
+    {
+      "id": "T37-G01",
+      "area": "skill-publication",
+      "status": "OPEN",
+      "owner_node": "skill-content-runtime",
+      "note": "Role definitions declare exact skill refs; corresponding governed SkillRegistry packages still need publication/evaluation before live materialization."
+    },
+    {
+      "id": "T37-G02",
+      "area": "deep-agent-dispatch-adapter",
+      "status": "OPEN",
+      "owner_node": "agent-runtime-integration",
+      "note": "The team delegation policy is frozen; a production adapter must translate grants into NODE-29 invocations without adding child tools to Director direct permissions."
+    },
+    {
+      "id": "T37-G03",
+      "area": "recipe-taskgraph-execution",
+      "status": "OPEN",
+      "owner_node": "workflow-runtime",
+      "note": "Coffee-poster E2E is a deterministic mock plan; live TaskGraph execution, approval interrupts and worker joins require runtime integration."
+    },
+    {
+      "id": "T37-G04",
+      "area": "live-role-evals",
+      "status": "OPEN",
+      "owner_node": "eval-platform",
+      "note": "490 deterministic role-policy smoke cases are defined; provider-backed quality evals and scored baselines remain to be executed with governed models."
+    },
+    {
+      "id": "T37-G05",
+      "area": "tool-catalog-binding",
+      "status": "OPEN",
+      "owner_node": "tool-gateway-integration",
+      "note": "Logical role tool IDs are explicit and minimized; production Tool Gateway capability IDs and availability checks must be bound before live dispatch."
+    }
+  ]
+}
