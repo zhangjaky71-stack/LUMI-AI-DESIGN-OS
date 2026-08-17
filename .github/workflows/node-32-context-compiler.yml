@@ -1,0 +1,48 @@
+name: NODE-32 Context Compiler
+
+on:
+  pull_request:
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/context_compiler/**"
+      - "apps/agent-runtime/tests/test_context_compiler_node32.py"
+      - "docs/agents/CONTEXT-COMPILER-V1.md"
+      - "reports/nodes/NODE-32/**"
+      - ".github/workflows/node-32-context-compiler.yml"
+  push:
+    branches:
+      - "feat/node-32-context-compiler"
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/context_compiler/**"
+      - "apps/agent-runtime/tests/test_context_compiler_node32.py"
+      - "docs/agents/CONTEXT-COMPILER-V1.md"
+      - "reports/nodes/NODE-32/**"
+
+permissions:
+  contents: read
+
+jobs:
+  context-compiler:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install agent runtime and test tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e apps/agent-runtime
+          python -m pip install pytest ruff
+
+      - name: Ruff
+        run: |
+          ruff check \
+            apps/agent-runtime/src/lumi_agent_runtime/context_compiler \
+            apps/agent-runtime/tests/test_context_compiler_node32.py
+
+      - name: Pytest NODE-32
+        run: |
+          pytest -q apps/agent-runtime/tests/test_context_compiler_node32.py

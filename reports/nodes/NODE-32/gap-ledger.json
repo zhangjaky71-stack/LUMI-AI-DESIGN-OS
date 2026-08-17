@@ -1,0 +1,23 @@
+[
+  {
+    "gap_id": "CONTEXT-SOURCE-COLLECTORS-001",
+    "status": "OPEN",
+    "owner": "Context / Knowledge / Integration adapters",
+    "summary": "Production collectors for project, brand, user, organization and task context are not composed in NODE-32.",
+    "closure_evidence": "Implement bounded collectors that emit exact ContextSourceSnapshot source/version/hash/scope evidence without weakening compiler conflict or permission semantics."
+  },
+  {
+    "gap_id": "CONTEXT-GIT-REMOTE-002",
+    "status": "OPEN",
+    "owner": "Deployment / Control Plane",
+    "summary": "GitWorkspaceContextBundleStore persists canonical local workspace records but does not own remote protected-Git sync, credentials, signing or approval policy.",
+    "closure_evidence": "Provide deployment/control-plane evidence for protected remote synchronization, credential isolation, commit signing/approval and workspace mount lifecycle."
+  },
+  {
+    "gap_id": "CONTEXT-CI-003",
+    "status": "BLOCKED_EXTERNAL",
+    "owner": "External GitHub account / billing",
+    "summary": "Hosted NODE-32 validation cannot be claimed while GitHub-hosted runners fail before job steps are allocated.",
+    "closure_evidence": "A NODE-32 hosted workflow must receive a real runner and execute checkout, install, Ruff and pytest green; runner_id=0 with steps=[] remains external-block evidence only."
+  }
+]
