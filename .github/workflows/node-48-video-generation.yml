@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "services/video-generation/**"
+      - "apps/api/src/lumi_api/video_generation/**"
+      - "apps/api/src/lumi_api/persistence/models_video_generation.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
       - "apps/api/migrations/versions/20260817_0017_video_generation.py"
       - "apps/api/migrations/versions/20260817_0017_sql/**"
       - "tools/node48/**"
@@ -19,7 +22,7 @@ permissions:
 env:
   PYTHON_VERSION: "3.12"
   UV_VERSION: "0.11.28"
-  PYTHONPATH: "services/video-generation/src:services/model-gateway/src"
+  PYTHONPATH: "apps/api/src:services/video-generation/src:services/model-gateway/src"
 
 jobs:
   video-contract:
@@ -40,6 +43,8 @@ jobs:
         run: |
           uv run python -m compileall -q \
             services/video-generation/src/lumi_video_generation \
+            apps/api/src/lumi_api/video_generation \
+            apps/api/src/lumi_api/persistence/models_video_generation.py \
             apps/api/migrations/versions/20260817_0017_video_generation.py \
             tools/node48
       - name: Static NODE-48 validator
@@ -76,12 +81,15 @@ jobs:
         run: |
           uv run pytest -q \
             services/video-generation/tests/test_video_generation.py \
-            services/video-generation/tests/test_video_security.py
+            services/video-generation/tests/test_video_security.py \
+            services/video-generation/tests/test_video_codec.py
       - name: Ruff
         run: |
           uv run ruff check \
             services/video-generation/src/lumi_video_generation \
             services/video-generation/tests \
+            apps/api/src/lumi_api/video_generation \
+            apps/api/src/lumi_api/persistence/models_video_generation.py \
             tools/node48
       - name: Pyright
         run: uv run pyright -p services/video-generation/pyrightconfig.json
@@ -118,7 +126,7 @@ jobs:
         run: uv sync --all-packages --frozen
       - name: Migrate full schema through NODE-48
         run: uv run alembic -c apps/api/alembic.ini upgrade head
-      - name: Verify NODE-48 tables
+      - name: Verify NODE-48 tables and Artifact bindings
         run: |
           uv run python - <<'PY'
           import os
@@ -137,8 +145,16 @@ jobs:
               rows = conn.execute(
                   "select tablename from pg_tables where schemaname='public'"
               ).fetchall()
+              columns = {
+                  row[0]
+                  for row in conn.execute(
+                      "select column_name from information_schema.columns "
+                      "where table_schema='public' and table_name='video_generation_clips'"
+                  ).fetchall()
+              }
           tables = {row[0] for row in rows}
           assert expected <= tables, expected - tables
+          assert {"artifact_version_id", "bucket", "storage_key", "size_bytes"} <= columns
           print("NODE48_DATABASE_ACCEPTANCE_PASS")
           PY
 
