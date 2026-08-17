@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = ROOT / "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine"
 TEST = ROOT / "apps/agent-runtime/tests/test_knowledge_engine_node36.py"
+DURABLE_TEST = ROOT / "apps/agent-runtime/tests/test_knowledge_durable_node36.py"
 FIXTURE = ROOT / "benchmarks/knowledge/hybrid-retrieval-v1.jsonl"
 GAP_LEDGER = ROOT / "reports/nodes/NODE-36/gap-ledger.json"
 
@@ -22,6 +23,8 @@ FORBIDDEN_IMPORTS = {
     "pinecone",
     "weaviate",
     "qdrant_client",
+    "requests",
+    "subprocess",
 }
 
 
@@ -43,6 +46,9 @@ def main() -> None:
         "engine.py",
         "store.py",
         "context_source.py",
+        "embedding_port.py",
+        "extraction.py",
+        "ingestion.py",
     }
     actual = {path.name for path in PACKAGE.glob("*.py")}
     missing = sorted(required - actual)
@@ -64,9 +70,15 @@ def main() -> None:
         "permission_prefilter": "visible_candidates" in source,
         "citations": "KnowledgeCitation" in source,
         "stale": "KNOWLEDGE_STALE_SOURCE_PRESENT" in source,
-        "reindex": "reindex" in source and "index_version" in source,
-        "delete": "mark_deleted" in source,
         "hybrid": "lexical_score" in source and "vector_score" in source,
+        "durable_store": "GitWorkspaceKnowledgeStore" in source,
+        "atomic_head": "os.replace" in source and "head.json" in source,
+        "rollback": "rollback_index" in source and "activate_document" in source,
+        "version_identity": "index_version" in source and "content_hash" in source,
+        "native_first": "extract_native_then_ocr" in source,
+        "ocr_fallback": "extract_ocr" in source,
+        "embedding_port": "class KnowledgeEmbeddingPort" in source,
+        "no_old_version_resurrection": "_source_heads" in source,
     }
     failed = sorted(key for key, value in assertions.items() if not value)
     if failed:
@@ -89,7 +101,7 @@ def main() -> None:
     if not isinstance(ledger.get("gaps"), list):
         raise SystemExit("NODE36_GAP_LEDGER_GAPS_INVALID")
 
-    if not TEST.is_file():
+    if not TEST.is_file() or not DURABLE_TEST.is_file():
         raise SystemExit("NODE36_TEST_MISSING")
 
     print("NODE36_KNOWLEDGE_ENGINE_VALIDATION_PASS")
