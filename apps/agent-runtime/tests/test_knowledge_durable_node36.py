@@ -11,6 +11,7 @@ from lumi_agent_runtime.knowledge_engine import (
     KnowledgeAccessContext,
     KnowledgeEngine,
     KnowledgeExtractionResult,
+    KnowledgeIngestRequest,
     KnowledgeIngestionService,
     KnowledgeSearchRequest,
     KnowledgeSourceInput,
@@ -69,6 +70,22 @@ def source() -> KnowledgeSourceInput:
         organization_id=ORG,
         project_id=PROJECT,
         permission_scope="project",
+        observed_at=NOW,
+        source_updated_at=NOW,
+    )
+
+
+def index_request(source_ref: str = "asset://durable-guide") -> KnowledgeIngestRequest:
+    return KnowledgeIngestRequest(
+        source_type=KnowledgeSourceType.UPLOADED_DOCUMENT,
+        source_ref=source_ref,
+        title="Durable Guide",
+        parser_version="native-v1",
+        language="en",
+        permission_scope="project",
+        sections=(SourceSection(page=3, section="Facts", text="Alpha price is 42."),),
+        organization_id=ORG,
+        project_id=PROJECT,
         observed_at=NOW,
         source_updated_at=NOW,
     )
@@ -136,19 +153,7 @@ async def test_reindex_keeps_old_version_and_moves_active_head(tmp_path) -> None
     rebuilt = engine.reindex(
         access(),
         first.document_id,
-        __import__("lumi_agent_runtime.knowledge_engine", fromlist=["KnowledgeIngestRequest"]).KnowledgeIngestRequest(
-            source_type=KnowledgeSourceType.UPLOADED_DOCUMENT,
-            source_ref=source().source_ref,
-            title=source().title,
-            parser_version="native-v1",
-            language="en",
-            permission_scope="project",
-            sections=(SourceSection(page=3, section="Facts", text="Alpha price is 42."),),
-            organization_id=ORG,
-            project_id=PROJECT,
-            observed_at=NOW,
-            source_updated_at=NOW,
-        ),
+        index_request(),
         embedder=DeterministicEmbedding(version="deterministic-96-v2", dimensions=96),
         now=NOW,
     )
@@ -179,23 +184,8 @@ async def test_reindex_keeps_old_version_and_moves_active_head(tmp_path) -> None
 
 
 def test_delete_current_head_does_not_resurrect_old_version(tmp_path) -> None:
-    store = GitWorkspaceKnowledgeStore(tmp_path)
-    engine = KnowledgeEngine(store=store)
-    from lumi_agent_runtime.knowledge_engine import KnowledgeIngestRequest
-
-    base = KnowledgeIngestRequest(
-        source_type=KnowledgeSourceType.UPLOADED_DOCUMENT,
-        source_ref="asset://delete-head",
-        title="Delete Head",
-        parser_version="native-v1",
-        language="en",
-        permission_scope="project",
-        sections=(SourceSection(text="Deletion fact 11"),),
-        organization_id=ORG,
-        project_id=PROJECT,
-        observed_at=NOW,
-        source_updated_at=NOW,
-    )
+    engine = KnowledgeEngine(store=GitWorkspaceKnowledgeStore(tmp_path))
+    base = index_request("asset://delete-head")
     first = engine.ingest(access(), base, now=NOW)
     second = engine.reindex(
         access(),
@@ -207,6 +197,6 @@ def test_delete_current_head_does_not_resurrect_old_version(tmp_path) -> None:
     engine.delete_document(access(), second.document_id)
     assert engine.search(
         access(),
-        KnowledgeSearchRequest(query="Deletion fact", permission_scopes=("project",)),
+        KnowledgeSearchRequest(query="Alpha price", permission_scopes=("project",)),
         now=NOW,
     ).hits == ()
