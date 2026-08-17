@@ -20,7 +20,8 @@ from .contracts import (
     stable_hash,
     tokenize,
 )
-from .store import InMemoryKnowledgeStore
+from .embedding_port import KnowledgeEmbeddingPort
+from .store import InMemoryKnowledgeStore, KnowledgeStore
 
 
 class DeterministicEmbedding:
@@ -46,8 +47,8 @@ class DeterministicEmbedding:
 class KnowledgeEngine:
     def __init__(
         self,
-        store: InMemoryKnowledgeStore | None = None,
-        embedder: DeterministicEmbedding | None = None,
+        store: KnowledgeStore | None = None,
+        embedder: KnowledgeEmbeddingPort | None = None,
         *,
         chunker_version: str = "structure-window-v1",
         chunk_tokens: int = 220,
@@ -58,8 +59,8 @@ class KnowledgeEngine:
             raise ValueError("KNOWLEDGE_CHUNK_WINDOW_INVALID")
         if not 0 <= overlap_tokens < chunk_tokens:
             raise ValueError("KNOWLEDGE_CHUNK_OVERLAP_INVALID")
-        self.store = store or InMemoryKnowledgeStore()
-        self.embedder = embedder or DeterministicEmbedding()
+        self.store: KnowledgeStore = store or InMemoryKnowledgeStore()
+        self.embedder: KnowledgeEmbeddingPort = embedder or DeterministicEmbedding()
         self.chunker_version = chunker_version
         self.chunk_tokens = chunk_tokens
         self.overlap_tokens = overlap_tokens
@@ -75,12 +76,27 @@ class KnowledgeEngine:
         self._authorize_ingest(access, request)
         timestamp = now or datetime.now(timezone.utc)
         content_hash = document_content_hash(request)
-        document_id = f"kdoc_{stable_hash([str(request.organization_id), request.source_ref])[:24]}"
         index_version = _index_version(
             request.parser_version,
             self.chunker_version,
             self.embedder.version,
         )
+        document_id = _document_id(
+            request,
+            content_hash=content_hash,
+            index_version=index_version,
+        )
+        existing = self.store.get_document(document_id)
+        if existing is not None:
+            if (
+                existing.content_hash != content_hash
+                or existing.index_version != index_version
+                or existing.source_ref != request.source_ref
+            ):
+                raise ValueError("KNOWLEDGE_DOCUMENT_IDENTITY_CONFLICT")
+            # Idempotent replay never rolls an older index back to active. Rollback is explicit.
+            return existing
+
         document = KnowledgeDocument(
             document_id=document_id,
             organization_id=request.organization_id,
@@ -103,6 +119,7 @@ class KnowledgeEngine:
             metadata=request.metadata,
         )
         chunks = self._build_chunks(document, request)
+        # The store writes the complete version before atomically moving the active source head.
         self.store.put_document(document, chunks)
         return document
 
@@ -123,14 +140,17 @@ class KnowledgeEngine:
         ranked: list[KnowledgeHit] = []
         index_versions: set[str] = set()
 
-        # Tenant/project/brand/scope filtering happens before any scoring.
+        # Tenant/project/brand/scope and active-index filtering happens before any scoring.
         for document, chunk in self.store.visible_candidates(access, effective_scopes):
             index_versions.add(chunk.index_version)
             stale = self._is_stale(document, timestamp)
             if stale and not request.include_stale:
                 continue
             lexical = _lexical_score(query_tokens, tokenize(chunk.text))
-            vector = (cosine_similarity(query_embedding, chunk.embedding) + 1.0) / 2.0
+            if len(query_embedding) == len(chunk.embedding):
+                vector = (cosine_similarity(query_embedding, chunk.embedding) + 1.0) / 2.0
+            else:
+                vector = 0.0
             fusion = min(1.0, 0.62 * lexical + 0.38 * vector)
             freshness = 0.35 if stale else 1.0
             ranked.append(
@@ -194,14 +214,15 @@ class KnowledgeEngine:
         document_id: str,
         request: KnowledgeIngestRequest,
         *,
-        embedder: DeterministicEmbedding,
+        embedder: KnowledgeEmbeddingPort,
         now: datetime | None = None,
     ) -> KnowledgeDocument:
         previous = self.store.get_document(document_id)
         if previous is None:
             raise KeyError("KNOWLEDGE_DOCUMENT_NOT_FOUND")
-        if previous.organization_id != access.organization_id:
-            raise PermissionError("KNOWLEDGE_TENANT_DENIED")
+        self._authorize_document(access, previous)
+        if previous.source_ref != request.source_ref:
+            raise ValueError("KNOWLEDGE_REINDEX_SOURCE_MISMATCH")
         old_embedder = self.embedder
         try:
             self.embedder = embedder
@@ -210,7 +231,32 @@ class KnowledgeEngine:
             self.embedder = old_embedder
         if rebuilt.index_version == previous.index_version:
             raise ValueError("KNOWLEDGE_REINDEX_VERSION_UNCHANGED")
+        if rebuilt.document_id == previous.document_id:
+            raise ValueError("KNOWLEDGE_REINDEX_IDENTITY_UNCHANGED")
         return rebuilt
+
+    def rollback_index(
+        self,
+        access: KnowledgeAccessContext,
+        document_id: str,
+    ) -> KnowledgeDocument:
+        document = self.store.get_document(document_id)
+        if document is None:
+            raise KeyError("KNOWLEDGE_DOCUMENT_NOT_FOUND")
+        self._authorize_document(access, document)
+        self.store.activate_document(document_id)
+        return document
+
+    def source_history(
+        self,
+        access: KnowledgeAccessContext,
+        document_id: str,
+    ) -> tuple[KnowledgeDocument, ...]:
+        document = self.store.get_document(document_id)
+        if document is None:
+            raise KeyError("KNOWLEDGE_DOCUMENT_NOT_FOUND")
+        self._authorize_document(access, document)
+        return self.store.source_history(document)
 
     def delete_document(
         self,
@@ -220,10 +266,7 @@ class KnowledgeEngine:
         document = self.store.get_document(document_id)
         if document is None:
             raise KeyError("KNOWLEDGE_DOCUMENT_NOT_FOUND")
-        if document.organization_id != access.organization_id:
-            raise PermissionError("KNOWLEDGE_TENANT_DENIED")
-        if document.project_id is not None and document.project_id != access.project_id:
-            raise PermissionError("KNOWLEDGE_PROJECT_DENIED")
+        self._authorize_document(access, document)
         self.store.mark_deleted(document_id)
 
     def _authorize_ingest(
@@ -238,6 +281,20 @@ class KnowledgeEngine:
         if request.brand_id is not None and request.brand_id not in access.brand_ids:
             raise PermissionError("KNOWLEDGE_BRAND_DENIED")
         if not access.allows(request.permission_scope):
+            raise PermissionError("KNOWLEDGE_SCOPE_DENIED")
+
+    def _authorize_document(
+        self,
+        access: KnowledgeAccessContext,
+        document: KnowledgeDocument,
+    ) -> None:
+        if document.organization_id != access.organization_id:
+            raise PermissionError("KNOWLEDGE_TENANT_DENIED")
+        if document.project_id is not None and document.project_id != access.project_id:
+            raise PermissionError("KNOWLEDGE_PROJECT_DENIED")
+        if document.brand_id is not None and document.brand_id not in access.brand_ids:
+            raise PermissionError("KNOWLEDGE_BRAND_DENIED")
+        if not access.allows(document.permission_scope):
             raise PermissionError("KNOWLEDGE_SCOPE_DENIED")
 
     def _build_chunks(
@@ -290,6 +347,26 @@ class KnowledgeEngine:
     def _is_stale(self, document: KnowledgeDocument, now: datetime) -> bool:
         anchor = document.source_updated_at or document.observed_at
         return (now - anchor).total_seconds() > self.stale_after_seconds
+
+
+def _document_id(
+    request: KnowledgeIngestRequest,
+    *,
+    content_hash: str,
+    index_version: str,
+) -> str:
+    digest = stable_hash(
+        {
+            "organization_id": str(request.organization_id),
+            "project_id": str(request.project_id) if request.project_id else None,
+            "brand_id": request.brand_id,
+            "permission_scope": request.permission_scope,
+            "source_ref": request.source_ref,
+            "content_hash": content_hash,
+            "index_version": index_version,
+        }
+    )
+    return f"kdoc_{digest[:24]}"
 
 
 def _index_version(parser: str, chunker: str, embedding: str) -> str:
