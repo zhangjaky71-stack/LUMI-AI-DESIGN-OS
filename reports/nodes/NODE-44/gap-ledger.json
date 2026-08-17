@@ -1,0 +1,36 @@
+{
+  "node": "NODE-44",
+  "status": "IMPLEMENTED / VALIDATING",
+  "gaps": [
+    {
+      "id": "K44-G01",
+      "title": "production-identity-signal-adapters",
+      "priority": "P0",
+      "detail": "Wire production NODE-18 asset policy and NODE-45 exact/vector/perceptual/OCR/embedding/region analyzers to the implemented adapter contracts, with pinned model/analyzer versions."
+    },
+    {
+      "id": "K44-G02",
+      "title": "live-postgresql-identity-acceptance",
+      "priority": "P0",
+      "detail": "Run migration 20260817_0013, immutable snapshot trigger, tenant isolation and concurrent version allocation on production-equivalent PostgreSQL."
+    },
+    {
+      "id": "K44-G03",
+      "title": "production-target-region-detection",
+      "priority": "P0",
+      "detail": "Wire detector/VLM region proposal for whole-image generations and persist crop/detection evidence; Design IR bounds already have a deterministic path."
+    },
+    {
+      "id": "K44-G04",
+      "title": "real-world-calibration-dataset",
+      "priority": "P0",
+      "detail": "Build governed product/logo positive, negative and near-miss corpora and calibrate thresholds against pinned production model/provider versions."
+    },
+    {
+      "id": "K44-G05",
+      "title": "face-privacy-retention-governance",
+      "priority": "P1",
+      "detail": "Before FACE enablement, complete consent, retention/deletion, access audit and regional privacy review. No cross-tenant/global face index is implemented."
+    }
+  ]
+}

@@ -8,6 +8,7 @@ from . import models_capability_registry as _models_capability_registry
 from . import models_control_plane as _models_control_plane
 from . import models_costs as _models_costs
 from . import models_identity as _models_identity
+from . import models_identity_engine as _models_identity_engine
 from . import models_project_core as _models_project_core
 from . import models_provider_health as _models_provider_health
 from . import models_queue_runtime as _models_queue_runtime
@@ -31,6 +32,7 @@ _METADATA_MODULES = (
     _models_control_plane,
     _models_costs,
     _models_identity,
+    _models_identity_engine,
     _models_project_core,
     _models_provider_health,
     _models_queue_runtime,
