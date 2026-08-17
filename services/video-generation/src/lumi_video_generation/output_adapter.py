@@ -6,6 +6,7 @@ from typing import Protocol
 
 from .model import (
     CompiledShot,
+    DurableVideoObject,
     GatewayVideoResult,
     StoredVideoClip,
     VideoProbeResult,
@@ -24,7 +25,12 @@ class ProviderOutputFetchPort(Protocol):
 
 
 class VideoProbePort(Protocol):
-    async def probe(self, *, payload: bytes, mime_type: str) -> VideoProbeResult: ...
+    async def probe(
+        self,
+        *,
+        payload: bytes,
+        mime_type: str,
+    ) -> VideoProbeResult: ...
 
 
 class DurableVideoStorePort(Protocol):
@@ -36,7 +42,7 @@ class DurableVideoStorePort(Protocol):
         payload: bytes,
         mime_type: str,
         checksum_sha256: str,
-    ) -> str: ...
+    ) -> DurableVideoObject: ...
 
 
 @dataclass(slots=True)
@@ -66,20 +72,25 @@ class VerifiedVideoOutputAdapter:
             raise ValueError("VIDEO_PROVIDER_OUTPUT_SIZE_INVALID")
         if mime_type not in {"video/mp4", "video/webm"}:
             raise ValueError("VIDEO_PROVIDER_OUTPUT_MIME_INVALID")
-        probe = await self.probe_port.probe(payload=payload, mime_type=mime_type)
+        probe = await self.probe_port.probe(
+            payload=payload,
+            mime_type=mime_type,
+        )
+        if probe.mime_type != mime_type:
+            raise ValueError("VIDEO_PROVIDER_OUTPUT_PROBE_MIME_MISMATCH")
         checksum = hashlib.sha256(payload).hexdigest()
-        durable_ref = await self.store.put_verified(
+        stored = await self.store.put_verified(
             organization_id=spec.organization_id,
             project_id=spec.project_id,
             payload=payload,
             mime_type=mime_type,
             checksum_sha256=checksum,
         )
-        if not durable_ref or "://" in durable_ref:
-            raise ValueError("VIDEO_DURABLE_STORAGE_REF_REQUIRED")
+        if stored.size_bytes != len(payload):
+            raise ValueError("VIDEO_DURABLE_STORAGE_SIZE_MISMATCH")
         return StoredVideoClip(
             shot_id=shot.shot.shot_id,
-            durable_ref=durable_ref,
+            object=stored,
             checksum_sha256=checksum,
             probe=probe,
             provider=result.provider,
