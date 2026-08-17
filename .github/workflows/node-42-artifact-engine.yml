@@ -1,0 +1,89 @@
+name: NODE-42 Artifact Engine
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/artifact_engine/**"
+      - "apps/api/src/lumi_api/api/v1/artifact_engine_*.py"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/migrations/versions/20260817_0011_artifact_engine_runtime.py"
+      - "apps/api/migrations/versions/20260817_0011_sql/**"
+      - "apps/api/tests/test_artifact_engine_node42.py"
+      - "docs/runtime/ARTIFACT-ENGINE-V1.md"
+      - "reports/nodes/NODE-42/**"
+      - "tools/node42/**"
+      - ".github/workflows/node-42-artifact-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  artifact-engine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+
+      - name: NODE-42 P0 tests
+        run: |
+          PYTHONPATH=apps/api/src \
+            uv run pytest -q apps/api/tests/test_artifact_engine_node42.py
+
+      - name: Static NODE-42 validator
+        run: |
+          PYTHONPATH=apps/api/src \
+            uv run python tools/node42/validate_artifact_engine.py
+
+      - name: Compile migration wrapper
+        run: |
+          uv run python -m compileall -q \
+            apps/api/migrations/versions/20260817_0011_artifact_engine_runtime.py
+
+      - name: Parse gap ledger
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          value = json.loads(
+              Path("reports/nodes/NODE-42/gap-ledger.json").read_text(encoding="utf-8")
+          )
+          assert value["node"] == "NODE-42"
+          assert len(value["gaps"]) == 5
+          print("NODE42_GAP_LEDGER_PARSE_PASS")
+          PY
+
+      - name: Ruff
+        run: |
+          uv run ruff check \
+            apps/api/src/lumi_api/artifact_engine \
+            apps/api/src/lumi_api/api/v1/artifact_engine_dependencies.py \
+            apps/api/src/lumi_api/api/v1/artifact_engine_routes.py \
+            apps/api/src/lumi_api/api/v1/artifact_engine_schemas.py \
+            apps/api/tests/test_artifact_engine_node42.py \
+            tools/node42
+
+      - name: Pyright
+        run: |
+          uv run pyright \
+            apps/api/src/lumi_api/artifact_engine \
+            apps/api/src/lumi_api/api/v1/artifact_engine_dependencies.py \
+            apps/api/src/lumi_api/api/v1/artifact_engine_routes.py \
+            apps/api/src/lumi_api/api/v1/artifact_engine_schemas.py \
+            apps/api/tests/test_artifact_engine_node42.py
