@@ -2,10 +2,9 @@
 
 ## Status
 
-`IMPLEMENTED / VALIDATING`
+`IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL`
 
-Hosted GitHub Actions PASS is not claimed until the dedicated workflow runs on
-an allocated runner.
+Hosted GitHub Actions PASS is not claimed.
 
 ## Delivered
 
@@ -53,6 +52,25 @@ No live PostgreSQL service, real brand-guide PDF extraction, NODE-44 Identity
 Engine, provider-backed VLM/copy grader, repository-pinned Python/uv, Ruff,
 Pyright or hosted CI PASS is claimed locally.
 
+## Hosted runner evidence
+
+The first dedicated workflow attempt for PR #110 is run `32022897751`. Its
+`brand-rules` job `95366102349` ended before runner allocation with:
+
+```text
+status=completed
+conclusion=failure
+runner_id=0
+runner_name=""
+steps=[]
+```
+
+No checkout, Python setup, uv setup, frozen workspace install, NODE-43 tests,
+Context Engine integration test, deterministic eval, static validator,
+migration compile, gap parse, Ruff or Pyright step executed. This is classified
+as `BLOCKED_EXTERNAL`, consistent with the runner-allocation blocker on the
+preceding stacked nodes. It is not a NODE-43 code, migration or test failure.
+
 ## Database qualification
 
 `20260817_0012` is a forward migration on `20260817_0011`.
@@ -80,9 +98,10 @@ Exactly five are tracked in `gap-ledger.json`.
 
 ## Hosted acceptance gate
 
-An allocated runner must still execute frozen workspace installation, the
-NODE-43 API/runtime tests, Context Engine integration test, deterministic eval,
-static validator, migration compile/ledger checks, Ruff, Pyright and relevant
-repository gates.
+Before NODE-43 can be COMPLETE, an allocated runner must execute frozen
+workspace installation, the NODE-43 API/runtime tests, Context Engine
+integration test, deterministic eval, static validator, migration compile/ledger
+checks, Ruff, Pyright and relevant repository gates. Infrastructure-specific
+gaps then require their own real-service evidence.
 
 Next node: **NODE-44 — Identity Engine**.
