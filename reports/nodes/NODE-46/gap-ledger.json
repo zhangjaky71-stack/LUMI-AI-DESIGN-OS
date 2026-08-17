@@ -1,0 +1,36 @@
+{
+  "node": "NODE-46",
+  "status": "VALIDATING",
+  "gaps": [
+    {
+      "id": "K46-G01",
+      "priority": "P0",
+      "slug": "live-provider-adapters-and-quality-benchmarks",
+      "detail": "Approved live image provider/model revisions still need NODE-23-backed benchmark evidence for Chinese poster text, product/logo consistency, brand style, multiple aspect ratios, transparent output, latency, cost and fallback."
+    },
+    {
+      "id": "K46-G02",
+      "priority": "P0",
+      "slug": "production-output-fetch-store-and-media-safety",
+      "detail": "Real provider-output fetching and durable object-store adapters still need SSRF/redirect policy, signed-URL expiry handling, streaming size limits, content scanning, cleanup and operational evidence."
+    },
+    {
+      "id": "K46-G03",
+      "priority": "P0",
+      "slug": "durable-node19-generation-workers-and-provider-webhooks",
+      "detail": "The 202 submit/worker contract is implemented, but durable NODE-19 consumers, webhook/poll scheduling, retry/backoff, DLQ and reconciliation are not yet wired to production infrastructure."
+    },
+    {
+      "id": "K46-G04",
+      "priority": "P0",
+      "slug": "production-raster-postflight-node39-43-44-calibration",
+      "detail": "Fail-closed postflight seams exist, but production raster/OCR observations and calibrated NODE-39 constraint, NODE-43 brand and NODE-44 identity delegates still need real image evidence."
+    },
+    {
+      "id": "K46-G05",
+      "priority": "P0",
+      "slug": "live-postgres-artifact-cost-and-accepted-failure-reconciliation",
+      "detail": "Migration, concurrent idempotency/pending recovery, NODE-42 Artifact creation and NODE-27 cost projection require live PostgreSQL/load evidence; paid provider accepted-error monetary reconciliation at the NODE-22/27 boundary must also be proven fail-safe."
+    }
+  ]
+}

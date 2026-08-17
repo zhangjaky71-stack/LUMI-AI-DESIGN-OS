@@ -1,0 +1,63 @@
+{
+  "schema_version": "lumi.image-generation-eval/1.0",
+  "cases": [
+    {
+      "id": "chinese-poster",
+      "category": "chinese_poster_text_fidelity_control",
+      "mode": "TEXT_TO_IMAGE",
+      "objective": "生成高级咖啡促销海报",
+      "content": "新品拿铁，会员限时礼遇",
+      "width": 750,
+      "height": 1624,
+      "assertion": "unicode_prompt_and_exact_dimensions_preserved"
+    },
+    {
+      "id": "product-scene",
+      "category": "product_consistency_control",
+      "mode": "PRODUCT_SCENE",
+      "width": 1024,
+      "height": 1024,
+      "assertion": "identity_reference_required_before_provider"
+    },
+    {
+      "id": "brand-identity-hard-gate",
+      "category": "brand_style_control",
+      "mode": "STYLE_REFERENCE",
+      "width": 1024,
+      "height": 1024,
+      "assertion": "missing_required_postflight_delegate_fails_closed"
+    },
+    {
+      "id": "landscape-16-9",
+      "category": "multiple_aspect_ratios_control",
+      "mode": "BACKGROUND_GENERATION",
+      "width": 1600,
+      "height": 900,
+      "assertion": "exact_landscape_dimensions_preserved"
+    },
+    {
+      "id": "portrait-9-16",
+      "category": "multiple_aspect_ratios_control",
+      "mode": "COMPOSITION_EXPLORATION",
+      "width": 900,
+      "height": 1600,
+      "assertion": "exact_portrait_dimensions_preserved"
+    },
+    {
+      "id": "transparent-asset",
+      "category": "transparent_asset_control",
+      "mode": "TRANSPARENT_ASSET",
+      "width": 512,
+      "height": 512,
+      "assertion": "png_alpha_required"
+    },
+    {
+      "id": "budget-fallback",
+      "category": "cost_latency_fallback_control",
+      "mode": "TEXT_TO_IMAGE",
+      "width": 1024,
+      "height": 1024,
+      "assertion": "variant_count_reduces_without_hard_constraint_degradation"
+    }
+  ]
+}
