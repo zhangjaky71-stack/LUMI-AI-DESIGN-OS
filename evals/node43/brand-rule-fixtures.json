@@ -1,0 +1,354 @@
+{
+  "schema": "lumi.node43-brand-eval/1.0",
+  "cases": [
+    {
+      "name": "forbidden_red",
+      "kind": "FORBIDDEN_COLOR",
+      "parameters": {
+        "colors": [
+          "#ff0000"
+        ]
+      },
+      "observation": {
+        "kind": "SHAPE",
+        "color": "#FF0000"
+      },
+      "expected": "BRAND_FORBIDDEN_COLOR"
+    },
+    {
+      "name": "forbidden_green_pass",
+      "kind": "FORBIDDEN_COLOR",
+      "parameters": {
+        "colors": [
+          "#ff0000"
+        ]
+      },
+      "observation": {
+        "kind": "SHAPE",
+        "color": "#00ff00"
+      },
+      "expected": null
+    },
+    {
+      "name": "allowed_color_fail",
+      "kind": "ALLOWED_COLOR",
+      "parameters": {
+        "colors": [
+          "#111111",
+          "#ffffff"
+        ]
+      },
+      "observation": {
+        "kind": "SHAPE",
+        "color": "#ff0000"
+      },
+      "expected": "BRAND_COLOR_NOT_ALLOWED"
+    },
+    {
+      "name": "allowed_color_pass",
+      "kind": "ALLOWED_COLOR",
+      "parameters": {
+        "colors": [
+          "#111111",
+          "#ffffff"
+        ]
+      },
+      "observation": {
+        "kind": "SHAPE",
+        "color": "#FFFFFF"
+      },
+      "expected": null
+    },
+    {
+      "name": "contrast_low",
+      "kind": "MIN_CONTRAST",
+      "parameters": {
+        "ratio": 4.5
+      },
+      "observation": {
+        "kind": "TEXT",
+        "contrast_ratio": 3.2
+      },
+      "expected": "BRAND_CONTRAST_TOO_LOW"
+    },
+    {
+      "name": "contrast_pass",
+      "kind": "MIN_CONTRAST",
+      "parameters": {
+        "ratio": 4.5
+      },
+      "observation": {
+        "kind": "TEXT",
+        "contrast_ratio": 7.1
+      },
+      "expected": null
+    },
+    {
+      "name": "contrast_unavailable",
+      "kind": "MIN_CONTRAST",
+      "parameters": {
+        "ratio": 4.5
+      },
+      "observation": {
+        "kind": "TEXT"
+      },
+      "expected": "BRAND_CONTRAST_UNAVAILABLE"
+    },
+    {
+      "name": "font_size_low",
+      "kind": "FONT_MIN_SIZE",
+      "parameters": {
+        "minimum": 14
+      },
+      "observation": {
+        "kind": "TEXT",
+        "font_size": 12
+      },
+      "expected": "BRAND_FONT_TOO_SMALL"
+    },
+    {
+      "name": "font_size_pass",
+      "kind": "FONT_MIN_SIZE",
+      "parameters": {
+        "minimum": 14
+      },
+      "observation": {
+        "kind": "TEXT",
+        "font_size": 16
+      },
+      "expected": null
+    },
+    {
+      "name": "logo_size_low",
+      "kind": "LOGO_MIN_SIZE",
+      "parameters": {
+        "min_width": 80,
+        "min_height": 40
+      },
+      "observation": {
+        "kind": "LOGO",
+        "width": 60,
+        "height": 40
+      },
+      "expected": "BRAND_LOGO_TOO_SMALL"
+    },
+    {
+      "name": "logo_size_pass",
+      "kind": "LOGO_MIN_SIZE",
+      "parameters": {
+        "min_width": 80,
+        "min_height": 40
+      },
+      "observation": {
+        "kind": "LOGO",
+        "width": 100,
+        "height": 60
+      },
+      "expected": null
+    },
+    {
+      "name": "logo_size_unavailable",
+      "kind": "LOGO_MIN_SIZE",
+      "parameters": {
+        "min_width": 80,
+        "min_height": 40
+      },
+      "observation": {
+        "kind": "LOGO"
+      },
+      "expected": "BRAND_LOGO_SIZE_UNAVAILABLE"
+    },
+    {
+      "name": "logo_clear_space_low",
+      "kind": "LOGO_CLEAR_SPACE",
+      "parameters": {
+        "minimum": 12
+      },
+      "observation": {
+        "kind": "LOGO",
+        "clear_space": 6
+      },
+      "expected": "BRAND_LOGO_CLEAR_SPACE"
+    },
+    {
+      "name": "logo_clear_space_pass",
+      "kind": "LOGO_CLEAR_SPACE",
+      "parameters": {
+        "minimum": 12
+      },
+      "observation": {
+        "kind": "LOGO",
+        "clear_space": 16
+      },
+      "expected": null
+    },
+    {
+      "name": "logo_rotate",
+      "kind": "LOGO_TRANSFORM",
+      "parameters": {
+        "forbid_rotation": true,
+        "forbid_stretch": true,
+        "forbid_recolor": true
+      },
+      "observation": {
+        "kind": "LOGO",
+        "rotation_deg": 5,
+        "scale_x": 1,
+        "scale_y": 1
+      },
+      "expected": "BRAND_LOGO_ROTATED"
+    },
+    {
+      "name": "logo_stretch",
+      "kind": "LOGO_TRANSFORM",
+      "parameters": {
+        "forbid_rotation": true,
+        "forbid_stretch": true,
+        "forbid_recolor": true
+      },
+      "observation": {
+        "kind": "LOGO",
+        "rotation_deg": 0,
+        "scale_x": 1,
+        "scale_y": 1.2
+      },
+      "expected": "BRAND_LOGO_STRETCHED"
+    },
+    {
+      "name": "logo_recolor",
+      "kind": "LOGO_TRANSFORM",
+      "parameters": {
+        "forbid_rotation": true,
+        "forbid_stretch": true,
+        "forbid_recolor": true
+      },
+      "observation": {
+        "kind": "LOGO",
+        "rotation_deg": 0,
+        "scale_x": 1,
+        "scale_y": 1,
+        "recolored": true
+      },
+      "expected": "BRAND_LOGO_RECOLORED"
+    },
+    {
+      "name": "logo_transform_pass",
+      "kind": "LOGO_TRANSFORM",
+      "parameters": {
+        "forbid_rotation": true,
+        "forbid_stretch": true,
+        "forbid_recolor": true
+      },
+      "observation": {
+        "kind": "LOGO",
+        "rotation_deg": 0,
+        "scale_x": 1,
+        "scale_y": 1,
+        "recolored": false
+      },
+      "expected": null
+    },
+    {
+      "name": "token_missing",
+      "kind": "TOKEN_BINDING",
+      "parameters": {
+        "token_ids": [
+          "color.primary"
+        ],
+        "required": true
+      },
+      "observation": {
+        "kind": "SHAPE"
+      },
+      "expected": "BRAND_TOKEN_BINDING_REQUIRED"
+    },
+    {
+      "name": "token_invalid",
+      "kind": "TOKEN_BINDING",
+      "parameters": {
+        "token_ids": [
+          "color.primary"
+        ],
+        "required": true
+      },
+      "observation": {
+        "kind": "SHAPE",
+        "brand_binding": "color.secondary"
+      },
+      "expected": "BRAND_TOKEN_BINDING_INVALID"
+    },
+    {
+      "name": "token_pass",
+      "kind": "TOKEN_BINDING",
+      "parameters": {
+        "token_ids": [
+          "color.primary"
+        ],
+        "required": true
+      },
+      "observation": {
+        "kind": "SHAPE",
+        "brand_binding": "color.primary"
+      },
+      "expected": null
+    },
+    {
+      "name": "font_family_fail",
+      "kind": "FONT_ALLOWED",
+      "parameters": {
+        "families": [
+          "Inter",
+          "Noto Sans"
+        ]
+      },
+      "observation": {
+        "kind": "TEXT",
+        "font_family": "Comic Sans MS"
+      },
+      "expected": "BRAND_FONT_NOT_ALLOWED"
+    },
+    {
+      "name": "font_family_pass",
+      "kind": "FONT_ALLOWED",
+      "parameters": {
+        "families": [
+          "Inter",
+          "Noto Sans"
+        ]
+      },
+      "observation": {
+        "kind": "TEXT",
+        "font_family": "Inter"
+      },
+      "expected": null
+    },
+    {
+      "name": "logo_asset_fail",
+      "kind": "LOGO_ALLOWED_ASSET",
+      "parameters": {
+        "asset_ids": [
+          "44444444-4444-4444-8444-444444444444"
+        ]
+      },
+      "observation": {
+        "kind": "LOGO",
+        "asset_id": "77777777-7777-4777-8777-777777777777"
+      },
+      "expected": "BRAND_LOGO_ASSET_NOT_ALLOWED"
+    },
+    {
+      "name": "logo_asset_pass",
+      "kind": "LOGO_ALLOWED_ASSET",
+      "parameters": {
+        "asset_ids": [
+          "44444444-4444-4444-8444-444444444444"
+        ]
+      },
+      "observation": {
+        "kind": "LOGO",
+        "asset_id": "44444444-4444-4444-8444-444444444444"
+      },
+      "expected": null
+    }
+  ]
+}

@@ -1,3 +1,8 @@
+from .brand_source import (
+    BrandContextProvider,
+    BrandContextRecord,
+    BrandContextRetrievalSource,
+)
 from .builder import ContextEngine
 from .cache import InMemoryContextCache
 from .contracts import (
@@ -32,6 +37,9 @@ from .store import (
 
 __all__ = [
     "BALANCED_CONTEXT_PROFILE",
+    "BrandContextProvider",
+    "BrandContextRecord",
+    "BrandContextRetrievalSource",
     "CompositeContextRetrievalSource",
     "ContextAwareDeepAgentTaskExecutor",
     "ContextEngine",
