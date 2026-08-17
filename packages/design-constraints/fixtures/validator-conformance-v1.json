@@ -1,0 +1,47 @@
+{
+  "schema": "lumi.constraint-validator-conformance/1.0",
+  "p0_validators": [
+    "BoundsValidator",
+    "SafeAreaValidator",
+    "LockedRegionValidator",
+    "TextOverflowValidator",
+    "FontSizeValidator",
+    "AspectRatioValidator",
+    "ContrastValidator",
+    "ProtectedRegionValidator",
+    "QRValidator",
+    "BrandTokenValidator",
+    "IdentityPreservationValidator",
+    "ExportDimensionValidator"
+  ],
+  "stable_violation_vectors": [
+    {
+      "constraint_id": "bounds",
+      "validator": "BoundsValidator",
+      "affected_node_ids": ["headline"],
+      "message_code": "NODE_OUT_OF_BOUNDS",
+      "expected": "cv1-0db016aa4f8545e8"
+    },
+    {
+      "constraint_id": "qr",
+      "validator": "QRValidator",
+      "affected_node_ids": ["qr"],
+      "message_code": "QR_DECODE_UNAVAILABLE",
+      "expected": "cv1-436e93f79d4ab98f"
+    },
+    {
+      "constraint_id": "identity",
+      "validator": "IdentityPreservationValidator",
+      "affected_node_ids": ["hero"],
+      "message_code": "IDENTITY_BASELINE_UNAVAILABLE",
+      "expected": "cv1-6c2b468f7be8fe06"
+    },
+    {
+      "constraint_id": "text",
+      "validator": "TextOverflowValidator",
+      "affected_node_ids": ["headline"],
+      "message_code": "TEXT_MEASUREMENT_UNAVAILABLE",
+      "expected": "cv1-04c8b85abdd05230"
+    }
+  ]
+}
