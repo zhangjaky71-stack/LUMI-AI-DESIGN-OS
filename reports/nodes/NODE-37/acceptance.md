@@ -2,11 +2,10 @@
 
 ## Status
 
-`IMPLEMENTED -> VALIDATING`
+`IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL`
 
 The NODE-37 source contract is implemented on `feat/node-37-agent-team` and stacked on the current
-`feat/node-36-knowledge-engine` line. Hosted PASS is not claimed until a real GitHub runner executes
-the dedicated workflow.
+`feat/node-36-knowledge-engine` line. Hosted PASS is not claimed.
 
 ## Topology clarification
 
@@ -80,7 +79,21 @@ The current execution container could not clone GitHub because external DNS/netw
 unavailable (`Could not resolve host: github.com`). Therefore local full-repository pytest/Ruff/Pyright
 PASS is **not claimed** from this environment.
 
-The dedicated hosted workflow must execute the following before NODE-37 may become COMPLETE:
+The first dedicated hosted workflow attempt for PR #104 was run `32007163132`. Its `agent-team` job
+`95318913276` ended with:
+
+```text
+status=completed
+conclusion=failure
+steps=[]
+```
+
+No checkout, dependency install, validator, pytest, Ruff or Pyright step executed. This is classified
+as `BLOCKED_EXTERNAL`, consistent with the hosted runner-allocation failure on preceding nodes. It is
+not a NODE-37 code or test failure.
+
+The dedicated hosted workflow must eventually execute the following before NODE-37 may become
+COMPLETE:
 
 1. `uv sync --all-packages --frozen`;
 2. `NODE37_AGENT_TEAM_VALIDATION_PASS`;
@@ -92,10 +105,6 @@ The dedicated hosted workflow must execute the following before NODE-37 may beco
 8. Ruff green;
 9. Pyright green;
 10. preceding stacked NODE-28 through NODE-36 dependencies remain resolved in order.
-
-If the GitHub job fails before checkout with `steps=[]`, it must be recorded as `BLOCKED_EXTERNAL`,
-consistent with the hosted runner-allocation issue already observed on preceding nodes. Such a result
-must not be represented as a code failure.
 
 ## Production qualification
 
