@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = ROOT / "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine"
 TEST = ROOT / "apps/agent-runtime/tests/test_knowledge_engine_node36.py"
 DURABLE_TEST = ROOT / "apps/agent-runtime/tests/test_knowledge_durable_node36.py"
+SECURITY_TEST = ROOT / "apps/agent-runtime/tests/test_knowledge_ingestion_security_node36.py"
 FIXTURE = ROOT / "benchmarks/knowledge/hybrid-retrieval-v1.jsonl"
 GAP_LEDGER = ROOT / "reports/nodes/NODE-36/gap-ledger.json"
 
@@ -84,6 +85,14 @@ def main() -> None:
     if failed:
         raise SystemExit(f"NODE36_CONTRACT_ASSERTION_FAILED:{','.join(failed)}")
 
+    ingestion_text = (PACKAGE / "ingestion.py").read_text(encoding="utf-8")
+    authorization_marker = "_authorize_source(access, source)"
+    extraction_marker = "extraction = await extract_native_then_ocr"
+    if authorization_marker not in ingestion_text or extraction_marker not in ingestion_text:
+        raise SystemExit("NODE36_INGESTION_ORDER_MARKER_MISSING")
+    if ingestion_text.index(authorization_marker) > ingestion_text.index(extraction_marker):
+        raise SystemExit("NODE36_EXTRACTION_BEFORE_AUTHORIZATION_FORBIDDEN")
+
     rows = [
         json.loads(line)
         for line in FIXTURE.read_text(encoding="utf-8").splitlines()
@@ -101,7 +110,7 @@ def main() -> None:
     if not isinstance(ledger.get("gaps"), list):
         raise SystemExit("NODE36_GAP_LEDGER_GAPS_INVALID")
 
-    if not TEST.is_file() or not DURABLE_TEST.is_file():
+    if not all(path.is_file() for path in (TEST, DURABLE_TEST, SECURITY_TEST)):
         raise SystemExit("NODE36_TEST_MISSING")
 
     print("NODE36_KNOWLEDGE_ENGINE_VALIDATION_PASS")
