@@ -203,9 +203,14 @@ class VisualCriticEngine:
             profile=spec.profile,
         )
         by_dimension = {item.dimension: item for item in assessments}
+        required_dimensions = set(spec.profile.required_dimensions)
+        if artifact.brand_rule_snapshot_id is not None:
+            required_dimensions.add(QualityDimension.BRAND_CONSISTENCY)
+        if artifact.identity_refs:
+            required_dimensions.add(QualityDimension.IDENTITY_CONSISTENCY)
         missing = tuple(
             sorted(
-                spec.profile.required_dimensions - set(by_dimension),
+                required_dimensions - set(by_dimension),
                 key=lambda item: item.value,
             )
         )
