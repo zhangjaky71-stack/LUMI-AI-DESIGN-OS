@@ -1,0 +1,36 @@
+{
+  "node": "NODE-38",
+  "status": "IMPLEMENTED / VALIDATING",
+  "gaps": [
+    {
+      "id": "K38-G01",
+      "name": "constraint-engine-production-bridge",
+      "status": "OPEN",
+      "summary": "Runtime exposes a deterministic preflight hook, but the production NODE-14 Constraint Engine adapter and NODE-39 validator integration are not wired in this node."
+    },
+    {
+      "id": "K38-G02",
+      "name": "artifact-version-persistence-adapter",
+      "status": "OPEN",
+      "summary": "Runtime returns immutable candidate snapshots and semantic diffs; durable NODE-15 Artifact/Version persistence and optimistic commit orchestration remain an integration boundary."
+    },
+    {
+      "id": "K38-G03",
+      "name": "downstream-direct-mutation-audit",
+      "status": "OPEN",
+      "summary": "The canonical mutation API is frozen here, but every existing Canvas/Agent/Export call site must be migrated and audited in downstream implementation nodes before production can claim zero direct persisted-IR mutation."
+    },
+    {
+      "id": "K38-G04",
+      "name": "spatial-index-adapter",
+      "status": "OPEN",
+      "summary": "Semantic query and geometry helpers are implemented without persisting an index; high-performance RBush/custom spatial indexing belongs to the Canvas runtime adapter."
+    },
+    {
+      "id": "K38-G05",
+      "name": "standard-hardware-performance-gate",
+      "status": "OPEN",
+      "summary": "Reference benchmarks are recorded in this node, but pass/fail budgets must be calibrated against the NODE-08 standard benchmark machine before they become release gates."
+    }
+  ]
+}
