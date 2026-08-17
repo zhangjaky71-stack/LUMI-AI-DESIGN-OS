@@ -56,20 +56,49 @@ _REPAIRS = {item.value: item for item in RepairActionType}
 _CRITIC_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["assessments", "violations", "strengths", "overall_confidence"],
+    "required": [
+        "assessments",
+        "violations",
+        "strengths",
+        "overall_confidence",
+    ],
     "properties": {
         "assessments": {
             "type": "array",
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["dimension", "score", "confidence", "severity", "evidence"],
+                "required": [
+                    "dimension",
+                    "score",
+                    "confidence",
+                    "severity",
+                    "evidence",
+                ],
                 "properties": {
-                    "dimension": {"type": "string", "enum": sorted(_DIMENSIONS)},
-                    "score": {"type": "number", "minimum": 0, "maximum": 100},
-                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-                    "severity": {"type": "string", "enum": ["INFO", "WARNING", "ERROR"]},
-                    "evidence": {"type": "string", "minLength": 1, "maxLength": 1000},
+                    "dimension": {
+                        "type": "string",
+                        "enum": sorted(_DIMENSIONS),
+                    },
+                    "score": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100,
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                    },
+                    "severity": {
+                        "type": "string",
+                        "enum": ["INFO", "WARNING", "ERROR"],
+                    },
+                    "evidence": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000,
+                    },
                 },
             },
         },
@@ -78,23 +107,64 @@ _CRITIC_SCHEMA: dict[str, Any] = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["dimension", "code", "severity", "message", "confidence", "repair_actions"],
+                "required": [
+                    "dimension",
+                    "code",
+                    "severity",
+                    "message",
+                    "confidence",
+                    "repair_actions",
+                ],
                 "properties": {
-                    "dimension": {"type": "string", "enum": sorted(_DIMENSIONS)},
-                    "code": {"type": "string", "minLength": 1, "maxLength": 160},
-                    "severity": {"type": "string", "enum": ["INFO", "WARNING", "ERROR"]},
-                    "message": {"type": "string", "minLength": 1, "maxLength": 1000},
-                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    "dimension": {
+                        "type": "string",
+                        "enum": sorted(_DIMENSIONS),
+                    },
+                    "code": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                    },
+                    "severity": {
+                        "type": "string",
+                        "enum": ["INFO", "WARNING", "ERROR"],
+                    },
+                    "message": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000,
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                    },
                     "repair_actions": {
                         "type": "array",
                         "items": {
                             "type": "object",
                             "additionalProperties": False,
-                            "required": ["action_type", "target", "reason_code", "parameters"],
+                            "required": [
+                                "action_type",
+                                "target",
+                                "reason_code",
+                                "parameters",
+                            ],
                             "properties": {
-                                "action_type": {"type": "string", "enum": sorted(_REPAIRS)},
-                                "target": {"type": "string", "minLength": 1, "maxLength": 200},
-                                "reason_code": {"type": "string", "minLength": 1, "maxLength": 160},
+                                "action_type": {
+                                    "type": "string",
+                                    "enum": sorted(_REPAIRS),
+                                },
+                                "target": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200,
+                                },
+                                "reason_code": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 160,
+                                },
                                 "parameters": {"type": "object"},
                             },
                         },
@@ -104,15 +174,23 @@ _CRITIC_SCHEMA: dict[str, Any] = {
         },
         "strengths": {
             "type": "array",
-            "items": {"type": "string", "minLength": 1, "maxLength": 500},
+            "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+            },
         },
-        "overall_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "overall_confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+        },
     },
 }
 
 
 class ModelGatewayVisualGraderAdapter:
-    """Independent, calibration-pinned visual grader. It cannot emit HARD gates."""
+    """Independent, calibration-pinned visual grader; never a HARD gate."""
 
     def __init__(
         self,
@@ -130,7 +208,11 @@ class ModelGatewayVisualGraderAdapter:
         deterministic_signals: tuple[QualitySignalBundle, ...],
     ) -> VisualGraderResult:
         calibration = spec.critic_calibration
-        if calibration is None or not calibration.provider or not calibration.model:
+        if (
+            calibration is None
+            or not calibration.provider
+            or not calibration.model
+        ):
             raise ValueError("QUALITY_PINNED_CRITIC_CALIBRATION_REQUIRED")
         if (
             artifact.generation_provider == calibration.provider
@@ -175,29 +257,43 @@ class ModelGatewayVisualGraderAdapter:
             "rules": [
                 "Never override deterministic hard failures.",
                 "Judge observable visual quality only.",
-                "Do not infer brand or identity facts absent from supplied evidence.",
+                (
+                    "Do not infer brand or identity facts absent from "
+                    "supplied evidence."
+                ),
                 "Use only registered repair action types.",
                 "Return calibrated numeric scores, not prose approval.",
             ],
         }
         request = ModelRequest(
-            request_id=_stable_uuid(f"critic-request:{spec.operation_id}"),
+            request_id=_stable_uuid(
+                f"critic-request:{spec.operation_id}"
+            ),
             organization_id=_stable_uuid(spec.organization_id),
             project_id=_stable_uuid(spec.project_id),
             task_id=_stable_uuid(spec.task_id),
-            operation_id=_stable_uuid(f"critic-operation:{spec.operation_id}"),
+            operation_id=_stable_uuid(
+                f"critic-operation:{spec.operation_id}"
+            ),
             capability=Capability.LLM_VISION,
             inputs=(
                 ModelInput(
                     kind=InputKind.TEXT,
                     role="system",
-                    text=json.dumps(rubric, sort_keys=True, separators=(",", ":")),
+                    text=json.dumps(
+                        rubric,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
                 ),
                 ModelInput(
                     kind=InputKind.IMAGE,
                     role="user",
                     uri=uri,
-                    media_type=str(artifact.metadata.get("mime_type") or "image/png"),
+                    media_type=str(
+                        artifact.metadata.get("mime_type")
+                        or "image/png"
+                    ),
                 ),
             ),
             quality_profile=QualityProfile.HIGH,
@@ -206,7 +302,9 @@ class ModelGatewayVisualGraderAdapter:
             constraints={
                 "critic_calibration_id": calibration.calibration_id,
                 "critic_dataset_hash": calibration.dataset_hash,
-                "critic_threshold_version": calibration.threshold_version,
+                "critic_threshold_version": (
+                    calibration.threshold_version
+                ),
                 "critic_model_revision": calibration.model_revision,
             },
             routing_hints=RoutingHints(
@@ -214,8 +312,11 @@ class ModelGatewayVisualGraderAdapter:
                 preferred_models=(calibration.model,),
                 excluded_providers=(
                     (artifact.generation_provider,)
-                    if artifact.generation_provider
-                    and artifact.generation_provider != calibration.provider
+                    if (
+                        artifact.generation_provider
+                        and artifact.generation_provider
+                        != calibration.provider
+                    )
                     else ()
                 ),
                 allow_fallback=False,
@@ -225,7 +326,10 @@ class ModelGatewayVisualGraderAdapter:
         result = await self.gateway.invoke(request)
         if result.status is not ResultStatus.COMPLETED:
             raise ValueError("QUALITY_CRITIC_MODEL_NOT_COMPLETED")
-        if result.provider != calibration.provider or result.model != calibration.model:
+        if (
+            result.provider != calibration.provider
+            or result.model != calibration.model
+        ):
             raise ValueError("QUALITY_CRITIC_CALIBRATION_MODEL_MISMATCH")
         if len(result.outputs) != 1:
             raise ValueError("QUALITY_CRITIC_OUTPUT_COUNT_INVALID")
@@ -256,12 +360,16 @@ class ModelGatewayVisualGraderAdapter:
         assessments: list[DimensionAssessment] = []
         for index, item in enumerate(raw.get("assessments", [])):
             dimension = _DIMENSIONS[str(item["dimension"])]
-            evidence_id = f"critic:{calibration_id}:assessment:{index}"
+            evidence_id = (
+                f"critic:{calibration_id}:assessment:{index}"
+            )
             evidence.append(
                 QualityEvidence(
                     evidence_id=evidence_id,
                     kind=EvidenceKind.VISUAL_GRADER,
-                    source_version=f"{provider}/{model}:{calibration_id}",
+                    source_version=(
+                        f"{provider}/{model}:{calibration_id}"
+                    ),
                     summary=str(item["evidence"]),
                     refs=(calibration_id,),
                 )
@@ -272,7 +380,7 @@ class ModelGatewayVisualGraderAdapter:
                     score=float(item["score"]),
                     confidence=float(item["confidence"]),
                     threshold=0.0,
-                    severity=_SEVERITY[str(item["severity"])] ,
+                    severity=_SEVERITY[str(item["severity"])],
                     evidence_ids=(evidence_id,),
                     grader_id=grader_id,
                 )
@@ -284,9 +392,15 @@ class ModelGatewayVisualGraderAdapter:
             for action in item.get("repair_actions", []):
                 action_type = _REPAIRS[str(action["action_type"])]
                 parameters = dict(action.get("parameters") or {})
-                if action_type is RepairActionType.SET_PROPERTY and "property" not in parameters:
+                if (
+                    action_type is RepairActionType.SET_PROPERTY
+                    and "property" not in parameters
+                ):
                     continue
-                if action_type is RepairActionType.REPLACE_TEXT and "text" not in parameters:
+                if (
+                    action_type is RepairActionType.REPLACE_TEXT
+                    and "text" not in parameters
+                ):
                     continue
                 actions.append(
                     RepairAction(
@@ -297,12 +411,16 @@ class ModelGatewayVisualGraderAdapter:
                         expected_effect=(dimension,),
                     )
                 )
-            evidence_id = f"critic:{calibration_id}:violation:{index}"
+            evidence_id = (
+                f"critic:{calibration_id}:violation:{index}"
+            )
             evidence.append(
                 QualityEvidence(
                     evidence_id=evidence_id,
                     kind=EvidenceKind.VISUAL_GRADER,
-                    source_version=f"{provider}/{model}:{calibration_id}",
+                    source_version=(
+                        f"{provider}/{model}:{calibration_id}"
+                    ),
                     summary=str(item["message"]),
                     refs=(calibration_id,),
                 )
@@ -326,6 +444,8 @@ class ModelGatewayVisualGraderAdapter:
             assessments=tuple(assessments),
             violations=tuple(violations),
             evidence=tuple(evidence),
-            strengths=tuple(str(item) for item in raw.get("strengths", [])),
+            strengths=tuple(
+                str(item) for item in raw.get("strengths", [])
+            ),
             overall_confidence=float(raw["overall_confidence"]),
         )
