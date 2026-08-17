@@ -15,6 +15,7 @@ As with preceding nodes, a job that fails before checkout with `steps=[]` is
 - immutable content-addressed Knowledge documents and chunks;
 - parser/chunker/embedding/index version contracts;
 - tenant/project/brand/scope authorization;
+- project/brand permission scopes bound to their concrete entities;
 - permission filtering before lexical/vector scoring;
 - hybrid lexical + vector retrieval;
 - content-hash dedupe and per-document diversity;
@@ -36,7 +37,7 @@ committed and is not a substitute for hosted repository integration.
 
 Current evidence:
 
-- NODE-36 pytest: `13/13 PASS`;
+- NODE-36 pytest: `14/14 PASS`;
 - Python compileall: PASS;
 - static validator: `NODE36_KNOWLEDGE_ENGINE_VALIDATION_PASS`;
 - retrieval fixtures: `14` parsed;
@@ -50,7 +51,7 @@ runtime. They remain mandatory hosted gates.
 
 - Cross-organization documents never enter candidate scoring.
 - Project-scoped documents never cross project boundaries.
-- Brand-scoped documents require brand membership.
+- Brand-scoped documents require brand membership and matching brand scope identity.
 - Retrieval permission filtering happens before vector/keyword scoring.
 - Retrieved content cannot gain SYSTEM/AGENT/USER instruction authority.
 - Query expansion is retrieval input only and never evidence by itself.
