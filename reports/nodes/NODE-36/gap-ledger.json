@@ -1,41 +1,41 @@
 {
   "node": "NODE-36",
-  "status": "IMPLEMENTED_CONTRACT_WITH_RUNTIME_GAPS",
+  "status": "IMPLEMENTED_P0_WITH_ADAPTER_GAPS",
   "gaps": [
     {
       "id": "K36-G01",
       "area": "pdf-doc-binary-parsing",
-      "status": "OPEN",
-      "owner_node": "runtime-adapter",
-      "note": "Core ingests extracted structured sections; production PDF/DOCX parser and OCR fallback adapter still required."
+      "status": "PARTIAL_EXTERNAL_ADAPTER",
+      "owner_node": "node-18-tool-sandbox-composition",
+      "note": "NODE-36 now enforces native-first extraction and OCR-only fallback through KnowledgeExtractionPort. A concrete PDF/DOCX/OCR reader remains an injected Asset/Tool/Sandbox adapter so Agent Runtime does not gain host filesystem or OCR-provider authority."
     },
     {
       "id": "K36-G02",
       "area": "postgres-fulltext-pgvector",
-      "status": "OPEN",
-      "owner_node": "persistence-forward-migration",
-      "note": "Reference store enforces prefilter semantics; production Postgres FTS/pgvector persistence and index migration evidence required."
+      "status": "SUPERSEDED_BY_CANONICAL_WORKSPACE_BACKEND",
+      "owner_node": "scale-optimization",
+      "note": "The canonical Agent-stack uses atomic Git-workspace durable persistence. Scope partitioning occurs before lexical/vector scoring. PostgreSQL FTS/pgvector remains an optional scale backend behind KnowledgeStore rather than a NODE-36 correctness dependency."
     },
     {
       "id": "K36-G03",
       "area": "embedding-provider",
-      "status": "OPEN",
-      "owner_node": "model-gateway-integration",
-      "note": "Deterministic local embedding defines the contract only; production embedding capability must route through governed model capability."
+      "status": "PORT_IMPLEMENTED_COMPOSITION_PENDING",
+      "owner_node": "model-gateway-composition",
+      "note": "KnowledgeEmbeddingPort is provider-neutral and the package imports no provider SDK. Production composition must bind the port to the governed model/capability layer; deterministic embedding remains the offline acceptance implementation."
     },
     {
       "id": "K36-G04",
       "area": "web-refresh",
       "status": "OPEN",
       "owner_node": "research-runtime",
-      "note": "Freshness fields and stale policy exist; scheduled source refresh is not implemented here."
+      "note": "Freshness fields and stale filtering are implemented. Scheduled re-fetch of external web snapshots is intentionally owned by research/source refresh orchestration."
     },
     {
       "id": "K36-G05",
       "area": "durable-reindex-rollout",
-      "status": "OPEN",
-      "owner_node": "operations",
-      "note": "Index versioning is frozen; blue/green backfill and rollback orchestration requires production persistence."
+      "status": "CLOSED",
+      "owner_node": "node-36",
+      "note": "GitWorkspaceKnowledgeStore persists immutable version manifests, atomically moves an active source head, preserves historical indexes across restart, supports explicit rollback, and never resurrects an old index after current-head deletion."
     }
   ]
 }
