@@ -1,0 +1,36 @@
+{
+  "node": "NODE-43",
+  "status": "IMPLEMENTED / VALIDATING",
+  "gaps": [
+    {
+      "id": "C43-G01",
+      "priority": "P0",
+      "name": "production-guide-extraction-pipeline",
+      "detail": "Connect PDF/brand-guide parsing, Knowledge Engine chunks, page-level citations and Brand Agent structured proposal generation with real documents."
+    },
+    {
+      "id": "C43-G02",
+      "priority": "P0",
+      "name": "live-postgresql-trigger-concurrency-acceptance",
+      "detail": "Run upgrade/downgrade, concurrent per-brand version allocation, active pointer validation and AgentRun/ArtifactVersion snapshot-capture triggers against real PostgreSQL."
+    },
+    {
+      "id": "C43-G03",
+      "priority": "P0",
+      "name": "node44-logo-identity-grader",
+      "detail": "Connect NODE-44 Identity Engine for logo appearance/identity preservation beyond deterministic geometry and asset identity."
+    },
+    {
+      "id": "C43-G04",
+      "priority": "P1",
+      "name": "provider-backed-visual-and-voice-graders",
+      "detail": "Add bounded, evidence-bearing VLM/copy graders for visual style and brand voice SOFT/ADVISORY compliance."
+    },
+    {
+      "id": "C43-G05",
+      "priority": "P1",
+      "name": "advanced-color-font-profile-enrichment",
+      "detail": "Add ICC/print profile handling, runtime font availability/fallback resolution and richer font license metadata beyond the NODE-18 commercial-use gate."
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+name: NODE-43 Brand Rules Engine
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/brand_rules/**"
+      - "apps/api/src/lumi_api/api/v1/brand_rules_*"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/src/lumi_api/persistence/models_brand_rules.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260817_0012_brand_rules_engine.py"
+      - "apps/api/migrations/versions/20260817_0012_sql/**"
+      - "apps/api/tests/test_brand_rules_node43.py"
+      - "apps/agent-runtime/src/lumi_agent_runtime/context_engine/brand_source.py"
+      - "apps/agent-runtime/src/lumi_agent_runtime/context_engine/__init__.py"
+      - "apps/agent-runtime/tests/test_brand_context_source_node43.py"
+      - "evals/node43/**"
+      - "docs/runtime/BRAND-RULES-ENGINE-V1.md"
+      - "reports/nodes/NODE-43/**"
+      - "tools/node43/**"
+      - ".github/workflows/node-43-brand-rules-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  brand-rules:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+
+      - name: NODE-43 runtime and Context Engine tests
+        run: |
+          PYTHONPATH=apps/api/src:apps/agent-runtime/src             uv run pytest -q               apps/api/tests/test_brand_rules_node43.py               apps/agent-runtime/tests/test_brand_context_source_node43.py
+
+      - name: Deterministic Brand Rule eval
+        run: |
+          PYTHONPATH=apps/api/src             uv run python tools/node43/run_brand_rule_eval.py
+
+      - name: Static NODE-43 validator
+        run: uv run python tools/node43/validate_brand_rules.py
+
+      - name: Compile NODE-43 migration and runtime
+        run: |
+          uv run python -m compileall -q             apps/api/src/lumi_api/brand_rules             apps/api/src/lumi_api/api/v1/brand_rules_dependencies.py             apps/api/src/lumi_api/api/v1/brand_rules_routes.py             apps/api/src/lumi_api/api/v1/brand_rules_schemas.py             apps/api/src/lumi_api/persistence/models_brand_rules.py             apps/api/migrations/versions/20260817_0012_brand_rules_engine.py             apps/agent-runtime/src/lumi_agent_runtime/context_engine/brand_source.py
+
+      - name: Parse gap ledger
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          value = json.loads(
+              Path("reports/nodes/NODE-43/gap-ledger.json").read_text(encoding="utf-8")
+          )
+          assert value["node"] == "NODE-43"
+          assert len(value["gaps"]) == 5
+          print("NODE43_GAP_LEDGER_PARSE_PASS")
+          PY
+
+      - name: Ruff
+        run: |
+          uv run ruff check             apps/api/src/lumi_api/brand_rules             apps/api/src/lumi_api/api/v1/brand_rules_dependencies.py             apps/api/src/lumi_api/api/v1/brand_rules_routes.py             apps/api/src/lumi_api/api/v1/brand_rules_schemas.py             apps/api/src/lumi_api/persistence/models_brand_rules.py             apps/api/tests/test_brand_rules_node43.py             apps/agent-runtime/src/lumi_agent_runtime/context_engine/brand_source.py             apps/agent-runtime/tests/test_brand_context_source_node43.py             tools/node43
+
+      - name: Pyright
+        run: |
+          uv run pyright             apps/api/src/lumi_api/brand_rules             apps/api/src/lumi_api/api/v1/brand_rules_dependencies.py             apps/api/src/lumi_api/api/v1/brand_rules_routes.py             apps/api/src/lumi_api/api/v1/brand_rules_schemas.py             apps/api/src/lumi_api/persistence/models_brand_rules.py             apps/api/tests/test_brand_rules_node43.py             apps/agent-runtime/src/lumi_agent_runtime/context_engine/brand_source.py             apps/agent-runtime/tests/test_brand_context_source_node43.py             tools/node43
