@@ -1,0 +1,83 @@
+name: NODE-44 Identity Engine
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/identity_engine/**"
+      - "apps/api/src/lumi_api/api/v1/identity_engine_*"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/src/lumi_api/persistence/models_identity_engine.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260817_0013_identity_engine.py"
+      - "apps/api/migrations/versions/20260817_0013_sql/**"
+      - "apps/api/tests/test_identity_engine_node44.py"
+      - "evals/node44/**"
+      - "docs/runtime/IDENTITY-ENGINE-V1.md"
+      - "reports/nodes/NODE-44/**"
+      - "tools/node44/**"
+      - ".github/workflows/node-44-identity-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  identity-engine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+      - name: NODE-44 identity contract tests
+        run: PYTHONPATH=apps/api/src uv run pytest -q apps/api/tests/test_identity_engine_node44.py
+      - name: NODE-44 runtime smoke
+        run: PYTHONPATH=apps/api/src uv run python tools/node44/runtime_smoke.py
+      - name: Deterministic product/logo benchmark
+        run: PYTHONPATH=apps/api/src uv run python tools/node44/run_identity_eval.py
+      - name: Reproduce calibration report
+        run: |
+          PYTHONPATH=apps/api/src uv run python tools/node44/generate_calibration_report.py
+          git diff --exit-code reports/nodes/NODE-44/calibration-report.json
+      - name: Static NODE-44 validator
+        run: uv run python tools/node44/validate_identity_engine.py
+      - name: Compile NODE-44 runtime and migration
+        run: |
+          uv run python -m compileall -q \
+            apps/api/src/lumi_api/identity_engine \
+            apps/api/src/lumi_api/api/v1/identity_engine_dependencies.py \
+            apps/api/src/lumi_api/api/v1/identity_engine_routes.py \
+            apps/api/src/lumi_api/api/v1/identity_engine_schemas.py \
+            apps/api/src/lumi_api/persistence/models_identity_engine.py \
+            apps/api/migrations/versions/20260817_0013_identity_engine.py
+      - name: Ruff
+        run: |
+          uv run ruff check \
+            apps/api/src/lumi_api/identity_engine \
+            apps/api/src/lumi_api/api/v1/identity_engine_dependencies.py \
+            apps/api/src/lumi_api/api/v1/identity_engine_routes.py \
+            apps/api/src/lumi_api/api/v1/identity_engine_schemas.py \
+            apps/api/src/lumi_api/persistence/models_identity_engine.py \
+            apps/api/tests/test_identity_engine_node44.py \
+            tools/node44
+      - name: Pyright
+        run: |
+          uv run pyright \
+            apps/api/src/lumi_api/identity_engine \
+            apps/api/src/lumi_api/api/v1/identity_engine_dependencies.py \
+            apps/api/src/lumi_api/api/v1/identity_engine_routes.py \
+            apps/api/src/lumi_api/api/v1/identity_engine_schemas.py \
+            apps/api/src/lumi_api/persistence/models_identity_engine.py \
+            apps/api/tests/test_identity_engine_node44.py \
+            tools/node44

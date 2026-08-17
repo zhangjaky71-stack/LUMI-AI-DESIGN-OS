@@ -1,0 +1,50 @@
+{
+  "qualification": "Deterministic contract fixture only; not production model accuracy evidence.",
+  "reports": [
+    {
+      "created_at": "2026-08-17T12:00:00Z",
+      "dataset_hash": "f85e54912e30727dd315df25938682cc38904d86f867b294a4c3849721093f7f",
+      "id": "74444444-4444-7444-8444-444444444444",
+      "identity_type": "LOGO",
+      "metrics": {
+        "f1": 1.0,
+        "false_accept_rate": 0.0,
+        "false_reject_rate": 0.0,
+        "negatives": 4,
+        "positives": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "threshold": 95.769231
+      },
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "profile_key": "node44-contract-benchmark",
+      "sample_count": 7,
+      "selected_threshold": 95.769231,
+      "target_precision": 0.95,
+      "version": 1
+    },
+    {
+      "created_at": "2026-08-17T12:00:00Z",
+      "dataset_hash": "47db5d6b903434f8f0ad44dd977d07144edac22c9ee4e1ac5ff518bb4773099d",
+      "id": "75555555-5555-7555-8555-555555555555",
+      "identity_type": "PRODUCT",
+      "metrics": {
+        "f1": 1.0,
+        "false_accept_rate": 0.0,
+        "false_reject_rate": 0.0,
+        "negatives": 4,
+        "positives": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "threshold": 91.85
+      },
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "profile_key": "node44-contract-benchmark",
+      "sample_count": 7,
+      "selected_threshold": 91.85,
+      "target_precision": 0.95,
+      "version": 1
+    }
+  ],
+  "schema_version": "lumi.identity-calibration-report/1.0"
+}
