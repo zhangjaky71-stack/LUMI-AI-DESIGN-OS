@@ -88,4 +88,4 @@ Production completion also requires real object-storage reads/writes/presigning,
 
 ## Next node
 
-After NODE-49 implementation validation, proceed to **NODE-50 — Scheduler Engine** while keeping NODE-49 production gaps visible and unclosed.
+After NODE-49 implementation validation, proceed to **NODE-50 — Visual Critic & Design Quality Engine** while keeping NODE-49 production gaps visible and unclosed.
