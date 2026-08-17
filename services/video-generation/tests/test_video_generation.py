@@ -322,7 +322,8 @@ def test_operation_id_is_idempotent_but_semantic_reuse_conflicts():
     asyncio.run(scenario())
 
 
-def test_webhook_dedupe_claim_is_deterministic():
+def test_webhook_dedupe_claim_is_deterministic_and_tenant_scoped():
     repo = InMemoryVideoRepository()
-    assert repo.claim_webhook("mock", "event-1") is True
-    assert repo.claim_webhook("mock", "event-1") is False
+    assert repo.claim_webhook("org-a", "mock", "event-1") is True
+    assert repo.claim_webhook("org-a", "mock", "event-1") is False
+    assert repo.claim_webhook("org-b", "mock", "event-1") is True
