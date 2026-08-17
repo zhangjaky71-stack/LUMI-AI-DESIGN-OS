@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from .model import QualityDimension as D
-from .model import QualityProfileKey, QualityProfileSnapshot
+from .model import (
+    QualityDimension as D,
+    QualityProfileKey,
+    QualityProfileSnapshot,
+)
 
 
 _ALL = {
@@ -19,6 +22,20 @@ _ALL = {
     D.IMAGE_DEFECTS,
     D.RESOLUTION_EXPORT_READINESS,
 }
+
+_CORE_REQUIRED = frozenset(
+    {
+        D.CONSTRAINT_COMPLIANCE,
+        D.COMPOSITION,
+        D.VISUAL_HIERARCHY,
+        D.ALIGNMENT_SPACING,
+        D.TYPOGRAPHY_READABILITY,
+        D.CONTRAST,
+        D.TEXT_ACCURACY,
+        D.IMAGE_DEFECTS,
+        D.RESOLUTION_EXPORT_READINESS,
+    }
+)
 
 
 def _profile(
@@ -67,12 +84,21 @@ BUILTIN_PROFILES: dict[QualityProfileKey, QualityProfileSnapshot] = {
     QualityProfileKey.EXPLORATION: _profile(
         key=QualityProfileKey.EXPLORATION,
         weights=_weights(composition=1.4, visual_hierarchy=1.3),
-        thresholds=_thresholds(60, constraint_compliance=90, qr_readability=90),
+        thresholds=_thresholds(
+            60,
+            constraint_compliance=90,
+            qr_readability=90,
+        ),
         pass_score=68,
         warning_score=58,
         low_confidence=0.45,
-        hard=frozenset({D.CONSTRAINT_COMPLIANCE, D.QR_READABILITY}),
-        required=frozenset(_ALL),
+        hard=frozenset(
+            {
+                D.CONSTRAINT_COMPLIANCE,
+                D.QR_READABILITY,
+            }
+        ),
+        required=_CORE_REQUIRED,
     ),
     QualityProfileKey.PRODUCTION_WEB: _profile(
         key=QualityProfileKey.PRODUCTION_WEB,
@@ -99,7 +125,7 @@ BUILTIN_PROFILES: dict[QualityProfileKey, QualityProfileSnapshot] = {
                 D.RESOLUTION_EXPORT_READINESS,
             }
         ),
-        required=frozenset(_ALL),
+        required=_CORE_REQUIRED,
     ),
     QualityProfileKey.BRAND_STRICT: _profile(
         key=QualityProfileKey.BRAND_STRICT,
@@ -126,7 +152,13 @@ BUILTIN_PROFILES: dict[QualityProfileKey, QualityProfileSnapshot] = {
                 D.QR_READABILITY,
             }
         ),
-        required=frozenset(_ALL),
+        required=frozenset(
+            set(_CORE_REQUIRED)
+            | {
+                D.BRAND_CONSISTENCY,
+                D.LOGO_INTEGRITY,
+            }
+        ),
     ),
     QualityProfileKey.PRODUCT_STRICT: _profile(
         key=QualityProfileKey.PRODUCT_STRICT,
@@ -152,7 +184,10 @@ BUILTIN_PROFILES: dict[QualityProfileKey, QualityProfileSnapshot] = {
                 D.QR_READABILITY,
             }
         ),
-        required=frozenset(_ALL),
+        required=frozenset(
+            set(_CORE_REQUIRED)
+            | {D.IDENTITY_CONSISTENCY}
+        ),
     ),
     QualityProfileKey.PRINT: _profile(
         key=QualityProfileKey.PRINT,
@@ -178,7 +213,7 @@ BUILTIN_PROFILES: dict[QualityProfileKey, QualityProfileSnapshot] = {
                 D.QR_READABILITY,
             }
         ),
-        required=frozenset(_ALL),
+        required=_CORE_REQUIRED,
     ),
     QualityProfileKey.SOCIAL_FAST: _profile(
         key=QualityProfileKey.SOCIAL_FAST,
@@ -187,15 +222,26 @@ BUILTIN_PROFILES: dict[QualityProfileKey, QualityProfileSnapshot] = {
             composition=1.6,
             text_accuracy=1.5,
         ),
-        thresholds=_thresholds(68, constraint_compliance=92, qr_readability=92),
+        thresholds=_thresholds(
+            68,
+            constraint_compliance=92,
+            qr_readability=92,
+        ),
         pass_score=74,
         warning_score=66,
         low_confidence=0.55,
-        hard=frozenset({D.CONSTRAINT_COMPLIANCE, D.QR_READABILITY}),
-        required=frozenset(_ALL),
+        hard=frozenset(
+            {
+                D.CONSTRAINT_COMPLIANCE,
+                D.QR_READABILITY,
+            }
+        ),
+        required=_CORE_REQUIRED,
     ),
 }
 
 
-def get_builtin_profile(key: QualityProfileKey) -> QualityProfileSnapshot:
+def get_builtin_profile(
+    key: QualityProfileKey,
+) -> QualityProfileSnapshot:
     return BUILTIN_PROFILES[key]
