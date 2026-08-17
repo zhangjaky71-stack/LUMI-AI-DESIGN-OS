@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import hashlib
 from datetime import UTC, datetime
+from decimal import Decimal
 from uuid import UUID
 
-from lumi_video_generation import RenderedVideo, StoredVideoClip, VideoJob
 from lumi_api.artifact_engine.contracts import (
     ArtifactCreateCommand,
     InitialVersionCreateCommand,
@@ -23,6 +23,7 @@ from lumi_api.artifacts.models import (
     SkillVersionRef,
 )
 from lumi_api.domain.ids import new_uuid7
+from lumi_video_generation import RenderedVideo, StoredVideoClip, VideoJob
 
 
 def _prompt_hash(value: str) -> str:
@@ -71,7 +72,6 @@ def _git_sha(job: VideoJob) -> str:
 
 def _file(
     *,
-    job: VideoJob,
     checksum_sha256: str,
     bucket: str,
     storage_key: str,
@@ -79,7 +79,7 @@ def _file(
     mime_type: str,
     width: int,
     height: int,
-    duration_seconds,
+    duration_seconds: Decimal,
     metadata: tuple[tuple[str, str], ...],
 ) -> ArtifactFile:
     return ArtifactFile(
@@ -127,7 +127,6 @@ class Node42VideoArtifactAdapter:
             else (UUID(shot.source_ref.asset_id),)
         )
         artifact_file = _file(
-            job=job,
             checksum_sha256=clip.checksum_sha256,
             bucket=clip.object.bucket,
             storage_key=clip.object.storage_key,
@@ -194,7 +193,10 @@ class Node42VideoArtifactAdapter:
         )
         if branch.head_version_id is None:
             raise RuntimeError("VIDEO_CLIP_ARTIFACT_VERSION_MISSING")
-        ready = self.service.mark_ready(branch.head_version_id, occurred_at=now)
+        ready = self.service.mark_ready(
+            branch.head_version_id,
+            occurred_at=now,
+        )
         if ready.artifact_id != artifact.id:
             raise RuntimeError("VIDEO_CLIP_ARTIFACT_IDENTITY_MISMATCH")
         return str(ready.id)
@@ -218,7 +220,6 @@ class Node42VideoArtifactAdapter:
         created_by_type, created_by_id = _creator(job)
         rights = _rights(job, f"video-generation:{job.job_id}:final")
         artifact_file = _file(
-            job=job,
             checksum_sha256=video.checksum_sha256,
             bucket=video.object.bucket,
             storage_key=video.object.storage_key,
@@ -294,7 +295,10 @@ class Node42VideoArtifactAdapter:
         )
         if branch.head_version_id is None:
             raise RuntimeError("VIDEO_FINAL_ARTIFACT_VERSION_MISSING")
-        ready = self.service.mark_ready(branch.head_version_id, occurred_at=now)
+        ready = self.service.mark_ready(
+            branch.head_version_id,
+            occurred_at=now,
+        )
         if ready.artifact_id != artifact.id:
             raise RuntimeError("VIDEO_FINAL_ARTIFACT_IDENTITY_MISMATCH")
         return str(ready.id)
