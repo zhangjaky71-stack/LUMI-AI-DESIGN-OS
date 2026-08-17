@@ -232,9 +232,8 @@ class VideoGenerationPipeline:
                 updated.append(
                     replace(
                         runtime,
-                        status=ShotStatus.CANCELLED,
-                        pending=None,
-                        error_code=None,
+                        status=ShotStatus.FAILED,
+                        error_code="VIDEO_PROVIDER_CANCELLED_UNEXPECTEDLY",
                     )
                 )
                 continue
@@ -336,9 +335,18 @@ class VideoGenerationPipeline:
                 }
                 for item in updated
             ):
+                terminal_status = (
+                    VideoJobStatus.FAILED
+                    if job.error_code is not None
+                    and any(
+                        item.status is ShotStatus.FAILED
+                        for item in updated
+                    )
+                    else VideoJobStatus.CANCELLED
+                )
                 next_job = replace(
                     next_job,
-                    status=VideoJobStatus.CANCELLED,
+                    status=terminal_status,
                 )
             return self.repository.save(next_job)
         if any(item.status is ShotStatus.FAILED for item in updated):
@@ -422,6 +430,7 @@ class VideoGenerationPipeline:
         if job.status in {
             VideoJobStatus.COMPLETED,
             VideoJobStatus.CANCELLED,
+            VideoJobStatus.FAILED,
         }:
             return job
         runtimes: list[ShotRuntime] = []
