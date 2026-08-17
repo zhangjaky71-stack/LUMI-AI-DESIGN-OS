@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import PurePosixPath
 from typing import Protocol
 
@@ -27,25 +28,35 @@ class SandboxLimits:
     max_output_bytes: int = 2_000_000_000
 
     def __post_init__(self) -> None:
-        if min(self.timeout_seconds, self.memory_mb, self.cpu_seconds, self.max_output_bytes) <= 0:
+        values = (
+            self.timeout_seconds,
+            self.memory_mb,
+            self.cpu_seconds,
+            self.max_output_bytes,
+        )
+        if min(values) <= 0:
             raise ValueError("sandbox limits must be positive")
 
 
 class SandboxExecutorPort(Protocol):
-    async def execute(self, invocation: FfmpegInvocation, limits: SandboxLimits) -> None: ...
+    async def execute(
+        self,
+        invocation: FfmpegInvocation,
+        limits: SandboxLimits,
+    ) -> None: ...
 
 
 def _safe_local_path(value: str) -> str:
-    if not value or "\x00" in value or "\n" in value or "\r" in value:
+    if not value or any(token in value for token in ("\x00", "\n", "\r")):
         raise ValueError("FFMPEG_PATH_INVALID")
     lowered = value.lower()
     if "://" in lowered or lowered.startswith(("file:", "concat:", "pipe:")):
         raise ValueError("FFMPEG_NETWORK_OR_PROTOCOL_INPUT_FORBIDDEN")
+    if any(token in value for token in (";", "|", "&", "`", "$(")):
+        raise ValueError("FFMPEG_PATH_TOKEN_FORBIDDEN")
     path = PurePosixPath(value)
     if not path.is_absolute() or ".." in path.parts:
         raise ValueError("FFMPEG_PATH_MUST_BE_ABSOLUTE_SANDBOX_PATH")
-    if any(part in {";", "|", "&", "`", "$("} for part in path.parts):
-        raise ValueError("FFMPEG_PATH_TOKEN_FORBIDDEN")
     return str(path)
 
 
@@ -59,9 +70,17 @@ class FfmpegArgvCompiler:
     ) -> FfmpegInvocation:
         if len(local_clip_paths) != len(timeline.clips):
             raise ValueError("FFMPEG_INPUT_COUNT_MISMATCH")
+        if not timeline.clips:
+            raise ValueError("FFMPEG_TIMELINE_EMPTY")
         inputs = tuple(_safe_local_path(item) for item in local_clip_paths)
         output = _safe_local_path(output_path)
-        argv: list[str] = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error"]
+        argv: list[str] = [
+            "ffmpeg",
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+        ]
         for source in inputs:
             argv.extend(("-i", source))
 
@@ -69,18 +88,19 @@ class FfmpegArgvCompiler:
         if any(item not in {"CUT", "FADE"} for item in transitions):
             raise ValueError("FFMPEG_TRANSITION_UNSUPPORTED")
 
-        # P0 composition is deterministic concat. FADE is expressed as bounded
-        # per-clip fade-in/out filters; arbitrary filter text is never accepted.
         filters: list[str] = []
         labels: list[str] = []
         for index, clip in enumerate(timeline.clips):
             label = f"v{index}"
-            duration = format(clip.duration_seconds, "f")
             if clip.transition == "FADE":
+                fade_start = max(
+                    Decimal("0"),
+                    clip.duration_seconds - Decimal("0.25"),
+                )
                 filters.append(
                     f"[{index}:v]scale={timeline.width}:{timeline.height},"
                     f"fps={timeline.fps},fade=t=in:st=0:d=0.25,"
-                    f"fade=t=out:st=max(0,{duration}-0.25):d=0.25[{label}]"
+                    f"fade=t=out:st={fade_start}:d=0.25[{label}]"
                 )
             else:
                 filters.append(
@@ -88,9 +108,23 @@ class FfmpegArgvCompiler:
                     f"fps={timeline.fps}[{label}]"
                 )
             labels.append(f"[{label}]")
-        filters.append("".join(labels) + f"concat=n={len(labels)}:v=1:a=0[vout]")
-        argv.extend(("-filter_complex", ";".join(filters), "-map", "[vout]"))
-        argv.extend(("-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart"))
+        filters.append(
+            "".join(labels)
+            + f"concat=n={len(labels)}:v=1:a=0[vout]"
+        )
+        argv.extend(
+            ("-filter_complex", ";".join(filters), "-map", "[vout]")
+        )
+        argv.extend(
+            (
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+            )
+        )
         argv.extend(("-y", output))
         return FfmpegInvocation(tuple(argv))
 
