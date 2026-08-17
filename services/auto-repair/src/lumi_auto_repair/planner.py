@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from decimal import Decimal
 
@@ -53,21 +54,34 @@ class DeterministicRepairPlanner:
         if iteration > spec.policy.max_iterations:
             return self._manual(iteration, "REPAIR_MAX_ITERATIONS_REACHED")
 
+        attempted = {
+            self._signature(directive)
+            for attempt in job.attempts
+            for directive in attempt.plan.directives
+        }
         grouped: dict[RepairKind, list[RepairDirective]] = {}
         for directive in job.current_quality.directives:
+            if self._signature(directive) in attempted:
+                continue
             kind = self._kind_for(directive)
             if kind is None or kind not in spec.policy.allowed_kinds:
                 continue
             grouped.setdefault(kind, []).append(directive)
 
         if not grouped:
-            return self._manual(iteration, "REPAIR_NO_REGISTERED_SAFE_ACTION")
+            return self._manual(
+                iteration,
+                "REPAIR_NO_UNTRIED_REGISTERED_SAFE_ACTION",
+            )
 
         candidates = sorted(grouped, key=lambda item: _KIND_PRIORITY[item])
         if not spec.policy.allow_paid_repairs or job.remaining_budget_usd <= 0:
             candidates = [item for item in candidates if item in _FREE_KINDS]
             if not candidates:
-                return self._manual(iteration, "REPAIR_BUDGET_EXHAUSTED_NO_FREE_FIX")
+                return self._manual(
+                    iteration,
+                    "REPAIR_BUDGET_EXHAUSTED_NO_FREE_FIX",
+                )
 
         kind = candidates[0]
         directives = tuple(grouped[kind])
@@ -96,7 +110,10 @@ class DeterministicRepairPlanner:
 
     @staticmethod
     def _kind_for(directive: RepairDirective) -> RepairKind | None:
-        if directive.action_type == "REPLACE_ASSET" and directive.protected_refs:
+        if (
+            directive.action_type == "REPLACE_ASSET"
+            and directive.protected_refs
+        ):
             return RepairKind.STRUCTURAL_DESIGN_OP
         return _ACTION_KIND.get(directive.action_type)
 
@@ -111,6 +128,22 @@ class DeterministicRepairPlanner:
         if directive.blocking:
             severity_weight += 8.0
         return severity_weight
+
+    @staticmethod
+    def _signature(directive: RepairDirective) -> str:
+        payload = {
+            "source_violation_id": directive.source_violation_id,
+            "action_type": directive.action_type,
+            "target": directive.target,
+            "parameters": directive.parameters,
+            "protected_refs": directive.protected_refs,
+        }
+        return json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
 
     @staticmethod
     def _manual(iteration: int, reason: str) -> RepairPlan:
