@@ -11,7 +11,10 @@ This record separates implementation evidence from calibration/live execution ev
 - exact ArtifactVersion quality input; no branch-head/latest fallback;
 - canonical 13 quality dimensions;
 - six versioned quality profiles with exact weights/thresholds/hard dimensions;
+- profile/context-aware required dimensions: generic artifacts are not forced to provide nonexistent QR/brand/identity/logo evidence;
+- artifact brand/identity context adds the corresponding required quality dimensions;
 - deterministic evidence evaluated before visual-model evidence;
+- deterministic/authoritative signal unavailability forces `REVIEW_REQUIRED` rather than allowing VLM substitution;
 - hard violations force `FAIL_HARD` and cannot be averaged away;
 - NODE-39 Constraint Runtime normalization including QR/text/contrast/export dimensions;
 - NODE-43 Brand compliance normalization;
@@ -50,7 +53,10 @@ The committed suite covers:
 10. visual grader attempts to emit HARD are rejected;
 11. exact NODE-42 ArtifactVersion lookup without branch-head resolution;
 12. cross-project ArtifactVersion rejection;
-13. QualityResult codec round-trip.
+13. QualityResult codec round-trip;
+14. generic artifacts do not require absent QR/brand/identity dimensions;
+15. artifact brand context requires brand assessment;
+16. an unavailable authoritative deterministic signal forces `REVIEW_REQUIRED` even when other scores are perfect.
 
 These are committed test intentions until an execution environment actually runs them.
 
@@ -60,7 +66,7 @@ These are committed test intentions until an execution environment actually runs
 
 It is **not** a calibrated visual-quality benchmark. No claim of production precision, false-positive rate, false-negative rate or inter-rater agreement is made from synthetic fixtures. Those values must come from a reviewed human-labeled dataset before NODE-50 can be COMPLETE.
 
-## Hosted gates
+## Hosted gates and observed execution evidence
 
 The NODE-50 workflow requires:
 
@@ -71,7 +77,11 @@ The NODE-50 workflow requires:
 
 The PostgreSQL job is authored to migrate the full schema to Alembic head and verify profile/calibration/result/dimension/violation tables, exact ArtifactVersion FK and hard-block constraints.
 
-NODE-48 hosted execution previously proved that this repository/account can be stopped before runner startup by GitHub Actions Billing/Spending Limit state. NODE-50 must be judged from its own actual workflow run after PR creation; an account-level pre-run rejection is infrastructure-blocked evidence, not code-green or code-red evidence.
+PR #117 created NODE-50 workflow run `32081808874` (`NODE-50 Visual Critic`, run number 1). The first job, `critic-contract` job `95546109355`, completed with conclusion `failure` **before any workflow step executed**: GitHub returned an empty step list, and the job log endpoint had no log blob. The dependent `critic-quality`, `critic-db` and `critic-benchmark` jobs were therefore skipped.
+
+The same commit also created NODE-49 run `32081808767`; its first `export-contract` job `95546107864` showed the same pre-step failure pattern and all dependent jobs were skipped. This is consistent with the repository/account pre-run infrastructure failure pattern previously confirmed on NODE-48 as a GitHub Actions Billing/Spending Limit blocker. The connector did not expose a new NODE-50 annotation naming the billing condition, so this acceptance record treats NODE-50 as **pre-run infrastructure blocked**, not as code-green or code-red execution evidence.
+
+Accordingly, there is still no hosted pytest, Ruff, Pyright, PostgreSQL or benchmark execution evidence for NODE-50.
 
 ## Production completion gates
 
