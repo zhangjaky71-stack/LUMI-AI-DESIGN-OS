@@ -2,9 +2,9 @@
 
 ## Status
 
-`IMPLEMENTED / VALIDATING`
+`IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL`
 
-Hosted GitHub Actions and live-provider visual-quality acceptance are not yet claimed.
+Hosted GitHub Actions PASS and live-provider visual-quality acceptance are not claimed.
 
 ## Delivered
 
@@ -33,7 +33,7 @@ Hosted GitHub Actions and live-provider visual-quality acceptance are not yet cl
 
 ## Local evidence
 
-Observed on the final candidate before GitHub publication:
+Observed on the final normalized candidate before GitHub publication:
 
 ```text
 14 passed in 0.08s
@@ -50,11 +50,32 @@ NODE47_LINE_WIDTH_PASS files=41
 NODE47_PYTHON_COMPILEALL_PASS
 ```
 
-The current local environment does not contain the complete repository-pinned Python 3.12/uv
-workspace or live PostgreSQL/provider/storage services. The NODE-47 Model Router integration test
-was authored but cannot be collected in the isolated candidate because the full NODE-22 package is
-not mounted there (`lumi_model_gateway.memory` is absent). Full Model Gateway, Artifact/Design IR,
-Ruff, and Pyright gates therefore remain hosted validation work and are not claimed as local PASS.
+The local environment does not contain the complete repository-pinned Python 3.12/uv workspace or
+live PostgreSQL/provider/storage services. The NODE-47 Model Router integration test was authored
+but cannot be collected in the isolated candidate because the full NODE-22 package is not mounted
+there (`lumi_model_gateway.memory` is absent). Full Model Gateway, Artifact/Design IR, Ruff, and
+Pyright gates therefore remain hosted validation work and are not claimed as local PASS.
+
+## Hosted acceptance evidence
+
+Implementation head `82905c9769bbb46529cf05673bd075a6656800db` is published on PR #114. The
+connected GitHub App can read PR metadata and repository contents and can write the branch, but the
+workflow-run read endpoint returns:
+
+```text
+403 Resource not accessible by integration
+```
+
+The combined-status API returns no visible statuses. Therefore this record does **not** claim that
+the dedicated NODE-47 workflow received a runner, executed any step, passed, or failed. Hosted
+acceptance evidence is externally unavailable to the current integration and is classified
+`BLOCKED_EXTERNAL`; this is not evidence of an Image Edit code, migration, provider, test, Ruff, or
+Pyright failure.
+
+Before NODE-47 can be COMPLETE, the dedicated hosted workflow must be inspectable and must execute
+the frozen workspace install, NODE-47 runtime/current-stack tests, deterministic eval, smoke,
+static validator, compile, gap parse, Ruff, and Pyright. Real provider A-E visual-quality evidence
+must also be approved through the production benchmark process.
 
 ## Completion blockers
 
