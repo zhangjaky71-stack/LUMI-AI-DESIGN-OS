@@ -1,0 +1,41 @@
+{
+  "node": "NODE-41",
+  "status": "IMPLEMENTED_VALIDATING",
+  "gaps": [
+    {
+      "id": "K41-G01",
+      "name": "authorized-resource-production-adapters",
+      "priority": "P0",
+      "status": "OPEN",
+      "description": "Asset/font/style resolver ports and deterministic contracts are implemented, but production Asset Service authorization, signed preview/full URLs, font entitlement, and resource-version lookup are not wired in this node."
+    },
+    {
+      "id": "K41-G02",
+      "name": "node15-artifact-provenance-persistence",
+      "priority": "P0",
+      "status": "OPEN",
+      "description": "Every successful compile emits compiler_version plus document/scene/resource/font/token provenance and exposes an Artifact provenance sink, but the durable NODE-15 persistence adapter is not wired here."
+    },
+    {
+      "id": "K41-G03",
+      "name": "browser-export-font-metric-conformance",
+      "priority": "P0",
+      "status": "OPEN",
+      "description": "Font invalidation and deterministic fallback measurement are implemented; real browser font loading, cross-browser metric snapshots, and export-server controlled-font parity still require browser/server integration evidence."
+    },
+    {
+      "id": "K41-G04",
+      "name": "pixi-v8-browser-materialization",
+      "priority": "P0",
+      "status": "OPEN",
+      "description": "CompiledScene and incremental patches bridge into the NODE-40 renderer-neutral contract and an executable renderer runtime, but the inherited pinned PixiJS v8 browser binding remains open until NODE-40 K40-G01 is closed."
+    },
+    {
+      "id": "K41-G05",
+      "name": "standard-hardware-compiler-performance-gate",
+      "priority": "P1",
+      "status": "OPEN",
+      "description": "Local 2k/10k reference measurements exist, but release budgets must be calibrated and enforced on the NODE-08 standard browser/hardware profile rather than inferred from the current isolated container."
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "schema": "lumi.canvas-compiler.fixture.v1",
+  "compilerVersion": "1.0.0",
+  "orderedIds": ["frame", "title", "hero", "mask", "badge"],
+  "resourceVersions": {"asset-hero": "asset-v7"},
+  "fontVersions": {"font-main": "font-v3"},
+  "tokenVersions": {"token-body": "style-v1"}
+}
