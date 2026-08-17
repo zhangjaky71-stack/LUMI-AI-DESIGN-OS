@@ -1,0 +1,52 @@
+name: NODE-41 Canvas Compiler
+
+on:
+  pull_request:
+    paths:
+      - "packages/canvas-sdk/**"
+      - "packages/design-ir/**"
+      - "tools/node41/**"
+      - "docs/runtime/CANVAS-COMPILER-V1.md"
+      - "reports/nodes/NODE-41/**"
+      - ".github/workflows/node-41-canvas-compiler.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canvas-compiler:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.4.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Frozen workspace install
+        run: pnpm install --frozen-lockfile
+      - name: Canvas SDK typecheck
+        run: pnpm --filter @lumi/canvas-sdk typecheck
+      - name: NODE-41 compiler tests
+        run: pnpm --filter @lumi/canvas-sdk exec vitest run tests/canvas-compiler.node41.test.ts
+      - name: Static architecture validation
+        run: python tools/node41/validate_canvas_compiler.py
+      - name: Parse fixture and gap ledger
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          json.loads(Path("packages/canvas-sdk/fixtures/compiler-snapshot-v1.json").read_text())
+          gaps = json.loads(Path("reports/nodes/NODE-41/gap-ledger.json").read_text())
+          assert len(gaps["gaps"]) == 5
+          PY
+      - name: Frozen lock remains unchanged
+        run: git diff --exit-code -- pnpm-lock.yaml
