@@ -1,0 +1,178 @@
+name: NODE-49 Export Engine
+
+on:
+  pull_request:
+    paths:
+      - "services/export-engine/**"
+      - "apps/api/src/lumi_api/export_engine/**"
+      - "apps/api/src/lumi_api/persistence/models_export_engine.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260817_0018_export_engine.py"
+      - "apps/api/migrations/versions/20260817_0018_sql/**"
+      - "tools/node49/**"
+      - "docs/runtime/EXPORT-ENGINE-V1.md"
+      - "docs/nodes/NODE-49-EXPORT-ENGINE.md"
+      - "reports/nodes/NODE-49/**"
+      - ".github/workflows/node-49-export-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  PYTHONPATH: "apps/api/src:services/export-engine/src"
+
+jobs:
+  export-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: Compile NODE-49 runtime
+        run: |
+          uv run python -m compileall -q \
+            services/export-engine/src/lumi_export_engine \
+            apps/api/src/lumi_api/export_engine \
+            apps/api/src/lumi_api/persistence/models_export_engine.py \
+            apps/api/migrations/versions/20260817_0018_export_engine.py \
+            tools/node49
+      - name: Static NODE-49 validator
+        run: uv run python tools/node49/validate_export_engine.py
+      - name: Parse production gap ledger
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          ledger = json.loads(
+              Path("reports/nodes/NODE-49/gap-ledger.json").read_text(encoding="utf-8")
+          )
+          assert ledger["node"] == "NODE-49"
+          assert len(ledger["gaps"]) == 5
+          print("NODE49_GAP_LEDGER_PARSE_PASS")
+          PY
+
+  export-quality:
+    needs: export-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: NODE-49 deterministic tests
+        run: |
+          uv run pytest -q \
+            services/export-engine/tests/test_export_engine.py \
+            services/export-engine/tests/test_export_renderer.py \
+            services/export-engine/tests/test_export_codec.py \
+            services/export-engine/tests/test_export_snapshot_adapter.py
+      - name: Ruff
+        run: |
+          uv run ruff check \
+            services/export-engine/src/lumi_export_engine \
+            services/export-engine/tests \
+            apps/api/src/lumi_api/export_engine \
+            apps/api/src/lumi_api/persistence/models_export_engine.py \
+            tools/node49
+      - name: Pyright
+        run: uv run pyright -p services/export-engine/pyrightconfig.json
+
+  export-db:
+    needs: export-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: lumi
+          POSTGRES_PASSWORD: lumi
+          POSTGRES_DB: lumi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lumi -d lumi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://lumi:lumi@localhost:5432/lumi
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Install frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: Migrate full schema through NODE-49
+        run: uv run alembic -c apps/api/alembic.ini upgrade head
+      - name: Verify exact-version export schema
+        run: |
+          uv run python - <<'PY'
+          import os
+          import psycopg
+          expected = {
+              "export_specs",
+              "export_jobs",
+              "export_items",
+              "export_outputs",
+              "export_download_grants",
+          }
+          url = os.environ["DATABASE_URL"].replace("postgresql+psycopg", "postgresql")
+          with psycopg.connect(url) as conn:
+              tables = {
+                  row[0]
+                  for row in conn.execute(
+                      "select tablename from pg_tables where schemaname='public'"
+                  ).fetchall()
+              }
+              grant_columns = {
+                  row[0]
+                  for row in conn.execute(
+                      "select column_name from information_schema.columns "
+                      "where table_schema='public' and table_name='export_download_grants'"
+                  ).fetchall()
+              }
+          assert expected <= tables, expected - tables
+          assert "url" not in grant_columns
+          assert "token" not in grant_columns
+          print("NODE49_DATABASE_ACCEPTANCE_PASS")
+          PY
+
+  export-benchmark:
+    needs: export-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Install frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: 500-item package benchmark
+        run: uv run python tools/node49/benchmark_export_packaging.py

@@ -1,0 +1,16 @@
+{
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "standard",
+  "include": [
+    "src",
+    "tests",
+    "../../tools/node49",
+    "../../apps/api/src/lumi_api/export_engine",
+    "../../apps/api/src/lumi_api/persistence/models_export_engine.py"
+  ],
+  "extraPaths": [
+    "src",
+    "../../apps/api/src"
+  ],
+  "exclude": ["**/__pycache__"]
+}
