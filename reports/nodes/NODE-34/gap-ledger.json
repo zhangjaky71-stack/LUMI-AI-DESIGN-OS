@@ -1,0 +1,55 @@
+{
+  "node": "NODE-34",
+  "title": "Context Engine V1",
+  "status": "IMPLEMENTED_VALIDATING",
+  "gaps": [
+    {
+      "id": "CONTEXT-DURABLE-MANIFEST-001",
+      "status": "OPEN",
+      "owner": "Runtime Persistence / Control Plane",
+      "summary": "Production durable RuntimeContextManifest storage is not composed.",
+      "acceptance": [
+        "tenant-scoped durable append/content-addressed persistence",
+        "run/task lookup and replay",
+        "retention and privacy lifecycle",
+        "multi-replica correctness"
+      ]
+    },
+    {
+      "id": "CONTEXT-RETRIEVAL-BACKENDS-002",
+      "status": "OPEN",
+      "owner": "NODE-35 / NODE-36 / Asset & Artifact adapters",
+      "summary": "Production Memory, Knowledge, Asset and Artifact retrieval sources remain external.",
+      "acceptance": [
+        "NODE-35 Memory source with exact scope permissions",
+        "NODE-36 Knowledge source with ACL and citations",
+        "Asset/Artifact source adapters with tenant-safe provenance"
+      ]
+    },
+    {
+      "id": "CONTEXT-TOKENIZER-003",
+      "status": "OPEN",
+      "owner": "NODE-22 Model Gateway composition",
+      "summary": "V1 uses an injectable conservative fallback token counter.",
+      "acceptance": [
+        "exact tokenizer selected from the resolved model profile",
+        "system and dynamic render counted with the same tokenizer",
+        "budget regression tests across supported model profiles"
+      ]
+    },
+    {
+      "id": "CONTEXT-CI-004",
+      "status": "BLOCKED_EXTERNAL",
+      "owner": "External GitHub account / Actions runner allocation",
+      "summary": "Preceding stacked nodes receive zero-step GitHub Actions failures from the account billing/spending-limit runner allocation condition.",
+      "acceptance": [
+        "NODE-34 workflow receives a real runner",
+        "compile executes",
+        "static contract validator executes",
+        "Ruff executes",
+        "15-case pytest executes green",
+        "gap ledger parse executes"
+      ]
+    }
+  ]
+}

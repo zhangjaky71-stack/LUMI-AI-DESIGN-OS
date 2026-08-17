@@ -1,0 +1,67 @@
+name: NODE-34 Context Engine
+
+on:
+  pull_request:
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/context_engine/**"
+      - "apps/agent-runtime/tests/test_context_engine_node34.py"
+      - "tools/node34/**"
+      - "docs/runtime/CONTEXT-ENGINE-V1.md"
+      - "reports/nodes/NODE-34/**"
+      - ".github/workflows/node-34-context-engine.yml"
+  push:
+    branches:
+      - "feat/node-34-context-engine"
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/context_engine/**"
+      - "apps/agent-runtime/tests/test_context_engine_node34.py"
+      - "tools/node34/**"
+      - "docs/runtime/CONTEXT-ENGINE-V1.md"
+      - "reports/nodes/NODE-34/**"
+
+permissions:
+  contents: read
+
+jobs:
+  context-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install contract test tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest pytest-asyncio ruff
+
+      - name: Compile NODE-34 sources
+        run: |
+          python -m compileall -q \
+            apps/agent-runtime/src/lumi_agent_runtime/context_engine \
+            apps/agent-runtime/tests/test_context_engine_node34.py \
+            tools/node34/validate_context_engine.py
+
+      - name: Validate Context Engine contract
+        run: |
+          python tools/node34/validate_context_engine.py
+
+      - name: Ruff
+        run: |
+          ruff check \
+            apps/agent-runtime/src/lumi_agent_runtime/context_engine \
+            apps/agent-runtime/tests/test_context_engine_node34.py \
+            tools/node34/validate_context_engine.py
+
+      - name: Pytest NODE-34
+        env:
+          PYTHONPATH: apps/agent-runtime/src
+        run: |
+          pytest -q apps/agent-runtime/tests/test_context_engine_node34.py
+
+      - name: Parse gap ledger
+        run: |
+          python -m json.tool reports/nodes/NODE-34/gap-ledger.json >/dev/null
