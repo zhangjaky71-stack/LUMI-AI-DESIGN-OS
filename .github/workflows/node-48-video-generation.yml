@@ -82,7 +82,9 @@ jobs:
           uv run pytest -q \
             services/video-generation/tests/test_video_generation.py \
             services/video-generation/tests/test_video_security.py \
-            services/video-generation/tests/test_video_codec.py
+            services/video-generation/tests/test_video_codec.py \
+            services/video-generation/tests/test_video_artifact_adapter.py \
+            services/video-generation/tests/test_video_state_edges.py
       - name: Ruff
         run: |
           uv run ruff check \
