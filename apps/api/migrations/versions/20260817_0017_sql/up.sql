@@ -37,6 +37,7 @@ CREATE TABLE video_generation_jobs (
   final_artifact_version_id UUID REFERENCES artifact_versions(id) ON DELETE SET NULL,
   final_durable_ref TEXT,
   provenance_json JSONB,
+  job_json JSONB NOT NULL,
   error_code VARCHAR(240),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT ck_video_generation_jobs_status CHECK (
@@ -64,6 +65,7 @@ CREATE TABLE video_generation_shots (
   status VARCHAR(32) NOT NULL,
   shot_json JSONB NOT NULL,
   validation_json JSONB,
+  artifact_version_id UUID REFERENCES artifact_versions(id) ON DELETE SET NULL,
   error_code VARCHAR(240),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (video_job_id, shot_id),
@@ -118,7 +120,11 @@ CREATE TABLE video_generation_clips (
   shot_id VARCHAR(160) NOT NULL,
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   retry_ordinal INTEGER NOT NULL,
+  artifact_version_id UUID REFERENCES artifact_versions(id) ON DELETE SET NULL,
   durable_ref TEXT NOT NULL,
+  bucket VARCHAR(128) NOT NULL,
+  storage_key TEXT NOT NULL,
+  size_bytes BIGINT NOT NULL,
   checksum_sha256 VARCHAR(64) NOT NULL,
   mime_type VARCHAR(80) NOT NULL,
   width INTEGER NOT NULL,
@@ -133,7 +139,10 @@ CREATE TABLE video_generation_clips (
   CONSTRAINT ck_video_clip_checksum CHECK (checksum_sha256 ~ '^[0-9a-f]{64}$'),
   CONSTRAINT ck_video_clip_probe CHECK (
     width > 0 AND height > 0 AND duration_seconds > 0 AND decodable_frames > 0
-    AND black_frame_ratio >= 0 AND black_frame_ratio <= 1
+    AND black_frame_ratio >= 0 AND black_frame_ratio <= 1 AND size_bytes > 0
+  ),
+  CONSTRAINT ck_video_clip_storage_key CHECK (
+    storage_key NOT LIKE 'http%' AND storage_key NOT LIKE '%X-Amz-Signature%'
   )
 );
 
