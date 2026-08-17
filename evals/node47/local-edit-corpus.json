@@ -1,0 +1,35 @@
+{
+  "cases_per_scenario": 25,
+  "scenarios": [
+    {
+      "name": "product-unchanged",
+      "route": "PIXEL_LOCAL_EDIT",
+      "protected": "PRODUCT",
+      "expect": "MODEL"
+    },
+    {
+      "name": "logo-unchanged",
+      "route": "PIXEL_LOCAL_EDIT",
+      "protected": "LOGO",
+      "expect": "MODEL"
+    },
+    {
+      "name": "qr-decodable",
+      "route": "PIXEL_LOCAL_EDIT",
+      "protected": "QR",
+      "expect": "MODEL"
+    },
+    {
+      "name": "background-changed",
+      "route": "PIXEL_LOCAL_EDIT",
+      "protected": null,
+      "expect": "MODEL"
+    },
+    {
+      "name": "structural-title-resize",
+      "route": "STRUCTURAL_IR_EDIT",
+      "protected": null,
+      "expect": "NO_MODEL"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "node": "NODE-47",
+  "status": "IMPLEMENTED / VALIDATING",
+  "gaps": [
+    {
+      "id": "C47-G01",
+      "priority": "P0",
+      "name": "live-provider-local-edit-benchmark",
+      "description": "Run approved NODE-23 provider/model revisions on real A-E local-edit goldens covering product, logo, QR, background-change, and structural-no-model cases; freeze quality, latency, fallback, and cost evidence."
+    },
+    {
+      "id": "C47-G02",
+      "priority": "P0",
+      "name": "production-mask-output-compositor-media",
+      "description": "Deploy production segmentation/mask preview, provider-output fetch, durable storage, media safety, alpha/mask validation, and protected-pixel compositing adapters."
+    },
+    {
+      "id": "C47-G03",
+      "priority": "P0",
+      "name": "live-postgresql-artifact-designir-concurrency-acceptance",
+      "description": "Execute migration 0016 upgrade/downgrade, operation-id concurrency, pending recovery, NODE-42 Artifact head CAS, Design IR document-version CAS, and Canvas replace-asset acceptance against live PostgreSQL."
+    },
+    {
+      "id": "C47-G04",
+      "priority": "P0",
+      "name": "protected-region-qr-ocr-brand-identity-calibration",
+      "description": "Calibrate production raster visual-diff, QR decode, locked-text OCR, NODE-43 Brand, NODE-44 Identity, and intended-change thresholds on representative production media."
+    },
+    {
+      "id": "C47-G05",
+      "priority": "P1",
+      "name": "durable-node19-edit-workers-and-reconciliation",
+      "description": "Run image edits on durable NODE-19 workers with polling/webhooks, retry/backoff, DLQ, cancellation, accepted-provider-error reconciliation, and operational observability."
+    }
+  ]
+}
