@@ -2,9 +2,9 @@
 
 ## Status
 
-`IMPLEMENTED / VALIDATING`
+`IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL`
 
-Hosted GitHub Actions PASS is not claimed until the dedicated workflow executes on an allocated runner.
+Hosted GitHub Actions PASS is not claimed.
 
 ## Delivered
 
@@ -33,12 +33,29 @@ Observed against the exact local NODE-42 candidate in the isolated environment:
 7 passed in 0.21s
 NODE42_ARTIFACT_ENGINE_RUNTIME_SMOKE_PASS
 versions=4 lineage=6 outbox=8 gc_audits=2
+NODE42_ARTIFACT_ENGINE_VALIDATION_PASS
+required_endpoints=8
+production_gaps=5
 NODE42_PYTHON_COMPILEALL_PASS
 ```
 
 The P0 suite covers optional-v1 atomic creation, concurrent branch-head CAS, fork/restore, multi-parent lineage, approved immutability, storage rejection, cross-tenant equal-hash isolation, and live-reference GC protection.
 
 No live PostgreSQL service, repository-pinned Python 3.12/uv environment, Ruff, Pyright, or hosted CI execution is claimed locally.
+
+## Hosted runner evidence
+
+The first dedicated workflow attempt for PR #109 is run `32018706134`. Its `artifact-engine` job `95353573671` ended before runner allocation with:
+
+```text
+status=completed
+conclusion=failure
+runner_id=0
+runner_name=""
+steps=[]
+```
+
+No checkout, Python setup, uv setup, frozen workspace install, NODE-42 pytest, static validator, migration compile, gap parse, Ruff, or Pyright step executed. This is classified as `BLOCKED_EXTERNAL`, consistent with the runner-allocation blocker on the preceding stacked nodes. It is not a NODE-42 code, migration, or test failure.
 
 ## Database qualification
 
