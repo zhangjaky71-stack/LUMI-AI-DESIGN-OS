@@ -71,7 +71,12 @@ class VideoArtifactPort(Protocol):
         clip: StoredVideoClip,
     ) -> str: ...
 
-    async def append_final(self, *, job: VideoJob, video: RenderedVideo) -> str: ...
+    async def append_final(
+        self,
+        *,
+        job: VideoJob,
+        video: RenderedVideo,
+    ) -> str: ...
 
 
 class VideoRepositoryPort(Protocol):
@@ -81,4 +86,9 @@ class VideoRepositoryPort(Protocol):
 
     def save(self, job: VideoJob) -> VideoJob: ...
 
-    def claim_webhook(self, provider: str, event_id: str) -> bool: ...
+    def claim_webhook(
+        self,
+        organization_id: str,
+        provider: str,
+        event_id: str,
+    ) -> bool: ...
