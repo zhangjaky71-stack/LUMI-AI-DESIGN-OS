@@ -2,9 +2,9 @@
 
 ## Status
 
-`IMPLEMENTED / VALIDATING`
+`IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL`
 
-Hosted GitHub Actions PASS is not claimed until the dedicated workflow runs on an allocated runner.
+Hosted GitHub Actions PASS is not claimed.
 
 ## Delivered
 
@@ -52,6 +52,28 @@ The compact final suite comprises six broad service/runtime contract tests plus 
 
 No live PostgreSQL/pgvector service, real OCR/vision/embedding provider, durable queue worker, real-world retrieval calibration, repository-pinned Python 3.12/uv, Ruff, Pyright or hosted CI PASS is claimed from the isolated environment.
 
+## Hosted runner evidence
+
+The first dedicated PR workflow attempt is run `32031749677`, job
+`95393102199`, on implementation head
+`611c0e793f0a482eba32f0b88b3b41732fb9944b`. It completed before runner
+allocation with:
+
+```text
+status=completed
+conclusion=failure
+runner_id=0
+runner_name=""
+steps=[]
+```
+
+No checkout, Python setup, uv setup, frozen workspace installation, NODE-45
+runtime/NODE-44 adapter tests, deterministic eval, runtime smoke, static
+validator, migration/runtime compile, gap parse, Ruff or Pyright step executed.
+This is classified as `BLOCKED_EXTERNAL`, consistent with the runner-allocation
+failure on the preceding stacked nodes. It is not evidence of an Asset
+Intelligence code, migration, search, rights, reindex or test failure.
+
 ## Database qualification
 
 Migration `20260817_0014` creates version counters, index snapshots, derived analysis records and usage signals. Database triggers validate same-tenant Asset/Index/Project/Brand/Embedding relationships. A partial unique index guarantees at most one ACTIVE index per organization. Usage feedback is database-constrained from becoming a training-authorization grant.
@@ -63,5 +85,13 @@ A real PostgreSQL migration, pgvector round-trip, concurrent version reservation
 ## Production gaps
 
 Exactly five are tracked in `gap-ledger.json`.
+
+## Hosted acceptance gate
+
+Before NODE-45 can be COMPLETE, an allocated runner must execute the frozen
+workspace install, NODE-45/NODE-44 integration tests, eval, smoke, static
+validator, compile/ledger checks, Ruff, Pyright and relevant repository gates.
+Production analyzer, database, worker, relevance/load and lifecycle gaps then
+require their own real-service evidence.
 
 Next node: **NODE-46 — Image Generation**.
