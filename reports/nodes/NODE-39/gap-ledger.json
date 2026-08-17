@@ -1,0 +1,36 @@
+{
+  "node": "NODE-39",
+  "version": 1,
+  "gaps": [
+    {
+      "id": "K39-G01",
+      "name": "real-qr-raster-decode",
+      "status": "OPEN",
+      "detail": "QR geometry, quiet-zone, contrast and decoder-unavailable semantics are implemented. Production rasterization plus a real QR decoder adapter is still required for rendered-output decode proof."
+    },
+    {
+      "id": "K39-G02",
+      "name": "production-text-measurement",
+      "status": "OPEN",
+      "detail": "CJK-safe measurement semantics are implemented and fail closed when unavailable. Browser/server shaping adapters backed by the actual rendering font stack remain to be wired."
+    },
+    {
+      "id": "K39-G03",
+      "name": "identity-feature-baseline",
+      "status": "OPEN",
+      "detail": "Identity threshold validation and unavailable handling are implemented. Governed visual-feature baselines, model versions and calibrated thresholds remain production integration work."
+    },
+    {
+      "id": "K39-G04",
+      "name": "all-mutation-export-entrypoints",
+      "status": "OPEN",
+      "detail": "NODE-38-compatible preflight and batch/export gates exist. Canvas, Agent, worker and export entrypoints still require repository-wide migration/audit so none can bypass the validator."
+    },
+    {
+      "id": "K39-G05",
+      "name": "bounded-external-validator-execution",
+      "status": "OPEN",
+      "detail": "Adapter absence/errors fail closed for HARD rules. Production timeout/circuit-breaker execution and durable validation telemetry remain to be integrated around expensive external validators."
+    }
+  ]
+}
