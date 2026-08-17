@@ -2,90 +2,136 @@
 
 ## Status
 
-`IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL`
+`IMPLEMENTED / VALIDATING / not COMPLETE`
 
-Hosted PASS is not claimed. The first NODE-36 PR workflow attempt was blocked before checkout and
-before any repository test or lint step could execute.
+The current branch contains changes newer than the earlier hosted run. No hosted PASS or current-head
+`BLOCKED_EXTERNAL` classification is claimed until the latest head receives its own workflow/job
+evidence.
 
 ## Delivered
 
-- six P0 knowledge source types;
-- structured extracted-section ingestion with page/section preservation;
-- immutable content-addressed Knowledge documents and chunks;
-- parser/chunker/embedding/index version contracts;
-- tenant/project/brand/scope authorization;
-- project/brand permission scopes bound to their concrete entities;
-- permission filtering before lexical/vector scoring;
-- hybrid lexical + vector retrieval;
-- content-hash dedupe and per-document diversity;
-- source/page/section citations;
-- original-query preservation for query expansion;
-- stale source warnings and fresh-only mode;
-- reindex into a new embedding/index version;
-- deletion propagation to retrieval;
-- NODE-34 `KNOWLEDGE` context adapter with `UNTRUSTED_RETRIEVED` trust and zero authority;
-- deterministic benchmark fixtures;
-- static architecture/contract validator;
-- explicit production gap ledger.
+### Knowledge identity and sources
 
-## Local isolated verification
+- six P0 knowledge source classes;
+- tenant/project/brand/scope-bound access context;
+- source refs and source freshness timestamps;
+- structured page/section evidence;
+- deterministic content/document/chunk identities;
+- parser/chunker/embedding/index version identity.
 
-The local scratch environment was not a complete repository checkout, so a minimal NODE-34 Context
-Engine compatibility stub was used only to import and execute the actual NODE-36 package. It was not
-committed and is not a substitute for hosted repository integration.
+### Ingestion
 
-Current evidence:
+- `KnowledgeExtractionPort` for trusted Asset/Tool/Sandbox composition;
+- native extraction always attempted before OCR;
+- OCR accepted only as an explicit fallback result;
+- extraction completes before durable Knowledge mutation;
+- `KnowledgeIngestionService` converts extracted sections to the indexed corpus;
+- no provider SDK, database SDK, host shell, arbitrary HTTP client, or source credential in the
+  Knowledge package.
 
-- NODE-36 pytest: `14/14 PASS`;
-- Python compileall: PASS;
-- static validator: `NODE36_KNOWLEDGE_ENGINE_VALIDATION_PASS`;
-- retrieval fixtures: `14` parsed;
-- production gap ledger: `5` entries parsed;
-- source/test 100-character audit: PASS with 0 violations.
+### Durable persistence
 
-Local Ruff/Pyright are not claimed because those tools were not available in the isolated scratch
-runtime. They remain mandatory hosted gates.
+- `GitWorkspaceKnowledgeStore` on the canonical `feat/node-*` persistence model;
+- immutable complete version manifests;
+- fsync + atomic `os.replace` writes;
+- active source-head manifest;
+- crash-safe ordering: complete version before head activation;
+- startup reconstruction and corruption checks;
+- retrieval survives process restart;
+- deleted active head does not automatically expose the previous index.
 
-## Hosted Actions evidence
+### Reindex / rollback
 
-PR #103 first triggered dedicated workflow run `32005584825` at head
-`e9f8f78d96435e4549b2aa537669492c0091adb1`.
+- document identity includes source/content/index version;
+- reindex creates a separate historical document identity;
+- previous versions remain addressable;
+- active source head moves only after the new version is complete;
+- replaying an old exact request is idempotent and does not roll the active index backward;
+- explicit authorized `rollback_index()`;
+- active head survives restart;
+- deleting current head does not implicitly resurrect older history.
 
-The `knowledge-engine` job `95314273504` ended with:
+### Retrieval
 
-```text
-status=completed
-conclusion=failure
-steps=[]
-```
+- scope/tenant/project/brand filter before scoring;
+- only active source heads enter scoring;
+- lexical + vector hybrid scoring;
+- dimension mismatch fails semantic contribution closed to zero while lexical retrieval remains;
+- content-hash dedupe;
+- per-document diversity;
+- query expansion preserves the original query and does not become evidence;
+- stale warning and fresh-only behavior.
 
-No checkout, frozen install, pytest, Ruff, Pyright, benchmark parsing, or validator step ran. This is
-therefore classified as `BLOCKED_EXTERNAL`, consistent with the hosted runner-allocation blocker on
-the preceding stacked nodes. It must not be represented as a code or test failure.
+### Citations and Context
+
+- document/chunk/source/page/section citation round-trip;
+- NODE-34 `ContextKind.KNOWLEDGE`;
+- `L4_RETRIEVED`;
+- `UNTRUSTED_RETRIEVED`;
+- `InstructionAuthority.NONE`;
+- knowledge document text cannot alter Agent/system instruction authority.
+
+### Quality assets
+
+- deterministic hybrid benchmark corpus;
+- contract/security tests;
+- durable restart/extraction/reindex/rollback tests;
+- static architecture validator;
+- gap ledger distinguishing P0 correctness from external adapters/scale optimizations;
+- dedicated Python 3.12 + frozen uv + pytest + Ruff + Pyright workflow.
+
+## Required tests authored
+
+The test suite covers at least:
+
+- PDF-style page/section citation;
+- cross-tenant ingest denial;
+- cross-project retrieval isolation;
+- permission prefilter;
+- brand membership;
+- malicious retrieved instruction → zero authority;
+- exact-identifier hybrid ranking;
+- query-expansion provenance;
+- stale include/exclude;
+- deterministic identity;
+- deletion propagation;
+- native-before-OCR;
+- OCR fallback;
+- durable store restart;
+- reindex retaining history and moving active head;
+- active head surviving restart;
+- explicit rollback;
+- delete current head without prior-index resurrection.
 
 ## Security assertions
 
-- Cross-organization documents never enter candidate scoring.
-- Project-scoped documents never cross project boundaries.
-- Brand-scoped documents require brand membership and matching brand scope identity.
-- Retrieval permission filtering happens before vector/keyword scoring.
-- Retrieved content cannot gain SYSTEM/AGENT/USER instruction authority.
-- Query expansion is retrieval input only and never evidence by itself.
-- Deleted documents cannot remain retrievable.
-- Mixed embedding index versions are explicitly visible to the caller.
+- Tenant/project/brand/scope selection occurs before lexical/vector scoring.
+- Only active source heads enter retrieval candidates.
+- Knowledge content never receives system/agent/user instruction authority.
+- Knowledge package imports no provider SDK, SQL/vector DB SDK, subprocess, or broad HTTP client.
+- Extraction adapters operate through explicit ports instead of ambient host/source authority.
+- Production embedding is represented by a provider-neutral port.
+- Old index replay cannot silently alter active source selection.
 
-## Production qualification
+## Remaining external/composition boundaries
 
-NODE-36 freezes the runtime contract but does not claim the following adapters are complete:
+`reports/nodes/NODE-36/gap-ledger.json` is authoritative.
 
-- native binary PDF/DOCX parsing and OCR fallback;
-- PostgreSQL FTS + pgvector durable store;
-- governed production embedding provider;
-- scheduled web refresh;
-- blue/green durable reindex orchestration.
+- Concrete PDF/DOCX/OCR source readers remain injected NODE-18/Tool/Sandbox adapters.
+- Production embedding composition must bind `KnowledgeEmbeddingPort` to the governed model layer.
+- Scheduled external/web refresh belongs to research/source refresh orchestration.
+- PostgreSQL FTS/pgvector remains an optional scale backend, not a canonical P0 correctness
+  dependency in the current Git-workspace Agent-stack.
 
-These are tracked in `reports/nodes/NODE-36/gap-ledger.json` and must be closed before production
-knowledge persistence is declared complete.
+## Hosted validation discipline
+
+The previous NODE-36 head had a runner-allocation failure before checkout. That historical result does
+not validate this newer head. After the current Draft PR head is observed:
+
+- if a runner executes and a step fails, it is an engineering defect to fix;
+- if `steps=[]`, `runner_id=0`, and the GitHub billing/spending annotation is present, classify the
+  latest head as `BLOCKED_EXTERNAL`;
+- only all required green jobs may move NODE-36 to COMPLETE.
 
 Canonical design: `docs/runtime/KNOWLEDGE-ENGINE-V1.md`
 
