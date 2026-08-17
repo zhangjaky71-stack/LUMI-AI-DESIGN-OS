@@ -1,0 +1,41 @@
+{
+  "node": "NODE-40",
+  "status": "IMPLEMENTED_VALIDATING",
+  "gaps": [
+    {
+      "id": "C40-G01",
+      "name": "pinned-pixijs-browser-wiring",
+      "severity": "P0",
+      "status": "OPEN",
+      "description": "PixiJS v8 remains the renderer baseline and the adapter contract is implemented, but the current frozen pnpm lock does not contain pixi.js. A pinned workspace dependency and real browser binding must be added without breaking frozen installs."
+    },
+    {
+      "id": "C40-G02",
+      "name": "browser-interaction-e2e",
+      "severity": "P0",
+      "status": "OPEN",
+      "description": "Playwright browser E2E for wheel/pinch zoom, pointer transforms, DOM text overlay, Chinese IME, keyboard focus and resize/DPR must run against the real web host."
+    },
+    {
+      "id": "C40-G03",
+      "name": "gpu-texture-lifecycle-telemetry",
+      "severity": "P0",
+      "status": "OPEN",
+      "description": "Ref-count/LRU lifecycle is implemented at the resource contract layer; real Pixi/WebGL/WebGPU GPU texture allocation and release must be instrumented and leak-tested."
+    },
+    {
+      "id": "C40-G04",
+      "name": "node08-standard-machine-performance-gate",
+      "severity": "P0",
+      "status": "OPEN",
+      "description": "2k/10k structural CPU measurements exist, but near-60fps normal-scene and stress budgets require the NODE-08 standard-machine browser/GPU harness."
+    },
+    {
+      "id": "C40-G05",
+      "name": "safari-macos-validation",
+      "severity": "P1",
+      "status": "OPEN",
+      "description": "Safari/macOS rendering, IME, clipboard and input behavior remain unverified until a macOS runner or manual validation lane is available."
+    }
+  ]
+}
