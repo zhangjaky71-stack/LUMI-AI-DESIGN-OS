@@ -5,9 +5,13 @@ from decimal import Decimal
 
 import pytest
 
-from lumi_video_generation.media_sandbox import FfmpegArgvCompiler, FfmpegInvocation
+from lumi_video_generation.media_sandbox import (
+    FfmpegArgvCompiler,
+    FfmpegInvocation,
+)
 from lumi_video_generation.model import (
     CompiledShot,
+    DurableVideoObject,
     GatewayVideoResult,
     ShotSpec,
     SourceImageRef,
@@ -54,7 +58,12 @@ def spec(identity_refs=("identity-product",), brand="brand-v1"):
 def clip(*, width=1280, black_ratio="0"):
     return StoredVideoClip(
         shot_id="s1",
-        durable_ref="asset:clip:s1",
+        object=DurableVideoObject(
+            durable_ref="asset:clip:s1",
+            bucket="generated-video",
+            storage_key="video/s1.mp4",
+            size_bytes=1024,
+        ),
         checksum_sha256="b" * 64,
         probe=VideoProbeResult(
             mime_type="video/mp4",
@@ -120,7 +129,13 @@ def test_provider_safety_and_black_frames_are_hard_rejections():
 def test_ffmpeg_compiler_uses_argv_and_rejects_protocol_inputs():
     timeline = VideoTimeline(
         clips=(
-            TimelineClip("s1", "asset:clip:s1", Decimal("0"), Decimal("4"), "CUT"),
+            TimelineClip(
+                "s1",
+                "asset:clip:s1",
+                Decimal("0"),
+                Decimal("4"),
+                "CUT",
+            ),
         ),
         width=1280,
         height=720,
@@ -140,5 +155,28 @@ def test_ffmpeg_compiler_uses_argv_and_rejects_protocol_inputs():
             local_clip_paths=("https://evil.example/input.mp4",),
             output_path="/sandbox/output/final.mp4",
         )
+    with pytest.raises(ValueError, match="TOKEN"):
+        compiler.compile(
+            timeline=timeline,
+            local_clip_paths=("/sandbox/input/s1;touch-x.mp4",),
+            output_path="/sandbox/output/final.mp4",
+        )
     with pytest.raises(ValueError, match="SHELL"):
         FfmpegInvocation(("ffmpeg", "-version"), shell=True)
+
+
+def test_durable_video_object_rejects_public_urls():
+    with pytest.raises(ValueError, match="internal"):
+        DurableVideoObject(
+            durable_ref="https://cdn.example/video.mp4",
+            bucket="generated-video",
+            storage_key="video/final.mp4",
+            size_bytes=1,
+        )
+    with pytest.raises(ValueError, match="cannot be a URL"):
+        DurableVideoObject(
+            durable_ref="asset:video:1",
+            bucket="generated-video",
+            storage_key="https://cdn.example/video.mp4",
+            size_bytes=1,
+        )
