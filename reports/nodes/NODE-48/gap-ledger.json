@@ -1,0 +1,36 @@
+{
+  "node": "NODE-48",
+  "status": "IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "gaps": [
+    {
+      "id": "NODE48-GAP-01",
+      "severity": "P0",
+      "title": "Live provider/model acceptance",
+      "completion_gate": "Approve real text-to-video and image-to-video model revisions through NODE-23 evidence for motion quality, start-frame adherence, product/identity/brand continuity, latency, cost, fallback and cancellation behavior."
+    },
+    {
+      "id": "NODE48-GAP-02",
+      "severity": "P0",
+      "title": "Production media adapters and sandbox",
+      "completion_gate": "Bind provider-output staging, media probe, object storage, local materialization and FFmpeg executor to production NODE-18/NODE-21 infrastructure with sandbox resource enforcement and binary format acceptance."
+    },
+    {
+      "id": "NODE48-GAP-03",
+      "severity": "P0",
+      "title": "Durable worker and webhook runtime",
+      "completion_gate": "Bind NODE-19 scheduling/webhooks/DLQ/reconciliation to the implemented PostgresVideoRepository provider-job state with transactional claims, restart recovery, duplicate-delivery, polling-attempt accounting and crash/replay tests."
+    },
+    {
+      "id": "NODE48-GAP-04",
+      "severity": "P0",
+      "title": "Artifact idempotency and multi-frame validation acceptance",
+      "completion_gate": "Execute the implemented NODE-42 VIDEO ArtifactVersion/COMPOSED_FROM adapter on real database and object storage, prove crash/retry artifact idempotency, and calibrate production NODE-43/NODE-44 sampled-frame product/logo/character continuity validators."
+    },
+    {
+      "id": "NODE48-GAP-05",
+      "severity": "P0",
+      "title": "Hosted and live infrastructure acceptance",
+      "completion_gate": "Clear the GitHub Actions account Billing/Spending Limit blocker, then execute NODE-48 contract, quality, PostgreSQL and benchmark jobs on hosted runners and complete live PostgreSQL/storage/provider cancellation and monetary reconciliation acceptance."
+    }
+  ]
+}
