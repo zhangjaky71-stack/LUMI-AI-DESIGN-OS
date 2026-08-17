@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from lumi_video_generation import ShotStatus, VideoJob
-from lumi_video_generation.repository import VideoOperationConflict
 from lumi_api.persistence.models_video_generation import (
     VideoGenerationClipModel,
     VideoGenerationCostProjectionModel,
@@ -18,8 +17,10 @@ from lumi_api.persistence.models_video_generation import (
     VideoProviderJobModel,
     VideoWebhookDedupeModel,
 )
+from lumi_video_generation import ShotRuntime, ShotStatus, VideoJob
+from lumi_video_generation.repository import VideoOperationConflict
 
-from .codec import encode_job, encode_spec
+from .codec import decode_job, encode_job, encode_spec
 
 
 class PostgresVideoRepository:
@@ -43,11 +44,12 @@ class PostgresVideoRepository:
                 raise VideoOperationConflict(
                     "VIDEO_OPERATION_ID_REUSED_WITH_DIFFERENT_SPEC"
                 )
-            existing = self.session.get(VideoGenerationJobModel, prior.video_job_id)
+            existing = self.session.get(
+                VideoGenerationJobModel,
+                prior.video_job_id,
+            )
             if existing is None:
                 raise RuntimeError("VIDEO_OPERATION_BOUND_WITHOUT_JOB")
-            from .codec import decode_job
-
             return decode_job(dict(existing.job_json))
 
         spec_row = VideoGenerationSpecModel(
@@ -74,12 +76,13 @@ class PostgresVideoRepository:
         row = self.session.get(VideoGenerationJobModel, UUID(job_id))
         if row is None:
             raise KeyError("VIDEO_JOB_NOT_FOUND")
-        from .codec import decode_job
-
         return decode_job(dict(row.job_json))
 
     def save(self, job: VideoJob) -> VideoJob:
-        spec = self.session.get(VideoGenerationSpecModel, UUID(job.job_id))
+        spec = self.session.get(
+            VideoGenerationSpecModel,
+            UUID(job.job_id),
+        )
         if spec is None:
             raise KeyError("VIDEO_JOB_NOT_FOUND")
         if (
@@ -95,7 +98,8 @@ class PostgresVideoRepository:
         job_id = UUID(job.job_id)
         organization_id = UUID(job.spec.organization_id)
         row = self.session.get(VideoGenerationJobModel, job_id)
-        values = {
+        encoded = encode_job(job)
+        values: dict[str, Any] = {
             "organization_id": organization_id,
             "status": job.status.value,
             "final_artifact_version_id": (
@@ -107,36 +111,50 @@ class PostgresVideoRepository:
                 job.final_video.durable_ref if job.final_video else None
             ),
             "provenance_json": (
-                encode_job(job).get("provenance")
+                encoded.get("provenance")
                 if job.provenance is not None
                 else None
             ),
-            "job_json": encode_job(job),
+            "job_json": encoded,
             "error_code": job.error_code,
             "updated_at": datetime.now(UTC),
         }
         if row is None:
-            self.session.add(VideoGenerationJobModel(video_job_id=job_id, **values))
+            self.session.add(
+                VideoGenerationJobModel(
+                    video_job_id=job_id,
+                    **values,
+                )
+            )
         else:
             for key, value in values.items():
                 setattr(row, key, value)
-        self._sync_shots(job)
+        self._sync_shots(job, encoded)
 
-    def _sync_shots(self, job: VideoJob) -> None:
+    def _sync_shots(
+        self,
+        job: VideoJob,
+        encoded_job: dict[str, Any],
+    ) -> None:
         job_id = UUID(job.job_id)
         organization_id = UUID(job.spec.organization_id)
-        encoded = encode_job(job)
         encoded_shots = {
-            item["compiled"]["shot_id"]: item for item in encoded["shots"]
+            str(item["compiled"]["shot_id"]): item
+            for item in encoded_job["shots"]
         }
         for runtime in job.shots:
             shot_id = runtime.compiled.shot.shot_id
-            row = self.session.get(VideoGenerationShotModel, (job_id, shot_id))
-            values = {
+            row = self.session.get(
+                VideoGenerationShotModel,
+                (job_id, shot_id),
+            )
+            values: dict[str, Any] = {
                 "organization_id": organization_id,
                 "ordinal": runtime.compiled.index,
                 "retry_ordinal": runtime.compiled.retry_ordinal,
-                "paid_operation_id": UUID(runtime.compiled.paid_operation_id),
+                "paid_operation_id": UUID(
+                    runtime.compiled.paid_operation_id
+                ),
                 "status": runtime.status.value,
                 "shot_json": encoded_shots[shot_id],
                 "validation_json": (
@@ -165,10 +183,18 @@ class PostgresVideoRepository:
                     setattr(row, key, value)
             self.session.flush()
             self._sync_provider(job, runtime)
-            self._sync_clip(job, runtime, encoded_shots[shot_id])
+            self._sync_clip(
+                job,
+                runtime,
+                encoded_shots[shot_id],
+            )
             self._sync_cost(job, runtime)
 
-    def _sync_provider(self, job: VideoJob, runtime) -> None:
+    def _sync_provider(
+        self,
+        job: VideoJob,
+        runtime: ShotRuntime,
+    ) -> None:
         job_id = UUID(job.job_id)
         key = (
             job_id,
@@ -178,21 +204,32 @@ class PostgresVideoRepository:
         row = self.session.get(VideoProviderJobModel, key)
         pending = runtime.pending
         if pending is not None:
-            values = {
+            provider_request_id = pending.result.provider_request_id
+            if not provider_request_id:
+                raise ValueError("VIDEO_PROVIDER_JOB_ID_REQUIRED")
+            values: dict[str, Any] = {
                 "organization_id": UUID(job.spec.organization_id),
                 "provider": pending.result.provider,
                 "model": pending.result.model,
                 "capability": pending.capability,
-                "provider_request_id": pending.result.provider_request_id or "unknown",
-                "poll_attempts": 0 if row is None else row.poll_attempts + 1,
-                "last_polled_at": None if row is None else datetime.now(UTC),
-                "terminal_status": self._terminal_status(runtime.status),
+                "provider_request_id": provider_request_id,
+                "poll_attempts": (
+                    0 if row is None else row.poll_attempts + 1
+                ),
+                "last_polled_at": (
+                    None if row is None else datetime.now(UTC)
+                ),
+                "terminal_status": self._terminal_status(
+                    runtime.status
+                ),
                 "result_json": {
                     "status": pending.result.status,
                     "provider": pending.result.provider,
                     "model": pending.result.model,
-                    "provider_request_id": pending.result.provider_request_id,
-                    "pricing_snapshot_id": pending.result.pricing_snapshot_id,
+                    "provider_request_id": provider_request_id,
+                    "pricing_snapshot_id": (
+                        pending.result.pricing_snapshot_id
+                    ),
                     "routing_reason_codes": list(
                         pending.result.routing_reason_codes
                     ),
@@ -225,7 +262,12 @@ class PostgresVideoRepository:
             return "CANCELLED"
         return None
 
-    def _sync_clip(self, job: VideoJob, runtime, encoded_runtime) -> None:
+    def _sync_clip(
+        self,
+        job: VideoJob,
+        runtime: ShotRuntime,
+        encoded_runtime: dict[str, Any],
+    ) -> None:
         if runtime.clip is None:
             return
         job_id = UUID(job.job_id)
@@ -236,7 +278,7 @@ class PostgresVideoRepository:
         )
         row = self.session.get(VideoGenerationClipModel, key)
         clip = runtime.clip
-        values = {
+        values: dict[str, Any] = {
             "organization_id": UUID(job.spec.organization_id),
             "artifact_version_id": (
                 UUID(runtime.artifact_version_id)
@@ -269,11 +311,15 @@ class PostgresVideoRepository:
             for key_name, value in values.items():
                 setattr(row, key_name, value)
 
-    def _sync_cost(self, job: VideoJob, runtime) -> None:
-        provider = None
-        model = None
-        provider_request_id = None
-        pricing_snapshot_id = None
+    def _sync_cost(
+        self,
+        job: VideoJob,
+        runtime: ShotRuntime,
+    ) -> None:
+        provider: str | None = None
+        model: str | None = None
+        provider_request_id: str | None = None
+        pricing_snapshot_id: str | None = None
         if runtime.clip is not None:
             provider = runtime.clip.provider
             model = runtime.clip.model
@@ -282,7 +328,9 @@ class PostgresVideoRepository:
             provider = runtime.pending.result.provider
             model = runtime.pending.result.model
             provider_request_id = runtime.pending.result.provider_request_id
-            pricing_snapshot_id = runtime.pending.result.pricing_snapshot_id
+            pricing_snapshot_id = (
+                runtime.pending.result.pricing_snapshot_id
+            )
         if provider is None or model is None:
             return
         job_id = UUID(job.job_id)
@@ -291,8 +339,11 @@ class PostgresVideoRepository:
             runtime.compiled.shot.shot_id,
             runtime.compiled.retry_ordinal,
         )
-        row = self.session.get(VideoGenerationCostProjectionModel, key)
-        values = {
+        row = self.session.get(
+            VideoGenerationCostProjectionModel,
+            key,
+        )
+        values: dict[str, Any] = {
             "operation_id": UUID(runtime.compiled.paid_operation_id),
             "provider": provider,
             "model": model,
@@ -315,17 +366,19 @@ class PostgresVideoRepository:
             for key_name, value in values.items():
                 setattr(row, key_name, value)
 
-    def claim_webhook(self, provider: str, event_id: str) -> bool:
-        if not provider or not event_id:
+    def claim_webhook(
+        self,
+        organization_id: str,
+        provider: str,
+        event_id: str,
+    ) -> bool:
+        if not organization_id or not provider or not event_id:
             raise ValueError("VIDEO_WEBHOOK_IDENTITY_REQUIRED")
-        organization_id = self.session.info.get("organization_id")
-        if organization_id is None:
-            raise ValueError("VIDEO_WEBHOOK_ORGANIZATION_SCOPE_REQUIRED")
         try:
             with self.session.begin_nested():
                 self.session.add(
                     VideoWebhookDedupeModel(
-                        organization_id=UUID(str(organization_id)),
+                        organization_id=UUID(organization_id),
                         provider=provider,
                         event_id=event_id,
                     )
