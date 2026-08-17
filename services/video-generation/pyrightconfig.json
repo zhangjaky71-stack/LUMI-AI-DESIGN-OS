@@ -1,0 +1,7 @@
+{
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "standard",
+  "include": ["src", "tests", "../../tools/node48"],
+  "extraPaths": ["src", "../model-gateway/src"],
+  "exclude": ["**/__pycache__"]
+}
