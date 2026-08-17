@@ -51,6 +51,12 @@ class SourceImageRef:
     def __post_init__(self) -> None:
         if len(self.checksum_sha256) != 64:
             raise ValueError("source checksum must be sha256")
+        try:
+            int(self.checksum_sha256, 16)
+        except ValueError as exc:
+            raise ValueError("source checksum must be lowercase hex sha256") from exc
+        if self.checksum_sha256.lower() != self.checksum_sha256:
+            raise ValueError("source checksum must be lowercase hex sha256")
         if not self.durable_ref:
             raise ValueError("source durable_ref is required")
 
@@ -96,10 +102,13 @@ class VideoTaskSpec:
     recipe_id: str | None = None
     skill_refs: tuple[str, ...] = ()
     git_commit: str | None = None
+    user_use_declaration: str | None = None
 
     def __post_init__(self) -> None:
         if not self.organization_id or not self.project_id or not self.task_id:
             raise ValueError("tenant/project/task identifiers are required")
+        if not self.operation_id:
+            raise ValueError("operation_id is required")
         if self.width <= 0 or self.height <= 0 or self.fps <= 0:
             raise ValueError("video dimensions and fps must be positive")
         if self.width > 8192 or self.height > 8192 or self.fps > 120:
@@ -110,6 +119,15 @@ class VideoTaskSpec:
             raise ValueError("shot_id must be unique")
         if self.budget_limit_usd is not None and self.budget_limit_usd < 0:
             raise ValueError("budget limit cannot be negative")
+        if self.git_commit is not None:
+            if len(self.git_commit) != 40:
+                raise ValueError("git_commit must be a 40-character git sha")
+            try:
+                int(self.git_commit, 16)
+            except ValueError as exc:
+                raise ValueError("git_commit must be lowercase hexadecimal") from exc
+            if self.git_commit.lower() != self.git_commit:
+                raise ValueError("git_commit must be lowercase hexadecimal")
 
     @property
     def total_duration_seconds(self) -> Decimal:
@@ -205,6 +223,7 @@ class ShotRuntime:
     clip: StoredVideoClip | None = None
     validation: ShotValidationReport | None = None
     actual_cost_usd: Decimal = Decimal("0")
+    artifact_version_id: str | None = None
     error_code: str | None = None
 
 
@@ -247,6 +266,7 @@ class ShotProvenance:
     identity_refs: tuple[str, ...]
     rights_snapshot_ids: tuple[str, ...]
     cost_usd: Decimal
+    artifact_version_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,6 +290,7 @@ class VideoJob:
     shots: tuple[ShotRuntime, ...]
     final_video: RenderedVideo | None = None
     provenance: FinalVideoProvenance | None = None
+    final_artifact_version_id: str | None = None
     error_code: str | None = None
 
 
