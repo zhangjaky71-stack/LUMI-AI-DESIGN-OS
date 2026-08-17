@@ -2,9 +2,9 @@
 
 ## Status
 
-`IMPLEMENTED / VALIDATING`
+`IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL`
 
-NODE-40 is stacked on `feat/node-39-constraint-validator`. Hosted GitHub Actions PASS is not claimed until an allocated runner executes the dedicated workflow.
+NODE-40 is stacked on `feat/node-39-constraint-validator`. Hosted GitHub Actions PASS is not claimed.
 
 ## Delivered
 
@@ -35,9 +35,10 @@ The exact NODE-40 candidate source was exercised in an isolated workspace.
 NODE40_TS_STRICT_COMPILE_PASS
 NODE40_TS_TEST_SUITE_STRICT_COMPILE_PASS
 NODE40_RUNTIME_SMOKE_PASS
+NODE40_CANVAS_ENGINE_VALIDATION_PASS
 ```
 
-Local compiler version was TypeScript 5.8.3 with the repository's strict options reproduced. Repository TypeScript 6.0.3 / pnpm 11 / Vitest execution are not claimed locally; the hosted workflow owns those release gates.
+Local compiler version was TypeScript 5.8.3 with the repository's strict options reproduced. Repository TypeScript 6.0.3 / pnpm 11 / Vitest execution / root Prettier are not claimed locally; the hosted workflow owns those release gates.
 
 Structural reference only:
 
@@ -47,6 +48,20 @@ Structural reference only:
 ```
 
 These are CPU structural/culling measurements in the current container, not browser frame time, GPU memory or a 60fps claim.
+
+## Hosted runner evidence
+
+The first dedicated workflow attempt for PR #107 is run `32012908687`. Its `canvas-engine` job `95336136979` ended before runner allocation with:
+
+```text
+status=completed
+conclusion=failure
+runner_id=0
+runner_name=""
+steps=[]
+```
+
+No checkout, Node setup, frozen pnpm install, repository TypeScript 6.0.3 typecheck, Vitest, Python setup, static validator, gap parse or lock reproducibility step executed. This is classified as `BLOCKED_EXTERNAL`, consistent with the runner-allocation blocker on preceding nodes. It is not a NODE-40 code or test failure.
 
 ## Correctness assertions
 
