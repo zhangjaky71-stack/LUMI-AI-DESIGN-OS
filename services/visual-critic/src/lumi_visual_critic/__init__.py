@@ -1,6 +1,3 @@
-SERVICE_NAME = "visual-critic"
-VERSION = "1.0.0"
-
 from .engine import QualityOperationConflict, VisualCriticEngine
 from .model import (
     ArtifactQualityInput,
@@ -23,6 +20,9 @@ from .model import (
 )
 from .profiles import BUILTIN_PROFILES, get_builtin_profile
 from .repository import InMemoryQualityResultRepository
+
+SERVICE_NAME = "visual-critic"
+VERSION = "1.0.0"
 
 __all__ = [
     "ArtifactQualityInput",
