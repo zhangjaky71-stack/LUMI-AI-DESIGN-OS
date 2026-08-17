@@ -1,0 +1,163 @@
+name: NODE-48 Video Generation
+
+on:
+  pull_request:
+    paths:
+      - "services/video-generation/**"
+      - "apps/api/migrations/versions/20260817_0017_video_generation.py"
+      - "apps/api/migrations/versions/20260817_0017_sql/**"
+      - "tools/node48/**"
+      - "docs/runtime/VIDEO-GENERATION-V1.md"
+      - "docs/nodes/NODE-48-VIDEO-GENERATION.md"
+      - "reports/nodes/NODE-48/**"
+      - ".github/workflows/node-48-video-generation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  PYTHONPATH: "services/video-generation/src:services/model-gateway/src"
+
+jobs:
+  video-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: Compile NODE-48 runtime and migration
+        run: |
+          uv run python -m compileall -q \
+            services/video-generation/src/lumi_video_generation \
+            apps/api/migrations/versions/20260817_0017_video_generation.py \
+            tools/node48
+      - name: Static NODE-48 validator
+        run: uv run python tools/node48/validate_video_generation.py
+      - name: Parse production gap ledger
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          ledger = json.loads(
+              Path("reports/nodes/NODE-48/gap-ledger.json").read_text(encoding="utf-8")
+          )
+          assert ledger["node"] == "NODE-48"
+          assert len(ledger["gaps"]) == 5
+          print("NODE48_GAP_LEDGER_PARSE_PASS")
+          PY
+
+  video-quality:
+    needs: video-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: NODE-48 deterministic tests
+        run: |
+          uv run pytest -q \
+            services/video-generation/tests/test_video_generation.py \
+            services/video-generation/tests/test_video_security.py
+      - name: Ruff
+        run: |
+          uv run ruff check \
+            services/video-generation/src/lumi_video_generation \
+            services/video-generation/tests \
+            tools/node48
+      - name: Pyright
+        run: |
+          uv run pyright \
+            services/video-generation/src/lumi_video_generation \
+            services/video-generation/tests \
+            tools/node48
+
+  video-db:
+    needs: video-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: lumi
+          POSTGRES_PASSWORD: lumi
+          POSTGRES_DB: lumi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lumi -d lumi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://lumi:lumi@localhost:5432/lumi
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Install frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: Migrate full schema through NODE-48
+        run: uv run alembic -c apps/api/alembic.ini upgrade head
+      - name: Verify NODE-48 tables
+        run: |
+          uv run python - <<'PY'
+          import os
+          import psycopg
+          expected = {
+              "video_generation_specs",
+              "video_generation_jobs",
+              "video_generation_shots",
+              "video_provider_jobs",
+              "video_generation_clips",
+              "video_generation_cost_projection",
+              "video_webhook_dedupe",
+          }
+          with psycopg.connect(os.environ["DATABASE_URL"].replace("postgresql+psycopg", "postgresql")) as conn:
+              rows = conn.execute(
+                  "select tablename from pg_tables where schemaname='public'"
+              ).fetchall()
+          tables = {row[0] for row in rows}
+          assert expected <= tables, expected - tables
+          print("NODE48_DATABASE_ACCEPTANCE_PASS")
+          PY
+
+  video-benchmark:
+    needs: video-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Install frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: Deterministic planning benchmark
+        run: uv run python tools/node48/benchmark_video_planning.py
