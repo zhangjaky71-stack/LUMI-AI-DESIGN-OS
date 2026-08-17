@@ -2,7 +2,7 @@
 
 ## Status
 
-`IMPLEMENTED / VALIDATING`
+`IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL`
 
 Hosted GitHub Actions PASS is not claimed until an allocated runner executes the dedicated workflow.
 
@@ -56,6 +56,27 @@ The suite covers exact/transformed/recolored Logo, product background changes, w
 The isolated candidate intentionally contains only the inherited files needed for NODE-44 tests. A full FastAPI app import could not be claimed locally because unrelated inherited `api/v1` modules are absent from that isolated copy. NODE-44 route shape is instead AST/static validated here; the dedicated hosted workflow remains the full-repository import/lint/type gate.
 
 No live PostgreSQL service, production NODE-45 model/analyzer, production detector/VLM, real-world calibration corpus, FACE consent/retention program, repository-pinned Python 3.12/uv, Ruff, Pyright or hosted CI PASS is claimed locally.
+
+## Hosted runner evidence
+
+The first dedicated PR workflow attempt is run `32026013325`, job
+`95375470811`, on implementation head
+`8e3a2f7e85785b3f7bd6bf0c6bf49ede89261898`. It completed before runner
+allocation with:
+
+```text
+status=completed
+conclusion=failure
+runner_id=0
+runner_name=""
+steps=[]
+```
+
+No checkout, Python setup, uv setup, frozen install, NODE-44 tests, runtime
+smoke, benchmark, calibration reproduction, static validation, compile, Ruff or
+Pyright step executed. This is `BLOCKED_EXTERNAL`, consistent with the runner
+allocation failure observed on preceding stacked nodes; it is not evidence of an
+Identity Engine code, migration, benchmark or test failure.
 
 ## Calibration qualification
 
