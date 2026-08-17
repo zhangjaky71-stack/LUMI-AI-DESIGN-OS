@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+from typing import Any
 
+from lumi_api.identity_engine.contracts import (
+    IdentitySeverity,
+    IdentityStatus,
+    IdentityType,
+)
 from lumi_api.visual_critic.signal_adapters import (
     Node39ConstraintSignalAdapter,
     Node43BrandSignalAdapter,
@@ -41,7 +47,11 @@ def task() -> QualityTaskSpec:
     )
 
 
-def artifact(*, brand=True, identity=True) -> ArtifactQualityInput:
+def artifact(
+    *,
+    brand: bool = True,
+    identity: bool = True,
+) -> ArtifactQualityInput:
     return ArtifactQualityInput(
         organization_id="org",
         project_id="project",
@@ -56,13 +66,16 @@ def artifact(*, brand=True, identity=True) -> ArtifactQualityInput:
 
 
 class ConstraintBackend:
-    async def validate_exact(self, **kwargs):
+    async def validate_exact(self, **kwargs: Any) -> Any:
         return SimpleNamespace(
             status="BLOCKED",
             hard_pass=False,
             health_score=95.0,
             metrics=SimpleNamespace(
-                validators_run=("QRValidator", "TextOverflowValidator"),
+                validators_run=(
+                    "QRValidator",
+                    "TextOverflowValidator",
+                ),
                 violations_count=1,
                 blocking_count=1,
             ),
@@ -83,7 +96,7 @@ class ConstraintBackend:
 
 
 class BrandBackend:
-    async def validate_brand(self, **kwargs):
+    async def validate_brand(self, **kwargs: Any) -> Any:
         severity = SimpleNamespace(value="HARD")
         violation = SimpleNamespace(
             rule_id="rule-font",
@@ -104,20 +117,20 @@ class BrandBackend:
 
 
 class IdentityBackend:
-    async def validate_identities(self, **kwargs):
+    async def validate_identities(self, **kwargs: Any) -> Any:
         return (
             SimpleNamespace(
                 identity_id="product-id",
                 reference_version=4,
                 reference_snapshot_hash="c" * 64,
-                identity_type=SimpleNamespace(value="PRODUCT"),
-                status=SimpleNamespace(value="BLOCKED"),
+                identity_type=IdentityType.PRODUCT,
+                status=IdentityStatus.BLOCKED,
                 identity_score=55.0,
                 confidence=0.98,
                 threshold_profile=SimpleNamespace(
                     profile_key="product-strict",
                     version=2,
-                    severity=SimpleNamespace(value="HARD"),
+                    severity=IdentitySeverity.HARD,
                 ),
                 signal_scores=(),
                 region=None,
@@ -130,16 +143,20 @@ class IdentityBackend:
 
 
 def test_node39_qr_hard_fail_is_blocking_quality_violation():
-    async def scenario():
-        result = await Node39ConstraintSignalAdapter(ConstraintBackend()).evaluate(
-            spec=task(), artifact=artifact()
+    async def scenario() -> None:
+        result = await Node39ConstraintSignalAdapter(
+            ConstraintBackend()  # type: ignore[arg-type]
+        ).evaluate(
+            spec=task(),
+            artifact=artifact(),
         )
         violation = result.violations[0]
         assert violation.dimension is QualityDimension.QR_READABILITY
         assert violation.severity is QualitySeverity.HARD
         assert violation.blocking is True
         qr = next(
-            item for item in result.assessments
+            item
+            for item in result.assessments
             if item.dimension is QualityDimension.QR_READABILITY
         )
         assert qr.score == 0.0
@@ -148,9 +165,12 @@ def test_node39_qr_hard_fail_is_blocking_quality_violation():
 
 
 def test_node43_brand_font_hard_fail_maps_to_brand_consistency():
-    async def scenario():
-        result = await Node43BrandSignalAdapter(BrandBackend()).evaluate(
-            spec=task(), artifact=artifact()
+    async def scenario() -> None:
+        result = await Node43BrandSignalAdapter(
+            BrandBackend()  # type: ignore[arg-type]
+        ).evaluate(
+            spec=task(),
+            artifact=artifact(),
         )
         violation = result.violations[0]
         assert violation.code == "FONT_NOT_ALLOWED"
@@ -161,9 +181,12 @@ def test_node43_brand_font_hard_fail_maps_to_brand_consistency():
 
 
 def test_node44_product_identity_fail_is_hard():
-    async def scenario():
-        result = await Node44IdentitySignalAdapter(IdentityBackend()).evaluate(
-            spec=task(), artifact=artifact()
+    async def scenario() -> None:
+        result = await Node44IdentitySignalAdapter(
+            IdentityBackend()  # type: ignore[arg-type]
+        ).evaluate(
+            spec=task(),
+            artifact=artifact(),
         )
         violation = result.violations[0]
         assert violation.dimension is QualityDimension.IDENTITY_CONSISTENCY
