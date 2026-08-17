@@ -1,0 +1,17 @@
+{
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "standard",
+  "include": [
+    "src",
+    "tests",
+    "../../tools/node50",
+    "../../apps/api/src/lumi_api/visual_critic",
+    "../../apps/api/src/lumi_api/persistence/models_visual_critic.py"
+  ],
+  "extraPaths": [
+    "src",
+    "../model-gateway/src",
+    "../../apps/api/src"
+  ],
+  "exclude": ["**/__pycache__"]
+}
