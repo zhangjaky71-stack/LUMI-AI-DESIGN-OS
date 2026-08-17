@@ -41,4 +41,4 @@ See `reports/nodes/NODE-49/gap-ledger.json`. Remaining P0 production gates are r
 
 ## Next
 
-**NODE-50 — Scheduler Engine** after NODE-49 implementation validation, while NODE-49 production gaps remain visible and unclosed.
+**NODE-50 — Visual Critic & Design Quality Engine** after NODE-49 implementation validation, while NODE-49 production gaps remain visible and unclosed.

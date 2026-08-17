@@ -1,0 +1,36 @@
+{
+  "node": "NODE-50",
+  "status": "IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "gaps": [
+    {
+      "id": "NODE50-GAP-01",
+      "severity": "P0",
+      "title": "Production deterministic evidence wiring",
+      "completion_gate": "Bind Node39ConstraintSignalAdapter, Node43BrandSignalAdapter and Node44IdentitySignalAdapter to exact-version production backends, and add production Design IR geometry/OCR/QR/image-metadata evidence adapters with fail-closed unavailable semantics."
+    },
+    {
+      "id": "NODE50-GAP-02",
+      "severity": "P0",
+      "title": "Independent visual grader live acceptance",
+      "completion_gate": "Approve a NODE-22 llm.vision critic provider/model revision that is isolated from generation models, prove structured-output conformance, latency/cost/error behavior and visual quality stability on representative image/design artifacts."
+    },
+    {
+      "id": "NODE50-GAP-03",
+      "severity": "P0",
+      "title": "Human-labeled calibration benchmark",
+      "completion_gate": "Build and review a representative human-labeled dataset for each active quality profile/grader, record false positive/negative rates and inter-rater agreement, publish current calibration snapshots, and rerun calibration whenever the critic model revision changes."
+    },
+    {
+      "id": "NODE50-GAP-04",
+      "severity": "P0",
+      "title": "Quality gate and repair/review integration",
+      "completion_gate": "Bind QualityResult lookup to Artifact/product surfaces, enforce downstream release/export quality policy where required, and connect FAIL_REPAIRABLE to NODE-51 typed repair commands plus REVIEW_REQUIRED to the human review workflow without allowing the critic to self-approve."
+    },
+    {
+      "id": "NODE50-GAP-05",
+      "severity": "P0",
+      "title": "Hosted and live infrastructure acceptance",
+      "completion_gate": "Execute NODE-50 contract, quality, PostgreSQL and benchmark gates on hosted runners and complete live Artifact/Constraint/Brand/Identity/Model-Gateway acceptance. If the existing GitHub Actions Billing/Spending Limit blocker persists, clear it before claiming hosted green."
+    }
+  ]
+}

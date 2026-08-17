@@ -1,0 +1,197 @@
+name: NODE-50 Visual Critic
+
+on:
+  pull_request:
+    paths:
+      - "services/visual-critic/**"
+      - "apps/api/src/lumi_api/visual_critic/**"
+      - "apps/api/src/lumi_api/persistence/models_visual_critic.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260818_0019_visual_critic.py"
+      - "apps/api/migrations/versions/20260818_0019_sql/**"
+      - "tools/node50/**"
+      - "docs/runtime/VISUAL-CRITIC-V1.md"
+      - "docs/nodes/NODE-50-VISUAL-CRITIC*.md"
+      - "reports/nodes/NODE-50/**"
+      - ".github/workflows/node-50-visual-critic.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  PYTHONPATH: "apps/api/src:services/visual-critic/src:services/model-gateway/src"
+
+jobs:
+  critic-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: Compile NODE-50 runtime
+        run: |
+          uv run python -m compileall -q \
+            services/visual-critic/src/lumi_visual_critic \
+            apps/api/src/lumi_api/visual_critic \
+            apps/api/src/lumi_api/persistence/models_visual_critic.py \
+            apps/api/migrations/versions/20260818_0019_visual_critic.py \
+            tools/node50
+      - name: Static NODE-50 validator
+        run: uv run python tools/node50/validate_visual_critic.py
+      - name: Parse production gap ledger
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+
+          ledger = json.loads(
+              Path("reports/nodes/NODE-50/gap-ledger.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          assert ledger["node"] == "NODE-50"
+          assert len(ledger["gaps"]) == 5
+          print("NODE50_GAP_LEDGER_PARSE_PASS")
+          PY
+
+  critic-quality:
+    needs: critic-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: NODE-50 deterministic tests
+        run: |
+          uv run pytest -q \
+            services/visual-critic/tests/test_quality_engine.py \
+            services/visual-critic/tests/test_signal_adapters.py \
+            services/visual-critic/tests/test_artifact_adapter.py \
+            services/visual-critic/tests/test_quality_codec.py \
+            services/visual-critic/tests/test_model_gateway_critic.py
+      - name: Ruff semantic checks
+        run: |
+          uv run ruff check --ignore E501,I001 \
+            services/visual-critic/src/lumi_visual_critic \
+            services/visual-critic/tests \
+            apps/api/src/lumi_api/visual_critic \
+            apps/api/src/lumi_api/persistence/models_visual_critic.py \
+            tools/node50
+      - name: Pyright
+        run: uv run pyright -p services/visual-critic/pyrightconfig.json
+
+  critic-db:
+    needs: critic-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: lumi
+          POSTGRES_PASSWORD: lumi
+          POSTGRES_DB: lumi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lumi -d lumi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://lumi:lumi@localhost:5432/lumi
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Install frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: Migrate full schema through NODE-50
+        run: uv run alembic -c apps/api/alembic.ini upgrade head
+      - name: Verify exact-version quality schema
+        run: |
+          uv run python - <<'PY'
+          import os
+
+          import psycopg
+
+          expected = {
+              "quality_profile_snapshots",
+              "quality_grader_calibrations",
+              "artifact_quality_results",
+              "quality_dimension_assessments",
+              "quality_violations",
+          }
+          url = os.environ["DATABASE_URL"].replace(
+              "postgresql+psycopg",
+              "postgresql",
+          )
+          with psycopg.connect(url) as conn:
+              tables = {
+                  row[0]
+                  for row in conn.execute(
+                      "select tablename from pg_tables "
+                      "where schemaname='public'"
+                  ).fetchall()
+              }
+              quality_columns = {
+                  row[0]
+                  for row in conn.execute(
+                      "select column_name from information_schema.columns "
+                      "where table_schema='public' "
+                      "and table_name='artifact_quality_results'"
+                  ).fetchall()
+              }
+              hard_check = conn.execute(
+                  "select count(*) from pg_constraint "
+                  "where conname='ck_quality_hard_blocks'"
+              ).fetchone()[0]
+          assert expected <= tables, expected - tables
+          assert {
+              "artifact_version_id",
+              "profile_hash",
+              "critic_calibration_hash",
+          } <= quality_columns
+          assert hard_check == 1
+          print("NODE50_DATABASE_ACCEPTANCE_PASS")
+          PY
+
+  critic-benchmark:
+    needs: critic-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Install frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: Deterministic scoring benchmark
+        run: uv run python tools/node50/benchmark_quality_scoring.py
