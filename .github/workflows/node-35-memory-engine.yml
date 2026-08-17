@@ -1,0 +1,49 @@
+name: NODE-35 Memory Engine
+
+on:
+  pull_request:
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/memory_engine/**"
+      - "apps/agent-runtime/tests/test_memory_engine_node35.py"
+      - "docs/runtime/MEMORY-ENGINE-V1.md"
+      - "reports/nodes/NODE-35/**"
+      - "tools/node35/**"
+      - ".github/workflows/node-35-memory-engine.yml"
+  push:
+    branches:
+      - "feat/node-35-memory-engine"
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/memory_engine/**"
+      - "apps/agent-runtime/tests/test_memory_engine_node35.py"
+      - "docs/runtime/MEMORY-ENGINE-V1.md"
+      - "reports/nodes/NODE-35/**"
+      - "tools/node35/**"
+      - ".github/workflows/node-35-memory-engine.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  memory-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install agent runtime and test tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e apps/agent-runtime pytest pytest-asyncio ruff
+      - name: Ruff
+        run: |
+          ruff check \
+            apps/agent-runtime/src/lumi_agent_runtime/memory_engine \
+            apps/agent-runtime/tests/test_memory_engine_node35.py \
+            tools/node35/validate_memory_engine.py
+      - name: NODE-35 tests
+        run: python -m pytest -q apps/agent-runtime/tests/test_memory_engine_node35.py
+      - name: Static Memory Engine contract validation
+        run: python tools/node35/validate_memory_engine.py

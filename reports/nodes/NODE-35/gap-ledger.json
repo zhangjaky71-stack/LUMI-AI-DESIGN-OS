@@ -1,0 +1,30 @@
+{
+  "node": "NODE-35",
+  "component": "Memory Engine V1",
+  "gaps": [
+    {
+      "id": "MEMORY-STORE-PRODUCTION-001",
+      "status": "OPEN",
+      "owner": "Persistence / Platform",
+      "summary": "Production PostgreSQL/vector MemoryStore, indexes, migrations, backup, and restore are not part of the Git workspace reference adapter."
+    },
+    {
+      "id": "MEMORY-GOVERNANCE-PURGE-002",
+      "status": "OPEN",
+      "owner": "Security / Data Governance",
+      "summary": "V1 forget appends a tombstone; legal hard-delete, retention enforcement, and audited purge orchestration require a separate governance path."
+    },
+    {
+      "id": "MEMORY-SEMANTIC-RETRIEVAL-003",
+      "status": "OPEN",
+      "owner": "Retrieval / Model Router",
+      "summary": "V1 ranking is deterministic lexical/metadata based; production embedding generation, vector search, and semantic reranking remain adapters."
+    },
+    {
+      "id": "MEMORY-CI-004",
+      "status": "VALIDATING",
+      "owner": "External GitHub account",
+      "summary": "Hosted NODE-35 CI must not be called PASS unless a real runner executes checkout and test steps; runner_id=0 with steps=[] is BLOCKED_EXTERNAL."
+    }
+  ]
+}
