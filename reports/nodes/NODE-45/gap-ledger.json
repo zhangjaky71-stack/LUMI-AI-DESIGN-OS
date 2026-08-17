@@ -1,0 +1,36 @@
+{
+  "node": "NODE-45",
+  "status": "VALIDATING",
+  "gaps": [
+    {
+      "id": "K45-G01",
+      "priority": "P0",
+      "name": "production-analyzer-provider-adapters",
+      "detail": "Real OCR, visual description, object/region, perceptual fingerprint and multimodal embedding providers must be wired through pinned NODE-23 claims and monitored model/analyzer versions."
+    },
+    {
+      "id": "K45-G02",
+      "priority": "P0",
+      "name": "live-postgres-pgvector-concurrency-acceptance",
+      "detail": "Migration 0014, pgvector persistence, tenant/scope triggers, atomic index version allocation and expected-active promotion CAS require real PostgreSQL concurrency and load evidence."
+    },
+    {
+      "id": "K45-G03",
+      "priority": "P0",
+      "name": "durable-analysis-reindex-deletion-workers",
+      "detail": "Analysis and index-build jobs are non-blocking contracts, but durable NODE-19 queue consumers, retry/backoff, DLQ and deletion reconciliation scheduling are not yet production-wired."
+    },
+    {
+      "id": "K45-G04",
+      "priority": "P1",
+      "name": "production-relevance-and-scale-calibration",
+      "detail": "Hybrid ranking weights, duplicate thresholds and search behavior need governed real-world relevance fixtures, large-corpus ANN tuning, latency/load SLOs and reranker evaluation."
+    },
+    {
+      "id": "K45-G05",
+      "priority": "P0",
+      "name": "continuous-rights-permission-lifecycle-reconciliation",
+      "detail": "Postgres retrieval rechecks current Asset/rights before scoring, but rights/permission changes, stale analyses, reindex drift and delete reconciliation still need event-driven operational reconciliation and observability."
+    }
+  ]
+}
