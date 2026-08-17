@@ -17,6 +17,7 @@ from . import models_project_core as _models_project_core
 from . import models_provider_health as _models_provider_health
 from . import models_queue_runtime as _models_queue_runtime
 from . import models_video_generation as _models_video_generation
+from . import models_visual_critic as _models_visual_critic
 from .models_artifacts import ArtifactEdgeModel, ArtifactVersionModel
 from .models_execution import (
     AgentRunModel,
@@ -45,6 +46,7 @@ _METADATA_MODULES = (
     _models_provider_health,
     _models_queue_runtime,
     _models_video_generation,
+    _models_visual_critic,
 )
 
 Index("ix_projects_org_created", ProjectModel.organization_id, ProjectModel.created_at)
