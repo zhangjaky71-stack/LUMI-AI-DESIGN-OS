@@ -1,0 +1,31 @@
+{
+  "node": "NODE-33",
+  "title": "Task Graph & Scheduler V1",
+  "status": "IMPLEMENTED_VALIDATING_BLOCKED_EXTERNAL",
+  "gaps": [
+    {
+      "id": "TASK-GRAPH-DURABLE-STORE-001",
+      "status": "OPEN",
+      "owner": "Persistence / Runtime Composition",
+      "summary": "Current branch defines the atomic transaction/CAS store contract and deterministic in-memory reference adapter, but does not yet compose a production PostgreSQL multi-replica implementation and migration on this stacked chain."
+    },
+    {
+      "id": "TASK-GRAPH-WORKER-BINDING-002",
+      "status": "OPEN",
+      "owner": "Agent Runtime Composition",
+      "summary": "NODE-28 routing and NODE-29 request resolution are adapted, but production executor wrappers still need explicit claim -> execute -> complete/fail/suspend wiring around every task category."
+    },
+    {
+      "id": "TASK-GRAPH-COST-RESERVATION-003",
+      "status": "OPEN",
+      "owner": "Cost / Quota Runtime",
+      "summary": "NODE-33 records budget ceilings and observed cost, but concurrent paid-provider admission must still use the authoritative durable cost-reservation and idempotency boundary before provider acceptance."
+    },
+    {
+      "id": "TASK-GRAPH-CI-004",
+      "status": "BLOCKED_EXTERNAL",
+      "owner": "External GitHub account",
+      "summary": "Hosted Actions on the current stacked Agent chain cannot allocate runners because of the account billing/spending-limit condition. Zero-step failures are not code-test failures."
+    }
+  ]
+}
