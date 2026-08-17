@@ -1,4 +1,16 @@
-from .media_sandbox import FfmpegArgvCompiler, FfmpegInvocation, SandboxLimits, TypedFfmpegSandbox
+from .gateway_contract import (
+    VIDEO_IMAGE_TO_VIDEO,
+    VIDEO_TEXT_TO_VIDEO,
+    pending_record,
+    required_video_features,
+    video_capability,
+)
+from .media_sandbox import (
+    FfmpegArgvCompiler,
+    FfmpegInvocation,
+    SandboxLimits,
+    TypedFfmpegSandbox,
+)
 from .model import (
     CompiledShot,
     FinalVideoProvenance,
@@ -20,11 +32,15 @@ from .model import (
     VideoTaskSpec,
     VideoTimeline,
 )
-from .model_gateway_adapter import ModelGatewayVideoAdapter, VideoFeatureRegistry
 from .output_adapter import VerifiedVideoOutputAdapter
 from .pipeline import VideoGenerationPipeline
 from .repository import InMemoryVideoRepository, VideoOperationConflict
-from .storyboard import compile_retry, compile_storyboard, retry_shot_operation_id, shot_operation_id
+from .storyboard import (
+    compile_retry,
+    compile_storyboard,
+    retry_shot_operation_id,
+    shot_operation_id,
+)
 from .validation import CompositeVideoValidator
 
 __all__ = [
@@ -36,7 +52,6 @@ __all__ = [
     "GatewayEstimate",
     "GatewayVideoResult",
     "InMemoryVideoRepository",
-    "ModelGatewayVideoAdapter",
     "ProviderJobRecord",
     "RenderedVideo",
     "SandboxLimits",
@@ -49,7 +64,6 @@ __all__ = [
     "TypedFfmpegSandbox",
     "ValidationDecision",
     "VerifiedVideoOutputAdapter",
-    "VideoFeatureRegistry",
     "VideoGenerationPipeline",
     "VideoJob",
     "VideoJobStatus",
@@ -58,8 +72,13 @@ __all__ = [
     "VideoProbeResult",
     "VideoTaskSpec",
     "VideoTimeline",
+    "VIDEO_IMAGE_TO_VIDEO",
+    "VIDEO_TEXT_TO_VIDEO",
     "compile_retry",
     "compile_storyboard",
+    "pending_record",
+    "required_video_features",
     "retry_shot_operation_id",
     "shot_operation_id",
+    "video_capability",
 ]
