@@ -1,0 +1,128 @@
+name: NODE-36 Knowledge Engine
+
+on:
+  pull_request:
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/**"
+      - "apps/agent-runtime/tests/test_knowledge_*node36.py"
+      - "benchmarks/knowledge/**"
+      - "docs/runtime/KNOWLEDGE-ENGINE-V1.md"
+      - "reports/nodes/NODE-36/**"
+      - "tools/node36/**"
+      - ".github/workflows/node-36-knowledge-engine.yml"
+  push:
+    branches:
+      - "feat/node-36-knowledge-engine"
+    paths:
+      - "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/**"
+      - "apps/agent-runtime/tests/test_knowledge_*node36.py"
+      - "benchmarks/knowledge/**"
+      - "docs/runtime/KNOWLEDGE-ENGINE-V1.md"
+      - "reports/nodes/NODE-36/**"
+      - "tools/node36/**"
+      - ".github/workflows/node-36-knowledge-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  knowledge-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Compile NODE-36 runtime and contract assets
+        run: >-
+          python -m compileall -q
+          apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine
+          apps/agent-runtime/tests/test_knowledge_engine_node36.py
+          apps/agent-runtime/tests/test_knowledge_durable_node36.py
+          apps/agent-runtime/tests/test_knowledge_ingestion_security_node36.py
+          tools/node36/validate_knowledge_engine.py
+      - name: Validate NODE-36 static architecture contract
+        run: python tools/node36/validate_knowledge_engine.py
+      - name: Parse benchmark and gap ledger
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          ledger = json.loads(
+              Path("reports/nodes/NODE-36/gap-ledger.json").read_text(encoding="utf-8")
+          )
+          assert ledger["node"] == "NODE-36"
+          rows = [
+              json.loads(line)
+              for line in Path("benchmarks/knowledge/hybrid-retrieval-v1.jsonl")
+              .read_text(encoding="utf-8")
+              .splitlines()
+              if line.strip()
+          ]
+          assert len(rows) >= 12
+          print("NODE36_JSON_PARSE_PASS", len(rows), len(ledger["gaps"]))
+          PY
+
+  knowledge-quality:
+    needs: knowledge-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install frozen workspace dependencies
+        run: uv sync --all-packages --frozen
+      - name: Run NODE-36 full test suite
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          uv run pytest -q apps/agent-runtime/tests/test_knowledge_*node36.py
+      - name: Ruff
+        run: >-
+          uv run ruff check
+          apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine
+          apps/agent-runtime/tests/test_knowledge_*node36.py
+          tools/node36
+      - name: Pyright
+        run: >-
+          uv run pyright
+          apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine
+          apps/agent-runtime/tests/test_knowledge_*node36.py
+          tools/node36
+
+  knowledge-durable:
+    needs: knowledge-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install frozen workspace dependencies
+        run: uv sync --all-packages --frozen
+      - name: Durable restart reindex rollback extraction acceptance
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          uv run pytest -q
+          apps/agent-runtime/tests/test_knowledge_durable_node36.py
+          apps/agent-runtime/tests/test_knowledge_ingestion_security_node36.py
+      - name: Revalidate static contract after durable acceptance
+        run: python tools/node36/validate_knowledge_engine.py
