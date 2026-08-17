@@ -1,0 +1,115 @@
+name: NODE-46 Image Generation
+
+on:
+  pull_request:
+    paths:
+      - "services/image-generation/**"
+      - "apps/api/src/lumi_api/image_generation/**"
+      - "apps/api/src/lumi_api/api/v1/image_generation_*"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/src/lumi_api/persistence/models_image_generation.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260817_0015_image_generation.py"
+      - "apps/api/migrations/versions/20260817_0015_sql/**"
+      - "apps/api/tests/test_image_generation_*_node46.py"
+      - "evals/node46/**"
+      - "docs/runtime/IMAGE-GENERATION-V1.md"
+      - "reports/nodes/NODE-46/**"
+      - "tools/node46/**"
+      - ".github/workflows/node-46-image-generation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  PYTHONPATH: "services/image-generation/src"
+
+jobs:
+  image-generation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+
+      - name: NODE-46 runtime and current stack adapters
+        run: |
+          uv run pytest -q \
+            services/image-generation/tests/test_image_generation_node46.py \
+            apps/api/tests/test_image_generation_model_gateway_node46.py \
+            apps/api/tests/test_image_generation_artifact_adapter_node46.py
+
+      - name: Deterministic image-generation control-plane eval
+        run: uv run python tools/node46/run_image_generation_eval.py
+
+      - name: Runtime smoke
+        run: uv run python tools/node46/runtime_smoke.py
+
+      - name: Static NODE-46 validator
+        run: uv run python tools/node46/validate_image_generation.py
+
+      - name: Compile migration and runtime
+        run: |
+          uv run python -m compileall -q \
+            services/image-generation/src/lumi_image_generation \
+            apps/api/src/lumi_api/image_generation \
+            apps/api/src/lumi_api/api/v1/image_generation_dependencies.py \
+            apps/api/src/lumi_api/api/v1/image_generation_routes.py \
+            apps/api/src/lumi_api/api/v1/image_generation_schemas.py \
+            apps/api/src/lumi_api/persistence/models_image_generation.py \
+            apps/api/migrations/versions/20260817_0015_image_generation.py
+
+      - name: Parse gap ledger
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          value = json.loads(
+              Path("reports/nodes/NODE-46/gap-ledger.json").read_text(encoding="utf-8")
+          )
+          assert value["node"] == "NODE-46"
+          assert len(value["gaps"]) == 5
+          print("NODE46_GAP_LEDGER_PARSE_PASS")
+          PY
+
+      - name: Ruff
+        run: |
+          uv run ruff check \
+            services/image-generation/src/lumi_image_generation \
+            services/image-generation/tests/test_image_generation_node46.py \
+            apps/api/src/lumi_api/image_generation \
+            apps/api/src/lumi_api/api/v1/image_generation_dependencies.py \
+            apps/api/src/lumi_api/api/v1/image_generation_routes.py \
+            apps/api/src/lumi_api/api/v1/image_generation_schemas.py \
+            apps/api/src/lumi_api/persistence/models_image_generation.py \
+            apps/api/tests/test_image_generation_model_gateway_node46.py \
+            apps/api/tests/test_image_generation_artifact_adapter_node46.py \
+            tools/node46
+
+      - name: Pyright
+        run: |
+          uv run pyright \
+            services/image-generation/src/lumi_image_generation \
+            services/image-generation/tests/test_image_generation_node46.py \
+            apps/api/src/lumi_api/image_generation \
+            apps/api/src/lumi_api/api/v1/image_generation_dependencies.py \
+            apps/api/src/lumi_api/api/v1/image_generation_routes.py \
+            apps/api/src/lumi_api/api/v1/image_generation_schemas.py \
+            apps/api/src/lumi_api/persistence/models_image_generation.py \
+            apps/api/tests/test_image_generation_model_gateway_node46.py \
+            apps/api/tests/test_image_generation_artifact_adapter_node46.py \
+            tools/node46
