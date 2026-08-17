@@ -1,0 +1,51 @@
+name: NODE-40 Canvas Engine
+
+on:
+  pull_request:
+    paths:
+      - "packages/canvas-sdk/**"
+      - "packages/design-ir/**"
+      - "packages/design-constraints/**"
+      - "docs/runtime/CANVAS-ENGINE-V1.md"
+      - "reports/nodes/NODE-40/**"
+      - "tools/node40/**"
+      - ".github/workflows/node-40-canvas-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canvas-engine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      NODE_VERSION: "24"
+      PNPM_VERSION: "11.4.0"
+      PYTHON_VERSION: "3.12"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+          pnpm --version
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+      - name: Canvas SDK typecheck
+        run: pnpm --filter @lumi/canvas-sdk typecheck
+      - name: Canvas SDK tests
+        run: pnpm --filter @lumi/canvas-sdk test
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Static architecture validation
+        run: python tools/node40/validate_canvas_engine.py
+      - name: Gap ledger parse
+        run: python -m json.tool reports/nodes/NODE-40/gap-ledger.json >/dev/null
+      - name: Frozen lock remains reproducible
+        run: pnpm install --lockfile-only --frozen-lockfile

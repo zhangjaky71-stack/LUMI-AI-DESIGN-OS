@@ -1,5 +1,17 @@
-/** NODE-02 bootstrap marker. Canvas public contract lands in NODE-40/NODE-41. */
-export interface CanvasSdkBootstrap {
-  readonly package: "@lumi/canvas-sdk";
-  readonly version: "0.0.0";
-}
+export * from "./benchmark";
+export * from "./camera";
+export * from "./clipboard";
+export * from "./controller";
+export * from "./history";
+export * from "./keyboard";
+export * from "./operation-gateway";
+export * from "./renderer";
+export * from "./resource-manager";
+export * from "./scene";
+export * from "./scheduler";
+export * from "./selection";
+export * from "./snapping";
+export * from "./spatial-index";
+export * from "./text-edit";
+export * from "./transform-session";
+export * from "./types";
