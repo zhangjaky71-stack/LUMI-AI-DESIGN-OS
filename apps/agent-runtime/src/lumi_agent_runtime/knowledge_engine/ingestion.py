@@ -12,9 +12,9 @@ from .extraction import (
 class KnowledgeIngestionService:
     """Source ingestion orchestrator.
 
-    Native extraction/OCR completes before Knowledge persistence is mutated. Concrete source
-    readers remain behind NODE-18 Asset/Tool/Sandbox boundaries; this service owns only the
-    Knowledge transition from extracted evidence to an indexed, citation-preserving version.
+    Authorization completes before a trusted source adapter performs any source I/O. Native
+    extraction/OCR then completes before Knowledge persistence is mutated. Concrete source readers
+    remain behind NODE-18 Asset/Tool/Sandbox boundaries.
     """
 
     def __init__(
@@ -31,6 +31,7 @@ class KnowledgeIngestionService:
         access: KnowledgeAccessContext,
         source: KnowledgeSourceInput,
     ) -> KnowledgeDocument:
+        _authorize_source(access, source)
         extraction = await extract_native_then_ocr(
             self.extractor,
             source,
@@ -57,3 +58,17 @@ class KnowledgeIngestionService:
                 },
             ),
         )
+
+
+def _authorize_source(
+    access: KnowledgeAccessContext,
+    source: KnowledgeSourceInput,
+) -> None:
+    if source.organization_id != access.organization_id:
+        raise PermissionError("KNOWLEDGE_TENANT_DENIED")
+    if source.project_id is not None and source.project_id != access.project_id:
+        raise PermissionError("KNOWLEDGE_PROJECT_DENIED")
+    if source.brand_id is not None and source.brand_id not in access.brand_ids:
+        raise PermissionError("KNOWLEDGE_BRAND_DENIED")
+    if not access.allows(source.permission_scope):
+        raise PermissionError("KNOWLEDGE_SCOPE_DENIED")
