@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from lumi_api.brand_rules.contracts import ComplianceResult, RuleSeverity
-from lumi_api.constraint_validator.contracts import ValidationReport
+from lumi_api.brand_rules.contracts import ComplianceResult
+from lumi_api.constraint_validator.contracts import (
+    ConstraintViolation,
+    ValidationReport,
+)
 from lumi_api.identity_engine.contracts import (
     IdentitySeverity,
     IdentityStatus,
@@ -62,7 +65,9 @@ def _severity(value: str, *, blocking: bool = False) -> QualitySeverity:
     return QualitySeverity.INFO
 
 
-def _repair_from_constraint(item) -> tuple[RepairAction, ...]:
+def _repair_from_constraint(
+    item: ConstraintViolation,
+) -> tuple[RepairAction, ...]:
     actions: list[RepairAction] = []
     supported = {
         "SET_PROPERTY": RepairActionType.SET_PROPERTY,
@@ -80,15 +85,25 @@ def _repair_from_constraint(item) -> tuple[RepairAction, ...]:
         target = str(
             operation.get("node_id")
             or operation.get("target")
-            or (item.affected_node_ids[0] if item.affected_node_ids else "document")
+            or (
+                item.affected_node_ids[0]
+                if item.affected_node_ids
+                else "document"
+            )
         )
         parameters = dict(operation)
-        if action_type is RepairActionType.REPLACE_TEXT and "text" not in parameters:
+        if (
+            action_type is RepairActionType.REPLACE_TEXT
+            and "text" not in parameters
+        ):
             if "value" in parameters:
                 parameters["text"] = parameters["value"]
             else:
                 continue
-        if action_type is RepairActionType.SET_PROPERTY and "property" not in parameters:
+        if (
+            action_type is RepairActionType.SET_PROPERTY
+            and "property" not in parameters
+        ):
             parameters["property"] = str(parameters.get("key", "style"))
         actions.append(
             RepairAction(
@@ -96,7 +111,9 @@ def _repair_from_constraint(item) -> tuple[RepairAction, ...]:
                 target=target,
                 reason_code=f"CONSTRAINT:{item.type}",
                 parameters=parameters,
-                expected_effect=(QualityDimension.CONSTRAINT_COMPLIANCE,),
+                expected_effect=(
+                    QualityDimension.CONSTRAINT_COMPLIANCE,
+                ),
             )
         )
     return tuple(actions)
@@ -123,7 +140,10 @@ class Node39ConstraintSignalAdapter:
             evidence_id=f"constraint:{artifact.artifact_version_id}",
             kind=EvidenceKind.CONSTRAINT_RUNTIME,
             source_version="node39/1.0",
-            summary=f"{report.status}; validators={len(report.metrics.validators_run)}",
+            summary=(
+                f"{report.status}; "
+                f"validators={len(report.metrics.validators_run)}"
+            ),
             refs=tuple(report.metrics.validators_run),
             data={
                 "hard_pass": report.hard_pass,
@@ -135,9 +155,15 @@ class Node39ConstraintSignalAdapter:
         violations = tuple(
             QualityViolation(
                 violation_id=item.violation_id,
-                dimension=_constraint_dimension(item.validator, item.type),
+                dimension=_constraint_dimension(
+                    item.validator,
+                    item.type,
+                ),
                 code=f"CONSTRAINT_{item.type}",
-                severity=_severity(item.severity, blocking=item.blocking),
+                severity=_severity(
+                    item.severity,
+                    blocking=item.blocking,
+                ),
                 message=item.message,
                 confidence=0.0 if item.unavailable else 1.0,
                 blocking=item.blocking,
@@ -149,29 +175,39 @@ class Node39ConstraintSignalAdapter:
         dimensions = {
             QualityDimension.CONSTRAINT_COMPLIANCE: report.health_score,
         }
-        if any(name == "QRValidator" for name in report.metrics.validators_run):
+        validators = set(report.metrics.validators_run)
+        if "QRValidator" in validators:
             dimensions[QualityDimension.QR_READABILITY] = (
                 0.0
-                if any(item.validator == "QRValidator" for item in report.violations)
-                else 100.0
-            )
-        if any(name == "TextOverflowValidator" for name in report.metrics.validators_run):
-            dimensions[QualityDimension.TYPOGRAPHY_READABILITY] = (
-                0.0
                 if any(
-                    item.validator in {"TextOverflowValidator", "FontSizeValidator"}
+                    item.validator == "QRValidator"
                     for item in report.violations
                 )
                 else 100.0
             )
-        if any(name == "ContrastValidator" for name in report.metrics.validators_run):
-            dimensions[QualityDimension.CONTRAST] = (
+        if "TextOverflowValidator" in validators:
+            dimensions[QualityDimension.TYPOGRAPHY_READABILITY] = (
                 0.0
-                if any(item.validator == "ContrastValidator" for item in report.violations)
+                if any(
+                    item.validator
+                    in {"TextOverflowValidator", "FontSizeValidator"}
+                    for item in report.violations
+                )
                 else 100.0
             )
-        if any(name == "ExportDimensionValidator" for name in report.metrics.validators_run):
-            dimensions[QualityDimension.RESOLUTION_EXPORT_READINESS] = (
+        if "ContrastValidator" in validators:
+            dimensions[QualityDimension.CONTRAST] = (
+                0.0
+                if any(
+                    item.validator == "ContrastValidator"
+                    for item in report.violations
+                )
+                else 100.0
+            )
+        if "ExportDimensionValidator" in validators:
+            dimensions[
+                QualityDimension.RESOLUTION_EXPORT_READINESS
+            ] = (
                 0.0
                 if any(
                     item.validator == "ExportDimensionValidator"
@@ -183,11 +219,18 @@ class Node39ConstraintSignalAdapter:
             DimensionAssessment(
                 dimension=dimension,
                 score=score,
-                confidence=1.0 if report.status != "VALIDATION_UNAVAILABLE" else 0.0,
+                confidence=(
+                    1.0
+                    if report.status != "VALIDATION_UNAVAILABLE"
+                    else 0.0
+                ),
                 threshold=spec.profile.thresholds[dimension],
                 severity=(
                     QualitySeverity.HARD
-                    if dimension in spec.profile.hard_dimensions and score < spec.profile.thresholds[dimension]
+                    if (
+                        dimension in spec.profile.hard_dimensions
+                        and score < spec.profile.thresholds[dimension]
+                    )
                     else QualitySeverity.INFO
                 ),
                 evidence_ids=(evidence.evidence_id,),
@@ -209,7 +252,10 @@ class Node39ConstraintSignalAdapter:
         )
 
 
-def _constraint_dimension(validator: str, constraint_type: str) -> QualityDimension:
+def _constraint_dimension(
+    validator: str,
+    constraint_type: str,
+) -> QualityDimension:
     if validator in {"TextOverflowValidator", "FontSizeValidator"}:
         return QualityDimension.TYPOGRAPHY_READABILITY
     if validator == "ContrastValidator":
@@ -253,22 +299,38 @@ class Node43BrandSignalAdapter:
             brand_rule_snapshot_id=artifact.brand_rule_snapshot_id,
         )
         evidence = QualityEvidence(
-            evidence_id=f"brand:{artifact.artifact_version_id}:{result.rule_set_id}",
+            evidence_id=(
+                f"brand:{artifact.artifact_version_id}:"
+                f"{result.rule_set_id}"
+            ),
             kind=EvidenceKind.BRAND_VALIDATOR,
-            source_version=f"brand-ruleset:{result.rule_set_version}",
-            summary=f"brand score={result.score}; can_approve={result.can_approve}",
+            source_version=(
+                f"brand-ruleset:{result.rule_set_version}"
+            ),
+            summary=(
+                f"brand score={result.score}; "
+                f"can_approve={result.can_approve}"
+            ),
             refs=(str(result.rule_set_id),),
         )
         violations = tuple(
             QualityViolation(
-                violation_id=f"brand:{item.rule_id}:{item.code}",
+                violation_id=(
+                    f"brand:{item.rule_id}:{item.code}"
+                ),
                 dimension=(
                     QualityDimension.LOGO_INTEGRITY
-                    if "LOGO" in item.code.upper() or "LOGO" in item.rule_key.upper()
+                    if (
+                        "LOGO" in item.code.upper()
+                        or "LOGO" in item.rule_key.upper()
+                    )
                     else QualityDimension.BRAND_CONSISTENCY
                 ),
                 code=item.code,
-                severity=_severity(item.severity.value, blocking=item.blocking),
+                severity=_severity(
+                    item.severity.value,
+                    blocking=item.blocking,
+                ),
                 message=f"Brand rule {item.rule_key} failed",
                 confidence=0.0 if item.unavailable else 1.0,
                 blocking=item.blocking,
@@ -285,10 +347,17 @@ class Node43BrandSignalAdapter:
                 dimension=QualityDimension.BRAND_CONSISTENCY,
                 score=result.score,
                 confidence=1.0,
-                threshold=spec.profile.thresholds[QualityDimension.BRAND_CONSISTENCY],
+                threshold=spec.profile.thresholds[
+                    QualityDimension.BRAND_CONSISTENCY
+                ],
                 severity=(
                     QualitySeverity.HARD
-                    if any(v.blocking and v.dimension is QualityDimension.BRAND_CONSISTENCY for v in violations)
+                    if any(
+                        violation.blocking
+                        and violation.dimension
+                        is QualityDimension.BRAND_CONSISTENCY
+                        for violation in violations
+                    )
                     else QualitySeverity.INFO
                 ),
                 evidence_ids=(evidence.evidence_id,),
@@ -301,10 +370,17 @@ class Node43BrandSignalAdapter:
                     dimension=QualityDimension.LOGO_INTEGRITY,
                     score=0.0,
                     confidence=1.0,
-                    threshold=spec.profile.thresholds[QualityDimension.LOGO_INTEGRITY],
+                    threshold=spec.profile.thresholds[
+                        QualityDimension.LOGO_INTEGRITY
+                    ],
                     severity=(
                         QualitySeverity.HARD
-                        if any(v.blocking and v.dimension is QualityDimension.LOGO_INTEGRITY for v in violations)
+                        if any(
+                            violation.blocking
+                            and violation.dimension
+                            is QualityDimension.LOGO_INTEGRITY
+                            for violation in violations
+                        )
                         else QualitySeverity.ERROR
                     ),
                     evidence_ids=(evidence.evidence_id,),
@@ -350,19 +426,31 @@ class Node44IdentitySignalAdapter:
         scores: list[float] = []
         confidences: list[float] = []
         for result in results:
-            evidence_id = f"identity:{result.identity_id}:v{result.reference_version}"
+            evidence_id = (
+                f"identity:{result.identity_id}:"
+                f"v{result.reference_version}"
+            )
             evidence.append(
                 QualityEvidence(
                     evidence_id=evidence_id,
                     kind=EvidenceKind.IDENTITY_ENGINE,
-                    source_version=result.provider_version or "node44/unknown",
-                    summary=f"{result.identity_type.value}:{result.status.value}",
+                    source_version=(
+                        result.provider_version or "node44/unknown"
+                    ),
+                    summary=(
+                        f"{result.identity_type.value}:"
+                        f"{result.status.value}"
+                    ),
                     refs=result.evidence_refs,
                     data={
                         "score": result.identity_score,
                         "confidence": result.confidence,
-                        "profile_key": result.threshold_profile.profile_key,
-                        "profile_version": result.threshold_profile.version,
+                        "profile_key": (
+                            result.threshold_profile.profile_key
+                        ),
+                        "profile_version": (
+                            result.threshold_profile.version
+                        ),
                     },
                 )
             )
@@ -372,7 +460,8 @@ class Node44IdentitySignalAdapter:
             if result.status is not IdentityStatus.PASS:
                 blocking = (
                     result.status is IdentityStatus.BLOCKED
-                    or result.threshold_profile.severity is IdentitySeverity.HARD
+                    or result.threshold_profile.severity
+                    is IdentitySeverity.HARD
                 )
                 dimension = (
                     QualityDimension.LOGO_INTEGRITY
@@ -381,22 +470,39 @@ class Node44IdentitySignalAdapter:
                 )
                 violations.append(
                     QualityViolation(
-                        violation_id=f"identity:{result.identity_id}:{result.status.value}",
+                        violation_id=(
+                            f"identity:{result.identity_id}:"
+                            f"{result.status.value}"
+                        ),
                         dimension=dimension,
-                        code=(result.failure_codes[0] if result.failure_codes else result.status.value),
+                        code=(
+                            result.failure_codes[0]
+                            if result.failure_codes
+                            else result.status.value
+                        ),
                         severity=_severity(
                             result.threshold_profile.severity.value,
                             blocking=blocking,
                         ),
-                        message=f"Identity {result.identity_id} {result.status.value}",
+                        message=(
+                            f"Identity {result.identity_id} "
+                            f"{result.status.value}"
+                        ),
                         confidence=result.confidence,
                         blocking=blocking,
                         evidence_ids=(evidence_id,),
                         repair_actions=(
                             RepairAction(
-                                action_type=RepairActionType.REGENERATE_REGION,
-                                target=result.candidate_node_id or "identity-region",
-                                reason_code="IDENTITY_PRESERVATION_FAILED",
+                                action_type=(
+                                    RepairActionType.REGENERATE_REGION
+                                ),
+                                target=(
+                                    result.candidate_node_id
+                                    or "identity-region"
+                                ),
+                                reason_code=(
+                                    "IDENTITY_PRESERVATION_FAILED"
+                                ),
                                 expected_effect=(dimension,),
                             ),
                         ),
@@ -408,10 +514,12 @@ class Node44IdentitySignalAdapter:
             dimension=QualityDimension.IDENTITY_CONSISTENCY,
             score=score,
             confidence=confidence,
-            threshold=spec.profile.thresholds[QualityDimension.IDENTITY_CONSISTENCY],
+            threshold=spec.profile.thresholds[
+                QualityDimension.IDENTITY_CONSISTENCY
+            ],
             severity=(
                 QualitySeverity.HARD
-                if any(v.blocking for v in violations)
+                if any(violation.blocking for violation in violations)
                 else QualitySeverity.INFO
             ),
             evidence_ids=tuple(item.evidence_id for item in evidence),
@@ -426,7 +534,8 @@ class Node44IdentitySignalAdapter:
             unavailable_reason=(
                 "NODE44_IDENTITY_VALIDATION_UNAVAILABLE"
                 if any(
-                    result.status is IdentityStatus.VALIDATION_UNAVAILABLE
+                    result.status
+                    is IdentityStatus.VALIDATION_UNAVAILABLE
                     for result in results
                 )
                 else None
