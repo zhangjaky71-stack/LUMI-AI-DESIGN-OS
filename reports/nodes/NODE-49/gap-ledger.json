@@ -1,0 +1,36 @@
+{
+  "node": "NODE-49",
+  "status": "IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "gaps": [
+    {
+      "id": "NODE49-GAP-01",
+      "severity": "P0",
+      "title": "Production object storage and presigner adapters",
+      "completion_gate": "Bind ObjectReadPort, ExportObjectStorePort and ObjectDownloadSigner to production NODE-18/object-storage infrastructure, prove exact-object checksum reads, internal-only storage metadata, TTL enforcement and that signed URLs never enter persistence or logs."
+    },
+    {
+      "id": "NODE49-GAP-02",
+      "severity": "P0",
+      "title": "Real format conversion renderers",
+      "completion_gate": "Implement and accept real PNG/JPEG conversion, MP4 normalization, PDF export and PPTX/PDF deck rendering behind ExportRendererPort. Same-format copy-through is implemented; byte renaming is explicitly forbidden."
+    },
+    {
+      "id": "NODE49-GAP-03",
+      "severity": "P0",
+      "title": "NODE-11 production permission backend",
+      "completion_gate": "Bind Node11ExportAuthorizationAdapter to the authoritative project/artifact permission service and prove cross-tenant, revoked-access and post-export download reauthorization cases."
+    },
+    {
+      "id": "NODE49-GAP-04",
+      "severity": "P0",
+      "title": "NODE-19 worker crash/replay acceptance",
+      "completion_gate": "Run export.package workers through durable claims, cancellation, retry/DLQ and restart scenarios; prove deterministic runtime-job dedupe and package/output idempotency under crashes between object write and repository commit."
+    },
+    {
+      "id": "NODE49-GAP-05",
+      "severity": "P0",
+      "title": "Hosted and live infrastructure acceptance",
+      "completion_gate": "Execute NODE-49 contract, quality, PostgreSQL and 500-item benchmark gates on hosted runners and complete live image/video/PDF/ZIP/object-storage/download acceptance. If the existing GitHub Actions Billing/Spending Limit blocker persists, clear it before claiming hosted green."
+    }
+  ]
+}
