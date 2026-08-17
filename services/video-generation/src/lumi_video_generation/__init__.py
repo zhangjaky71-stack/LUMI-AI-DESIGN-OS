@@ -13,6 +13,7 @@ from .media_sandbox import (
 )
 from .model import (
     CompiledShot,
+    DurableVideoObject,
     FinalVideoProvenance,
     GatewayEstimate,
     GatewayVideoResult,
@@ -46,6 +47,7 @@ from .validation import CompositeVideoValidator
 __all__ = [
     "CompiledShot",
     "CompositeVideoValidator",
+    "DurableVideoObject",
     "FfmpegArgvCompiler",
     "FfmpegInvocation",
     "FinalVideoProvenance",
