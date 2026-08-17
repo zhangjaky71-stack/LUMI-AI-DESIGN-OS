@@ -1,0 +1,115 @@
+name: NODE-45 Asset Intelligence
+
+on:
+  pull_request:
+    paths:
+      - "services/asset-intelligence/**"
+      - "apps/api/src/lumi_api/asset_intelligence/**"
+      - "apps/api/src/lumi_api/api/v1/asset_intelligence_*"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/src/lumi_api/persistence/models_asset_intelligence.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260817_0014_asset_intelligence.py"
+      - "apps/api/migrations/versions/20260817_0014_sql/**"
+      - "apps/api/tests/test_asset_intelligence_identity_adapter_node45.py"
+      - "evals/node45/**"
+      - "docs/runtime/ASSET-INTELLIGENCE-V1.md"
+      - "reports/nodes/NODE-45/**"
+      - "tools/node45/**"
+      - ".github/workflows/node-45-asset-intelligence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  asset-intelligence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+
+      - name: NODE-45 runtime and NODE-44 adapter tests
+        run: |
+          uv run pytest -q \
+            services/asset-intelligence/tests/test_asset_intelligence_node45.py \
+            apps/api/tests/test_asset_intelligence_identity_adapter_node45.py
+
+      - name: Deterministic semantic OCR rights duplicate eval
+        run: |
+          PYTHONPATH=services/asset-intelligence/src \
+            uv run python tools/node45/run_asset_intelligence_eval.py
+
+      - name: Runtime smoke
+        run: |
+          PYTHONPATH=services/asset-intelligence/src \
+            uv run python tools/node45/runtime_smoke.py
+
+      - name: Static NODE-45 validator
+        run: uv run python tools/node45/validate_asset_intelligence.py
+
+      - name: Compile migration and runtime
+        run: |
+          uv run python -m compileall -q \
+            services/asset-intelligence/src/lumi_asset_intelligence \
+            apps/api/src/lumi_api/asset_intelligence \
+            apps/api/src/lumi_api/api/v1/asset_intelligence_dependencies.py \
+            apps/api/src/lumi_api/api/v1/asset_intelligence_routes.py \
+            apps/api/src/lumi_api/api/v1/asset_intelligence_schemas.py \
+            apps/api/src/lumi_api/persistence/models_asset_intelligence.py \
+            apps/api/migrations/versions/20260817_0014_asset_intelligence.py
+
+      - name: Parse gap ledger
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          value = json.loads(
+              Path("reports/nodes/NODE-45/gap-ledger.json").read_text(encoding="utf-8")
+          )
+          assert value["node"] == "NODE-45"
+          assert len(value["gaps"]) == 5
+          print("NODE45_GAP_LEDGER_PARSE_PASS")
+          PY
+
+      - name: Ruff
+        run: |
+          uv run ruff check \
+            services/asset-intelligence/src/lumi_asset_intelligence \
+            services/asset-intelligence/tests/test_asset_intelligence_node45.py \
+            apps/api/src/lumi_api/asset_intelligence \
+            apps/api/src/lumi_api/api/v1/asset_intelligence_dependencies.py \
+            apps/api/src/lumi_api/api/v1/asset_intelligence_routes.py \
+            apps/api/src/lumi_api/api/v1/asset_intelligence_schemas.py \
+            apps/api/src/lumi_api/persistence/models_asset_intelligence.py \
+            apps/api/tests/test_asset_intelligence_identity_adapter_node45.py \
+            tools/node45
+
+      - name: Pyright
+        run: |
+          uv run pyright \
+            services/asset-intelligence/src/lumi_asset_intelligence \
+            services/asset-intelligence/tests/test_asset_intelligence_node45.py \
+            apps/api/src/lumi_api/asset_intelligence \
+            apps/api/src/lumi_api/api/v1/asset_intelligence_dependencies.py \
+            apps/api/src/lumi_api/api/v1/asset_intelligence_routes.py \
+            apps/api/src/lumi_api/api/v1/asset_intelligence_schemas.py \
+            apps/api/src/lumi_api/persistence/models_asset_intelligence.py \
+            apps/api/tests/test_asset_intelligence_identity_adapter_node45.py \
+            tools/node45

@@ -1,0 +1,23 @@
+{
+  "schema_version": "lumi.asset-intelligence-eval/1.0",
+  "assets": [
+    {"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1","name":"black-cup","description":"matte black coffee cup product photo","ocr":"DREAM CUP","tags":["coffee","product"],"embedding":[1,0,0,0],"phash":"0000000000000000","checksum":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","rights":"owned","commercial":true,"permission_tags":[]},
+    {"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2","name":"black-cup-copy","description":"black coffee cup alternate crop","ocr":"DREAM CUP","tags":["coffee","product"],"embedding":[0.99,0.01,0,0],"phash":"0000000000000001","checksum":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","rights":"owned","commercial":true,"permission_tags":[]},
+    {"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3","name":"red-cup","description":"red ceramic cup","ocr":"RED","tags":["cup","product"],"embedding":[0,1,0,0],"phash":"ffffffffffffffff","checksum":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","rights":"licensed","commercial":true,"permission_tags":[]},
+    {"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4","name":"summer-menu","description":"summer cafe menu poster","ocr":"SUMMER LATTE 39","tags":["document","menu"],"embedding":[0,0,1,0],"phash":"1234567890abcdef","checksum":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","rights":"unknown","commercial":false,"permission_tags":[]},
+    {"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5","name":"secret-black-cup","description":"private black coffee cup prototype","ocr":"SECRET","tags":["coffee","prototype"],"embedding":[1,0,0,0],"phash":"0000000000000010","checksum":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","rights":"owned","commercial":true,"permission_tags":["secret"]}
+  ],
+  "queries": [
+    {"case":"semantic-black","mode":"SEMANTIC","query":"black coffee","query_embedding":[1,0,0,0],"expected_top":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"},
+    {"case":"ocr-latte","mode":"OCR","query":"LATTE 39","expected_top":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4"},
+    {"case":"text-red","mode":"TEXT","query":"red ceramic","expected_top":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3"},
+    {"case":"hybrid-menu","mode":"HYBRID","query":"summer menu","query_embedding":[0,0,1,0],"expected_top":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4"},
+    {"case":"secret-hidden","mode":"TEXT","query":"private prototype","expected_count":0},
+    {"case":"secret-visible","mode":"TEXT","query":"private prototype","permission_tags":["secret"],"expected_top":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5"},
+    {"case":"commercial-rights","mode":"TEXT","query":"menu","commercial":true,"expected_count":0}
+  ],
+  "duplicates": [
+    {"case":"exact","source":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1","candidate":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2","expected":["EXACT","PERCEPTUAL_NEAR_DUPLICATE","SEMANTIC_SIMILAR"]},
+    {"case":"different","source":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1","candidate":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3","expected":[]}
+  ]
+}

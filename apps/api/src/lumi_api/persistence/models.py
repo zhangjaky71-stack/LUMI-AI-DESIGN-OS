@@ -1,6 +1,7 @@
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
 from sqlalchemy import Index
 
+from . import models_asset_intelligence as _models_asset_intelligence
 from . import models_asset_storage as _models_asset_storage
 from . import models_auth as _models_auth
 from . import models_brand_rules as _models_brand_rules
@@ -25,6 +26,7 @@ from .models_queue_runtime import DeadLetterRecordModel, RuntimeJobModel
 
 # Keep these referenced so linters see metadata-registration side effects as intentional.
 _METADATA_MODULES = (
+    _models_asset_intelligence,
     _models_asset_storage,
     _models_auth,
     _models_brand_rules,
