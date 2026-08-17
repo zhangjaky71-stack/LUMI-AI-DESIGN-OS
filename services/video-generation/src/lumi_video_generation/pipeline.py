@@ -4,6 +4,7 @@ from dataclasses import replace
 from decimal import Decimal
 from uuid import NAMESPACE_URL, uuid5
 
+from .gateway_contract import pending_record
 from .model import (
     FinalVideoProvenance,
     ShotProvenance,
@@ -16,7 +17,6 @@ from .model import (
     VideoTaskSpec,
     VideoTimeline,
 )
-from .model_gateway_adapter import pending_record
 from .ports import (
     VideoArtifactPort,
     VideoGatewayPort,
@@ -29,7 +29,7 @@ from .storyboard import compile_retry, compile_storyboard
 
 
 class VideoGenerationPipeline:
-    """Long-running control plane. Each resume performs at most one provider poll per shot."""
+    """Long-running control plane with bounded provider work per resume."""
 
     def __init__(
         self,
@@ -42,6 +42,8 @@ class VideoGenerationPipeline:
         artifacts: VideoArtifactPort,
         max_shot_retries: int = 1,
     ) -> None:
+        if max_shot_retries < 0:
+            raise ValueError("max_shot_retries cannot be negative")
         self.repository = repository
         self.gateway = gateway
         self.output = output
@@ -53,7 +55,15 @@ class VideoGenerationPipeline:
     async def start(self, spec: VideoTaskSpec) -> VideoJob:
         compiled = compile_storyboard(spec)
         job = VideoJob(
-            job_id=str(uuid5(NAMESPACE_URL, f"lumi:video-job:{spec.organization_id}:{spec.operation_id}")),
+            job_id=str(
+                uuid5(
+                    NAMESPACE_URL,
+                    (
+                        "lumi:video-job:"
+                        f"{spec.organization_id}:{spec.operation_id}"
+                    ),
+                )
+            ),
             spec=spec,
             status=VideoJobStatus.PLANNED,
             shots=tuple(ShotRuntime(item) for item in compiled),
@@ -62,18 +72,52 @@ class VideoGenerationPipeline:
         if persisted.status is not VideoJobStatus.PLANNED:
             return persisted
 
-        estimates = [await self.gateway.estimate(spec=spec, shot=item) for item in compiled]
-        estimate_total = sum((item.amount_usd for item in estimates), Decimal("0"))
-        if spec.budget_limit_usd is not None and estimate_total > spec.budget_limit_usd:
-            failed = replace(job, status=VideoJobStatus.FAILED, error_code="VIDEO_BUDGET_ESTIMATE_EXCEEDED")
+        try:
+            estimates = [
+                await self.gateway.estimate(spec=spec, shot=item)
+                for item in compiled
+            ]
+        except Exception as exc:
+            failed = replace(
+                job,
+                status=VideoJobStatus.FAILED,
+                error_code=f"VIDEO_ESTIMATE_FAILED:{type(exc).__name__}",
+            )
+            return self.repository.save(failed)
+
+        estimate_total = sum(
+            (item.amount_usd for item in estimates),
+            Decimal("0"),
+        )
+        if (
+            spec.budget_limit_usd is not None
+            and estimate_total > spec.budget_limit_usd
+        ):
+            failed = replace(
+                job,
+                status=VideoJobStatus.FAILED,
+                error_code="VIDEO_BUDGET_ESTIMATE_EXCEEDED",
+            )
             return self.repository.save(failed)
 
         runtimes: list[ShotRuntime] = []
         for item in compiled:
-            result = await self.gateway.submit(spec=spec, shot=item)
+            try:
+                result = await self.gateway.submit(spec=spec, shot=item)
+            except Exception as exc:
+                return await self._abort_partial_submit(
+                    job,
+                    runtimes,
+                    item,
+                    f"VIDEO_SUBMIT_FAILED:{type(exc).__name__}",
+                )
             if result.status != "PENDING" or not result.provider_request_id:
-                failed = replace(job, status=VideoJobStatus.FAILED, error_code="VIDEO_PROVIDER_ASYNC_SUBMIT_REQUIRED")
-                return self.repository.save(failed)
+                return await self._abort_partial_submit(
+                    job,
+                    runtimes,
+                    item,
+                    "VIDEO_PROVIDER_ASYNC_SUBMIT_REQUIRED",
+                )
             runtimes.append(
                 ShotRuntime(
                     compiled=item,
@@ -81,19 +125,83 @@ class VideoGenerationPipeline:
                     pending=pending_record(item, result),
                 )
             )
-        waiting = replace(job, status=VideoJobStatus.WAITING_EXTERNAL, shots=tuple(runtimes))
+        waiting = replace(
+            job,
+            status=VideoJobStatus.WAITING_EXTERNAL,
+            shots=tuple(runtimes),
+        )
         return self.repository.save(waiting)
+
+    async def _abort_partial_submit(
+        self,
+        job: VideoJob,
+        submitted: list[ShotRuntime],
+        failed_shot,
+        error_code: str,
+    ) -> VideoJob:
+        cancelled: list[ShotRuntime] = []
+        unresolved = False
+        for runtime in submitted:
+            if runtime.pending is None:
+                cancelled.append(runtime)
+                continue
+            try:
+                accepted = await self.gateway.cancel(pending=runtime.pending)
+            except Exception:
+                accepted = False
+            if accepted:
+                cancelled.append(
+                    replace(
+                        runtime,
+                        status=ShotStatus.CANCELLED,
+                        pending=None,
+                    )
+                )
+            else:
+                unresolved = True
+                cancelled.append(runtime)
+        cancelled.append(
+            ShotRuntime(
+                compiled=failed_shot,
+                status=ShotStatus.FAILED,
+                error_code=error_code,
+            )
+        )
+        seen = {item.compiled.shot.shot_id for item in cancelled}
+        cancelled.extend(
+            ShotRuntime(item)
+            for item in compile_storyboard(job.spec)
+            if item.shot.shot_id not in seen
+        )
+        status = (
+            VideoJobStatus.CANCEL_REQUESTED
+            if unresolved
+            else VideoJobStatus.FAILED
+        )
+        aborted = replace(
+            job,
+            status=status,
+            shots=tuple(cancelled),
+            error_code=error_code,
+        )
+        return self.repository.save(aborted)
 
     async def resume(self, job_id: str) -> VideoJob:
         job = self.repository.get(job_id)
-        if job.status in {VideoJobStatus.COMPLETED, VideoJobStatus.CANCELLED}:
+        if job.status in {
+            VideoJobStatus.COMPLETED,
+            VideoJobStatus.CANCELLED,
+        }:
             return job
         if job.status is VideoJobStatus.FAILED:
             return job
 
         updated: list[ShotRuntime] = []
         for runtime in job.shots:
-            if runtime.status is not ShotStatus.WAITING_EXTERNAL or runtime.pending is None:
+            if (
+                runtime.status is not ShotStatus.WAITING_EXTERNAL
+                or runtime.pending is None
+            ):
                 updated.append(runtime)
                 continue
             result = await self.gateway.poll(pending=runtime.pending)
@@ -101,42 +209,93 @@ class VideoGenerationPipeline:
                 updated.append(runtime)
                 continue
             if job.status is VideoJobStatus.CANCEL_REQUESTED:
-                updated.append(replace(runtime, status=ShotStatus.CANCELLED, pending=None))
+                updated.append(
+                    replace(
+                        runtime,
+                        status=ShotStatus.CANCELLED,
+                        pending=None,
+                    )
+                )
                 continue
             if result.status == "CANCELLED":
-                updated.append(replace(runtime, status=ShotStatus.CANCELLED, pending=None))
+                updated.append(
+                    replace(
+                        runtime,
+                        status=ShotStatus.CANCELLED,
+                        pending=None,
+                    )
+                )
                 continue
             if result.status != "COMPLETED":
                 updated.append(
                     replace(
                         runtime,
                         status=ShotStatus.FAILED,
-                        pending=None,
+                        pending=runtime.pending,
                         error_code="VIDEO_PROVIDER_FAILED",
                     )
                 )
                 continue
 
-            clip = await self.output.materialize_and_validate(
-                spec=job.spec,
-                shot=runtime.compiled,
-                result=result,
-            )
-            report = await self.validator.validate(
-                spec=job.spec,
-                shot=runtime.compiled,
-                clip=clip,
-                provider_result=result,
-            )
+            try:
+                clip = await self.output.materialize_and_validate(
+                    spec=job.spec,
+                    shot=runtime.compiled,
+                    result=result,
+                )
+            except Exception as exc:
+                updated.append(
+                    replace(
+                        runtime,
+                        status=ShotStatus.FAILED,
+                        pending=runtime.pending,
+                        actual_cost_usd=(
+                            result.cost_usd or Decimal("0")
+                        ),
+                        error_code=(
+                            "VIDEO_OUTPUT_INVALID:"
+                            f"{type(exc).__name__}"
+                        ),
+                    )
+                )
+                continue
+
+            try:
+                report = await self.validator.validate(
+                    spec=job.spec,
+                    shot=runtime.compiled,
+                    clip=clip,
+                    provider_result=result,
+                )
+            except Exception as exc:
+                updated.append(
+                    replace(
+                        runtime,
+                        status=ShotStatus.FAILED,
+                        pending=runtime.pending,
+                        clip=clip,
+                        actual_cost_usd=(
+                            result.cost_usd or Decimal("0")
+                        ),
+                        error_code=(
+                            "VIDEO_VALIDATION_EXCEPTION:"
+                            f"{type(exc).__name__}"
+                        ),
+                    )
+                )
+                continue
+
             if report.decision is ValidationDecision.REJECT:
                 updated.append(
                     replace(
                         runtime,
                         status=ShotStatus.FAILED,
-                        pending=None,
+                        pending=runtime.pending,
                         clip=clip,
                         validation=report,
-                        actual_cost_usd=result.cost_usd or Decimal("0"),
+                        actual_cost_usd=(
+                            result.cost_usd or Decimal("0")
+                        ),
                         error_code="VIDEO_SHOT_VALIDATION_REJECTED",
                     )
                 )
@@ -154,25 +313,61 @@ class VideoGenerationPipeline:
 
         next_job = replace(job, shots=tuple(updated))
         if job.status is VideoJobStatus.CANCEL_REQUESTED:
-            if all(item.status in {ShotStatus.CANCELLED, ShotStatus.READY, ShotStatus.FAILED} for item in updated):
-                next_job = replace(next_job, status=VideoJobStatus.CANCELLED)
+            if all(
+                item.status
+                in {
+                    ShotStatus.CANCELLED,
+                    ShotStatus.READY,
+                    ShotStatus.FAILED,
+                    ShotStatus.PLANNED,
+                }
+                for item in updated
+            ):
+                next_job = replace(
+                    next_job,
+                    status=VideoJobStatus.CANCELLED,
+                )
             return self.repository.save(next_job)
         if any(item.status is ShotStatus.FAILED for item in updated):
             return self.repository.save(
-                replace(next_job, status=VideoJobStatus.FAILED, error_code="VIDEO_SHOT_FAILED")
+                replace(
+                    next_job,
+                    status=VideoJobStatus.FAILED,
+                    error_code="VIDEO_SHOT_FAILED",
+                )
             )
-        if any(item.status is ShotStatus.WAITING_EXTERNAL for item in updated):
-            return self.repository.save(replace(next_job, status=VideoJobStatus.WAITING_EXTERNAL))
+        if any(
+            item.status is ShotStatus.WAITING_EXTERNAL
+            for item in updated
+        ):
+            return self.repository.save(
+                replace(
+                    next_job,
+                    status=VideoJobStatus.WAITING_EXTERNAL,
+                )
+            )
         if not all(item.status is ShotStatus.READY for item in updated):
             return self.repository.save(next_job)
-        return await self._compose(replace(next_job, status=VideoJobStatus.COMPOSING))
+        return await self._compose(
+            replace(next_job, status=VideoJobStatus.COMPOSING)
+        )
 
     async def retry_shot(self, job_id: str, shot_id: str) -> VideoJob:
         job = self.repository.get(job_id)
-        if job.status not in {VideoJobStatus.FAILED, VideoJobStatus.WAITING_EXTERNAL}:
+        if job.status not in {
+            VideoJobStatus.FAILED,
+            VideoJobStatus.WAITING_EXTERNAL,
+        }:
             raise ValueError("VIDEO_JOB_NOT_RETRYABLE")
         runtimes = list(job.shots)
-        index = next((i for i, item in enumerate(runtimes) if item.compiled.shot.shot_id == shot_id), None)
+        index = next(
+            (
+                idx
+                for idx, item in enumerate(runtimes)
+                if item.compiled.shot.shot_id == shot_id
+            ),
+            None,
+        )
         if index is None:
             raise KeyError("VIDEO_SHOT_NOT_FOUND")
         previous = runtimes[index]
@@ -181,9 +376,12 @@ class VideoGenerationPipeline:
         if previous.compiled.retry_ordinal >= self.max_shot_retries:
             raise ValueError("VIDEO_SHOT_RETRY_LIMIT_EXCEEDED")
         retry = compile_retry(job.spec, previous.compiled)
-        excluded = ()
+        failed_provider: str | None = None
         if previous.clip is not None:
-            excluded = (previous.clip.provider,)
+            failed_provider = previous.clip.provider
+        elif previous.pending is not None:
+            failed_provider = previous.pending.result.provider
+        excluded = (failed_provider,) if failed_provider else ()
         result = await self.gateway.submit(
             spec=job.spec,
             shot=retry,
@@ -206,22 +404,45 @@ class VideoGenerationPipeline:
 
     async def cancel(self, job_id: str) -> VideoJob:
         job = self.repository.get(job_id)
-        if job.status in {VideoJobStatus.COMPLETED, VideoJobStatus.CANCELLED}:
+        if job.status in {
+            VideoJobStatus.COMPLETED,
+            VideoJobStatus.CANCELLED,
+        }:
             return job
         runtimes: list[ShotRuntime] = []
         any_pending = False
         for runtime in job.shots:
-            if runtime.status is not ShotStatus.WAITING_EXTERNAL or runtime.pending is None:
+            if (
+                runtime.status is not ShotStatus.WAITING_EXTERNAL
+                or runtime.pending is None
+            ):
                 runtimes.append(runtime)
                 continue
-            accepted = await self.gateway.cancel(pending=runtime.pending)
+            try:
+                accepted = await self.gateway.cancel(
+                    pending=runtime.pending
+                )
+            except Exception:
+                accepted = False
             if accepted:
-                runtimes.append(replace(runtime, status=ShotStatus.CANCELLED, pending=None))
+                runtimes.append(
+                    replace(
+                        runtime,
+                        status=ShotStatus.CANCELLED,
+                        pending=None,
+                    )
+                )
             else:
                 any_pending = True
                 runtimes.append(runtime)
-        status = VideoJobStatus.CANCEL_REQUESTED if any_pending else VideoJobStatus.CANCELLED
-        return self.repository.save(replace(job, status=status, shots=tuple(runtimes)))
+        status = (
+            VideoJobStatus.CANCEL_REQUESTED
+            if any_pending
+            else VideoJobStatus.CANCELLED
+        )
+        return self.repository.save(
+            replace(job, status=status, shots=tuple(runtimes))
+        )
 
     async def _compose(self, job: VideoJob) -> VideoJob:
         start = Decimal("0")
@@ -253,7 +474,9 @@ class VideoGenerationPipeline:
                     retry_ordinal=runtime.compiled.retry_ordinal,
                     provider=runtime.clip.provider,
                     model=runtime.clip.model,
-                    provider_request_id=runtime.clip.provider_request_id,
+                    provider_request_id=(
+                        runtime.clip.provider_request_id
+                    ),
                     source_asset_ids=assets,
                     identity_refs=shot.identity_refs,
                     rights_snapshot_ids=rights,
@@ -266,7 +489,18 @@ class VideoGenerationPipeline:
             height=job.spec.height,
             fps=job.spec.fps,
         )
-        rendered = await self.renderer.render(timeline=timeline)
+        try:
+            rendered = await self.renderer.render(timeline=timeline)
+        except Exception as exc:
+            failed = replace(
+                job,
+                status=VideoJobStatus.FAILED,
+                error_code=(
+                    "VIDEO_COMPOSITION_FAILED:"
+                    f"{type(exc).__name__}"
+                ),
+            )
+            return self.repository.save(failed)
         final_provenance = FinalVideoProvenance(
             task_semantic_hash=job.spec.semantic_hash(),
             source_shots=tuple(provenance),
@@ -285,5 +519,8 @@ class VideoGenerationPipeline:
             provenance=final_provenance,
             error_code=None,
         )
-        await self.artifacts.append_final(job=completed, video=rendered)
+        await self.artifacts.append_final(
+            job=completed,
+            video=rendered,
+        )
         return self.repository.save(completed)
