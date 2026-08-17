@@ -1,7 +1,17 @@
 {
   "pythonVersion": "3.12",
   "typeCheckingMode": "standard",
-  "include": ["src", "tests", "../../tools/node48"],
-  "extraPaths": ["src", "../model-gateway/src"],
+  "include": [
+    "src",
+    "tests",
+    "../../tools/node48",
+    "../../apps/api/src/lumi_api/video_generation",
+    "../../apps/api/src/lumi_api/persistence/models_video_generation.py"
+  ],
+  "extraPaths": [
+    "src",
+    "../model-gateway/src",
+    "../../apps/api/src"
+  ],
   "exclude": ["**/__pycache__"]
 }
