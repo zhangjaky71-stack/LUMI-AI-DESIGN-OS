@@ -1,0 +1,71 @@
+{
+  "schema": "lumi.design-ir.conformance.v1",
+  "fixtures": [
+    {
+      "name": "base-poster",
+      "document": {
+        "schema_version": "1.0",
+        "document_id": "poster-001",
+        "unit": "px",
+        "root_id": "root",
+        "nodes": {
+          "root": {"id": "root", "kind": "DOCUMENT_ROOT", "parent_id": null, "children": ["frame"]},
+          "frame": {"id": "frame", "kind": "FRAME", "name": "Main", "parent_id": "root", "children": ["headline", "hero"], "transform": {"x": 0, "y": 0, "width": 750, "height": 1624}},
+          "headline": {"id": "headline", "kind": "TEXT", "role": "HEADLINE", "parent_id": "frame", "children": [], "content": "Café 新品", "transform": {"x": 48, "y": 80, "width": 654, "height": 120}, "locked": false, "constraint_refs": ["constraint:title-safe"]},
+          "hero": {"id": "hero", "kind": "IMAGE", "role": "HERO_PRODUCT", "parent_id": "frame", "children": [], "asset_id": "asset:coffee-001", "semantic": {"brand_binding": "brand:lumi-coffee"}, "transform": {"x": 75.5, "y": 320, "width": 599, "height": 800.25}}
+        },
+        "resources": {"asset:coffee-001": {"kind": "asset", "stable_id": "asset:coffee-001"}},
+        "metadata": {"document_version": 7, "updated_at": "2026-08-17T07:00:00Z", "project_id": "project:coffee"}
+      },
+      "canonical": "{\"document_id\":\"poster-001\",\"metadata\":{\"project_id\":\"project:coffee\"},\"nodes\":{\"frame\":{\"children\":[\"headline\",\"hero\"],\"id\":\"frame\",\"kind\":\"FRAME\",\"name\":\"Main\",\"parent_id\":\"root\",\"transform\":{\"height\":1624,\"width\":750,\"x\":0,\"y\":0}},\"headline\":{\"children\":[],\"constraint_refs\":[\"constraint:title-safe\"],\"content\":\"Café 新品\",\"id\":\"headline\",\"kind\":\"TEXT\",\"locked\":false,\"parent_id\":\"frame\",\"role\":\"HEADLINE\",\"transform\":{\"height\":120,\"width\":654,\"x\":48,\"y\":80}},\"hero\":{\"asset_id\":\"asset:coffee-001\",\"children\":[],\"id\":\"hero\",\"kind\":\"IMAGE\",\"parent_id\":\"frame\",\"role\":\"HERO_PRODUCT\",\"semantic\":{\"brand_binding\":\"brand:lumi-coffee\"},\"transform\":{\"height\":800.25,\"width\":599,\"x\":75.5,\"y\":320}},\"root\":{\"children\":[\"frame\"],\"id\":\"root\",\"kind\":\"DOCUMENT_ROOT\",\"parent_id\":null}},\"resources\":{\"asset:coffee-001\":{\"kind\":\"asset\",\"stable_id\":\"asset:coffee-001\"}},\"root_id\":\"root\",\"schema_version\":\"1.0\",\"unit\":\"px\"}",
+      "sha256": "6e76e851bf1bfec0d779325e075f0cbce7743d36f4e2ec44073a6c4e00736b87"
+    },
+    {
+      "name": "semantic-equal-ephemeral",
+      "document": {
+        "schema_version": "1.0", "document_id": "poster-001", "unit": "px", "root_id": "root",
+        "nodes": {
+          "root": {"id": "root", "kind": "DOCUMENT_ROOT", "parent_id": null, "children": ["frame"]},
+          "frame": {"id": "frame", "kind": "FRAME", "name": "Main", "parent_id": "root", "children": ["headline", "hero"], "transform": {"x": 0, "y": 0, "width": 750, "height": 1624}},
+          "headline": {"id": "headline", "kind": "TEXT", "role": "HEADLINE", "parent_id": "frame", "children": [], "content": "Café 新品", "transform": {"x": 48, "y": 80, "width": 654, "height": 120}, "locked": false, "constraint_refs": ["constraint:title-safe"]},
+          "hero": {"id": "hero", "kind": "IMAGE", "role": "HERO_PRODUCT", "parent_id": "frame", "children": [], "asset_id": "asset:coffee-001", "semantic": {"brand_binding": "brand:lumi-coffee"}, "transform": {"x": 75.5, "y": 320, "width": 599, "height": 800.25}}
+        },
+        "resources": {"asset:coffee-001": {"kind": "asset", "stable_id": "asset:coffee-001"}},
+        "metadata": {"document_version": 99, "updated_at": "2099-01-01T00:00:00Z", "project_id": "project:coffee", "viewport": {"x": 1, "y": 2}}
+      },
+      "canonical": "{\"document_id\":\"poster-001\",\"metadata\":{\"project_id\":\"project:coffee\"},\"nodes\":{\"frame\":{\"children\":[\"headline\",\"hero\"],\"id\":\"frame\",\"kind\":\"FRAME\",\"name\":\"Main\",\"parent_id\":\"root\",\"transform\":{\"height\":1624,\"width\":750,\"x\":0,\"y\":0}},\"headline\":{\"children\":[],\"constraint_refs\":[\"constraint:title-safe\"],\"content\":\"Café 新品\",\"id\":\"headline\",\"kind\":\"TEXT\",\"locked\":false,\"parent_id\":\"frame\",\"role\":\"HEADLINE\",\"transform\":{\"height\":120,\"width\":654,\"x\":48,\"y\":80}},\"hero\":{\"asset_id\":\"asset:coffee-001\",\"children\":[],\"id\":\"hero\",\"kind\":\"IMAGE\",\"parent_id\":\"frame\",\"role\":\"HERO_PRODUCT\",\"semantic\":{\"brand_binding\":\"brand:lumi-coffee\"},\"transform\":{\"height\":800.25,\"width\":599,\"x\":75.5,\"y\":320}},\"root\":{\"children\":[\"frame\"],\"id\":\"root\",\"kind\":\"DOCUMENT_ROOT\",\"parent_id\":null}},\"resources\":{\"asset:coffee-001\":{\"kind\":\"asset\",\"stable_id\":\"asset:coffee-001\"}},\"root_id\":\"root\",\"schema_version\":\"1.0\",\"unit\":\"px\"}",
+      "sha256": "6e76e851bf1bfec0d779325e075f0cbce7743d36f4e2ec44073a6c4e00736b87"
+    },
+    {
+      "name": "unicode-nfc-equivalent",
+      "document": {
+        "schema_version": "1.0", "document_id": "poster-001", "unit": "px", "root_id": "root",
+        "nodes": {
+          "root": {"id": "root", "kind": "DOCUMENT_ROOT", "parent_id": null, "children": ["frame"]},
+          "frame": {"id": "frame", "kind": "FRAME", "name": "Main", "parent_id": "root", "children": ["headline", "hero"], "transform": {"x": 0, "y": 0, "width": 750, "height": 1624}},
+          "headline": {"id": "headline", "kind": "TEXT", "role": "HEADLINE", "parent_id": "frame", "children": [], "content": "Café 新品", "transform": {"x": 48, "y": 80, "width": 654, "height": 120}, "locked": false, "constraint_refs": ["constraint:title-safe"]},
+          "hero": {"id": "hero", "kind": "IMAGE", "role": "HERO_PRODUCT", "parent_id": "frame", "children": [], "asset_id": "asset:coffee-001", "semantic": {"brand_binding": "brand:lumi-coffee"}, "transform": {"x": 75.5, "y": 320, "width": 599, "height": 800.25}}
+        },
+        "resources": {"asset:coffee-001": {"kind": "asset", "stable_id": "asset:coffee-001"}},
+        "metadata": {"document_version": 7, "updated_at": "2026-08-17T07:00:00Z", "project_id": "project:coffee"}
+      },
+      "canonical": "{\"document_id\":\"poster-001\",\"metadata\":{\"project_id\":\"project:coffee\"},\"nodes\":{\"frame\":{\"children\":[\"headline\",\"hero\"],\"id\":\"frame\",\"kind\":\"FRAME\",\"name\":\"Main\",\"parent_id\":\"root\",\"transform\":{\"height\":1624,\"width\":750,\"x\":0,\"y\":0}},\"headline\":{\"children\":[],\"constraint_refs\":[\"constraint:title-safe\"],\"content\":\"Café 新品\",\"id\":\"headline\",\"kind\":\"TEXT\",\"locked\":false,\"parent_id\":\"frame\",\"role\":\"HEADLINE\",\"transform\":{\"height\":120,\"width\":654,\"x\":48,\"y\":80}},\"hero\":{\"asset_id\":\"asset:coffee-001\",\"children\":[],\"id\":\"hero\",\"kind\":\"IMAGE\",\"parent_id\":\"frame\",\"role\":\"HERO_PRODUCT\",\"semantic\":{\"brand_binding\":\"brand:lumi-coffee\"},\"transform\":{\"height\":800.25,\"width\":599,\"x\":75.5,\"y\":320}},\"root\":{\"children\":[\"frame\"],\"id\":\"root\",\"kind\":\"DOCUMENT_ROOT\",\"parent_id\":null}},\"resources\":{\"asset:coffee-001\":{\"kind\":\"asset\",\"stable_id\":\"asset:coffee-001\"}},\"root_id\":\"root\",\"schema_version\":\"1.0\",\"unit\":\"px\"}",
+      "sha256": "6e76e851bf1bfec0d779325e075f0cbce7743d36f4e2ec44073a6c4e00736b87"
+    },
+    {
+      "name": "multi-frame",
+      "document": {
+        "schema_version": "1.0", "document_id": "social-kit", "unit": "px", "root_id": "root",
+        "nodes": {
+          "root": {"id": "root", "kind": "DOCUMENT_ROOT", "parent_id": null, "children": ["square", "story"]},
+          "square": {"id": "square", "kind": "FRAME", "parent_id": "root", "children": [], "transform": {"width": 1080, "height": 1080}},
+          "story": {"id": "story", "kind": "FRAME", "parent_id": "root", "children": [], "transform": {"width": 1080, "height": 1920}}
+        },
+        "resources": {},
+        "metadata": {"document_version": 0, "locale": "zh-CN"}
+      },
+      "canonical": "{\"document_id\":\"social-kit\",\"metadata\":{\"locale\":\"zh-CN\"},\"nodes\":{\"root\":{\"children\":[\"square\",\"story\"],\"id\":\"root\",\"kind\":\"DOCUMENT_ROOT\",\"parent_id\":null},\"square\":{\"children\":[],\"id\":\"square\",\"kind\":\"FRAME\",\"parent_id\":\"root\",\"transform\":{\"height\":1080,\"width\":1080}},\"story\":{\"children\":[],\"id\":\"story\",\"kind\":\"FRAME\",\"parent_id\":\"root\",\"transform\":{\"height\":1920,\"width\":1080}}},\"resources\":{},\"root_id\":\"root\",\"schema_version\":\"1.0\",\"unit\":\"px\"}",
+      "sha256": "be9d9803a1cc8c30131a4c04dfd356f5cd30eeabb5230c7dfce514df5bd8cf7e"
+    }
+  ]
+}
