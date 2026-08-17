@@ -2,10 +2,10 @@
 
 ## Status
 
-`IMPLEMENTED / VALIDATING`
+`IMPLEMENTED / VALIDATING / BLOCKED_EXTERNAL`
 
-The implementation is stacked on `feat/node-37-agent-team`. Hosted GitHub Actions PASS is not claimed
-until a runner executes the dedicated NODE-38 workflow.
+The implementation is stacked on `feat/node-37-agent-team`. Hosted GitHub Actions PASS is not
+claimed.
 
 ## Delivered
 
@@ -31,14 +31,15 @@ until a runner executes the dedicated NODE-38 workflow.
 
 ## Local evidence
 
-The full GitHub repository was not cloned into the execution environment. The exact NODE-38 source
-set was validated in an isolated scratch workspace.
+The exact NODE-38 source set was validated in an isolated scratch workspace.
 
 ### Python
 
 ```text
 PYTHONPATH=packages-py pytest -q packages-py/tests/test_design_ir_node38.py
 13 passed
+python -m compileall: PASS
+NODE38_DESIGN_IR_RUNTIME_VALIDATION_PASS
 ```
 
 Coverage includes parse/serialize/parse stability, shared fixture hashes, copy-on-write mutation,
@@ -47,8 +48,8 @@ command history, invalid floats, randomized reorder invariants and the reference
 
 ### TypeScript
 
-Local isolated strict compile using the available TypeScript 5.8.3 compiler passed. A compiled Node
-smoke/conformance runner produced:
+Local isolated strict compile using the available TypeScript 5.8.3 compiler passed with repository-
+equivalent strict flags. A compiled Node smoke/conformance runner produced:
 
 ```text
 NODE38_TS_CONFORMANCE_PASS fixtures=4
@@ -74,6 +75,21 @@ available.
 
 Local Ruff, Pyright, pnpm 11, repository TypeScript 6.0.3 and Vitest execution are not claimed from
 this isolated environment. The hosted workflow is responsible for those gates.
+
+## Hosted runner evidence
+
+The first dedicated hosted workflow attempt for PR #105 is run `32008876627`. Its
+`design-ir-runtime` job `95323953486` ended with:
+
+```text
+status=completed
+conclusion=failure
+steps=[]
+```
+
+No checkout, pnpm install, TypeScript typecheck, Vitest, uv install, Python tests, validator, Ruff or
+Pyright step executed. This is classified as `BLOCKED_EXTERNAL`, consistent with the hosted runner-
+allocation failure already observed on preceding nodes. It is not a NODE-38 code or test failure.
 
 ## Security and correctness assertions
 
@@ -102,9 +118,8 @@ See `reports/nodes/NODE-38/gap-ledger.json`.
 
 ## Hosted acceptance gate
 
-The dedicated workflow must execute frozen pnpm install, TypeScript 6.0.3 typecheck, Vitest, frozen uv
-install, Python 3.12 tests, `NODE38_DESIGN_IR_RUNTIME_VALIDATION_PASS`, Ruff, Pyright and gap-ledger
-parse. If the hosted job fails before checkout with `steps=[]`, classify it `BLOCKED_EXTERNAL`; do not
-represent it as a code failure.
+Before NODE-38 may become COMPLETE, a real hosted runner must execute frozen pnpm install,
+TypeScript 6.0.3 typecheck, Vitest, frozen uv install, Python 3.12 tests,
+`NODE38_DESIGN_IR_RUNTIME_VALIDATION_PASS`, Ruff, Pyright and gap-ledger parse.
 
 Next node after acceptance: **NODE-39 — Constraint Validator**.
