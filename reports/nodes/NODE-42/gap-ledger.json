@@ -1,0 +1,41 @@
+{
+  "node": "NODE-42",
+  "status": "IMPLEMENTED_VALIDATING",
+  "gaps": [
+    {
+      "id": "K42-G01",
+      "name": "production-storage-adapter",
+      "severity": "P0",
+      "state": "OPEN",
+      "detail": "Artifact Engine verifies and deletes through ArtifactStoragePort, but the production S3/R2 tenant-authorized stat/list/delete adapter and destructive-operation credentials are not wired in this node."
+    },
+    {
+      "id": "K42-G02",
+      "name": "live-postgres-concurrency-migration-acceptance",
+      "severity": "P0",
+      "state": "OPEN",
+      "detail": "The PostgreSQL repository, SELECT FOR UPDATE CAS semantics, and forward migration are implemented, but migration upgrade/downgrade and concurrent writers have not yet been exercised against a real PostgreSQL service in the current environment."
+    },
+    {
+      "id": "K42-G03",
+      "name": "production-design-reader-and-raster-diff",
+      "severity": "P1",
+      "state": "OPEN",
+      "detail": "NODE-38 semantic-diff and raster visual-diff ports exist; production design-document persistence loading and pixel/SSIM-style raster comparison adapters remain to be wired."
+    },
+    {
+      "id": "K42-G04",
+      "name": "artifact-outbox-relay",
+      "severity": "P0",
+      "state": "OPEN",
+      "detail": "Transactional artifact_outbox_events persistence is implemented. A durable relay worker with retry/backoff, delivery observability, and dead-letter policy remains to be connected."
+    },
+    {
+      "id": "K42-G05",
+      "name": "scheduled-gc-retention-operations",
+      "severity": "P0",
+      "state": "OPEN",
+      "detail": "Two-stage mark/recheck/delete and audit contracts are implemented, but scheduled retention/legal-hold purge orchestration, operator controls, and production GC metrics/alerts remain open."
+    }
+  ]
+}
