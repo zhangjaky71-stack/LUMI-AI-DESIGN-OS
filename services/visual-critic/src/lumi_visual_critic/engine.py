@@ -152,6 +152,7 @@ class VisualCriticEngine:
         forced_status: QualityGateStatus | None = None
         reasons: list[str] = []
         if unavailable_sources:
+            forced_status = QualityGateStatus.REVIEW_REQUIRED
             reasons.append("QUALITY_DETERMINISTIC_SIGNAL_UNAVAILABLE")
         if visual_failure:
             forced_status = QualityGateStatus.REVIEW_REQUIRED
