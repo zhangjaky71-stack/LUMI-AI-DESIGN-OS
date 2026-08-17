@@ -1,0 +1,122 @@
+name: NODE-47 Image Edit
+
+on:
+  pull_request:
+    paths:
+      - "services/image-edit/**"
+      - "services/model-gateway/src/lumi_model_gateway/routing.py"
+      - "services/model-gateway/tests/test_required_capabilities_node47.py"
+      - "apps/api/src/lumi_api/image_edit/**"
+      - "apps/api/src/lumi_api/api/v1/image_edit_*"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/src/lumi_api/persistence/models_image_edit.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260817_0016_image_edit.py"
+      - "apps/api/migrations/versions/20260817_0016_sql/**"
+      - "apps/api/tests/test_image_edit_node47_contract.py"
+      - "evals/node47/**"
+      - "docs/runtime/IMAGE-EDIT-V1.md"
+      - "reports/nodes/NODE-47/**"
+      - "tools/node47/**"
+      - ".github/workflows/node-47-image-edit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  PYTHONPATH: "services/image-edit/src"
+
+jobs:
+  image-edit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+
+      - name: NODE-47 runtime and current-stack contracts
+        run: |
+          uv run pytest -q \
+            services/image-edit/tests/test_image_edit_planning_node47.py \
+            services/image-edit/tests/test_image_edit_runtime_node47.py \
+            services/image-edit/tests/test_image_edit_safety_node47.py \
+            apps/api/tests/test_image_edit_node47_contract.py \
+            services/model-gateway/tests/test_required_capabilities_node47.py
+
+      - name: Deterministic local-edit control-plane eval
+        run: uv run python tools/node47/run_local_edit_eval.py
+
+      - name: Runtime smoke
+        run: uv run python tools/node47/smoke_image_edit.py
+
+      - name: Static NODE-47 validator
+        run: uv run python tools/node47/validate_image_edit.py
+
+      - name: Compile runtime and migration
+        run: |
+          uv run python -m compileall -q \
+            services/image-edit/src/lumi_image_edit \
+            apps/api/src/lumi_api/image_edit \
+            apps/api/src/lumi_api/api/v1/image_edit_dependencies.py \
+            apps/api/src/lumi_api/api/v1/image_edit_routes.py \
+            apps/api/src/lumi_api/api/v1/image_edit_schemas.py \
+            apps/api/src/lumi_api/persistence/models_image_edit.py \
+            apps/api/migrations/versions/20260817_0016_image_edit.py \
+            services/model-gateway/src/lumi_model_gateway/routing.py
+
+      - name: Parse gap ledger
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          value = json.loads(
+              Path("reports/nodes/NODE-47/gap-ledger.json").read_text(encoding="utf-8")
+          )
+          assert value["node"] == "NODE-47"
+          assert len(value["gaps"]) == 5
+          print("NODE47_GAP_LEDGER_PARSE_PASS")
+          PY
+
+      - name: Ruff
+        run: |
+          uv run ruff check \
+            services/image-edit/src/lumi_image_edit \
+            services/image-edit/tests \
+            apps/api/src/lumi_api/image_edit \
+            apps/api/src/lumi_api/api/v1/image_edit_dependencies.py \
+            apps/api/src/lumi_api/api/v1/image_edit_routes.py \
+            apps/api/src/lumi_api/api/v1/image_edit_schemas.py \
+            apps/api/src/lumi_api/persistence/models_image_edit.py \
+            services/model-gateway/src/lumi_model_gateway/routing.py \
+            services/model-gateway/tests/test_required_capabilities_node47.py \
+            apps/api/tests/test_image_edit_node47_contract.py \
+            tools/node47
+
+      - name: Pyright
+        run: |
+          uv run pyright \
+            services/image-edit/src/lumi_image_edit \
+            services/image-edit/tests \
+            apps/api/src/lumi_api/image_edit \
+            apps/api/src/lumi_api/api/v1/image_edit_dependencies.py \
+            apps/api/src/lumi_api/api/v1/image_edit_routes.py \
+            apps/api/src/lumi_api/api/v1/image_edit_schemas.py \
+            apps/api/src/lumi_api/persistence/models_image_edit.py \
+            services/model-gateway/src/lumi_model_gateway/routing.py \
+            services/model-gateway/tests/test_required_capabilities_node47.py \
+            apps/api/tests/test_image_edit_node47_contract.py \
+            tools/node47

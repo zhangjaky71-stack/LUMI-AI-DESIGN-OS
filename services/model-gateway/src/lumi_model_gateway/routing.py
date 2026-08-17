@@ -16,7 +16,6 @@ from .ports import HealthPort, ProviderAdapter
 from .registry import CapabilityRegistry
 from .registry_projection import provider_model_from_record
 
-
 _QUALITY_MIN = {
     QualityProfile.DRAFT: 0,
     QualityProfile.BALANCED: 40,
@@ -31,6 +30,20 @@ _LATENCY_MIN = {
 }
 
 
+def _required_capabilities(request: ModelRequest) -> tuple[Capability, ...]:
+    raw = request.constraints.get("required_capabilities", ())
+    if raw is None:
+        return ()
+    if not isinstance(raw, (list, tuple, set, frozenset)):
+        raise ValueError("required_capabilities must be a collection")
+    values: list[Capability] = []
+    for item in raw:
+        capability = item if isinstance(item, Capability) else Capability(str(item))
+        if capability not in values:
+            values.append(capability)
+    return tuple(sorted(values, key=lambda value: value.value))
+
+
 class ProviderRegistry:
     """Execution transports, separate from registry control-plane facts."""
 
@@ -38,10 +51,7 @@ class ProviderRegistry:
         self._adapters: dict[str, ProviderAdapter] = {}
         self._capability_registry: CapabilityRegistry | None = None
 
-    def bind_capability_registry(
-        self,
-        registry: CapabilityRegistry,
-    ) -> None:
+    def bind_capability_registry(self, registry: CapabilityRegistry) -> None:
         self._capability_registry = registry
 
     def register(self, adapter: ProviderAdapter) -> None:
@@ -54,32 +64,37 @@ class ProviderRegistry:
         try:
             return self._adapters[provider]
         except KeyError as exc:
-            raise KeyError(
-                f"provider is not registered: {provider}"
-            ) from exc
+            raise KeyError(f"provider is not registered: {provider}") from exc
 
     def has_adapter(self, provider: str) -> bool:
         return provider in self._adapters
 
-    def supports_capability(
+    def supports_capability(self, provider: str, capability: Capability) -> bool:
+        adapter = self.adapter(provider)
+        return any(capability in model.capabilities for model in adapter.models())
+
+    def transport_model_supports(
         self,
         provider: str,
-        capability: Capability,
+        model_name: str,
+        capabilities: tuple[Capability, ...],
     ) -> bool:
+        if not capabilities:
+            return True
         adapter = self.adapter(provider)
-        return any(
-            capability in model.capabilities
-            for model in adapter.models()
+        target = next(
+            (model for model in adapter.models() if model.model == model_name),
+            None,
         )
+        if target is None:
+            return False
+        return all(capability in target.capabilities for capability in capabilities)
 
     def model(self, provider: str, model_name: str) -> ProviderModel:
         if self._capability_registry is not None:
             snapshot = self._capability_registry.capture_snapshot()
             for record in snapshot.models.values():
-                if (
-                    record.provider == provider
-                    and record.model == model_name
-                ):
+                if record.provider == provider and record.model == model_name:
                     return provider_model_from_record(
                         record,
                         registry_snapshot_id=snapshot.snapshot_id,
@@ -88,15 +103,10 @@ class ProviderRegistry:
         for model in adapter.models():
             if model.model == model_name:
                 return model
-        raise KeyError(
-            f"model is not registered: {provider}/{model_name}"
-        )
+        raise KeyError(f"model is not registered: {provider}/{model_name}")
 
     def adapters(self) -> tuple[ProviderAdapter, ...]:
-        return tuple(
-            self._adapters[name]
-            for name in sorted(self._adapters)
-        )
+        return tuple(self._adapters[name] for name in sorted(self._adapters))
 
 
 class ModelRouter:
@@ -112,37 +122,34 @@ class ModelRouter:
         if capability_registry is not None:
             self.registry.bind_capability_registry(capability_registry)
 
-    def resolve_model(
-        self,
-        provider: str,
-        model_name: str,
-    ) -> ProviderModel:
+    def resolve_model(self, provider: str, model_name: str) -> ProviderModel:
         return self.registry.model(provider, model_name)
 
     def route(self, request: ModelRequest) -> RouteDecision:
         accepted: list[RouteCandidate] = []
         rejected: list[str] = []
-        preferred_providers = set(
-            request.routing_hints.preferred_providers
-        )
-        preferred_models = set(
-            request.routing_hints.preferred_models
-        )
+        preferred_providers = set(request.routing_hints.preferred_providers)
+        preferred_models = set(request.routing_hints.preferred_models)
         excluded = set(request.routing_hints.excluded_providers)
         registry_snapshot_id: str | None = None
+
+        try:
+            required_capabilities = _required_capabilities(request)
+        except (TypeError, ValueError) as exc:
+            return RouteDecision(
+                request.request_id,
+                (),
+                (f"required_capabilities_invalid:{type(exc).__name__}",),
+                None,
+            )
 
         if self.capability_registry is not None:
             snapshot = self.capability_registry.capture_snapshot()
             registry_snapshot_id = snapshot.snapshot_id
             pricing_at = datetime.now(UTC)
-            policy = self.capability_registry.policy_for(
-                request.organization_id
-            )
+            policy = self.capability_registry.policy_for(request.organization_id)
             allow_partial = bool(
-                request.constraints.get(
-                    "allow_partial_capability",
-                    False,
-                )
+                request.constraints.get("allow_partial_capability", False)
             )
             records = snapshot.list_models(
                 request.capability,
@@ -154,9 +161,7 @@ class ModelRouter:
                     record,
                     registry_snapshot_id=snapshot.snapshot_id,
                     pricing_at=pricing_at,
-                    pricing_region=(
-                        request.routing_hints.required_region
-                    ),
+                    pricing_region=request.routing_hints.required_region,
                 )
                 for record in records
             )
@@ -179,6 +184,19 @@ class ModelRouter:
             if request.capability not in model.capabilities:
                 continue
             reasons.append("capability_match")
+
+            missing = tuple(
+                capability
+                for capability in required_capabilities
+                if capability not in model.capabilities
+            )
+            if missing:
+                codes = ",".join(item.value for item in missing)
+                rejected.append(f"{identity}:required_capability_missing:{codes}")
+                continue
+            if required_capabilities:
+                reasons.append("required_capabilities_match")
+
             if not self.registry.has_adapter(model.provider):
                 rejected.append(f"{identity}:adapter_unavailable")
                 continue
@@ -186,20 +204,24 @@ class ModelRouter:
                 model.provider,
                 request.capability,
             ):
+                rejected.append(f"{identity}:adapter_capability_unavailable")
+                continue
+            if not self.registry.transport_model_supports(
+                model.provider,
+                model.model,
+                required_capabilities,
+            ):
                 rejected.append(
-                    f"{identity}:adapter_capability_unavailable"
+                    f"{identity}:adapter_required_capability_unavailable"
                 )
                 continue
             adapter = self.registry.adapter(model.provider)
 
             if (
                 model.quality_measured
-                and model.quality_score
-                < _QUALITY_MIN[request.quality_profile]
+                and model.quality_score < _QUALITY_MIN[request.quality_profile]
             ):
-                rejected.append(
-                    f"{identity}:quality_below_threshold"
-                )
+                rejected.append(f"{identity}:quality_below_threshold")
                 continue
             reasons.append(
                 "quality_measured"
@@ -209,12 +231,9 @@ class ModelRouter:
 
             if (
                 model.latency_measured
-                and model.latency_score
-                < _LATENCY_MIN[request.latency_profile]
+                and model.latency_score < _LATENCY_MIN[request.latency_profile]
             ):
-                rejected.append(
-                    f"{identity}:latency_below_threshold"
-                )
+                rejected.append(f"{identity}:latency_below_threshold")
                 continue
             reasons.append(
                 "latency_measured"
@@ -238,10 +257,7 @@ class ModelRouter:
                 model.model,
                 request.capability.value,
             )
-            if (
-                not health_snapshot.healthy
-                or health_snapshot.score <= 0
-            ):
+            if not health_snapshot.healthy or health_snapshot.score <= 0:
                 rejected.append(f"{identity}:health_filtered")
                 continue
             if (
@@ -266,9 +282,7 @@ class ModelRouter:
                 adapter.validate(request, model)
                 estimate = adapter.estimate_cost(request, model)
             except (TypeError, ValueError) as exc:
-                rejected.append(
-                    f"{identity}:validation:{type(exc).__name__}"
-                )
+                rejected.append(f"{identity}:validation:{type(exc).__name__}")
                 continue
 
             if (
