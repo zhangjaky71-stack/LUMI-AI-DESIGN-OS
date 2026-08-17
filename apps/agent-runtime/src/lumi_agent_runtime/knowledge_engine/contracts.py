@@ -110,6 +110,12 @@ class KnowledgeIngestRequest:
             raise ValueError("KNOWLEDGE_LANGUAGE_INVALID")
         if not _SCOPE.fullmatch(self.permission_scope):
             raise ValueError("KNOWLEDGE_PERMISSION_SCOPE_INVALID")
+        if self.permission_scope == "project" and self.project_id is None:
+            raise ValueError("KNOWLEDGE_PROJECT_SCOPE_PROJECT_REQUIRED")
+        if self.permission_scope.startswith("brand:"):
+            scoped_brand = self.permission_scope.split(":", 1)[1]
+            if self.brand_id != scoped_brand:
+                raise ValueError("KNOWLEDGE_BRAND_SCOPE_MISMATCH")
         if not self.sections:
             raise ValueError("KNOWLEDGE_SECTIONS_REQUIRED")
         if self.observed_at.tzinfo is None:
