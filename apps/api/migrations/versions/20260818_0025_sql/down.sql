@@ -66,6 +66,14 @@ ALTER TABLE audit_events DROP CONSTRAINT IF EXISTS ck_audit_events_result;
 
 -- statement-breakpoint
 
+ALTER TABLE audit_events DROP CONSTRAINT IF EXISTS ck_audit_events_actor_type;
+
+-- statement-breakpoint
+
+ALTER TABLE audit_events ALTER COLUMN actor_id DROP NOT NULL;
+
+-- statement-breakpoint
+
 ALTER TABLE audit_events
   DROP COLUMN IF EXISTS occurred_at,
   DROP COLUMN IF EXISTS retention_policy_version,
