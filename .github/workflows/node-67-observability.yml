@@ -1,0 +1,140 @@
+name: NODE-67 Observability
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/observability/**"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/src/lumi_api/api/v1/errors.py"
+      - "apps/api/src/lumi_api/api/v1/auth_guard.py"
+      - "apps/api/src/lumi_api/events/envelope.py"
+      - "apps/api/src/lumi_api/events/outbox.py"
+      - "apps/api/tests/test_observability_node67.py"
+      - "apps/api/tests/test_observability_logging_node67.py"
+      - "apps/api/tests/test_observability_security_boundary_node67.py"
+      - "apps/api/tests/test_event_contract.py"
+      - "tools/node67/**"
+      - "docs/nodes/NODE-67-OBSERVABILITY.md"
+      - "reports/nodes/NODE-67/**"
+      - ".github/workflows/node-67-observability.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  observability-contract:
+    name: observability-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Verify Python lock is current
+        run: uv lock --check
+
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+
+      - name: Compile NODE-67 scope
+        run: |
+          uv run python -m compileall -q \
+            apps/api/src/lumi_api/observability \
+            apps/api/src/lumi_api/api/v1/app.py \
+            apps/api/src/lumi_api/api/v1/errors.py \
+            apps/api/src/lumi_api/api/v1/auth_guard.py \
+            apps/api/src/lumi_api/events/envelope.py \
+            apps/api/src/lumi_api/events/outbox.py \
+            apps/api/tests/test_observability_node67.py \
+            apps/api/tests/test_observability_logging_node67.py \
+            apps/api/tests/test_observability_security_boundary_node67.py \
+            tools/node67
+
+      - name: Static NODE-67 observability acceptance
+        run: uv run python tools/node67/validate_observability.py
+
+      - name: Run NODE-67 observability and correlation contracts
+        run: |
+          PYTHONPATH=apps/api/src:services/tool-gateway/src:services/sandbox-runtime/src \
+            uv run pytest -q \
+              apps/api/tests/test_observability_node67.py \
+              apps/api/tests/test_observability_logging_node67.py \
+              apps/api/tests/test_observability_security_boundary_node67.py \
+              apps/api/tests/test_event_contract.py \
+              apps/api/tests/test_auth_tenant_contract.py \
+              apps/api/tests/test_api_v1_contract.py
+
+      - name: Re-run NODE-66 security regressions
+        run: |
+          PYTHONPATH=apps/api/src:services/tool-gateway/src:services/sandbox-runtime/src \
+            uv run pytest -q \
+              apps/api/tests/test_security_node66.py \
+              apps/api/tests/test_security_context_node66.py
+          uv run python tools/node66/validate_security.py
+
+      - name: Ruff NODE-67 changed Python scope
+        run: |
+          uv run ruff check --ignore E501,I001 \
+            apps/api/src/lumi_api/observability \
+            apps/api/src/lumi_api/api/v1/app.py \
+            apps/api/src/lumi_api/api/v1/errors.py \
+            apps/api/src/lumi_api/api/v1/auth_guard.py \
+            apps/api/src/lumi_api/events/envelope.py \
+            apps/api/src/lumi_api/events/outbox.py \
+            apps/api/tests/test_observability_node67.py \
+            apps/api/tests/test_observability_logging_node67.py \
+            apps/api/tests/test_observability_security_boundary_node67.py \
+            tools/node67
+
+      - name: Pyright NODE-67 core
+        run: |
+          uv run pyright \
+            apps/api/src/lumi_api/observability \
+            apps/api/src/lumi_api/api/v1/app.py \
+            apps/api/src/lumi_api/api/v1/errors.py \
+            apps/api/src/lumi_api/api/v1/auth_guard.py \
+            apps/api/src/lumi_api/events/envelope.py \
+            apps/api/src/lumi_api/events/outbox.py
+
+      - name: Verify NODE-67 gap ledger remains fail-closed
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          ledger = json.loads(Path("reports/nodes/NODE-67/gap-ledger.json").read_text(encoding="utf-8"))
+          assert ledger["node"] == "NODE-67"
+          assert ledger["status"] == "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE"
+          assert any(gap["severity"] == "P0" and gap["status"] == "open" for gap in ledger["gaps"])
+          assert any(gap["id"] == "NODE67-GAP-101" and gap["status"] == "open" for gap in ledger["gaps"])
+          assert any(gap["id"] == "NODE67-GAP-201" and gap["status"] == "closed" for gap in ledger["gaps"])
+          print("NODE67_GAP_LEDGER_PARSE_PASS")
+          PY
+
+      - name: Upload NODE-67 policy evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-67-observability-policy-${{ github.run_id }}
+          path: |
+            reports/nodes/NODE-67/gap-ledger.json
+            reports/nodes/NODE-67/implementation.md
+            reports/nodes/NODE-67/dashboard-spec.json
+            reports/nodes/NODE-67/alert-policy.json
+            reports/nodes/NODE-67/slo-policy.json
+          if-no-files-found: error
+          retention-days: 30
