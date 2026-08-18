@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 SafeAgentEventType = Literal[
     "run.started",
@@ -19,6 +19,16 @@ SafeAgentEventType = Literal[
     "run.cancelled",
     "run.waiting_external",
 ]
+
+_FORBIDDEN_PUBLIC_KEYS = {
+    "prompt",
+    "messages",
+    "reasoning",
+    "chain_of_thought",
+    "scratchpad",
+    "raw_response",
+    "tool_output",
+}
 
 
 class AgentRunInterruptResponse(BaseModel):
@@ -58,3 +68,22 @@ class AgentRunSafeEventResponse(BaseModel):
     project_id: UUID
     occurred_at: datetime
     payload: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("payload")
+    @classmethod
+    def reject_private_payload(cls, value: dict[str, Any]) -> dict[str, Any]:
+        _assert_public_payload(value)
+        return value
+
+
+def _assert_public_payload(value: Any) -> None:
+    if isinstance(value, list):
+        for item in value:
+            _assert_public_payload(item)
+        return
+    if not isinstance(value, dict):
+        return
+    for key, item in value.items():
+        if key in _FORBIDDEN_PUBLIC_KEYS:
+            raise ValueError("AGENT_WORKSPACE_PRIVATE_EVENT_FIELD_FORBIDDEN")
+        _assert_public_payload(item)
