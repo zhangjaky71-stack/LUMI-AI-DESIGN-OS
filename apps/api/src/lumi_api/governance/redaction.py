@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -31,6 +32,15 @@ _CONTENT_KEY_PARTS = (
     "message_body",
 )
 _URL_KEY_PARTS = ("url", "uri", "href")
+_SECRET_VALUE_PATTERNS = (
+    re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b", re.IGNORECASE),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
+    re.compile(
+        r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"
+    ),
+)
 
 
 def sha256_ref(value: str) -> str:
@@ -42,9 +52,20 @@ def sanitize_url(value: str) -> str:
         parsed = urlsplit(value)
     except ValueError:
         return _REDACTED
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        return value
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+    if parsed.query or parsed.fragment:
+        return _REDACTED
+    return value
+
+
+def redact_audit_text(value: str) -> str:
+    normalized = value.strip()
+    if normalized.casefold().startswith("bearer "):
+        return _REDACTED
+    if any(pattern.search(value) for pattern in _SECRET_VALUE_PATTERNS):
+        return _REDACTED
+    return value
 
 
 def _normalized_key(key: object) -> str:
@@ -77,9 +98,7 @@ def redact_audit_value(value: Any, *, key_hint: str = "") -> Any:
             return sha256_ref(value)
         if _matches(key, _URL_KEY_PARTS):
             return sanitize_url(value)
-        if value.casefold().startswith("bearer "):
-            return _REDACTED
-        return value
+        return redact_audit_text(value)
 
     if value is None or isinstance(value, (bool, int, float)):
         return value
