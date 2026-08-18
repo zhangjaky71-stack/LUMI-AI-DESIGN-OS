@@ -24,10 +24,7 @@ class PostgresBrandRegistryService:
         limit: int,
         query: str | None,
     ) -> BrandPage:
-        params: dict[str, Any] = {
-            "organization_id": organization_id,
-            "limit": limit,
-        }
+        params: dict[str, Any] = {"organization_id": organization_id, "limit": limit}
         where = "organization_id=:organization_id AND deleted_at IS NULL"
         if query:
             where += " AND name ILIKE :query"
@@ -111,10 +108,35 @@ class PostgresBrandRegistryService:
         request: BrandPatchRequest,
         expected_version: int,
     ) -> BrandResponse:
-        current = self.get_brand(organization_id=organization_id, brand_id=brand_id)
-        name = request.name.strip() if request.name is not None else current.name
-        profile = request.profile if request.profile is not None else current.profile
         with self.session.begin():
+            current = self.session.execute(
+                text(
+                    """
+                    SELECT id, organization_id, name, profile_json,
+                           active_rule_set_version_id, version, created_at, updated_at
+                    FROM brands
+                    WHERE id=:brand_id
+                      AND organization_id=:organization_id
+                      AND deleted_at IS NULL
+                    FOR UPDATE
+                    """
+                ),
+                {"brand_id": brand_id, "organization_id": organization_id},
+            ).mappings().one_or_none()
+            if current is None:
+                raise self._not_found()
+            if int(current["version"]) != expected_version:
+                raise ApiProblem(
+                    status=409,
+                    code="brand_version_conflict",
+                    title="Brand changed",
+                    detail=(
+                        f"Expected brand version {expected_version}, "
+                        f"current version is {int(current['version'])}."
+                    ),
+                )
+            name = request.name.strip() if request.name is not None else str(current["name"])
+            profile = request.profile if request.profile is not None else dict(current["profile_json"] or {})
             row = self.session.execute(
                 text(
                     """
@@ -139,14 +161,13 @@ class PostgresBrandRegistryService:
                     "expected_version": expected_version,
                 },
             ).mappings().one_or_none()
-        if row is None:
-            latest = self.get_brand(organization_id=organization_id, brand_id=brand_id)
-            raise ApiProblem(
-                status=409,
-                code="brand_version_conflict",
-                title="Brand changed",
-                detail=f"Expected brand version {expected_version}, current version is {latest.version}.",
-            )
+            if row is None:
+                raise ApiProblem(
+                    status=409,
+                    code="brand_version_conflict",
+                    title="Brand changed",
+                    detail="The brand changed while this update was being applied.",
+                )
         return self._response(row)
 
     @staticmethod
