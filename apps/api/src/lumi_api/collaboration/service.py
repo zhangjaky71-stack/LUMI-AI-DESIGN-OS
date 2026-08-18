@@ -157,8 +157,6 @@ class CollaborationService:
         organization_id: UUID,
         project_id: UUID,
         actor_id: str,
-        display_name: str,
-        avatar_url: str | None,
         color: str,
         artifact_version_id: UUID | None,
         current_frame_id: UUID | None,
@@ -171,6 +169,10 @@ class CollaborationService:
             project_id=project_id,
             actor_id=actor_id,
         )
+        display_name, avatar_url = self.repository.get_presence_identity(
+            organization_id=organization_id,
+            actor_id=actor_id,
+        )
         if artifact_version_id is not None:
             self.repository.require_project_artifact_version(
                 organization_id=organization_id,
@@ -179,7 +181,7 @@ class CollaborationService:
             )
         value = PresenceState(
             user_id=actor_id,
-            display_name=display_name.strip(),
+            display_name=display_name,
             avatar_url=avatar_url,
             color=color,
             project_id=project_id,
