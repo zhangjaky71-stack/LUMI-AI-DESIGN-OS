@@ -1,6 +1,6 @@
 import type { ConstraintPreflight, DesignDocument } from "../../design-ir/src/index";
 import { CanvasCamera } from "./camera";
-import { CanvasOperationGateway } from "./operation-gateway";
+import { CanvasOperationGateway, type OperationCommittedListener } from "./operation-gateway";
 import { buildScene, sceneBounds } from "./scene";
 import { SelectionModel } from "./selection";
 import { ImmediateFrameScheduler, type FrameScheduler } from "./scheduler";
@@ -16,9 +16,18 @@ export class CanvasController {
   private sceneValue: SceneSnapshot;
   private diagnosticsValue: readonly CanvasDiagnostic[] = [];
   private framePending = false;
-  constructor(document: DesignDocument, private readonly renderer: RendererAdapter, options: { viewport?: Viewport; preflight?: ConstraintPreflight; scheduler?: FrameScheduler } = {}) {
+  constructor(
+    document: DesignDocument,
+    private readonly renderer: RendererAdapter,
+    options: {
+      viewport?: Viewport;
+      preflight?: ConstraintPreflight;
+      scheduler?: FrameScheduler;
+      onOperationCommitted?: OperationCommittedListener;
+    } = {},
+  ) {
     this.camera = new CanvasCamera(undefined, options.viewport);
-    this.gateway = new CanvasOperationGateway(document, options.preflight);
+    this.gateway = new CanvasOperationGateway(document, options.preflight, options.onOperationCommitted);
     this.sceneValue = buildScene(document); this.spatial.rebuild(this.sceneValue); this.diagnosticsValue = this.sceneValue.diagnostics;
     this.scheduler = options.scheduler ?? new ImmediateFrameScheduler();
   }

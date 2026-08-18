@@ -1,7 +1,7 @@
 # NODE-55 — Infinite Canvas Product UI
 
 > Phase: 7 Frontend Product  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **CORE IMPLEMENTED / VALIDATING / NOT COMPLETE**  
 > Priority: P0 / LOVART-PARITY CORE  
 > Depends on: NODE-40, NODE-41, NODE-54  
 > Produces: Product-grade Infinite Canvas集成、多Frame、工具栏、导航/快捷键/拖放/性能体验
@@ -138,12 +138,14 @@ P0不是完整offline editor，但网络断开：
 
 ## 13. 验收标准
 
-- [ ] 多Frame无限画布可用。
-- [ ] Asset/Artifact可拖入。
-- [ ] Canvas edit产生DesignOps并autosave。
-- [ ] 版本冲突不覆盖。
-- [ ] AI Edit携带精确selection。
-- [ ] 常用专业快捷键可用。
+- [x] 多Frame无限画布核心可用：NODE-40 CanvasController + renderer-neutral SVG adapter + presets/pan/zoom/fit/selection/drag。
+- [ ] Asset/Artifact/系统文件完整拖入链仍需 NODE-18 lifecycle integration。
+- [x] Canvas edit产生DesignOps并进入有界 autosave command buffer。
+- [x] 版本冲突不静默覆盖；409冻结写入并要求显式 canonical reload。
+- [x] AI Edit/Agent command仅携带 **saved exact** `selected_node_ids + design_document_version`。
+- [ ] 完整专业快捷键/resize handles/copy-paste/group/arrange尚未达到DoD。
+
+> Implementation note (2026-08-18): NODE-55 now uses the existing NODE-40 Canvas SDK instead of creating a second editor engine. A tenant-scoped Canvas Projection API bridges production Python Design IR to the TS renderer/editor projection; writes are exact-head/revision fenced, compiled back into Python typed operations, persisted as immutable DesignDocumentVersion checkpoints, and advanced under row lock/CAS. The browser implements bounded autosave/offline/conflict semantics and feeds only saved exact selection context into NODE-54. This node remains **NOT COMPLETE** until the remaining P0 interaction/upload, production composition, E2E/performance and Hosted CI evidence in `reports/nodes/NODE-55/gap-ledger.json` is closed.
 
 ## 14. Definition of Done
 

@@ -6,10 +6,19 @@ function documentVersion(document: DesignDocument): number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
+export type OperationCommittedListener = (
+  descriptors: readonly OperationDescriptor[],
+  result: OperationCommitResult,
+) => void;
+
 export class CanvasOperationGateway {
   private documentValue: DesignDocument;
   private sequence = 0;
-  constructor(document: DesignDocument, private readonly preflight?: ConstraintPreflight) { this.documentValue = document; }
+  constructor(
+    document: DesignDocument,
+    private readonly preflight?: ConstraintPreflight,
+    private readonly onCommitted?: OperationCommittedListener,
+  ) { this.documentValue = document; }
   get document(): DesignDocument { return this.documentValue; }
   get version(): number { return documentVersion(this.documentValue); }
   replaceDocument(document: DesignDocument): void { this.documentValue = document; }
@@ -29,7 +38,9 @@ export class CanvasOperationGateway {
     try {
       const execution = applyOperation(this.documentValue, operation, this.preflight);
       this.documentValue = execution.document;
-      return { ok: true, document: execution.document, operationIds: execution.applied_operation_ids, issues: [] };
+      const result: OperationCommitResult = { ok: true, document: execution.document, operationIds: execution.applied_operation_ids, issues: [] };
+      this.onCommitted?.([descriptor], result);
+      return result;
     } catch (error) { return this.failure(error, [operation.operation_id]); }
   }
   commitBatch(descriptors: readonly OperationDescriptor[], prefix = "canvas-batch"): OperationCommitResult {
@@ -39,7 +50,9 @@ export class CanvasOperationGateway {
     try {
       const execution = applyBatch(this.documentValue, operations, expected, `${prefix}:root:${++this.sequence}`, this.preflight);
       this.documentValue = execution.document;
-      return { ok: true, document: execution.document, operationIds: execution.applied_operation_ids, issues: [] };
+      const result: OperationCommitResult = { ok: true, document: execution.document, operationIds: execution.applied_operation_ids, issues: [] };
+      this.onCommitted?.(descriptors, result);
+      return result;
     } catch (error) { return this.failure(error, operations.map((operation) => operation.operation_id)); }
   }
   private failure(error: unknown, operationIds: readonly string[]): OperationCommitResult {

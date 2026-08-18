@@ -1,0 +1,39 @@
+{
+  "node": "NODE-55",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "branch": "feat/node-55-infinite-canvas-ui",
+  "stack_base": "feat/node-54-ai-workspace",
+  "implemented": [
+    "tenant-scoped exact ArtifactVersion and DesignDocument Canvas projection APIs",
+    "request-scoped PostgreSQL Canvas service factory contract",
+    "exact head/version/revision fenced DesignDocument command batches",
+    "same-client-batch replay recovery after response loss",
+    "explicit browser generic operation to Python typed Design IR compiler",
+    "immutable DesignDocumentVersion checkpoint persistence",
+    "existing NODE-40 CanvasController integration instead of a duplicate editor engine",
+    "renderer-neutral SVG Canvas adapter",
+    "multi-frame presets, selection, move, pan, zoom, fit, delete and lock controls",
+    "bounded autosave/offline/conflict buffer",
+    "explicit canonical reload rather than silent conflict overwrite",
+    "browser CSRF double-submit header for unsafe API calls",
+    "saved-only exact Canvas selection handoff to NODE-54 Agent commands",
+    "SDK/browser/Python contract tests and static acceptance validator"
+  ],
+  "not_implemented_or_not_proven": [
+    "production request-scoped Canvas service composition",
+    "Asset/Artifact/system-file drag-drop lifecycle",
+    "complete resize/rotate handles, align/distribute, arrange, copy/paste, group/ungroup controls",
+    "PostgreSQL concurrency/restart autosave E2E and semantic rebase",
+    "2k-node browser performance acceptance",
+    "browser E2E and hosted CI execution evidence",
+    "formal web workspace dependency declarations and regenerated pnpm lock",
+    "historical artifact edit fork workflow",
+    "advanced minimap/frame navigator/group isolation navigation"
+  ],
+  "truth_source": [
+    "docs/runtime/INFINITE-CANVAS-UI-V1.md",
+    "docs/nodes/NODE-55-INFINITE-CANVAS-IMPLEMENTATION.md",
+    "reports/nodes/NODE-55/gap-ledger.json",
+    "tools/node55/validate_infinite_canvas.py"
+  ]
+}
