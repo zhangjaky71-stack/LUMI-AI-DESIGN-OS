@@ -10,9 +10,23 @@ from typing import Any
 from urllib.parse import urlsplit
 
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
+DIGEST_IMAGE = re.compile(r"^[^\s@]+@sha256:[0-9a-f]{64}$")
 ALLOWED_STATUSES = {"PASS", "FAIL", "BLOCKED_EXTERNAL", "NOT_RUN"}
 OPEN_STATES = {"OPEN", "ACKNOWLEDGED", "IN_PROGRESS"}
 BLOCKING_SEVERITIES = {"critical", "high"}
+REQUIRED_IMAGES = {
+    "api",
+    "agent-runtime",
+    "model-gateway",
+    "tool-gateway",
+    "worker-media",
+    "sandbox-runtime",
+}
+MODEL_GATEWAY_REQUIRED_SOURCE_PATHS = {
+    "services/model-gateway",
+    "apps/api/src/lumi_api/model_gateway_runtime.py",
+    "apps/api/src/lumi_api/costs/model_gateway_adapter.py",
+}
 
 
 class AcceptanceError(RuntimeError):
@@ -49,6 +63,77 @@ def validate_rc(evidence: dict[str, Any]) -> list[str]:
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
             blockers.append("release_candidate.base_url must be HTTPS without embedded credentials")
     return blockers
+
+
+def validate_container_image_set(
+    evidence: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    blockers: list[str] = []
+    image_set = evidence.get("container_image_set")
+    if not isinstance(image_set, dict):
+        return {}, ["container_image_set object is missing"]
+
+    images = image_set.get("images")
+    provenance = image_set.get("provenance")
+    if not isinstance(images, dict):
+        blockers.append("container_image_set.images object is missing")
+        images = {}
+    if not isinstance(provenance, dict):
+        blockers.append("container_image_set.provenance object is missing")
+        provenance = {}
+
+    if set(images) != REQUIRED_IMAGES:
+        blockers.append(f"container image set must pin exactly {sorted(REQUIRED_IMAGES)}")
+    if set(provenance) != REQUIRED_IMAGES:
+        blockers.append(f"container image provenance must cover exactly {sorted(REQUIRED_IMAGES)}")
+
+    rc = evidence.get("release_candidate")
+    rc_sha = rc.get("git_sha") if isinstance(rc, dict) else None
+    normalized_provenance: dict[str, Any] = {}
+    for service in sorted(REQUIRED_IMAGES):
+        image = images.get(service)
+        if not isinstance(image, str) or not DIGEST_IMAGE.fullmatch(image):
+            blockers.append(f"container image {service} must use immutable @sha256 digest")
+
+        item = provenance.get(service)
+        if not isinstance(item, dict):
+            blockers.append(f"container image provenance {service} is missing")
+            continue
+        item_sha = item.get("git_sha")
+        if item_sha != rc_sha or not isinstance(item_sha, str) or not SHA40.fullmatch(item_sha.lower()):
+            blockers.append(f"container image provenance {service}.git_sha must equal accepted RC SHA")
+        for key in ["build_recipe_ref", "entrypoint", "sbom_ref", "provenance_ref"]:
+            if not non_pending_string(item.get(key)):
+                blockers.append(f"container image provenance {service}.{key} is missing/PENDING")
+        source_paths = item.get("source_paths")
+        if not isinstance(source_paths, list) or not source_paths or not all(
+            non_pending_string(value) for value in source_paths
+        ):
+            blockers.append(f"container image provenance {service}.source_paths must be a non-empty string array")
+            source_paths = []
+        normalized_provenance[service] = {
+            "git_sha": item_sha,
+            "build_recipe_ref": item.get("build_recipe_ref"),
+            "entrypoint": item.get("entrypoint"),
+            "sbom_ref": item.get("sbom_ref"),
+            "provenance_ref": item.get("provenance_ref"),
+            "source_paths": source_paths,
+        }
+
+    model_gateway = normalized_provenance.get("model-gateway", {})
+    model_sources = set(model_gateway.get("source_paths") or [])
+    missing_sources = sorted(MODEL_GATEWAY_REQUIRED_SOURCE_PATHS - model_sources)
+    if missing_sources:
+        blockers.append(
+            "model-gateway image provenance is missing required hosted sources: "
+            + ", ".join(missing_sources)
+        )
+
+    normalized = {
+        "images": {name: images.get(name) for name in sorted(REQUIRED_IMAGES)},
+        "provenance": normalized_provenance,
+    }
+    return normalized, blockers
 
 
 def validate_data_policy(evidence: dict[str, Any]) -> list[str]:
@@ -220,6 +305,8 @@ def evaluate(manifest: dict[str, Any], parity: dict[str, Any], evidence: dict[st
 
     blockers = []
     blockers.extend(validate_rc(evidence))
+    image_set, image_blockers = validate_container_image_set(evidence)
+    blockers.extend(image_blockers)
     blockers.extend(validate_data_policy(evidence))
     blockers.extend(validate_accounts(evidence))
     parity_checks, parity_blockers = validate_parity(parity, evidence)
@@ -236,6 +323,7 @@ def evaluate(manifest: dict[str, Any], parity: dict[str, Any], evidence: dict[st
         "schema_version": 1,
         "manifest_id": manifest.get("manifest_id"),
         "release_candidate": evidence.get("release_candidate", {}),
+        "container_image_set": image_set,
         "passed": not blockers,
         "summary": {
             "pass": counts["PASS"],
