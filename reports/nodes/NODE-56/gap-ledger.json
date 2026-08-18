@@ -1,0 +1,70 @@
+{
+  "node": "NODE-56",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "updated_at": "2026-08-18",
+  "gaps": [
+    {
+      "id": "NODE56-GAP-01",
+      "severity": "P0",
+      "area": "layer-hierarchy",
+      "status": "open",
+      "description": "REORDER_NODE, REPARENT_NODE and group/ungroup are not yet compiled by the production browser-descriptor to Python DesignOperation adapter. Layer tree intentionally does not fake persisted drag reorder."
+    },
+    {
+      "id": "NODE56-GAP-02",
+      "severity": "P0",
+      "area": "constraints",
+      "status": "open",
+      "description": "Effective NODE-39 constraints are not yet projected with complete USER/BRAND/PROJECT/SYSTEM source, hard/soft reason and exact-version override capabilities. Missing source is displayed as UNRESOLVED."
+    },
+    {
+      "id": "NODE56-GAP-03",
+      "severity": "P0",
+      "area": "brand-binding",
+      "status": "open",
+      "description": "Explicit update-token-target versus detach-binding mutation contract is not yet implemented. Bound visual properties remain read-only to prevent silent detach."
+    },
+    {
+      "id": "NODE56-GAP-04",
+      "severity": "P0",
+      "area": "typography",
+      "status": "open",
+      "description": "Full TextStyle/font-family/font-asset/weight/line-height/letter-spacing/alignment/color projection and licensed-font selection are not yet wired through the safe server compiler."
+    },
+    {
+      "id": "NODE56-GAP-05",
+      "severity": "P0",
+      "area": "e2e",
+      "status": "open",
+      "description": "Browser E2E must verify Canvas↔Layers selection, property editing, server rejection, version conflict and explicit reload against a composed PostgreSQL Canvas service."
+    },
+    {
+      "id": "NODE56-GAP-06",
+      "severity": "P0",
+      "area": "performance",
+      "status": "open",
+      "description": "10k-layer browser performance acceptance is not yet measured. The pure virtual window contract is unit tested but requires real DOM/scroll/frame-time evidence."
+    },
+    {
+      "id": "NODE56-GAP-07",
+      "severity": "P1",
+      "area": "semantic-role",
+      "status": "open",
+      "description": "Semantic role is visible but remains read-only until a warning/versioned role operation is supported by production Python Design IR."
+    },
+    {
+      "id": "NODE56-GAP-08",
+      "severity": "P1",
+      "area": "inspector-depth",
+      "status": "open",
+      "description": "Image crop, vector paint/stroke, effects, advanced layout and video-specific inspector sections remain future slices."
+    },
+    {
+      "id": "NODE56-GAP-09",
+      "severity": "P0",
+      "area": "hosted-ci",
+      "status": "open",
+      "description": "Hosted GitHub Actions evidence remains required. Previous repository workflows are affected by the same pre-run runner/account infrastructure blocker observed on preceding nodes."
+    }
+  ]
+}
