@@ -20,16 +20,16 @@
     {
       "id": "NODE61-GAP-003",
       "severity": "P0",
-      "status": "open",
+      "status": "closed",
       "title": "Server-authoritative collaborator profile presentation",
-      "detail": "Presence user_id is authenticated-server authoritative, but the current heartbeat schema still accepts display_name/avatar_url presentation fields. Production presence must source canonical profile display data server-side."
+      "detail": "Closed in the core slice: heartbeat no longer accepts display_name/avatar_url; the service resolves display_name from active users + organization_members and keeps avatar unset until a canonical profile source exists."
     },
     {
       "id": "NODE61-GAP-004",
       "severity": "P0",
-      "status": "open",
+      "status": "closed",
       "title": "Workspace CommentsPanel mounting",
-      "detail": "The strict durable CommentsPanel is implemented but not yet mounted into the live Workspace Inspector on this branch because the inherited Workspace file has not been safely rewritten without a verified blob SHA."
+      "detail": "Closed in the core slice: CommentsPanel is mounted in the live Workspace Inspector for the selected exact ArtifactVersion and receives the current Canvas node selection as an optional anchor."
     },
     {
       "id": "NODE61-GAP-005",
