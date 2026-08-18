@@ -44,7 +44,6 @@ export async function connectRunEventStream(options: RunEventStreamOptions): Pro
         throw new Error(`RUN_EVENT_STREAM_HTTP_${response.status}`);
       }
       options.onState?.("live");
-      reconnectAttempt = 0;
       lastEventId = await consumeSse(response.body, {
         lastEventId,
         onEvent: options.onEvent,
@@ -52,6 +51,9 @@ export async function connectRunEventStream(options: RunEventStreamOptions): Pro
       });
       await options.onStreamEnd?.(lastEventId);
       if (options.signal.aborted) break;
+      reconnectAttempt += 1;
+      options.onState?.("reconnecting");
+      await abortableSleep(reconnectDelay(reconnectAttempt), options.signal);
     } catch (error) {
       if (options.signal.aborted || isAbortError(error)) break;
       await options.onStreamEnd?.(lastEventId);
@@ -131,7 +133,10 @@ function reconnectDelay(attempt: number): number {
 }
 
 function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
 }
 
 async function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
