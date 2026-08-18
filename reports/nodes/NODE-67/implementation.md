@@ -27,6 +27,8 @@ Telemetry headers are explicitly **fail-open** and cannot determine business req
 - W3C tracestate key/value/member/count constraints are enforced;
 - version `00` uses the fixed base format while additive future-version fields are tolerated and downgraded to the supported outgoing format.
 
+Locally generated trace IDs use cryptographic randomness and start with `trace_flags=02`: random-trace-id set, sampled unset while the local recording decision is deferred. The current local sampler still records normal traffic deterministically and always records error/critical/forced evidence; distributed sampling-state consistency remains a production concern.
+
 Downstream business exceptions are not caught or reclassified by observability metadata parsing and keep their authoritative semantics.
 
 Authenticated `RequestContext` uses the middleware-generated request ID and actual 32-character trace ID rather than re-reading raw headers.
@@ -70,22 +72,25 @@ Safety controls:
 - fixed metric attribute key allowlist;
 - organization/project/run/task/operation IDs rejected as metric labels;
 - prompt/content/password/Authorization/token/secret/cookie/API-key/signed-URL/reasoning fields rejected from telemetry attributes;
-- secret-shaped scalar values are rejected;
+- secret-shaped scalar prefixes and embedded credential/signature query markers are rejected;
+- structured-log messages reject control characters and obvious secret-bearing values;
+- request/correlation log identifiers use a bounded identifier grammar;
 - bounded attribute count/key/value sizes;
 - timestamps must be timezone-aware;
-- HTTP metrics use route templates instead of raw resource-id URL paths.
+- HTTP metrics use route templates instead of raw resource-id URL paths;
+- LangSmith fan-out reuses the same safe-attribute boundary and bounded run-name/trace-id validation before the vendor port is called.
 
 Production cardinality budgets and backend enforcement remain open under `NODE67-GAP-112`; the current core does not claim that a key allowlist alone proves production cardinality safety for every future producer.
 
 ### Fail-open exporter boundary
 
-`SafeTelemetry` catches sink/exporter exceptions. `SafeLangSmithTracer` similarly catches optional LangSmith failures. Observability failure cannot become a business availability dependency.
+`SafeTelemetry` catches sink/exporter exceptions. `SafeLangSmithTracer` also treats vendor failures or telemetry-validation failures as dropped optional telemetry. Observability failure cannot become a business availability dependency.
 
 ### Sampling
 
-Normal traces use deterministic trace-id sampling with a 10% default baseline. Error/critical/forced evidence is always sampled.
+Normal traces use deterministic trace-id sampling with a 10% default baseline. Error/critical/forced evidence is always sampled locally.
 
-Distributed sampling-state consistency, Collector tail/adaptive sampling and production cost validation remain open deployment concerns.
+New/restarted local trace context uses the W3C random bit with sampled unset while recording is deferred. Distributed sampled-bit consistency, Collector tail/adaptive sampling and production cost validation remain open deployment concerns.
 
 ### Structured JSON logs
 
@@ -115,9 +120,9 @@ They define the intended operational contract without claiming deployed dashboar
 
 ## 2. NODE-66 compatibility
 
-NODE-67 keeps NODE-66 response-security policy authoritative even when outer correlation/idempotency middleware changes the normal response path. A final outer response-header enforcement layer guarantees NODE-66 CSP/nosniff/frame/referrer/permissions/HSTS policy remains present without weakening the inner input-security gates.
+NODE-67 does not add a competing response-security middleware. `SecurityHTTPMiddleware` remains the NODE-66 authority for CSP/nosniff/frame/referrer/permissions/HSTS on contract paths. Request/correlation/trace metadata is fail-open and no longer synthesizes a pre-security 400 response, while tests verify invalid trace restart still preserves NODE-66 headers, production HSTS and production docs shutdown.
 
-Invalid trace/correlation metadata no longer creates observability-specific 400 responses. Development Swagger/ReDoc keeps its dedicated restricted docs CSP when already set. Production still uses the NODE-66 HSTS baseline and production docs shutdown.
+The static gate checks the real installation order (`install_http_security` before the request/error context middleware) and the actual boundary tests; it no longer requires or claims a nonexistent `_install_final_security_headers` layer.
 
 ## 3. Existing truth layers deliberately reused
 
@@ -151,7 +156,7 @@ Until that exists, `NODE67-GAP-101` stays open.
 
 LangSmith is treated as optional Agent/LLM trace/eval fan-out, not infrastructure observability or business state.
 
-The implemented port is fail-open. A production adapter/OTel fan-out and evaluation integration remain open.
+The implemented port is fail-open and now receives only bounded safe attributes/run names/trace IDs after local validation. Validation/vendor failure drops the optional trace instead of failing the Agent run. A production adapter/OTel fan-out and evaluation integration remain open.
 
 ## 6. Cardinality policy
 
@@ -223,6 +228,7 @@ This implementation does **not** currently claim:
 - production SLO targets are being met;
 - all services emit structured safe logs;
 - production cardinality budgets/backpressure/exporter-drop controls are verified;
+- distributed sampled-bit policy is production-verified;
 - hosted CI is green.
 
 NODE-67 remains **NOT COMPLETE** until the open P0 ledger closes with executed evidence.
