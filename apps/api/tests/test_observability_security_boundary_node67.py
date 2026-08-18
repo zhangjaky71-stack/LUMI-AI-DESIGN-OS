@@ -26,6 +26,21 @@ def test_invalid_trace_restarts_without_weakening_node66_security_headers() -> N
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
 
 
+def test_invalid_correlation_id_falls_back_to_canonical_request_id() -> None:
+    with TestClient(create_contract_app(environment="development")) as client:
+        response = client.get(
+            "/api/openapi.json",
+            headers={
+                "X-Request-ID": "request-safe-1",
+                "X-Correlation-ID": "invalid correlation id with spaces",
+            },
+        )
+    assert response.status_code == 200
+    assert response.headers["X-Request-ID"] == "request-safe-1"
+    assert response.headers["X-Correlation-ID"] == "request-safe-1"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
 def test_production_invalid_trace_restarts_and_keeps_docs_shutdown_hsts() -> None:
     with TestClient(create_contract_app(environment="production")) as client:
         response = client.get(
