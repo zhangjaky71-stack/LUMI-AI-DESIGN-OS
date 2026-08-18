@@ -2,7 +2,7 @@
   "node": "NODE-67",
   "title": "Observability, Telemetry & SLOs",
   "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
-  "updated_at": "2026-08-18T11:30:00Z",
+  "updated_at": "2026-08-18T13:00:00Z",
   "gaps": [
     {
       "id": "NODE67-GAP-101",
@@ -86,28 +86,28 @@
       "severity": "P0",
       "status": "open",
       "area": "telemetry-governance",
-      "summary": "Production telemetry retention/privacy/access control, Collector backpressure/HA, cardinality budgets, sampling cost and exporter-drop monitoring require deployment evidence."
+      "summary": "Production telemetry retention/privacy/access control, Collector backpressure/HA, metric label-value cardinality budgets, sampling-state/cost policy and exporter-drop monitoring require deployment evidence."
     },
     {
       "id": "NODE67-GAP-113",
       "severity": "P0",
       "status": "open",
       "area": "hosted-validation",
-      "summary": "Latest-head NODE-67 CI and production-like HTTP→queue→worker/exporter validation must actually execute green; skipped/pre-run jobs are not PASS."
+      "summary": "Latest-head NODE-67 CI and production-like HTTP→queue→worker/exporter validation must actually execute green; skipped/pre-run/zero-step jobs are not PASS."
     },
     {
       "id": "NODE67-GAP-201",
       "severity": "P0",
       "status": "closed",
       "area": "http-correlation-core",
-      "summary": "RequestIdMiddleware now owns bounded X-Request-ID/X-Correlation-ID plus W3C traceparent/tracestate continuation and response propagation."
+      "summary": "RequestIdMiddleware owns bounded X-Request-ID/X-Correlation-ID plus W3C traceparent/tracestate continuation and response propagation. Invalid request/correlation identifiers fall back to canonical generated values; invalid traceparent restarts a local trace; invalid tracestate is discarded without rejecting business requests."
     },
     {
       "id": "NODE67-GAP-202",
       "severity": "P0",
       "status": "closed",
       "area": "auth-correlation-core",
-      "summary": "Authenticated RequestContext now receives middleware-generated request_id and actual trace_id rather than raw client headers, and organization_id is bound into telemetry context."
+      "summary": "Authenticated RequestContext receives middleware-generated request_id and actual trace_id rather than raw client headers, and organization_id is bound into telemetry context."
     },
     {
       "id": "NODE67-GAP-203",
@@ -128,21 +128,21 @@
       "severity": "P0",
       "status": "closed",
       "area": "fail-open-telemetry",
-      "summary": "SafeTelemetry and SafeLangSmithTracer swallow exporter/vendor failures so observability cannot become a business availability dependency."
+      "summary": "SafeTelemetry and SafeLangSmithTracer swallow exporter/vendor failures, and malformed telemetry correlation/trace headers are replaced or discarded, so observability cannot become a business availability dependency."
     },
     {
       "id": "NODE67-GAP-206",
       "severity": "P0",
       "status": "closed",
       "area": "telemetry-data-safety",
-      "summary": "Structured log/span attribute validation rejects prompt/content/credential/secret fields; metric labels use a fixed low-cardinality allowlist and reject organization/run identifiers."
+      "summary": "Structured log/span attribute validation rejects prompt/content/credential/secret fields; metric label keys use a fixed allowlist, organization/run identifier keys are rejected, and HTTP route labels use route templates. Production label-value cardinality budgets remain separately open under NODE67-GAP-112."
     },
     {
       "id": "NODE67-GAP-207",
       "severity": "P0",
       "status": "closed",
       "area": "sampling-core",
-      "summary": "Deterministic normal-trace sampling is implemented while ERROR/CRITICAL/forced evidence is never sampled away."
+      "summary": "Deterministic normal-trace sampling is implemented while ERROR/CRITICAL/forced evidence is never sampled away. Distributed sampling-state consistency and production policy remain deployment concerns."
     },
     {
       "id": "NODE67-GAP-208",
@@ -163,7 +163,7 @@
       "severity": "P0",
       "status": "closed",
       "area": "node66-response-security-compat",
-      "summary": "An outer final response-header enforcement layer preserves NODE-66 CSP/nosniff/frame/referrer/HSTS policy for correlation/idempotency short-circuit responses without changing input security gates."
+      "summary": "An outer final response-header enforcement layer preserves NODE-66 CSP/nosniff/frame/referrer/HSTS policy across correlation/idempotency middleware response paths without changing input security gates or production docs shutdown."
     }
   ]
 }
