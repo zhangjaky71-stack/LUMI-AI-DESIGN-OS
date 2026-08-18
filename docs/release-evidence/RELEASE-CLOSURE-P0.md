@@ -3,59 +3,137 @@
 Date: 2026-08-18
 Branch: `release-closure-p0`
 Base: `node-73-final-acceptance-release`
+Draft PR: `#135`
 Scope: close code-addressable P0 blockers identified by NODE-73 Final Acceptance without inventing a new NODE.
 
 ## Executive status
 
-`release-closure-p0` is **not Final Acceptance / not Production GO-LIVE approval**.
+`release-closure-p0` is **not Final Acceptance and not Production GO-LIVE approval**.
 
-This branch closes two code/IaC gaps that NODE-73 correctly left open:
+This branch implements the code/IaC remediation for two NODE-73 P0 gaps:
 
-1. platform-wide provider-dollar hard-stop implementation; and
-2. explicit Production/Staging Sandbox egress isolation in shared IaC.
+1. one platform-wide Provider USD hard stop, enforced before paid Model Gateway calls; and
+2. explicit Production/Staging Sandbox egress isolation.
 
-It does **not** manufacture live evidence. PostgreSQL migration execution, Terraform plan/apply, real sandbox egress probes, hosted RC evidence, six-runtime image promotion, GitHub-hosted CI recovery, and the root `uv.lock` freshness gate remain required before NODE-73 may be marked accepted.
+The branch deliberately keeps NODE-73 blocked because live evidence is still missing. In particular, real PostgreSQL execution, Terraform plan/apply, sandbox egress probes, six-runtime image promotion, Production-like Staging RC evidence, root `uv.lock` freshness, and final Production/rollback/DR evidence remain required.
 
 ## P0-1 — platform-wide Provider USD/day hard stop
 
-Status: **IMPLEMENTED IN CODE / LIVE DATABASE PROOF PENDING**
+Status: **IMPLEMENTED IN CODE / LIVE POSTGRESQL + DEPLOYED IMAGE PROOF PENDING**
 
-### Implemented
+### Canonical accounting architecture
 
-- Added `db/migrations/0015_provider_cost_guard.sql`.
-- Added canonical `provider_cost_guard_policy` with default platform policy:
-  - currency: USD;
-  - daily cap: `$100.00000000`;
-  - enabled: true;
-  - fail-closed: true.
-- Added one `provider_cost_daily_usage` row per UTC day as the cross-process serialization point.
-- Added durable reservation records with organization / operation / project / task / agent-run / generation attribution.
-- Added append-only `provider_cost_ledger` with mutation-rejection trigger.
-- Added atomic `provider_cost_reserve`, `provider_cost_commit`, and `provider_cost_release` functions.
-- Reservation uses a row lock before any paid provider call can proceed through `LedgerBudgetGuard`.
-- Added idempotency collision detection.
-- Added fail-closed normalization for policy missing/disabled/accounting unavailable conditions.
-- Added `0016_provider_cost_guard_snapshot_fix.sql` so the cap captured in the UTC-day usage row remains authoritative for that day; mid-day policy edits cannot silently change an open day's boundary.
-- Actual provider cost may exceed an estimate after the provider has already accepted work; that unavoidable sunk-cost overshoot is recorded via `breached_at`, and subsequent reservations are blocked by the daily boundary.
-- Added `PostgresCostAccounting` adapter and unit coverage.
-- Added `build_environment_budget_guard()` composition contract:
-  - `staging` and `production` require durable PostgreSQL accounting;
-  - missing connection raises `COST_GUARD_DURABLE_ACCOUNTING_REQUIRED`;
-  - hosted execution cannot silently fall back to `RequestBudgetGuard`.
+The remediation reuses NODE-27's existing financial truth. It does **not** create a second Provider ledger.
 
-### Tests added
+Canonical facts remain:
 
-- `services/model-gateway/tests/test_postgres_cost_accounting.py`
-- `services/model-gateway/tests/test_production_cost_guard.py`
-- provider-cost invariants in `evals/tests/test_release_security_contracts.py`
+- `cost_ledger` — append-only actual provider cost / adjustment / reversal facts;
+- `cost_reservations` — pre-provider estimated-cost occupancy;
+- existing NODE-27 usage, quota and reconciliation tables and runtime.
+
+Early Release Closure drafts that introduced parallel `provider_cost_*` tables/functions were removed from the branch. The final design extends the existing NODE-27 boundary only.
+
+### Platform policy
+
+Added Alembic revision:
+
+- `apps/api/alembic/versions/0018_platform_provider_cost_guard.py`
+
+It creates the singleton `platform_provider_cost_guard` policy with:
+
+- `policy_key = 'platform'`;
+- USD/UTC-day semantics in metadata;
+- default cap `$100.00000000`;
+- `enabled = true`;
+- `fail_closed = true`;
+- database constraint `daily_cap_usd > 0 AND daily_cap_usd <= 100.00000000`.
+
+The `$100` ceiling is therefore a schema-level maximum, not only a default configuration value. `lumi_app` has SELECT-only access to the policy and cannot raise, disable or delete it at runtime.
+
+The table is mapped into SQLAlchemy metadata through `PlatformProviderCostGuard`, so the normal ORM schema-drift gate can validate it after migration.
+
+### Cross-process / cross-organization hard stop
+
+Added `PlatformGuardedCostGateway`, a wrapper around the canonical `PostgresCostGateway`.
+
+Before a paid reservation it:
+
+1. obtains PostgreSQL advisory transaction lock `cost-budget:platform:provider-usd:utc-day`;
+2. reads the fail-closed singleton policy;
+3. calculates current UTC-day Provider spend from canonical `cost_ledger` across all organizations;
+4. calculates active USD reservations from canonical `cost_reservations` across all organizations;
+5. rejects when `spent + active + requested > cap`;
+6. while still holding the platform lock, delegates to NODE-27's canonical `PostgresCostGateway.reserve()`.
+
+Commit/release are also serialized against this platform lock. If the Provider has already accepted work and actual cost exceeds the estimate, the sunk financial fact is committed rather than hidden; subsequent reservations then fail closed.
+
+### Model Gateway binding
+
+`PostgresModelCostAccounting` now uses `PlatformGuardedCostGateway` internally. Model Gateway itself remains database-neutral through `CostAccountingPort`.
+
+Added hosted composition root:
+
+- `apps/api/src/lumi_api/model_gateway_runtime.py`
+
+`build_hosted_model_gateway()` fixes the Hosted budget path to:
+
+`LedgerBudgetGuard(PostgresModelCostAccounting(database_dsn))`
+
+The function does not accept an injectable `budget_guard`, so Staging/Production composition cannot silently fall back to request-local budgeting.
+
+`lumi-api` now declares the `lumi-model-gateway` workspace dependency explicitly. This dependency change is intentionally left for the canonical `uv lock` regeneration described under P0-3; the lock file is not hand-edited.
+
+### Provider credential boundary
+
+Staging and Production IaC were tightened so Provider credentials exist only in the `model-gateway` deployment unit:
+
+- `agent-runtime` no longer receives `LUMI_MODEL_PROVIDER_SECRET`;
+- `worker-media` no longer receives `LUMI_MEDIA_PROVIDER_SECRET`;
+- `model-gateway` receives `LUMI_MODEL_PROVIDER_SECRET` and `LUMI_MEDIA_PROVIDER_SECRET`;
+- `model-gateway` now also receives `LUMI_DATABASE_URL` for durable NODE-27 accounting.
+
+`validate_production_iac_contract.py` enforces this least-privilege topology for both Staging and Production.
+
+Deep Agent runtime already requires its resolved model to carry the NODE-22 Model Gateway trust marker, and the NODE-22 architecture validator scans caller roots for direct Provider SDK imports / raw Provider credential names. Release Closure therefore removes the deployment-level credential bypass in addition to retaining those code-level boundaries.
+
+### PostgreSQL acceptance added
+
+Added:
+
+- `scripts/integration_platform_provider_cost_guard.py`
+
+The acceptance test is wired into the existing NODE-27 `cost-ledger.yml` workflow. It is designed to prove on real PostgreSQL that:
+
+- even the migration/admin role cannot set the cap above `$100` (`CheckViolationError` expected);
+- a temporary test cap is derived from observed baseline + `$0.30`, and the test aborts if that would exceed `$100`;
+- six concurrent `$0.10` reservations split across two organizations compete on one platform lock;
+- exactly three reservations succeed under the `$0.30` incremental headroom;
+- disabling the singleton policy causes fail-closed budget denial;
+- actual `$0.25` cost can be committed for a previously reserved `$0.10` accepted operation;
+- post-overshoot reservations are denied;
+- the runtime role cannot mutate the platform policy.
+
+The NODE-27 static contract now also verifies the migration, ORM mapping, canonical wrapper, hosted composition root, workspace dependency and integration markers.
+
+### Hosted CI evidence status
+
+GitHub Actions runs are being created for PR #135, but sampled critical jobs fail **before executing any step**:
+
+- Cost Ledger: `cost-contract` -> failure with an empty steps list; dependent jobs skipped;
+- Production IaC Contract: source/Terraform jobs -> failure with empty steps lists;
+- Final Product Acceptance Gate: source/canonical-lock jobs -> failure with empty steps lists.
+
+No checkout, Python, Terraform, `uv`, test or application command ran in those jobs, and job logs were unavailable. These red runs therefore do not constitute code/test failures; they are consistent with the existing GitHub-hosted runner/account/billing/spending-limit execution blocker.
 
 ### Still required for acceptance
 
-- apply migrations `0015` and `0016` to a disposable PostgreSQL instance and then Production-like Staging;
-- run concurrent reservation tests against real PostgreSQL and prove aggregate reservations cannot cross the daily cap;
-- prove the deployed Model Gateway bootstrap provides the durable accounting connection;
-- record real provider requests before/at/after the cap boundary;
-- archive ledger and alert evidence.
+- restore hosted runner execution or run an equivalent trusted CI environment;
+- apply Alembic revision `0018` to disposable PostgreSQL and Production-like Staging;
+- execute the new cross-organization PostgreSQL acceptance to PASS;
+- build/promote the actual Model Gateway image from the hosted composition root;
+- prove the deployed task receives the durable DB credential and Provider credentials while Agent Runtime/Worker Media do not;
+- record real Provider calls immediately below/at/above the platform boundary;
+- archive canonical ledger/reservation evidence and cost alerts.
 
 ## P0-2 — Production Sandbox egress isolation
 
@@ -63,79 +141,69 @@ Status: **IMPLEMENTED IN IAC / TERRAFORM APPLY + LIVE PROBE PENDING**
 
 ### Existing inner boundary retained
 
-`sandbox-runtime` already executes child Docker work with `--network none`; this branch does not weaken or duplicate that inner sandbox boundary.
+`sandbox-runtime` already executes child Docker work with `--network none`. Release Closure keeps that inner deny-all execution boundary.
 
-### IaC changes
+### Shared IaC boundary
 
-- Converted the shared `app` Security Group into application identity/ingress only; it no longer grants Internet egress.
-- Added `app_internet_egress` Security Group for non-sandbox services that legitimately need provider/webhook Internet access.
-- Added `sandbox_egress` Security Group that allows only:
-  - private VPC CIDR traffic for internal control-plane dependencies; and
-  - TCP/443 to the AWS-managed S3 prefix list for approved asset transport.
-- `sandbox_egress` contains no `0.0.0.0/0` rule.
-- Added PrivateLink interface endpoints for `ecr.api`, `ecr.dkr`, `logs`, and `secretsmanager` so Fargate execution dependencies do not require arbitrary public NAT access.
-- ECS service composition now selects Security Groups by service name:
+- the shared `app` Security Group is now identity/ingress only and grants no public egress;
+- `app_internet_egress` provides explicit Internet egress to non-sandbox services;
+- `sandbox_egress` allows only private VPC traffic plus TCP/443 to the AWS-managed S3 prefix list;
+- `sandbox_egress` contains no `0.0.0.0/0` rule;
+- PrivateLink interface endpoints were added for `ecr.api`, `ecr.dkr`, `logs`, and `secretsmanager`;
+- ECS composition attaches:
   - `sandbox-runtime` -> app identity + restricted sandbox egress;
-  - all other services -> app identity + explicit Internet egress.
-- Compute module validation requires the `sandbox-runtime` deployment unit so the restricted branch cannot disappear silently.
-- Propagated the same topology through both Staging and Production core/app modules.
+  - other services -> app identity + explicit Internet egress;
+- the compute module requires the `sandbox-runtime` deployment unit;
+- Staging and Production use the same topology.
 
-### Tests added
-
-`evals/tests/test_release_security_contracts.py` asserts:
-
-- Sandbox is special-cased to the restricted Security Group;
-- app identity does not contain public egress;
-- only the non-sandbox Internet egress group contains `0.0.0.0/0`;
-- sandbox egress contains VPC + S3 only;
-- required PrivateLink endpoints exist;
-- Staging and Production propagate the restricted Security Group IDs;
-- the inner runtime still contains `--network none`.
+`validate_production_iac_contract.py` and `evals/tests/test_release_security_contracts.py` encode these invariants so a later change cannot silently reattach public egress to Sandbox.
 
 ### Still required for acceptance
 
-- run `terraform fmt -check`, `terraform validate`, and Production-like Staging `terraform plan` with the actual AWS provider/version lock;
-- apply to Production-like Staging;
-- launch the real `sandbox-runtime` task image;
-- prove approved Redis/RabbitMQ/S3/control-plane traffic remains functional;
+- run `terraform fmt -check`, `terraform validate`, and Production-like Staging `terraform plan` with the pinned provider;
+- apply the IaC to Production-like Staging;
+- launch the real `sandbox-runtime` image;
+- prove Redis/RabbitMQ/S3/internal control-plane traffic remains functional;
 - prove arbitrary public DNS/IP HTTPS and raw TCP egress are denied;
-- prove ECR image pull, CloudWatch Logs, and Secrets Manager remain functional through private endpoints;
-- archive VPC Flow Logs / task probe output as release evidence.
+- prove ECR pull, CloudWatch Logs and Secrets Manager function through PrivateLink;
+- archive VPC Flow Logs and task probe output.
 
 ## P0-3 — canonical root `uv.lock`
 
 Status: **NOT CLOSED**
 
-Root `pyproject.toml` currently declares these workspace packages that are absent from the lock manifest:
+The root workspace and dependency graph have evolved beyond the checked-in lock. Previously identified missing workspace entries include:
 
 - `lumi-auth`;
 - `lumi-domain`;
 - `lumi-project-core`;
 - `lumi-asset-storage`.
 
-The first three have no base third-party dependencies. `lumi-asset-storage` also has no base dependency, but declares optional `s3 = ["boto3>=1.42,<2"]`. The current lock contains neither the workspace member nor the boto3 dependency graph.
+`lumi-asset-storage` also declares optional `s3 = ["boto3>=1.42,<2"]`, whose dependency graph is absent from the current lock. Release Closure additionally makes the already-present workspace package `lumi-model-gateway` an explicit dependency of `lumi-api`, which must also be captured by the regenerated lock.
 
-Therefore a manifest-only hand edit would be a false fix. The canonical gate remains:
+A manifest-only manual edit would be a false fix. The canonical gate remains:
 
 ```bash
 uv lock
-uv sync --frozen
+uv sync --all-packages --frozen
 ```
 
-using Python 3.12 and normal registry access, followed by the full Python gate. The current execution environment cannot resolve missing registry metadata and does not contain a Python 3.12 interpreter, so this branch intentionally does not claim lock freshness.
+using Python 3.12 and normal registry access, followed by Ruff, Pyright, pytest and the NODE-27 PostgreSQL acceptance suite.
+
+Until that completes successfully, P0-3 remains open.
 
 ## External/live blockers unchanged
 
-The following NODE-73 blockers are outside this branch's code-only proof boundary and remain open until real evidence exists:
+The following NODE-73 blockers remain outside code-only proof and must produce real evidence:
 
-- GitHub Actions account/billing/spending-limit block preventing hosted runner execution;
-- NODE-68/69/70/71/72 Production-like Staging / cloud evidence gaps;
-- real six-runtime image promotion and transport proof;
+- GitHub-hosted runner/account/billing/spending-limit execution recovery;
+- NODE-68/69/70/71/72 Production-like Staging / cloud evidence;
+- real six-runtime image build/promotion/transport proof;
 - passed Production-like Staging RC package;
-- final Production evidence package and rollback/DR proof.
+- final Production evidence package, rollback proof and DR proof.
 
 ## Release decision
 
 Current decision: **KEEP NODE-73 FINAL ACCEPTANCE BLOCKED**.
 
-Merge this branch only as the code/IaC remediation layer. Do not change the Final Acceptance verdict until all remaining live gates above produce auditable evidence.
+PR #135 may serve as the code/IaC remediation layer only. Do not change the NODE-73 verdict until the remaining lock, hosted-CI, PostgreSQL, Terraform, Staging, image-promotion and Production evidence gates are auditable and passed.
