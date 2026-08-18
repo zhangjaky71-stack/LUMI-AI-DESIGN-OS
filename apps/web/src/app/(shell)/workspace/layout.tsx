@@ -5,6 +5,7 @@ import "./canvas.css";
 import "./timeline.css";
 import "./versions.css";
 import "./export.css";
+import "./comments.css";
 
 export default function WorkspaceLayout({ children }: { children: ReactNode }) {
   return children;

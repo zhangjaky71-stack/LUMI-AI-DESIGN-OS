@@ -7,6 +7,7 @@ from . import models_auth as _models_auth
 from . import models_auto_repair as _models_auto_repair
 from . import models_brand_rules as _models_brand_rules
 from . import models_capability_registry as _models_capability_registry
+from . import models_collaboration as _models_collaboration
 from . import models_control_plane as _models_control_plane
 from . import models_costs as _models_costs
 from . import models_export_engine as _models_export_engine
@@ -37,6 +38,7 @@ _METADATA_MODULES = (
     _models_auto_repair,
     _models_brand_rules,
     _models_capability_registry,
+    _models_collaboration,
     _models_control_plane,
     _models_costs,
     _models_export_engine,
@@ -91,6 +93,7 @@ Index(
     "ix_runtime_jobs_project_status",
     RuntimeJobModel.project_id,
     RuntimeJobModel.status,
+    RuntimeJobModel.updated_at,
 )
 Index(
     "ix_dead_letters_org_status",

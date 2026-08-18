@@ -12,6 +12,7 @@ from .auth_routes import router as auth_router
 from .brand_registry_routes import router as brand_registry_router
 from .brand_rules_routes import router as brand_rules_router
 from .canvas_document_routes import router as canvas_document_router
+from .collaboration_routes import router as collaboration_router
 from .cost_routes import router as cost_router
 from .errors import install_error_contract
 from .export_product_routes import router as export_product_router
@@ -44,6 +45,7 @@ def create_contract_app() -> FastAPI:
     app.include_router(artifact_engine_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(version_history_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(export_product_router, dependencies=[Depends(enforce_api_auth)])
+    app.include_router(collaboration_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(brand_registry_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(brand_rules_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(identity_engine_router, dependencies=[Depends(enforce_api_auth)])
