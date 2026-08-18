@@ -4,6 +4,8 @@ import json
 import logging
 from datetime import UTC, datetime
 
+import pytest
+
 from lumi_api.observability import (
     LogLevel,
     PythonJsonLoggingSink,
@@ -59,6 +61,27 @@ def test_python_logging_sink_emits_parseable_structured_json(caplog) -> None:
     assert payload["fields"]["http.route"] == "/api/v1/projects/{project_id}"
     assert "prompt" not in payload
     assert "authorization" not in payload
+
+
+def test_structured_log_rejects_secret_bearing_values_and_messages() -> None:
+    with pytest.raises(ValueError, match="SECRET_ATTRIBUTE_FORBIDDEN"):
+        StructuredLogRecord(
+            level=LogLevel.INFO,
+            event="asset.fetch.completed",
+            message="Asset fetch completed.",
+            occurred_at=NOW,
+            fields={
+                "resource": "https://storage.example/file?X-Amz-Signature=raw-secret"
+            },
+        )
+
+    with pytest.raises(ValueError, match="SECRET_ATTRIBUTE_FORBIDDEN"):
+        StructuredLogRecord(
+            level=LogLevel.ERROR,
+            event="provider.request.failed",
+            message="Bearer raw-provider-token",
+            occurred_at=NOW,
+        )
 
 
 def test_langsmith_fanout_reuses_safe_attribute_boundary() -> None:
