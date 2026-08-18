@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { assertPublicVersionProvenance } from "@/lib/versions/security";
 import { branchHeadSnapshot, detectNewHead } from "@/lib/versions/state";
 import {
   parseSafeVersionProvenance,
@@ -14,7 +15,7 @@ const ID3 = "0198a1b2-c3d4-7e5f-8123-123456789abe";
 const SHA = "1".repeat(64);
 const GIT = "a".repeat(40);
 
-function historyPayload(head = ID2) {
+function historyPayload(head = ID2): Record<string, unknown> {
   return {
     artifact: { id: ID, project_id: ID3, type: "DESIGN_DOCUMENT", name: "Poster", design_document_id: ID },
     branches: [{ id: ID3, artifact_id: ID, name: "main", base_version_id: ID, head_version_id: head, created_by_type: "USER", created_by_id: "u1", created_at: "2026-08-18T04:00:00Z" }],
@@ -51,8 +52,8 @@ describe("NODE-59 version contracts", () => {
     expect(JSON.stringify(changes)).not.toContain("arbitrary_private_summary");
   });
 
-  it("parses safe provenance without requiring any raw prompt reference", () => {
-    const value = parseSafeVersionProvenance({
+  it("parses safe provenance without raw prompt references", () => {
+    const payload = {
       artifact_version_id: ID,
       traceability_score: 1,
       traceability_status: "FULLY_TRACEABLE",
@@ -73,18 +74,27 @@ describe("NODE-59 version contracts", () => {
       code_git_sha: GIT,
       compiler_version: "1.2.0",
       agent_version: "agent-v3",
-    });
+    };
+    assertPublicVersionProvenance(payload);
+    const value = parseSafeVersionProvenance(payload);
     expect(value.promptHash).toBe(SHA);
     expect(value.inputArtifactVersionIds).toEqual([ID2]);
     expect(value).not.toHaveProperty("promptRef");
     expect(value).not.toHaveProperty("providerRequestId");
   });
 
+  it("rejects private provenance keys before projection", () => {
+    expect(() => assertPublicVersionProvenance({ prompt_ref: "internal://private" })).toThrow("VERSION_PROVENANCE_PRIVATE_FIELD_FORBIDDEN");
+    expect(() => assertPublicVersionProvenance({ nested: { provider_request_id: "secret-ref" } })).toThrow("VERSION_PROVENANCE_PRIVATE_FIELD_FORBIDDEN");
+    expect(() => assertPublicVersionProvenance({ reasoning: "hidden" })).toThrow("VERSION_PROVENANCE_PRIVATE_FIELD_FORBIDDEN");
+  });
+
   it("detects a concurrent new head without changing the viewed version", () => {
     const initial = parseVersionHistory(historyPayload(ID2));
     const baseline = branchHeadSnapshot(initial);
-    const updatedPayload = historyPayload(ID3);
-    updatedPayload.versions.push({
+    const payload = historyPayload(ID3);
+    const record = payload as { versions: unknown[] };
+    record.versions.push({
       id: ID3,
       artifact_id: ID,
       branch_id: ID3,
@@ -100,7 +110,7 @@ describe("NODE-59 version contracts", () => {
       created_at: "2026-08-18T04:10:00Z",
       preview: {},
     });
-    const updated = parseVersionHistory(updatedPayload);
+    const updated = parseVersionHistory(payload);
     expect(detectNewHead(updated, baseline, ID)).toBe(ID3);
     expect(ID).not.toBe(ID3);
   });
