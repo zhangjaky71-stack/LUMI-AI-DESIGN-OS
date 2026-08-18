@@ -9,31 +9,18 @@ from lumi_api.persistence.models_visual_critic import (
     QualityGraderCalibrationModel,
     QualityProfileSnapshotModel,
 )
-from lumi_api.visual_critic.codec import (
-    decode_calibration,
-    decode_profile,
-    decode_result,
-)
+from lumi_api.visual_critic.codec import decode_calibration, decode_profile, decode_result
 from lumi_auto_repair import (
     AutoRepairJob,
     RepairCandidate,
     RepairDirective,
     RepairQualitySnapshot,
 )
-from lumi_visual_critic import (
-    QualitySeverity,
-    QualityTaskSpec,
-    VisualCriticEngine,
-)
+from lumi_visual_critic import QualitySeverity, QualityTaskSpec, VisualCriticEngine
 
 
 class Node50RepairQualityAdapter:
-    def __init__(
-        self,
-        *,
-        session: Session,
-        critic: VisualCriticEngine,
-    ) -> None:
+    def __init__(self, *, session: Session, critic: VisualCriticEngine) -> None:
         self.session = session
         self.critic = critic
 
@@ -43,16 +30,12 @@ class Node50RepairQualityAdapter:
         organization_id: str,
         quality_result_id: str,
     ) -> RepairQualitySnapshot:
-        row = self.session.get(
-            ArtifactQualityResultModel,
-            UUID(quality_result_id),
-        )
+        row = self.session.get(ArtifactQualityResultModel, UUID(quality_result_id))
         if row is None:
             raise KeyError("REPAIR_QUALITY_RESULT_NOT_FOUND")
         if str(row.organization_id) != organization_id:
             raise PermissionError("REPAIR_QUALITY_ORGANIZATION_MISMATCH")
-        result = decode_result(dict(row.result_json))
-        return self._snapshot(result)
+        return self._snapshot(decode_result(dict(row.result_json)))
 
     async def evaluate_candidate(
         self,
@@ -68,10 +51,7 @@ class Node50RepairQualityAdapter:
             raise KeyError("REPAIR_BASELINE_QUALITY_NOT_FOUND")
         profile_row = self.session.get(
             QualityProfileSnapshotModel,
-            (
-                baseline_row.profile_id,
-                baseline_row.profile_version,
-            ),
+            (baseline_row.profile_id, baseline_row.profile_version),
         )
         if profile_row is None:
             raise KeyError("REPAIR_QUALITY_PROFILE_NOT_FOUND")
@@ -84,29 +64,25 @@ class Node50RepairQualityAdapter:
             )
             if calibration_row is None:
                 raise KeyError("REPAIR_CRITIC_CALIBRATION_NOT_FOUND")
-            calibration = decode_calibration(
-                dict(calibration_row.calibration_json)
-            )
+            calibration = decode_calibration(dict(calibration_row.calibration_json))
         operation_id = str(
             uuid5(
                 NAMESPACE_URL,
-                (
-                    "lumi:auto-repair-quality:"
-                    f"{job.job_id}:{candidate.artifact_version_id}"
-                ),
+                f"lumi:auto-repair-quality:{job.job_id}:{candidate.artifact_version_id}",
             )
         )
-        spec = QualityTaskSpec(
-            organization_id=job.spec.organization_id,
-            project_id=job.spec.project_id,
-            task_id=job.spec.task_id,
-            operation_id=operation_id,
-            artifact_version_id=candidate.artifact_version_id,
-            profile=profile,
-            requested_by=job.spec.requested_by,
-            critic_calibration=calibration,
+        result = await self.critic.evaluate(
+            QualityTaskSpec(
+                organization_id=job.spec.organization_id,
+                project_id=job.spec.project_id,
+                task_id=job.spec.task_id,
+                operation_id=operation_id,
+                artifact_version_id=candidate.artifact_version_id,
+                profile=profile,
+                requested_by=job.spec.requested_by,
+                critic_calibration=calibration,
+            )
         )
-        result = await self.critic.evaluate(spec)
         return self._snapshot(result)
 
     @staticmethod
@@ -117,10 +93,10 @@ class Node50RepairQualityAdapter:
                 directives.append(
                     RepairDirective(
                         directive_id=(
-                            f"{violation.violation_id}:"
-                            f"{action.action_type.value}:{index}"
+                            f"{violation.violation_id}:{action.action_type.value}:{index}"
                         ),
                         source_violation_id=violation.violation_id,
+                        violation_code=violation.code,
                         dimension=violation.dimension.value,
                         severity=violation.severity.value,
                         blocking=violation.blocking,
@@ -137,10 +113,7 @@ class Node50RepairQualityAdapter:
                 {
                     violation.code
                     for violation in result.violations
-                    if (
-                        violation.blocking
-                        or violation.severity is QualitySeverity.HARD
-                    )
+                    if violation.blocking or violation.severity is QualitySeverity.HARD
                 }
             )
         )
