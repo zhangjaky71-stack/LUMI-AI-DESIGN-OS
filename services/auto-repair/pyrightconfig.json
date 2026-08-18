@@ -1,0 +1,19 @@
+{
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "standard",
+  "include": [
+    "src",
+    "tests",
+    "../../apps/api/src/lumi_api/auto_repair",
+    "../../apps/api/src/lumi_api/persistence/models_auto_repair.py",
+    "../../apps/api/src/lumi_api/image_edit/artifact_adapter.py"
+  ],
+  "extraPaths": [
+    "src",
+    "../visual-critic/src",
+    "../model-gateway/src",
+    "../image-edit/src",
+    "../../apps/api/src"
+  ],
+  "exclude": ["**/__pycache__"]
+}
