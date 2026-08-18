@@ -86,8 +86,8 @@ jobs:
       - name: Artifact Engine regression tests
         run: |
           uv run pytest -q \
-            apps/api/tests/test_artifact_engine_runtime.py \
-            apps/api/tests/test_artifact_engine_api.py
+            apps/api/tests/test_artifact_engine_node42.py \
+            apps/api/tests/test_artifact_version_provenance_contract.py
 
       - name: Ruff NODE-62 backend
         run: |
