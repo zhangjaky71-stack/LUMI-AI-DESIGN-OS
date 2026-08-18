@@ -62,6 +62,7 @@ class ApprovalRecord(ApprovalModel):
     id: UUID
     organization_id: UUID
     project_id: UUID
+    request_operation_id: UUID
     agent_run_id: UUID | None = None
     task_id: UUID | None = None
     approval_type: ApprovalType
@@ -148,6 +149,7 @@ class ApprovalEffect(ApprovalModel):
 class ArtifactApprovalRequest(ApprovalModel):
     organization_id: UUID
     project_id: UUID
+    request_operation_id: UUID
     artifact_version_id: UUID
     requested_by: str = Field(min_length=1, max_length=200)
     payload_summary: dict[str, Any] = Field(default_factory=dict)
