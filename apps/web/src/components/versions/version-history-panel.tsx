@@ -10,6 +10,7 @@ import {
   getVersionHistory,
   restoreVersionForUser,
 } from "@/lib/versions/api";
+import { branchHeadSnapshot, detectNewHead } from "@/lib/versions/state";
 import {
   semanticChanges,
   type SafeVersionProvenance,
@@ -48,18 +49,11 @@ export function VersionHistoryPanel({
     try {
       const next = await getVersionHistory(organizationId, artifact.artifactId);
       if (!mounted.current) return;
-      const heads = new Map(next.branches.map((branch) => [branch.id, branch.headVersionId]));
       if (initialHeadByBranch.current === null) {
-        initialHeadByBranch.current = heads;
+        initialHeadByBranch.current = branchHeadSnapshot(next);
       } else if (background) {
-        const viewed = next.versions.find((item) => item.id === artifact.artifactVersionId);
-        if (viewed) {
-          const initialHead = initialHeadByBranch.current.get(viewed.branchId) ?? null;
-          const latestHead = heads.get(viewed.branchId) ?? null;
-          if (latestHead && latestHead !== initialHead && latestHead !== artifact.artifactVersionId) {
-            setNewHeadId(latestHead);
-          }
-        }
+        const changedHead = detectNewHead(next, initialHeadByBranch.current, artifact.artifactVersionId);
+        if (changedHead) setNewHeadId(changedHead);
       }
       setHistory(next);
       setNotice(null);
@@ -189,11 +183,12 @@ export function VersionHistoryPanel({
   }
 
   function openVersion(version: VersionHistoryItem) {
+    const label = history?.artifact.name ?? artifact.label;
     onOpenVersion({
       artifactId: artifact.artifactId,
       artifactVersionId: version.id,
       versionNumber: version.versionNumber,
-      label: history?.artifact.name ?? artifact.label,
+      ...(label ? { label } : {}),
     });
   }
 
