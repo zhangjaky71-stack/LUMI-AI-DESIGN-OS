@@ -60,6 +60,7 @@ jobs:
         run: |
           uv run python -m compileall -q \
             apps/api/src/lumi_api/collaboration \
+            apps/api/src/lumi_api/api/v1/app.py \
             apps/api/src/lumi_api/api/v1/collaboration_dependencies.py \
             apps/api/src/lumi_api/api/v1/collaboration_routes.py \
             apps/api/src/lumi_api/api/v1/collaboration_schemas.py \
@@ -81,6 +82,7 @@ jobs:
         run: |
           uv run ruff check --ignore E501,I001 \
             apps/api/src/lumi_api/collaboration \
+            apps/api/src/lumi_api/api/v1/app.py \
             apps/api/src/lumi_api/api/v1/collaboration_dependencies.py \
             apps/api/src/lumi_api/api/v1/collaboration_routes.py \
             apps/api/src/lumi_api/api/v1/collaboration_schemas.py \
