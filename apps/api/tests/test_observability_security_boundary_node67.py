@@ -18,7 +18,9 @@ def test_invalid_trace_restarts_without_weakening_node66_security_headers() -> N
             },
         )
     assert response.status_code == 200
-    assert parse_traceparent(response.headers["traceparent"]) is not None
+    restarted = parse_traceparent(response.headers["traceparent"])
+    assert restarted is not None
+    assert restarted.trace_flags == "02"
     assert response.headers.get("tracestate") is None
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
@@ -51,7 +53,9 @@ def test_production_invalid_trace_restarts_and_keeps_docs_shutdown_hsts() -> Non
             },
         )
     assert response.status_code == 404
-    assert parse_traceparent(response.headers["traceparent"]) is not None
+    restarted = parse_traceparent(response.headers["traceparent"])
+    assert restarted is not None
+    assert restarted.trace_flags == "02"
     assert response.headers.get("tracestate") is None
     assert response.headers["strict-transport-security"].startswith("max-age=63072000")
     assert response.headers["x-content-type-options"] == "nosniff"
