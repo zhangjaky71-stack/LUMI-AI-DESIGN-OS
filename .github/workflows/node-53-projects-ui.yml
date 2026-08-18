@@ -1,0 +1,70 @@
+name: NODE-53 Projects UI
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/src/lib/projects/**"
+      - "apps/web/src/components/projects/**"
+      - "apps/web/src/app/(shell)/projects/**"
+      - "apps/web/src/proxy.ts"
+      - "apps/web/src/types/es2023-array.d.ts"
+      - "tools/node53/**"
+      - "docs/nodes/NODE-53-PROJECTS-UI*.md"
+      - "reports/nodes/NODE-53/**"
+      - ".github/workflows/node-53-projects-ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+  NEXT_TELEMETRY_DISABLED: "1"
+  LUMI_API_ORIGIN: "http://127.0.0.1:8000"
+
+jobs:
+  projects-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Static Projects UI acceptance
+        run: python tools/node53/validate_projects_ui.py
+      - name: Parse NODE-53 gap ledger
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          ledger = json.loads(
+              Path("reports/nodes/NODE-53/gap-ledger.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          assert ledger["node"] == "NODE-53"
+          assert ledger["status"] == "IMPLEMENTED_VALIDATING_NOT_COMPLETE"
+          assert any(gap["severity"] == "P0" for gap in ledger["gaps"])
+          print("NODE53_GAP_LEDGER_PARSE_PASS")
+          PY
+
+  projects-quality:
+    needs: projects-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install web dependencies without mutating repository lockfiles
+        working-directory: apps/web
+        run: npm install --no-package-lock --no-audit --no-fund
+      - name: Typecheck frontend stack
+        working-directory: apps/web
+        run: npm run typecheck
+      - name: Production build
+        working-directory: apps/web
+        run: npm run build

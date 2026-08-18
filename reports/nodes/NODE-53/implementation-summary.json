@@ -1,0 +1,20 @@
+{
+  "node": "NODE-53",
+  "name": "Projects UI",
+  "branch": "feat/node-53-projects-ui",
+  "stack_base": "feat/node-52-app-shell",
+  "status": "IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "implemented": [
+    "real_projects_api_adapter",
+    "projects_dashboard",
+    "server_side_search_and_status_filter",
+    "idempotent_new_project_action",
+    "creative_brief_capture",
+    "project_detail",
+    "workspace_handoff",
+    "responsive_accessible_project_surfaces",
+    "node53_static_validator",
+    "node53_typecheck_and_build_workflow"
+  ],
+  "completion_claim": false
+}

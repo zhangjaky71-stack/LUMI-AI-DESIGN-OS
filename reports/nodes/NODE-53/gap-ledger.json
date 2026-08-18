@@ -1,0 +1,47 @@
+{
+  "node": "NODE-53",
+  "status": "IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "generated_for_branch": "feat/node-53-projects-ui",
+  "gaps": [
+    {
+      "id": "NODE53-GAP-01",
+      "area": "project-api-openapi-conformance",
+      "severity": "P0",
+      "status": "OPEN",
+      "description": "The frontend adapter targets the NODE-17 /api/v1/projects resource and isolates parsing/request mapping, but the exact deployed create+brief payload and response schema still require OpenAPI/real API conformance evidence before COMPLETE.",
+      "completion_evidence": "Contract test generated from the deployed OpenAPI schema plus create/list/detail requests against a real API instance, including 400/401/403/409/422 behavior."
+    },
+    {
+      "id": "NODE53-GAP-02",
+      "area": "pagination-server-filtering",
+      "severity": "P1",
+      "status": "OPEN",
+      "description": "The dashboard currently loads the project collection then filters/sorts on the server-rendered page. Production-scale cursor pagination and backend search/status filtering are not yet wired.",
+      "completion_evidence": "Cursor-aware list adapter and UI with backend q/status/sort contract, tested for empty/next/previous/filter combinations."
+    },
+    {
+      "id": "NODE53-GAP-03",
+      "area": "project-brief-edit-lifecycle",
+      "severity": "P1",
+      "status": "OPEN",
+      "description": "Project creation and brief display are implemented. Post-create brief editing, optimistic concurrency/version conflict UX, project status transitions, and archive/restore are not yet exposed in NODE-53.",
+      "completion_evidence": "Version-aware brief edit/status/archive UI using NODE-17 concurrency contracts with conflict recovery tests."
+    },
+    {
+      "id": "NODE53-GAP-04",
+      "area": "browser-e2e",
+      "severity": "P1",
+      "status": "OPEN",
+      "description": "No real browser E2E currently proves list → filter → create → detail → workspace handoff with authenticated tenant data.",
+      "completion_evidence": "Browser E2E against a seeded API covering zero/one/many projects, validation errors, idempotent resubmission, detail rendering, and workspace handoff."
+    },
+    {
+      "id": "NODE53-GAP-05",
+      "area": "hosted-ci",
+      "severity": "P0",
+      "status": "OPEN",
+      "description": "NODE-53 Hosted CI has not yet produced executed-step evidence; prior stacked nodes are blocked before runner steps start.",
+      "completion_evidence": "NODE-53 workflow with non-empty executed steps and passing static contract, TypeScript check, and production build."
+    }
+  ]
+}
