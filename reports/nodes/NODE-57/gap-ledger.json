@@ -1,0 +1,63 @@
+{
+  "node": "NODE-57",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "updated_at": "2026-08-18",
+  "gaps": [
+    {
+      "id": "NODE57-GAP-01",
+      "severity": "P0",
+      "area": "durable-replay",
+      "status": "open",
+      "description": "Production AgentEventReplayPort composition is still required. Canonical current stage recovers without it, but full historical timeline refresh cannot be claimed until durable replay is deployed."
+    },
+    {
+      "id": "NODE57-GAP-02",
+      "severity": "P0",
+      "area": "producer-contracts",
+      "status": "open",
+      "description": "Retry, provider fallback, safe error action, progress counts and cost fields need a standardized producer-side public event contract across graph nodes/providers. Timeline only displays explicit allowlisted fields."
+    },
+    {
+      "id": "NODE57-GAP-03",
+      "severity": "P0",
+      "area": "canonical-history",
+      "status": "open",
+      "description": "There is no independent canonical TaskGraph history REST projection yet; history recovery currently depends on durable event replay plus current RunControlSnapshot."
+    },
+    {
+      "id": "NODE57-GAP-04",
+      "severity": "P0",
+      "area": "e2e",
+      "status": "open",
+      "description": "Browser E2E must cover refresh replay, reconnect cursor, retry/fallback, waiting approval, exact artifact jump, cancelled run and failed run against composed services."
+    },
+    {
+      "id": "NODE57-GAP-05",
+      "severity": "P0",
+      "area": "safe-summary-review",
+      "status": "open",
+      "description": "A production fixture review must verify event producers never place user secrets or confidential raw payloads into nominally public summary fields. Schema key rejection and projector allowlisting are implemented but producer review remains required."
+    },
+    {
+      "id": "NODE57-GAP-06",
+      "severity": "P1",
+      "area": "debug-view",
+      "status": "open",
+      "description": "Permission-gated Admin/Dev trace/debug view is not implemented. Standard users intentionally see only safe public observability."
+    },
+    {
+      "id": "NODE57-GAP-07",
+      "severity": "P1",
+      "area": "cost-semantics",
+      "status": "open",
+      "description": "Actual versus estimated cost/credits need formal labels and backend units/currency semantics before richer cost UX is considered complete."
+    },
+    {
+      "id": "NODE57-GAP-08",
+      "severity": "P0",
+      "area": "hosted-ci",
+      "status": "open",
+      "description": "Hosted GitHub Actions with executed green steps remains required; preceding nodes are affected by a recurring pre-step runner/account infrastructure blocker."
+    }
+  ]
+}
