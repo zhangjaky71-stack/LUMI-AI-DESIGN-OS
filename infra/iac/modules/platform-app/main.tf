@@ -1,17 +1,19 @@
 module "compute" {
   source = "../compute"
 
-  project                   = var.project
-  environment               = var.environment
-  vpc_id                    = var.vpc_id
-  public_subnet_ids         = var.public_subnet_ids
-  private_subnet_ids        = var.private_subnet_ids
-  app_security_group_id     = var.app_security_group_id
-  alb_security_group_id     = var.alb_security_group_id
-  certificate_arn           = var.certificate_arn
-  kms_key_arn               = var.kms_key_arn
-  services                  = var.services
-  tags                      = var.tags
+  project                               = var.project
+  environment                           = var.environment
+  vpc_id                                = var.vpc_id
+  public_subnet_ids                      = var.public_subnet_ids
+  private_subnet_ids                     = var.private_subnet_ids
+  app_security_group_id                  = var.app_security_group_id
+  app_internet_egress_security_group_id = var.app_internet_egress_security_group_id
+  sandbox_egress_security_group_id       = var.sandbox_egress_security_group_id
+  alb_security_group_id                  = var.alb_security_group_id
+  certificate_arn                        = var.certificate_arn
+  kms_key_arn                            = var.kms_key_arn
+  services                               = var.services
+  tags                                   = var.tags
 }
 
 module "edge" {
