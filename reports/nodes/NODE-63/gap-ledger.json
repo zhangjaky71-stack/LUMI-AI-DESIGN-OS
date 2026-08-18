@@ -1,0 +1,93 @@
+{
+  "node": "NODE-63",
+  "name": "Billing, Plans, Credits & Payment Integration",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "branch": "feat/node-63-billing",
+  "base": "feat/node-62-approval-engine",
+  "gaps": [
+    {
+      "id": "NODE63-GAP-001",
+      "severity": "P0",
+      "status": "open",
+      "title": "Production billing service factory composition",
+      "detail": "api/v1 app contracts are registered, but the production runtime composition still needs to attach a request-scoped PostgresBillingServiceFactory and managed payment provider configuration."
+    },
+    {
+      "id": "NODE63-GAP-002",
+      "severity": "P0",
+      "status": "open",
+      "title": "Generation and tool runtimes must enforce credit reservation/consume",
+      "detail": "BillingService exposes versioned usage pricing and atomic consume, but generation/tool gateways are not yet wired to preflight credits before expensive work."
+    },
+    {
+      "id": "NODE63-GAP-003",
+      "severity": "P0",
+      "status": "open",
+      "title": "Live PostgreSQL concurrent-consume race test",
+      "detail": "Repository uses SELECT FOR UPDATE and a unique operation key, but a two-connection race test must execute in CI before declaring production-safe concurrency."
+    },
+    {
+      "id": "NODE63-GAP-004",
+      "severity": "P1",
+      "status": "open",
+      "title": "Real payment provider adapter",
+      "detail": "Intentionally deferred until sandbox acceptance; MockPaymentProvider is the only provider implemented in NODE-63 core."
+    },
+    {
+      "id": "NODE63-GAP-005",
+      "severity": "P1",
+      "status": "open",
+      "title": "Plan catalog mutation/admin UX and seat billing",
+      "detail": "Immutable plan-version storage exists, but admin catalog creation/migration and seat billing remain for Admin Console/commercial rollout."
+    },
+    {
+      "id": "NODE63-GAP-006",
+      "severity": "P1",
+      "status": "open",
+      "title": "Tax and jurisdiction-specific invoice policy",
+      "detail": "No tax rates are hard-coded. Production tax/invoice policy remains delegated to the selected provider and legal/accounting validation."
+    },
+    {
+      "id": "NODE63-GAP-007",
+      "severity": "P0",
+      "status": "open",
+      "title": "Hosted CI execution evidence",
+      "detail": "NODE-63 cannot be COMPLETE until compile, tests, migration checks, lint/typecheck and web build execute on a hosted runner."
+    },
+    {
+      "id": "NODE63-GAP-101",
+      "severity": "P0",
+      "status": "closed",
+      "title": "Provider cost is separated from customer billing",
+      "detail": "Billing reconciliation reads NODE-27 cost_ledger without mutating or redefining provider-cost truth."
+    },
+    {
+      "id": "NODE63-GAP-102",
+      "severity": "P0",
+      "status": "closed",
+      "title": "Credit history is immutable",
+      "detail": "billing_credit_ledger is append-only with a database trigger rejecting UPDATE/DELETE and unique organization operation IDs."
+    },
+    {
+      "id": "NODE63-GAP-103",
+      "severity": "P0",
+      "status": "closed",
+      "title": "Webhook idempotency and payload conflict fence",
+      "detail": "provider/event IDs are unique and body SHA-256 is persisted; deterministic credit grant operation IDs prevent duplicate grants."
+    },
+    {
+      "id": "NODE63-GAP-104",
+      "severity": "P0",
+      "status": "closed",
+      "title": "No card data through LUMI business API",
+      "detail": "Mock hosted checkout/portal flows are used and mock webhook normalization rejects PAN/CVC-style fields."
+    },
+    {
+      "id": "NODE63-GAP-105",
+      "severity": "P0",
+      "status": "closed",
+      "title": "Entitlements are plan-version snapshots",
+      "detail": "EntitlementService projection reads immutable PlanVersion entitlements and normalized subscription state rather than plan-name conditionals."
+    }
+  ]
+}

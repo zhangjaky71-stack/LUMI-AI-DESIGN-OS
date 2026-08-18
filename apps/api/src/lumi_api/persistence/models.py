@@ -6,6 +6,7 @@ from . import models_asset_intelligence as _models_asset_intelligence
 from . import models_asset_storage as _models_asset_storage
 from . import models_auth as _models_auth
 from . import models_auto_repair as _models_auto_repair
+from . import models_billing as _models_billing
 from . import models_brand_rules as _models_brand_rules
 from . import models_capability_registry as _models_capability_registry
 from . import models_collaboration as _models_collaboration
@@ -38,6 +39,7 @@ _METADATA_MODULES = (
     _models_asset_storage,
     _models_auth,
     _models_auto_repair,
+    _models_billing,
     _models_brand_rules,
     _models_capability_registry,
     _models_collaboration,
