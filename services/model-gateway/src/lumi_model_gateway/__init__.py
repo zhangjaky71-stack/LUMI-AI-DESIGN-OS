@@ -58,6 +58,11 @@ from .ports import (
     ProviderHealthRegistry,
     ProviderRegistry,
 )
+from .postgres_cost_accounting import (
+    CostAccountingConnection,
+    CostAccountingDatabaseError,
+    PostgresCostAccounting,
+)
 from .postgres_registry import PostgresRegistryLoader, RegistryReadConnection
 from .pricing import PriceCard
 from .registry import InMemoryProviderHealthRegistry, InMemoryProviderRegistry
@@ -78,6 +83,8 @@ __all__ = [
     "Capability",
     "CapabilityClaim",
     "CapabilityRegistry",
+    "CostAccountingConnection",
+    "CostAccountingDatabaseError",
     "CostAccountingPort",
     "CostConfidence",
     "CostEstimate",
@@ -109,6 +116,7 @@ __all__ = [
     "PaidInvocationGuard",
     "PaidInvocationGuardRequiredError",
     "PaidStreamGuard",
+    "PostgresCostAccounting",
     "PostgresRegistryLoader",
     "PriceCard",
     "PricingSnapshot",
