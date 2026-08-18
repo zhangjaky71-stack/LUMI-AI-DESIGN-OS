@@ -13,6 +13,14 @@ MANIFEST = ROOT / "staging" / "acceptance" / "manifest-v1.json"
 PARITY = ROOT / "staging" / "acceptance" / "environment-parity-v1.json"
 TEMPLATE = ROOT / "staging" / "acceptance" / "evidence-template.json"
 GATE = ROOT / "scripts" / "staging-acceptance-gate.py"
+REQUIRED_IMAGES = [
+    "api",
+    "agent-runtime",
+    "model-gateway",
+    "tool-gateway",
+    "worker-media",
+    "sandbox-runtime",
+]
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -36,20 +44,50 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(f"staging acceptance contract invalid: {message}")
 
 
+def clean_image_set(git_sha: str) -> dict[str, Any]:
+    images = {
+        name: (
+            "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/"
+            f"lumi-{name}@sha256:" + chr(97 + index) * 64
+        )
+        for index, name in enumerate(REQUIRED_IMAGES)
+    }
+    provenance: dict[str, Any] = {}
+    for name in REQUIRED_IMAGES:
+        source_paths = [f"apps/{name}"]
+        if name == "model-gateway":
+            source_paths = [
+                "services/model-gateway",
+                "apps/api/src/lumi_api/model_gateway_runtime.py",
+                "apps/api/src/lumi_api/costs/model_gateway_adapter.py",
+            ]
+        provenance[name] = {
+            "git_sha": git_sha,
+            "build_recipe_ref": f"fixture:build:{name}",
+            "entrypoint": f"fixture-entrypoint-{name}",
+            "sbom_ref": f"fixture:sbom:{name}",
+            "provenance_ref": f"fixture:provenance:{name}",
+            "source_paths": source_paths,
+        }
+    return {"images": images, "provenance": provenance}
+
+
 def clean_evidence(manifest: dict[str, Any], parity: dict[str, Any]) -> dict[str, Any]:
     scenarios = manifest["scenarios"]
     parity_checks = parity["required_checks"]
+    git_sha = "c" * 40
     return {
         "schema_version": 1,
         "manifest_id": manifest["manifest_id"],
         "release_candidate": {
-            "git_sha": "c" * 40,
+            "git_sha": git_sha,
             "version": "0.0.0-rc.contract",
             "environment_id": "staging-contract-fixture",
             "base_url": "https://staging.example.invalid",
-            "container_image_set_ref": "fixture-image-set@sha256:contract",
+            "container_image_set_ref": "fixture:image-set:contract",
             "migration_head": "fixture-migration-head",
         },
+        "container_image_set": clean_image_set(git_sha),
         "data_policy": {
             "production_customer_data_used": False,
             "test_data_only": True,
@@ -112,6 +150,40 @@ def main() -> int:
     decision = gate.evaluate(manifest, parity, clean)
     require(decision["passed"] is True, "complete contract fixture must be able to pass")
     require(decision["summary"]["p0_passed"] == decision["summary"]["p0_total"], "all P0 fixtures must pass")
+    require(
+        decision["container_image_set"]["images"] == clean["container_image_set"]["images"],
+        "accepted decision must freeze immutable image digests",
+    )
+
+    mutable_image = copy.deepcopy(clean)
+    mutable_image["container_image_set"]["images"]["model-gateway"] = (
+        "example.invalid/lumi-model-gateway:latest"
+    )
+    require(
+        gate.evaluate(manifest, parity, mutable_image)["passed"] is False,
+        "mutable model-gateway image must block",
+    )
+
+    provenance_sha_swap = copy.deepcopy(clean)
+    provenance_sha_swap["container_image_set"]["provenance"]["api"]["git_sha"] = "d" * 40
+    require(
+        gate.evaluate(manifest, parity, provenance_sha_swap)["passed"] is False,
+        "image provenance SHA mismatch must block",
+    )
+
+    missing_model_gateway_source = copy.deepcopy(clean)
+    missing_model_gateway_source["container_image_set"]["provenance"]["model-gateway"][
+        "source_paths"
+    ] = ["services/model-gateway"]
+    missing_source_decision = gate.evaluate(manifest, parity, missing_model_gateway_source)
+    require(
+        missing_source_decision["passed"] is False,
+        "model-gateway image without hosted cost composition sources must block",
+    )
+    require(
+        any("model-gateway image provenance is missing required hosted sources" in item for item in missing_source_decision["blockers"]),
+        "missing model-gateway source blocker must be explicit",
+    )
 
     not_run = copy.deepcopy(clean)
     not_run["scenario_results"]["E2E-01"] = {"status": "NOT_RUN"}
@@ -160,6 +232,9 @@ def main() -> int:
         "clean_fixture_decision": decision["decision_id"],
         "drills": {
             "empty_template_blocked": True,
+            "mutable_image_blocked": True,
+            "image_provenance_sha_swap_blocked": True,
+            "model_gateway_hosted_sources_required": True,
             "p0_not_run_blocked": True,
             "unevidenced_pass_blocked": True,
             "invalid_external_blocked": True,
