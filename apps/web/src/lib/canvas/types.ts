@@ -101,6 +101,8 @@ export function wireDescriptor(descriptor: OperationDescriptor): Record<string, 
       path: payload.property,
       value: structuredClone(payload.value),
     };
+  } else if (descriptor.type === "SET_TEXT") {
+    payload = { text: payload.content };
   } else if (descriptor.type === "DELETE_NODE") {
     payload = { ...payload, recursive: true };
   }
