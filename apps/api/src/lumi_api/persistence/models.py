@@ -14,6 +14,7 @@ from . import models_collaboration as _models_collaboration
 from . import models_control_plane as _models_control_plane
 from . import models_costs as _models_costs
 from . import models_export_engine as _models_export_engine
+from . import models_governance as _models_governance
 from . import models_identity as _models_identity
 from . import models_identity_engine as _models_identity_engine
 from . import models_image_edit as _models_image_edit
@@ -43,6 +44,7 @@ _METADATA_MODULES = (
     _models_control_plane,
     _models_costs,
     _models_export_engine,
+    _models_governance,
     _models_identity,
     _models_identity_engine,
     _models_image_edit,
