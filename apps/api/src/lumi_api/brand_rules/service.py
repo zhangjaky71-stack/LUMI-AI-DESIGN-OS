@@ -132,6 +132,29 @@ class BrandRuleService:
         self.repository.set_active_rule_set(organization_id, brand_id, published.id)
         return published
 
+    def get_rule_set(
+        self,
+        *,
+        organization_id: UUID,
+        brand_id: UUID,
+        rule_set_id: UUID,
+    ) -> BrandRuleSet:
+        value = self.repository.get_rule_set(organization_id, rule_set_id)
+        if value is None or value.brand_id != brand_id:
+            raise BrandRuleNotFound("brand rule set not found")
+        return value
+
+    def get_active_rule_set(
+        self,
+        *,
+        organization_id: UUID,
+        brand_id: UUID,
+    ) -> BrandRuleSet:
+        value = self.repository.get_active_rule_set(organization_id, brand_id)
+        if value is None:
+            raise BrandRuleNotFound("active brand rule set not found")
+        return value
+
     def create_guide_proposal(
         self,
         *,
@@ -154,6 +177,18 @@ class BrandRuleService:
         self.repository.save_proposal(proposal)
         return proposal
 
+    def get_guide_proposal(
+        self,
+        *,
+        organization_id: UUID,
+        brand_id: UUID,
+        proposal_id: UUID,
+    ) -> BrandGuideProposal:
+        value = self.repository.get_proposal(organization_id, proposal_id)
+        if value is None or value.brand_id != brand_id:
+            raise BrandRuleNotFound("brand guide proposal not found")
+        return value
+
     def review_guide_proposal(
         self,
         *,
@@ -163,9 +198,11 @@ class BrandRuleService:
         actor_id: str,
         approve: bool,
     ) -> BrandGuideProposal:
-        current = self.repository.get_proposal(organization_id, proposal_id)
-        if current is None or current.brand_id != brand_id:
-            raise BrandRuleNotFound("brand guide proposal not found")
+        current = self.get_guide_proposal(
+            organization_id=organization_id,
+            brand_id=brand_id,
+            proposal_id=proposal_id,
+        )
         if current.status != ProposalStatus.PENDING_REVIEW:
             raise BrandRuleConflict("proposal is not pending review")
         reviewed = current.model_copy(
@@ -190,9 +227,11 @@ class BrandRuleService:
         visual_style: BrandVisualStyle | None,
         actor_id: str,
     ) -> BrandRuleSet:
-        proposal = self.repository.get_proposal(organization_id, proposal_id)
-        if proposal is None or proposal.brand_id != brand_id:
-            raise BrandRuleNotFound("brand guide proposal not found")
+        proposal = self.get_guide_proposal(
+            organization_id=organization_id,
+            brand_id=brand_id,
+            proposal_id=proposal_id,
+        )
         if proposal.status != ProposalStatus.APPROVED or not proposal.reviewed_by:
             raise BrandRulePublicationDenied(
                 "human-approved guide proposal is required before publication"
@@ -227,9 +266,10 @@ class BrandRuleService:
     def get_context(
         self, *, organization_id: UUID, brand_id: UUID
     ) -> BrandContext:
-        rule_set = self.repository.get_active_rule_set(organization_id, brand_id)
-        if rule_set is None:
-            raise BrandRuleNotFound("active brand rule set not found")
+        rule_set = self.get_active_rule_set(
+            organization_id=organization_id,
+            brand_id=brand_id,
+        )
         return BrandContext(
             brand_id=brand_id,
             rule_set_id=rule_set.id,

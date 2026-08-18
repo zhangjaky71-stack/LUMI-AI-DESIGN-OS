@@ -56,26 +56,11 @@ def _actor_id(request: Request) -> str:
 
 def _translate(exc: Exception) -> ApiProblem:
     if isinstance(exc, BrandRuleNotFound):
-        return ApiProblem(
-            status=404,
-            code=exc.code,
-            title="Brand rule resource not found",
-            detail=str(exc),
-        )
+        return ApiProblem(status=404, code=exc.code, title="Brand rule resource not found", detail=str(exc))
     if isinstance(exc, BrandRulePublicationDenied):
-        return ApiProblem(
-            status=403,
-            code=exc.code,
-            title="Brand rule publication denied",
-            detail=str(exc),
-        )
+        return ApiProblem(status=403, code=exc.code, title="Brand rule publication denied", detail=str(exc))
     if isinstance(exc, BrandRuleConflict):
-        return ApiProblem(
-            status=409,
-            code=exc.code,
-            title="Brand rule state conflict",
-            detail=str(exc),
-        )
+        return ApiProblem(status=409, code=exc.code, title="Brand rule state conflict", detail=str(exc))
     raise exc
 
 
@@ -106,6 +91,48 @@ def create_rule_set(
             created_by=_actor_id(request),
         )
     except (BrandRuleNotFound, BrandRulePublicationDenied, BrandRuleConflict) as exc:
+        raise _translate(exc) from exc
+
+
+@router.get(
+    "/brands/{brand_id}/rule-sets/active",
+    response_model=BrandRuleSet,
+    responses=_ERROR_RESPONSES,
+    tags=["brand-rules"],
+)
+def get_active_rule_set(
+    brand_id: UUID,
+    organization_id: OrganizationId,
+    service: BrandRuleServiceDependency,
+) -> BrandRuleSet:
+    try:
+        return service.get_active_rule_set(
+            organization_id=organization_id,
+            brand_id=brand_id,
+        )
+    except BrandRuleNotFound as exc:
+        raise _translate(exc) from exc
+
+
+@router.get(
+    "/brands/{brand_id}/rule-sets/{rule_set_id}",
+    response_model=BrandRuleSet,
+    responses=_ERROR_RESPONSES,
+    tags=["brand-rules"],
+)
+def get_rule_set(
+    brand_id: UUID,
+    rule_set_id: UUID,
+    organization_id: OrganizationId,
+    service: BrandRuleServiceDependency,
+) -> BrandRuleSet:
+    try:
+        return service.get_rule_set(
+            organization_id=organization_id,
+            brand_id=brand_id,
+            rule_set_id=rule_set_id,
+        )
+    except BrandRuleNotFound as exc:
         raise _translate(exc) from exc
 
 
@@ -193,6 +220,28 @@ def create_guide_proposal(
         rules=body.rules,
         citations=body.citations,
     )
+
+
+@router.get(
+    "/brands/{brand_id}/guide-proposals/{proposal_id}",
+    response_model=BrandGuideProposal,
+    responses=_ERROR_RESPONSES,
+    tags=["brand-rules"],
+)
+def get_guide_proposal(
+    brand_id: UUID,
+    proposal_id: UUID,
+    organization_id: OrganizationId,
+    service: BrandRuleServiceDependency,
+) -> BrandGuideProposal:
+    try:
+        return service.get_guide_proposal(
+            organization_id=organization_id,
+            brand_id=brand_id,
+            proposal_id=proposal_id,
+        )
+    except BrandRuleNotFound as exc:
+        raise _translate(exc) from exc
 
 
 @router.post(

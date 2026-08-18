@@ -1,0 +1,125 @@
+name: NODE-58 Brand Kit UI
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/api/v1/brand_registry_*.py"
+      - "apps/api/src/lumi_api/api/v1/brand_rules_routes.py"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/src/lumi_api/brand_rules/service.py"
+      - "apps/api/tests/test_node58_brand_kit_contracts.py"
+      - "apps/web/src/lib/brands/**"
+      - "apps/web/src/lib/projects/types.ts"
+      - "apps/web/src/lib/projects/brand-binding.node58.test.ts"
+      - "apps/web/src/lib/api/server.ts"
+      - "apps/web/src/components/brands/**"
+      - "apps/web/src/components/shell/app-nav.tsx"
+      - "apps/web/src/app/(shell)/brands/**"
+      - "tools/node58/**"
+      - "docs/runtime/BRAND-KIT-UI-V1.md"
+      - "docs/nodes/NODE-58-BRAND-KIT-UI.md"
+      - "reports/nodes/NODE-58/**"
+      - ".github/workflows/node-58-brand-kit-ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  NODE_VERSION: "24"
+  PNPM_VERSION: "11.4.0"
+  NEXT_TELEMETRY_DISABLED: "1"
+  LUMI_API_ORIGIN: "http://127.0.0.1:8000"
+
+jobs:
+  brand-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+      - name: Compile NODE-58 Brand contracts
+        run: |
+          uv run python -m compileall -q \
+            apps/api/src/lumi_api/api/v1/brand_registry_schemas.py \
+            apps/api/src/lumi_api/api/v1/brand_registry_dependencies.py \
+            apps/api/src/lumi_api/api/v1/brand_registry_adapter.py \
+            apps/api/src/lumi_api/api/v1/brand_registry_factory.py \
+            apps/api/src/lumi_api/api/v1/brand_registry_routes.py \
+            apps/api/src/lumi_api/api/v1/brand_rules_routes.py \
+            apps/api/src/lumi_api/brand_rules/service.py \
+            apps/api/tests/test_node58_brand_kit_contracts.py \
+            tools/node58
+      - name: Static Brand Kit acceptance
+        run: uv run python tools/node58/validate_brand_kit.py
+      - name: NODE-58 API contract tests
+        run: uv run pytest -q apps/api/tests/test_node58_brand_kit_contracts.py
+      - name: Ruff NODE-58 backend
+        run: |
+          uv run ruff check --ignore E501,I001 \
+            apps/api/src/lumi_api/api/v1/brand_registry_schemas.py \
+            apps/api/src/lumi_api/api/v1/brand_registry_dependencies.py \
+            apps/api/src/lumi_api/api/v1/brand_registry_adapter.py \
+            apps/api/src/lumi_api/api/v1/brand_registry_factory.py \
+            apps/api/src/lumi_api/api/v1/brand_registry_routes.py \
+            apps/api/src/lumi_api/api/v1/brand_rules_routes.py \
+            apps/api/src/lumi_api/brand_rules/service.py \
+            apps/api/tests/test_node58_brand_kit_contracts.py \
+            tools/node58
+      - name: Parse NODE-58 gap ledger
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          ledger = json.loads(Path("reports/nodes/NODE-58/gap-ledger.json").read_text(encoding="utf-8"))
+          assert ledger["node"] == "NODE-58"
+          assert ledger["status"] == "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE"
+          assert any(gap["severity"] == "P0" and gap["status"] == "open" for gap in ledger["gaps"])
+          print("NODE58_GAP_LEDGER_PARSE_PASS")
+          PY
+
+  brand-web:
+    needs: brand-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+          pnpm --version
+      - name: Install frozen JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Brand Kit web contract tests
+        run: |
+          pnpm --filter @lumi/web exec vitest run \
+            src/lib/brands/types.test.ts \
+            src/lib/projects/brand-binding.node58.test.ts
+      - name: Typecheck web application
+        run: pnpm --filter @lumi/web typecheck
+      - name: Lint NODE-58 web surface
+        run: |
+          pnpm --filter @lumi/web exec eslint \
+            src/lib/brands \
+            src/lib/projects/types.ts \
+            src/lib/projects/brand-binding.node58.test.ts \
+            src/lib/api/server.ts \
+            src/components/brands \
+            src/components/shell/app-nav.tsx \
+            'src/app/(shell)/brands'
+      - name: Production Next.js build
+        run: pnpm --filter @lumi/web build
