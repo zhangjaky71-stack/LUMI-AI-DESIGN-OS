@@ -94,7 +94,6 @@ class UserRestoreVersionRequest(ApiModel):
 
 
 class ApproveVersionRequest(ApiModel):
-    approved_by_id: str = Field(min_length=1, max_length=200)
     validation_ref: str = Field(min_length=1, max_length=500)
 
 
