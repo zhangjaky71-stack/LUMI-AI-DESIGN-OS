@@ -10,6 +10,8 @@ from .asset_routes import router as asset_router
 from .asset_intelligence_routes import router as asset_intelligence_router
 from .auth_guard import enforce_api_auth
 from .auth_routes import router as auth_router
+from .billing_routes import router as billing_router
+from .billing_routes import webhook_router as billing_webhook_router
 from .brand_registry_routes import router as brand_registry_router
 from .brand_rules_routes import router as brand_rules_router
 from .canvas_document_routes import router as canvas_document_router
@@ -36,6 +38,7 @@ def create_contract_app() -> FastAPI:
     install_error_contract(app)
     app.add_middleware(IdempotencyReplayMiddleware)
     app.include_router(auth_router)
+    app.include_router(billing_webhook_router)
     app.include_router(router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(asset_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(asset_intelligence_router, dependencies=[Depends(enforce_api_auth)])
@@ -48,6 +51,7 @@ def create_contract_app() -> FastAPI:
     app.include_router(export_product_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(collaboration_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(approval_router, dependencies=[Depends(enforce_api_auth)])
+    app.include_router(billing_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(brand_registry_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(brand_rules_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(identity_engine_router, dependencies=[Depends(enforce_api_auth)])
