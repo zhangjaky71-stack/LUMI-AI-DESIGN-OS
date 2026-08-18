@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
+import logging
 from typing import Protocol
 
-from .models import MetricPoint, SpanRecord, StructuredLogRecord
+from .models import LogLevel, MetricPoint, SpanRecord, StructuredLogRecord
 
 
 class TelemetrySink(Protocol):
@@ -22,6 +24,42 @@ class NoopTelemetrySink:
 
     def emit_log(self, record: StructuredLogRecord) -> None:
         del record
+
+
+class PythonJsonLoggingSink:
+    """Structured JSON log sink using the standard logging pipeline.
+
+    Traces/metrics intentionally remain no-op here; production trace/metric export is
+    composed through an OpenTelemetry/Collector adapter rather than pretending the
+    Python logger is a metrics backend.
+    """
+
+    _LEVELS = {
+        LogLevel.DEBUG: logging.DEBUG,
+        LogLevel.INFO: logging.INFO,
+        LogLevel.WARNING: logging.WARNING,
+        LogLevel.ERROR: logging.ERROR,
+        LogLevel.CRITICAL: logging.CRITICAL,
+    }
+
+    def __init__(self, logger_name: str = "lumi.telemetry") -> None:
+        self.logger = logging.getLogger(logger_name)
+
+    def record_span(self, span: SpanRecord) -> None:
+        del span
+
+    def record_metric(self, metric: MetricPoint) -> None:
+        del metric
+
+    def emit_log(self, record: StructuredLogRecord) -> None:
+        payload = record.model_dump(mode="json", exclude_none=True)
+        rendered = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
+        self.logger.log(self._LEVELS[record.level], rendered)
 
 
 class SafeTelemetry:
