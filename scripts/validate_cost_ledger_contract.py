@@ -178,6 +178,25 @@ def main() -> int:
     if "budget_limit_usd" not in model_port:
         raise SystemExit("request hard budget preflight missing from LedgerBudgetGuard")
 
+    hosted = require(
+        "apps/api/src/lumi_api/model_gateway_runtime.py",
+        "def build_hosted_model_gateway",
+        "PostgresModelCostAccounting(database_dsn)",
+        "LedgerBudgetGuard(accounting)",
+        "budget_guard=budget_guard",
+        "hosted Model Gateway requires LUMI_DATABASE_URL for durable accounting",
+    )
+    if "budget_guard:" in hosted or "budget_guard =" in hosted:
+        raise SystemExit("hosted Model Gateway must not accept an injectable budget guard")
+    require(
+        "apps/api/pyproject.toml",
+        '"lumi-model-gateway"',
+    )
+    require(
+        "pyproject.toml",
+        "lumi-model-gateway = { workspace = true }",
+    )
+
     require(
         "services/model-gateway/src/lumi_model_gateway/gateway.py",
         "usage=result.usage",
@@ -225,6 +244,8 @@ def main() -> int:
         "asyncio.gather",
         "len(handles) == 3",
         "PlatformGuardedCostGateway",
+        "MAX_PLATFORM_DAILY_CAP",
+        "database constraint must reject provider cap above $100",
         "baseline_spent",
         "baseline_active",
         "disabled platform provider guard must fail closed",
