@@ -3,13 +3,16 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from lumi_api.artifact_engine.contracts import VersionCreateCommand
-from lumi_api.artifact_engine.ports import (
-    ArtifactHeadConflict,
-    ArtifactRuntimeRepository,
+from lumi_api.artifact_engine.contracts import ArtifactOutboxEvent
+from lumi_api.artifact_engine.ports import ArtifactHeadConflict, ArtifactRuntimeRepository
+from lumi_api.artifact_engine.service import ArtifactEngineService, evaluate_provenance_completeness
+from lumi_api.artifacts.models import (
+    ArtifactVersion,
+    ArtifactVersionStatus,
+    CreatedByType,
+    LineageEdge,
+    LineageEdgeType,
 )
-from lumi_api.artifact_engine.service import ArtifactEngineService
-from lumi_api.artifacts.models import CreatedByType, LineageEdgeType
 from lumi_api.domain.ids import new_uuid7
 from lumi_auto_repair import (
     RepairCandidate,
@@ -17,6 +20,8 @@ from lumi_auto_repair import (
     RepairSourceSnapshot,
     RepairStaleConflict,
 )
+
+from .staged_artifact_repository import PostgresStagedArtifactRepository
 
 _PASS_QUALITY = {"PASS", "PASS_WITH_WARNINGS"}
 
@@ -27,9 +32,11 @@ class Node42RepairArtifactAdapter:
         *,
         service: ArtifactEngineService,
         repository: ArtifactRuntimeRepository,
+        staged_repository: PostgresStagedArtifactRepository,
     ) -> None:
         self.service = service
         self.repository = repository
+        self.staged_repository = staged_repository
 
     def load_source_exact(
         self,
@@ -52,15 +59,10 @@ class Node42RepairArtifactAdapter:
         primary = None
         if version.primary_file_id is not None:
             primary = next(
-                (
-                    item
-                    for item in version.files
-                    if item.id == version.primary_file_id
-                ),
+                (item for item in version.files if item.id == version.primary_file_id),
                 None,
             )
         metadata = dict(primary.metadata) if primary is not None else {}
-        protected_refs = _csv_refs(metadata.get("protected_refs"))
         return RepairSourceSnapshot(
             organization_id=organization_id,
             project_id=project_id,
@@ -81,7 +83,7 @@ class Node42RepairArtifactAdapter:
                 else None
             ),
             constraint_snapshot_hash=version.constraint_snapshot_hash,
-            protected_refs=protected_refs,
+            protected_refs=_csv_refs(metadata.get("protected_refs")),
         )
 
     def fork_repair_branch(
@@ -116,12 +118,7 @@ class Node42RepairArtifactAdapter:
             raise ValueError("REPAIR_PROMOTION_CANDIDATE_HASH_MISMATCH")
         envelope = self.repository.get_provenance_envelope(source.id)
         inputs = tuple(
-            dict.fromkeys(
-                (
-                    *envelope.record.input_artifact_version_ids,
-                    source.id,
-                )
-            )
+            dict.fromkeys((*envelope.record.input_artifact_version_ids, source.id))
         )
         provenance = envelope.model_copy(
             update={
@@ -131,58 +128,93 @@ class Node42RepairArtifactAdapter:
                 "agent_version": "auto-repair/1.0.0",
             }
         )
+        completeness = evaluate_provenance_completeness(
+            provenance,
+            created_by_type=CreatedByType.SYSTEM,
+        )
         cloned_files = tuple(
-            item.model_copy(update={"id": new_uuid7()})
-            for item in source.files
+            item.model_copy(update={"id": new_uuid7()}) for item in source.files
         )
         primary_file_id = None
         if source.primary_file_id is not None:
-            for original, cloned in zip(
-                source.files,
-                cloned_files,
-                strict=True,
-            ):
+            for original, cloned in zip(source.files, cloned_files, strict=True):
                 if original.id == source.primary_file_id:
                     primary_file_id = cloned.id
                     break
+        branch_id = UUID(original_source.original_branch_id)
+        expected_head = UUID(original_source.original_head_version_id)
+        staged_id = new_uuid7()
+        now = datetime.now(UTC)
+
+        def version_factory(branch, number: int) -> ArtifactVersion:
+            return ArtifactVersion(
+                id=staged_id,
+                organization_id=source.organization_id,
+                artifact_id=source.artifact_id,
+                branch_id=branch.id,
+                parent_version_id=branch.head_version_id,
+                version_number=number,
+                status=ArtifactVersionStatus.DRAFT,
+                content_hash=source.content_hash,
+                primary_file_id=primary_file_id,
+                design_document_version_id=source.design_document_version_id,
+                quality_score=None,
+                constraint_snapshot_hash=source.constraint_snapshot_hash,
+                created_by_type=CreatedByType.SYSTEM,
+                created_by_id=f"auto-repair:{repair_job_id}:{actor_id}"[:200],
+                created_at=now,
+                files=cloned_files,
+                provenance=provenance.record,
+                rights=source.rights,
+            )
+
+        def lineage_factory(version: ArtifactVersion) -> tuple[LineageEdge, ...]:
+            return (
+                LineageEdge(
+                    id=new_uuid7(),
+                    organization_id=version.organization_id,
+                    artifact_version_id=version.id,
+                    source_artifact_version_id=source.id,
+                    type=LineageEdgeType.EDITED_FROM,
+                    created_at=now,
+                ),
+            )
+
+        def event_factory(version: ArtifactVersion) -> ArtifactOutboxEvent:
+            return ArtifactOutboxEvent(
+                id=new_uuid7(),
+                organization_id=version.organization_id,
+                event_type="artifact.version.staged",
+                aggregate_id=version.artifact_id,
+                aggregate_version_id=version.id,
+                occurred_at=now,
+                payload={
+                    "branch_id": str(version.branch_id),
+                    "expected_head_version_id": str(expected_head),
+                    "repair_job_id": repair_job_id,
+                },
+            )
+
         try:
-            promoted, _ = self.service.create_version(
-                VersionCreateCommand(
-                    branch_id=UUID(original_source.original_branch_id),
-                    expected_head_version_id=UUID(
-                        original_source.original_head_version_id
-                    ),
-                    content_hash=source.content_hash,
-                    files=cloned_files,
-                    provenance=provenance,
-                    rights=source.rights,
-                    created_by_type=CreatedByType.SYSTEM,
-                    created_by_id=(
-                        f"auto-repair:{repair_job_id}:{actor_id}"
-                    )[:200],
-                    created_at=datetime.now(UTC),
-                    primary_file_id=primary_file_id,
-                    design_document_version_id=source.design_document_version_id,
-                    quality_score=None,
-                    constraint_snapshot_hash=source.constraint_snapshot_hash,
-                    lineage_sources=(
-                        (source.id, LineageEdgeType.EDITED_FROM),
-                    ),
-                )
+            staged, _ = self.staged_repository.stage_version(
+                branch_id=branch_id,
+                expected_head_version_id=expected_head,
+                version_factory=version_factory,
+                lineage_factory=lineage_factory,
+                provenance=provenance,
+                completeness=completeness,
+                event_factory=event_factory,
             )
         except ArtifactHeadConflict as exc:
-            raise RepairStaleConflict(
-                "REPAIR_MAIN_BRANCH_HEAD_CHANGED"
-            ) from exc
+            raise RepairStaleConflict("REPAIR_MAIN_BRANCH_HEAD_CHANGED") from exc
         return RepairCandidate(
-            artifact_version_id=str(promoted.id),
-            artifact_content_hash=promoted.content_hash,
-            repair_branch_id=str(promoted.branch_id),
+            artifact_version_id=str(staged.id),
+            artifact_content_hash=staged.content_hash,
+            repair_branch_id=str(staged.branch_id),
             changed_node_ids=candidate.changed_node_ids,
-            actual_cost_usd=candidate.actual_cost_usd * 0,
             metadata={
                 "promotion_source_candidate_version_id": candidate.artifact_version_id,
-                "promotion_reason": "exact-main-version-revalidation-required",
+                "promotion_state": "STAGED_NOT_HEAD",
             },
         )
 
@@ -208,6 +240,26 @@ class Node42RepairArtifactAdapter:
             approved_at=now,
             validation_ref=f"quality-result:{quality.quality_result_id}",
         )
+        try:
+            self.staged_repository.advance_head_to_staged(
+                branch_id=approved.branch_id,
+                expected_head_version_id=approved.parent_version_id,
+                staged_version_id=approved.id,
+                event=ArtifactOutboxEvent(
+                    id=new_uuid7(),
+                    organization_id=approved.organization_id,
+                    event_type="artifact.branch.head.promoted",
+                    aggregate_id=approved.artifact_id,
+                    aggregate_version_id=approved.id,
+                    occurred_at=now,
+                    payload={
+                        "repair_job_id": repair_job_id,
+                        "validation_ref": f"quality-result:{quality.quality_result_id}",
+                    },
+                ),
+            )
+        except ArtifactHeadConflict as exc:
+            raise RepairStaleConflict("REPAIR_MAIN_BRANCH_HEAD_CHANGED") from exc
         return str(approved.id)
 
 
@@ -215,9 +267,7 @@ def _csv_refs(value: object) -> tuple[str, ...]:
     if value is None:
         return ()
     if isinstance(value, str):
-        return tuple(
-            sorted(item.strip() for item in value.split(",") if item.strip())
-        )
+        return tuple(sorted(item.strip() for item in value.split(",") if item.strip()))
     if isinstance(value, (tuple, list, set, frozenset)):
         return tuple(sorted(str(item) for item in value if str(item)))
     return (str(value),)
