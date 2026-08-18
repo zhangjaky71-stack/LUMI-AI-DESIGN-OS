@@ -74,6 +74,8 @@ CREATE TABLE auto_repair_attempts (
   reservation_id VARCHAR(200),
   candidate_artifact_version_id UUID REFERENCES artifact_versions(id) ON DELETE RESTRICT,
   after_quality_result_id UUID REFERENCES artifact_quality_results(quality_result_id) ON DELETE RESTRICT,
+  promoted_artifact_version_id UUID REFERENCES artifact_versions(id) ON DELETE RESTRICT,
+  promotion_quality_result_id UUID REFERENCES artifact_quality_results(quality_result_id) ON DELETE RESTRICT,
   before_score NUMERIC(8,4) NOT NULL,
   after_score NUMERIC(8,4),
   score_delta NUMERIC(8,4),
@@ -88,6 +90,9 @@ CREATE TABLE auto_repair_attempts (
   CONSTRAINT ck_auto_repair_scores CHECK (
     before_score >= 0 AND before_score <= 100
     AND (after_score IS NULL OR (after_score >= 0 AND after_score <= 100))
+  ),
+  CONSTRAINT ck_auto_repair_promotion_quality CHECK (
+    promotion_quality_result_id IS NULL OR promoted_artifact_version_id IS NOT NULL
   )
 );
 
