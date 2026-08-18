@@ -96,6 +96,12 @@ class UserRestoreVersionRequest(ApiModel):
 class ApproveVersionRequest(ApiModel):
     validation_ref: str = Field(min_length=1, max_length=500)
 
+    @property
+    def approved_by_id(self) -> str:
+        raise ValueError(
+            "DIRECT_ARTIFACT_APPROVAL_DISABLED_USE_FORMAL_APPROVAL_ENGINE"
+        )
+
 
 class MarkReadyRequest(ApiModel):
     occurred_at: datetime | None = None
