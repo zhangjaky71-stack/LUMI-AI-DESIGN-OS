@@ -84,8 +84,12 @@ class GovernanceRepository(Protocol):
     ) -> UUID: ...
 
 
-class DeletionPort(Protocol):
-    def delete_subject(self, request: DeletionRequest) -> None: ...
+class ObjectDeletionPort(Protocol):
+    def delete_subject_objects(self, request: DeletionRequest) -> None: ...
+
+
+class SearchDeletionPort(Protocol):
+    def delete_subject_search_refs(self, request: DeletionRequest) -> None: ...
 
 
 class AuditExportPort(Protocol):
@@ -97,11 +101,13 @@ class GovernanceService:
         self,
         repository: GovernanceRepository,
         *,
-        deletion_port: DeletionPort | None = None,
+        object_deletion_port: ObjectDeletionPort | None = None,
+        search_deletion_port: SearchDeletionPort | None = None,
         audit_export_port: AuditExportPort | None = None,
     ) -> None:
         self.repository = repository
-        self.deletion_port = deletion_port
+        self.object_deletion_port = object_deletion_port
+        self.search_deletion_port = search_deletion_port
         self.audit_export_port = audit_export_port
 
     @staticmethod
@@ -268,11 +274,12 @@ class GovernanceService:
         self._require(permissions, "governance.manage")
         if request.hold_blockers:
             raise GovernanceConflict("GOVERNANCE_LEGAL_HOLD_BLOCKS_DELETION")
-        if self.deletion_port is None:
-            raise GovernanceUnavailable("GOVERNANCE_DELETION_PORT_NOT_COMPOSED")
+        if self.object_deletion_port is None or self.search_deletion_port is None:
+            raise GovernanceUnavailable("GOVERNANCE_DELETION_PORTS_NOT_COMPOSED")
         erasing = self.repository.mark_deletion_erasing(request.id)
         try:
-            self.deletion_port.delete_subject(erasing)
+            self.object_deletion_port.delete_subject_objects(erasing)
+            self.search_deletion_port.delete_subject_search_refs(erasing)
             completed = self.repository.mark_deletion_completed(request.id)
         except Exception:
             self.repository.mark_deletion_failed(request.id)
@@ -284,7 +291,11 @@ class GovernanceService:
                 action="governance.deletion.completed",
                 resource_type="deletion_request",
                 resource_id=str(request.id),
-                details={"subject_type": request.subject_type},
+                details={
+                    "subject_type": request.subject_type,
+                    "object_gc": "COMPLETED",
+                    "search_gc": "COMPLETED",
+                },
             )
         )
         return completed
