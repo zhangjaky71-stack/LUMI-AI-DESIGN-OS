@@ -102,6 +102,14 @@ class MarkReadyRequest(ApiModel):
     occurred_at: datetime | None = None
 
 
+class VersionArtifactSummary(ApiModel):
+    id: UUID
+    project_id: UUID
+    type: ArtifactType
+    name: str = Field(min_length=1, max_length=240)
+    design_document_id: UUID | None = None
+
+
 class VersionPreviewSummary(ApiModel):
     mime_type: str | None = Field(default=None, max_length=255)
     width: int | None = Field(default=None, ge=1)
@@ -129,7 +137,7 @@ class ArtifactVersionHistoryItem(ApiModel):
 
 
 class ArtifactVersionHistoryResponse(ApiModel):
-    artifact: Artifact
+    artifact: VersionArtifactSummary
     branches: tuple[ArtifactBranch, ...]
     versions: tuple[ArtifactVersionHistoryItem, ...]
 
