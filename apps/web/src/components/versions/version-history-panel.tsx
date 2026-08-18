@@ -43,12 +43,14 @@ export function VersionHistoryPanel({
   const [notice, setNotice] = useState<string | null>(null);
   const [newHeadId, setNewHeadId] = useState<string | null>(null);
   const initialHeadByBranch = useRef<Map<string, string | null> | null>(null);
+  const activeArtifactId = useRef(artifact.artifactId);
+  const viewEpoch = useRef(0);
   const mounted = useRef(true);
 
   const refresh = useCallback(async (background = false) => {
     try {
       const next = await getVersionHistory(organizationId, artifact.artifactId);
-      if (!mounted.current) return;
+      if (!mounted.current || activeArtifactId.current !== artifact.artifactId) return;
       if (initialHeadByBranch.current === null) {
         initialHeadByBranch.current = branchHeadSnapshot(next);
       } else if (background) {
@@ -56,18 +58,23 @@ export function VersionHistoryPanel({
         if (changedHead) setNewHeadId(changedHead);
       }
       setHistory(next);
-      setNotice(null);
     } catch (error) {
-      if (!background && mounted.current) setNotice(message(error, "Version history is unavailable."));
+      if (!background && mounted.current && activeArtifactId.current === artifact.artifactId) {
+        setNotice(message(error, "Version history is unavailable."));
+      }
     }
   }, [organizationId, artifact.artifactId, artifact.artifactVersionId]);
 
   useEffect(() => {
     mounted.current = true;
+    activeArtifactId.current = artifact.artifactId;
+    viewEpoch.current += 1;
     initialHeadByBranch.current = null;
     setHistory(null);
     setCompare(null);
+    setCompareBusy(false);
     setSummaries({});
+    setSummaryBusyId(null);
     setExpandedVersionId(null);
     setNewHeadId(null);
     setRestoreBranchId("");
@@ -80,10 +87,16 @@ export function VersionHistoryPanel({
   }, [artifact.artifactId, refresh]);
 
   useEffect(() => {
+    let cancelled = false;
     setProvenance(null);
     void getSafeVersionProvenance(organizationId, artifact.artifactVersionId)
-      .then((value) => mounted.current && setProvenance(value))
-      .catch((error) => mounted.current && setNotice(message(error, "Provenance is unavailable for this version.")));
+      .then((value) => {
+        if (!cancelled && mounted.current) setProvenance(value);
+      })
+      .catch((error) => {
+        if (!cancelled && mounted.current) setNotice(message(error, "Provenance is unavailable for this version."));
+      });
+    return () => { cancelled = true; };
   }, [organizationId, artifact.artifactVersionId]);
 
   const versions = useMemo(
@@ -106,28 +119,31 @@ export function VersionHistoryPanel({
   async function loadSummary(version: VersionHistoryItem) {
     setExpandedVersionId((current) => current === version.id ? null : version.id);
     if (!version.parentVersionId || summaries[version.id] || summaryBusyId) return;
+    const epoch = viewEpoch.current;
     setSummaryBusyId(version.id);
     try {
       const result = await compareVersions(organizationId, version.parentVersionId, version.id);
+      if (epoch !== viewEpoch.current) return;
       setSummaries((current) => ({ ...current, [version.id]: semanticChanges(result.semanticDiff) }));
     } catch (error) {
-      setNotice(message(error, "Could not calculate this version summary."));
+      if (epoch === viewEpoch.current) setNotice(message(error, "Could not calculate this version summary."));
     } finally {
-      setSummaryBusyId(null);
+      if (epoch === viewEpoch.current) setSummaryBusyId(null);
     }
   }
 
   async function compareWithViewed(candidate: VersionHistoryItem) {
     if (candidate.id === artifact.artifactVersionId || compareBusy) return;
+    const epoch = viewEpoch.current;
     setCompareBusy(true);
     setNotice(null);
     try {
       const result = await compareVersions(organizationId, candidate.id, artifact.artifactVersionId);
-      setCompare(result);
+      if (epoch === viewEpoch.current) setCompare(result);
     } catch (error) {
-      setNotice(message(error, "Could not compare the selected versions."));
+      if (epoch === viewEpoch.current) setNotice(message(error, "Could not compare the selected versions."));
     } finally {
-      setCompareBusy(false);
+      if (epoch === viewEpoch.current) setCompareBusy(false);
     }
   }
 
@@ -199,7 +215,7 @@ export function VersionHistoryPanel({
           <p className="eyebrow">Versions</p>
           <h2 id="version-panel-title">History</h2>
         </div>
-        <button type="button" className="version-text-button" onClick={() => void refresh(false)}>Refresh</button>
+        <button type="button" className="version-text-button" onClick={() => { setNotice(null); void refresh(false); }}>Refresh</button>
       </div>
 
       {newHeadId ? (
