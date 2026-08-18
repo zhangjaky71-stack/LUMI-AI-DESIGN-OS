@@ -17,6 +17,7 @@ class ApprovalRequestModel(Base, UUIDPrimaryKeyMixin, TenantMixin):
     __tablename__ = "approval_requests"
 
     project_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    request_operation_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     agent_run_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("agent_runs.id", ondelete="SET NULL"), nullable=True)
     task_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
     approval_type: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -43,6 +44,7 @@ class ApprovalRequestModel(Base, UUIDPrimaryKeyMixin, TenantMixin):
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
 
     __table_args__ = (
+        UniqueConstraint("organization_id", "request_operation_id", name="uq_approval_request_operation"),
         CheckConstraint("status IN ('PENDING','APPROVED','REJECTED','CHANGES_REQUESTED','EXPIRED','CANCELLED','SUPERSEDED')", name="status"),
         CheckConstraint("approval_type IN ('CREATIVE_DIRECTION','ARTIFACT_VERSION','BRAND_RULE_SET','BUDGET_INCREASE','EXTERNAL_PUBLISH','DESTRUCTIVE_ACTION','CUSTOM_REVIEW')", name="type"),
         CheckConstraint("policy_mode IN ('ANY_ONE','ALL','MIN_N','ROLE_BASED_SEQUENCE')", name="policy_mode"),
