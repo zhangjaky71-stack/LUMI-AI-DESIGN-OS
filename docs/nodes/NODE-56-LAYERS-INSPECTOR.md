@@ -1,12 +1,29 @@
 # NODE-56 — Layers & Inspector
 
 > Phase: 7 Frontend Product  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **CORE IMPLEMENTED / VALIDATING / NOT COMPLETE**  
 > Priority: P0  
 > Depends on: NODE-38, NODE-39, NODE-55  
 > Produces: Layer Tree、属性Inspector、Constraint显示、多选/批量属性与可编辑Design IR UI
 
 ---
+
+## 0. Implementation snapshot — 2026-08-18
+
+Implemented on `feat/node-56-layers-inspector`:
+
+- Canvas / Layers share the same `CanvasController.selection`; no second selection truth.
+- Layer tree is a projection of the current local DesignDocument and uses fixed-row windowing/overscan instead of rendering all nodes.
+- Search covers name / role / kind / semantic tags and preserves matching ancestors.
+- Layer select, shift/meta multi-select, collapse, rename, visibility and lock actions emit the same Canvas OperationDescriptor contract used by NODE-55.
+- Inspector exposes identity, x/y/w/h/rotation, visibility, lock, opacity, text content, projected constraint evidence, brand-token evidence and metadata.
+- Multi-select shows mixed values. Numeric multi-node edits use one `CanvasController.commitBatch` so local execution and autosave receive one atomic descriptor group.
+- A mixed locked selection is fail-closed: property batch controls are disabled instead of silently applying only to editable nodes.
+- Constraint UI does not claim to be enforcement. NODE-39/server validation remains authoritative; unavailable source metadata is shown as unresolved rather than guessed.
+- Brand-bound visual properties are not editable in this core slice, preventing silent token detachment until an explicit update-token/detach contract exists.
+- Canvas local preview updates Layers/Inspector immediately, while Agent selection still becomes valid only after server autosave returns to `saved` and uses the server projection revision.
+
+Still open and therefore **not complete**: hierarchy reorder/reparent/group/ungroup wire compilation, full TextStyle/font editing, effective NODE-39 constraint-source projection/override UX, explicit brand-token update/detach UX, drag hierarchy E2E, 10k browser perf evidence, and hosted CI evidence.
 
 ## 1. 目标
 
@@ -70,10 +87,10 @@ spans/basic rich text
 显示有效constraint：
 
 - lock icon；
--来源 USER/BRAND/PROJECT/SYSTEM；
+- 来源 USER/BRAND/PROJECT/SYSTEM；
 - hard/soft；
--为何不能改；
--有权限时override入口。
+- 为何不能改；
+- 有权限时override入口。
 
 不能让用户误以为disable UI就是安全 enforcement，server validator仍执行。
 
@@ -113,11 +130,12 @@ or detach binding
 
 ## 13. 验收标准
 
-- [ ] Layer tree与Canvas双向selection。
-- [ ] 常用Design IR属性可编辑。
-- [ ] Constraint来源清晰。
-- [ ] Brand binding不被静默破坏。
-- [ ] 10k layer tree通过virtualization基准。
+- [x] Layer tree与Canvas双向selection（core）。
+- [x] 常用Design IR geometry/appearance/text属性可编辑（core subset）。
+- [ ] Constraint来源完整投影并具备override UX。
+- [x] Brand binding不会被当前 Inspector 静默破坏。
+- [ ] 10k layer tree浏览器级virtualization/perf基准通过。
+- [ ] hierarchy reorder/reparent/group/ungroup完整通过。
 
 ## 14. Definition of Done
 
@@ -126,5 +144,7 @@ layers/inspector implemented
 + selection/property E2E green
 + large-tree perf green
 ```
+
+当前未满足完整 Definition of Done，因此保持 NOT COMPLETE。
 
 下一节点：NODE-57 Agent Timeline。

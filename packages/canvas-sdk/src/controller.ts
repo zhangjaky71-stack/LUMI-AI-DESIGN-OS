@@ -38,6 +38,15 @@ export class CanvasController {
   async mount(): Promise<void> { await this.renderer.mount(); this.scheduleRender(); }
   replaceDocument(document: DesignDocument): void { this.gateway.replaceDocument(document); this.rebuild(); }
   private rebuild(): void { this.sceneValue = buildScene(this.document); this.spatial.rebuild(this.sceneValue); this.diagnosticsValue = this.sceneValue.diagnostics; this.scheduleRender(); }
+  private applyCommitResult(beforeIds: ReadonlySet<string>, result: OperationCommitResult): OperationCommitResult {
+    if (result.ok) {
+      this.rebuild();
+      for (const id of beforeIds) if (!this.sceneValue.nodes.has(id)) this.renderer.destroyNode(id);
+    } else {
+      this.scheduleRender();
+    }
+    return result;
+  }
   scheduleRender(): void {
     if (this.framePending) return; this.framePending = true;
     this.scheduler.request(() => { this.framePending = false; this.renderNow(); });
@@ -54,7 +63,12 @@ export class CanvasController {
   selectAt(screenPoint: Point, options: { shift?: boolean; cycle?: number } = {}): string | null { const world = this.camera.screenToWorld(screenPoint); const id = this.selection.click(this.sceneValue, this.spatial, world, options); this.scheduleRender(); return id; }
   marquee(screenRect: Rect, shift = false): readonly string[] { const a = this.camera.screenToWorld({ x: screenRect.x, y: screenRect.y }); const b = this.camera.screenToWorld({ x: screenRect.x + screenRect.width, y: screenRect.y + screenRect.height }); const ids = this.selection.marquee(this.sceneValue, { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) }, { shift }); this.scheduleRender(); return ids; }
   beginTransform(mode: TransformMode, ids: readonly string[] = this.selection.transformable(this.sceneValue)): TransformSession { return new TransformSession(mode, ids, this.sceneValue, this.gateway); }
-  commit(descriptor: OperationDescriptor): OperationCommitResult { const beforeIds = new Set(this.sceneValue.orderedIds); const result = this.gateway.commit(descriptor); if (result.ok) { this.rebuild(); for (const id of beforeIds) if (!this.sceneValue.nodes.has(id)) this.renderer.destroyNode(id); } else this.scheduleRender(); return result; }
+  commit(descriptor: OperationDescriptor): OperationCommitResult {
+    return this.applyCommitResult(new Set(this.sceneValue.orderedIds), this.gateway.commit(descriptor));
+  }
+  commitBatch(descriptors: readonly OperationDescriptor[]): OperationCommitResult {
+    return this.applyCommitResult(new Set(this.sceneValue.orderedIds), this.gateway.commitBatch(descriptors));
+  }
   syncAfterExternalCommit(): void { this.rebuild(); }
   destroy(): void { this.renderer.destroy(); }
 }

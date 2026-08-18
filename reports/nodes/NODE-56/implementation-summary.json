@@ -1,0 +1,41 @@
+{
+  "node": "NODE-56",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "branch": "feat/node-56-layers-inspector",
+  "base": "feat/node-55-infinite-canvas-ui",
+  "implemented": [
+    "single CanvasController selection shared by Canvas and Layer Tree",
+    "fixed-row virtualized Layer Tree with search, collapse and selected-row reveal",
+    "layer rename, visibility and lock through NODE-55 OperationDescriptor/autosave",
+    "selection-aware Inspector for identity, transform, appearance, text, constraints, brand evidence and metadata",
+    "mixed multi-select common-value semantics",
+    "CanvasController.commitBatch for atomic multi-target local Design IR edits",
+    "fail-closed mixed locked batch behavior",
+    "local preview document mirrored to Layers/Inspector without becoming persistence truth",
+    "saved-only server-revision Agent selection preserved from NODE-55",
+    "constraint source shown as unresolved rather than guessed when projection lacks provenance",
+    "brand-bound visual properties kept read-only until explicit detach/update contract exists",
+    "10k pure virtual-window unit coverage and Canvas SDK batch coverage"
+  ],
+  "evidence": [
+    "apps/web/src/lib/layers/model.ts",
+    "apps/web/src/components/canvas/layer-tree.tsx",
+    "apps/web/src/components/canvas/design-inspector.tsx",
+    "apps/web/src/components/canvas/infinite-canvas.tsx",
+    "packages/canvas-sdk/src/controller.ts",
+    "apps/web/src/lib/layers/model.test.ts",
+    "packages/canvas-sdk/tests/canvas-node56.test.ts",
+    "tools/node56/validate_layers_inspector.py",
+    "docs/runtime/LAYERS-INSPECTOR-V1.md",
+    "reports/nodes/NODE-56/gap-ledger.json"
+  ],
+  "not_claimed": [
+    "hierarchy reorder/reparent/group/ungroup complete",
+    "full typography/font editor complete",
+    "effective constraint source/override UX complete",
+    "brand token detach/update UX complete",
+    "10k browser performance green",
+    "browser/PostgreSQL E2E green",
+    "hosted CI green"
+  ]
+}

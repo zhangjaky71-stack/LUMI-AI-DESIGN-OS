@@ -6,7 +6,7 @@ import {
   type OperationDescriptor,
   type TransformSession,
 } from "@lumi/canvas-sdk";
-import type { DesignNode } from "@lumi/design-ir";
+import type { DesignDocument, DesignNode } from "@lumi/design-ir";
 
 import { ApiError } from "@/lib/api/problem";
 import { getArtifactCanvas, getCanvasHead } from "@/lib/canvas/api";
@@ -15,6 +15,8 @@ import type { CanvasProjection, CanvasSaveState } from "@/lib/canvas/types";
 import { useCanvasAutosave } from "@/lib/canvas/use-autosave";
 import { newUuid7 } from "@/lib/canvas/uuid7";
 import type { CanvasSelectionContext } from "@/lib/workspace/types";
+import { DesignInspector } from "./design-inspector";
+import { LayerTree } from "./layer-tree";
 
 const FRAME_PRESETS = [
   { label: "1:1", width: 1080, height: 1080 },
@@ -102,6 +104,7 @@ function CanvasEditor({
   const spaceRef = useRef(false);
   const enqueueRef = useRef<(descriptors: readonly OperationDescriptor[]) => boolean>(() => false);
   const [projection, setProjection] = useState(initialProjection);
+  const [localDocument, setLocalDocument] = useState<DesignDocument>(initialProjection.document);
   const [selectionIds, setSelectionIds] = useState<readonly string[]>([]);
   const [zoom, setZoom] = useState(1);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -110,6 +113,7 @@ function CanvasEditor({
   const adoptCanonical = useCallback((next: CanvasProjection, queueDrained: boolean) => {
     setProjection(next);
     if (queueDrained) {
+      setLocalDocument(next.document);
       controllerRef.current?.replaceDocument(next.document);
       controllerRef.current?.renderNow();
     }
@@ -148,6 +152,7 @@ function CanvasEditor({
       },
     });
     controllerRef.current = controller;
+    setLocalDocument(controller.document);
     void controller.mount().then(() => {
       controller.fitAll();
       setZoom(controller.camera.state.zoom);
@@ -173,6 +178,11 @@ function CanvasEditor({
     setSelectionIds([...controller.selection.ids]);
   }, []);
 
+  const syncLocalDocument = useCallback(() => {
+    const controller = controllerRef.current;
+    if (controller) setLocalDocument(controller.document);
+  }, []);
+
   const commit = useCallback((descriptor: OperationDescriptor): boolean => {
     const controller = controllerRef.current;
     if (!controller || !autosave.canEdit) return false;
@@ -182,9 +192,32 @@ function CanvasEditor({
       return false;
     }
     setLocalNotice(null);
+    syncLocalDocument();
     syncSelection();
     return true;
-  }, [autosave.canEdit, syncSelection]);
+  }, [autosave.canEdit, syncLocalDocument, syncSelection]);
+
+  const commitBatch = useCallback((descriptors: readonly OperationDescriptor[]): boolean => {
+    const controller = controllerRef.current;
+    if (!controller || !autosave.canEdit || descriptors.length === 0) return false;
+    const result = controller.commitBatch(descriptors);
+    if (!result.ok) {
+      setLocalNotice(result.error?.message ?? "Canvas batch was rejected locally.");
+      return false;
+    }
+    setLocalNotice(null);
+    syncLocalDocument();
+    syncSelection();
+    return true;
+  }, [autosave.canEdit, syncLocalDocument, syncSelection]);
+
+  const selectFromLayer = useCallback((id: string, additive: boolean) => {
+    const controller = controllerRef.current;
+    if (!controller || !controller.scene.nodes.has(id)) return;
+    if (additive) controller.selection.toggle(id); else controller.selection.set([id]);
+    controller.renderNow();
+    syncSelection();
+  }, [syncSelection]);
 
   const createFrame = useCallback((preset: (typeof FRAME_PRESETS)[number]) => {
     const controller = controllerRef.current;
@@ -230,6 +263,7 @@ function CanvasEditor({
       const latest = await getCanvasHead(organizationId, projection.designDocumentId);
       autosave.adoptProjection(latest);
       setProjection(latest);
+      setLocalDocument(latest.document);
       controllerRef.current?.replaceDocument(latest.document);
       controllerRef.current?.selection.clear();
       controllerRef.current?.fitAll();
@@ -295,10 +329,11 @@ function CanvasEditor({
       const result = gesture.session.commit();
       controller.syncAfterExternalCommit();
       if (!result.ok) setLocalNotice(result.error?.message ?? "Move was rejected.");
+      else syncLocalDocument();
       syncSelection();
     }
     gestureRef.current = null;
-  }, [syncSelection]);
+  }, [syncLocalDocument, syncSelection]);
 
   const onWheel = useCallback((event: React.WheelEvent<SVGSVGElement>) => {
     const controller = controllerRef.current;
@@ -382,7 +417,8 @@ function CanvasEditor({
           <span className={`canvas-save-badge save-${autosave.saveState}`}>
             {saveLabel(autosave.saveState, autosave.pendingCount)}
           </span>
-          <button type="button" onClick={() => controllerRef.current?.fitAll()}>Fit</button>
+          <button type="button" onClick={() => { controllerRef.current?.fitAll(); setZoom(controllerRef.current?.camera.state.zoom ?? zoom); }}>Fit</button>
+          <button type="button" disabled={!selectionIds.length} onClick={() => { controllerRef.current?.fitSelection(); setZoom(controllerRef.current?.camera.state.zoom ?? zoom); }}>Fit selection</button>
           <span className="canvas-zoom">{Math.round(zoom * 100)}%</span>
         </div>
       </div>
@@ -398,65 +434,81 @@ function CanvasEditor({
         </div>
       ) : null}
 
-      <div className="canvas-viewport-wrap">
-        <svg
-          ref={svgRef}
-          className="canvas-svg"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={finishPointer}
-          onPointerCancel={finishPointer}
-          onWheel={onWheel}
-          onKeyDown={onKeyDown}
-          onKeyUp={(event) => { if (event.code === "Space") spaceRef.current = false; }}
-          onBlur={() => { spaceRef.current = false; }}
-          onContextMenu={onContextMenu}
+      <div className="canvas-editor-shell">
+        <LayerTree
+          document={localDocument}
+          selectedIds={selectionIds}
+          canEdit={autosave.canEdit}
+          onSelect={selectFromLayer}
+          onCommit={commit}
         />
-        {contextMenu ? (
-          <div className="canvas-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu">
-            <button
-              type="button"
-              role="menuitem"
-              disabled={!selectionIds.length || !autosave.canEdit}
-              onClick={() => {
-                const controller = controllerRef.current;
-                if (!controller) return;
-                commit({
-                  type: "SET_PROPERTY",
-                  targetIds: selectionIds,
-                  payload: { property: "locked", value: !selectedLocked },
-                  reason: selectedLocked ? "unlock selection" : "lock selection",
-                });
-                setContextMenu(null);
-              }}
-            >
-              {selectedLocked ? "Unlock" : "Lock"}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              disabled={!selectionIds.length || !autosave.canEdit || selectedLocked}
-              onClick={() => {
-                if (commit({ type: "DELETE_NODE", targetIds: selectionIds, payload: {}, reason: "context delete" })) {
-                  controllerRef.current?.selection.clear();
-                  syncSelection();
-                }
-                setContextMenu(null);
-              }}
-            >
-              Delete
-            </button>
-            <button type="button" role="menuitem" onClick={() => setContextMenu(null)}>
-              Use selection in AI
-            </button>
-          </div>
-        ) : null}
+
+        <div className="canvas-viewport-wrap">
+          <svg
+            ref={svgRef}
+            className="canvas-svg"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={finishPointer}
+            onPointerCancel={finishPointer}
+            onWheel={onWheel}
+            onKeyDown={onKeyDown}
+            onKeyUp={(event) => { if (event.code === "Space") spaceRef.current = false; }}
+            onBlur={() => { spaceRef.current = false; }}
+            onContextMenu={onContextMenu}
+          />
+          {contextMenu ? (
+            <div className="canvas-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!selectionIds.length || !autosave.canEdit}
+                onClick={() => {
+                  commit({
+                    type: "SET_PROPERTY",
+                    targetIds: selectionIds,
+                    payload: { property: "locked", value: !selectedLocked },
+                    reason: selectedLocked ? "unlock selection" : "lock selection",
+                  });
+                  setContextMenu(null);
+                }}
+              >
+                {selectedLocked ? "Unlock" : "Lock"}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!selectionIds.length || !autosave.canEdit || selectedLocked}
+                onClick={() => {
+                  if (commit({ type: "DELETE_NODE", targetIds: selectionIds, payload: {}, reason: "context delete" })) {
+                    controllerRef.current?.selection.clear();
+                    syncSelection();
+                  }
+                  setContextMenu(null);
+                }}
+              >
+                Delete
+              </button>
+              <button type="button" role="menuitem" onClick={() => setContextMenu(null)}>
+                Use selection in AI
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        <DesignInspector
+          document={localDocument}
+          selectedIds={selectionIds}
+          canEdit={autosave.canEdit}
+          onCommit={commit}
+          onCommitBatch={commitBatch}
+        />
       </div>
 
       <footer className="canvas-statusbar">
         <span>{selectionIds.length ? `${selectionIds.length} selected` : "No selection"}</span>
         <span>document v{projection.revision} · saved version {projection.versionNumber}</span>
-        <span>Space/middle drag to pan · wheel to zoom · L lock · Delete remove</span>
+        <span>Layers + Canvas share one selection · server version is authoritative</span>
       </footer>
     </div>
   );
