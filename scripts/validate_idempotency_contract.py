@@ -30,9 +30,19 @@ def main() -> int:
         "uq_cost_ledger_operation_entry",
     )
     require(
+        "apps/api/alembic/versions/0019_side_effect_provider_attempt_barrier.py",
+        'down_revision = "0018_platform_provider_cost_guard"',
+        "ADD COLUMN provider_attempt_started_at timestamptz",
+        "DROP COLUMN provider_attempt_started_at",
+    )
+    require(
         "apps/api/alembic/versions/0011_cost_ledger_budget_quota.py",
         "ALTER TABLE cost_ledger DROP CONSTRAINT uq_cost_ledger_operation_entry",
         "uq_cost_ledger_operation_entry_key",
+    )
+    require(
+        "apps/api/src/lumi_api/persistence/models/platform.py",
+        "provider_attempt_started_at: Mapped[datetime | None]",
     )
     require(
         "apps/api/src/lumi_api/idempotency/contracts.py",
@@ -46,6 +56,11 @@ def main() -> int:
         "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST",
         "ON CONFLICT (organization_id, operation_type, idempotency_key)",
         "ClaimDecision.RECONCILE",
+        "async def mark_provider_attempt_started(",
+        "provider_attempt_started_at = COALESCE(provider_attempt_started_at, now())",
+        "PROVIDER_ATTEMPT_OUTCOME_UNKNOWN",
+        "re-execution is forbidden",
+        "clear_provider_attempt=True",
         "provider_reconciliation_total",
         "ambiguous_side_effect_total",
         "duplicate_prevented_total",
@@ -63,6 +78,14 @@ def main() -> int:
         "VIDEO_GENERATION",
         "BILLING_CHARGE",
         "EXTERNAL_PUBLISH",
+    )
+    require(
+        "scripts/integration_idempotency_side_effects.py",
+        "provider_attempt_without_request_id_fails_closed",
+        "mark_provider_attempt_started",
+        "PROVIDER_ATTEMPT_OUTCOME_UNKNOWN",
+        "provider_calls == 0",
+        "proven_not_accepted_allows_safe_retry",
     )
     require(
         "apps/worker-media/src/lumi_worker_media/app.py",
