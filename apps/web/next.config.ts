@@ -3,6 +3,10 @@ import type { NextConfig } from "next";
 const isProduction =
   process.env.NEXT_PUBLIC_LUMI_ENV === "production" || process.env.NODE_ENV === "production";
 
+const connectSources = isProduction
+  ? "connect-src 'self' https: wss:"
+  : "connect-src 'self' http: https: ws: wss:";
+
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -13,7 +17,7 @@ const contentSecurityPolicy = [
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self' 'unsafe-inline'",
-  "connect-src 'self' https: wss:",
+  connectSources,
   "worker-src 'self' blob:",
   ...(isProduction ? ["upgrade-insecure-requests"] : []),
 ].join("; ");
