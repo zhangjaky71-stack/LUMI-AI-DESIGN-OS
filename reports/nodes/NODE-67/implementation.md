@@ -18,7 +18,16 @@ HTTP requests now have one bounded correlation model:
 - bounded `tracestate`
 - one server child span id
 
-Invalid client trace context fails as a bounded 400. Business exceptions are outside trace-context parsing and keep their original semantics.
+Telemetry headers are explicitly **fail-open** and cannot determine business request validity:
+
+- invalid `X-Request-ID` is replaced with a new canonical request ID;
+- invalid `X-Correlation-ID` is discarded and falls back to the canonical request ID;
+- invalid `traceparent` starts a new local trace and discards associated `tracestate`;
+- valid `traceparent` with invalid `tracestate` continues the trace while dropping `tracestate`;
+- W3C tracestate key/value/member/count constraints are enforced;
+- version `00` uses the fixed base format while additive future-version fields are tolerated and downgraded to the supported outgoing format.
+
+Downstream business exceptions are not caught or reclassified by observability metadata parsing and keep their authoritative semantics.
 
 Authenticated `RequestContext` uses the middleware-generated request ID and actual 32-character trace ID rather than re-reading raw headers.
 
@@ -58,12 +67,15 @@ Vendor-neutral contracts are implemented for:
 
 Safety controls:
 
-- fixed low-cardinality metric attribute allowlist;
+- fixed metric attribute key allowlist;
 - organization/project/run/task/operation IDs rejected as metric labels;
 - prompt/content/password/Authorization/token/secret/cookie/API-key/signed-URL/reasoning fields rejected from telemetry attributes;
 - secret-shaped scalar values are rejected;
 - bounded attribute count/key/value sizes;
-- timestamps must be timezone-aware.
+- timestamps must be timezone-aware;
+- HTTP metrics use route templates instead of raw resource-id URL paths.
+
+Production cardinality budgets and backend enforcement remain open under `NODE67-GAP-112`; the current core does not claim that a key allowlist alone proves production cardinality safety for every future producer.
 
 ### Fail-open exporter boundary
 
@@ -72,6 +84,8 @@ Safety controls:
 ### Sampling
 
 Normal traces use deterministic trace-id sampling with a 10% default baseline. Error/critical/forced evidence is always sampled.
+
+Distributed sampling-state consistency, Collector tail/adaptive sampling and production cost validation remain open deployment concerns.
 
 ### Structured JSON logs
 
@@ -101,9 +115,9 @@ They define the intended operational contract without claiming deployed dashboar
 
 ## 2. NODE-66 compatibility
 
-NODE-67 found a middleware-ordering edge case: the outer Request/Trace boundary can create a 400 before the inner NODE-66 Security middleware returns a response. A final outer response-header enforcement middleware now guarantees NODE-66 CSP/nosniff/frame/referrer/permissions/HSTS policy also applies to correlation/idempotency short-circuit responses.
+NODE-67 keeps NODE-66 response-security policy authoritative even when outer correlation/idempotency middleware changes the normal response path. A final outer response-header enforcement layer guarantees NODE-66 CSP/nosniff/frame/referrer/permissions/HSTS policy remains present without weakening the inner input-security gates.
 
-Development Swagger/ReDoc keeps its dedicated restricted docs CSP when already set. Production still uses the NODE-66 HSTS baseline.
+Invalid trace/correlation metadata no longer creates observability-specific 400 responses. Development Swagger/ReDoc keeps its dedicated restricted docs CSP when already set. Production still uses the NODE-66 HSTS baseline and production docs shutdown.
 
 ## 3. Existing truth layers deliberately reused
 
@@ -141,7 +155,7 @@ The implemented port is fail-open. A production adapter/OTel fan-out and evaluat
 
 ## 6. Cardinality policy
 
-Metric labels are constrained to a fixed allowlist such as:
+Metric label keys are constrained to a fixed allowlist such as:
 
 ```text
 service
@@ -159,7 +173,7 @@ operation_type
 error_code
 ```
 
-High-cardinality IDs are trace/log fields only.
+High-cardinality IDs are trace/log fields only. HTTP route labels are route templates. Production label-value budgets, backend limits and future producer validation remain part of telemetry governance rather than being inferred from the allowlist alone.
 
 ## 7. SLO baseline
 
@@ -208,6 +222,7 @@ This implementation does **not** currently claim:
 - Web Vitals/synthetics are live;
 - production SLO targets are being met;
 - all services emit structured safe logs;
+- production cardinality budgets/backpressure/exporter-drop controls are verified;
 - hosted CI is green.
 
 NODE-67 remains **NOT COMPLETE** until the open P0 ledger closes with executed evidence.
