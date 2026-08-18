@@ -19,6 +19,7 @@ from .identity_engine_routes import router as identity_engine_router
 from .image_edit_routes import router as image_edit_router
 from .image_generation_routes import router as image_generation_router
 from .routes import router
+from .version_history_routes import router as version_history_router
 
 
 def create_contract_app() -> FastAPI:
@@ -40,6 +41,7 @@ def create_contract_app() -> FastAPI:
     app.include_router(agent_workspace_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(canvas_document_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(artifact_engine_router, dependencies=[Depends(enforce_api_auth)])
+    app.include_router(version_history_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(brand_registry_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(brand_rules_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(identity_engine_router, dependencies=[Depends(enforce_api_auth)])
