@@ -49,10 +49,13 @@ def create_contract_app(*, environment: str | None = None) -> FastAPI:
     # exporters are deliberately composed separately through an OTel/Collector port.
     app.state.telemetry = SafeTelemetry(PythonJsonLoggingSink())
     app.state.telemetry_sampler = DeterministicSampler(normal_sample_rate=0.10)
-    # Install before the error contract so RequestIdMiddleware remains outside the
-    # security gate and every handled security rejection receives the canonical
-    # request id. Request/trace metadata itself is fail-open and does not create a
-    # response that could bypass NODE-66 SecurityHTTPMiddleware.
+    # Starlette's most recently added user middleware is outermost. The add order
+    # below therefore yields runtime order:
+    # IdempotencyReplay -> RequestId/Trace -> SecurityHTTP -> Route.
+    # IdempotencyReplay only establishes request replay context and always calls the
+    # next layer; RequestId/Trace metadata is fail-open and does not synthesize a
+    # response. NODE-66 SecurityHTTPMiddleware therefore remains the authoritative
+    # input/response security gate before route execution.
     install_http_security(app, environment=runtime_environment)
     install_error_contract(app)
     app.add_middleware(IdempotencyReplayMiddleware)
