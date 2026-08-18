@@ -1,4 +1,6 @@
 import type {
+  CameraState,
+  Rect,
   RenderNodeSnapshot,
   RendererAdapter,
   RendererFrame,
@@ -27,16 +29,38 @@ export class SvgCanvasRenderer implements RendererAdapter {
       if (!group) {
         group = document.createElementNS(SVG_NS, "g");
         group.dataset.nodeId = node.id;
-        group.style.cursor = node.locked ? "not-allowed" : "move";
         this.svg.append(group);
         this.nodes.set(node.id, group);
       }
+      group.style.cursor = node.locked ? "not-allowed" : "move";
       drawNode(group, node, frame);
     }
     for (const [nodeId, group] of this.nodes) {
       if (visible.has(nodeId)) continue;
       group.remove();
       this.nodes.delete(nodeId);
+    }
+  }
+
+  previewBounds(bounds: ReadonlyMap<string, Rect>, camera: CameraState): void {
+    for (const [nodeId, rect] of bounds) {
+      const group = this.nodes.get(nodeId);
+      if (!group) continue;
+      const zoom = camera.zoom;
+      const x = (rect.x - camera.x) * zoom;
+      const y = (rect.y - camera.y) * zoom;
+      const width = Math.max(1, rect.width * zoom);
+      const height = Math.max(1, rect.height * zoom);
+      const rotation = Number(group.dataset.rotationDeg ?? "0");
+      group.setAttribute(
+        "transform",
+        `translate(${x} ${y}) rotate(${rotation} ${width / 2} ${height / 2})`,
+      );
+      const rectElement = group.querySelector("rect");
+      if (rectElement) {
+        rectElement.setAttribute("width", String(width));
+        rectElement.setAttribute("height", String(height));
+      }
     }
   }
 
@@ -62,6 +86,7 @@ function drawNode(
   const y = (node.bounds.y - frame.camera.y) * zoom;
   const width = Math.max(1, node.bounds.width * zoom);
   const height = Math.max(1, node.bounds.height * zoom);
+  group.dataset.rotationDeg = String(node.rotationDeg);
   group.setAttribute(
     "transform",
     `translate(${x} ${y}) rotate(${node.rotationDeg} ${width / 2} ${height / 2})`,
