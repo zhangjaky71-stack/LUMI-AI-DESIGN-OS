@@ -17,6 +17,7 @@ from .artifact_engine_schemas import (
     SafeVersionProvenanceResponse,
     UserForkVersionRequest,
     UserRestoreVersionRequest,
+    VersionArtifactSummary,
     VersionPreviewSummary,
 )
 from .common import ProblemDetail
@@ -89,6 +90,16 @@ def _history_item(version) -> ArtifactVersionHistoryItem:
     )
 
 
+def _artifact_summary(artifact) -> VersionArtifactSummary:
+    return VersionArtifactSummary(
+        id=artifact.id,
+        project_id=artifact.project_id,
+        type=artifact.type,
+        name=artifact.name,
+        design_document_id=artifact.design_document_id,
+    )
+
+
 @router.get(
     "/artifacts/{artifact_id}/version-history",
     response_model=ArtifactVersionHistoryResponse,
@@ -113,7 +124,7 @@ def get_artifact_version_history(
         for item in _invoke(lambda: service.repository.list_versions(artifact.id))
     )
     return ArtifactVersionHistoryResponse(
-        artifact=artifact,
+        artifact=_artifact_summary(artifact),
         branches=branches,
         versions=tuple(_history_item(item) for item in versions),
     )
