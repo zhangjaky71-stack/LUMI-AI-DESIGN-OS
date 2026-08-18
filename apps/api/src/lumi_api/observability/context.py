@@ -168,5 +168,47 @@ def start_request_context(
         _current_context.reset(token)
 
 
+@contextmanager
+def start_message_context(
+    *,
+    request_id: str | None,
+    correlation_id: str | None,
+    traceparent: str | None,
+    tracestate: str | None,
+    fallback_request_id: str,
+) -> Iterator[TelemetryContext]:
+    with start_request_context(
+        request_id=request_id or fallback_request_id,
+        correlation_id=correlation_id,
+        traceparent=traceparent,
+        tracestate=tracestate,
+    ) as context:
+        yield context
+
+
+def bind_business_refs(
+    *,
+    organization_id: UUID | None = None,
+    project_id: UUID | None = None,
+    agent_run_id: UUID | None = None,
+    task_id: UUID | None = None,
+    operation_id: UUID | None = None,
+    provider_request_id: UUID | None = None,
+) -> TelemetryContext | None:
+    current = _current_context.get()
+    if current is None:
+        return None
+    updated = current.with_business_refs(
+        organization_id=organization_id,
+        project_id=project_id,
+        agent_run_id=agent_run_id,
+        task_id=task_id,
+        operation_id=operation_id,
+        provider_request_id=provider_request_id,
+    )
+    _current_context.set(updated)
+    return updated
+
+
 def current_telemetry_context() -> TelemetryContext | None:
     return _current_context.get()
