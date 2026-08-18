@@ -21,6 +21,17 @@ Status: **CORE IMPLEMENTED / VALIDATING / NOT COMPLETE**
 - [x] Stable error code may be shown; stack traces are never rendered.
 - [x] Dedicated Python/TypeScript tests and static acceptance validator exist.
 
+## Hosted CI evidence — 2026-08-18
+
+- Stacked PR: **#124**, `feat/node-57-agent-timeline` → `feat/node-56-layers-inspector`.
+- NODE-57 workflow run: **32096297505**.
+- `timeline-contract` job: **95588215047**, conclusion `failure`, with **zero executed steps**.
+- Job log retrieval returned **404 BlobNotFound**.
+- `timeline-web` job: **95588226838**, skipped because its dependency never entered executable steps.
+- The same commit simultaneously produced pre-step failures for CI, Secret Scan, Dependency Review and multiple earlier NODE workflows.
+
+This is hosted-runner/account infrastructure failure evidence, not an executed NODE-57 test/typecheck/lint/build failure. NODE-57 therefore remains **NOT COMPLETE** and must be rerun when GitHub can allocate executable steps.
+
 ## Required before COMPLETE
 
 - [ ] Production durable `AgentEventReplayPort` composition and full refresh-history proof.
