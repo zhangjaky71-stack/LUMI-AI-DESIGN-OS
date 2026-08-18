@@ -15,6 +15,9 @@ from .model import (
 
 _TERMINAL_RUNTIME = frozenset({"succeeded", "failed", "cancelled"})
 _TERMINAL_OPERATION = frozenset({"succeeded", "failed_final"})
+_GENERIC_REDISPATCH_SAFE_KINDS = frozenset(
+    {"asset.preview", "asset.validate", "export.package"}
+)
 
 
 def classify_runtime_job(
@@ -49,7 +52,7 @@ def classify_runtime_job(
                 "RUNTIME_HAS_EXISTING_PROVIDER_REQUEST",
                 operation=operation,
             )
-        if operation is not None and operation.paid and operation.status == "in_progress":
+        if operation is not None and operation.paid:
             if _lease_active(operation, current):
                 return _decision(
                     RecoverySubjectType.RUNTIME_JOB,
@@ -64,6 +67,21 @@ def classify_runtime_job(
                 RecoveryDisposition.REVIEW_REQUIRED,
                 "PAID_OPERATION_SIDE_EFFECT_AMBIGUOUS",
                 operation=operation,
+            )
+        if operation is not None and operation.status in {"new", "failed_retryable"}:
+            return _decision(
+                RecoverySubjectType.RUNTIME_JOB,
+                runtime.job_id,
+                RecoveryDisposition.REQUEUE_SAFE,
+                "UNPAID_OPERATION_EXPLICITLY_RETRYABLE",
+                operation=operation,
+            )
+        if operation is None and runtime.job_kind not in _GENERIC_REDISPATCH_SAFE_KINDS:
+            return _decision(
+                RecoverySubjectType.RUNTIME_JOB,
+                runtime.job_id,
+                RecoveryDisposition.REVIEW_REQUIRED,
+                "PAID_CAPABLE_RUNTIME_HAS_NO_IDEMPOTENCY_EVIDENCE",
             )
         return _decision(
             RecoverySubjectType.RUNTIME_JOB,
