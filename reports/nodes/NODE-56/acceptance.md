@@ -20,6 +20,16 @@ Status: **CORE IMPLEMENTED / VALIDATING / NOT COMPLETE**
 - [x] Pure 10k layer virtualization contract and Canvas SDK batch surface have dedicated tests.
 - [x] Static acceptance validator exists at `tools/node56/validate_layers_inspector.py`.
 
+## Hosted CI evidence — 2026-08-18
+
+- Stacked PR: **#123**, `feat/node-56-layers-inspector` → `feat/node-55-infinite-canvas-ui`.
+- NODE-56 workflow run: **32095353707**.
+- `layers-contract` job: **95585546765**, conclusion `failure`, but GitHub returned **zero executed steps**.
+- Job log retrieval returned **404 BlobNotFound**.
+- `layers-web` job: **95585556240**, skipped because its dependency did not enter executable steps.
+
+This is the repository's recurring hosted-runner/pre-step infrastructure failure shape, not evidence of a failing NODE-56 command, test, typecheck, lint or build step. NODE-56 therefore remains **NOT COMPLETE** and must be rerun when hosted execution is available.
+
 ## Required before COMPLETE
 
 - [ ] Production hierarchy mutation compiler and UI: reorder / reparent / group / ungroup.
