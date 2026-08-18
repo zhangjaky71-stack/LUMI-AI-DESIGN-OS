@@ -14,6 +14,12 @@ locals {
   })
 }
 
+data "aws_region" "current" {}
+
+data "aws_prefix_list" "s3" {
+  name = "com.amazonaws.${data.aws_region.current.name}.s3"
+}
+
 resource "aws_vpc" "this" {
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
@@ -157,9 +163,11 @@ resource "aws_security_group" "alb" {
   tags = merge(local.tags, { Name = "${local.name}-alb-sg" })
 }
 
+# Identity / ingress group shared by application tasks. It intentionally has no
+# outbound rule; outbound capability is attached through an explicit egress SG.
 resource "aws_security_group" "app" {
   name        = "${local.name}-app"
-  description = "Private ECS/Fargate application tasks."
+  description = "Private ECS/Fargate application task identity; egress is explicit."
   vpc_id      = aws_vpc.this.id
 
   ingress {
@@ -178,6 +186,16 @@ resource "aws_security_group" "app" {
     self        = true
   }
 
+  tags = merge(local.tags, { Name = "${local.name}-app-sg" })
+}
+
+# General application services need provider/webhook/package egress. Keeping this
+# permission in a separate SG means sandbox-runtime can omit it entirely.
+resource "aws_security_group" "app_internet_egress" {
+  name        = "${local.name}-app-internet-egress"
+  description = "Explicit Internet egress capability for non-sandbox services."
+  vpc_id      = aws_vpc.this.id
+
   egress {
     protocol    = "-1"
     from_port   = 0
@@ -185,5 +203,75 @@ resource "aws_security_group" "app" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.tags, { Name = "${local.name}-app-sg" })
+  tags = merge(local.tags, { Name = "${local.name}-app-internet-egress-sg" })
+}
+
+# Production sandbox control-plane tasks may reach only private VPC services and
+# the AWS-managed S3 prefix list. They cannot reach arbitrary Internet addresses
+# even though the private subnet has a NAT route.
+resource "aws_security_group" "sandbox_egress" {
+  name        = "${local.name}-sandbox-egress"
+  description = "Fail-closed sandbox control-plane egress: VPC internal plus S3 only."
+  vpc_id      = aws_vpc.this.id
+
+  egress {
+    description = "Private VPC control plane and PrivateLink endpoints"
+    protocol    = "-1"
+    from_port   = 0
+    to_port     = 0
+    cidr_blocks = [aws_vpc.this.cidr_block]
+  }
+
+  egress {
+    description     = "S3 asset transport only"
+    protocol        = "tcp"
+    from_port       = 443
+    to_port         = 443
+    prefix_list_ids = [data.aws_prefix_list.s3.id]
+  }
+
+  tags = merge(local.tags, {
+    Name             = "${local.name}-sandbox-egress-sg"
+    EgressPolicy     = "deny-public-except-s3"
+    SecurityBoundary = "sandbox"
+  })
+}
+
+# Fargate execution traffic (ECR image metadata/layers, CloudWatch Logs and
+# Secrets Manager) stays inside AWS PrivateLink rather than requiring public NAT.
+resource "aws_security_group" "runtime_endpoints" {
+  name        = "${local.name}-runtime-endpoints"
+  description = "PrivateLink ingress from LUMI application task identities."
+  vpc_id      = aws_vpc.this.id
+
+  ingress {
+    description     = "HTTPS from application task identity"
+    protocol        = "tcp"
+    from_port       = 443
+    to_port         = 443
+    security_groups = [aws_security_group.app.id]
+  }
+
+  tags = merge(local.tags, { Name = "${local.name}-runtime-endpoints-sg" })
+}
+
+resource "aws_vpc_endpoint" "runtime_interface" {
+  for_each = toset([
+    "ecr.api",
+    "ecr.dkr",
+    "logs",
+    "secretsmanager",
+  ])
+
+  vpc_id              = aws_vpc.this.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.${each.value}"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = [for az in var.availability_zones : aws_subnet.private[az].id]
+  security_group_ids  = [aws_security_group.runtime_endpoints.id]
+
+  tags = merge(local.tags, {
+    Name             = "${local.name}-${replace(each.value, ".", "-")}-endpoint"
+    SecurityBoundary = "private-runtime"
+  })
 }
