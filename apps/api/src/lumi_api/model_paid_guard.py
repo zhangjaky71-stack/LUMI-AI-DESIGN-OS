@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from decimal import Decimal
 from typing import Any, Awaitable, Callable
 from uuid import UUID, uuid4
@@ -161,9 +162,7 @@ class PostgresModelPaidInvocationGuard:
 
 
 def _paid_operation_key(operation_id: UUID, provider: str, model: str) -> str:
-    identity = hashlib.sha256(
-        f"{provider}\x00{model}".encode("utf-8")
-    ).hexdigest()[:24]
+    identity = hashlib.sha256(f"{provider}\x00{model}".encode("utf-8")).hexdigest()[:24]
     return f"model-paid:{operation_id}:{identity}"
 
 
@@ -257,7 +256,10 @@ def _decode_model_result(payload: dict[str, Any]) -> ModelResult:
     units_payload = usage_payload.get("units", {})
     if not isinstance(units_payload, dict):
         raise ValueError("MODEL_PAID_GUARD_USAGE_UNITS_INVALID")
-    units = {str(key): Decimal(_require_string_value(value)) for key, value in units_payload.items()}
+    units = {
+        str(key): Decimal(_require_string_value(value))
+        for key, value in units_payload.items()
+    }
 
     detail = _unpack(cost_payload.get("detail"))
     if not isinstance(detail, dict):
@@ -315,15 +317,21 @@ def _pack(value: Any) -> dict[str, Any]:
     if isinstance(value, int):
         return {"t": "int", "v": value}
     if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("MODEL_PAID_GUARD_NON_FINITE_FLOAT")
         return {"t": "float", "v": value}
     if isinstance(value, str):
         return {"t": "str", "v": value}
     if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise ValueError("MODEL_PAID_GUARD_NON_FINITE_DECIMAL")
         return {"t": "decimal", "v": format(value, "f")}
     if isinstance(value, UUID):
         return {"t": "uuid", "v": str(value)}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list):
         return {"t": "list", "v": [_pack(item) for item in value]}
+    if isinstance(value, tuple):
+        return {"t": "tuple", "v": [_pack(item) for item in value]}
     if isinstance(value, dict):
         if not all(isinstance(key, str) for key in value):
             raise TypeError("MODEL_PAID_GUARD_NON_STRING_DICT_KEY")
@@ -354,18 +362,25 @@ def _unpack(value: Any) -> Any:
         raw = value.get("v")
         if not isinstance(raw, (int, float)) or isinstance(raw, bool):
             raise ValueError("MODEL_PAID_GUARD_FLOAT_INVALID")
-        return float(raw)
+        decoded = float(raw)
+        if not math.isfinite(decoded):
+            raise ValueError("MODEL_PAID_GUARD_NON_FINITE_FLOAT")
+        return decoded
     if kind == "str":
         return _require_string_value(value.get("v"))
     if kind == "decimal":
-        return Decimal(_require_string_value(value.get("v")))
+        decoded_decimal = Decimal(_require_string_value(value.get("v")))
+        if not decoded_decimal.is_finite():
+            raise ValueError("MODEL_PAID_GUARD_NON_FINITE_DECIMAL")
+        return decoded_decimal
     if kind == "uuid":
         return UUID(_require_string_value(value.get("v")))
-    if kind == "list":
+    if kind in {"list", "tuple"}:
         raw = value.get("v")
         if not isinstance(raw, list):
-            raise ValueError("MODEL_PAID_GUARD_LIST_INVALID")
-        return [_unpack(item) for item in raw]
+            raise ValueError("MODEL_PAID_GUARD_SEQUENCE_INVALID")
+        decoded_items = [_unpack(item) for item in raw]
+        return tuple(decoded_items) if kind == "tuple" else decoded_items
     if kind == "dict":
         raw = value.get("v")
         if not isinstance(raw, list):
