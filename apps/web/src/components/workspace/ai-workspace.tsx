@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { InfiniteCanvas } from "@/components/canvas/infinite-canvas";
+import { VersionHistoryPanel } from "@/components/versions/version-history-panel";
 import { AgentTimeline } from "@/components/workspace/agent-timeline";
 import { ApiError } from "@/lib/api/problem";
 import type { CanvasSaveState } from "@/lib/canvas/types";
@@ -275,6 +276,13 @@ export function AiWorkspace({ organizationId, project, initialRunId }: {
               <div><dt>Canvas</dt><dd>{selectedArtifact ? canvasSaveState : "—"}</dd></div>
             </dl>
           </section>
+          {selectedArtifact ? (
+            <VersionHistoryPanel
+              organizationId={organizationId}
+              artifact={selectedArtifact}
+              onOpenVersion={setSelectedArtifact}
+            />
+          ) : null}
         </aside>
       </div>
     </div>
