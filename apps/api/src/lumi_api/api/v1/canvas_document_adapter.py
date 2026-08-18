@@ -9,17 +9,13 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from lumi_api.design_ir.document import DesignIRDocument, node_index
-from lumi_api.design_ir.engine import OperationRejected, RevisionConflict, apply_batch
-from lumi_api.design_ir.nodes import (
-    FrameNode,
-    GroupNode,
-    ImageNode,
-    PageNode,
-    ShapeNode,
-    TextNode,
-    VectorNode,
+from lumi_api.design_ir.document import (
+    DesignIRDocument,
+    content_hash_sha256,
+    node_index,
 )
+from lumi_api.design_ir.engine import OperationRejected, RevisionConflict, apply_batch
+from lumi_api.design_ir.nodes import FrameNode, GroupNode, ImageNode, PageNode, TextNode
 from lumi_api.design_ir.operations import (
     ActorRef,
     AddNodeOp,
@@ -162,25 +158,21 @@ class PostgresCanvasDocumentService:
                 raise _not_found()
             head_id = document_row["head_version_id"]
             if head_id != request.expected_design_document_version_id:
+                replay = self._replayed_batch(
+                    organization_id=organization_id,
+                    design_document_id=design_document_id,
+                    head_version_id=head_id,
+                    request=request,
+                )
+                if replay is not None:
+                    return replay
                 raise _conflict("CANVAS_HEAD_VERSION_CONFLICT")
 
-            version_row = self.session.execute(
-                text(
-                    """
-                    SELECT id AS version_id, design_document_id, version_number,
-                           content_json, content_hash
-                    FROM design_document_versions
-                    WHERE id=:version_id
-                      AND design_document_id=:document_id
-                      AND organization_id=:organization_id
-                    """
-                ),
-                {
-                    "version_id": head_id,
-                    "document_id": design_document_id,
-                    "organization_id": organization_id,
-                },
-            ).mappings().one_or_none()
+            version_row = self._version_row(
+                organization_id=organization_id,
+                design_document_id=design_document_id,
+                version_id=head_id,
+            )
             if version_row is None:
                 raise _conflict("CANVAS_HEAD_VERSION_MISSING")
             if int(version_row["version_number"]) != request.expected_version_number:
@@ -218,6 +210,15 @@ class PostgresCanvasDocumentService:
                     detail=str(exc),
                 ) from exc
 
+            updated_document = result.document.model_copy(
+                update={
+                    "metadata": {
+                        **result.document.metadata,
+                        "canvas_last_client_batch_id": str(request.client_batch_id),
+                    }
+                }
+            )
+            content_hash = content_hash_sha256(updated_document)
             next_number = int(
                 self.session.execute(
                     text(
@@ -256,11 +257,11 @@ class PostgresCanvasDocumentService:
                     "version_number": next_number,
                     "parent_version_id": head_id,
                     "content_json": json.dumps(
-                        result.document.model_dump(mode="json"),
+                        updated_document.model_dump(mode="json"),
                         sort_keys=True,
                         separators=(",", ":"),
                     ),
-                    "content_hash": result.content_hash,
+                    "content_hash": content_hash,
                 },
             )
             updated = self.session.execute(
@@ -285,16 +286,72 @@ class PostgresCanvasDocumentService:
                 raise _conflict("CANVAS_HEAD_VERSION_CONFLICT")
 
             projection = project_design_document(
-                document=result.document,
+                document=updated_document,
                 version_id=next_version_id,
                 version_number=next_number,
-                content_hash=result.content_hash,
+                content_hash=content_hash,
             )
             return CanvasCommandBatchResponse(
                 client_batch_id=request.client_batch_id,
                 projection=projection,
                 applied_descriptors=len(request.descriptors),
             )
+
+    def _version_row(
+        self,
+        *,
+        organization_id: UUID,
+        design_document_id: UUID,
+        version_id: UUID | None,
+    ) -> Any | None:
+        if version_id is None:
+            return None
+        return self.session.execute(
+            text(
+                """
+                SELECT id AS version_id, design_document_id, version_number,
+                       content_json, content_hash
+                FROM design_document_versions
+                WHERE id=:version_id
+                  AND design_document_id=:document_id
+                  AND organization_id=:organization_id
+                """
+            ),
+            {
+                "version_id": version_id,
+                "document_id": design_document_id,
+                "organization_id": organization_id,
+            },
+        ).mappings().one_or_none()
+
+    def _replayed_batch(
+        self,
+        *,
+        organization_id: UUID,
+        design_document_id: UUID,
+        head_version_id: UUID | None,
+        request: CanvasCommandBatchRequest,
+    ) -> CanvasCommandBatchResponse | None:
+        row = self._version_row(
+            organization_id=organization_id,
+            design_document_id=design_document_id,
+            version_id=head_version_id,
+        )
+        if row is None:
+            return None
+        document = DesignIRDocument.model_validate(row["content_json"])
+        if document.metadata.get("canvas_last_client_batch_id") != str(request.client_batch_id):
+            return None
+        return CanvasCommandBatchResponse(
+            client_batch_id=request.client_batch_id,
+            projection=project_design_document(
+                document=document,
+                version_id=row["version_id"],
+                version_number=int(row["version_number"]),
+                content_hash=str(row["content_hash"]),
+            ),
+            applied_descriptors=len(request.descriptors),
+        )
 
 
 def project_design_document(
@@ -410,25 +467,30 @@ def _compile_descriptors(
             if node is None:
                 raise _bad_descriptor("CANVAS_TARGET_NOT_FOUND")
             if descriptor.type == "MOVE_NODE":
-                dx = _finite(descriptor.payload.get("dx"), "CANVAS_MOVE_DX_INVALID")
-                dy = _finite(descriptor.payload.get("dy"), "CANVAS_MOVE_DY_INVALID")
-                transform = node.transform.model_copy(
-                    update={"x": node.transform.x + dx, "y": node.transform.y + dy}
-                )
-                operations.append(SetTransformOp(node_id=target_id, transform=transform))
-            elif descriptor.type == "RESIZE_NODE":
-                width = _positive(descriptor.payload.get("width"), "CANVAS_WIDTH_INVALID")
-                height = _positive(descriptor.payload.get("height"), "CANVAS_HEIGHT_INVALID")
-                x = _finite(descriptor.payload.get("x", node.transform.x), "CANVAS_X_INVALID")
-                y = _finite(descriptor.payload.get("y", node.transform.y), "CANVAS_Y_INVALID")
+                x = _finite(descriptor.payload.get("x"), "CANVAS_MOVE_X_INVALID")
+                y = _finite(descriptor.payload.get("y"), "CANVAS_MOVE_Y_INVALID")
                 operations.append(
                     SetTransformOp(
                         node_id=target_id,
                         transform=node.transform.model_copy(update={"x": x, "y": y}),
                     )
                 )
+            elif descriptor.type == "RESIZE_NODE":
+                width = _positive(descriptor.payload.get("width"), "CANVAS_WIDTH_INVALID")
+                height = _positive(descriptor.payload.get("height"), "CANVAS_HEIGHT_INVALID")
                 operations.append(
                     SetSizeOp(node_id=target_id, size=Size2D(width=width, height=height))
+                )
+            elif descriptor.type == "ROTATE_NODE":
+                rotation = _finite(
+                    descriptor.payload.get("rotation_deg"),
+                    "CANVAS_ROTATION_INVALID",
+                )
+                operations.append(
+                    SetTransformOp(
+                        node_id=target_id,
+                        transform=node.transform.model_copy(update={"rotation_deg": rotation}),
+                    )
                 )
             elif descriptor.type == "DELETE_NODE":
                 operations.append(
@@ -467,7 +529,10 @@ def _compile_create_frame(
     node_id = _uuid(payload.get("id"), "CANVAS_NEW_NODE_ID_INVALID")
     if node_id.version != 7:
         raise _bad_descriptor("CANVAS_NEW_NODE_ID_MUST_BE_UUID7")
-    parent_id = _uuid(payload.get("parent_id", str(document.pages[0])), "CANVAS_PARENT_ID_INVALID")
+    parent_id = _uuid(
+        payload.get("parent_id", str(document.pages[0])),
+        "CANVAS_PARENT_ID_INVALID",
+    )
     parent = nodes.get(parent_id)
     if not isinstance(parent, (PageNode, FrameNode, GroupNode)):
         raise _bad_descriptor("CANVAS_PARENT_NOT_CONTAINER")
