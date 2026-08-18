@@ -4,13 +4,18 @@ import asyncio
 import os
 from collections.abc import Coroutine
 from typing import Any, TypeVar
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
 
 from lumi_api.idempotency.contracts import ClaimDecision, IdempotencyContext, OperationStatus
-from lumi_api.idempotency.gateway import AmbiguousSideEffectError, SideEffectGateway
+from lumi_api.idempotency.gateway import (
+    AmbiguousSideEffectError,
+    OperationHandle,
+    SideEffectExecutionError,
+    SideEffectGateway,
+)
 from lumi_api.persistence.seed import ORG_ID
 from lumi_api.persistence.session import require_database_url
 
@@ -28,7 +33,7 @@ def _asyncpg_dsn() -> str:
     return require_database_url().replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
-async def _delete_operation(operation_id: object) -> None:
+async def _delete_operation(operation_id: UUID) -> None:
     connection = await asyncpg.connect(_asyncpg_dsn())
     try:
         await connection.execute(
@@ -39,7 +44,7 @@ async def _delete_operation(operation_id: object) -> None:
         await connection.close()
 
 
-async def _expire_lease(operation_id: object) -> None:
+async def _expire_lease(operation_id: UUID) -> None:
     connection = await asyncpg.connect(_asyncpg_dsn())
     try:
         await connection.execute(
@@ -91,7 +96,7 @@ async def _crash_after_provider_attempt_start_fails_closed() -> None:
 
         provider_calls = 0
 
-        async def must_not_run(_handle: object) -> object:
+        async def must_not_run(_handle: OperationHandle) -> object:
             nonlocal provider_calls
             provider_calls += 1
             raise AssertionError("ambiguous paid side effect was executed twice")
@@ -148,3 +153,61 @@ async def _proven_not_accepted_failure_clears_barrier_for_safe_retry() -> None:
 
 def test_proven_not_accepted_failure_clears_barrier_for_safe_retry() -> None:
     run(_proven_not_accepted_failure_clears_barrier_for_safe_retry())
+
+
+async def _generic_retryable_after_attempt_does_not_clear_barrier() -> None:
+    gateway = SideEffectGateway(_asyncpg_dsn())
+    context = IdempotencyContext(
+        organization_id=ORG_ID,
+        operation_type="paid_model_invocation",
+        idempotency_key=f"generic-retryable:{uuid4()}",
+        request={"provider": "fixture", "model": "fixture-model", "prompt": "unknown"},
+        lease_seconds=5,
+    )
+    operation_id: UUID | None = None
+
+    async def invoke(handle: OperationHandle) -> object:
+        nonlocal operation_id
+        operation_id = handle.snapshot.id
+        await handle.mark_provider_attempt_started()
+        raise SideEffectExecutionError(
+            "GENERIC_RETRYABLE",
+            "transport failed after provider attempt began",
+            retryable=True,
+        )
+
+    with pytest.raises(AmbiguousSideEffectError):
+        await gateway.execute(
+            context,
+            lease_owner="worker-generic-retryable",
+            invoke=invoke,
+        )
+
+    assert operation_id is not None
+    try:
+        snapshot = await gateway.get(operation_id)
+        assert snapshot.status == OperationStatus.AMBIGUOUS
+        assert snapshot.provider_attempt_started_at is not None
+        assert snapshot.provider_request_id is None
+        assert "only an explicit provider-not-accepted" in (snapshot.ambiguity_reason or "")
+
+        provider_calls = 0
+
+        async def must_not_retry(_handle: OperationHandle) -> object:
+            nonlocal provider_calls
+            provider_calls += 1
+            raise AssertionError("generic retryable error bypassed provider crash barrier")
+
+        with pytest.raises(AmbiguousSideEffectError):
+            await gateway.execute(
+                context,
+                lease_owner="worker-generic-retry-second",
+                invoke=must_not_retry,
+            )
+        assert provider_calls == 0
+    finally:
+        await _delete_operation(operation_id)
+
+
+def test_generic_retryable_after_attempt_does_not_clear_barrier() -> None:
+    run(_generic_retryable_after_attempt_does_not_clear_barrier())
