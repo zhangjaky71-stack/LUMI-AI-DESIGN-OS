@@ -8,10 +8,8 @@ from dataclasses import dataclass, replace
 from typing import Iterator
 from uuid import UUID
 
-_TRACEPARENT = re.compile(
-    r"^(?P<version>[0-9a-f]{2})-(?P<trace_id>[0-9a-f]{32})-(?P<span_id>[0-9a-f]{16})-(?P<flags>[0-9a-f]{2})$"
-)
-_TRACESTATE_MEMBER = re.compile(r"^[a-z0-9][_0-9a-z*\-/]{0,255}=[\x20-\x7e]{1,256}$")
+_LOWER_HEX = frozenset("0123456789abcdef")
+_TRACESTATE_KEY = re.compile(r"^[a-z0-9][a-z0-9_*/@-]{0,255}$")
 _current_context: ContextVar[TelemetryContext | None] = ContextVar(
     "lumi_telemetry_context", default=None
 )
@@ -31,6 +29,19 @@ def _new_span_id() -> str:
     return value
 
 
+def _is_lower_hex(value: str) -> bool:
+    return bool(value) and all(char in _LOWER_HEX for char in value)
+
+
+def _validate_tracestate_value(value: str) -> None:
+    if not value or len(value) > 256 or value.endswith(" "):
+        raise ValueError("OBSERVABILITY_TRACESTATE_INVALID")
+    for char in value:
+        codepoint = ord(char)
+        if codepoint < 0x20 or codepoint > 0x7E or char in {",", "="}:
+            raise ValueError("OBSERVABILITY_TRACESTATE_INVALID")
+
+
 def _validate_tracestate(value: str | None) -> str | None:
     if value is None:
         return None
@@ -39,18 +50,28 @@ def _validate_tracestate(value: str | None) -> str | None:
         return None
     if len(normalized) > 512:
         raise ValueError("OBSERVABILITY_TRACESTATE_TOO_LONG")
-    members = [part.strip() for part in normalized.split(",")]
-    if len(members) > 32 or any(not member for member in members):
+
+    raw_members = normalized.split(",")
+    if len(raw_members) > 32:
         raise ValueError("OBSERVABILITY_TRACESTATE_INVALID")
+
     keys: set[str] = set()
-    for member in members:
-        if not _TRACESTATE_MEMBER.fullmatch(member):
+    members: list[str] = []
+    for raw_member in raw_members:
+        member = raw_member.strip()
+        # W3C Trace Context explicitly allows empty/OWS-only list-members.
+        if not member:
+            continue
+        key, separator, member_value = member.partition("=")
+        if separator != "=" or not _TRACESTATE_KEY.fullmatch(key):
             raise ValueError("OBSERVABILITY_TRACESTATE_INVALID")
-        key = member.split("=", 1)[0]
+        _validate_tracestate_value(member_value)
         if key in keys:
             raise ValueError("OBSERVABILITY_TRACESTATE_DUPLICATE_KEY")
         keys.add(key)
-    return ",".join(members)
+        members.append(f"{key}={member_value}")
+
+    return ",".join(members) or None
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,23 +85,44 @@ class ParsedTraceParent:
 def parse_traceparent(value: str | None) -> ParsedTraceParent | None:
     if value is None:
         return None
-    normalized = value.strip().casefold()
-    match = _TRACEPARENT.fullmatch(normalized)
-    if match is None:
+    normalized = value.strip()
+    if len(normalized) < 55:
         raise ValueError("OBSERVABILITY_TRACEPARENT_INVALID")
-    version = match.group("version")
-    trace_id = match.group("trace_id")
-    parent_span_id = match.group("span_id")
-    flags = match.group("flags")
+    if normalized[2:3] != "-" or normalized[35:36] != "-" or normalized[52:53] != "-":
+        raise ValueError("OBSERVABILITY_TRACEPARENT_INVALID")
+
+    version = normalized[:2]
+    trace_id = normalized[3:35]
+    parent_span_id = normalized[36:52]
+    flags = normalized[53:55]
+    if not (
+        len(version) == 2
+        and _is_lower_hex(version)
+        and len(trace_id) == 32
+        and _is_lower_hex(trace_id)
+        and len(parent_span_id) == 16
+        and _is_lower_hex(parent_span_id)
+        and len(flags) == 2
+        and _is_lower_hex(flags)
+    ):
+        raise ValueError("OBSERVABILITY_TRACEPARENT_INVALID")
     if version == "ff":
         raise ValueError("OBSERVABILITY_TRACEPARENT_VERSION_INVALID")
+    if version == "00" and len(normalized) != 55:
+        raise ValueError("OBSERVABILITY_TRACEPARENT_INVALID")
+    if version != "00" and len(normalized) > 55 and normalized[55] != "-":
+        raise ValueError("OBSERVABILITY_TRACEPARENT_INVALID")
     if trace_id == "0" * 32 or parent_span_id == "0" * 16:
         raise ValueError("OBSERVABILITY_TRACEPARENT_ZERO_ID_FORBIDDEN")
+
+    # This implementation emits version 00. Preserve the sampled/random bits that
+    # are defined by the version we understand and clear unknown future/reserved bits.
+    known_flags = f"{int(flags, 16) & 0x03:02x}"
     return ParsedTraceParent(
         version=version,
         trace_id=trace_id,
         parent_span_id=parent_span_id,
-        trace_flags=flags,
+        trace_flags=known_flags,
     )
 
 
@@ -148,8 +190,21 @@ def start_request_context(
     traceparent: str | None = None,
     tracestate: str | None = None,
 ) -> Iterator[TelemetryContext]:
-    incoming = parse_traceparent(traceparent)
-    state = _validate_tracestate(tracestate)
+    # Trace headers are untrusted telemetry metadata. Malformed trace context must
+    # never reject the business request: invalid traceparent restarts the trace and
+    # invalid tracestate is discarded while a valid traceparent continues.
+    try:
+        incoming = parse_traceparent(traceparent)
+    except ValueError:
+        incoming = None
+
+    state: str | None = None
+    if incoming is not None:
+        try:
+            state = _validate_tracestate(tracestate)
+        except ValueError:
+            state = None
+
     context = TelemetryContext(
         request_id=request_id,
         correlation_id=(correlation_id or request_id).strip(),
