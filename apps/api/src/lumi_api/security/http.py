@@ -11,6 +11,16 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from lumi_api.domain.ids import new_uuid7
 
+_API_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+_DOCS_CSP = (
+    "default-src 'self'; "
+    "base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "img-src 'self' data: https://fastapi.tiangolo.com https://cdn.jsdelivr.net; "
+    "font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self'"
+)
+
 HTTP_SECURITY_HEADERS: dict[str, str] = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
@@ -18,7 +28,7 @@ HTTP_SECURITY_HEADERS: dict[str, str] = {
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "same-site",
-    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    "Content-Security-Policy": _API_CSP,
 }
 
 _SENSITIVE_QUERY_KEYS = frozenset(
@@ -38,6 +48,7 @@ _SENSITIVE_QUERY_KEYS = frozenset(
         "cvv",
     }
 )
+_DOCS_PATHS = frozenset({"/api/docs", "/api/redoc"})
 
 
 class SecurityHTTPMiddleware(BaseHTTPMiddleware):
@@ -61,14 +72,14 @@ class SecurityHTTPMiddleware(BaseHTTPMiddleware):
     ) -> Any:
         query_problem = self._query_problem(request)
         if query_problem is not None:
-            return self._with_headers(query_problem)
+            return self._with_headers(query_problem, request_path=request.url.path)
 
         size_problem = self._size_problem(request)
         if size_problem is not None:
-            return self._with_headers(size_problem)
+            return self._with_headers(size_problem, request_path=request.url.path)
 
         response = await call_next(request)
-        return self._with_headers(response)
+        return self._with_headers(response, request_path=request.url.path)
 
     def _query_problem(self, request: Request) -> JSONResponse | None:
         raw_query = request.scope.get("query_string", b"")
@@ -137,9 +148,11 @@ class SecurityHTTPMiddleware(BaseHTTPMiddleware):
             )
         return None
 
-    def _with_headers(self, response: Any) -> Any:
+    def _with_headers(self, response: Any, *, request_path: str) -> Any:
         for key, value in HTTP_SECURITY_HEADERS.items():
             response.headers.setdefault(key, value)
+        if self.environment != "production" and request_path in _DOCS_PATHS:
+            response.headers["Content-Security-Policy"] = _DOCS_CSP
         if self.environment == "production":
             response.headers.setdefault(
                 "Strict-Transport-Security",
