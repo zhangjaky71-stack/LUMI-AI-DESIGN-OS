@@ -1,6 +1,8 @@
+from .costing import RepairCostEstimate
 from .engine import (
     AutoRepairEngine,
     AutoRepairOperationConflict,
+    RepairSideEffectUncertain,
     RepairStaleConflict,
 )
 from .model import (
@@ -34,12 +36,14 @@ __all__ = [
     "RepairAttempt",
     "RepairAttemptDecision",
     "RepairCandidate",
+    "RepairCostEstimate",
     "RepairDirective",
     "RepairKind",
     "RepairLoopStatus",
     "RepairPlan",
     "RepairPolicySnapshot",
     "RepairQualitySnapshot",
+    "RepairSideEffectUncertain",
     "RepairSourceSnapshot",
     "RepairStaleConflict",
 ]
