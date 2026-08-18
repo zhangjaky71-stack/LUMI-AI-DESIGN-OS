@@ -38,6 +38,7 @@ def main() -> None:
     middleware_tests = read("apps/api/tests/test_observability_middleware_order_node67.py")
     event_tests = read("apps/api/tests/test_event_contract.py")
     workflow = read(".github/workflows/node-67-observability.yml")
+    middleware_validator = read("tools/node67/validate_middleware_order.py")
 
     node_doc = read("docs/nodes/NODE-67-OBSERVABILITY.md")
     report = read("reports/nodes/NODE-67/implementation.md")
@@ -93,7 +94,7 @@ def main() -> None:
     require(boundary_tests, "test_business_value_error_is_not_reclassified_as_trace_context_error", "business error regression")
     require(middleware_tests, "test_downstream_value_error_is_not_misclassified_as_trace_context", "middleware business error regression")
     require(middleware_tests, "test_invalid_trace_does_not_short_circuit_authoritative_auth_semantics", "trace fail-open auth-order regression")
-    require(workflow, "apps/api/tests/test_observability_middleware_order_node67.py", "middleware-order CI coverage")
+    require(workflow, "apps/api/tests/test_observability_middleware_order_node67.py", "middleware-order test CI coverage")
 
     # Auth uses middleware-generated ids, not raw trace headers.
     require(auth_guard, 'request_id = getattr(request.state, "request_id", "unassigned")', "auth canonical request id")
@@ -185,11 +186,15 @@ def main() -> None:
 
     # NODE-66 SecurityHTTPMiddleware remains the response-security authority on
     # contract paths because trace/correlation metadata is fail-open and does not
-    # synthesize a pre-security response. The tests prove headers and prod docs shutdown.
+    # synthesize a pre-security response. Validate the real add/runtime order and
+    # make the second order validator an executed gate rather than dead code.
     require(app, "install_http_security(app, environment=runtime_environment)", "NODE-66 security composition")
-    require(app, "Request/trace metadata itself is fail-open", "middleware ordering rationale")
+    require(app, "RequestId/Trace metadata is fail-open", "middleware ordering rationale")
     if app.find("install_http_security(app, environment=runtime_environment)") > app.find("install_error_contract(app)"):
         raise SystemExit("NODE67_VALIDATION_FAILED:security middleware must be installed before request context middleware")
+    require(middleware_validator, "NODE67_PHANTOM_FINAL_SECURITY_LAYER_FORBIDDEN", "phantom layer rejection")
+    require(middleware_validator, "response = await call_next(request)", "idempotency pass-through proof")
+    require(workflow, "uv run python tools/node67/validate_middleware_order.py", "middleware-order validator execution")
     require(boundary_tests, "test_invalid_trace_restarts_without_weakening_node66_security_headers", "trace reset security test")
     require(boundary_tests, "test_production_invalid_trace_restarts_and_keeps_docs_shutdown_hsts", "trace reset production security test")
 
