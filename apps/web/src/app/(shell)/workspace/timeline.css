@@ -10,7 +10,17 @@
 .workspace-timeline-shell > .workspace-welcome { margin-bottom: 12px; }
 
 .agent-timeline { display: grid; gap: 12px; color: #27272a; }
-.agent-timeline-current { display: grid; gap: 6px; }
+.agent-timeline-current {
+  position: sticky;
+  z-index: 4;
+  top: -12px;
+  display: grid;
+  margin: -4px -4px 0;
+  padding: 8px 4px 9px;
+  gap: 6px;
+  background: rgba(251,251,252,.97);
+  backdrop-filter: blur(10px);
+}
 .timeline-section-label { color: #a1a1aa; font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
 .timeline-current-empty,
 .timeline-history-empty { padding: 18px 12px; border: 1px dashed #d4d4d8; border-radius: 12px; color: #a1a1aa; font-size: 11px; text-align: center; }
