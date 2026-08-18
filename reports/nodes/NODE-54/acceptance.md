@@ -21,7 +21,27 @@ Status: **IMPLEMENTED / VALIDATING / NOT COMPLETE**
 
 ## Hosted CI evidence
 
-Pending the first NODE-54 stacked-PR workflow execution. A queued workflow, a job failure with `steps=[]`, or a missing logs blob is infrastructure evidence only and does not count as code execution.
+Stacked PR: `#121` (`feat/node-53-projects-ui` ← `feat/node-54-ai-workspace`).
+
+First NODE-54 workflow execution:
+
+```text
+run id: 32090582518
+workflow: NODE-54 AI Workspace
+head: 712eca586c79bf300b76c9ddfc5270476335c070
+conclusion: failure
+
+workspace-contract job id: 95571801757
+workspace-contract conclusion: failure
+workspace-contract steps: []
+workspace-contract logs: BlobNotFound / HTTP 404
+
+workspace-web job id: 95571816417
+workspace-web conclusion: skipped
+workspace-web steps: null
+```
+
+No checkout, Python install, uv sync, static validator, pytest, Node setup, pnpm install, Vitest, TypeScript, ESLint, or Next.js build step executed. The same head simultaneously registered pre-run failures across repository CI and multiple NODE workflows. This is infrastructure evidence, not a NODE-54 code-test failure, and does not satisfy the Definition of Done.
 
 ## Completion blockers
 
