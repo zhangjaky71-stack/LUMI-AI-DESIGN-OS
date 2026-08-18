@@ -6,6 +6,7 @@ from .context import (
     start_message_context,
     start_request_context,
 )
+from .langsmith import LangSmithTracePort, SafeLangSmithTracer
 from .models import (
     LogLevel,
     MetricPoint,
@@ -20,10 +21,12 @@ from .telemetry import NoopTelemetrySink, SafeTelemetry, TelemetrySink
 __all__ = [
     "DeterministicSampler",
     "ErrorBudgetSnapshot",
+    "LangSmithTracePort",
     "LogLevel",
     "MetricPoint",
     "NoopTelemetrySink",
     "SLODefinition",
+    "SafeLangSmithTracer",
     "SafeTelemetry",
     "SamplingDecision",
     "SpanRecord",
