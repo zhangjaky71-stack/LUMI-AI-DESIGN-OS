@@ -1,0 +1,183 @@
+name: NODE-61 Collaboration
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/collaboration/**"
+      - "apps/api/src/lumi_api/api/v1/collaboration_*.py"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/src/lumi_api/persistence/models_collaboration.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260818_0021_collaboration.py"
+      - "apps/api/migrations/versions/20260818_0021_sql/**"
+      - "apps/api/tests/test_node61_collaboration_*.py"
+      - "apps/web/src/lib/collaboration/**"
+      - "apps/web/src/components/collaboration/**"
+      - "apps/web/src/components/workspace/ai-workspace.tsx"
+      - "apps/web/src/app/(shell)/workspace/comments.css"
+      - "apps/web/src/app/(shell)/workspace/layout.tsx"
+      - "tools/node61/**"
+      - "docs/nodes/NODE-61-COLLABORATION.md"
+      - "reports/nodes/NODE-61/**"
+      - ".github/workflows/node-61-collaboration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  NODE_VERSION: "24"
+  PNPM_VERSION: "11.4.0"
+  SQLALCHEMY_VERSION: "2.0.51"
+  ALEMBIC_VERSION: "1.18.5"
+  ASYNCPG_VERSION: "0.31.0"
+  NEXT_TELEMETRY_DISABLED: "1"
+  LUMI_API_ORIGIN: "http://127.0.0.1:8000"
+  LUMI_DATABASE_MIGRATION_URL: "postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi"
+
+jobs:
+  collaboration-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+
+      - name: Compile NODE-61 contracts
+        run: |
+          uv run python -m compileall -q \
+            apps/api/src/lumi_api/collaboration \
+            apps/api/src/lumi_api/api/v1/collaboration_dependencies.py \
+            apps/api/src/lumi_api/api/v1/collaboration_routes.py \
+            apps/api/src/lumi_api/api/v1/collaboration_schemas.py \
+            apps/api/src/lumi_api/persistence/models_collaboration.py \
+            apps/api/tests/test_node61_collaboration_contracts.py \
+            apps/api/tests/test_node61_collaboration_safety.py \
+            tools/node61
+
+      - name: Static Collaboration acceptance
+        run: uv run python tools/node61/validate_collaboration.py
+
+      - name: NODE-61 contract and safety tests
+        run: |
+          uv run pytest -q \
+            apps/api/tests/test_node61_collaboration_contracts.py \
+            apps/api/tests/test_node61_collaboration_safety.py
+
+      - name: Ruff NODE-61 backend
+        run: |
+          uv run ruff check --ignore E501,I001 \
+            apps/api/src/lumi_api/collaboration \
+            apps/api/src/lumi_api/api/v1/collaboration_dependencies.py \
+            apps/api/src/lumi_api/api/v1/collaboration_routes.py \
+            apps/api/src/lumi_api/api/v1/collaboration_schemas.py \
+            apps/api/src/lumi_api/persistence/models_collaboration.py \
+            apps/api/tests/test_node61_collaboration_contracts.py \
+            apps/api/tests/test_node61_collaboration_safety.py \
+            tools/node61
+
+      - name: Prepare local PostgreSQL
+        run: |
+          cp infra/compose/env.local.example infra/compose/.env
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml up -d --wait --wait-timeout 180 postgres
+
+      - name: Apply full migration chain through collaboration
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+
+      - name: Verify durable collaboration tables and ephemeral presence boundary
+        run: |
+          tables="$(docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c \
+            "SELECT concat_ws(',', to_regclass('public.comment_threads'), to_regclass('public.comments'), to_regclass('public.comment_revisions'), coalesce(to_regclass('public.presence')::text,'NULL'), coalesce(to_regclass('public.presences')::text,'NULL'));" )"
+          test "$tables" = "comment_threads,comments,comment_revisions,NULL,NULL"
+
+      - name: Parse NODE-61 gap ledger
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          ledger = json.loads(Path("reports/nodes/NODE-61/gap-ledger.json").read_text(encoding="utf-8"))
+          assert ledger["node"] == "NODE-61"
+          assert ledger["status"] == "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE"
+          assert any(gap["severity"] == "P0" and gap["status"] == "open" for gap in ledger["gaps"])
+          assert any(gap["id"] == "NODE61-GAP-003" and gap["status"] == "closed" for gap in ledger["gaps"])
+          assert any(gap["id"] == "NODE61-GAP-004" and gap["status"] == "closed" for gap in ledger["gaps"])
+          print("NODE61_GAP_LEDGER_PARSE_PASS")
+          PY
+
+      - name: PostgreSQL diagnostics
+        if: failure()
+        run: |
+          mkdir -p reports/nodes/NODE-61/runtime
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml ps > reports/nodes/NODE-61/runtime/compose-ps.txt 2>&1 || true
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml logs --no-color --tail=300 postgres > reports/nodes/NODE-61/runtime/postgres.log 2>&1 || true
+
+      - name: Upload NODE-61 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-61-collaboration-${{ github.run_id }}
+          path: reports/nodes/NODE-61/runtime
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Cleanup PostgreSQL
+        if: always()
+        run: docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml down --volumes --remove-orphans || true
+
+  collaboration-web:
+    needs: collaboration-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+          pnpm --version
+
+      - name: Install frozen JS workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Collaboration web contract tests
+        run: pnpm --filter @lumi/web exec vitest run src/lib/collaboration/types.test.ts
+
+      - name: Typecheck web application
+        run: pnpm --filter @lumi/web typecheck
+
+      - name: Lint NODE-61 web surface
+        run: |
+          pnpm --filter @lumi/web exec eslint \
+            src/lib/collaboration \
+            src/components/collaboration \
+            src/components/workspace/ai-workspace.tsx \
+            'src/app/(shell)/workspace/layout.tsx'
+
+      - name: Production Next.js build
+        run: pnpm --filter @lumi/web build
