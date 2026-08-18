@@ -18,7 +18,7 @@ def upgrade() -> None:
     op.execute(
         """
         CREATE TABLE platform_provider_cost_guard (
-            policy_key varchar(64) PRIMARY KEY,
+            policy_key varchar(64) NOT NULL,
             daily_cap_usd numeric(20,8) NOT NULL,
             enabled boolean NOT NULL DEFAULT true,
             fail_closed boolean NOT NULL DEFAULT true,
@@ -26,8 +26,11 @@ def upgrade() -> None:
             created_at timestamptz NOT NULL DEFAULT now(),
             updated_at timestamptz NOT NULL DEFAULT now(),
             version integer NOT NULL DEFAULT 1,
-            CONSTRAINT ck_platform_provider_cost_guard_cap CHECK (daily_cap_usd > 0),
-            CONSTRAINT ck_platform_provider_cost_guard_key CHECK (length(policy_key) BETWEEN 1 AND 64)
+            CONSTRAINT pk_platform_provider_cost_guard PRIMARY KEY (policy_key),
+            CONSTRAINT ck_platform_provider_cost_guard_cap
+                CHECK (daily_cap_usd > 0 AND daily_cap_usd <= 100.00000000),
+            CONSTRAINT ck_platform_provider_cost_guard_key
+                CHECK (length(policy_key) BETWEEN 1 AND 64)
         )
         """
     )
