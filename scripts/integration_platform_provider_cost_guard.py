@@ -19,6 +19,9 @@ from lumi_api.costs import (
 from lumi_api.persistence.seed import ORG_ID
 
 
+MAX_PLATFORM_DAILY_CAP = Decimal("100.00000000")
+
+
 def _dsn(name: str) -> str:
     return os.environ[name].replace("postgresql+asyncpg://", "postgresql://", 1)
 
@@ -82,9 +85,23 @@ async def main_async() -> None:
             """
         )
         assert original_policy is not None
-        assert Decimal(original_policy["daily_cap_usd"]) == Decimal("100.00000000")
+        assert Decimal(original_policy["daily_cap_usd"]) == MAX_PLATFORM_DAILY_CAP
         assert original_policy["enabled"] is True
         assert original_policy["fail_closed"] is True
+
+        # Even the migration/admin role cannot raise the hard ceiling above $100.
+        try:
+            await migration.execute(
+                """
+                UPDATE platform_provider_cost_guard
+                SET daily_cap_usd=100.00000001, updated_at=now(), version=version+1
+                WHERE policy_key='platform'
+                """
+            )
+        except asyncpg.CheckViolationError:
+            pass
+        else:
+            raise AssertionError("database constraint must reject provider cap above $100")
 
         await migration.execute(
             """
@@ -124,6 +141,11 @@ async def main_async() -> None:
             )
         )
         test_cap = baseline_spent + baseline_active + Decimal("0.30")
+        if test_cap > MAX_PLATFORM_DAILY_CAP:
+            raise AssertionError(
+                "platform provider-cost acceptance requires less than $99.70 "
+                f"of pre-existing guarded usage; observed baseline={baseline_spent + baseline_active}"
+            )
         await migration.execute(
             """
             UPDATE platform_provider_cost_guard
@@ -249,7 +271,7 @@ async def main_async() -> None:
             await runtime.execute(
                 """
                 UPDATE platform_provider_cost_guard
-                SET daily_cap_usd=999999 WHERE policy_key='platform'
+                SET daily_cap_usd=99 WHERE policy_key='platform'
                 """
             )
         except asyncpg.InsufficientPrivilegeError:
