@@ -16,7 +16,8 @@ from .contracts import (
     SafeRunSummary,
     role_permissions,
 )
-from .repository import PostgresPlatformAdminRepository
+from .factory import PostgresPlatformAdminServiceFactory
+from .repository_safe import PostgresPlatformAdminRepository
 from .service import PlatformAdminService
 
 __all__ = [
@@ -34,6 +35,7 @@ __all__ = [
     "PlatformAdminService",
     "PlatformAdminUnavailable",
     "PostgresPlatformAdminRepository",
+    "PostgresPlatformAdminServiceFactory",
     "ProviderControlSummary",
     "SafeDeadLetter",
     "SafeRunSummary",

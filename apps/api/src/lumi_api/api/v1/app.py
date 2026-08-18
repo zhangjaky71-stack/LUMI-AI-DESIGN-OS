@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from fastapi import Depends, FastAPI
 
+from .admin_auth_guard import establish_platform_admin_identity
+from .admin_routes import router as admin_router
 from .agent_run_routes import router as agent_run_router
 from .agent_workspace_routes import router as agent_workspace_router
 from .approval_routes import router as approval_router
@@ -39,6 +41,7 @@ def create_contract_app() -> FastAPI:
     app.add_middleware(IdempotencyReplayMiddleware)
     app.include_router(auth_router)
     app.include_router(billing_webhook_router)
+    app.include_router(admin_router, dependencies=[Depends(establish_platform_admin_identity)])
     app.include_router(router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(asset_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(asset_intelligence_router, dependencies=[Depends(enforce_api_auth)])
