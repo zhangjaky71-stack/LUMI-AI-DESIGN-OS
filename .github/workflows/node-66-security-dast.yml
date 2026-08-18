@@ -1,0 +1,57 @@
+name: NODE-66 Security DAST
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * 3"
+
+permissions:
+  contents: read
+
+jobs:
+  staging-baseline:
+    name: staging-baseline
+    if: vars.LUMI_STAGING_URL != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate configured staging target
+        env:
+          TARGET_URL: ${{ vars.LUMI_STAGING_URL }}
+        run: |
+          python - <<'PY'
+          import ipaddress
+          import os
+          from urllib.parse import urlsplit
+
+          value = os.environ["TARGET_URL"].strip()
+          parsed = urlsplit(value)
+          if parsed.scheme != "https":
+              raise SystemExit("NODE66_DAST_TARGET_MUST_USE_HTTPS")
+          if not parsed.hostname:
+              raise SystemExit("NODE66_DAST_TARGET_HOST_REQUIRED")
+          if parsed.username or parsed.password:
+              raise SystemExit("NODE66_DAST_TARGET_CREDENTIALS_FORBIDDEN")
+          if parsed.query or parsed.fragment:
+              raise SystemExit("NODE66_DAST_TARGET_QUERY_FRAGMENT_FORBIDDEN")
+          if parsed.hostname.casefold() in {"localhost", "metadata.google.internal", "host.docker.internal"}:
+              raise SystemExit("NODE66_DAST_TARGET_INTERNAL_HOST_FORBIDDEN")
+          try:
+              address = ipaddress.ip_address(parsed.hostname)
+          except ValueError:
+              address = None
+          if address is not None and not address.is_global:
+              raise SystemExit("NODE66_DAST_TARGET_NON_GLOBAL_IP_FORBIDDEN")
+          print(f"NODE66_DAST_TARGET_VALID:{parsed.hostname}")
+          PY
+
+      - name: Run blocking OWASP ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          target: ${{ vars.LUMI_STAGING_URL }}
+          fail_action: true
+          allow_issue_writing: false
+          artifact_name: node-66-zap-baseline-${{ github.run_id }}
+          cmd_options: "-a"
