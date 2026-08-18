@@ -40,8 +40,6 @@ class PostgresGovernanceRepository:
 
     def append_audit(self, event: AuditWrite) -> AuditRecord:
         event_id = new_uuid7()
-        # Serialize the chain head per organization inside the caller transaction. Without
-        # this fence two concurrent writers can observe the same previous_hash and fork.
         self.session.execute(
             text(
                 "SELECT pg_advisory_xact_lock(hashtextextended(CAST(:scope AS text), 0))"
@@ -349,15 +347,46 @@ class PostgresGovernanceRepository:
         ).mappings().one()
         return self._deletion(row)
 
-    def mark_deletion_erasing(self, request_id: UUID) -> DeletionRequest:
+    def mark_deletion_deactivated(self, request_id: UUID) -> DeletionRequest:
         return self._transition_deletion(
             request_id,
-            from_states=("IDENTIFIED", "DEACTIVATED"),
-            status="ERASING",
-            object_gc_status="RUNNING",
-            search_gc_status="RUNNING",
+            from_states=("IDENTIFIED",),
+            status="DEACTIVATED",
+            object_gc_status="PENDING",
+            search_gc_status="PENDING",
             require_no_recorded_holds=True,
         )
+
+    def mark_deletion_erasing(self, request_id: UUID) -> DeletionRequest:
+        row = self.session.execute(
+            text(
+                """
+                UPDATE governance_deletion_requests AS d
+                SET status='ERASING',object_gc_status='RUNNING',search_gc_status='RUNNING',
+                    updated_at=now(),version=version+1
+                WHERE d.id=:request_id
+                  AND d.status='DEACTIVATED'
+                  AND jsonb_array_length(d.hold_blockers_json)=0
+                  AND NOT EXISTS (
+                    SELECT 1 FROM governance_legal_holds h
+                    WHERE h.organization_id=d.organization_id
+                      AND h.released_at IS NULL
+                      AND (
+                        (h.scope_type=d.subject_type AND h.scope_id=d.subject_id)
+                        OR (
+                          h.scope_type='ORGANIZATION'
+                          AND h.scope_id=CAST(d.organization_id AS text)
+                        )
+                      )
+                  )
+                RETURNING d.*
+                """
+            ),
+            {"request_id": request_id},
+        ).mappings().one_or_none()
+        if row is None:
+            raise GovernanceConflict("GOVERNANCE_DELETION_STATE_OR_HOLD_CONFLICT")
+        return self._deletion(row)
 
     def mark_deletion_completed(self, request_id: UUID) -> DeletionRequest:
         return self._transition_deletion(
@@ -415,8 +444,13 @@ class PostgresGovernanceRepository:
         complete: bool = False,
         require_no_recorded_holds: bool = False,
     ) -> DeletionRequest:
-        state_params = {f"from_state_{index}": value for index, value in enumerate(from_states)}
-        state_clause = ",".join(f":from_state_{index}" for index in range(len(from_states)))
+        state_params = {
+            f"from_state_{index}": value
+            for index, value in enumerate(from_states)
+        }
+        state_clause = ",".join(
+            f":from_state_{index}" for index in range(len(from_states))
+        )
         hold_clause = (
             " AND jsonb_array_length(hold_blockers_json)=0"
             if require_no_recorded_holds
