@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from fastapi import Depends, FastAPI
 
+from lumi_api.security import install_http_security
+
 from .admin_auth_guard import establish_platform_admin_identity
 from .admin_routes import router as admin_router
 from .agent_run_routes import router as agent_run_router
@@ -38,6 +40,9 @@ def create_contract_app() -> FastAPI:
         redoc_url="/api/redoc",
         openapi_url="/api/openapi.json",
     )
+    # Install before the error contract so RequestIdMiddleware remains outside the
+    # security gate and every rejection receives the canonical request id.
+    install_http_security(app)
     install_error_contract(app)
     app.add_middleware(IdempotencyReplayMiddleware)
     app.include_router(auth_router)
