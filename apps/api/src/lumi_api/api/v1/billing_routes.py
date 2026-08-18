@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Header, Query, Request
 

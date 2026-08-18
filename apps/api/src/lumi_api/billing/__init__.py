@@ -20,7 +20,8 @@ from .contracts import (
 )
 from .factory import PostgresBillingServiceFactory
 from .provider import MockPaymentProvider
-from .repository import PostgresBillingRepository
+from .reconciliation import BillingReconciliation, PostgresBillingReconciliationService
+from .repository_safe import PostgresBillingRepository
 from .service import BillingService
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "BillingForbidden",
     "BillingNotFound",
     "BillingOverview",
+    "BillingReconciliation",
     "BillingService",
     "CheckoutSession",
     "CreditEventType",
@@ -42,6 +44,7 @@ __all__ = [
     "PaymentEventStatus",
     "PlanVersionRecord",
     "PortalSession",
+    "PostgresBillingReconciliationService",
     "PostgresBillingRepository",
     "PostgresBillingServiceFactory",
     "SubscriptionRecord",

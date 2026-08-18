@@ -1,0 +1,227 @@
+name: NODE-63 Billing
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/billing/**"
+      - "apps/api/src/lumi_api/api/v1/billing_*.py"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/src/lumi_api/persistence/models_billing.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260818_0023_billing.py"
+      - "apps/api/migrations/versions/20260818_0023_sql/**"
+      - "apps/api/tests/test_billing_node63.py"
+      - "apps/web/src/lib/billing/**"
+      - "apps/web/src/components/billing/**"
+      - "apps/web/src/app/(shell)/settings/**"
+      - "tools/node63/**"
+      - "docs/nodes/NODE-63-BILLING.md"
+      - "reports/nodes/NODE-63/**"
+      - ".github/workflows/node-63-billing.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  NODE_VERSION: "24"
+  PNPM_VERSION: "11.4.0"
+  SQLALCHEMY_VERSION: "2.0.51"
+  ALEMBIC_VERSION: "1.18.5"
+  ASYNCPG_VERSION: "0.31.0"
+  NEXT_TELEMETRY_DISABLED: "1"
+  LUMI_API_ORIGIN: "http://127.0.0.1:8000"
+  LUMI_DATABASE_MIGRATION_URL: "postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi"
+
+jobs:
+  billing-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+
+      - name: Compile NODE-63 contracts
+        run: |
+          uv run python -m compileall -q \
+            apps/api/src/lumi_api/billing \
+            apps/api/src/lumi_api/api/v1/billing_dependencies.py \
+            apps/api/src/lumi_api/api/v1/billing_routes.py \
+            apps/api/src/lumi_api/api/v1/billing_schemas.py \
+            apps/api/src/lumi_api/persistence/models_billing.py \
+            apps/api/migrations/versions/20260818_0023_billing.py \
+            apps/api/tests/test_billing_node63.py \
+            tools/node63
+
+      - name: Static Billing acceptance
+        run: uv run python tools/node63/validate_billing.py
+
+      - name: NODE-63 contract tests
+        run: uv run pytest -q apps/api/tests/test_billing_node63.py
+
+      - name: Cost Ledger regression tests
+        run: |
+          uv run pytest -q \
+            apps/api/tests/test_cost_contracts_node27.py \
+            apps/api/tests/test_cost_api_node27.py
+
+      - name: Ruff NODE-63 backend
+        run: |
+          uv run ruff check --ignore E501,I001 \
+            apps/api/src/lumi_api/billing \
+            apps/api/src/lumi_api/api/v1/billing_dependencies.py \
+            apps/api/src/lumi_api/api/v1/billing_routes.py \
+            apps/api/src/lumi_api/api/v1/billing_schemas.py \
+            apps/api/src/lumi_api/persistence/models_billing.py \
+            apps/api/tests/test_billing_node63.py \
+            tools/node63
+
+      - name: Pyright NODE-63 backend
+        run: |
+          uv run pyright \
+            apps/api/src/lumi_api/billing \
+            apps/api/src/lumi_api/api/v1/billing_dependencies.py \
+            apps/api/src/lumi_api/api/v1/billing_routes.py \
+            apps/api/src/lumi_api/api/v1/billing_schemas.py \
+            apps/api/src/lumi_api/persistence/models_billing.py
+
+      - name: Prepare local PostgreSQL
+        run: |
+          cp infra/compose/env.local.example infra/compose/.env
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml up -d --wait --wait-timeout 180 postgres
+
+      - name: Apply full migration chain through billing
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+
+      - name: Verify durable Billing schema
+        run: |
+          result="$(docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c \
+            "SELECT concat_ws(',',
+              to_regclass('public.billing_plans'),
+              to_regclass('public.billing_plan_versions'),
+              to_regclass('public.billing_accounts'),
+              to_regclass('public.billing_subscriptions'),
+              to_regclass('public.billing_credit_wallets'),
+              to_regclass('public.billing_credit_ledger'),
+              to_regclass('public.billing_invoice_refs'),
+              to_regclass('public.billing_payment_events'));" )"
+          test "$result" = "billing_plans,billing_plan_versions,billing_accounts,billing_subscriptions,billing_credit_wallets,billing_credit_ledger,billing_invoice_refs,billing_payment_events"
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml \
+            exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c \
+            "SELECT count(*) FROM pg_trigger WHERE tgname IN ('trg_billing_credit_ledger_immutable','trg_billing_plan_version_material_immutable') AND NOT tgisinternal;" | grep -qx 2
+
+      - name: Verify PlanVersion material immutability
+        run: |
+          compose="docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml"
+          $compose exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -v ON_ERROR_STOP=1 -U lumi_migration -d lumi -c \
+            "INSERT INTO billing_plans (id, plan_key, name, active, created_at, updated_at, version)
+             VALUES ('00000000-0000-7000-8000-000000000063','node63-ci','NODE63 CI',true,now(),now(),1);
+             INSERT INTO billing_plan_versions (
+               id, plan_id, version, currency, monthly_price, included_credits,
+               postpaid_allowed, entitlements_json, pricing_policy_json, effective_at, created_at
+             ) VALUES (
+               '00000000-0000-7000-8000-000000000064',
+               '00000000-0000-7000-8000-000000000063',1,'USD',10,100,false,
+               '{\"video.enabled\":true}'::jsonb,
+               '{\"version\":\"ci-v1\",\"rates\":{\"image_generation\":\"2\"}}'::jsonb,
+               now(),now());"
+          if $compose exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -v ON_ERROR_STOP=1 -U lumi_migration -d lumi -c \
+            "UPDATE billing_plan_versions SET monthly_price=99 WHERE id='00000000-0000-7000-8000-000000000064';"; then
+            echo "PlanVersion material mutation unexpectedly succeeded" >&2
+            exit 1
+          fi
+
+      - name: Parse NODE-63 gap ledger
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          ledger = json.loads(Path("reports/nodes/NODE-63/gap-ledger.json").read_text(encoding="utf-8"))
+          assert ledger["node"] == "NODE-63"
+          assert ledger["status"] == "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE"
+          assert any(gap["severity"] == "P0" and gap["status"] == "open" for gap in ledger["gaps"])
+          assert any(gap["id"] == "NODE63-GAP-101" and gap["status"] == "closed" for gap in ledger["gaps"])
+          assert any(gap["id"] == "NODE63-GAP-104" and gap["status"] == "closed" for gap in ledger["gaps"])
+          print("NODE63_GAP_LEDGER_PARSE_PASS")
+          PY
+
+      - name: PostgreSQL diagnostics
+        if: failure()
+        run: |
+          mkdir -p reports/nodes/NODE-63/runtime
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml ps > reports/nodes/NODE-63/runtime/compose-ps.txt 2>&1 || true
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml logs --no-color --tail=300 postgres > reports/nodes/NODE-63/runtime/postgres.log 2>&1 || true
+
+      - name: Upload NODE-63 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-63-billing-${{ github.run_id }}
+          path: reports/nodes/NODE-63/runtime
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Cleanup PostgreSQL
+        if: always()
+        run: docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml down --volumes --remove-orphans || true
+
+  billing-web:
+    needs: billing-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+          pnpm --version
+
+      - name: Install frozen JS workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Billing parser tests
+        run: pnpm --filter @lumi/web exec vitest run src/lib/billing/types.test.ts
+
+      - name: Typecheck web application
+        run: pnpm --filter @lumi/web typecheck
+
+      - name: Lint NODE-63 web surface
+        run: |
+          pnpm --filter @lumi/web exec eslint \
+            src/lib/billing \
+            src/components/billing \
+            'src/app/(shell)/settings/page.tsx' \
+            'src/app/(shell)/settings/billing/page.tsx'
+
+      - name: Production Next.js build
+        run: pnpm --filter @lumi/web build

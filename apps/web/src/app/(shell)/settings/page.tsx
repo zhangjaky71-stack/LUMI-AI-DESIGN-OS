@@ -1,7 +1,10 @@
+import Link from "next/link";
+
 import { requireAppSession } from "@/lib/auth/session";
 
 export default async function SettingsShellPage() {
   const session = await requireAppSession();
+  const canReadBilling = session.permissions.includes("billing.read");
   return (
     <div className="page-stack">
       <section className="page-heading compact">
@@ -26,6 +29,12 @@ export default async function SettingsShellPage() {
           <span>Signed in as</span>
           <strong>{session.user.displayName ?? session.user.email ?? session.user.id}</strong>
         </div>
+        {canReadBilling ? (
+          <div className="settings-row">
+            <span>Billing</span>
+            <Link href="/settings/billing">Plan, credits and invoices</Link>
+          </div>
+        ) : null}
       </section>
     </div>
   );

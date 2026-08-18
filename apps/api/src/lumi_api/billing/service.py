@@ -8,6 +8,7 @@ from uuid import UUID
 from .contracts import (
     BillingConflict,
     BillingForbidden,
+    BillingNotFound,
     BillingOverview,
     CheckoutSession,
     CreditEventType,
@@ -21,7 +22,7 @@ from .contracts import (
     SubscriptionState,
     require_positive_credit_amount,
 )
-from .repository import PostgresBillingRepository
+from .repository_safe import PostgresBillingRepository
 
 _ACTIVE_ENTITLEMENT_STATES = {
     SubscriptionState.TRIALING,
@@ -191,7 +192,7 @@ class BillingService:
             return status
         try:
             return self.repository.apply_payment_event(event)
-        except Exception as exc:
+        except (BillingConflict, BillingNotFound, ValueError) as exc:
             self.repository.mark_payment_event_rejected(event, type(exc).__name__)
             raise
 

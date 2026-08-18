@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from .contracts import InvalidWebhook, PaymentEventStatus, PaymentProvider
-from .repository import PostgresBillingRepository
+from .repository_safe import PostgresBillingRepository
 from .service import BillingService
 
 
