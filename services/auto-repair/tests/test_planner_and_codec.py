@@ -155,7 +155,7 @@ def test_planner_does_not_repeat_identical_failed_directive() -> None:
     )
     second = DeterministicRepairPlanner().plan(spec=retry.spec, job=retry)
     assert second.kind is RepairKind.MANUAL_REVIEW
-    assert "REPAIR_NO_REGISTERED_SAFE_ACTION" in second.reason_codes
+    assert "REPAIR_NO_UNTRIED_REGISTERED_SAFE_ACTION" in second.reason_codes
 
 
 def test_job_codec_round_trips_violation_code_and_exact_promotion_audit() -> None:
