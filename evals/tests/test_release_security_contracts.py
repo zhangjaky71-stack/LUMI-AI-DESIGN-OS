@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 
@@ -11,10 +12,14 @@ def _read(relative: str) -> str:
 
 
 def _resource_block(source: str, resource_type: str, name: str) -> str:
-    marker = f'resource "{resource_type}" "{name}" {{'
+    return _hcl_block(source, f'resource "{resource_type}" "{name}" {{')
+
+
+def _hcl_block(source: str, marker: str) -> str:
     start = source.index(marker)
+    brace = source.index("{", start)
     depth = 0
-    for index in range(start, len(source)):
+    for index in range(brace, len(source)):
         char = source[index]
         if char == "{":
             depth += 1
@@ -22,7 +27,7 @@ def _resource_block(source: str, resource_type: str, name: str) -> str:
             depth -= 1
             if depth == 0:
                 return source[start : index + 1]
-    raise AssertionError(f"unterminated Terraform resource: {resource_type}.{name}")
+    raise AssertionError(f"unterminated HCL block: {marker}")
 
 
 def test_sandbox_runtime_is_forced_onto_restricted_egress() -> None:
@@ -95,15 +100,67 @@ def test_provider_cost_guard_uses_canonical_node27_ledger() -> None:
     adapter = _read("apps/api/src/lumi_api/costs/model_gateway_adapter.py")
 
     assert "100.00000000" in migration
+    assert "daily_cap_usd > 0 AND daily_cap_usd <= 100.00000000" in migration
     assert "fail_closed boolean NOT NULL DEFAULT true" in migration
     assert "REVOKE INSERT, UPDATE, DELETE" in migration
-    assert 'cost_basis=\'provider_cost\'' in guard
+    assert "FROM platform_provider_cost_guard" in guard
+    assert "cost_basis='provider_cost'" in guard
     assert "FROM cost_ledger" in guard
     assert "FROM cost_reservations" in guard
     assert "pg_advisory_xact_lock" in guard
     assert "cost-budget:platform:provider-usd:utc-day" in guard
     assert "PlatformGuardedCostGateway" in adapter
     assert "self.gateway = PlatformGuardedCostGateway(dsn)" in adapter
+
+
+def test_hosted_model_gateway_cannot_fall_back_to_request_local_budget() -> None:
+    path = ROOT / "apps/api/src/lumi_api/model_gateway_runtime.py"
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(path))
+    factory = next(
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "build_hosted_model_gateway"
+    )
+    parameter_names = {
+        item.arg
+        for item in [
+            *factory.args.posonlyargs,
+            *factory.args.args,
+            *factory.args.kwonlyargs,
+        ]
+    }
+
+    assert "budget_guard" not in parameter_names
+    assert "PostgresModelCostAccounting(database_dsn)" in source
+    assert "LedgerBudgetGuard(accounting)" in source
+    assert "budget_guard=budget_guard" in source
+    assert "RequestBudgetGuard" not in source
+
+
+def test_provider_credentials_only_reach_model_gateway() -> None:
+    provider_keys = (
+        "LUMI_MODEL_PROVIDER_SECRET",
+        "LUMI_MEDIA_PROVIDER_SECRET",
+    )
+    for environment in ("staging", "production"):
+        source = _read(f"infra/iac/environments/{environment}/app/main.tf")
+        gateway = _hcl_block(source, "model-gateway = {")
+        assert 'LUMI_DATABASE_URL          = local.secret_arns["database/app"]' in gateway
+        assert 'LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"]' in gateway
+        assert 'LUMI_MEDIA_PROVIDER_SECRET = local.secret_arns["providers/media"]' in gateway
+
+        for service in (
+            "api",
+            "agent-runtime",
+            "tool-gateway",
+            "worker-media",
+            "sandbox-runtime",
+        ):
+            block = _hcl_block(source, f"{service} = {{")
+            for key in provider_keys:
+                assert key not in block, f"{environment}/{service} received {key}"
 
 
 def test_release_closure_does_not_create_second_provider_ledger() -> None:
