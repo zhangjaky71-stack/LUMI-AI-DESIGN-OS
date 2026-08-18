@@ -71,6 +71,33 @@ def main() -> int:
         "GRANT SELECT, INSERT, UPDATE ON quota_limits",
     )
 
+    platform_migration = "apps/api/alembic/versions/0018_platform_provider_cost_guard.py"
+    require(
+        platform_migration,
+        'down_revision = "0017_knowledge_engine"',
+        "CREATE TABLE platform_provider_cost_guard",
+        "100.00000000",
+        "daily_cap_usd > 0 AND daily_cap_usd <= 100.00000000",
+        "fail_closed boolean NOT NULL DEFAULT true",
+        "CONSTRAINT pk_platform_provider_cost_guard PRIMARY KEY (policy_key)",
+        "REVOKE INSERT, UPDATE, DELETE ON platform_provider_cost_guard FROM lumi_app",
+        "GRANT SELECT ON platform_provider_cost_guard TO lumi_app",
+    )
+
+    require(
+        "apps/api/src/lumi_api/persistence/models/platform_cost_guard.py",
+        "class PlatformProviderCostGuard",
+        '__tablename__ = "platform_provider_cost_guard"',
+        "Numeric(20, 8)",
+        "daily_cap_usd > 0 AND daily_cap_usd <= 100.00000000",
+        "fail_closed",
+    )
+    require(
+        "apps/api/src/lumi_api/persistence/models/__init__.py",
+        "from .platform_cost_guard import PlatformProviderCostGuard",
+        '"PlatformProviderCostGuard"',
+    )
+
     require(
         "apps/api/src/lumi_api/costs/contracts.py",
         "class ActualCost",
@@ -109,12 +136,32 @@ def main() -> int:
         raise SystemExit("append-only ledger replay must require SELECT only")
 
     require(
+        "apps/api/src/lumi_api/costs/platform_guard.py",
+        "class PlatformGuardedCostGateway",
+        "class PlatformProviderCostGuardUnavailable",
+        "pg_advisory_xact_lock",
+        "cost-budget:platform:provider-usd:utc-day",
+        "FROM platform_provider_cost_guard",
+        "FROM cost_ledger",
+        "FROM cost_reservations",
+        "cost_basis='provider_cost'",
+        "entry_type IN ('actual_cost','adjustment','reversal')",
+        "spent + active + projected_amount > cap",
+        "super().reserve(request)",
+        "super().commit(handle, actual)",
+        "super().release(handle, reason=reason)",
+    )
+
+    require(
         "apps/api/src/lumi_api/costs/model_gateway_adapter.py",
         "class PostgresModelCostAccounting",
+        "PlatformGuardedCostGateway",
+        "self.gateway = PlatformGuardedCostGateway(dsn)",
         "reserve_provider_cost",
         "commit_provider_cost",
         "release_provider_cost",
         "external_provider_request_id=provider_request_id",
+        '"platform_guard": "utc_day"',
     )
     model_port = require(
         "services/model-gateway/src/lumi_model_gateway/cost_accounting.py",
@@ -172,6 +219,18 @@ def main() -> int:
         "concurrent generation quota must reject third lease",
         "runtime mutation must be denied",
         "mock-price-v1",
+    )
+    require(
+        "scripts/integration_platform_provider_cost_guard.py",
+        "asyncio.gather",
+        "len(handles) == 3",
+        "PlatformGuardedCostGateway",
+        "baseline_spent",
+        "baseline_active",
+        "disabled platform provider guard must fail closed",
+        "post-overshoot provider reservation must be denied",
+        "runtime must not mutate platform provider cost policy",
+        "platform provider USD/day hard-stop PostgreSQL acceptance: PASS",
     )
     require(
         "scripts/integration_cost_privileges.py",
