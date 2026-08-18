@@ -4,6 +4,7 @@ import os
 
 from fastapi import Depends, FastAPI
 
+from lumi_api.observability import DeterministicSampler, PythonJsonLoggingSink, SafeTelemetry
 from lumi_api.security import install_http_security
 
 from .admin_auth_guard import establish_platform_admin_identity
@@ -44,6 +45,10 @@ def create_contract_app(*, environment: str | None = None) -> FastAPI:
         redoc_url="/api/redoc" if expose_interactive_docs else None,
         openapi_url="/api/openapi.json" if expose_interactive_docs else None,
     )
+    # Logs have a safe standard-library JSON baseline immediately. Trace/metric
+    # exporters are deliberately composed separately through an OTel/Collector port.
+    app.state.telemetry = SafeTelemetry(PythonJsonLoggingSink())
+    app.state.telemetry_sampler = DeterministicSampler(normal_sample_rate=0.10)
     # Install before the error contract so RequestIdMiddleware remains outside the
     # security gate and every security rejection receives the canonical request id.
     install_http_security(app, environment=runtime_environment)
