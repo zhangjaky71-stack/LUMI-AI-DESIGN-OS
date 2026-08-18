@@ -1,5 +1,5 @@
 import { api } from "@/lib/api/client";
-import { tenantHeaders } from "@/lib/workspace/api";
+import { assertPublicVersionProvenance } from "@/lib/versions/security";
 import {
   type SafeVersionProvenance,
   type VersionBranch,
@@ -12,6 +12,7 @@ import {
   parseVersionHistory,
   parseVersionItem,
 } from "@/lib/versions/types";
+import { tenantHeaders } from "@/lib/workspace/api";
 
 export async function getVersionHistory(
   organizationId: string,
@@ -32,6 +33,7 @@ export async function getSafeVersionProvenance(
     `/api/v1/artifact-versions/${encodeURIComponent(versionId)}/provenance-safe`,
     { headers: tenantHeaders(organizationId) },
   );
+  assertPublicVersionProvenance(payload);
   return parseSafeVersionProvenance(payload);
 }
 
@@ -76,12 +78,5 @@ export async function restoreVersionForUser(
     },
     { headers: tenantHeaders(organizationId) },
   );
-  return parseVersionItem({ ...asObject(payload), preview: {} });
-}
-
-function asObject(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("VERSION_RESTORE_PAYLOAD_INVALID");
-  }
-  return value as Record<string, unknown>;
+  return parseVersionItem(payload);
 }
