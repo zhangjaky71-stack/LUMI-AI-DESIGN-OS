@@ -86,7 +86,19 @@ describe("NODE-55 Canvas projection contract", () => {
     });
   });
 
-  it("maps generic subtree delete to recursive server semantics", () => {
+  it("maps text content and subtree delete to server semantics", () => {
+    expect(
+      wireDescriptor({
+        type: "SET_TEXT",
+        targetIds: ["text-1"],
+        payload: { content: "Updated headline" },
+      }),
+    ).toEqual({
+      type: "SET_TEXT",
+      target_ids: ["text-1"],
+      payload: { text: "Updated headline" },
+    });
+
     expect(
       wireDescriptor({
         type: "DELETE_NODE",
