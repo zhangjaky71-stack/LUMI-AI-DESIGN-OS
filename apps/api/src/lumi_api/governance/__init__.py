@@ -20,7 +20,13 @@ from .contracts import (
     SafeChangeSummary,
 )
 from .factory import PostgresGovernanceServiceFactory
-from .redaction import redact_audit_mapping, redact_audit_value, sanitize_url, sha256_ref
+from .redaction import (
+    redact_audit_mapping,
+    redact_audit_text,
+    redact_audit_value,
+    sanitize_url,
+    sha256_ref,
+)
 from .repository import PostgresGovernanceRepository
 from .service import (
     AuditExportPort,
@@ -60,6 +66,7 @@ __all__ = [
     "SearchDeletionPort",
     "SubjectDeactivationPort",
     "redact_audit_mapping",
+    "redact_audit_text",
     "redact_audit_value",
     "sanitize_url",
     "sha256_ref",
