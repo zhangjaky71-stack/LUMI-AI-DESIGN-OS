@@ -1,0 +1,34 @@
+{
+  "node": "NODE-54",
+  "status": "IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "branch": "feat/node-54-ai-workspace",
+  "stack_base": "feat/node-53-projects-ui",
+  "implemented": [
+    "tenant-scoped Project/AgentRun workspace",
+    "canonical NODE-28 control projection API",
+    "Last-Event-ID safe-event SSE endpoint",
+    "durable replay composition port with fail-closed 503",
+    "browser fetch+ReadableStream reconnect/dedupe client",
+    "canonical-state refetch after stream termination",
+    "exact ArtifactVersion admission and selection",
+    "NODE-55 selected-node exact-document-version handoff",
+    "stale-fenced approval using NODE-28 proven approve action",
+    "cancellation with external side-effect reconciliation warning",
+    "server and browser recursive private-reasoning filters",
+    "responsive Agent/Artifact/Inspector workspace UI",
+    "API/browser unit tests and static acceptance validator"
+  ],
+  "not_implemented_or_not_proven": [
+    "production durable event replay composition",
+    "Project Core AgentRun to LangGraph start integration proof",
+    "browser E2E and hosted CI execution evidence",
+    "durable conversation transcript and recent-run discovery",
+    "NODE-55 editable Infinite Canvas integration",
+    "NODE-62 reject/request-changes approval semantics"
+  ],
+  "truth_source": [
+    "docs/runtime/AI-WORKSPACE-V1.md",
+    "reports/nodes/NODE-54/gap-ledger.json",
+    "tools/node54/validate_ai_workspace.py"
+  ]
+}

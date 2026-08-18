@@ -1,4 +1,5 @@
 import { serverApiRequest } from "@/lib/api/server";
+import { requireAppSession } from "@/lib/auth/session";
 import {
   type CreateProjectInput,
   type ProjectDetail,
@@ -12,6 +13,7 @@ const PROJECTS_PATH = "/api/v1/projects";
 export async function listProjects(): Promise<readonly ProjectSummary[]> {
   const payload = await serverApiRequest<unknown>(PROJECTS_PATH, {
     method: "GET",
+    headers: await tenantHeaders(),
   });
   return parseProjectCollection(payload);
 }
@@ -19,6 +21,7 @@ export async function listProjects(): Promise<readonly ProjectSummary[]> {
 export async function getProject(projectId: string): Promise<ProjectDetail> {
   const payload = await serverApiRequest<unknown>(projectPath(projectId), {
     method: "GET",
+    headers: await tenantHeaders(),
   });
   return parseProjectDetail(payload);
 }
@@ -30,6 +33,7 @@ export async function createProject(
   const payload = await serverApiRequest<unknown>(PROJECTS_PATH, {
     method: "POST",
     headers: {
+      ...(await tenantHeaders()),
       "Idempotency-Key": operationId,
     },
     json: {
@@ -49,4 +53,9 @@ export async function createProject(
 export function projectPath(projectId: string): string {
   if (!projectId.trim()) throw new Error("PROJECT_ID_REQUIRED");
   return `${PROJECTS_PATH}/${encodeURIComponent(projectId)}`;
+}
+
+async function tenantHeaders(): Promise<Record<string, string>> {
+  const session = await requireAppSession();
+  return { "X-Organization-ID": session.organization.id };
 }

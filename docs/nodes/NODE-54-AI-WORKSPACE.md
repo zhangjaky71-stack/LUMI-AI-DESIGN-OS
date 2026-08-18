@@ -1,7 +1,7 @@
 # NODE-54 — AI Design Workspace
 
 > Phase: 7 Frontend Product  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **IMPLEMENTED / VALIDATING / NOT COMPLETE**  
 > Priority: P0 / CORE UX  
 > Depends on: NODE-28, NODE-33, NODE-42, NODE-52  
 > Produces: Chat + Canvas 主工作区、输入/引用/Streaming、Stop/Resume/Retry、Approval cards
@@ -149,6 +149,8 @@ P1可展示“本次使用：Brand Kit X / 3 references / selected frame”，�
 - [ ] run control可用。
 - [ ] approval嵌入工作流。
 - [ ] 不显示私有chain-of-thought。
+
+> Implementation note (2026-08-18): NODE-54 now contains the real Project/AgentRun workspace surface, tenant-scoped API clients, canonical control projection, Last-Event-ID SSE client/reducer, exact ArtifactVersion admission, stale-fenced approval, stop semantics, selected-node serialization contract, API/browser CoT filters, and deterministic unit/static tests. It is intentionally **not marked COMPLETE** until durable event replay + AgentRun→LangGraph start composition, browser E2E/Hosted CI, and the applicable NODE-55/NODE-62 integration gaps are closed. See `docs/runtime/AI-WORKSPACE-V1.md` and `reports/nodes/NODE-54/gap-ledger.json`.
 
 ## 15. Definition of Done
 

@@ -1,0 +1,103 @@
+name: NODE-54 AI Workspace
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/api/v1/agent_workspace_*.py"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/tests/test_node54_agent_workspace_contracts.py"
+      - "apps/web/src/lib/workspace/**"
+      - "apps/web/src/components/workspace/**"
+      - "apps/web/src/app/(shell)/workspace/**"
+      - "apps/web/src/lib/projects/api.ts"
+      - "apps/web/src/lib/api/problem.ts"
+      - "tools/node54/**"
+      - "docs/runtime/AI-WORKSPACE-V1.md"
+      - "docs/nodes/NODE-54-AI-WORKSPACE*.md"
+      - "reports/nodes/NODE-54/**"
+      - ".github/workflows/node-54-ai-workspace.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  NODE_VERSION: "24"
+  PNPM_VERSION: "11.4.0"
+  NEXT_TELEMETRY_DISABLED: "1"
+  LUMI_API_ORIGIN: "http://127.0.0.1:8000"
+
+jobs:
+  workspace-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+      - name: Compile NODE-54 API runtime
+        run: |
+          uv run python -m compileall -q \
+            apps/api/src/lumi_api/api/v1/agent_workspace_schemas.py \
+            apps/api/src/lumi_api/api/v1/agent_workspace_dependencies.py \
+            apps/api/src/lumi_api/api/v1/agent_workspace_routes.py \
+            apps/api/src/lumi_api/api/v1/agent_workspace_adapter.py \
+            tools/node54
+      - name: Static AI Workspace acceptance
+        run: uv run python tools/node54/validate_ai_workspace.py
+      - name: NODE-54 API contract tests
+        run: uv run pytest -q apps/api/tests/test_node54_agent_workspace_contracts.py
+      - name: Parse NODE-54 gap ledger
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+
+          ledger = json.loads(
+              Path("reports/nodes/NODE-54/gap-ledger.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          assert ledger["node"] == "NODE-54"
+          assert ledger["status"] == "IMPLEMENTED_VALIDATING_NOT_COMPLETE"
+          assert any(gap["severity"] == "P0" for gap in ledger["gaps"])
+          print("NODE54_GAP_LEDGER_PARSE_PASS")
+          PY
+
+  workspace-web:
+    needs: workspace-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+          pnpm --version
+      - name: Install frozen JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: NODE-54 workspace unit tests
+        run: pnpm --filter @lumi/web test -- src/lib/workspace
+      - name: Typecheck web application
+        run: pnpm --filter @lumi/web typecheck
+      - name: Lint NODE-54 web surface
+        run: |
+          pnpm --filter @lumi/web exec eslint \
+            src/lib/workspace \
+            src/components/workspace \
+            'src/app/(shell)/workspace'
+      - name: Production Next.js build
+        run: pnpm --filter @lumi/web build

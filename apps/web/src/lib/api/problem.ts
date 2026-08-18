@@ -33,6 +33,14 @@ export class ApiError extends Error {
     this.traceId = args.traceId;
     this.problem = args.problem;
   }
+
+  get detail(): string | undefined {
+    return this.problem?.detail;
+  }
+
+  get title(): string | undefined {
+    return this.problem?.title;
+  }
 }
 
 export function apiErrorFromResponse(

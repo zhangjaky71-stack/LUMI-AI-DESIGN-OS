@@ -1,21 +1,54 @@
-export default function WorkspaceShellPage() {
+import Link from "next/link";
+import { redirect } from "next/navigation";
+
+import { AiWorkspace } from "@/components/workspace/ai-workspace";
+import { requireAppSession } from "@/lib/auth/session";
+import { getProject } from "@/lib/projects/api";
+
+export const dynamic = "force-dynamic";
+
+type SearchParams = Promise<{
+  project?: string | string[];
+  run?: string | string[];
+}>;
+
+export default async function WorkspacePage({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const projectId = scalar(params.project);
+  const runId = scalar(params.run);
+  if (!projectId) redirect("/projects/dashboard");
+
+  const [session, project] = await Promise.all([
+    requireAppSession(),
+    getProject(projectId),
+  ]);
+
   return (
-    <div className="page-stack">
-      <section className="page-heading compact">
-        <div>
-          <p className="eyebrow">AI Workspace</p>
-          <h1>Agent + canvas workspace</h1>
-          <p className="page-lead">
-            This route is reserved for the product workspace. Streaming agent state,
-            canvas composition, approvals, and editing arrive in the dedicated frontend nodes.
-          </p>
-        </div>
-      </section>
-      <section className="surface-card empty-surface">
-        <span className="empty-kicker">Frontend handoff</span>
-        <h2>Workspace surface reserved.</h2>
-        <p>The App Shell intentionally does not invent mock agent or canvas state.</p>
-      </section>
+    <div className="workspace-route-shell">
+      <div className="workspace-breadcrumb-row">
+        <Link href="/projects/dashboard">Projects</Link>
+        <span aria-hidden="true">/</span>
+        <Link href={`/projects/${encodeURIComponent(project.id)}`}>{project.name}</Link>
+        <span aria-hidden="true">/</span>
+        <span aria-current="page">AI Workspace</span>
+      </div>
+      <AiWorkspace
+        organizationId={session.organization.id}
+        project={{
+          id: project.id,
+          name: project.name,
+          objective: project.brief?.objective ?? null,
+          deliverables: project.brief?.deliverables ?? [],
+          constraints: project.brief?.constraints ?? [],
+        }}
+        initialRunId={runId}
+      />
     </div>
   );
+}
+
+function scalar(value: string | string[] | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
 }
