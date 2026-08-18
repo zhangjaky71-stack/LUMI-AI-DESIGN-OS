@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from lumi_api.governance.redaction import redact_audit_text
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -46,7 +48,11 @@ def main() -> None:
     require(migration, "ck_audit_events_actor_type", "actor constraint")
     require(migration, "ck_audit_events_event_hash", "hash constraint")
     require(migration, "trg_audit_events_immutable", "append-only trigger")
-    require(migration, "BEFORE UPDATE OR DELETE ON audit_events", "append-only enforcement")
+    require(
+        migration,
+        "BEFORE UPDATE OR DELETE ON audit_events",
+        "append-only enforcement",
+    )
     for table in (
         "governance_retention_policies",
         "governance_legal_holds",
@@ -73,13 +79,26 @@ def main() -> None:
     require(models, "ck_audit_events_event_hash", "ORM hash constraint")
     require(models, "actor_id: Mapped[str]", "ORM non-null actor")
     require(governance_models, "GovernanceLegalHoldModel", "hold ORM")
+    require(
+        governance_models,
+        "ix_governance_legal_hold_scope_active",
+        "partial hold index parity",
+    )
     require(governance_models, "GovernanceDeletionRequestModel", "deletion ORM")
     require(governance_models, "GovernanceAuditExportModel", "export ORM")
 
-    require(contracts, 'AGENT_AUDIT_REQUIRES_RUN', "agent run attribution")
-    require(contracts, 'AGENT_AUDIT_REQUIRES_VERSION', "agent version attribution")
-    require(contracts, 'AGENT_AUDIT_REQUIRES_HUMAN_INITIATOR', "human initiator")
-    require(contracts, 'AGENT_AUDIT_SYSTEM_IDENTITY_FORBIDDEN', "system actor rejection")
+    require(contracts, "AGENT_AUDIT_REQUIRES_RUN", "agent run attribution")
+    require(contracts, "AGENT_AUDIT_REQUIRES_VERSION", "agent version attribution")
+    require(
+        contracts,
+        "AGENT_AUDIT_REQUIRES_HUMAN_INITIATOR",
+        "human initiator",
+    )
+    require(
+        contracts,
+        "AGENT_AUDIT_SYSTEM_IDENTITY_FORBIDDEN",
+        "system actor rejection",
+    )
 
     for secret_key in (
         "password",
@@ -94,6 +113,10 @@ def main() -> None:
     require(redaction, "sha256_ref", "content hashing")
     require(redaction, "sanitize_url", "URL sanitization")
     require(redaction, "github_pat_", "secret-shaped free text")
+    if redact_audit_text("sk-1234567890abcdefghijkl") != "[REDACTED]":
+        raise SystemExit("NODE65_VALIDATION_FAILED:free-text-secret-scrub")
+    if redact_audit_text("routine governance reason") != "routine governance reason":
+        raise SystemExit("NODE65_VALIDATION_FAILED:free-text-non-secret-preservation")
 
     require(repository, "pg_advisory_xact_lock", "transaction lock")
     require(repository, "previous_hash", "audit chain")
@@ -106,19 +129,52 @@ def main() -> None:
     require(service, "SubjectDeactivationPort", "deactivation port")
     require(service, "ObjectDeletionPort", "object deletion port")
     require(service, "SearchDeletionPort", "search deletion port")
-    require(service, "GOVERNANCE_DELETION_PORTS_NOT_COMPOSED", "fail closed deletion")
-    require(service, "GOVERNANCE_LEGAL_HOLD_BLOCKS_DELETION", "hold blocks deletion")
-    require(service, "GOVERNANCE_AUDIT_EXPORT_PORT_NOT_COMPOSED", "fail closed export")
-    require(service, "redact_audit_mapping(request.filters)", "export filter redaction")
+    require(
+        service,
+        "GOVERNANCE_DELETION_PORTS_NOT_COMPOSED",
+        "fail closed deletion",
+    )
+    require(
+        service,
+        "GOVERNANCE_LEGAL_HOLD_BLOCKS_DELETION",
+        "hold blocks deletion",
+    )
+    require(
+        service,
+        "GOVERNANCE_AUDIT_EXPORT_PORT_NOT_COMPOSED",
+        "fail closed export",
+    )
+    require(
+        service,
+        "redact_audit_mapping(request.filters)",
+        "export filter redaction",
+    )
+    require(service, "return redact_audit_text(value)", "governance reason scrub")
 
     require(factory, "with session.begin()", "atomic request transaction")
-    require(dependencies, "governance_service_not_composed", "fail closed composition")
-    require(routes, 'APIRouter(prefix="/api/v1/governance"', "governance API prefix")
+    require(
+        dependencies,
+        "governance_service_not_composed",
+        "fail closed composition",
+    )
+    require(
+        routes,
+        'APIRouter(prefix="/api/v1/governance"',
+        "governance API prefix",
+    )
     require(app, "app.include_router(governance_router", "governance API registration")
-    require(app, "dependencies=[Depends(enforce_api_auth)]", "authenticated route boundary")
+    require(
+        app,
+        "dependencies=[Depends(enforce_api_auth)]",
+        "authenticated route boundary",
+    )
 
     require(policy, 'AUDIT_EXPORT = "audit.export"', "audit export permission")
-    require(policy, 'GOVERNANCE_MANAGE = "governance.manage"', "governance permission")
+    require(
+        policy,
+        'GOVERNANCE_MANAGE = "governance.manage"',
+        "governance permission",
+    )
     require(admin_service, "redact_audit_text", "platform admin reason scrub")
 
     assert ledger["node"] == "NODE-65"
