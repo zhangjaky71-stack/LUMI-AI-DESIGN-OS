@@ -1,0 +1,91 @@
+{
+  "node": "NODE-61",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "updated_at": "2026-08-18",
+  "gaps": [
+    {
+      "id": "NODE61-GAP-001",
+      "severity": "P0",
+      "status": "open",
+      "title": "Production Redis PresencePort",
+      "detail": "Presence has the correct TTL contract and test/dev in-memory adapter, but production Redis storage/composition is not implemented or proven."
+    },
+    {
+      "id": "NODE61-GAP-002",
+      "severity": "P0",
+      "status": "open",
+      "title": "Authenticated realtime transport",
+      "detail": "Presence/comments currently have request-response/polling contracts. WebSocket/SSE reconnect, fanout ordering, backpressure and presence disconnect handling are not production-complete."
+    },
+    {
+      "id": "NODE61-GAP-003",
+      "severity": "P0",
+      "status": "open",
+      "title": "Server-authoritative collaborator profile presentation",
+      "detail": "Presence user_id is authenticated-server authoritative, but the current heartbeat schema still accepts display_name/avatar_url presentation fields. Production presence must source canonical profile display data server-side."
+    },
+    {
+      "id": "NODE61-GAP-004",
+      "severity": "P0",
+      "status": "open",
+      "title": "Workspace CommentsPanel mounting",
+      "detail": "The strict durable CommentsPanel is implemented but not yet mounted into the live Workspace Inspector on this branch because the inherited Workspace file has not been safely rewritten without a verified blob SHA."
+    },
+    {
+      "id": "NODE61-GAP-005",
+      "severity": "P0",
+      "status": "open",
+      "title": "Role-aware collaboration product controls",
+      "detail": "Server permissions are fail-closed, but the web UI does not yet project Project roles to hide unauthorized resolve/edit/delete controls before a server rejection."
+    },
+    {
+      "id": "NODE61-GAP-006",
+      "severity": "P0",
+      "status": "open",
+      "title": "Mention picker and notification delivery consumer",
+      "detail": "Mention IDs/outbox events are durable and validated, but the product has no collaborator picker or proven in-app/email notification consumer/delivery UX."
+    },
+    {
+      "id": "NODE61-GAP-007",
+      "severity": "P0",
+      "status": "open",
+      "title": "Comment edit/delete/audit UI",
+      "detail": "The API supports revision-fenced edit/delete and restricted audit history, but the current CommentsPanel exposes create/reply/resolve only."
+    },
+    {
+      "id": "NODE61-GAP-008",
+      "severity": "P0",
+      "status": "open",
+      "title": "Realtime multi-user Canvas conflict UX",
+      "detail": "Design mutations correctly remain outside Collaboration and must use NODE-55 DesignOps, but realtime canonical operation fanout, text-edit locking/coordination and constraint-conflict UX are not closed."
+    },
+    {
+      "id": "NODE61-GAP-009",
+      "severity": "P0",
+      "status": "open",
+      "title": "Explicit re-anchor workflow",
+      "detail": "Historical threads are marked NEEDS RE-ANCHOR and never moved automatically, but user-reviewed re-anchor to a new exact version/node/coordinate has not been implemented."
+    },
+    {
+      "id": "NODE61-GAP-010",
+      "severity": "P0",
+      "status": "open",
+      "title": "Large-thread pagination and retention/privacy operations",
+      "detail": "Current thread/comment reads are not cursor paginated and retention/export/privacy administration has not been closed for large projects."
+    },
+    {
+      "id": "NODE61-GAP-011",
+      "severity": "P0",
+      "status": "open",
+      "title": "Browser/PostgreSQL/Redis multi-user E2E",
+      "detail": "Need real multi-user proof for project access, exact-version comments, revision conflicts, mentions, expiry, re-anchor, DesignOps coordination and reconnect behavior."
+    },
+    {
+      "id": "NODE61-GAP-012",
+      "severity": "P0",
+      "status": "open",
+      "title": "Hosted GitHub Actions executed green",
+      "detail": "NODE-61 cannot be COMPLETE until hosted CI executes actual migration/compile/test/lint/build steps successfully."
+    }
+  ]
+}
