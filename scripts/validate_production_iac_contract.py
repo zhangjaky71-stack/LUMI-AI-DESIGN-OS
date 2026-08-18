@@ -18,6 +18,59 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(f"production IaC contract invalid: {message}")
 
 
+def hcl_block(source: str, marker: str) -> str:
+    start = source.find(marker)
+    if start < 0:
+        raise SystemExit(f"production IaC contract invalid: missing HCL block {marker}")
+    brace = source.find("{", start)
+    if brace < 0:
+        raise SystemExit(f"production IaC contract invalid: malformed HCL block {marker}")
+    depth = 0
+    for index in range(brace, len(source)):
+        char = source[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start : index + 1]
+    raise SystemExit(f"production IaC contract invalid: unterminated HCL block {marker}")
+
+
+def assert_provider_secret_boundary(app: str, *, environment: str) -> None:
+    agent = hcl_block(app, "agent-runtime = {")
+    gateway = hcl_block(app, "model-gateway = {")
+    media = hcl_block(app, "worker-media = {")
+    sandbox = hcl_block(app, "sandbox-runtime = {")
+    api = hcl_block(app, "api = {")
+    tool = hcl_block(app, "tool-gateway = {")
+
+    for name, block in (
+        ("api", api),
+        ("agent-runtime", agent),
+        ("tool-gateway", tool),
+        ("worker-media", media),
+        ("sandbox-runtime", sandbox),
+    ):
+        require(
+            "LUMI_MODEL_PROVIDER_SECRET" not in block
+            and "LUMI_MEDIA_PROVIDER_SECRET" not in block,
+            f"{environment} {name} must not receive provider credentials",
+        )
+    require(
+        'LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"]' in gateway,
+        f"{environment} Model Gateway must own model provider credentials",
+    )
+    require(
+        'LUMI_MEDIA_PROVIDER_SECRET = local.secret_arns["providers/media"]' in gateway,
+        f"{environment} Model Gateway must own media provider credentials",
+    )
+    require(
+        'LUMI_DATABASE_URL          = local.secret_arns["database/app"]' in gateway,
+        f"{environment} Model Gateway needs the canonical NODE-27 database connection",
+    )
+
+
 def main() -> int:
     required_roots = [
         "infra/iac/environments/staging/core/main.tf",
@@ -73,6 +126,27 @@ def main() -> int:
     require("length(var.availability_zones) == 3" in production_core_vars, "production must require three availability zones")
     require("capture-ecs-deployment-state.sh" in production_workflow, "production workflow must archive ECS steady-state evidence")
     require("running_count == .desired_count" in ecs_evidence and "pending_count == 0" in ecs_evidence, "ECS evidence script must verify counts")
+
+    # Provider credentials are a security and financial control boundary. Only
+    # Model Gateway may hold them, and it must also have the canonical NODE-27
+    # database connection required by the durable platform spend guard.
+    assert_provider_secret_boundary(staging_app, environment="staging")
+    assert_provider_secret_boundary(production_app, environment="production")
+
+    # Sandbox control plane is denied arbitrary public egress even though other
+    # application services retain explicit Internet capability.
+    app_sg = hcl_block(network, 'resource "aws_security_group" "app" {')
+    internet_sg = hcl_block(
+        network,
+        'resource "aws_security_group" "app_internet_egress" {',
+    )
+    sandbox_sg = hcl_block(network, 'resource "aws_security_group" "sandbox_egress" {')
+    require('cidr_blocks = ["0.0.0.0/0"]' not in app_sg, "app identity SG grants public egress")
+    require('cidr_blocks = ["0.0.0.0/0"]' in internet_sg, "explicit app Internet egress SG missing")
+    require('cidr_blocks = ["0.0.0.0/0"]' not in sandbox_sg, "sandbox SG grants public egress")
+    require("prefix_list_ids = [data.aws_prefix_list.s3.id]" in sandbox_sg, "sandbox S3-only transport allowance missing")
+    require('name == "sandbox-runtime"' in compute, "sandbox ECS security-group branch missing")
+    require("var.sandbox_egress_security_group_id" in compute, "sandbox restricted egress SG not attached")
 
     version_files = [ROOT / "infra/iac/bootstrap/versions.tf", *ROOT.glob("infra/iac/environments/**/versions.tf")]
     for version_file in version_files:
