@@ -7,6 +7,10 @@ on:
       - "apps/api/src/lumi_api/api/v1/app.py"
       - "apps/api/tests/test_security_node66.py"
       - "apps/api/tests/test_asset_security_contract.py"
+      - "apps/api/tests/test_auth_tenant_contract.py"
+      - "apps/api/tests/test_project_core_contract.py"
+      - "apps/api/tests/test_asset_storage_contract.py"
+      - "apps/api/tests/test_admin_node64.py"
       - "apps/web/**"
       - "services/tool-gateway/**"
       - "services/sandbox-runtime/**"
@@ -72,14 +76,17 @@ jobs:
       - name: Static NODE-66 security acceptance
         run: uv run python tools/node66/validate_security.py
 
-      - name: Run NODE-66 API and trust/release-gate tests
+      - name: Run NODE-66 API BOLA and trust/release-gate tests
         run: |
           PYTHONPATH=apps/api/src:services/tool-gateway/src:services/sandbox-runtime/src \
             uv run pytest -q \
               apps/api/tests/test_security_node66.py \
               apps/api/tests/test_api_v1_contract.py \
               apps/api/tests/test_asset_security_contract.py \
-              apps/api/tests/test_auth_tenant_contract.py
+              apps/api/tests/test_auth_tenant_contract.py \
+              apps/api/tests/test_project_core_contract.py \
+              apps/api/tests/test_asset_storage_contract.py \
+              apps/api/tests/test_admin_node64.py
 
       - name: Run Tool Gateway SSRF security corpus
         run: |
@@ -181,9 +188,9 @@ jobs:
           uv lock --check
           pnpm install --frozen-lockfile
 
-      - name: Export frozen Python dependency graph
+      - name: Export frozen third-party Python dependency graph
         run: |
-          uv export --all-packages --frozen --format requirements.txt --no-hashes \
+          uv export --all-packages --no-emit-workspace --frozen --format requirements.txt --no-hashes \
             > reports/nodes/NODE-66/security/python-requirements.txt
 
       - name: Blocking Python dependency audit
