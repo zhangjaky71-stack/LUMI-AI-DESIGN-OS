@@ -6,14 +6,13 @@ from lumi_model_gateway import (
     ModelGateway,
     ModelGatewayAPI,
     ModelRouter,
-    PaidInvocationGuard,
-    PaidStreamGuard,
     ProviderHealthRegistry,
     ProviderRegistry,
     RetryPolicy,
 )
 
 from .costs import PostgresModelCostAccounting
+from .model_paid_guard import PostgresModelPaidInvocationGuard
 
 
 class HostedModelGatewayConfigurationError(RuntimeError):
@@ -26,18 +25,18 @@ def build_hosted_model_gateway(
     registry: ProviderRegistry,
     health: ProviderHealthRegistry,
     router: ModelRouter,
-    paid_guard: PaidInvocationGuard,
-    paid_stream_guard: PaidStreamGuard | None = None,
     telemetry: CostTelemetrySink | None = None,
     retry_policy: RetryPolicy | None = None,
 ) -> ModelGatewayAPI:
-    """Production/Staging composition root for all paid provider capabilities.
+    """Production/Staging composition root for paid provider capabilities.
 
-    Provider adapters and NODE-20 paid-side-effect guards remain injected ports,
-    but the financial boundary is intentionally *not* injectable here. Hosted
-    execution always binds Model Gateway to NODE-27's PostgreSQL accounting via
-    ``LedgerBudgetGuard(PostgresModelCostAccounting(...))``. This prevents an
-    application image from accidentally falling back to request-local budgeting.
+    Hosted execution owns both durable financial and paid-side-effect safety
+    boundaries. Callers cannot replace NODE-27 accounting or NODE-20's paid
+    invocation guard with request-local/in-memory implementations.
+
+    Streaming is intentionally fail-closed here because a durable PostgreSQL
+    paid-stream guard has not yet been implemented. ModelGateway therefore gets
+    no ``paid_stream_guard`` from the hosted composition root.
     """
 
     if not database_dsn or not database_dsn.strip():
@@ -47,12 +46,12 @@ def build_hosted_model_gateway(
 
     accounting = PostgresModelCostAccounting(database_dsn)
     budget_guard = LedgerBudgetGuard(accounting)
+    paid_guard = PostgresModelPaidInvocationGuard(database_dsn)
     gateway = ModelGateway(
         registry=registry,
         health=health,
         router=router,
         paid_guard=paid_guard,
-        paid_stream_guard=paid_stream_guard,
         budget_guard=budget_guard,
         telemetry=telemetry,
         retry_policy=retry_policy,
