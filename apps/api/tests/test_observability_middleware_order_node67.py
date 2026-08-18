@@ -25,7 +25,7 @@ def test_sensitive_query_is_rejected_before_idempotency_short_circuit() -> None:
     assert "raw-secret" not in response.text
 
 
-def test_invalid_trace_is_rejected_before_idempotency_short_circuit() -> None:
+def test_invalid_trace_does_not_short_circuit_authoritative_auth_semantics() -> None:
     with TestClient(create_contract_app(environment="development")) as client:
         response = client.post(
             "/api/v1/projects",
@@ -36,9 +36,10 @@ def test_invalid_trace_is_rejected_before_idempotency_short_circuit() -> None:
             },
             json={},
         )
-    assert response.status_code == 400
-    assert response.json()["code"] == "observability_trace_context_invalid"
+    assert response.status_code == 401
+    assert response.json()["code"] != "observability_trace_context_invalid"
     assert response.headers["x-content-type-options"] == "nosniff"
+    assert "traceparent" in response.headers
 
 
 def test_downstream_value_error_is_not_misclassified_as_trace_context() -> None:
