@@ -2,7 +2,7 @@
   "node": "NODE-66",
   "title": "Security Hardening & Threat Model",
   "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
-  "updated_at": "2026-08-18T10:20:00Z",
+  "updated_at": "2026-08-18T10:09:00Z",
   "gaps": [
     {
       "id": "NODE66-GAP-101",
@@ -58,7 +58,7 @@
       "severity": "P0",
       "status": "open",
       "area": "supply-chain",
-      "summary": "Production container/IaC scans, SBOM generation, image digest/signature/provenance and vulnerability exception evidence remain to be implemented or executed."
+      "summary": "NODE-66 now wires blocking pip-audit, Bandit, pnpm audit, Trivy filesystem vuln/secret/misconfiguration scan, CycloneDX SBOM and Sandbox image scan, but latest-head execution, all production image coverage, image digest/signature/provenance and reviewed vulnerability-exception evidence remain required."
     },
     {
       "id": "NODE66-GAP-109",
@@ -72,7 +72,7 @@
       "severity": "P0",
       "status": "open",
       "area": "dast-pentest",
-      "summary": "DAST against the deployed staging HTTPS endpoint and independent penetration/red-team evidence have not executed on the current stacked track."
+      "summary": "A guarded blocking ZAP baseline workflow is wired to LUMI_STAGING_URL, but no current-track staging scan evidence exists yet and authenticated/active DAST plus independent penetration/red-team evidence remain required."
     },
     {
       "id": "NODE66-GAP-111",
@@ -93,7 +93,7 @@
       "severity": "P0",
       "status": "closed",
       "area": "api-http",
-      "summary": "FastAPI security middleware is composed for credential-query rejection, known-length JSON request limits, security headers and production HSTS."
+      "summary": "FastAPI security middleware is composed for credential-query rejection, known-length JSON request limits, security headers and production HSTS; production interactive API docs/OpenAPI HTTP surfaces are disabled and development docs use a separate restricted CSP."
     },
     {
       "id": "NODE66-GAP-202",
@@ -136,6 +136,20 @@
       "status": "closed",
       "area": "security-policy-core",
       "summary": "Trust-labelled model context and fail-closed Critical/High SecurityReleaseGate core are implemented with tests."
+    },
+    {
+      "id": "NODE66-GAP-208",
+      "severity": "P0",
+      "status": "closed",
+      "area": "blocking-security-scan-wiring",
+      "summary": "Current-track NODE-66 CI wires blocking pip-audit 2.10.1, Bandit 1.9.4, pnpm high audit, Trivy 0.36.0 filesystem vuln/secret/misconfiguration scanning, CycloneDX SBOM generation and CRITICAL/HIGH Sandbox image scanning."
+    },
+    {
+      "id": "NODE66-GAP-209",
+      "severity": "P0",
+      "status": "closed",
+      "area": "dast-workflow-wiring",
+      "summary": "A separate scheduled/manual ZAP baseline workflow is wired with HTTPS-only staging target validation, blocking findings and no automatic issue mutation; execution evidence remains NODE66-GAP-110."
     }
   ]
 }
