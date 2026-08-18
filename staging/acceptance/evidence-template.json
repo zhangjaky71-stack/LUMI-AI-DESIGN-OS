@@ -9,6 +9,24 @@
     "container_image_set_ref": "PENDING",
     "migration_head": "PENDING"
   },
+  "container_image_set": {
+    "images": {
+      "api": "PENDING",
+      "agent-runtime": "PENDING",
+      "model-gateway": "PENDING",
+      "tool-gateway": "PENDING",
+      "worker-media": "PENDING",
+      "sandbox-runtime": "PENDING"
+    },
+    "provenance": {
+      "api": {"git_sha":"PENDING","build_recipe_ref":"PENDING","entrypoint":"PENDING","sbom_ref":"PENDING","provenance_ref":"PENDING","source_paths":[]},
+      "agent-runtime": {"git_sha":"PENDING","build_recipe_ref":"PENDING","entrypoint":"PENDING","sbom_ref":"PENDING","provenance_ref":"PENDING","source_paths":[]},
+      "model-gateway": {"git_sha":"PENDING","build_recipe_ref":"PENDING","entrypoint":"PENDING","sbom_ref":"PENDING","provenance_ref":"PENDING","source_paths":[]},
+      "tool-gateway": {"git_sha":"PENDING","build_recipe_ref":"PENDING","entrypoint":"PENDING","sbom_ref":"PENDING","provenance_ref":"PENDING","source_paths":[]},
+      "worker-media": {"git_sha":"PENDING","build_recipe_ref":"PENDING","entrypoint":"PENDING","sbom_ref":"PENDING","provenance_ref":"PENDING","source_paths":[]},
+      "sandbox-runtime": {"git_sha":"PENDING","build_recipe_ref":"PENDING","entrypoint":"PENDING","sbom_ref":"PENDING","provenance_ref":"PENDING","source_paths":[]}
+    }
+  },
   "data_policy": {
     "production_customer_data_used": false,
     "test_data_only": true,
