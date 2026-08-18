@@ -85,19 +85,13 @@ class PostgresAutoRepairRepository:
             raise KeyError("REPAIR_JOB_NOT_FOUND")
         expected_hash = job.spec.semantic_hash()
         if row.semantic_hash != expected_hash:
-            raise AutoRepairOperationConflict(
-                "REPAIR_PERSISTED_SPEC_HASH_MISMATCH"
-            )
+            raise AutoRepairOperationConflict("REPAIR_PERSISTED_SPEC_HASH_MISMATCH")
         encoded = encode_job(job)
         try:
             self._ensure_policy(job.spec.policy)
             row.status = job.status.value
-            row.working_artifact_version_id = UUID(
-                job.working_source.artifact_version_id
-            )
-            row.current_quality_result_id = UUID(
-                job.current_quality.quality_result_id
-            )
+            row.working_artifact_version_id = UUID(job.working_source.artifact_version_id)
+            row.current_quality_result_id = UUID(job.current_quality.quality_result_id)
             row.spent_usd = job.spent_usd
             row.final_artifact_version_id = (
                 UUID(job.final_artifact_version_id)
@@ -117,9 +111,7 @@ class PostgresAutoRepairRepository:
             stored = self.get(job.job_id)
             if encode_job(stored) == encoded:
                 return stored
-            raise AutoRepairOperationConflict(
-                "REPAIR_CONCURRENT_SAVE_CONFLICT"
-            ) from exc
+            raise AutoRepairOperationConflict("REPAIR_CONCURRENT_SAVE_CONFLICT") from exc
         return job
 
     def _job_row(self, job: AutoRepairJob) -> AutoRepairJobModel:
@@ -132,20 +124,12 @@ class PostgresAutoRepairRepository:
             operation_id=UUID(job.spec.operation_id),
             requested_by=job.spec.requested_by,
             source_artifact_id=UUID(job.original_source.artifact_id),
-            source_artifact_version_id=UUID(
-                job.original_source.artifact_version_id
-            ),
+            source_artifact_version_id=UUID(job.original_source.artifact_version_id),
             source_quality_result_id=UUID(job.spec.quality_result_id),
             original_branch_id=UUID(job.original_source.original_branch_id),
-            original_head_version_id=UUID(
-                job.original_source.original_head_version_id
-            ),
-            working_artifact_version_id=UUID(
-                job.working_source.artifact_version_id
-            ),
-            current_quality_result_id=UUID(
-                job.current_quality.quality_result_id
-            ),
+            original_head_version_id=UUID(job.original_source.original_head_version_id),
+            working_artifact_version_id=UUID(job.working_source.artifact_version_id),
+            current_quality_result_id=UUID(job.current_quality.quality_result_id),
             policy_id=job.spec.policy.policy_id,
             policy_version=job.spec.policy.version,
             policy_hash=policy_hash,
@@ -168,9 +152,7 @@ class PostgresAutoRepairRepository:
         encoded = encode_policy(policy)
         if row is not None:
             if row.policy_hash != policy_hash or dict(row.policy_json) != encoded:
-                raise AutoRepairOperationConflict(
-                    "REPAIR_POLICY_VERSION_HASH_CONFLICT"
-                )
+                raise AutoRepairOperationConflict("REPAIR_POLICY_VERSION_HASH_CONFLICT")
             return
         self.session.add(
             RepairPolicySnapshotModel(
@@ -189,9 +171,7 @@ class PostgresAutoRepairRepository:
             encoded = encode_attempt(attempt)
             if row is not None:
                 if dict(row.attempt_json) != encoded:
-                    raise AutoRepairOperationConflict(
-                        "REPAIR_ATTEMPT_IS_APPEND_ONLY"
-                    )
+                    raise AutoRepairOperationConflict("REPAIR_ATTEMPT_IS_APPEND_ONLY")
                 self._ensure_learning_signal(job, attempt, encoded)
                 continue
             self.session.add(self._attempt_row(job, attempt, encoded))
@@ -209,26 +189,22 @@ class PostgresAutoRepairRepository:
             f"lumi:auto-repair-learning:{job.job_id}:{attempt.iteration}",
         )
         row = self.session.get(RepairLearningSignalModel, signal_id)
-        violation_refs = sorted(
-            {
-                directive.source_violation_id
-                for directive in attempt.plan.directives
-            }
+        violation_codes = sorted(
+            {directive.violation_code for directive in attempt.plan.directives}
         )
         action_json = {
             "plan": encoded_attempt["plan"],
+            "source_violation_ids": sorted(
+                {directive.source_violation_id for directive in attempt.plan.directives}
+            ),
             "decision": attempt.decision.value,
             "reason_codes": list(attempt.reason_codes),
-            "promoted_artifact_version_id": (
-                attempt.promoted_artifact_version_id
-            ),
-            "promotion_quality_result_id": (
-                attempt.promotion_quality_result_id
-            ),
+            "promoted_artifact_version_id": attempt.promoted_artifact_version_id,
+            "promotion_quality_result_id": attempt.promotion_quality_result_id,
         }
         if row is not None:
             if (
-                list(row.violation_codes) != violation_refs
+                list(row.violation_codes) != violation_codes
                 or dict(row.action_json) != action_json
                 or row.before_score != Decimal(str(attempt.before_score))
                 or row.after_score != _decimal_or_none(attempt.after_score)
@@ -243,24 +219,20 @@ class PostgresAutoRepairRepository:
                 repair_job_id=UUID(job.job_id),
                 iteration=attempt.iteration,
                 organization_id=UUID(job.spec.organization_id),
-                source_artifact_version_id=UUID(
-                    attempt.source_artifact_version_id
-                ),
+                source_artifact_version_id=UUID(attempt.source_artifact_version_id),
                 candidate_artifact_version_id=(
                     UUID(attempt.candidate.artifact_version_id)
                     if attempt.candidate is not None
                     else None
                 ),
-                source_quality_result_id=UUID(
-                    attempt.before_quality_result_id
-                ),
+                source_quality_result_id=UUID(attempt.before_quality_result_id),
                 candidate_quality_result_id=(
                     UUID(attempt.after_quality_result_id)
                     if attempt.after_quality_result_id is not None
                     else None
                 ),
                 repair_kind=attempt.plan.kind.value,
-                violation_codes=violation_refs,
+                violation_codes=violation_codes,
                 action_json=action_json,
                 before_score=Decimal(str(attempt.before_score)),
                 after_score=_decimal_or_none(attempt.after_score),
@@ -288,9 +260,7 @@ class PostgresAutoRepairRepository:
             repair_job_id=UUID(job.job_id),
             iteration=attempt.iteration,
             organization_id=UUID(job.spec.organization_id),
-            source_artifact_version_id=UUID(
-                attempt.source_artifact_version_id
-            ),
+            source_artifact_version_id=UUID(attempt.source_artifact_version_id),
             before_quality_result_id=UUID(attempt.before_quality_result_id),
             repair_kind=attempt.plan.kind.value,
             decision=attempt.decision.value,
@@ -320,10 +290,7 @@ class PostgresAutoRepairRepository:
         )
 
     @staticmethod
-    def _assert_same_operation(
-        existing: AutoRepairJob,
-        requested: AutoRepairJob,
-    ) -> None:
+    def _assert_same_operation(existing: AutoRepairJob, requested: AutoRepairJob) -> None:
         if existing.spec.semantic_hash() != requested.spec.semantic_hash():
             raise AutoRepairOperationConflict(
                 "REPAIR_OPERATION_ID_REUSED_WITH_DIFFERENT_SPEC"
@@ -360,9 +327,7 @@ class PostgresRepairLearningService:
                 and row.human_decision_at == decided_at
             ):
                 return
-            raise AutoRepairOperationConflict(
-                "REPAIR_HUMAN_DECISION_IS_APPEND_ONLY"
-            )
+            raise AutoRepairOperationConflict("REPAIR_HUMAN_DECISION_IS_APPEND_ONLY")
         row.human_decision = normalized
         row.human_decision_by = decided_by[:200]
         row.human_decision_at = decided_at
@@ -383,9 +348,7 @@ class PostgresRepairLearningService:
         if row.eligible_for_training:
             if row.governance_approval_ref == governance_approval_ref:
                 return
-            raise AutoRepairOperationConflict(
-                "REPAIR_TRAINING_APPROVAL_IS_APPEND_ONLY"
-            )
+            raise AutoRepairOperationConflict("REPAIR_TRAINING_APPROVAL_IS_APPEND_ONLY")
         row.governance_approval_ref = governance_approval_ref[:240]
         row.eligible_for_training = True
         self.session.commit()
@@ -406,10 +369,7 @@ class PostgresRepairLearningService:
         learning_signal_id: str,
         organization_id: str,
     ) -> RepairLearningSignalModel:
-        row = self.session.get(
-            RepairLearningSignalModel,
-            UUID(learning_signal_id),
-        )
+        row = self.session.get(RepairLearningSignalModel, UUID(learning_signal_id))
         if row is None:
             raise KeyError("REPAIR_LEARNING_SIGNAL_NOT_FOUND")
         if row.organization_id != UUID(organization_id):
