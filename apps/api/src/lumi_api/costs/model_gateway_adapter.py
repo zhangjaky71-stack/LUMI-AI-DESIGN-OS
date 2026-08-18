@@ -14,19 +14,21 @@ from .contracts import (
     ReservationHandle,
     UsageFact,
 )
-from .gateway import PostgresCostGateway
+from .platform_guard import PlatformGuardedCostGateway
 
 
 class PostgresModelCostAccounting:
-    """Structural implementation of Model Gateway's DB-neutral CostAccountingPort.
+    """Durable Model Gateway accounting on the canonical NODE-27 ledger.
 
-    This module intentionally does not import ``lumi_model_gateway``. Composition code can
-    pass an instance to ``LedgerBudgetGuard`` by Protocol compatibility.
+    Provider calls always pass through ``PlatformGuardedCostGateway`` so the
+    platform-wide USD/UTC-day hard stop is reserved atomically before a paid
+    provider invocation. This module remains structurally compatible with Model
+    Gateway's DB-neutral ``CostAccountingPort`` without importing that package.
     """
 
     def __init__(self, dsn: str) -> None:
         self.dsn = dsn
-        self.gateway = PostgresCostGateway(dsn)
+        self.gateway = PlatformGuardedCostGateway(dsn)
 
     async def reserve_provider_cost(
         self,
@@ -60,7 +62,7 @@ class PostgresModelCostAccounting:
             pricing_snapshot_id=pricing_snapshot_id,
             confidence=CostConfidence(confidence),
             reservation_key=reservation_key,
-            metadata={"source": "model_gateway"},
+            metadata={"source": "model_gateway", "platform_guard": "utc_day"},
         )
         handle = await self.gateway.reserve(request)
         return str(handle.reservation_id)
@@ -90,7 +92,7 @@ class PostgresModelCostAccounting:
             pricing_snapshot_id=pricing_snapshot_id,
             external_provider_request_id=provider_request_id,
             usage=facts,
-            metadata={"source": "model_gateway"},
+            metadata={"source": "model_gateway", "platform_guard": "utc_day"},
         )
         await self.gateway.commit(handle, actual)
 
