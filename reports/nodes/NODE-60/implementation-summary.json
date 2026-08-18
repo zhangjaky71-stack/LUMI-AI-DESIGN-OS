@@ -1,0 +1,36 @@
+{
+  "node": "NODE-60",
+  "title": "Export Product UX",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "branch": "feat/node-60-export-ui",
+  "stacked_on": "feat/node-59-versions-ui",
+  "implemented": [
+    "request-scoped ExportEngine product dependency",
+    "exact-version export capability endpoint",
+    "runtime-format capability projection",
+    "real Project Core export Task attribution",
+    "tenant-scoped ExportJob create/read/cancel",
+    "idempotent operation identity",
+    "batch deterministic ZIP request",
+    "safe Job/output/package/Manifest projection",
+    "signed download grant refresh without rerender",
+    "Workspace exact-version Export panel",
+    "runtime job progress states",
+    "package checksum/size UI",
+    "Manifest exact version provenance UI",
+    "Python and TypeScript contract tests"
+  ],
+  "not_claimed": [
+    "cross-format transcoding",
+    "WebP or SVG",
+    "resize/quality/alpha/crop/social presets",
+    "AI Adapt DesignVersion flow",
+    "print/CMYK/bleed",
+    "complete cost estimate",
+    "per-item retry",
+    "durable job list/reopen after refresh",
+    "production ExportEngine factory composition proof",
+    "browser/PostgreSQL/worker E2E",
+    "hosted executed-green CI"
+  ]
+}

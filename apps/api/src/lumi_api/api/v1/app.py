@@ -14,6 +14,7 @@ from .brand_rules_routes import router as brand_rules_router
 from .canvas_document_routes import router as canvas_document_router
 from .cost_routes import router as cost_router
 from .errors import install_error_contract
+from .export_product_routes import router as export_product_router
 from .idempotency_middleware import IdempotencyReplayMiddleware
 from .identity_engine_routes import router as identity_engine_router
 from .image_edit_routes import router as image_edit_router
@@ -42,6 +43,7 @@ def create_contract_app() -> FastAPI:
     app.include_router(canvas_document_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(artifact_engine_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(version_history_router, dependencies=[Depends(enforce_api_auth)])
+    app.include_router(export_product_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(brand_registry_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(brand_rules_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(identity_engine_router, dependencies=[Depends(enforce_api_auth)])
