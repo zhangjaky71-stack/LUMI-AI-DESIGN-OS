@@ -5,29 +5,39 @@ from fastapi.testclient import TestClient
 
 from lumi_api.api.v1.app import create_contract_app
 from lumi_api.api.v1.errors import install_error_contract
+from lumi_api.observability import parse_traceparent
 
 
-def test_invalid_trace_response_keeps_node66_security_headers() -> None:
+def test_invalid_trace_restarts_without_weakening_node66_security_headers() -> None:
     with TestClient(create_contract_app(environment="development")) as client:
         response = client.get(
             "/api/openapi.json",
-            headers={"traceparent": "not-a-valid-traceparent"},
+            headers={
+                "traceparent": "not-a-valid-traceparent",
+                "tracestate": "vendor=value",
+            },
         )
-    assert response.status_code == 400
-    assert response.json()["code"] == "observability_trace_context_invalid"
+    assert response.status_code == 200
+    assert parse_traceparent(response.headers["traceparent"]) is not None
+    assert response.headers.get("tracestate") is None
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
     assert response.headers["referrer-policy"] == "no-referrer"
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
 
 
-def test_production_invalid_trace_response_keeps_hsts() -> None:
+def test_production_invalid_trace_restarts_and_keeps_docs_shutdown_hsts() -> None:
     with TestClient(create_contract_app(environment="production")) as client:
         response = client.get(
-            "/api/v1/health/live",
-            headers={"traceparent": "not-a-valid-traceparent"},
+            "/api/openapi.json",
+            headers={
+                "traceparent": "not-a-valid-traceparent",
+                "tracestate": "vendor=value",
+            },
         )
-    assert response.status_code == 400
+    assert response.status_code == 404
+    assert parse_traceparent(response.headers["traceparent"]) is not None
+    assert response.headers.get("tracestate") is None
     assert response.headers["strict-transport-security"].startswith("max-age=63072000")
     assert response.headers["x-content-type-options"] == "nosniff"
 
