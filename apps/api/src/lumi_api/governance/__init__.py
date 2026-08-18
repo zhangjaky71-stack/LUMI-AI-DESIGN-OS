@@ -28,6 +28,7 @@ from .service import (
     GovernanceService,
     ObjectDeletionPort,
     SearchDeletionPort,
+    SubjectDeactivationPort,
 )
 
 __all__ = [
@@ -57,6 +58,7 @@ __all__ = [
     "RetentionPolicy",
     "SafeChangeSummary",
     "SearchDeletionPort",
+    "SubjectDeactivationPort",
     "redact_audit_mapping",
     "redact_audit_value",
     "sanitize_url",
