@@ -1,0 +1,137 @@
+name: NODE-68 Recovery & DR
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/recovery/**"
+      - "apps/api/src/lumi_api/persistence/models_execution.py"
+      - "apps/api/src/lumi_api/persistence/models_control_plane.py"
+      - "apps/api/src/lumi_api/persistence/models_queue_runtime.py"
+      - "apps/api/tests/test_recovery_node68.py"
+      - "tools/node68/**"
+      - "docs/nodes/NODE-68-RECOVERY-DR.md"
+      - "reports/nodes/NODE-68/**"
+      - ".github/workflows/node-68-recovery-dr.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  recovery-contract:
+    name: recovery-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Verify Python lock
+        run: uv lock --check
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+      - name: Compile NODE-68 scope
+        run: |
+          uv run python -m compileall -q \
+            apps/api/src/lumi_api/recovery \
+            apps/api/tests/test_recovery_node68.py \
+            tools/node68
+      - name: Static NODE-68 recovery acceptance
+        run: uv run python tools/node68/validate_recovery.py
+      - name: Recovery policy and paid-side-effect tests
+        run: |
+          PYTHONPATH=apps/api/src \
+            uv run pytest -q apps/api/tests/test_recovery_node68.py
+      - name: Ruff NODE-68 scope
+        run: |
+          uv run ruff check --ignore E501,I001 \
+            apps/api/src/lumi_api/recovery \
+            apps/api/tests/test_recovery_node68.py \
+            tools/node68
+      - name: Pyright NODE-68 core
+        run: uv run pyright apps/api/src/lumi_api/recovery
+      - name: Verify gap ledger remains fail-closed
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          ledger = json.loads(Path("reports/nodes/NODE-68/gap-ledger.json").read_text(encoding="utf-8"))
+          assert ledger["node"] == "NODE-68"
+          assert ledger["status"] == "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE"
+          assert any(g["severity"] == "P0" and g["status"] == "open" for g in ledger["gaps"])
+          assert any(g["id"] == "NODE68-GAP-105" and g["status"] == "open" for g in ledger["gaps"])
+          assert any(g["id"] == "NODE68-GAP-202" and g["status"] == "closed" for g in ledger["gaps"])
+          print("NODE68_GAP_LEDGER_PARSE_PASS")
+          PY
+
+  recovery-db:
+    name: recovery-db
+    needs: recovery-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: lumi
+          POSTGRES_PASSWORD: lumi
+          POSTGRES_DB: lumi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lumi -d lumi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://lumi:lumi@localhost:5432/lumi
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+      - name: Migrate canonical durable schema
+        run: uv run alembic -c apps/api/alembic.ini upgrade head
+      - name: Verify recovery source-of-truth columns
+        run: |
+          uv run python - <<'PY'
+          import os
+          import psycopg
+
+          url = os.environ["DATABASE_URL"].replace("postgresql+psycopg", "postgresql")
+          expected = {
+              "runtime_jobs": {"status", "operation_id", "attempt_count", "max_attempts", "next_retry_at", "started_at"},
+              "idempotency_operations": {"status", "paid", "lease_owner", "lease_expires_at", "provider_request_id", "recovery_state"},
+              "agent_run_control": {"control_status", "graph_key", "graph_version", "graph_definition_hash", "checkpoint_id", "checkpoint_namespace", "resume_version"},
+              "artifact_files": {"bucket", "storage_key", "size_bytes", "checksum_sha256"},
+          }
+          with psycopg.connect(url) as conn:
+              for table, required in expected.items():
+                  columns = {
+                      row[0]
+                      for row in conn.execute(
+                          "select column_name from information_schema.columns "
+                          "where table_schema='public' and table_name=%s",
+                          (table,),
+                      ).fetchall()
+                  }
+                  missing = required - columns
+                  assert not missing, (table, missing)
+          print("NODE68_DURABLE_TRUTH_SCHEMA_PASS")
+          PY
