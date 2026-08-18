@@ -9,7 +9,6 @@ from fastapi import APIRouter, Query, Request, status
 from lumi_api.approvals import (
     ApprovalAuditEntry,
     ApprovalConflict,
-    ApprovalDecision,
     ApprovalEffect,
     ApprovalForbidden,
     ApprovalNotFound,
@@ -136,7 +135,6 @@ def _approval_response(value: ApprovalRecord) -> ApprovalResponse:
         summary=str(summary) if summary else "Review the exact subject before deciding.",
         expires_at=value.expires_at,
         resolved_at=value.resolved_at,
-        interrupt_id=value.interrupt_id,
         created_at=value.created_at,
         updated_at=value.updated_at,
         version=value.version,
@@ -149,7 +147,7 @@ def _effect_response(value: ApprovalEffect) -> ApprovalEffectResponse:
         effect_type=value.effect_type,
         status=value.status,
         attempt_count=value.attempt_count,
-        last_error=value.last_error,
+        has_error=value.last_error is not None,
         completed_at=value.completed_at,
     )
 
