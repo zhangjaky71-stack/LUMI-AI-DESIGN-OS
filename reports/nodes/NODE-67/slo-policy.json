@@ -1,0 +1,43 @@
+{
+  "node": "NODE-67",
+  "version": "2026-08-18.v1",
+  "status": "BASELINE_POLICY_NOT_PRODUCTION_VERIFIED",
+  "slos": [
+    {
+      "key": "core_api.availability",
+      "window": "30d",
+      "target": 0.999,
+      "scope": "core synchronous API requests excluding explicitly long-running AI operations",
+      "error_budget_policy": "versioned and reviewed"
+    },
+    {
+      "key": "core_api.read_write_p95",
+      "window": "30d",
+      "target_ms": 500,
+      "scope": "core synchronous API read/write routes excluding explicitly long-running AI operations"
+    },
+    {
+      "key": "agent.command.accept_p95",
+      "window": "30d",
+      "target_ms": 1000,
+      "scope": "command accepted/persisted acknowledgement, not full Agent completion"
+    },
+    {
+      "key": "realtime.status_delivery_p95",
+      "window": "30d",
+      "target_ms": 2000,
+      "scope": "durable state change to client-visible status delivery"
+    },
+    {
+      "key": "paid_side_effects.no_duplicate",
+      "window": "30d",
+      "target": 1.0,
+      "scope": "idempotent paid provider/tool/billing side effects"
+    }
+  ],
+  "sampling": {
+    "error_or_critical": 1.0,
+    "normal_trace_default": 0.1,
+    "rule": "Errors, critical events and forced security/side-effect evidence cannot be sampled away. Normal traffic may use deterministic/adaptive sampling."
+  }
+}
