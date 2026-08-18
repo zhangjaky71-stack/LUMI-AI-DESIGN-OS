@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { InfiniteCanvas } from "@/components/canvas/infinite-canvas";
 import { ApiError } from "@/lib/api/problem";
+import type { CanvasSaveState } from "@/lib/canvas/types";
 import {
   cancelAgentRun,
   createAgentRun,
@@ -25,7 +27,6 @@ import type {
   AgentRunResource,
   CanvasSelectionContext,
   ExactArtifactRef,
-  RunControlSnapshot,
 } from "@/lib/workspace/types";
 
 export type WorkspaceProject = {
@@ -40,12 +41,10 @@ export function AiWorkspace({
   organizationId,
   project,
   initialRunId,
-  selection = null,
 }: {
   organizationId: string;
   project: WorkspaceProject;
   initialRunId?: string | null;
-  selection?: CanvasSelectionContext | null;
 }) {
   const router = useRouter();
   const [runId, setRunId] = useState(initialRunId ?? null);
@@ -59,6 +58,8 @@ export function AiWorkspace({
   const [pending, setPending] = useState<"send" | "stop" | "approve" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [selectedArtifact, setSelectedArtifact] = useState<ExactArtifactRef | null>(null);
+  const [canvasSelection, setCanvasSelection] = useState<CanvasSelectionContext | null>(null);
+  const [canvasSaveState, setCanvasSaveState] = useState<CanvasSaveState>("saved");
   const mounted = useRef(true);
 
   const refreshCanonical = useCallback(async () => {
@@ -127,24 +128,31 @@ export function AiWorkspace({
     }
   }, [runtime.artifacts, selectedArtifact]);
 
+  useEffect(() => {
+    setCanvasSelection(null);
+    setCanvasSaveState("saved");
+  }, [selectedArtifact?.artifactVersionId]);
+
   const approval = useMemo(
     () => runtime.control?.interrupts.find((item) => item.kind === "approval" || item.kind === "review") ?? null,
     [runtime.control],
   );
   const status = runtime.control?.status ?? run?.status ?? (runId ? "loading" : "idle");
-  const canStop = runId !== null && !["succeeded", "failed", "cancelled"].includes(status);
+  const terminal = ["succeeded", "failed", "cancelled"].includes(status.toLowerCase());
+  const canStop = runId !== null && !terminal;
+  const canvasContextReady = selectedArtifact === null || canvasSaveState === "saved";
 
   async function submitGoal(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const command = goal.trim();
-    if (!command || pending) return;
+    if (!command || pending || !canvasContextReady) return;
     setPending("send");
     setNotice(null);
     try {
       const created = await createAgentRun(
         organizationId,
         project.id,
-        { goal: command, selection },
+        { goal: command, selection: canvasSelection },
         crypto.randomUUID(),
       );
       setLastSubmittedGoal(command);
@@ -221,6 +229,11 @@ export function AiWorkspace({
         <div className="workspace-run-meta" aria-live="polite">
           <ConnectionBadge state={connection} />
           <span className="workspace-status-pill">{statusLabel(status)}</span>
+          {selectedArtifact ? (
+            <span className={`workspace-status-pill canvas-context-${canvasSaveState}`}>
+              Canvas {canvasSaveState}
+            </span>
+          ) : null}
           {canStop ? (
             <button className="workspace-ghost-button" type="button" onClick={stopRun} disabled={pending !== null}>
               {pending === "stop" ? "Stopping…" : "Stop"}
@@ -268,13 +281,17 @@ export function AiWorkspace({
           </div>
 
           <form className="workspace-composer" onSubmit={submitGoal}>
-            {selection && selection.nodeIds.length ? (
+            {canvasSelection && canvasSelection.nodeIds.length ? (
               <div className="workspace-context-chip">
-                {selection.nodeIds.length} selected · document v{selection.documentVersion}
+                {canvasSelection.nodeIds.length} selected · document v{canvasSelection.documentVersion}
+              </div>
+            ) : selectedArtifact && canvasSaveState !== "saved" ? (
+              <div className="workspace-context-chip workspace-context-chip-warning">
+                Save or resolve Canvas {canvasSaveState} before using selection in AI
               </div>
             ) : (
               <div className="workspace-context-chip workspace-context-chip-muted">
-                No canvas selection · NODE-55 selection will bind here
+                No canvas selection
               </div>
             )}
             <label htmlFor="workspace-command" className="sr-only">Tell LUMI what to design</label>
@@ -288,15 +305,25 @@ export function AiWorkspace({
               disabled={pending !== null || canStop}
             />
             <div className="workspace-composer-footer">
-              <span>{canStop ? "Stop the current run before starting another command." : "Project context is attached automatically."}</span>
-              <button className="primary-button" type="submit" disabled={!goal.trim() || pending !== null || canStop}>
+              <span>
+                {canStop
+                  ? "Stop the current run before starting another command."
+                  : !canvasContextReady
+                    ? "Canvas changes must be saved before the selection can enter an Agent command."
+                    : "Project and saved Canvas context are attached automatically."}
+              </span>
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={!goal.trim() || pending !== null || canStop || !canvasContextReady}
+              >
                 {pending === "send" ? "Starting…" : "Run agent"}
               </button>
             </div>
           </form>
         </section>
 
-        <section className="workspace-canvas-panel" aria-label="Artifact canvas preview">
+        <section className="workspace-canvas-panel" aria-label="Artifact canvas">
           <div className="workspace-panel-heading">
             <div>
               <p className="eyebrow">Canvas</p>
@@ -304,25 +331,23 @@ export function AiWorkspace({
             </div>
             {selectedArtifact ? (
               <span className="workspace-version-badge">
-                {selectedArtifact.versionNumber ? `v${selectedArtifact.versionNumber}` : "exact version"}
+                {selectedArtifact.versionNumber ? `artifact v${selectedArtifact.versionNumber}` : "exact artifact"}
               </span>
             ) : null}
           </div>
           <div className="workspace-stage">
             {selectedArtifact ? (
-              <div className="workspace-artifact-focus">
-                <span className="workspace-artifact-mark">ART</span>
-                <strong>Exact artifact version</strong>
-                <code>{selectedArtifact.artifactVersionId}</code>
-                <p>
-                  The editable Infinite Canvas is intentionally owned by NODE-55. NODE-54 keeps the exact version identity and selection handoff stable.
-                </p>
-              </div>
+              <InfiniteCanvas
+                organizationId={organizationId}
+                artifactVersionId={selectedArtifact.artifactVersionId}
+                onSelectionChange={setCanvasSelection}
+                onSaveStateChange={setCanvasSaveState}
+              />
             ) : (
               <div className="workspace-stage-empty">
                 <span className="workspace-artifact-mark">+</span>
                 <h3>Artifacts will appear here.</h3>
-                <p>Only `artifact.created` events with an exact artifact version are admitted to this stage.</p>
+                <p>Only `artifact.created` events with an exact artifact version are admitted to the editable stage.</p>
               </div>
             )}
           </div>
@@ -358,6 +383,7 @@ export function AiWorkspace({
               <div><dt>Resume version</dt><dd>{runtime.control?.resumeVersion ?? "—"}</dd></div>
               <div><dt>Budget remaining</dt><dd>{runtime.control?.budgetRemaining ?? "—"}</dd></div>
               <div><dt>Artifacts</dt><dd>{runtime.artifacts.length}</dd></div>
+              <div><dt>Canvas</dt><dd>{selectedArtifact ? canvasSaveState : "—"}</dd></div>
             </dl>
           </section>
         </aside>
