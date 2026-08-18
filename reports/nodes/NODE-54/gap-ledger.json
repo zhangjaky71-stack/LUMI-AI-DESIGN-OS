@@ -1,0 +1,70 @@
+{
+  "node": "NODE-54",
+  "status": "IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "gaps": [
+    {
+      "id": "NODE54-GAP-01",
+      "severity": "P0",
+      "area": "durable-event-replay",
+      "status": "OPEN",
+      "summary": "Production AgentEventReplayPort and app.state.agent_workspace_service composition are not yet proven in a deployed runtime.",
+      "completion_evidence": "Tenant-scoped persistent event replay survives API restart/multi-instance routing, honors Last-Event-ID, and powers the NODE-54 SSE endpoint without an in-memory fallback."
+    },
+    {
+      "id": "NODE54-GAP-02",
+      "severity": "P0",
+      "area": "agent-run-control-composition",
+      "status": "OPEN",
+      "summary": "The durable Project Core AgentRun creation path must be proven to start/bind the NODE-28 LangGraph control plane using server-resolved brief, graph/code identity and budget policy.",
+      "completion_evidence": "One integration test creates an AgentRun through the public Project API, observes the same run id/thread in NODE-28 control, completes or interrupts the graph, and never requires client-supplied graph/code identity."
+    },
+    {
+      "id": "NODE54-GAP-03",
+      "severity": "P0",
+      "area": "workspace-e2e",
+      "status": "OPEN",
+      "summary": "Real browser/MockAgent E2E for start, stream reconnect, exact artifact, stale approval and cancellation has not yet executed successfully.",
+      "completion_evidence": "Browser E2E exercises the canonical public API and proves reconnect/dedupe/approval/cancel behavior."
+    },
+    {
+      "id": "NODE54-GAP-04",
+      "severity": "P0",
+      "area": "hosted-ci",
+      "status": "OPEN",
+      "summary": "Hosted GitHub runner execution evidence is required. Prior NODE workflows have repeatedly failed before checkout with zero steps.",
+      "completion_evidence": "NODE-54 workflow jobs materialize and execute static/API/web tests, TypeScript typecheck and production build."
+    },
+    {
+      "id": "NODE54-GAP-05",
+      "severity": "P1",
+      "area": "conversation-history",
+      "status": "OPEN",
+      "summary": "Project Core AgentRun has no durable public conversation transcript or project active/recent-run discovery contract, so NODE-54 does not fabricate cross-refresh chat history or auto-select a prior run.",
+      "completion_evidence": "Versioned Conversation/Message API and active/recent run discovery are defined, tenant-scoped, and integrated."
+    },
+    {
+      "id": "NODE54-GAP-06",
+      "severity": "P1",
+      "area": "infinite-canvas",
+      "status": "OPEN",
+      "summary": "NODE-55 has not yet supplied actual editable canvas selection/change events. NODE-54 only defines the exact selected_node_ids + design_document_version handoff.",
+      "completion_evidence": "NODE-55 selection events populate composer context and selected-only agent edits are verified against the exact document version."
+    },
+    {
+      "id": "NODE54-GAP-07",
+      "severity": "P1",
+      "area": "approval-engine",
+      "status": "OPEN",
+      "summary": "Only the NODE-28-proven approve action is public. Reject, Request Changes, richer cost/impact payloads and approval audit UX require the later Approval Engine contract.",
+      "completion_evidence": "NODE-62 public approval decision schema is integrated with stale fencing and audited reject/request-changes behavior."
+    },
+    {
+      "id": "NODE54-GAP-08",
+      "severity": "P1",
+      "area": "warning-projection",
+      "status": "OPEN",
+      "summary": "Budget/provider/rights/constraint warning semantics depend on the production safe-event projector conventions and need integration coverage.",
+      "completion_evidence": "Fixture/projector tests demonstrate each warning class reaches NODE-54 as a safe structured public event without leaking private payload fields."
+    }
+  ]
+}
