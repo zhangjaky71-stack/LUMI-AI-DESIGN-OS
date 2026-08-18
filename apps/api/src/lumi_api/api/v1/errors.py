@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Awaitable, Callable
+from contextlib import ExitStack
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
@@ -83,56 +84,63 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
                 detail="X-Correlation-ID must use the supported bounded identifier format.",
             )
 
-        try:
-            context_manager = start_request_context(
-                request_id=request_id,
-                correlation_id=correlation_id,
-                traceparent=request.headers.get("traceparent"),
-                tracestate=request.headers.get("tracestate"),
-            )
-            with context_manager as telemetry_context:
-                request.state.telemetry_context = telemetry_context
-                started_at = datetime.now(UTC)
-                started_clock = perf_counter()
-                try:
-                    response = await call_next(request)
-                except Exception:
-                    ended_at = datetime.now(UTC)
-                    _record_http_telemetry(
-                        request,
-                        started_at=started_at,
-                        ended_at=ended_at,
-                        duration_ms=(perf_counter() - started_clock) * 1000,
-                        status_code=500,
-                        failed=True,
+        # Only trace-context parsing/entry errors are observability input errors.
+        # Do not wrap call_next in this ValueError handler: downstream application,
+        # auth, persistence, or provider ValueErrors must keep their authoritative
+        # error semantics rather than being misclassified as malformed trace context.
+        with ExitStack() as stack:
+            try:
+                telemetry_context = stack.enter_context(
+                    start_request_context(
+                        request_id=request_id,
+                        correlation_id=correlation_id,
+                        traceparent=request.headers.get("traceparent"),
+                        tracestate=request.headers.get("tracestate"),
                     )
-                    raise
+                )
+            except ValueError as exc:
+                return _simple_problem(
+                    request,
+                    status=400,
+                    code="observability_trace_context_invalid",
+                    title="Invalid trace context",
+                    detail=str(exc),
+                )
 
-                duration_ms = (perf_counter() - started_clock) * 1000
+            request.state.telemetry_context = telemetry_context
+            started_at = datetime.now(UTC)
+            started_clock = perf_counter()
+            try:
+                response = await call_next(request)
+            except Exception:
                 ended_at = datetime.now(UTC)
-                response.headers["X-Request-ID"] = request_id
-                response.headers["X-Correlation-ID"] = telemetry_context.correlation_id
-                final_context = current_telemetry_context() or telemetry_context
-                response.headers["traceparent"] = final_context.traceparent
-                if final_context.tracestate:
-                    response.headers["tracestate"] = final_context.tracestate
                 _record_http_telemetry(
                     request,
                     started_at=started_at,
                     ended_at=ended_at,
-                    duration_ms=duration_ms,
-                    status_code=response.status_code,
-                    failed=response.status_code >= 500,
+                    duration_ms=(perf_counter() - started_clock) * 1000,
+                    status_code=500,
+                    failed=True,
                 )
-                return response
-        except ValueError as exc:
-            return _simple_problem(
+                raise
+
+            duration_ms = (perf_counter() - started_clock) * 1000
+            ended_at = datetime.now(UTC)
+            response.headers["X-Request-ID"] = request_id
+            response.headers["X-Correlation-ID"] = telemetry_context.correlation_id
+            final_context = current_telemetry_context() or telemetry_context
+            response.headers["traceparent"] = final_context.traceparent
+            if final_context.tracestate:
+                response.headers["tracestate"] = final_context.tracestate
+            _record_http_telemetry(
                 request,
-                status=400,
-                code="observability_trace_context_invalid",
-                title="Invalid trace context",
-                detail=str(exc),
+                started_at=started_at,
+                ended_at=ended_at,
+                duration_ms=duration_ms,
+                status_code=response.status_code,
+                failed=response.status_code >= 500,
             )
+            return response
 
 
 def _telemetry(request: Request) -> SafeTelemetry:
