@@ -39,7 +39,7 @@
     "max_org_concurrent_agent_runs": 4,
     "max_org_concurrent_generations": 4,
     "max_org_concurrent_video_jobs": 1,
-    "daily_provider_spend_usd": 250,
+    "daily_provider_spend_usd": 100,
     "invite_rate_per_hour": 20
   },
   "rollback": {
