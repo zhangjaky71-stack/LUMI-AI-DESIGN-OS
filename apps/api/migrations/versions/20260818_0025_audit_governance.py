@@ -29,7 +29,6 @@ def _execute(filename: str) -> None:
 
 
 def upgrade() -> None:
-    _execute("pre.sql")
     _execute("up.sql")
 
 
