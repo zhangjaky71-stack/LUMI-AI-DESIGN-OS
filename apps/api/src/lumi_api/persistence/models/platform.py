@@ -422,6 +422,9 @@ class IdempotencyOperation(IdMixin, MutableTimestampMixin, Base):
     request_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    provider_attempt_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     provider_request_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     result_ref: Mapped[str | None] = mapped_column(String(512), nullable=True)
     result_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
