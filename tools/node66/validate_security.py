@@ -48,6 +48,8 @@ def main() -> None:
     codeql = read(".github/workflows/codeql.yml")
     dependency_review = read(".github/workflows/dependency-review.yml")
     secret_scan = read(".github/workflows/secret-scan.yml")
+    security_workflow = read(".github/workflows/node-66-security-hardening.yml")
+    dast_workflow = read(".github/workflows/node-66-security-dast.yml")
 
     # API / browser HTTP hardening.
     require(security_http, "security_sensitive_query_forbidden", "query secret gate")
@@ -145,7 +147,7 @@ def main() -> None:
         forbid(text, "?access_token=", f"credential query URL:{path.relative_to(ROOT)}")
         forbid(text, "?api_key=", f"credential query URL:{path.relative_to(ROOT)}")
 
-    # Supply-chain controls must remain wired. Executed green evidence is separate.
+    # Pre-existing supply-chain controls remain defense-in-depth.
     require(codeql, "github/codeql-action/analyze", "CodeQL analyze")
     require(dependency_review, "dependency-review", "Dependency Review")
     require(secret_scan, "gitleaks/gitleaks-action", "Gitleaks")
@@ -153,6 +155,34 @@ def main() -> None:
         raise SystemExit("NODE66_VALIDATION_FAILED:uv.lock missing")
     if not (ROOT / "pnpm-lock.yaml").exists():
         raise SystemExit("NODE66_VALIDATION_FAILED:pnpm-lock.yaml missing")
+
+    # NODE-66's own blocking gates must not silently become advisory.
+    for marker in (
+        'PIP_AUDIT_VERSION: "2.10.1"',
+        'BANDIT_VERSION: "1.9.4"',
+        'pip-audit \\',
+        'bandit \\',
+        'pnpm audit --audit-level high',
+        'aquasecurity/trivy-action@v0.36.0',
+        'scanners: vuln,secret,misconfig',
+        'format: cyclonedx',
+        'image-ref: ${{ env.SANDBOX_IMAGE }}',
+        'severity: CRITICAL,HIGH',
+        'uv lock --check',
+        'tools/node21/test_docker_sandbox.py',
+    ):
+        require(security_workflow, marker, f"blocking security workflow {marker}")
+    forbid(security_workflow, "continue-on-error: true", "NODE-66 blocking gate downgrade")
+    require(security_workflow, 'exit-code: "1"', "Trivy blocking exit")
+
+    # DAST wiring is guarded and blocking, but actual execution remains a P0.
+    require(dast_workflow, "vars.LUMI_STAGING_URL", "staging target source")
+    require(dast_workflow, 'parsed.scheme != "https"', "DAST HTTPS target fence")
+    require(dast_workflow, "NODE66_DAST_TARGET_CREDENTIALS_FORBIDDEN", "DAST credential URL fence")
+    require(dast_workflow, "NODE66_DAST_TARGET_NON_GLOBAL_IP_FORBIDDEN", "DAST non-global IP fence")
+    require(dast_workflow, "zaproxy/action-baseline@v0.15.0", "ZAP baseline action")
+    require(dast_workflow, "fail_action: true", "ZAP blocking result")
+    require(dast_workflow, "allow_issue_writing: false", "ZAP no issue mutation")
 
     # Threat model/version/non-claims are acceptance inputs, not decorative docs.
     for marker in (
@@ -180,8 +210,11 @@ def main() -> None:
     ]
     if not open_p0:
         raise SystemExit("NODE66_VALIDATION_FAILED:must retain open production P0 gaps")
-    if len(closed_core) < 7:
+    if len(closed_core) < 9:
         raise SystemExit("NODE66_VALIDATION_FAILED:core evidence unexpectedly incomplete")
+    for gap_id in ("NODE66-GAP-208", "NODE66-GAP-209"):
+        if not any(gap["id"] == gap_id and gap["status"] == "closed" for gap in ledger["gaps"]):
+            raise SystemExit(f"NODE66_VALIDATION_FAILED:missing closed wiring evidence:{gap_id}")
 
     print("NODE66_SECURITY_STATIC_ACCEPTANCE_PASS")
 
