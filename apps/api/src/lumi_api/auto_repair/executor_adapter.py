@@ -6,10 +6,10 @@ from lumi_auto_repair import (
     AutoRepairJob,
     BudgetReservation,
     RepairCandidate,
+    RepairCostEstimate,
     RepairKind,
     RepairPlan,
 )
-from lumi_auto_repair.costing import RepairCostEstimate
 
 
 class Node38StructuralRepairBackend(Protocol):
@@ -36,7 +36,6 @@ class Node47LocalImageRepairBackend(Protocol):
         job: AutoRepairJob,
         plan: RepairPlan,
         repair_branch_id: str,
-        reservation: BudgetReservation,
     ) -> RepairCandidate: ...
 
 
@@ -89,18 +88,12 @@ class CompositeRepairExecutor:
                 pricing_snapshot_id=None,
             )
         if plan.kind is RepairKind.LOCAL_IMAGE_EDIT:
-            return await self.local_image.estimate_local_edit(
-                job=job,
-                plan=plan,
-            )
+            return await self.local_image.estimate_local_edit(job=job, plan=plan)
         if plan.kind in {
             RepairKind.REGENERATE_ELEMENT,
             RepairKind.REGENERATE_ARTIFACT,
         }:
-            return await self.generation.estimate_regeneration(
-                job=job,
-                plan=plan,
-            )
+            return await self.generation.estimate_regeneration(job=job, plan=plan)
         raise ValueError("REPAIR_EXECUTOR_KIND_UNSUPPORTED")
 
     async def execute(
@@ -125,14 +118,16 @@ class CompositeRepairExecutor:
             if candidate.actual_cost_usd != 0:
                 raise ValueError("REPAIR_STRUCTURAL_COST_MUST_BE_ZERO")
             return candidate
+
         if reservation is None:
             raise ValueError("REPAIR_PAID_RESERVATION_REQUIRED")
         if plan.kind is RepairKind.LOCAL_IMAGE_EDIT:
+            # The NODE-51 reservation is only a repair-loop budget envelope.
+            # NODE-47 performs its own provider settlement through Model Gateway.
             return await self.local_image.execute_local_edit(
                 job=job,
                 plan=plan,
                 repair_branch_id=repair_branch_id,
-                reservation=reservation,
             )
         if plan.kind in {
             RepairKind.REGENERATE_ELEMENT,
