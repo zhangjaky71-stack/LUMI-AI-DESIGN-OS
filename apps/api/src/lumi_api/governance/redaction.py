@@ -32,7 +32,9 @@ _CONTENT_KEY_PARTS = (
     "message_body",
 )
 _URL_KEY_PARTS = ("url", "uri", "href")
+_SHA256_REF_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _SECRET_VALUE_PATTERNS = (
+    re.compile(r"\bBearer\s+\S+", re.IGNORECASE),
     re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b", re.IGNORECASE),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"),
@@ -44,6 +46,8 @@ _SECRET_VALUE_PATTERNS = (
 
 
 def sha256_ref(value: str) -> str:
+    if _SHA256_REF_RE.fullmatch(value):
+        return value
     return f"sha256:{hashlib.sha256(value.encode('utf-8')).hexdigest()}"
 
 
@@ -60,9 +64,8 @@ def sanitize_url(value: str) -> str:
 
 
 def redact_audit_text(value: str) -> str:
-    normalized = value.strip()
-    if normalized.casefold().startswith("bearer "):
-        return _REDACTED
+    if value == _REDACTED or _SHA256_REF_RE.fullmatch(value):
+        return value
     if any(pattern.search(value) for pattern in _SECRET_VALUE_PATTERNS):
         return _REDACTED
     return value
