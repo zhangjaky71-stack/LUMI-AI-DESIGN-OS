@@ -16,7 +16,12 @@ from .models import (
 )
 from .sampling import DeterministicSampler, SamplingDecision
 from .slo import ErrorBudgetSnapshot, SLODefinition, evaluate_error_budget
-from .telemetry import NoopTelemetrySink, SafeTelemetry, TelemetrySink
+from .telemetry import (
+    NoopTelemetrySink,
+    PythonJsonLoggingSink,
+    SafeTelemetry,
+    TelemetrySink,
+)
 
 __all__ = [
     "DeterministicSampler",
@@ -25,6 +30,7 @@ __all__ = [
     "LogLevel",
     "MetricPoint",
     "NoopTelemetrySink",
+    "PythonJsonLoggingSink",
     "SLODefinition",
     "SafeLangSmithTracer",
     "SafeTelemetry",
