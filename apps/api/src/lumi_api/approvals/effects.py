@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any, Iterator, Protocol
 from uuid import UUID
 
 from sqlalchemy import text
@@ -39,12 +40,7 @@ class AgentApprovalResumePort(Protocol):
 
 
 class ApprovalEffectProcessor:
-    """Process durable approval effects idempotently across runtime restarts.
-
-    The approval decision is already canonical before this processor runs. A crash
-    therefore leaves an effect in PENDING/RUNNING/FAILED state rather than losing
-    the human decision. Production composition can retry these rows safely.
-    """
+    """Process durable approval effects idempotently across runtime restarts."""
 
     def __init__(
         self,
@@ -58,6 +54,13 @@ class ApprovalEffectProcessor:
         self.organization_id = organization_id
         self.artifact_port = artifact_port
         self.agent_port = agent_port
+
+    @contextmanager
+    def _transaction(self) -> Iterator[None]:
+        if self.session.in_transaction():
+            self.session.rollback()
+        with self.session.begin():
+            yield
 
     async def process(self, effect_id: UUID) -> ApprovalEffect:
         effect = self._claim(effect_id)
@@ -97,7 +100,8 @@ class ApprovalEffectProcessor:
 
     def _claim(self, effect_id: UUID) -> ApprovalEffect:
         now = datetime.now(UTC)
-        with self.session.begin():
+        completed: ApprovalEffect | None = None
+        with self._transaction():
             row = self.session.execute(
                 text(
                     """
@@ -112,31 +116,32 @@ class ApprovalEffectProcessor:
                 raise ApprovalNotFound("APPROVAL_EFFECT_NOT_FOUND")
             current = ApprovalEffectStatus(str(row["status"]))
             if current == ApprovalEffectStatus.COMPLETED:
-                return PostgresApprovalRepository._effect(row)
-            if current == ApprovalEffectStatus.RUNNING:
+                completed = PostgresApprovalRepository._effect(row)
+            elif current == ApprovalEffectStatus.RUNNING:
                 raise ApprovalConflict("APPROVAL_EFFECT_ALREADY_RUNNING")
-            if current == ApprovalEffectStatus.CANCELLED:
+            elif current == ApprovalEffectStatus.CANCELLED:
                 raise ApprovalConflict("APPROVAL_EFFECT_CANCELLED")
-            self.session.execute(
-                text(
-                    """
-                    UPDATE approval_effects
-                    SET status='RUNNING', attempt_count=attempt_count+1,
-                        last_error=NULL, updated_at=:updated_at
-                    WHERE id=:id AND organization_id=:organization_id
-                    """
-                ),
-                {
-                    "updated_at": now,
-                    "id": effect_id,
-                    "organization_id": self.organization_id,
-                },
-            )
-        return self._get(effect_id)
+            else:
+                self.session.execute(
+                    text(
+                        """
+                        UPDATE approval_effects
+                        SET status='RUNNING', attempt_count=attempt_count+1,
+                            last_error=NULL, updated_at=:updated_at
+                        WHERE id=:id AND organization_id=:organization_id
+                        """
+                    ),
+                    {
+                        "updated_at": now,
+                        "id": effect_id,
+                        "organization_id": self.organization_id,
+                    },
+                )
+        return completed if completed is not None else self._get(effect_id)
 
     def _mark_completed(self, effect_id: UUID) -> None:
         now = datetime.now(UTC)
-        with self.session.begin():
+        with self._transaction():
             self.session.execute(
                 text(
                     """
@@ -151,7 +156,7 @@ class ApprovalEffectProcessor:
 
     def _mark_failed(self, effect_id: UUID, error: str) -> None:
         now = datetime.now(UTC)
-        with self.session.begin():
+        with self._transaction():
             self.session.execute(
                 text(
                     """
@@ -169,6 +174,8 @@ class ApprovalEffectProcessor:
             )
 
     def _get(self, effect_id: UUID) -> ApprovalEffect:
+        if self.session.in_transaction():
+            self.session.rollback()
         row = self.session.execute(
             text(
                 "SELECT * FROM approval_effects WHERE id=:id AND organization_id=:organization_id"
@@ -177,4 +184,6 @@ class ApprovalEffectProcessor:
         ).mappings().one_or_none()
         if row is None:
             raise ApprovalNotFound("APPROVAL_EFFECT_NOT_FOUND")
-        return PostgresApprovalRepository._effect(row)
+        effect = PostgresApprovalRepository._effect(row)
+        self.session.rollback()
+        return effect
