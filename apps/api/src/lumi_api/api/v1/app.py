@@ -45,6 +45,9 @@ def create_contract_app(*, environment: str | None = None) -> FastAPI:
         redoc_url="/api/redoc" if expose_interactive_docs else None,
         openapi_url="/api/openapi.json" if expose_interactive_docs else None,
     )
+    # Runtime environment is shared with the outer correlation/error boundary so
+    # responses it creates directly keep the same production security-header policy.
+    app.state.runtime_environment = runtime_environment
     # Logs have a safe standard-library JSON baseline immediately. Trace/metric
     # exporters are deliberately composed separately through an OTel/Collector port.
     app.state.telemetry = SafeTelemetry(PythonJsonLoggingSink())
