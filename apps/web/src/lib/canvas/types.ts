@@ -29,21 +29,35 @@ export type CanvasCommandBatch = {
 
 export function parseCanvasProjection(value: unknown): CanvasProjection {
   const record = asRecord(value, "CANVAS_PROJECTION_INVALID");
-  const document = asRecord(record.document, "CANVAS_DOCUMENT_INVALID") as unknown as DesignDocument;
-  if (typeof document.document_id !== "string" || typeof document.root_id !== "string") {
-    throw new Error("CANVAS_DOCUMENT_IDENTITY_INVALID");
-  }
-  if (!document.nodes || typeof document.nodes !== "object" || Array.isArray(document.nodes)) {
-    throw new Error("CANVAS_DOCUMENT_NODES_INVALID");
-  }
+  const rawDocument = structuredClone(
+    asRecord(record.document, "CANVAS_DOCUMENT_INVALID"),
+  );
   const designDocumentId = requiredString(
     record.design_document_id ?? record.designDocumentId,
     "CANVAS_DOCUMENT_ID_REQUIRED",
   );
-  if (document.document_id !== designDocumentId) {
+  const revision = positiveInteger(record.revision, "CANVAS_REVISION_INVALID");
+  const rootId = requiredString(rawDocument.root_id, "CANVAS_ROOT_ID_REQUIRED");
+  if (rawDocument.document_id !== designDocumentId) {
     throw new Error("CANVAS_DOCUMENT_ID_MISMATCH");
   }
-  const revision = positiveInteger(record.revision, "CANVAS_REVISION_INVALID");
+  const nodes = asRecord(rawDocument.nodes, "CANVAS_DOCUMENT_NODES_INVALID");
+  for (const rawNode of Object.values(nodes)) {
+    if (!rawNode || typeof rawNode !== "object" || Array.isArray(rawNode)) continue;
+    const node = rawNode as Record<string, unknown>;
+    const metadata = node.metadata;
+    if (
+      node.parent_id === null &&
+      metadata &&
+      typeof metadata === "object" &&
+      !Array.isArray(metadata) &&
+      (metadata as Record<string, unknown>).source_kind === "page"
+    ) {
+      node.parent_id = rootId;
+    }
+  }
+  rawDocument.schema_version = normalizeRuntimeSchema(rawDocument.schema_version);
+  const document = rawDocument as unknown as DesignDocument;
   const metadataRevision = (document.metadata as Record<string, unknown>)?.document_version;
   if (metadataRevision !== revision) throw new Error("CANVAS_METADATA_REVISION_MISMATCH");
   return {
@@ -96,6 +110,12 @@ export function wireDescriptor(descriptor: OperationDescriptor): Record<string, 
     payload,
     ...(descriptor.reason ? { reason: descriptor.reason } : {}),
   };
+}
+
+function normalizeRuntimeSchema(value: unknown): "1.0" | "1.1" | "2.0" {
+  if (value === "1.0" || value === "1.1" || value === "2.0") return value;
+  if (value === "lumi.design-ir/1.0") return "1.0";
+  throw new Error("CANVAS_SCHEMA_VERSION_UNSUPPORTED");
 }
 
 function asRecord(value: unknown, code: string): Record<string, unknown> {
