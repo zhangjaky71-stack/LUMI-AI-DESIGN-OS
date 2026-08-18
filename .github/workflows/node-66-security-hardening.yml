@@ -30,6 +30,8 @@ env:
   UV_VERSION: "0.11.28"
   NODE_VERSION: "24"
   PNPM_VERSION: "11.4.0"
+  PIP_AUDIT_VERSION: "2.10.1"
+  BANDIT_VERSION: "1.9.4"
   NEXT_TELEMETRY_DISABLED: "1"
   NEXT_PUBLIC_LUMI_ENV: "production"
 
@@ -139,6 +141,101 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  security-sca:
+    name: security-sca
+    needs: security-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+          pnpm --version
+
+      - name: Create security evidence directory
+        run: mkdir -p reports/nodes/NODE-66/security
+
+      - name: Verify dependency locks
+        run: |
+          uv lock --check
+          pnpm install --frozen-lockfile
+
+      - name: Export frozen Python dependency graph
+        run: |
+          uv export --all-packages --frozen --format requirements-txt --no-hashes \
+            > reports/nodes/NODE-66/security/python-requirements.txt
+
+      - name: Blocking Python dependency audit
+        run: |
+          uvx --from "pip-audit==${PIP_AUDIT_VERSION}" pip-audit \
+            -r reports/nodes/NODE-66/security/python-requirements.txt \
+            --format json \
+            --output reports/nodes/NODE-66/security/pip-audit.json
+
+      - name: Blocking Python high-severity SAST
+        run: |
+          uvx --from "bandit==${BANDIT_VERSION}" bandit \
+            -r apps/api/src services \
+            --severity-level high \
+            --confidence-level medium \
+            --format json \
+            --output reports/nodes/NODE-66/security/bandit.json
+
+      - name: Blocking Node high-severity dependency audit
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm audit --audit-level high --json \
+            | tee reports/nodes/NODE-66/security/pnpm-audit.json
+
+      - name: Blocking filesystem vulnerability secret and IaC scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          format: json
+          output: reports/nodes/NODE-66/security/trivy-fs.json
+
+      - name: Generate CycloneDX filesystem SBOM
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          exit-code: "0"
+          format: cyclonedx
+          output: reports/nodes/NODE-66/security/sbom.cdx.json
+
+      - name: Upload SCA SAST IaC and SBOM evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-66-supply-chain-${{ github.run_id }}
+          path: reports/nodes/NODE-66/security
+          if-no-files-found: error
+          retention-days: 30
+
   security-sandbox:
     name: security-sandbox
     needs: security-contract
@@ -187,6 +284,16 @@ jobs:
           )
           assert not any(item.startswith(forbidden) for item in env), env
           PY
+
+      - name: Blocking Sandbox image vulnerability scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.SANDBOX_IMAGE }}
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          vuln-type: os,library
+          format: json
+          output: reports/nodes/NODE-66/runtime/trivy-sandbox-image.json
 
       - name: Run real Docker Sandbox attack/functional suite
         run: |
