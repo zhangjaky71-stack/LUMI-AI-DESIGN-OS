@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { InfiniteCanvas } from "@/components/canvas/infinite-canvas";
+import { ExportPanel } from "@/components/exports/export-panel";
 import { VersionHistoryPanel } from "@/components/versions/version-history-panel";
 import { AgentTimeline } from "@/components/workspace/agent-timeline";
 import { ApiError } from "@/lib/api/problem";
@@ -281,6 +282,15 @@ export function AiWorkspace({ organizationId, project, initialRunId }: {
               organizationId={organizationId}
               artifact={selectedArtifact}
               onOpenVersion={setSelectedArtifact}
+            />
+          ) : null}
+          {selectedArtifact ? (
+            <ExportPanel
+              key={`export-${selectedArtifact.artifactVersionId}`}
+              organizationId={organizationId}
+              projectId={project.id}
+              currentArtifact={selectedArtifact}
+              availableArtifacts={runtime.artifacts}
             />
           ) : null}
         </aside>
