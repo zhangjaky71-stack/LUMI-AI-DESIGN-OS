@@ -34,6 +34,7 @@ def main() -> None:
     outbox = read("apps/api/src/lumi_api/events/outbox.py")
     tests = read("apps/api/tests/test_observability_node67.py")
     boundary_tests = read("apps/api/tests/test_observability_security_boundary_node67.py")
+    middleware_tests = read("apps/api/tests/test_observability_middleware_order_node67.py")
     event_tests = read("apps/api/tests/test_event_contract.py")
 
     node_doc = read("docs/nodes/NODE-67-OBSERVABILITY.md")
@@ -44,22 +45,32 @@ def main() -> None:
     alerts = json.loads(read("reports/nodes/NODE-67/alert-policy.json"))
     slo_policy = json.loads(read("reports/nodes/NODE-67/slo-policy.json"))
 
-    # Correlation contract.
+    # Correlation contract: W3C headers are untrusted telemetry metadata. Invalid
+    # trace state restarts/discards telemetry context instead of rejecting business.
     for marker in (
         "OBSERVABILITY_TRACEPARENT_INVALID",
         "OBSERVABILITY_TRACEPARENT_ZERO_ID_FORBIDDEN",
         "OBSERVABILITY_TRACESTATE_INVALID",
-        "create_telemetry_context",
-        "use_telemetry_context",
+        "start_request_context",
         "start_message_context",
         "bind_business_refs",
     ):
         require(context, marker, f"correlation context {marker}")
+    require(context, "Malformed trace context must", "trace context fail-open policy")
+    require(context, "invalid traceparent restarts the trace", "traceparent restart policy")
+    require(context, "invalid tracestate is discarded", "tracestate discard policy")
+    require(context, 'r"^[a-z0-9][a-z0-9_*/@-]{0,255}$"', "W3C tracestate key grammar")
+    require(context, 'char in {",", "="}', "W3C tracestate value grammar")
+    require(context, 'version == "00" and len(normalized) != 55', "traceparent v00 length")
+    require(context, 'version != "00" and len(normalized) > 55', "future traceparent version tolerance")
     require(context, '"request_id": self.request_id', "event request correlation fields")
     require(context, '"correlation_id": self.correlation_id', "event correlation id fields")
     require(context, '"traceparent": self.traceparent', "event traceparent fields")
+    require(tests, "test_invalid_traceparent_restarts_trace_without_failing_business_request", "traceparent fail-open test")
+    require(tests, "test_invalid_tracestate_is_discarded_without_breaking_valid_traceparent", "tracestate fail-open test")
+    require(tests, "test_traceparent_parser_tolerates_additive_future_version_fields", "future traceparent version test")
 
-    # HTTP ingress owns validated IDs and uses route templates rather than raw ids.
+    # HTTP ingress owns canonical IDs and uses route templates rather than raw ids.
     require(errors, 'request.headers.get("X-Correlation-ID")', "correlation header")
     require(errors, 'request.headers.get("traceparent")', "traceparent header")
     require(errors, 'response.headers["X-Request-ID"]', "request response header")
@@ -70,9 +81,11 @@ def main() -> None:
     require(errors, 'event="http.request.completed"', "HTTP structured log")
     forbid(errors, "request.url.path,\n                    \"http.route\"", "raw path metric label")
 
-    # Trace-context validation must not swallow business errors.
-    require(errors, "Only trace-context construction/validation maps to a trace-context 400", "error-boundary comment")
+    # Trace-context parsing may not swallow downstream business errors.
+    require(errors, "downstream application", "error-boundary comment")
     require(boundary_tests, "test_business_value_error_is_not_reclassified_as_trace_context_error", "business error regression")
+    require(middleware_tests, "test_downstream_value_error_is_not_misclassified_as_trace_context", "middleware business error regression")
+    require(middleware_tests, "test_invalid_trace_does_not_short_circuit_authoritative_auth_semantics", "trace fail-open auth-order regression")
 
     # Auth uses middleware-generated ids, not raw trace headers.
     require(auth_guard, 'request_id = getattr(request.state, "request_id", "unassigned")', "auth canonical request id")
@@ -148,12 +161,12 @@ def main() -> None:
     require(report, "does **not** currently claim", "explicit non-claims")
     require(report, "OpenTelemetry/Collector", "OTel deployment boundary")
 
-    # NODE-66 response headers must still cover outer trace/idempotency responses.
+    # NODE-66 response headers must still cover trace reset/idempotency short-circuit responses.
     require(app, "_install_final_security_headers", "final security header layer")
     require(app, "HTTP_SECURITY_HEADERS", "NODE-66 header reuse")
     require(app, 'response.headers["Strict-Transport-Security"]', "production HSTS final layer")
-    require(boundary_tests, "test_invalid_trace_response_keeps_node66_security_headers", "trace 400 security test")
-    require(boundary_tests, "test_production_invalid_trace_response_keeps_hsts", "trace 400 HSTS test")
+    require(boundary_tests, "test_invalid_trace_restarts_without_weakening_node66_security_headers", "trace reset security test")
+    require(boundary_tests, "test_production_invalid_trace_restarts_and_keeps_docs_shutdown_hsts", "trace reset production security test")
 
     # Policy artifacts must be explicitly non-deployed until production proof exists.
     assert dashboard["node"] == "NODE-67"
