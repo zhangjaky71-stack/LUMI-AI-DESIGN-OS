@@ -12,6 +12,7 @@ on:
       - "apps/api/tests/test_observability_node67.py"
       - "apps/api/tests/test_observability_logging_node67.py"
       - "apps/api/tests/test_observability_security_boundary_node67.py"
+      - "apps/api/tests/test_observability_middleware_order_node67.py"
       - "apps/api/tests/test_event_contract.py"
       - "tools/node67/**"
       - "docs/nodes/NODE-67-OBSERVABILITY.md"
@@ -63,6 +64,7 @@ jobs:
             apps/api/tests/test_observability_node67.py \
             apps/api/tests/test_observability_logging_node67.py \
             apps/api/tests/test_observability_security_boundary_node67.py \
+            apps/api/tests/test_observability_middleware_order_node67.py \
             tools/node67
 
       - name: Static NODE-67 observability acceptance
@@ -75,6 +77,7 @@ jobs:
               apps/api/tests/test_observability_node67.py \
               apps/api/tests/test_observability_logging_node67.py \
               apps/api/tests/test_observability_security_boundary_node67.py \
+              apps/api/tests/test_observability_middleware_order_node67.py \
               apps/api/tests/test_event_contract.py \
               apps/api/tests/test_auth_tenant_contract.py \
               apps/api/tests/test_api_v1_contract.py
@@ -99,6 +102,7 @@ jobs:
             apps/api/tests/test_observability_node67.py \
             apps/api/tests/test_observability_logging_node67.py \
             apps/api/tests/test_observability_security_boundary_node67.py \
+            apps/api/tests/test_observability_middleware_order_node67.py \
             tools/node67
 
       - name: Pyright NODE-67 core
