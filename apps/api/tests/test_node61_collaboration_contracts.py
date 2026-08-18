@@ -14,6 +14,7 @@ from lumi_api.collaboration.presence import (
     PRESENCE_TTL_SECONDS,
     InMemoryPresencePort,
 )
+from lumi_api.collaboration.repository import PostgresCollaborationRepository
 from lumi_api.persistence.models_collaboration import (
     CommentModel,
     CommentRevisionModel,
@@ -100,10 +101,18 @@ def test_thread_creation_binds_exact_artifact_version() -> None:
     assert "project_id=project_id" in source
 
 
-def test_presence_actor_identity_is_server_authoritative() -> None:
+def test_presence_actor_identity_and_profile_are_server_authoritative() -> None:
     source = inspect.getsource(collaboration_routes.heartbeat_presence)
+    service_source = inspect.getsource(__import__("lumi_api.collaboration.service", fromlist=["CollaborationService"]).CollaborationService.heartbeat_presence)
+    repository_source = inspect.getsource(PostgresCollaborationRepository.get_presence_identity)
+    fields = collaboration_routes.PresenceHeartbeatRequest.model_fields
     assert "actor_id=_actor_id(request)" in source
-    assert "user_id" not in collaboration_routes.PresenceHeartbeatRequest.model_fields
+    assert "user_id" not in fields
+    assert "display_name" not in fields
+    assert "avatar_url" not in fields
+    assert "get_presence_identity" in service_source
+    assert "users u" in repository_source
+    assert "organization_members" in repository_source
 
 
 def test_comment_schema_has_revision_audit_table() -> None:
