@@ -48,6 +48,7 @@ class RepairAttemptDecision(StrEnum):
 class RepairDirective:
     directive_id: str
     source_violation_id: str
+    violation_code: str
     dimension: str
     severity: str
     blocking: bool
@@ -61,6 +62,7 @@ class RepairDirective:
             (
                 self.directive_id,
                 self.source_violation_id,
+                self.violation_code,
                 self.dimension,
                 self.severity,
                 self.action_type,
@@ -109,10 +111,7 @@ class RepairSourceSnapshot:
     def __post_init__(self) -> None:
         _sha256(self.artifact_content_hash, "repair source content hash")
         if self.constraint_snapshot_hash is not None:
-            _sha256(
-                self.constraint_snapshot_hash,
-                "repair constraint snapshot hash",
-            )
+            _sha256(self.constraint_snapshot_hash, "repair constraint snapshot hash")
         if not all(
             (
                 self.organization_id,
@@ -278,10 +277,7 @@ class RepairAttempt:
             raise ValueError("REPAIR_ATTEMPT_AFTER_SCORE_INVALID")
         if self.actual_cost_usd < 0:
             raise ValueError("REPAIR_ATTEMPT_COST_INVALID")
-        if (
-            self.promotion_quality_result_id is not None
-            and self.promoted_artifact_version_id is None
-        ):
+        if self.promotion_quality_result_id is not None and self.promoted_artifact_version_id is None:
             raise ValueError("REPAIR_PROMOTION_QUALITY_REQUIRES_VERSION")
 
 
