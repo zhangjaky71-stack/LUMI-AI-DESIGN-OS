@@ -59,7 +59,7 @@ def _validate_tracestate(value: str | None) -> str | None:
     members: list[str] = []
     for raw_member in raw_members:
         member = raw_member.strip()
-        # W3C Trace Context explicitly allows empty/OWS-only list-members.
+        # W3C Trace Context allows empty/OWS-only list-members.
         if not member:
             continue
         key, separator, member_value = member.partition("=")
@@ -133,7 +133,9 @@ class TelemetryContext:
     trace_id: str
     span_id: str
     parent_span_id: str | None = None
-    trace_flags: str = "01"
+    # Locally generated trace ids are cryptographically random. Sampling is a
+    # deferred local decision, so new traces advertise random=1, sampled=0.
+    trace_flags: str = "02"
     tracestate: str | None = None
     organization_id: UUID | None = None
     project_id: UUID | None = None
@@ -149,6 +151,10 @@ class TelemetryContext:
     @property
     def sampled(self) -> bool:
         return bool(int(self.trace_flags, 16) & 0x01)
+
+    @property
+    def random_trace_id(self) -> bool:
+        return bool(int(self.trace_flags, 16) & 0x02)
 
     def with_business_refs(
         self,
@@ -211,7 +217,7 @@ def start_request_context(
         trace_id=incoming.trace_id if incoming else _new_trace_id(),
         span_id=_new_span_id(),
         parent_span_id=incoming.parent_span_id if incoming else None,
-        trace_flags=incoming.trace_flags if incoming else "01",
+        trace_flags=incoming.trace_flags if incoming else "02",
         tracestate=state,
     )
     if not context.correlation_id or len(context.correlation_id) > 128:
