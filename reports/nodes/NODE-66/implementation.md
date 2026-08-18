@@ -15,6 +15,8 @@ NODE-66 turns the existing per-component security controls into a release-orient
   - bounds known-length JSON requests at the application layer;
   - emits API security headers;
   - adds HSTS only in production mode;
+  - disables interactive Swagger/ReDoc/OpenAPI HTTP surfaces in production;
+  - gives development API docs a separate CDN-limited CSP so strict API CSP does not break local documentation;
   - is composed in the real FastAPI app factory.
 - `lumi_api.security.context`
   - explicit context trust classes;
@@ -33,9 +35,11 @@ NODE-66 turns the existing per-component security controls into a release-orient
   - no-referrer;
   - Permissions-Policy;
   - COOP;
-  - production HSTS.
+  - production HSTS;
+  - development `connect-src` retains local HTTP/WS connectivity without weakening production CSP.
 - `apps/api/tests/test_security_node66.py`
   - real FastAPI security composition;
+  - production API-doc shutdown and development docs CSP;
   - credential-query rejection;
   - JSON body size limit;
   - trust boundary malicious content fixture;
@@ -47,6 +51,14 @@ NODE-66 turns the existing per-component security controls into a release-orient
   - threat register;
   - controls/evidence/residual risk;
   - STOP SHIP rules.
+- NODE-66 dedicated security workflows
+  - blocking pip-audit 2.10.1 against the frozen Python dependency export;
+  - blocking Bandit 1.9.4 high-severity / medium-confidence Python SAST;
+  - blocking `pnpm audit --audit-level high`;
+  - blocking Trivy 0.36.0 filesystem vulnerability/secret/misconfiguration scan;
+  - CycloneDX filesystem SBOM generation;
+  - blocking CRITICAL/HIGH scan of the built Sandbox image;
+  - separate guarded OWASP ZAP baseline workflow for configured HTTPS staging.
 
 ## 2. Existing security assets deliberately reused
 
@@ -98,14 +110,14 @@ Malware scanning, decompression-bomb limits and production parser isolation rema
 
 ### Supply chain
 
-Existing repository workflows already provide:
+Repository-level pre-existing controls include:
 
 - GitHub Dependency Review;
 - CodeQL for Python and JavaScript/TypeScript when repository policy permits it;
 - Gitleaks full-history secret scanning;
 - frozen dependency lockfiles.
 
-NODE-66 will not convert a skipped or blocked workflow into green evidence.
+The existing Dependency Review workflow is intentionally not treated as sufficient release evidence because its native PR step is non-blocking when repository capability is unavailable. NODE-66 therefore adds its own blocking dependency/SAST/filesystem/image gates. Existing CodeQL/Gitleaks/Dependency Review YAML is still useful defense-in-depth, but neither YAML presence nor a skipped job is a green result.
 
 ## 3. Security boundaries kept fail-closed
 
@@ -114,7 +126,9 @@ NODE-66 will not convert a skipped or blocked workflow into green evidence.
 - Context trust labels are not claimed end-to-end until production Agent context composition uses them.
 - MCP transport `pinned_ip` is a required port contract; absence of a production adapter is a gap, not an implicit PASS.
 - Local Docker Sandbox isolation flags are not a production escape-test result.
-- Existing CodeQL/Gitleaks/Dependency Review YAML is not evidence of a green latest-head run.
+- Blocking pip-audit/Bandit/pnpm/Trivy/ZAP workflow definitions are not evidence that the latest head has passed them.
+- CycloneDX generation is wired, but production image signing/attestation/provenance remains open.
+- ZAP baseline is wired only to a repository-configured HTTPS staging URL; an unset variable means no DAST evidence.
 - NODE-63/NODE-64/NODE-65 production gaps remain dependencies and are not closed by NODE-66 references.
 
 ## 4. Standards snapshot
@@ -131,16 +145,23 @@ The exact reference date/version is part of the threat model to avoid an unrevie
 
 ## 5. Acceptance evidence staged
 
-NODE-66 dedicated validation will include:
+NODE-66 dedicated validation includes or stages:
 
 - compile/static acceptance;
 - new API security tests;
 - existing Tool Gateway SSRF corpus;
 - existing Sandbox security contract and archive/artifact limit tests;
+- real Docker Sandbox attack/functional suite;
 - existing Asset security contract;
 - auth/API contract regressions;
 - Web TypeScript/lint/build;
 - dependency lock consistency;
+- blocking Python/Node dependency audits;
+- blocking Bandit high-severity SAST;
+- blocking Trivy filesystem vuln/secret/misconfiguration scan;
+- CycloneDX SBOM;
+- blocking Sandbox image CRITICAL/HIGH scan;
+- guarded staging ZAP baseline DAST workflow;
 - checks that CodeQL, Dependency Review and Gitleaks workflows remain present;
 - gap ledger fail-closed check.
 
@@ -157,9 +178,9 @@ Current open P0 groups:
 5. production Sandbox escape/runtime policy evidence;
 6. malware/decompression/parser-isolation evidence;
 7. Secret Manager/workload identity/rotation;
-8. container/IaC/SBOM/image provenance;
+8. latest-head execution of the new blocking scans plus complete production image signing/provenance and vulnerability-exception evidence;
 9. Admin MFA/step-up/short privileged session dependency;
-10. staging DAST + independent penetration test;
+10. executed staging DAST plus authenticated/active DAST and independent penetration test;
 11. NODE-65 production security/privileged Audit ingress;
 12. latest-head hosted validation + named Security sign-off.
 
@@ -173,9 +194,9 @@ This implementation does **not** currently claim:
 - production Sandbox escape resistance;
 - production SSRF transport proof for every outbound client;
 - fully deployed Agent prompt-injection trust propagation;
-- staging DAST or third-party pentest completion;
+- executed staging DAST or third-party pentest completion;
 - cloud Secret Manager/rotation deployment;
-- complete container/IaC/SBOM provenance evidence;
+- full production image signing/attestation/provenance evidence;
 - hosted CI green while GitHub Actions remains capable of pre-run failure.
 
 NODE-66 remains **NOT COMPLETE** until the open P0 ledger is closed with executed evidence.
