@@ -65,8 +65,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v6
-      - name: Frozen repository dependency sync
-        run: uv sync --frozen
+      - name: Frozen repository dependency sync for every workspace package
+        run: uv sync --all-packages --frozen
 
   remote-read-only-preflight:
     if: github.event_name == 'workflow_dispatch' && inputs.base_url != '' && inputs.expected_version != '' && inputs.host_ack != ''
