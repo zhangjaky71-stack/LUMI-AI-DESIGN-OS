@@ -1,0 +1,105 @@
+{
+  "node": "NODE-62",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "updated_at": "2026-08-18",
+  "gaps": [
+    {
+      "id": "NODE62-GAP-001",
+      "severity": "P0",
+      "status": "open",
+      "title": "Production Approval service composition",
+      "detail": "Approval routes require app.state.approval_service_factory, but deployment composition has not been proven end to end."
+    },
+    {
+      "id": "NODE62-GAP-002",
+      "severity": "P0",
+      "status": "open",
+      "title": "Graph node creates durable Approval and approval_id interrupt",
+      "detail": "Internal bridge fields exist, but orchestration does not yet prove Recipe approval step -> Approval row -> Graph interrupt carrying approval_id."
+    },
+    {
+      "id": "NODE62-GAP-003",
+      "severity": "P0",
+      "status": "open",
+      "title": "Production approval effect worker",
+      "detail": "Durable effects and processor exist, but no production worker/queue composition has been proven to consume pending effects."
+    },
+    {
+      "id": "NODE62-GAP-004",
+      "severity": "P0",
+      "status": "open",
+      "title": "RUNNING effect crash lease and reclaim",
+      "detail": "A process crash after effect claim can leave status RUNNING; lease timeout, reclaim ownership and DLQ/escalation semantics remain open."
+    },
+    {
+      "id": "NODE62-GAP-005",
+      "severity": "P0",
+      "status": "open",
+      "title": "Production Artifact and Agent effect adapter composition",
+      "detail": "Adapters are implemented but runtime injection and exact operational retry behavior have not been exercised in production composition."
+    },
+    {
+      "id": "NODE62-GAP-006",
+      "severity": "P0",
+      "status": "open",
+      "title": "Graph restart and stale interrupt E2E",
+      "detail": "Need proof that a durable decision survives graph/runtime restart and safely resumes or reports stale without a second human decision."
+    },
+    {
+      "id": "NODE62-GAP-007",
+      "severity": "P0",
+      "status": "open",
+      "title": "Changes requested enters revision workflow",
+      "detail": "CHANGES_REQUESTED feedback is durable, but automatic Edit/Repair task creation and re-review loop are not implemented."
+    },
+    {
+      "id": "NODE62-GAP-008",
+      "severity": "P0",
+      "status": "open",
+      "title": "Multi-approver policy execution",
+      "detail": "ANY_ONE/ALL/MIN_N/ROLE_BASED_SEQUENCE are modeled; current execution is only ANY_ONE v1 with one authorized decision."
+    },
+    {
+      "id": "NODE62-GAP-009",
+      "severity": "P0",
+      "status": "open",
+      "title": "Non-Artifact approval subject resolvers",
+      "detail": "ApprovalType supports creative direction, brand rules, budget, publish, destructive action and custom review, but exact subject snapshot/permission/effect implementations are not open to product UI yet."
+    },
+    {
+      "id": "NODE62-GAP-010",
+      "severity": "P0",
+      "status": "open",
+      "title": "Approval notification delivery",
+      "detail": "Outbox events exist, but in-product/email approval notification consumer and reminder/escalation UX are not proven."
+    },
+    {
+      "id": "NODE62-GAP-011",
+      "severity": "P0",
+      "status": "open",
+      "title": "Browser + PostgreSQL + Agent runtime approval E2E",
+      "detail": "Need authorized/unauthorized, exact v3 vs v4, duplicate decision, expiry, restart and effect execution in a real multi-service environment."
+    },
+    {
+      "id": "NODE62-GAP-012",
+      "severity": "P0",
+      "status": "open",
+      "title": "Hosted GitHub Actions executed green",
+      "detail": "NODE-62 cannot be COMPLETE until hosted CI actually executes migration/test/typecheck/lint/build steps successfully."
+    },
+    {
+      "id": "NODE62-GAP-013",
+      "severity": "P0",
+      "status": "closed",
+      "title": "Legacy UI direct Graph approval bypass",
+      "detail": "Closed: Workspace removed Approve & continue direct resumeAgentRun action; technical interrupts now direct users to Formal Approval governance."
+    },
+    {
+      "id": "NODE62-GAP-014",
+      "severity": "P0",
+      "status": "closed",
+      "title": "Client-supplied Artifact approver identity",
+      "detail": "Closed: legacy ApproveVersionRequest no longer accepts approved_by_id and fail-closes browser direct approval; formal decision actor comes from authenticated request context."
+    }
+  ]
+}
