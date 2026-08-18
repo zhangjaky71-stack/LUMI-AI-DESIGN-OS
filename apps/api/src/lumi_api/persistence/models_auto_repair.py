@@ -33,17 +33,13 @@ class RepairPolicySnapshotModel(Base):
     policy_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     policy_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=text("now()"),
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
-
     __table_args__ = (
         UniqueConstraint("policy_hash", name="uq_repair_policy_hash"),
         CheckConstraint("version >= 1", name="ck_repair_policy_version"),
         CheckConstraint(
-            "policy_hash ~ '^[0-9a-f]{64}$'",
-            name="ck_repair_policy_hash",
+            "policy_hash ~ '^[0-9a-f]{64}$'", name="ck_repair_policy_hash"
         ),
     )
 
@@ -53,26 +49,18 @@ class AutoRepairJobModel(Base):
 
     repair_job_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
     organization_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False,
+        PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     project_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="CASCADE"),
-        nullable=False,
+        PGUUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
     )
     task_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("tasks.id", ondelete="CASCADE"),
-        nullable=False,
+        PGUUID(as_uuid=True), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False
     )
     operation_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     requested_by: Mapped[str] = mapped_column(String(200), nullable=False)
     source_artifact_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("artifacts.id", ondelete="RESTRICT"),
-        nullable=False,
+        PGUUID(as_uuid=True), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=False
     )
     source_artifact_version_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -85,9 +73,7 @@ class AutoRepairJobModel(Base):
         nullable=False,
     )
     original_branch_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("artifact_branches.id", ondelete="RESTRICT"),
-        nullable=False,
+        PGUUID(as_uuid=True), ForeignKey("artifact_branches.id", ondelete="RESTRICT"), nullable=False
     )
     original_head_version_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -109,39 +95,24 @@ class AutoRepairJobModel(Base):
     policy_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     spent_usd: Mapped[Decimal] = mapped_column(
-        Numeric(20, 8),
-        nullable=False,
-        server_default=text("0"),
+        Numeric(20, 8), nullable=False, server_default=text("0")
     )
     final_artifact_version_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("artifact_versions.id", ondelete="SET NULL"),
-        nullable=True,
+        PGUUID(as_uuid=True), ForeignKey("artifact_versions.id", ondelete="SET NULL"), nullable=True
     )
     semantic_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     job_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     reason_codes: Mapped[list[str]] = mapped_column(
-        JSONB,
-        nullable=False,
-        server_default=text("'[]'::jsonb"),
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=text("now()"),
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=text("now()"),
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
-
     __table_args__ = (
-        UniqueConstraint(
-            "organization_id",
-            "operation_id",
-            name="uq_auto_repair_operation",
-        ),
+        UniqueConstraint("organization_id", "operation_id", name="uq_auto_repair_operation"),
         ForeignKeyConstraint(
             ["policy_id", "policy_version"],
             ["repair_policy_snapshots.policy_id", "repair_policy_snapshots.version"],
@@ -149,8 +120,7 @@ class AutoRepairJobModel(Base):
             ondelete="RESTRICT",
         ),
         CheckConstraint(
-            "policy_hash ~ '^[0-9a-f]{64}$' AND "
-            "semantic_hash ~ '^[0-9a-f]{64}$'",
+            "policy_hash ~ '^[0-9a-f]{64}$' AND semantic_hash ~ '^[0-9a-f]{64}$'",
             name="ck_auto_repair_hashes",
         ),
         CheckConstraint(
@@ -159,6 +129,10 @@ class AutoRepairJobModel(Base):
             name="ck_auto_repair_status",
         ),
         CheckConstraint("spent_usd >= 0", name="ck_auto_repair_spend"),
+        CheckConstraint(
+            "status <> 'READY' OR final_artifact_version_id IS NOT NULL",
+            name="ck_auto_repair_ready_final",
+        ),
         Index(
             "ix_auto_repair_jobs_source",
             "organization_id",
@@ -166,10 +140,7 @@ class AutoRepairJobModel(Base):
             "created_at",
         ),
         Index(
-            "ix_auto_repair_jobs_status",
-            "organization_id",
-            "status",
-            "updated_at",
+            "ix_auto_repair_jobs_status", "organization_id", "status", "updated_at"
         ),
     )
 
@@ -184,14 +155,10 @@ class AutoRepairAttemptModel(Base):
     )
     iteration: Mapped[int] = mapped_column(Integer, primary_key=True)
     organization_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False,
+        PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     source_artifact_version_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("artifact_versions.id", ondelete="RESTRICT"),
-        nullable=False,
+        PGUUID(as_uuid=True), ForeignKey("artifact_versions.id", ondelete="RESTRICT"), nullable=False
     )
     before_quality_result_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -201,20 +168,14 @@ class AutoRepairAttemptModel(Base):
     repair_kind: Mapped[str] = mapped_column(String(40), nullable=False)
     decision: Mapped[str] = mapped_column(String(48), nullable=False)
     estimated_cost_usd: Mapped[Decimal] = mapped_column(
-        Numeric(20, 8),
-        nullable=False,
-        server_default=text("0"),
+        Numeric(20, 8), nullable=False, server_default=text("0")
     )
     actual_cost_usd: Mapped[Decimal] = mapped_column(
-        Numeric(20, 8),
-        nullable=False,
-        server_default=text("0"),
+        Numeric(20, 8), nullable=False, server_default=text("0")
     )
     reservation_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     candidate_artifact_version_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("artifact_versions.id", ondelete="RESTRICT"),
-        nullable=True,
+        PGUUID(as_uuid=True), ForeignKey("artifact_versions.id", ondelete="RESTRICT"), nullable=True
     )
     after_quality_result_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
@@ -222,9 +183,7 @@ class AutoRepairAttemptModel(Base):
         nullable=True,
     )
     promoted_artifact_version_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("artifact_versions.id", ondelete="RESTRICT"),
-        nullable=True,
+        PGUUID(as_uuid=True), ForeignKey("artifact_versions.id", ondelete="RESTRICT"), nullable=True
     )
     promotion_quality_result_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
@@ -236,21 +195,25 @@ class AutoRepairAttemptModel(Base):
     score_delta: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
     attempt_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=text("now()"),
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
-
     __table_args__ = (
         CheckConstraint(
-            "iteration >= 1 AND iteration <= 3",
-            name="ck_auto_repair_iteration",
+            "iteration >= 1 AND iteration <= 3", name="ck_auto_repair_iteration"
         ),
         CheckConstraint(
             "repair_kind IN ('STRUCTURAL_DESIGN_OP','LOCAL_IMAGE_EDIT',"
             "'REGENERATE_ELEMENT','REGENERATE_ARTIFACT','COPY_TYPOGRAPHY_FIX',"
             "'MANUAL_REVIEW')",
             name="ck_auto_repair_kind",
+        ),
+        CheckConstraint(
+            "decision IN ('ACCEPTED_INTERMEDIATE','PROMOTED','PROMOTION_STALE_CONFLICT',"
+            "'PROMOTION_VALIDATION_FAILED','PROMOTION_APPROVAL_FAILED',"
+            "'REJECTED_PREFLIGHT','REJECTED_POSTFLIGHT','REJECTED_NEW_HARD_VIOLATION',"
+            "'REJECTED_REGRESSION','REJECTED_INSUFFICIENT_GAIN','EXECUTION_FAILED',"
+            "'COST_RECONCILIATION_REQUIRED','BUDGET_EXHAUSTED')",
+            name="ck_auto_repair_decision",
         ),
         CheckConstraint(
             "estimated_cost_usd >= 0 AND actual_cost_usd >= 0",
@@ -260,6 +223,15 @@ class AutoRepairAttemptModel(Base):
             "before_score >= 0 AND before_score <= 100 AND "
             "(after_score IS NULL OR (after_score >= 0 AND after_score <= 100))",
             name="ck_auto_repair_scores",
+        ),
+        CheckConstraint(
+            "promotion_quality_result_id IS NULL OR promoted_artifact_version_id IS NOT NULL",
+            name="ck_auto_repair_promotion_quality",
+        ),
+        CheckConstraint(
+            "decision <> 'PROMOTED' OR "
+            "(promoted_artifact_version_id IS NOT NULL AND promotion_quality_result_id IS NOT NULL)",
+            name="ck_auto_repair_promoted_decision",
         ),
     )
 
@@ -271,19 +243,13 @@ class RepairLearningSignalModel(Base):
     repair_job_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     iteration: Mapped[int] = mapped_column(Integer, nullable=False)
     organization_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False,
+        PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     source_artifact_version_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("artifact_versions.id", ondelete="RESTRICT"),
-        nullable=False,
+        PGUUID(as_uuid=True), ForeignKey("artifact_versions.id", ondelete="RESTRICT"), nullable=False
     )
     candidate_artifact_version_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("artifact_versions.id", ondelete="SET NULL"),
-        nullable=True,
+        PGUUID(as_uuid=True), ForeignKey("artifact_versions.id", ondelete="SET NULL"), nullable=True
     )
     source_quality_result_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -302,22 +268,14 @@ class RepairLearningSignalModel(Base):
     after_score: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
     human_decision: Mapped[str | None] = mapped_column(String(24), nullable=True)
     human_decision_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    human_decision_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
+    human_decision_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     eligible_for_training: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        server_default=text("false"),
+        Boolean, nullable=False, server_default=text("false")
     )
     governance_approval_ref: Mapped[str | None] = mapped_column(String(240), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=text("now()"),
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
-
     __table_args__ = (
         ForeignKeyConstraint(
             ["repair_job_id", "iteration"],
@@ -330,7 +288,13 @@ class RepairLearningSignalModel(Base):
             name="ck_repair_learning_human_decision",
         ),
         CheckConstraint(
-            "eligible_for_training = FALSE OR governance_approval_ref IS NOT NULL",
+            "(human_decision IS NULL AND human_decision_by IS NULL AND human_decision_at IS NULL) "
+            "OR (human_decision IS NOT NULL AND human_decision_by IS NOT NULL AND human_decision_at IS NOT NULL)",
+            name="ck_repair_learning_human_actor",
+        ),
+        CheckConstraint(
+            "eligible_for_training = FALSE OR "
+            "(governance_approval_ref IS NOT NULL AND human_decision IS NOT NULL)",
             name="ck_repair_learning_training_governance",
         ),
     )
