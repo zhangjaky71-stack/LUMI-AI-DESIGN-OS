@@ -18,6 +18,7 @@ def require(condition: bool, message: str) -> None:
 def main() -> None:
     migration = read("apps/api/migrations/versions/20260818_0021_collaboration.py")
     up_sql = read("apps/api/migrations/versions/20260818_0021_sql/up.sql")
+    app = read("apps/api/src/lumi_api/api/v1/app.py")
     schemas = read("apps/api/src/lumi_api/api/v1/collaboration_schemas.py")
     routes = read("apps/api/src/lumi_api/api/v1/collaboration_routes.py")
     repository = read("apps/api/src/lumi_api/collaboration/repository.py")
@@ -33,9 +34,14 @@ def main() -> None:
     require("presence" not in up_sql.casefold(), "presence must never become durable SQL truth")
     require("artifact_version_id UUID NOT NULL" in up_sql, "thread exact ArtifactVersion binding missing")
 
-    require("display_name" not in schemas.split("class PresenceHeartbeatRequest", 1)[1], "presence display_name must not be client supplied")
-    require("avatar_url" not in schemas.split("class PresenceHeartbeatRequest", 1)[1], "presence avatar_url must not be client supplied")
-    require("user_id" not in schemas.split("class PresenceHeartbeatRequest", 1)[1], "presence user_id must not be client supplied")
+    require("from .collaboration_routes import router as collaboration_router" in app, "collaboration router import missing from API composition")
+    require("app.include_router(collaboration_router" in app, "collaboration router is not mounted in API composition")
+    require("Depends(enforce_api_auth)" in app.split("app.include_router(collaboration_router", 1)[1].split("\n", 1)[0], "collaboration router must keep API auth dependency")
+
+    heartbeat_schema = schemas.split("class PresenceHeartbeatRequest", 1)[1]
+    require("display_name" not in heartbeat_schema, "presence display_name must not be client supplied")
+    require("avatar_url" not in heartbeat_schema, "presence avatar_url must not be client supplied")
+    require("user_id" not in heartbeat_schema, "presence user_id must not be client supplied")
     require("get_presence_identity" in service, "service must derive canonical presence identity")
     require("FROM users u" in repository and "organization_members" in repository, "presence profile must be organization-scoped canonical user data")
 
