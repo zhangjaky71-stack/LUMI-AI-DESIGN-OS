@@ -87,14 +87,29 @@ def test_inner_sandbox_execution_remains_network_none() -> None:
     assert '"none",' in backend
 
 
-def test_provider_cost_guard_default_is_fail_closed_and_capped() -> None:
-    migration = _read("db/migrations/0015_provider_cost_guard.sql")
-    snapshot_fix = _read("db/migrations/0016_provider_cost_guard_snapshot_fix.sql")
+def test_provider_cost_guard_uses_canonical_node27_ledger() -> None:
+    migration = _read(
+        "apps/api/alembic/versions/0018_platform_provider_cost_guard.py"
+    )
+    guard = _read("apps/api/src/lumi_api/costs/platform_guard.py")
+    adapter = _read("apps/api/src/lumi_api/costs/model_gateway_adapter.py")
 
     assert "100.00000000" in migration
     assert "fail_closed boolean NOT NULL DEFAULT true" in migration
-    assert "FOR UPDATE" in migration
-    assert "COST_DAILY_CAP_EXCEEDED" in migration
-    assert "PROVIDER_COST_LEDGER_APPEND_ONLY" in migration
-    assert "v_day_cap" in snapshot_fix
-    assert "v_committed + v_reserved + p_estimated_amount_usd > v_day_cap" in snapshot_fix
+    assert "REVOKE INSERT, UPDATE, DELETE" in migration
+    assert 'cost_basis=\'provider_cost\'' in guard
+    assert "FROM cost_ledger" in guard
+    assert "FROM cost_reservations" in guard
+    assert "pg_advisory_xact_lock" in guard
+    assert "cost-budget:platform:provider-usd:utc-day" in guard
+    assert "PlatformGuardedCostGateway" in adapter
+    assert "self.gateway = PlatformGuardedCostGateway(dsn)" in adapter
+
+
+def test_release_closure_does_not_create_second_provider_ledger() -> None:
+    assert not (ROOT / "db/migrations/0015_provider_cost_guard.sql").exists()
+    assert not (ROOT / "db/migrations/0016_provider_cost_guard_snapshot_fix.sql").exists()
+    assert not (
+        ROOT
+        / "services/model-gateway/src/lumi_model_gateway/postgres_cost_accounting.py"
+    ).exists()
