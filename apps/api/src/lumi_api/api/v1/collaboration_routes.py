@@ -317,8 +317,6 @@ def heartbeat_presence(
             organization_id=organization_id,
             project_id=project_id,
             actor_id=_actor_id(request),
-            display_name=body.display_name,
-            avatar_url=body.avatar_url,
             color=body.color,
             artifact_version_id=body.artifact_version_id,
             current_frame_id=body.current_frame_id,
