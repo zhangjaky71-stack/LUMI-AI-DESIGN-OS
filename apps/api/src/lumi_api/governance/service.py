@@ -20,7 +20,7 @@ from .contracts import (
     RetentionClass,
     RetentionPolicy,
 )
-from .redaction import redact_audit_mapping
+from .redaction import redact_audit_mapping, redact_audit_text
 
 
 class GovernanceRepository(Protocol):
@@ -297,8 +297,8 @@ class GovernanceService:
         ):
             raise GovernanceUnavailable("GOVERNANCE_DELETION_PORTS_NOT_COMPOSED")
 
-        # The production worker for this method must use idempotent ports keyed by the
-        # deletion request id. NODE-65 keeps the worker composition as an explicit P0 gap.
+        # Production must run this through durable idempotent worker ports keyed by
+        # deletion_request.id. External side effects are not claimed production-complete here.
         self.subject_deactivation_port.deactivate_subject(deletion_request)
         deactivated = self.repository.mark_deletion_deactivated(deletion_request.id)
         erasing = self.repository.mark_deletion_erasing(deletion_request.id)
@@ -367,7 +367,7 @@ class GovernanceService:
         value = reason.strip()
         if len(value) < 8 or len(value) > 1000:
             raise ValueError("GOVERNANCE_REASON_INVALID")
-        return value
+        return redact_audit_text(value)
 
     @staticmethod
     def _governance_audit(
