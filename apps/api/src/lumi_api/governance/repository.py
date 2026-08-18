@@ -246,6 +246,7 @@ class PostgresGovernanceRepository:
             "AUDIT",
         }:
             raise ValueError("GOVERNANCE_LEGAL_HOLD_SCOPE_INVALID")
+        self._lock_hold_domain(organization_id)
         row = self.session.execute(
             text(
                 """
@@ -358,6 +359,15 @@ class PostgresGovernanceRepository:
         )
 
     def mark_deletion_erasing(self, request_id: UUID) -> DeletionRequest:
+        organization_id = self.session.execute(
+            text(
+                "SELECT organization_id FROM governance_deletion_requests WHERE id=:request_id"
+            ),
+            {"request_id": request_id},
+        ).scalar_one_or_none()
+        if organization_id is None:
+            raise GovernanceNotFound("GOVERNANCE_DELETION_REQUEST_NOT_FOUND")
+        self._lock_hold_domain(organization_id)
         row = self.session.execute(
             text(
                 """
@@ -432,6 +442,14 @@ class PostgresGovernanceRepository:
             },
         )
         return export_id
+
+    def _lock_hold_domain(self, organization_id: UUID) -> None:
+        self.session.execute(
+            text(
+                "SELECT pg_advisory_xact_lock(hashtextextended(CAST(:scope AS text), 0))"
+            ),
+            {"scope": f"governance-hold:{organization_id}"},
+        )
 
     def _transition_deletion(
         self,
