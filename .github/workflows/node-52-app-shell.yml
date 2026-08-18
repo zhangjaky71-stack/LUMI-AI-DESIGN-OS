@@ -1,0 +1,75 @@
+name: NODE-52 App Shell
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "tools/node52/**"
+      - "docs/nodes/NODE-52-APP-SHELL*.md"
+      - "docs/runtime/APP-SHELL-V1.md"
+      - "reports/nodes/NODE-52/**"
+      - ".github/workflows/node-52-app-shell.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+  NEXT_TELEMETRY_DISABLED: "1"
+  LUMI_API_ORIGIN: "http://127.0.0.1:8000"
+
+jobs:
+  shell-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Static App Shell acceptance
+        run: python tools/node52/validate_app_shell.py
+      - name: Reject browser token persistence
+        run: |
+          if grep -RniE 'localStorage|sessionStorage|document\.cookie' apps/web/src; then
+            echo "browser credential persistence is forbidden" >&2
+            exit 1
+          fi
+      - name: Parse NODE-52 gap ledger
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          ledger = json.loads(
+              Path("reports/nodes/NODE-52/gap-ledger.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          assert ledger["node"] == "NODE-52"
+          assert ledger["status"] == "IMPLEMENTED_VALIDATING_NOT_COMPLETE"
+          assert any(gap["severity"] == "P0" for gap in ledger["gaps"])
+          print("NODE52_GAP_LEDGER_PARSE_PASS")
+          PY
+
+  web-quality:
+    needs: shell-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package.json
+      - name: Install App Shell dependencies without mutating repository lockfiles
+        working-directory: apps/web
+        run: npm install --no-package-lock --no-audit --no-fund
+      - name: Typecheck App Shell
+        working-directory: apps/web
+        run: npm run typecheck
+      - name: Production build
+        working-directory: apps/web
+        run: npm run build
