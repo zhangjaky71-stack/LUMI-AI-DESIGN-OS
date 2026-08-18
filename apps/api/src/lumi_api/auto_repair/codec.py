@@ -24,6 +24,7 @@ def encode_directive(value: RepairDirective) -> dict[str, Any]:
     return {
         "directive_id": value.directive_id,
         "source_violation_id": value.source_violation_id,
+        "violation_code": value.violation_code,
         "dimension": value.dimension,
         "severity": value.severity,
         "blocking": value.blocking,
@@ -38,15 +39,14 @@ def decode_directive(value: dict[str, Any]) -> RepairDirective:
     return RepairDirective(
         directive_id=str(value["directive_id"]),
         source_violation_id=str(value["source_violation_id"]),
+        violation_code=str(value["violation_code"]),
         dimension=str(value["dimension"]),
         severity=str(value["severity"]),
         blocking=bool(value["blocking"]),
         action_type=str(value["action_type"]),
         target=str(value["target"]),
         parameters=dict(value.get("parameters", {})),
-        protected_refs=tuple(
-            str(item) for item in value.get("protected_refs", [])
-        ),
+        protected_refs=tuple(str(item) for item in value.get("protected_refs", [])),
     )
 
 
@@ -72,12 +72,8 @@ def decode_quality(value: dict[str, Any]) -> RepairQualitySnapshot:
         status=str(value["status"]),
         overall_score=float(value["overall_score"]),
         overall_confidence=float(value["overall_confidence"]),
-        hard_violation_codes=tuple(
-            str(item) for item in value.get("hard_violation_codes", [])
-        ),
-        directives=tuple(
-            decode_directive(item) for item in value.get("directives", [])
-        ),
+        hard_violation_codes=tuple(str(item) for item in value.get("hard_violation_codes", [])),
+        directives=tuple(decode_directive(item) for item in value.get("directives", [])),
         profile_id=str(value["profile_id"]),
         profile_version=int(value["profile_version"]),
         profile_hash=str(value["profile_hash"]),
@@ -114,9 +110,7 @@ def decode_source(value: dict[str, Any]) -> RepairSourceSnapshot:
         design_document_id=value.get("design_document_id"),
         design_document_version_id=value.get("design_document_version_id"),
         constraint_snapshot_hash=value.get("constraint_snapshot_hash"),
-        protected_refs=tuple(
-            str(item) for item in value.get("protected_refs", [])
-        ),
+        protected_refs=tuple(str(item) for item in value.get("protected_refs", [])),
     )
 
 
@@ -141,9 +135,7 @@ def decode_policy(value: dict[str, Any]) -> RepairPolicySnapshot:
         max_total_cost_usd=Decimal(str(value["max_total_cost_usd"])),
         minimum_expected_gain=float(value["minimum_expected_gain"]),
         max_score_regression=float(value["max_score_regression"]),
-        allowed_kinds=frozenset(
-            RepairKind(str(item)) for item in value["allowed_kinds"]
-        ),
+        allowed_kinds=frozenset(RepairKind(str(item)) for item in value["allowed_kinds"]),
         allow_paid_repairs=bool(value["allow_paid_repairs"]),
     )
 
@@ -164,15 +156,11 @@ def decode_plan(value: dict[str, Any]) -> RepairPlan:
     return RepairPlan(
         iteration=int(value["iteration"]),
         kind=RepairKind(str(value["kind"])),
-        directives=tuple(
-            decode_directive(item) for item in value.get("directives", [])
-        ),
+        directives=tuple(decode_directive(item) for item in value.get("directives", [])),
         expected_gain=float(value["expected_gain"]),
         estimated_cost_usd=Decimal(str(value["estimated_cost_usd"])),
         paid=bool(value["paid"]),
-        reason_codes=tuple(
-            str(item) for item in value.get("reason_codes", [])
-        ),
+        reason_codes=tuple(str(item) for item in value.get("reason_codes", [])),
     )
 
 
@@ -192,13 +180,9 @@ def decode_check(value: dict[str, Any] | None) -> ConstraintCheck | None:
         return None
     return ConstraintCheck(
         passed=bool(value["passed"]),
-        blocking_codes=tuple(
-            str(item) for item in value.get("blocking_codes", [])
-        ),
+        blocking_codes=tuple(str(item) for item in value.get("blocking_codes", [])),
         unavailable=bool(value.get("unavailable", False)),
-        evidence_refs=tuple(
-            str(item) for item in value.get("evidence_refs", [])
-        ),
+        evidence_refs=tuple(str(item) for item in value.get("evidence_refs", [])),
     )
 
 
@@ -225,9 +209,7 @@ def decode_candidate(value: dict[str, Any] | None) -> RepairCandidate | None:
         artifact_version_id=str(value["artifact_version_id"]),
         artifact_content_hash=str(value["artifact_content_hash"]),
         repair_branch_id=str(value["repair_branch_id"]),
-        changed_node_ids=tuple(
-            str(item) for item in value.get("changed_node_ids", [])
-        ),
+        changed_node_ids=tuple(str(item) for item in value.get("changed_node_ids", [])),
         actual_cost_usd=Decimal(str(value["actual_cost_usd"])),
         provider=value.get("provider"),
         model=value.get("model"),
@@ -267,16 +249,8 @@ def decode_attempt(value: dict[str, Any]) -> RepairAttempt:
         plan=decode_plan(value["plan"]),
         candidate=decode_candidate(value.get("candidate")),
         after_quality_result_id=value.get("after_quality_result_id"),
-        after_score=(
-            None
-            if value.get("after_score") is None
-            else float(value["after_score"])
-        ),
-        score_delta=(
-            None
-            if value.get("score_delta") is None
-            else float(value["score_delta"])
-        ),
+        after_score=None if value.get("after_score") is None else float(value["after_score"]),
+        score_delta=None if value.get("score_delta") is None else float(value["score_delta"]),
         decision=RepairAttemptDecision(str(value["decision"])),
         preflight=decode_check(value.get("preflight")),
         postflight=decode_check(value.get("postflight")),
@@ -284,9 +258,7 @@ def decode_attempt(value: dict[str, Any]) -> RepairAttempt:
         actual_cost_usd=Decimal(str(value.get("actual_cost_usd", "0"))),
         promoted_artifact_version_id=value.get("promoted_artifact_version_id"),
         promotion_quality_result_id=value.get("promotion_quality_result_id"),
-        reason_codes=tuple(
-            str(item) for item in value.get("reason_codes", [])
-        ),
+        reason_codes=tuple(str(item) for item in value.get("reason_codes", [])),
     )
 
 
@@ -299,9 +271,7 @@ def encode_job(value: AutoRepairJob) -> dict[str, Any]:
             "task_id": value.spec.task_id,
             "operation_id": value.spec.operation_id,
             "requested_by": value.spec.requested_by,
-            "source_artifact_version_id": (
-                value.spec.source_artifact_version_id
-            ),
+            "source_artifact_version_id": value.spec.source_artifact_version_id,
             "quality_result_id": value.spec.quality_result_id,
             "policy": encode_policy(value.spec.policy),
         },
@@ -324,9 +294,7 @@ def decode_job(value: dict[str, Any]) -> AutoRepairJob:
         task_id=str(spec_value["task_id"]),
         operation_id=str(spec_value["operation_id"]),
         requested_by=str(spec_value["requested_by"]),
-        source_artifact_version_id=str(
-            spec_value["source_artifact_version_id"]
-        ),
+        source_artifact_version_id=str(spec_value["source_artifact_version_id"]),
         quality_result_id=str(spec_value["quality_result_id"]),
         policy=decode_policy(spec_value["policy"]),
     )
@@ -337,12 +305,8 @@ def decode_job(value: dict[str, Any]) -> AutoRepairJob:
         original_source=decode_source(value["original_source"]),
         working_source=decode_source(value["working_source"]),
         current_quality=decode_quality(value["current_quality"]),
-        attempts=tuple(
-            decode_attempt(item) for item in value.get("attempts", [])
-        ),
+        attempts=tuple(decode_attempt(item) for item in value.get("attempts", [])),
         spent_usd=Decimal(str(value.get("spent_usd", "0"))),
         final_artifact_version_id=value.get("final_artifact_version_id"),
-        reason_codes=tuple(
-            str(item) for item in value.get("reason_codes", [])
-        ),
+        reason_codes=tuple(str(item) for item in value.get("reason_codes", [])),
     )
