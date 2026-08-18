@@ -6,7 +6,9 @@ on:
       - "apps/api/src/lumi_api/idempotency/**"
       - "apps/api/src/lumi_api/persistence/models/platform.py"
       - "apps/api/alembic/versions/0009_idempotency_side_effects.py"
+      - "apps/api/alembic/versions/0019_side_effect_provider_attempt_barrier.py"
       - "apps/api/tests/test_idempotency_contracts.py"
+      - "apps/api/tests/integration/test_idempotency_provider_attempt_barrier.py"
       - "scripts/validate_idempotency_contract.py"
       - "scripts/integration_idempotency_side_effects.py"
       - "docs/runtime/IDEMPOTENCY-SIDE-EFFECT-GATEWAY-V1.md"
@@ -45,7 +47,9 @@ jobs:
           apps/api/src/lumi_api/idempotency
           apps/api/src/lumi_api/persistence/models/platform.py
           apps/api/alembic/versions/0009_idempotency_side_effects.py
+          apps/api/alembic/versions/0019_side_effect_provider_attempt_barrier.py
           apps/api/tests/test_idempotency_contracts.py
+          apps/api/tests/integration/test_idempotency_provider_attempt_barrier.py
           scripts/validate_idempotency_contract.py
           scripts/integration_idempotency_side_effects.py
 
@@ -54,6 +58,7 @@ jobs:
           uv run pyright
           apps/api/src/lumi_api/idempotency
           apps/api/tests/test_idempotency_contracts.py
+          apps/api/tests/integration/test_idempotency_provider_attempt_barrier.py
 
       - name: Idempotency unit tests
         run: uv run pytest apps/api/tests/test_idempotency_contracts.py -q
@@ -72,6 +77,14 @@ jobs:
 
       - name: Idempotency failure-injection acceptance
         run: uv run python scripts/integration_idempotency_side_effects.py
+
+      - name: Provider attempt crash barrier PostgreSQL acceptance
+        env:
+          LUMI_DB_INTEGRATION: "1"
+        run: >-
+          uv run pytest
+          apps/api/tests/integration/test_idempotency_provider_attempt_barrier.py
+          -q
 
       - name: Migration downgrade/upgrade smoke
         run: bash scripts/db-local downgrade-smoke
