@@ -28,7 +28,9 @@ class GovernanceRepository(Protocol):
 
     def search_audit(self, query: AuditSearch) -> AuditPage: ...
 
-    def active_retention_policy(self, retention_class: RetentionClass) -> RetentionPolicy: ...
+    def active_retention_policy(
+        self, retention_class: RetentionClass
+    ) -> RetentionPolicy: ...
 
     def active_holds(
         self,
@@ -69,6 +71,8 @@ class GovernanceRepository(Protocol):
         hold_blockers: tuple[UUID, ...],
     ) -> DeletionRequest: ...
 
+    def mark_deletion_deactivated(self, request_id: UUID) -> DeletionRequest: ...
+
     def mark_deletion_erasing(self, request_id: UUID) -> DeletionRequest: ...
 
     def mark_deletion_completed(self, request_id: UUID) -> DeletionRequest: ...
@@ -82,6 +86,10 @@ class GovernanceRepository(Protocol):
         actor_user_id: UUID,
         request: AuditExportRequest,
     ) -> UUID: ...
+
+
+class SubjectDeactivationPort(Protocol):
+    def deactivate_subject(self, request: DeletionRequest) -> None: ...
 
 
 class ObjectDeletionPort(Protocol):
@@ -101,11 +109,13 @@ class GovernanceService:
         self,
         repository: GovernanceRepository,
         *,
+        subject_deactivation_port: SubjectDeactivationPort | None = None,
         object_deletion_port: ObjectDeletionPort | None = None,
         search_deletion_port: SearchDeletionPort | None = None,
         audit_export_port: AuditExportPort | None = None,
     ) -> None:
         self.repository = repository
+        self.subject_deactivation_port = subject_deactivation_port
         self.object_deletion_port = object_deletion_port
         self.search_deletion_port = search_deletion_port
         self.audit_export_port = audit_export_port
@@ -235,15 +245,16 @@ class GovernanceService:
         normalized_type = subject_type.strip().upper()
         if normalized_type not in {"USER", "ORGANIZATION"}:
             raise ValueError("GOVERNANCE_DELETION_SUBJECT_INVALID")
+        normalized_id = subject_id.strip()
         holds = self.repository.active_holds(
             organization_id=organization_id,
             scope_type=normalized_type,
-            scope_id=subject_id.strip(),
+            scope_id=normalized_id,
         )
-        request = self.repository.create_deletion_request(
+        deletion_request = self.repository.create_deletion_request(
             organization_id=organization_id,
             subject_type=normalized_type,
-            subject_id=subject_id.strip(),
+            subject_id=normalized_id,
             reason=self._reason(reason),
             actor_user_id=actor_user_id,
             hold_blockers=tuple(hold.id for hold in holds),
@@ -254,45 +265,60 @@ class GovernanceService:
                 actor_user_id=actor_user_id,
                 action="governance.deletion.requested",
                 resource_type="deletion_request",
-                resource_id=str(request.id),
+                resource_id=str(deletion_request.id),
                 details={
                     "subject_type": normalized_type,
-                    "subject_id": subject_id.strip(),
+                    "subject_id": normalized_id,
                     "hold_count": len(holds),
                 },
             )
         )
-        return request
+        return deletion_request
 
     def execute_deletion(
         self,
-        request: DeletionRequest,
+        deletion_request: DeletionRequest,
         *,
         actor_user_id: UUID,
         permissions: tuple[str, ...],
     ) -> DeletionRequest:
         self._require(permissions, "governance.manage")
-        if request.hold_blockers:
+        live_holds = self.repository.active_holds(
+            organization_id=deletion_request.organization_id,
+            scope_type=deletion_request.subject_type,
+            scope_id=deletion_request.subject_id,
+        )
+        if deletion_request.hold_blockers or live_holds:
             raise GovernanceConflict("GOVERNANCE_LEGAL_HOLD_BLOCKS_DELETION")
-        if self.object_deletion_port is None or self.search_deletion_port is None:
+        if (
+            self.subject_deactivation_port is None
+            or self.object_deletion_port is None
+            or self.search_deletion_port is None
+        ):
             raise GovernanceUnavailable("GOVERNANCE_DELETION_PORTS_NOT_COMPOSED")
-        erasing = self.repository.mark_deletion_erasing(request.id)
+
+        # The production worker for this method must use idempotent ports keyed by the
+        # deletion request id. NODE-65 keeps the worker composition as an explicit P0 gap.
+        self.subject_deactivation_port.deactivate_subject(deletion_request)
+        deactivated = self.repository.mark_deletion_deactivated(deletion_request.id)
+        erasing = self.repository.mark_deletion_erasing(deletion_request.id)
         try:
             self.object_deletion_port.delete_subject_objects(erasing)
             self.search_deletion_port.delete_subject_search_refs(erasing)
-            completed = self.repository.mark_deletion_completed(request.id)
+            completed = self.repository.mark_deletion_completed(deletion_request.id)
         except Exception:
-            self.repository.mark_deletion_failed(request.id)
+            self.repository.mark_deletion_failed(deletion_request.id)
             raise
         self.record(
             self._governance_audit(
-                organization_id=request.organization_id,
+                organization_id=deletion_request.organization_id,
                 actor_user_id=actor_user_id,
                 action="governance.deletion.completed",
                 resource_type="deletion_request",
-                resource_id=str(request.id),
+                resource_id=str(deletion_request.id),
                 details={
-                    "subject_type": request.subject_type,
+                    "subject_type": deletion_request.subject_type,
+                    "deactivation": deactivated.status.value,
                     "object_gc": "COMPLETED",
                     "search_gc": "COMPLETED",
                 },
@@ -309,10 +335,15 @@ class GovernanceService:
         permissions: tuple[str, ...],
     ) -> UUID:
         self._require(permissions, "audit.export")
+        if self.audit_export_port is None:
+            raise GovernanceUnavailable("GOVERNANCE_AUDIT_EXPORT_PORT_NOT_COMPOSED")
+        safe_request = request.model_copy(
+            update={"filters": redact_audit_mapping(request.filters)}
+        )
         export_id = self.repository.create_audit_export(
             organization_id=organization_id,
             actor_user_id=actor_user_id,
-            request=request,
+            request=safe_request,
         )
         self.record(
             self._governance_audit(
@@ -321,12 +352,13 @@ class GovernanceService:
                 action="governance.audit_export.requested",
                 resource_type="audit_export",
                 resource_id=str(export_id),
-                details={"format": request.export_format, "filters": request.filters},
+                details={
+                    "format": safe_request.export_format,
+                    "filters": safe_request.filters,
+                },
                 retention_class=RetentionClass.EXPORT,
             )
         )
-        if self.audit_export_port is None:
-            raise GovernanceUnavailable("GOVERNANCE_AUDIT_EXPORT_PORT_NOT_COMPOSED")
         self.audit_export_port.schedule(export_id)
         return export_id
 
