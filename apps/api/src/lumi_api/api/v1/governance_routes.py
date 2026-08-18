@@ -64,15 +64,40 @@ def _context(request: Request) -> tuple[UUID, tuple[str, ...]]:
 
 def _translate(exc: Exception) -> ApiProblem:
     if isinstance(exc, GovernanceForbidden):
-        return ApiProblem(403, exc.code.casefold(), "Governance action forbidden", str(exc))
+        return ApiProblem(
+            status=403,
+            code=exc.code.casefold(),
+            title="Governance action forbidden",
+            detail=str(exc),
+        )
     if isinstance(exc, GovernanceNotFound):
-        return ApiProblem(404, exc.code.casefold(), "Governance resource not found", str(exc))
+        return ApiProblem(
+            status=404,
+            code=exc.code.casefold(),
+            title="Governance resource not found",
+            detail=str(exc),
+        )
     if isinstance(exc, GovernanceConflict):
-        return ApiProblem(409, exc.code.casefold(), "Governance state conflict", str(exc))
+        return ApiProblem(
+            status=409,
+            code=exc.code.casefold(),
+            title="Governance state conflict",
+            detail=str(exc),
+        )
     if isinstance(exc, GovernanceUnavailable):
-        return ApiProblem(503, exc.code.casefold(), "Governance operation unavailable", str(exc))
+        return ApiProblem(
+            status=503,
+            code=exc.code.casefold(),
+            title="Governance operation unavailable",
+            detail=str(exc),
+        )
     if isinstance(exc, ValueError):
-        return ApiProblem(422, "governance_request_invalid", "Invalid governance request", str(exc))
+        return ApiProblem(
+            status=422,
+            code="governance_request_invalid",
+            title="Invalid governance request",
+            detail=str(exc),
+        )
     raise exc
 
 
