@@ -1,6 +1,7 @@
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
 from sqlalchemy import Index
 
+from . import models_approvals as _models_approvals
 from . import models_asset_intelligence as _models_asset_intelligence
 from . import models_asset_storage as _models_asset_storage
 from . import models_auth as _models_auth
@@ -32,6 +33,7 @@ from .models_projects_assets import AssetModel, ProjectModel
 from .models_queue_runtime import DeadLetterRecordModel, RuntimeJobModel
 
 _METADATA_MODULES = (
+    _models_approvals,
     _models_asset_intelligence,
     _models_asset_storage,
     _models_auth,

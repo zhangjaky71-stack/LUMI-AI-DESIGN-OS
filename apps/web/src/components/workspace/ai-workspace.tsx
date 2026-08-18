@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { ApprovalPanel } from "@/components/approvals/approval-panel";
 import { InfiniteCanvas } from "@/components/canvas/infinite-canvas";
 import { CommentsPanel } from "@/components/collaboration/comments-panel";
 import { ExportPanel } from "@/components/exports/export-panel";
@@ -15,7 +16,6 @@ import {
   createAgentRun,
   getAgentRun,
   getRunControl,
-  resumeAgentRun,
 } from "@/lib/workspace/api";
 import {
   initialWorkspaceRuntimeState,
@@ -34,9 +34,10 @@ export type WorkspaceProject = {
   constraints: readonly string[];
 };
 
-export function AiWorkspace({ organizationId, project, initialRunId }: {
+export function AiWorkspace({ organizationId, project, permissions, initialRunId }: {
   organizationId: string;
   project: WorkspaceProject;
+  permissions: readonly string[];
   initialRunId?: string | null;
 }) {
   const router = useRouter();
@@ -46,7 +47,7 @@ export function AiWorkspace({ organizationId, project, initialRunId }: {
   const [connection, setConnection] = useState<WorkspaceConnectionState>("disconnected");
   const [goal, setGoal] = useState("");
   const [lastSubmittedGoal, setLastSubmittedGoal] = useState<string | null>(null);
-  const [pending, setPending] = useState<"send" | "stop" | "approve" | null>(null);
+  const [pending, setPending] = useState<"send" | "stop" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [selectedArtifact, setSelectedArtifact] = useState<ExactArtifactRef | null>(null);
   const [canvasSelection, setCanvasSelection] = useState<CanvasSelectionContext | null>(null);
@@ -113,10 +114,6 @@ export function AiWorkspace({ organizationId, project, initialRunId }: {
     setCanvasSaveState("saved");
   }, [selectedArtifact?.artifactVersionId]);
 
-  const approval = useMemo(
-    () => runtime.control?.interrupts.find((item) => item.kind === "approval" || item.kind === "review") ?? null,
-    [runtime.control],
-  );
   const status = runtime.control?.status ?? run?.status ?? (runId ? "loading" : "idle");
   const terminal = ["succeeded", "failed", "cancelled"].includes(status.toLowerCase());
   const canStop = runId !== null && !terminal;
@@ -158,36 +155,6 @@ export function AiWorkspace({ organizationId, project, initialRunId }: {
     }
   }
 
-  async function approve() {
-    if (!runId || !approval || !runtime.control || pending) return;
-    const expectedResumeVersion = runtime.control.resumeVersion;
-    const expectedInterruptId = approval.id;
-    setPending("approve");
-    setNotice(null);
-    try {
-      const fresh = await getRunControl(organizationId, runId);
-      const stillCurrent = fresh.resumeVersion === expectedResumeVersion && fresh.interrupts.some((item) => item.id === expectedInterruptId && item.resumable);
-      if (!stillCurrent) {
-        setRuntime((current) => replaceCanonicalControl(current, fresh));
-        setNotice("This approval became stale. The latest run state has been loaded.");
-        return;
-      }
-      const resumed = await resumeAgentRun(organizationId, runId, {
-        operationId: crypto.randomUUID(),
-        resumeVersion: expectedResumeVersion,
-        interruptId: expectedInterruptId,
-        kind: "approval",
-        value: { action: "approve" },
-      });
-      setRuntime((current) => replaceCanonicalControl(current, resumed));
-    } catch (error) {
-      setNotice(userMessage(error, "Approval could not be applied. The run may have changed."));
-      await refreshCanonical();
-    } finally {
-      setPending(null);
-    }
-  }
-
   return (
     <div className="ai-workspace" data-run-status={status}>
       <header className="workspace-header">
@@ -217,8 +184,6 @@ export function AiWorkspace({ organizationId, project, initialRunId }: {
                 control={runtime.control}
                 items={runtime.timeline}
                 onOpenArtifact={setSelectedArtifact}
-                onApprove={approval ? approve : undefined}
-                approvalPending={pending === "approve"}
               />
             ) : null}
           </div>
@@ -278,6 +243,16 @@ export function AiWorkspace({ organizationId, project, initialRunId }: {
               <div><dt>Canvas</dt><dd>{selectedArtifact ? canvasSaveState : "—"}</dd></div>
             </dl>
           </section>
+          {selectedArtifact ? (
+            <ApprovalPanel
+              key={`approval-${selectedArtifact.artifactVersionId}`}
+              organizationId={organizationId}
+              projectId={project.id}
+              currentArtifact={selectedArtifact}
+              permissions={permissions}
+              selectedNodeIds={canvasSelection?.nodeIds ?? []}
+            />
+          ) : null}
           {selectedArtifact ? (
             <CommentsPanel
               key={`comments-${selectedArtifact.artifactVersionId}`}

@@ -34,6 +34,7 @@ export default async function WorkspacePage({ searchParams }: { searchParams: Se
       </div>
       <AiWorkspace
         organizationId={session.organization.id}
+        permissions={session.permissions}
         project={{
           id: project.id,
           name: project.name,

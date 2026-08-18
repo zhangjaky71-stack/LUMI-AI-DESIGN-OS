@@ -12,12 +12,10 @@ import type { ExactArtifactRef, RunControlSnapshot } from "@/lib/workspace/types
 
 export type AgentTimelineFilter = "all" | "agent" | "artifact" | "attention";
 
-export function AgentTimeline({ control, items, onOpenArtifact, onApprove, approvalPending = false }: {
+export function AgentTimeline({ control, items, onOpenArtifact }: {
   control: RunControlSnapshot | null;
   items: readonly WorkspaceTimelineItem[];
   onOpenArtifact: (artifact: ExactArtifactRef) => void;
-  onApprove: (() => void) | undefined;
-  approvalPending?: boolean;
 }) {
   const [filter, setFilter] = useState<AgentTimelineFilter>("all");
   const canonical = useMemo(() => canonicalTimelineItem(control), [control]);
@@ -30,10 +28,10 @@ export function AgentTimeline({ control, items, onOpenArtifact, onApprove, appro
         <span className="timeline-section-label">Current stage</span>
         {canonical ? (
           <TimelineCard item={canonical} current onOpenArtifact={onOpenArtifact}>
-            {canonical.type === "approval" && approval && onApprove ? (
-              <button className="timeline-primary-action" type="button" onClick={onApprove} disabled={approvalPending || !approval.resumable}>
-                {approvalPending ? "Approving…" : "Approve & continue"}
-              </button>
+            {canonical.type === "approval" && approval ? (
+              <div className="timeline-approval-governance-note" role="status">
+                This run is waiting for a formal Approval decision. Review the exact artifact in the Approval panel; the timeline cannot bypass governance by resuming the graph directly.
+              </div>
             ) : null}
           </TimelineCard>
         ) : <div className="timeline-current-empty">Start a run to see canonical progress.</div>}
