@@ -140,6 +140,7 @@ TASK = _id()
 
 class FakeArtifacts:
     def __init__(self, source: RepairSourceSnapshot) -> None:
+        self.template = source
         self.sources = {source.artifact_version_id: source}
         self.promotions: list[str] = []
         self.approvals: list[str] = []
@@ -147,7 +148,16 @@ class FakeArtifacts:
         self.late_stale = False
 
     def load_source_exact(self, *, organization_id, project_id, artifact_version_id):
-        value = self.sources[artifact_version_id]
+        value = self.sources.get(artifact_version_id)
+        if value is None:
+            value = replace(
+                self.template,
+                artifact_version_id=artifact_version_id,
+                artifact_content_hash="d" * 64,
+                original_branch_id=_id(),
+                original_head_version_id=artifact_version_id,
+            )
+            self.sources[artifact_version_id] = value
         assert value.organization_id == organization_id
         assert value.project_id == project_id
         return value
@@ -236,9 +246,8 @@ class FakeExecutor:
             raise RepairSideEffectUncertain(
                 "pending", external_operation_id="edit-pending-1"
             )
-        version_id = _id()
-        candidate = RepairCandidate(
-            artifact_version_id=version_id,
+        return RepairCandidate(
+            artifact_version_id=_id(),
             artifact_content_hash="d" * 64,
             repair_branch_id=repair_branch_id,
             actual_cost_usd=self.actual,
@@ -246,7 +255,6 @@ class FakeExecutor:
             model=(self.estimate_value.model if plan.paid else None),
             provider_request_id=("provider-request-1" if plan.paid else None),
         )
-        return candidate
 
 
 class FakeBudget:
