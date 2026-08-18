@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Protocol
 
+from .costing import RepairCostEstimate
 from .model import (
     AutoRepairJob,
     AutoRepairTaskSpec,
@@ -83,7 +83,7 @@ class RepairExecutorPort(Protocol):
         *,
         job: AutoRepairJob,
         plan: RepairPlan,
-    ) -> Decimal: ...
+    ) -> RepairCostEstimate: ...
 
     async def execute(
         self,
@@ -101,20 +101,24 @@ class RepairBudgetPort(Protocol):
         *,
         job: AutoRepairJob,
         plan: RepairPlan,
-        estimated_amount_usd: Decimal,
+        estimate: RepairCostEstimate,
     ) -> BudgetReservation: ...
 
     async def commit(
         self,
         *,
+        job: AutoRepairJob,
         reservation: BudgetReservation,
         candidate: RepairCandidate,
+        estimate: RepairCostEstimate,
     ) -> None: ...
 
     async def release(
         self,
         *,
+        job: AutoRepairJob,
         reservation: BudgetReservation,
+        estimate: RepairCostEstimate,
         reason: str,
     ) -> None: ...
 
