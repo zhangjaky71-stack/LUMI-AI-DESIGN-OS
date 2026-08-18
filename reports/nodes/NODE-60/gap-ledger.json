@@ -1,0 +1,77 @@
+{
+  "node": "NODE-60",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "updated_at": "2026-08-18",
+  "gaps": [
+    {
+      "id": "NODE60-GAP-001",
+      "severity": "P0",
+      "status": "open",
+      "title": "Cross-format transcoding and additional formats",
+      "detail": "Current renderer is same-format copy-through. WebP, SVG and cross-format PNG/JPEG/PDF/etc. conversion are not supported by the runtime."
+    },
+    {
+      "id": "NODE60-GAP-002",
+      "severity": "P0",
+      "status": "open",
+      "title": "Resize, quality, alpha, crop and preset dimensions",
+      "detail": "ExportRequestItem has no geometry/quality/alpha parameters, so these controls remain hidden."
+    },
+    {
+      "id": "NODE60-GAP-003",
+      "severity": "P0",
+      "status": "open",
+      "title": "AI Adapt creates a new DesignVersion",
+      "detail": "Aspect-ratio/design adaptation needs a recipe/Agent flow that creates a canonical new DesignVersion before export."
+    },
+    {
+      "id": "NODE60-GAP-004",
+      "severity": "P0",
+      "status": "open",
+      "title": "Verified print and color management",
+      "detail": "DPI, CMYK, bleed and crop marks require a verified renderer/color-management contract and must remain hidden until then."
+    },
+    {
+      "id": "NODE60-GAP-005",
+      "severity": "P0",
+      "status": "open",
+      "title": "Complete export cost estimate",
+      "detail": "Copy-through can truthfully state no AI generation fee, but storage/egress/transcoder/future AI adaptation cost is not available through one estimate contract."
+    },
+    {
+      "id": "NODE60-GAP-006",
+      "severity": "P0",
+      "status": "open",
+      "title": "Per-item batch failure and retry",
+      "detail": "NODE-49 currently marks the overall job FAILED on render/packaging failure and does not expose per-item retry state."
+    },
+    {
+      "id": "NODE60-GAP-007",
+      "severity": "P0",
+      "status": "open",
+      "title": "Durable export job listing and reopen",
+      "detail": "Known job IDs can be read, but the product has no project-scoped list/activity endpoint to recover a job after page refresh without retaining its ID."
+    },
+    {
+      "id": "NODE60-GAP-008",
+      "severity": "P0",
+      "status": "open",
+      "title": "Production ExportEngine composition proof",
+      "detail": "The request-scoped export_engine_factory dependency is fail-closed but production factory wiring is not yet proven in this node."
+    },
+    {
+      "id": "NODE60-GAP-009",
+      "severity": "P0",
+      "status": "open",
+      "title": "Browser, PostgreSQL and worker E2E",
+      "detail": "Need end-to-end proof for exact capability, task/job attribution, queue execution, deterministic package, signed download refresh and tenant authorization."
+    },
+    {
+      "id": "NODE60-GAP-010",
+      "severity": "P0",
+      "status": "open",
+      "title": "Hosted GitHub Actions executed green",
+      "detail": "NODE-60 cannot be COMPLETE until hosted CI executes actual compile/test/lint/build steps successfully."
+    }
+  ]
+}
