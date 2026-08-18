@@ -149,15 +149,17 @@ class SecurityHTTPMiddleware(BaseHTTPMiddleware):
         return None
 
     def _with_headers(self, response: Any, *, request_path: str) -> Any:
+        # This middleware is the final policy authority for these headers. A route or
+        # downstream middleware must not be able to silently widen CSP/frame/referrer
+        # policy by setting a weaker value before this layer returns the response.
         for key, value in HTTP_SECURITY_HEADERS.items():
-            response.headers.setdefault(key, value)
+            response.headers[key] = value
         if self.environment != "production" and request_path in _DOCS_PATHS:
             response.headers["Content-Security-Policy"] = _DOCS_CSP
         if self.environment == "production":
-            response.headers.setdefault(
-                "Strict-Transport-Security",
-                "max-age=63072000; includeSubDomains; preload",
-            )
+            response.headers[
+                "Strict-Transport-Security"
+            ] = "max-age=63072000; includeSubDomains; preload"
         return response
 
     @staticmethod
