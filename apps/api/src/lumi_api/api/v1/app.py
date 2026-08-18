@@ -4,6 +4,7 @@ import os
 
 from fastapi import Depends, FastAPI
 
+from lumi_api.observability import DeterministicSampler, PythonJsonLoggingSink, SafeTelemetry
 from lumi_api.security import install_http_security
 
 from .admin_auth_guard import establish_platform_admin_identity
@@ -44,8 +45,17 @@ def create_contract_app(*, environment: str | None = None) -> FastAPI:
         redoc_url="/api/redoc" if expose_interactive_docs else None,
         openapi_url="/api/openapi.json" if expose_interactive_docs else None,
     )
-    # Install before the error contract so RequestIdMiddleware remains outside the
-    # security gate and every security rejection receives the canonical request id.
+    # Logs have a safe standard-library JSON baseline immediately. Trace/metric
+    # exporters are deliberately composed separately through an OTel/Collector port.
+    app.state.telemetry = SafeTelemetry(PythonJsonLoggingSink())
+    app.state.telemetry_sampler = DeterministicSampler(normal_sample_rate=0.10)
+    # Starlette's most recently added user middleware is outermost. The add order
+    # below therefore yields runtime order:
+    # IdempotencyReplay -> RequestId/Trace -> SecurityHTTP -> Route.
+    # IdempotencyReplay only establishes request replay context and always calls the
+    # next layer; RequestId/Trace metadata is fail-open and does not synthesize a
+    # response. NODE-66 SecurityHTTPMiddleware therefore remains the authoritative
+    # input/response security gate before route execution.
     install_http_security(app, environment=runtime_environment)
     install_error_contract(app)
     app.add_middleware(IdempotencyReplayMiddleware)

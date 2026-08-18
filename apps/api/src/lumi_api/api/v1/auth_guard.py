@@ -11,6 +11,7 @@ from lumi_api.auth import (
     authenticate_http_request,
     build_request_context,
 )
+from lumi_api.observability import bind_business_refs, current_telemetry_context
 
 from .auth_dependencies import AuthHttpSettingsDependency, AuthServiceDependency
 from .errors import ApiProblem
@@ -87,8 +88,11 @@ def enforce_api_auth(
             detail="The principal is not authorized for this operation.",
         )
 
-    request_id = request.headers.get("X-Request-ID", "unassigned")
-    trace_id = request.headers.get("traceparent", request_id)
+    telemetry_context = bind_business_refs(organization_id=organization_id)
+    if telemetry_context is None:
+        telemetry_context = current_telemetry_context()
+    request_id = getattr(request.state, "request_id", "unassigned")
+    trace_id = telemetry_context.trace_id if telemetry_context is not None else request_id
     request.state.lumi_context = build_request_context(
         principal=principal,
         request_id=request_id,

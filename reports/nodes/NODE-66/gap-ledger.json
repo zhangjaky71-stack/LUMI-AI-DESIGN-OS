@@ -4,159 +4,27 @@
   "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
   "updated_at": "2026-08-18T11:58:00Z",
   "gaps": [
-    {
-      "id": "NODE66-GAP-101",
-      "severity": "P0",
-      "status": "open",
-      "area": "ingress-abuse",
-      "summary": "Production ingress/WAF streamed and chunked request-size enforcement, actor/org/IP rate limits and generation concurrency/denial-of-wallet controls require deployment evidence."
-    },
-    {
-      "id": "NODE66-GAP-102",
-      "severity": "P0",
-      "status": "open",
-      "area": "bola",
-      "summary": "Complete automatically maintained two-tenant negative BOLA corpus is not yet proven for every tenant resource route family."
-    },
-    {
-      "id": "NODE66-GAP-103",
-      "severity": "P0",
-      "status": "open",
-      "area": "prompt-injection",
-      "summary": "Context trust labels are implemented but not yet propagated through the production Agent context compiler/runtime and malicious web/Brand Guide E2E."
-    },
-    {
-      "id": "NODE66-GAP-104",
-      "severity": "P0",
-      "status": "open",
-      "area": "ssrf-egress",
-      "summary": "Every production Browser/Tool/MCP HTTP transport must prove pinned-IP connection, validated Host/SNI semantics, DNS rebinding resistance and redirect revalidation. MCP currently exposes a secure transport port contract but production adapter evidence is absent."
-    },
-    {
-      "id": "NODE66-GAP-105",
-      "severity": "P0",
-      "status": "open",
-      "area": "sandbox",
-      "summary": "Production-equivalent Sandbox escape suite, seccomp/AppArmor/runtime policy, infrastructure no-host-mount/no-Docker-socket evidence and real egress enforcement remain unverified."
-    },
-    {
-      "id": "NODE66-GAP-106",
-      "severity": "P0",
-      "status": "open",
-      "area": "untrusted-files",
-      "summary": "Malware scanning, decompression/zip-bomb limits, EXIF/privacy policy and production parser isolation need end-to-end evidence across supported PDF/image/video/archive types."
-    },
-    {
-      "id": "NODE66-GAP-107",
-      "severity": "P0",
-      "status": "open",
-      "area": "secrets",
-      "summary": "Production Secret Manager/workload identity integration and a recorded key-rotation exercise are not yet composed."
-    },
-    {
-      "id": "NODE66-GAP-108",
-      "severity": "P0",
-      "status": "open",
-      "area": "supply-chain",
-      "summary": "NODE-66 now wires blocking pip-audit, Bandit, pnpm audit, Trivy filesystem vuln/secret/misconfiguration scan, CycloneDX SBOM and Sandbox image scan, but latest-head execution, all production image coverage, image digest/signature/provenance and reviewed vulnerability-exception evidence remain required."
-    },
-    {
-      "id": "NODE66-GAP-109",
-      "severity": "P0",
-      "status": "open",
-      "area": "admin-security",
-      "summary": "NODE-64 global-admin authentication/bootstrap, strong MFA/step-up, shorter privileged session and dual-control policy remain open dependencies."
-    },
-    {
-      "id": "NODE66-GAP-110",
-      "severity": "P0",
-      "status": "open",
-      "area": "dast-pentest",
-      "summary": "A guarded blocking ZAP baseline workflow is wired to LUMI_STAGING_URL with HTTPS, credential-free URL and all-resolved-address public-IP validation, but no current-track staging scan evidence exists yet and authenticated/active DAST plus independent penetration/red-team evidence remain required."
-    },
-    {
-      "id": "NODE66-GAP-111",
-      "severity": "P0",
-      "status": "open",
-      "area": "audit",
-      "summary": "NODE-65 production Governance composition and mandatory security/privileged Audit ingress remain open dependencies."
-    },
-    {
-      "id": "NODE66-GAP-112",
-      "severity": "P0",
-      "status": "open",
-      "area": "release-evidence",
-      "summary": "Latest-head NODE-66 hosted CI/security suites, production-like E2E and named Security sign-off must execute; skipped/pre-run jobs are not PASS."
-    },
-    {
-      "id": "NODE66-GAP-113",
-      "severity": "P0",
-      "status": "open",
-      "area": "browser-strict-csp",
-      "summary": "The Web app has a production CSP baseline, but script-src still permits unsafe-inline and connect-src remains scheme-wide. A nonce/hash-based strict CSP with an explicit endpoint allowlist requires Next.js dynamic-rendering/cache impact review plus browser E2E before it can replace the current compatibility baseline."
-    },
-    {
-      "id": "NODE66-GAP-201",
-      "severity": "P0",
-      "status": "closed",
-      "area": "api-http",
-      "summary": "FastAPI security middleware is composed for credential-query rejection, known-length JSON request limits, security headers and production HSTS; production interactive API docs/OpenAPI HTTP surfaces are disabled and development docs use a separate restricted CSP."
-    },
-    {
-      "id": "NODE66-GAP-202",
-      "severity": "P0",
-      "status": "closed",
-      "area": "browser-headers",
-      "summary": "Next.js emits a CSP compatibility baseline plus frame/referrer/nosniff/permissions/COOP security headers with production HSTS. Strict nonce/hash CSP remains separately open as NODE66-GAP-113."
-    },
-    {
-      "id": "NODE66-GAP-203",
-      "severity": "P0",
-      "status": "closed",
-      "area": "ssrf-core",
-      "summary": "Existing Tool Gateway SSRF policy and regression corpus cover private/link-local/metadata targets, mixed DNS, web.fetch redirect revalidation, pinned IP handoff, no ambient auth and response limits. MCP production transport proof remains separately open as NODE66-GAP-104."
-    },
-    {
-      "id": "NODE66-GAP-204",
-      "severity": "P0",
-      "status": "closed",
-      "area": "sandbox-source-baseline",
-      "summary": "Existing local Docker Sandbox contract enforces network none, readonly root, cap-drop, no-new-privileges, unprivileged user, resource limits, readonly input and command/secret restrictions."
-    },
-    {
-      "id": "NODE66-GAP-205",
-      "severity": "P0",
-      "status": "closed",
-      "area": "asset-source-baseline",
-      "summary": "Existing Asset tests cover magic-byte MIME, SVG XSS/external resources/XXE, filename sanitation and signed URL checksum/TTL."
-    },
-    {
-      "id": "NODE66-GAP-206",
-      "severity": "P0",
-      "status": "closed",
-      "area": "supply-chain-source-baseline",
-      "summary": "Repository already contains frozen lockfiles plus Dependency Review, CodeQL and Gitleaks workflows; NODE-66 treats their executed status as release evidence rather than assuming green."
-    },
-    {
-      "id": "NODE66-GAP-207",
-      "severity": "P0",
-      "status": "closed",
-      "area": "security-policy-core",
-      "summary": "Trust-labelled model context and fail-closed Critical/High SecurityReleaseGate core are implemented with tests."
-    },
-    {
-      "id": "NODE66-GAP-208",
-      "severity": "P0",
-      "status": "closed",
-      "area": "blocking-security-scan-wiring",
-      "summary": "Current-track NODE-66 CI wires blocking pip-audit 2.10.1, Bandit 1.9.4, pnpm high audit, Trivy 0.36.0 filesystem vuln/secret/misconfiguration scanning, CycloneDX SBOM generation and CRITICAL/HIGH Sandbox image scanning."
-    },
-    {
-      "id": "NODE66-GAP-209",
-      "severity": "P0",
-      "status": "closed",
-      "area": "dast-workflow-wiring",
-      "summary": "A separate scheduled/manual ZAP baseline workflow is wired with HTTPS-only staging target validation, credential-free URLs, DNS resolution requiring every target address to be public/global, blocking findings and no automatic issue mutation; execution evidence remains NODE66-GAP-110."
-    }
+    {"id":"NODE66-GAP-101","severity":"P0","status":"open","area":"ingress-abuse","summary":"Production ingress/WAF streamed and chunked request-size enforcement, actor/org/IP rate limits and generation concurrency/denial-of-wallet controls require deployment evidence."},
+    {"id":"NODE66-GAP-102","severity":"P0","status":"open","area":"bola","summary":"Complete automatically maintained two-tenant negative BOLA corpus is not yet proven for every tenant resource route family."},
+    {"id":"NODE66-GAP-103","severity":"P0","status":"open","area":"prompt-injection","summary":"Context trust labels are implemented but not yet propagated through the production Agent context compiler/runtime and malicious web/Brand Guide E2E."},
+    {"id":"NODE66-GAP-104","severity":"P0","status":"open","area":"ssrf-egress","summary":"Every production Browser/Tool/MCP HTTP transport must prove pinned-IP connection, validated Host/SNI semantics, DNS rebinding resistance and redirect revalidation. MCP currently exposes a secure transport port contract but production adapter evidence is absent."},
+    {"id":"NODE66-GAP-105","severity":"P0","status":"open","area":"sandbox","summary":"Production-equivalent Sandbox escape suite, seccomp/AppArmor/runtime policy, infrastructure no-host-mount/no-Docker-socket evidence and real egress enforcement remain unverified."},
+    {"id":"NODE66-GAP-106","severity":"P0","status":"open","area":"untrusted-files","summary":"Malware scanning, decompression/zip-bomb limits, EXIF/privacy policy and production parser isolation need end-to-end evidence across supported PDF/image/video/archive types."},
+    {"id":"NODE66-GAP-107","severity":"P0","status":"open","area":"secrets","summary":"Production Secret Manager/workload identity integration and a recorded key-rotation exercise are not yet composed."},
+    {"id":"NODE66-GAP-108","severity":"P0","status":"open","area":"supply-chain","summary":"NODE-66 now wires blocking pip-audit, Bandit, pnpm audit, Trivy filesystem vuln/secret/misconfiguration scan, CycloneDX SBOM and Sandbox image scan, but latest-head execution, all production image coverage, image digest/signature/provenance and reviewed vulnerability-exception evidence remain required."},
+    {"id":"NODE66-GAP-109","severity":"P0","status":"open","area":"admin-security","summary":"NODE-64 global-admin authentication/bootstrap, strong MFA/step-up, shorter privileged session and dual-control policy remain open dependencies."},
+    {"id":"NODE66-GAP-110","severity":"P0","status":"open","area":"dast-pentest","summary":"A guarded blocking ZAP baseline workflow is wired to LUMI_STAGING_URL with HTTPS, credential-free URL and all-resolved-address public-IP validation, but no current-track staging scan evidence exists yet and authenticated/active DAST plus independent penetration/red-team evidence remain required."},
+    {"id":"NODE66-GAP-111","severity":"P0","status":"open","area":"audit","summary":"NODE-65 production Governance composition and mandatory security/privileged Audit ingress remain open dependencies."},
+    {"id":"NODE66-GAP-112","severity":"P0","status":"open","area":"release-evidence","summary":"Latest-head NODE-66 hosted CI/security suites, production-like E2E and named Security sign-off must execute; skipped/pre-run jobs are not PASS."},
+    {"id":"NODE66-GAP-113","severity":"P0","status":"open","area":"browser-strict-csp","summary":"The Web app has a production CSP baseline, but script-src still permits unsafe-inline and connect-src remains scheme-wide. A nonce/hash-based strict CSP with an explicit endpoint allowlist requires Next.js dynamic-rendering/cache impact review plus browser E2E before it can replace the current compatibility baseline."},
+    {"id":"NODE66-GAP-201","severity":"P0","status":"closed","area":"api-http","summary":"FastAPI security middleware is composed for credential-query rejection, known-length JSON request limits, security headers and production HSTS; production interactive API docs/OpenAPI HTTP surfaces are disabled and development docs use a separate restricted CSP."},
+    {"id":"NODE66-GAP-202","severity":"P0","status":"closed","area":"browser-headers","summary":"Next.js emits a CSP compatibility baseline plus frame/referrer/nosniff/permissions/COOP security headers with production HSTS. Strict nonce/hash CSP remains separately open as NODE66-GAP-113."},
+    {"id":"NODE66-GAP-203","severity":"P0","status":"closed","area":"ssrf-core","summary":"Existing Tool Gateway SSRF policy and regression corpus cover private/link-local/metadata targets, mixed DNS, web.fetch redirect revalidation, pinned IP handoff, no ambient auth and response limits. MCP production transport proof remains separately open as NODE66-GAP-104."},
+    {"id":"NODE66-GAP-204","severity":"P0","status":"closed","area":"sandbox-source-baseline","summary":"Existing local Docker Sandbox contract enforces network none, readonly root, cap-drop, no-new-privileges, unprivileged user, resource limits, readonly input and command/secret restrictions."},
+    {"id":"NODE66-GAP-205","severity":"P0","status":"closed","area":"asset-source-baseline","summary":"Existing Asset tests cover magic-byte MIME, SVG XSS/external resources/XXE, filename sanitation and signed URL checksum/TTL."},
+    {"id":"NODE66-GAP-206","severity":"P0","status":"closed","area":"supply-chain-source-baseline","summary":"Repository already contains frozen lockfiles plus Dependency Review, CodeQL and Gitleaks workflows; NODE-66 treats their executed status as release evidence rather than assuming green."},
+    {"id":"NODE66-GAP-207","severity":"P0","status":"closed","area":"security-policy-core","summary":"Trust-labelled model context and fail-closed Critical/High SecurityReleaseGate core are implemented with tests."},
+    {"id":"NODE66-GAP-208","severity":"P0","status":"closed","area":"blocking-security-scan-wiring","summary":"Current-track NODE-66 CI wires blocking pip-audit 2.10.1, Bandit 1.9.4, pnpm high audit, Trivy 0.36.0 filesystem vuln/secret/misconfiguration scanning, CycloneDX SBOM generation and CRITICAL/HIGH Sandbox image scanning."},
+    {"id":"NODE66-GAP-209","severity":"P0","status":"closed","area":"dast-workflow-wiring","summary":"A separate scheduled/manual ZAP baseline workflow is wired with HTTPS-only staging target validation, credential-free URLs, DNS resolution requiring every target address to be public/global, blocking findings and no automatic issue mutation; execution evidence remains NODE66-GAP-110."}
   ]
 }

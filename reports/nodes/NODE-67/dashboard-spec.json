@@ -1,0 +1,106 @@
+{
+  "node": "NODE-67",
+  "version": "2026-08-18.v1",
+  "status": "SPECIFIED_CORE_NOT_DEPLOYED",
+  "cardinality_policy": "Tenant/project/run/task/operation/provider-request identifiers are trace/log drill-down fields and MUST NOT be metric labels.",
+  "dashboards": [
+    {
+      "key": "platform_overview",
+      "title": "Platform Overview",
+      "panels": [
+        "core_api.availability",
+        "http.server.duration_ms p50/p95/p99",
+        "http.server.requests by status_class",
+        "agent.run.failure_ratio",
+        "queue.oldest_age_seconds",
+        "provider.available_ratio",
+        "cost.provider_amount"
+      ]
+    },
+    {
+      "key": "api_realtime",
+      "title": "API & Realtime",
+      "panels": [
+        "http.server.duration_ms by route/method/status_class",
+        "http.server.error_ratio by route",
+        "sse.delivery_lag_ms",
+        "sse.reconnect_rate"
+      ]
+    },
+    {
+      "key": "agent_runs",
+      "title": "Agent Runs",
+      "panels": [
+        "agent.command.accept_latency_ms",
+        "agent.run.duration_ms",
+        "agent.run.failure_ratio",
+        "agent.run.waiting_user_count",
+        "tool.call.failure_ratio",
+        "model.request.duration_ms"
+      ]
+    },
+    {
+      "key": "providers",
+      "title": "Providers",
+      "panels": [
+        "provider.request.duration_ms by provider/capability/outcome",
+        "provider.error_ratio by provider/capability",
+        "provider.available_ratio",
+        "provider.fallback_count"
+      ]
+    },
+    {
+      "key": "queue_workers",
+      "title": "Queue & Workers",
+      "panels": [
+        "queue.depth",
+        "queue.oldest_age_seconds",
+        "worker.processing.duration_ms",
+        "worker.retry_count",
+        "worker.dlq_count"
+      ]
+    },
+    {
+      "key": "database_cache",
+      "title": "Database & Cache",
+      "panels": [
+        "db.connection.utilization_ratio",
+        "db.query.duration_ms",
+        "db.transaction.rollback_ratio",
+        "cache.hit_ratio",
+        "cache.operation.duration_ms"
+      ]
+    },
+    {
+      "key": "cost_budget",
+      "title": "Cost & Budget",
+      "panels": [
+        "cost.provider_amount by provider/model_family",
+        "billing.credit.consume_count",
+        "budget.denial_count",
+        "paid_side_effect.duplicate_count"
+      ]
+    },
+    {
+      "key": "design_quality",
+      "title": "Design Quality",
+      "panels": [
+        "quality.critic.score_distribution",
+        "quality.repair.attempt_count",
+        "quality.constraint_violation_count",
+        "quality.approval.rejection_ratio"
+      ]
+    },
+    {
+      "key": "security_auth",
+      "title": "Security & Auth",
+      "panels": [
+        "auth.failure_ratio",
+        "auth.rate_limit_denial_count",
+        "security.critical_finding_count",
+        "admin.break_glass.active_count",
+        "governance.audit_write_failure_count"
+      ]
+    }
+  ]
+}

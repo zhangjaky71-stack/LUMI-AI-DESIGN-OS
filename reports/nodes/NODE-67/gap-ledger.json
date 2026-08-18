@@ -1,0 +1,169 @@
+{
+  "node": "NODE-67",
+  "title": "Observability, Telemetry & SLOs",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "updated_at": "2026-08-18T13:20:00Z",
+  "gaps": [
+    {
+      "id": "NODE67-GAP-101",
+      "severity": "P0",
+      "status": "open",
+      "area": "otel-production",
+      "summary": "Production OpenTelemetry SDK/OTLP exporter and Collector deployment are not composed. Trace and metric records currently use vendor-neutral contracts; the API default sink only emits safe JSON logs."
+    },
+    {
+      "id": "NODE67-GAP-102",
+      "severity": "P0",
+      "status": "open",
+      "area": "queue-consumers",
+      "summary": "Canonical EventEnvelope producer propagation and message child-context helper exist, but production queue consumers/workers have not all been wired to continue request/correlation/trace context."
+    },
+    {
+      "id": "NODE67-GAP-103",
+      "severity": "P0",
+      "status": "open",
+      "area": "distributed-spans",
+      "summary": "Graph/AgentRun/Task/Tool/ModelGateway/provider/worker/database spans and business reference binding are not comprehensively instrumented end-to-end."
+    },
+    {
+      "id": "NODE67-GAP-104",
+      "severity": "P0",
+      "status": "open",
+      "area": "langsmith",
+      "summary": "Fail-open and locally sanitized LangSmith port is implemented, but a production LangSmith/OTel adapter, Agent/LLM trace fan-out and eval integration are not composed or executed."
+    },
+    {
+      "id": "NODE67-GAP-105",
+      "severity": "P0",
+      "status": "open",
+      "area": "metrics",
+      "summary": "HTTP duration metric core exists, but Agent/provider/queue/worker/database/cache/cost/quality/security/realtime metric producers are not all bound to production telemetry."
+    },
+    {
+      "id": "NODE67-GAP-106",
+      "severity": "P0",
+      "status": "open",
+      "area": "dashboards",
+      "summary": "Vendor-neutral dashboard specification exists, but dashboard backend/data sources, queries and deployed render verification are absent."
+    },
+    {
+      "id": "NODE67-GAP-107",
+      "severity": "P0",
+      "status": "open",
+      "area": "alerts-oncall",
+      "summary": "Alert policy inventory exists, but alert engine/routing, on-call ownership, runbooks, deduplication and fire/drill evidence are not deployed and tested."
+    },
+    {
+      "id": "NODE67-GAP-108",
+      "severity": "P0",
+      "status": "open",
+      "area": "structured-logging",
+      "summary": "API completion logs use the safe JSON contract, but all services/workers/providers/admin paths have not migrated to structured correlation-aware logging with production redaction verification."
+    },
+    {
+      "id": "NODE67-GAP-109",
+      "severity": "P0",
+      "status": "open",
+      "area": "frontend-rum",
+      "summary": "Frontend Web Vitals, safe browser error reporting and backend correlation handoff are not implemented/deployed."
+    },
+    {
+      "id": "NODE67-GAP-110",
+      "severity": "P0",
+      "status": "open",
+      "area": "synthetics",
+      "summary": "External health/project-create/Agent-command/Artifact/Export synthetic checks and alert integration are not deployed."
+    },
+    {
+      "id": "NODE67-GAP-111",
+      "severity": "P0",
+      "status": "open",
+      "area": "slo-error-budget",
+      "summary": "Versioned SLO/error-budget math and policy exist, but production measurements, exclusion rules, burn-rate windows, reporting and release/use decisions have not been verified against real traffic."
+    },
+    {
+      "id": "NODE67-GAP-112",
+      "severity": "P0",
+      "status": "open",
+      "area": "telemetry-governance",
+      "summary": "Production telemetry retention/privacy/access control, Collector backpressure/HA, metric label-value cardinality budgets, distributed sampling-state/cost policy and exporter-drop monitoring require deployment evidence."
+    },
+    {
+      "id": "NODE67-GAP-113",
+      "severity": "P0",
+      "status": "open",
+      "area": "hosted-validation",
+      "summary": "Latest-head NODE-67 CI and production-like HTTP→queue→worker/exporter validation must actually execute green; skipped/pre-run/zero-step jobs are not PASS."
+    },
+    {
+      "id": "NODE67-GAP-201",
+      "severity": "P0",
+      "status": "closed",
+      "area": "http-correlation-core",
+      "summary": "RequestIdMiddleware owns bounded X-Request-ID/X-Correlation-ID plus W3C traceparent/tracestate continuation and response propagation. Invalid request/correlation identifiers fall back to canonical generated values; invalid traceparent restarts a local trace; invalid tracestate is discarded without rejecting business requests. Locally generated traces advertise random=1, sampled=0 while local recording is deferred."
+    },
+    {
+      "id": "NODE67-GAP-202",
+      "severity": "P0",
+      "status": "closed",
+      "area": "auth-correlation-core",
+      "summary": "Authenticated RequestContext receives middleware-generated request_id and actual trace_id rather than raw client headers, and organization_id is bound into telemetry context."
+    },
+    {
+      "id": "NODE67-GAP-203",
+      "severity": "P0",
+      "status": "closed",
+      "area": "event-producer-propagation",
+      "summary": "Canonical EventEnvelope additively carries request_id/correlation_id/traceparent/tracestate and new_event inherits the active telemetry context; existing Outbox serialization preserves the fields."
+    },
+    {
+      "id": "NODE67-GAP-204",
+      "severity": "P0",
+      "status": "closed",
+      "area": "message-continuation-core",
+      "summary": "Message consumer helper creates a child span context from canonical EventEnvelope correlation fields without inventing a second queue envelope."
+    },
+    {
+      "id": "NODE67-GAP-205",
+      "severity": "P0",
+      "status": "closed",
+      "area": "fail-open-telemetry",
+      "summary": "SafeTelemetry and SafeLangSmithTracer swallow exporter/vendor/telemetry-validation failures, and malformed telemetry correlation/trace headers are replaced or discarded, so observability cannot become a business availability dependency."
+    },
+    {
+      "id": "NODE67-GAP-206",
+      "severity": "P0",
+      "status": "closed",
+      "area": "telemetry-data-safety",
+      "summary": "Structured log/span attribute validation rejects prompt/content/credential/secret keys plus obvious embedded credential/signature values; log identifiers/messages are bounded, LangSmith fan-out reuses the safe-attribute boundary, metric label keys use a fixed allowlist, organization/run identifier keys are rejected, and HTTP route labels use route templates. Production label-value cardinality budgets remain separately open under NODE67-GAP-112."
+    },
+    {
+      "id": "NODE67-GAP-207",
+      "severity": "P0",
+      "status": "closed",
+      "area": "sampling-core",
+      "summary": "Deterministic normal-trace sampling is implemented while ERROR/CRITICAL/forced evidence is never sampled away locally; locally generated trace flags correctly mark random trace IDs with sampled unset during deferred recording. Distributed sampled-bit consistency and production policy remain open under telemetry governance."
+    },
+    {
+      "id": "NODE67-GAP-208",
+      "severity": "P0",
+      "status": "closed",
+      "area": "api-json-log-core",
+      "summary": "The API app composes a safe standard-library structured JSON logging sink immediately while trace/metric exporter deployment remains explicit."
+    },
+    {
+      "id": "NODE67-GAP-209",
+      "severity": "P0",
+      "status": "closed",
+      "area": "slo-policy-core",
+      "summary": "Versioned SLO/error-budget model plus dashboard, alert and sampling policy artifacts are implemented without claiming production measurement/deployment."
+    },
+    {
+      "id": "NODE67-GAP-210",
+      "severity": "P0",
+      "status": "closed",
+      "area": "node66-response-security-compat",
+      "summary": "NODE-66 SecurityHTTPMiddleware remains the response-security authority on contract paths; NODE-67 trace/correlation metadata is fail-open and does not synthesize a pre-security response, while boundary tests verify CSP/nosniff/frame/referrer/HSTS policy and production docs shutdown remain intact. No separate final-header middleware is claimed."
+    }
+  ]
+}
