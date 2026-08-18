@@ -160,16 +160,18 @@ def main() -> None:
     for marker in (
         'PIP_AUDIT_VERSION: "2.10.1"',
         'BANDIT_VERSION: "1.9.4"',
-        'pip-audit \\',
-        'bandit \\',
-        'pnpm audit --audit-level high',
-        'aquasecurity/trivy-action@v0.36.0',
-        'scanners: vuln,secret,misconfig',
-        'format: cyclonedx',
-        'image-ref: ${{ env.SANDBOX_IMAGE }}',
-        'severity: CRITICAL,HIGH',
-        'uv lock --check',
-        'tools/node21/test_docker_sandbox.py',
+        "pip-audit",
+        "bandit",
+        "--severity-level high",
+        "--confidence-level medium",
+        "pnpm audit --audit-level high",
+        "aquasecurity/trivy-action@v0.36.0",
+        "scanners: vuln,secret,misconfig",
+        "format: cyclonedx",
+        "image-ref: ${{ env.SANDBOX_IMAGE }}",
+        "severity: CRITICAL,HIGH",
+        "uv lock --check",
+        "tools/node21/test_docker_sandbox.py",
     ):
         require(security_workflow, marker, f"blocking security workflow {marker}")
     forbid(security_workflow, "continue-on-error: true", "NODE-66 blocking gate downgrade")
