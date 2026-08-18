@@ -23,6 +23,16 @@ Status: **CORE IMPLEMENTED / VALIDATING / NOT COMPLETE**
 - [x] Workspace Inspector integrates the Versions panel for the selected exact Artifact.
 - [x] Dedicated Python/TypeScript tests and static acceptance/CI assets are present.
 
+## Hosted CI evidence — 2026-08-18
+
+- Pull request: #126 (`feat/node-59-versions-ui` → `feat/node-58-brand-kit-ui`).
+- NODE-59 workflow run: `32101439784`.
+- `versions-contract` job: `95602582961`, conclusion `failure`, **0 executed steps**.
+- Job step API returned an empty step list.
+- Job log download returned `404 BlobNotFound`.
+- `versions-web` was skipped because its dependency did not execute successfully.
+- Therefore there is no evidence that a NODE-59 compile/test/lint/build command ran and failed. The hosted result is treated as a pre-run runner/account blocker, not as code-level failure evidence.
+
 ## Required before COMPLETE
 
 - [ ] Canonical visual side-by-side / wipe / heatmap compare renderer.
