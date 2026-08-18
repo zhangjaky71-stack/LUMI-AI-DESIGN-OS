@@ -60,6 +60,10 @@ def main() -> int:
         "provider_attempt_started_at = COALESCE(provider_attempt_started_at, now())",
         "PROVIDER_ATTEMPT_OUTCOME_UNKNOWN",
         "re-execution is forbidden",
+        "only an explicit",
+        "provider-not-accepted classification may clear the barrier",
+        "WHEN $6::boolean THEN NULL",
+        "NOT $6::boolean",
         "clear_provider_attempt=True",
         "provider_reconciliation_total",
         "ambiguous_side_effect_total",
@@ -86,6 +90,8 @@ def main() -> int:
         "PROVIDER_ATTEMPT_OUTCOME_UNKNOWN",
         "provider_calls == 0",
         "proven_not_accepted_allows_safe_retry",
+        "generic_retryable_after_provider_attempt_is_ambiguous",
+        "SideEffectExecutionError",
     )
     require(
         "apps/worker-media/src/lumi_worker_media/app.py",
