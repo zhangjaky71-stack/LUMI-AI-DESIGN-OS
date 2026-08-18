@@ -8,7 +8,7 @@
     "blocked_external_never_counts_as_pass": true
   },
   "scenarios": [
-    {"id":"ENV-01","category":"environment","title":"RC image and version parity","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"ENV-01","category":"environment","title":"Six immutable RC images, build provenance, SBOM and executable entrypoints match the accepted source SHA","priority":"P0","severity":"critical","external_dependency":false},
     {"id":"ENV-02","category":"environment","title":"Topology, DB, broker, object, migrations and security parity","priority":"P0","severity":"high","external_dependency":false},
     {"id":"ACC-01","category":"accounts","title":"Org A/B, ops and billing test-account isolation matrix","priority":"P0","severity":"high","external_dependency":false},
     {"id":"E2E-01","category":"golden_e2e","title":"Boutique coffee brand end-to-end project","priority":"P0","severity":"critical","external_dependency":false},
@@ -26,7 +26,7 @@
     {"id":"SEC-05","category":"security","title":"SSRF metadata/private target corpus is denied","priority":"P0","severity":"critical","external_dependency":false},
     {"id":"SEC-06","category":"security","title":"Sandbox traversal/escape corpus is denied","priority":"P0","severity":"critical","external_dependency":false},
     {"id":"SEC-07","category":"security","title":"Unauthorized admin and expired approval are denied","priority":"P0","severity":"critical","external_dependency":false},
-    {"id":"BILL-01","category":"billing","title":"Cost ledger, budget block, credits and webhook idempotency reconcile","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"BILL-01","category":"billing","title":"Cost ledger, platform $100/day provider hard stop, credits and webhook idempotency reconcile","priority":"P0","severity":"critical","external_dependency":false},
     {"id":"PERF-01","category":"performance","title":"NODE-69 launch profile measured on identified staging RC","priority":"P0","severity":"high","external_dependency":false},
     {"id":"AI-01","category":"ai_release","title":"Production-candidate model quality acceptance","priority":"P0","severity":"high","external_dependency":true},
     {"id":"AI-02","category":"ai_release","title":"NODE-70 release decision uses real baseline/candidate evidence","priority":"P0","severity":"critical","external_dependency":true},
