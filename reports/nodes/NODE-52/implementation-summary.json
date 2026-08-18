@@ -1,0 +1,23 @@
+{
+  "node": "NODE-52",
+  "name": "App Shell",
+  "branch": "feat/node-52-app-shell",
+  "stack_base": "feat/node-51-auto-repair",
+  "status": "IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "implemented": [
+    "nextjs_app_router_shell",
+    "same_origin_browser_api_client",
+    "controlled_server_api_client",
+    "problem_details_error_model",
+    "server_session_guard",
+    "organization_workspace_context",
+    "responsive_primary_navigation",
+    "sign_in_surface",
+    "loading_error_not_found_boundaries",
+    "accessibility_baseline",
+    "security_headers",
+    "node52_static_validator",
+    "node52_typecheck_and_build_workflow"
+  ],
+  "completion_claim": false
+}
