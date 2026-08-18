@@ -47,6 +47,24 @@ def test_api_security_headers_are_composed_on_real_contract_app() -> None:
     assert "strict-transport-security" not in response.headers
 
 
+def test_development_docs_use_docs_specific_csp() -> None:
+    with TestClient(create_contract_app(environment="development")) as client:
+        response = client.get("/api/docs")
+    assert response.status_code == 200
+    csp = response.headers["content-security-policy"]
+    assert "https://cdn.jsdelivr.net" in csp
+    assert "frame-ancestors 'none'" in csp
+
+
+def test_production_contract_app_hides_interactive_docs_and_openapi_http_surface() -> None:
+    with TestClient(create_contract_app(environment="production")) as client:
+        for path in ("/api/docs", "/api/redoc", "/api/openapi.json"):
+            response = client.get(path)
+            assert response.status_code == 404
+            assert response.headers["strict-transport-security"].startswith("max-age=63072000")
+            assert response.headers["x-content-type-options"] == "nosniff"
+
+
 def test_production_http_gate_adds_hsts() -> None:
     with TestClient(_security_app(environment="production")) as client:
         response = client.get("/ok")
