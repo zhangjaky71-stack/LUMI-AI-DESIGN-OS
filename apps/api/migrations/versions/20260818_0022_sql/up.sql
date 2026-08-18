@@ -2,6 +2,7 @@ CREATE TABLE approval_requests (
     id UUID PRIMARY KEY,
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    request_operation_id UUID NOT NULL,
     agent_run_id UUID REFERENCES agent_runs(id) ON DELETE SET NULL,
     task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
     approval_type VARCHAR(40) NOT NULL,
@@ -26,6 +27,7 @@ CREATE TABLE approval_requests (
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL,
     version INTEGER NOT NULL DEFAULT 1,
+    CONSTRAINT uq_approval_request_operation UNIQUE (organization_id, request_operation_id),
     CONSTRAINT ck_approval_requests_status CHECK (
         status IN ('PENDING','APPROVED','REJECTED','CHANGES_REQUESTED','EXPIRED','CANCELLED','SUPERSEDED')
     ),
