@@ -1,0 +1,23 @@
+{
+  "node": "NODE-51",
+  "name": "Auto Repair",
+  "branch": "feat/node-51-auto-repair",
+  "stack_base": "feat/node-50-visual-critic",
+  "status": "IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "migration_revision": "20260818_0020",
+  "migration_down_revision": "20260818_0019",
+  "implemented": [
+    "bounded_repair_loop",
+    "deterministic_minimum_repair_planner",
+    "node39_pre_postflight",
+    "node27_repair_budget_envelope",
+    "node38_typed_structural_repair",
+    "node47_isolated_local_image_repair",
+    "node42_repair_branch_and_staged_exact_promotion",
+    "node50_candidate_and_final_exact_quality",
+    "early_late_stale_conflict_protection",
+    "restart_safe_postgres_jobs_and_attempts",
+    "governed_learning_signals"
+  ],
+  "completion_claim": false
+}
