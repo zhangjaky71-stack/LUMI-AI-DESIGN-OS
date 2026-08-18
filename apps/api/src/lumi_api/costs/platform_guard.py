@@ -7,14 +7,18 @@ from typing import AsyncIterator
 
 import asyncpg
 
-from .contracts import ActualCost, BudgetExceeded, BudgetReservationRequest, LedgerWriteResult, ReservationHandle
+from .contracts import (
+    ActualCost,
+    BudgetExceeded,
+    BudgetReservationRequest,
+    LedgerWriteResult,
+    ReservationHandle,
+)
 from .gateway import PostgresCostGateway
 
 
 class PlatformProviderCostGuardUnavailable(BudgetExceeded):
     """The platform hard stop is missing, disabled, or not fail-closed."""
-
-    code = "COST_PLATFORM_GUARD_UNAVAILABLE"
 
 
 class PlatformGuardedCostGateway(PostgresCostGateway):
@@ -81,7 +85,8 @@ class PlatformGuardedCostGateway(PostgresCostGateway):
         if spent + active + projected_amount > cap:
             raise BudgetExceeded(
                 "platform daily provider budget exceeded: "
-                f"spent={spent} active={active} requested={projected_amount} max={cap}"
+                f"spent={spent} active={active} "
+                f"requested={projected_amount} max={cap}"
             )
 
     async def _snapshot(
