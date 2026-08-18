@@ -252,6 +252,8 @@ def encode_attempt(value: RepairAttempt) -> dict[str, Any]:
         "postflight": encode_check(value.postflight),
         "reservation_id": value.reservation_id,
         "actual_cost_usd": str(value.actual_cost_usd),
+        "promoted_artifact_version_id": value.promoted_artifact_version_id,
+        "promotion_quality_result_id": value.promotion_quality_result_id,
         "reason_codes": list(value.reason_codes),
     }
 
@@ -280,6 +282,8 @@ def decode_attempt(value: dict[str, Any]) -> RepairAttempt:
         postflight=decode_check(value.get("postflight")),
         reservation_id=value.get("reservation_id"),
         actual_cost_usd=Decimal(str(value.get("actual_cost_usd", "0"))),
+        promoted_artifact_version_id=value.get("promoted_artifact_version_id"),
+        promotion_quality_result_id=value.get("promotion_quality_result_id"),
         reason_codes=tuple(
             str(item) for item in value.get("reason_codes", [])
         ),
