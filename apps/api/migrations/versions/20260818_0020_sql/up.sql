@@ -46,7 +46,10 @@ CREATE TABLE auto_repair_jobs (
   CONSTRAINT ck_auto_repair_status CHECK (
     status IN ('PLANNED','RUNNING','READY','REVIEW_REQUIRED','FAILED','BUDGET_EXHAUSTED','STALE_CONFLICT','CANCELLED')
   ),
-  CONSTRAINT ck_auto_repair_spend CHECK (spent_usd >= 0)
+  CONSTRAINT ck_auto_repair_spend CHECK (spent_usd >= 0),
+  CONSTRAINT ck_auto_repair_ready_final CHECK (
+    status <> 'READY' OR final_artifact_version_id IS NOT NULL
+  )
 );
 
 -- statement-breakpoint
@@ -86,6 +89,16 @@ CREATE TABLE auto_repair_attempts (
   CONSTRAINT ck_auto_repair_kind CHECK (
     repair_kind IN ('STRUCTURAL_DESIGN_OP','LOCAL_IMAGE_EDIT','REGENERATE_ELEMENT','REGENERATE_ARTIFACT','COPY_TYPOGRAPHY_FIX','MANUAL_REVIEW')
   ),
+  CONSTRAINT ck_auto_repair_decision CHECK (
+    decision IN (
+      'ACCEPTED_INTERMEDIATE','PROMOTED','PROMOTION_STALE_CONFLICT',
+      'PROMOTION_VALIDATION_FAILED','PROMOTION_APPROVAL_FAILED',
+      'REJECTED_PREFLIGHT','REJECTED_POSTFLIGHT',
+      'REJECTED_NEW_HARD_VIOLATION','REJECTED_REGRESSION',
+      'REJECTED_INSUFFICIENT_GAIN','EXECUTION_FAILED',
+      'COST_RECONCILIATION_REQUIRED','BUDGET_EXHAUSTED'
+    )
+  ),
   CONSTRAINT ck_auto_repair_costs CHECK (estimated_cost_usd >= 0 AND actual_cost_usd >= 0),
   CONSTRAINT ck_auto_repair_scores CHECK (
     before_score >= 0 AND before_score <= 100
@@ -93,6 +106,10 @@ CREATE TABLE auto_repair_attempts (
   ),
   CONSTRAINT ck_auto_repair_promotion_quality CHECK (
     promotion_quality_result_id IS NULL OR promoted_artifact_version_id IS NOT NULL
+  ),
+  CONSTRAINT ck_auto_repair_promoted_decision CHECK (
+    decision <> 'PROMOTED'
+    OR (promoted_artifact_version_id IS NOT NULL AND promotion_quality_result_id IS NOT NULL)
   )
 );
 
@@ -123,7 +140,12 @@ CREATE TABLE repair_learning_signals (
   CONSTRAINT ck_repair_learning_human_decision CHECK (
     human_decision IS NULL OR human_decision IN ('ACCEPTED','REJECTED')
   ),
+  CONSTRAINT ck_repair_learning_human_actor CHECK (
+    (human_decision IS NULL AND human_decision_by IS NULL AND human_decision_at IS NULL)
+    OR (human_decision IS NOT NULL AND human_decision_by IS NOT NULL AND human_decision_at IS NOT NULL)
+  ),
   CONSTRAINT ck_repair_learning_training_governance CHECK (
-    eligible_for_training = FALSE OR governance_approval_ref IS NOT NULL
+    eligible_for_training = FALSE
+    OR (governance_approval_ref IS NOT NULL AND human_decision IS NOT NULL)
   )
 );
