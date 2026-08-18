@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import Depends, FastAPI
 
 from lumi_api.security import install_http_security
@@ -32,17 +34,19 @@ from .routes import router
 from .version_history_routes import router as version_history_router
 
 
-def create_contract_app() -> FastAPI:
+def create_contract_app(*, environment: str | None = None) -> FastAPI:
+    runtime_environment = (environment or os.getenv("LUMI_ENV", "development")).strip().casefold()
+    expose_interactive_docs = runtime_environment != "production"
     app = FastAPI(
         title="LUMI AI Design OS API",
         version="1.0.0",
-        docs_url="/api/docs",
-        redoc_url="/api/redoc",
-        openapi_url="/api/openapi.json",
+        docs_url="/api/docs" if expose_interactive_docs else None,
+        redoc_url="/api/redoc" if expose_interactive_docs else None,
+        openapi_url="/api/openapi.json" if expose_interactive_docs else None,
     )
     # Install before the error contract so RequestIdMiddleware remains outside the
-    # security gate and every rejection receives the canonical request id.
-    install_http_security(app)
+    # security gate and every security rejection receives the canonical request id.
+    install_http_security(app, environment=runtime_environment)
     install_error_contract(app)
     app.add_middleware(IdempotencyReplayMiddleware)
     app.include_router(auth_router)
