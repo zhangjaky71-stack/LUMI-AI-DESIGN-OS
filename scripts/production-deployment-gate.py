@@ -163,6 +163,18 @@ def validate_acceptance(manifest: dict[str, Any], decision: dict[str, Any], acce
             blockers.append("NODE-71 accepted RC version does not match production deployment RC")
         if decision_rc.get("migration_head") != rc.get("migration_head"):
             blockers.append("NODE-71 accepted migration head does not match production deployment")
+
+    accepted_image_set = decision.get("container_image_set")
+    accepted_images = (
+        accepted_image_set.get("images")
+        if isinstance(accepted_image_set, dict)
+        else None
+    )
+    if not isinstance(accepted_images, dict):
+        blockers.append("NODE-71 decision does not freeze accepted container image digests")
+    elif accepted_images != manifest.get("images"):
+        blockers.append("production image digests do not exactly match NODE-71 accepted images")
+
     configured_path = rc.get("staging_acceptance_path")
     if isinstance(configured_path, str):
         if Path(configured_path).as_posix() != acceptance_path.as_posix():
