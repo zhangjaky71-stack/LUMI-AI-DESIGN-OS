@@ -18,6 +18,7 @@ on:
       - ".github/workflows/dependency-review.yml"
       - ".github/workflows/secret-scan.yml"
       - ".github/workflows/node-66-security-hardening.yml"
+      - ".github/workflows/node-66-security-dast.yml"
       - "uv.lock"
       - "pnpm-lock.yaml"
   workflow_dispatch:
@@ -77,7 +78,8 @@ jobs:
             uv run pytest -q \
               apps/api/tests/test_security_node66.py \
               apps/api/tests/test_api_v1_contract.py \
-              apps/api/tests/test_asset_security_contract.py
+              apps/api/tests/test_asset_security_contract.py \
+              apps/api/tests/test_auth_tenant_contract.py
 
       - name: Run Tool Gateway SSRF security corpus
         run: |
@@ -138,6 +140,7 @@ jobs:
             docs/security/THREAT-MODEL.md
             reports/nodes/NODE-66/gap-ledger.json
             reports/nodes/NODE-66/implementation.md
+            reports/nodes/NODE-66/bola-corpus.json
           if-no-files-found: error
           retention-days: 30
 
@@ -180,7 +183,7 @@ jobs:
 
       - name: Export frozen Python dependency graph
         run: |
-          uv export --all-packages --frozen --format requirements-txt --no-hashes \
+          uv export --all-packages --frozen --format requirements.txt --no-hashes \
             > reports/nodes/NODE-66/security/python-requirements.txt
 
       - name: Blocking Python dependency audit
