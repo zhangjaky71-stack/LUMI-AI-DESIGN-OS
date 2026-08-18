@@ -54,7 +54,13 @@ _REPAIRABLE_QUALITY = {"FAIL_REPAIRABLE", "FAIL_HARD"}
 
 
 class AutoRepairEngine:
-    """Execute at most one repair candidate per resume call."""
+    """Execute at most one repair candidate per resume call.
+
+    Repair candidates live on isolated repair branches. A candidate that passes
+    NODE-50 may be copied to the original branch only via NODE-42 CAS. That new
+    main-branch ArtifactVersion is then evaluated again by NODE-50 and approved
+    only when its own exact-version QualityResult passes.
+    """
 
     def __init__(
         self,
@@ -86,6 +92,7 @@ class AutoRepairEngine:
                     "REPAIR_OPERATION_ID_REUSED_WITH_DIFFERENT_SPEC"
                 )
             return existing
+
         source = self.artifacts.load_source_exact(
             organization_id=spec.organization_id,
             project_id=spec.project_id,
@@ -101,6 +108,7 @@ class AutoRepairEngine:
             raise ValueError("REPAIR_QUALITY_SOURCE_VERSION_MISMATCH")
         if quality.status in _PASS_QUALITY:
             raise ValueError("REPAIR_SOURCE_ALREADY_PASSES_QUALITY")
+
         job = AutoRepairJob(
             job_id=str(
                 uuid5(
@@ -155,6 +163,7 @@ class AutoRepairEngine:
             plan,
             estimate.amount_usd,
         )
+
         if plan.paid and estimate.amount_usd > job.remaining_budget_usd:
             fallback = self._free_fallback(job)
             if fallback is None:
@@ -242,7 +251,7 @@ class AutoRepairEngine:
             return self._record_no_candidate(
                 job,
                 plan,
-                RepairAttemptDecision.EXECUTION_FAILED,
+                RepairAttemptDecision.COST_RECONCILIATION_REQUIRED,
                 "REPAIR_PAID_SIDE_EFFECT_REQUIRES_RECONCILIATION",
                 preflight=preflight,
                 reservation_id=(
@@ -269,64 +278,84 @@ class AutoRepairEngine:
                 ),
             )
 
+        reservation_id = reservation.reservation_id if reservation else None
+        candidate_spend = job.spent_usd + candidate.actual_cost_usd
         if plan.paid and (
             candidate.provider != estimate.provider
             or candidate.model != estimate.model
         ):
-            return self._record_candidate_without_quality(
+            return self._record_candidate(
                 job,
                 plan=plan,
                 candidate=candidate,
+                after=None,
+                spent=candidate_spend,
                 preflight=preflight,
-                decision=RepairAttemptDecision.EXECUTION_FAILED,
+                postflight=None,
+                decision=RepairAttemptDecision.COST_RECONCILIATION_REQUIRED,
                 reason="REPAIR_PAID_ROUTE_CHANGED_AFTER_RESERVATION",
-                reservation_id=(
-                    reservation.reservation_id if reservation else None
-                ),
+                reservation_id=reservation_id,
                 terminal=RepairLoopStatus.REVIEW_REQUIRED,
             )
-        if reservation is not None:
-            await self.budget.commit(
-                job=job,
-                reservation=reservation,
-                candidate=candidate,
-                estimate=estimate,
-            )
-        spent = job.spent_usd + candidate.actual_cost_usd
 
+        if reservation is not None:
+            try:
+                await self.budget.commit(
+                    job=job,
+                    reservation=reservation,
+                    candidate=candidate,
+                    estimate=estimate,
+                )
+            except Exception as exc:
+                return self._record_candidate(
+                    job,
+                    plan=plan,
+                    candidate=candidate,
+                    after=None,
+                    spent=candidate_spend,
+                    preflight=preflight,
+                    postflight=None,
+                    decision=RepairAttemptDecision.COST_RECONCILIATION_REQUIRED,
+                    reason=(
+                        "REPAIR_COST_COMMIT_REQUIRES_RECONCILIATION:"
+                        f"{type(exc).__name__}"
+                    ),
+                    reservation_id=reservation_id,
+                    terminal=RepairLoopStatus.REVIEW_REQUIRED,
+                )
+
+        spent = candidate_spend
         postflight = await self.constraints.postflight(
             job=job,
             plan=plan,
             candidate=candidate,
         )
         if postflight.unavailable:
-            return self._reject_candidate(
+            return self._record_candidate(
                 job,
                 plan=plan,
                 candidate=candidate,
+                after=None,
                 spent=spent,
                 preflight=preflight,
                 postflight=postflight,
                 decision=RepairAttemptDecision.REJECTED_POSTFLIGHT,
                 reason="REPAIR_POSTFLIGHT_UNAVAILABLE",
-                reservation_id=(
-                    reservation.reservation_id if reservation else None
-                ),
+                reservation_id=reservation_id,
                 terminal=RepairLoopStatus.REVIEW_REQUIRED,
             )
         if not postflight.passed or postflight.blocking_codes:
-            return self._reject_candidate(
+            return self._record_candidate(
                 job,
                 plan=plan,
                 candidate=candidate,
+                after=None,
                 spent=spent,
                 preflight=preflight,
                 postflight=postflight,
                 decision=RepairAttemptDecision.REJECTED_POSTFLIGHT,
                 reason="REPAIR_POSTFLIGHT_BLOCKED",
-                reservation_id=(
-                    reservation.reservation_id if reservation else None
-                ),
+                reservation_id=reservation_id,
             )
 
         try:
@@ -335,35 +364,31 @@ class AutoRepairEngine:
                 candidate=candidate,
             )
         except Exception as exc:
-            return self._reject_candidate(
+            return self._record_candidate(
                 job,
                 plan=plan,
                 candidate=candidate,
+                after=None,
                 spent=spent,
                 preflight=preflight,
                 postflight=postflight,
                 decision=RepairAttemptDecision.REJECTED_POSTFLIGHT,
-                reason=(
-                    f"REPAIR_QUALITY_EVALUATION_FAILED:{type(exc).__name__}"
-                ),
-                reservation_id=(
-                    reservation.reservation_id if reservation else None
-                ),
+                reason=f"REPAIR_QUALITY_EVALUATION_FAILED:{type(exc).__name__}",
+                reservation_id=reservation_id,
                 terminal=RepairLoopStatus.REVIEW_REQUIRED,
             )
         if after.artifact_version_id != candidate.artifact_version_id:
-            return self._reject_candidate(
+            return self._record_candidate(
                 job,
                 plan=plan,
                 candidate=candidate,
+                after=after,
                 spent=spent,
                 preflight=preflight,
                 postflight=postflight,
                 decision=RepairAttemptDecision.REJECTED_POSTFLIGHT,
                 reason="REPAIR_QUALITY_CANDIDATE_VERSION_MISMATCH",
-                reservation_id=(
-                    reservation.reservation_id if reservation else None
-                ),
+                reservation_id=reservation_id,
                 terminal=RepairLoopStatus.REVIEW_REQUIRED,
             )
 
@@ -372,137 +397,92 @@ class AutoRepairEngine:
             set(after.hard_violation_codes)
             - set(job.current_quality.hard_violation_codes)
         )
-        reservation_id = (
-            reservation.reservation_id if reservation else None
-        )
         if new_hard:
-            return self._reject_scored(
+            return self._record_candidate(
                 job,
-                plan,
-                candidate,
-                after,
-                spent,
-                preflight,
-                postflight,
-                delta,
-                RepairAttemptDecision.REJECTED_NEW_HARD_VIOLATION,
-                "REPAIR_INTRODUCED_NEW_HARD_VIOLATION",
-                reservation_id,
+                plan=plan,
+                candidate=candidate,
+                after=after,
+                spent=spent,
+                preflight=preflight,
+                postflight=postflight,
+                decision=RepairAttemptDecision.REJECTED_NEW_HARD_VIOLATION,
+                reason="REPAIR_INTRODUCED_NEW_HARD_VIOLATION",
+                reservation_id=reservation_id,
             )
         if delta < -job.spec.policy.max_score_regression:
-            return self._reject_scored(
+            return self._record_candidate(
                 job,
-                plan,
-                candidate,
-                after,
-                spent,
-                preflight,
-                postflight,
-                delta,
-                RepairAttemptDecision.REJECTED_REGRESSION,
-                "REPAIR_SCORE_REGRESSION_EXCEEDED",
-                reservation_id,
+                plan=plan,
+                candidate=candidate,
+                after=after,
+                spent=spent,
+                preflight=preflight,
+                postflight=postflight,
+                decision=RepairAttemptDecision.REJECTED_REGRESSION,
+                reason="REPAIR_SCORE_REGRESSION_EXCEEDED",
+                reservation_id=reservation_id,
             )
         if delta < job.spec.policy.minimum_expected_gain:
-            return self._reject_scored(
+            return self._record_candidate(
                 job,
-                plan,
-                candidate,
-                after,
-                spent,
-                preflight,
-                postflight,
-                delta,
-                RepairAttemptDecision.REJECTED_INSUFFICIENT_GAIN,
-                "REPAIR_MINIMUM_GAIN_NOT_MET",
-                reservation_id,
+                plan=plan,
+                candidate=candidate,
+                after=after,
+                spent=spent,
+                preflight=preflight,
+                postflight=postflight,
+                decision=RepairAttemptDecision.REJECTED_INSUFFICIENT_GAIN,
+                reason="REPAIR_MINIMUM_GAIN_NOT_MET",
+                reservation_id=reservation_id,
             )
 
         if after.status in _PASS_QUALITY:
-            attempt = self._attempt(
-                job,
-                plan,
-                candidate,
-                after,
-                preflight,
-                postflight,
-                RepairAttemptDecision.PROMOTED,
-                delta,
-                reservation_id,
-                (),
-            )
-            provisional = replace(
-                job,
-                status=RepairLoopStatus.RUNNING,
-                attempts=(*job.attempts, attempt),
-                spent_usd=spent,
-            )
-            try:
-                final_version_id = self.artifacts.promote_candidate(
-                    original_source=job.original_source,
-                    candidate=candidate,
-                    quality=after,
-                    repair_job_id=job.job_id,
-                    actor_id=job.spec.requested_by,
-                )
-            except RepairStaleConflict:
-                return self._save_status(
-                    provisional,
-                    RepairLoopStatus.STALE_CONFLICT,
-                    "REPAIR_MAIN_BRANCH_HEAD_CHANGED",
-                )
-            return self.repository.save(
-                replace(
-                    provisional,
-                    status=RepairLoopStatus.READY,
-                    final_artifact_version_id=final_version_id,
-                    reason_codes=self._reasons(
-                        provisional,
-                        "REPAIR_PROMOTED_AFTER_QUALITY_PASS",
-                    ),
-                )
+            return await self._promote_exact(
+                job=job,
+                plan=plan,
+                candidate=candidate,
+                candidate_quality=after,
+                spent=spent,
+                preflight=preflight,
+                postflight=postflight,
+                delta=delta,
+                reservation_id=reservation_id,
             )
 
         if after.status not in _REPAIRABLE_QUALITY:
-            return self._reject_scored(
+            return self._record_candidate(
                 job,
-                plan,
-                candidate,
-                after,
-                spent,
-                preflight,
-                postflight,
-                delta,
-                RepairAttemptDecision.REJECTED_INSUFFICIENT_GAIN,
-                "REPAIR_CANDIDATE_REQUIRES_MANUAL_REVIEW",
-                reservation_id,
+                plan=plan,
+                candidate=candidate,
+                after=after,
+                spent=spent,
+                preflight=preflight,
+                postflight=postflight,
+                decision=RepairAttemptDecision.REJECTED_INSUFFICIENT_GAIN,
+                reason="REPAIR_CANDIDATE_REQUIRES_MANUAL_REVIEW",
+                reservation_id=reservation_id,
                 terminal=RepairLoopStatus.REVIEW_REQUIRED,
             )
 
         attempt = self._attempt(
-            job,
-            plan,
-            candidate,
-            after,
-            preflight,
-            postflight,
-            RepairAttemptDecision.ACCEPTED_INTERMEDIATE,
-            delta,
-            reservation_id,
-            (),
+            job=job,
+            plan=plan,
+            candidate=candidate,
+            after=after,
+            preflight=preflight,
+            postflight=postflight,
+            decision=RepairAttemptDecision.ACCEPTED_INTERMEDIATE,
+            delta=delta,
+            reservation_id=reservation_id,
         )
         if plan.iteration >= job.spec.policy.max_iterations:
-            return self.repository.save(
-                replace(
-                    job,
-                    status=RepairLoopStatus.REVIEW_REQUIRED,
-                    attempts=(*job.attempts, attempt),
-                    spent_usd=spent,
-                    reason_codes=self._reasons(
-                        job,
-                        "REPAIR_MAX_ITERATIONS_REACHED_AFTER_IMPROVEMENT",
-                    ),
-                )
+            return self._save_attempt(
+                job,
+                attempt,
+                RepairLoopStatus.REVIEW_REQUIRED,
+                spent,
+                "REPAIR_MAX_ITERATIONS_REACHED_AFTER_IMPROVEMENT",
             )
         working_source = self.artifacts.load_source_exact(
             organization_id=job.spec.organization_id,
@@ -523,6 +503,235 @@ class AutoRepairEngine:
                 ),
             )
         )
+
+    async def _promote_exact(
+        self,
+        *,
+        job: AutoRepairJob,
+        plan: RepairPlan,
+        candidate: RepairCandidate,
+        candidate_quality: RepairQualitySnapshot,
+        spent: Decimal,
+        preflight: ConstraintCheck,
+        postflight: ConstraintCheck,
+        delta: float,
+        reservation_id: str | None,
+    ) -> AutoRepairJob:
+        try:
+            promoted = self.artifacts.promote_candidate(
+                original_source=job.original_source,
+                candidate=candidate,
+                repair_job_id=job.job_id,
+                actor_id=job.spec.requested_by,
+            )
+        except RepairStaleConflict:
+            attempt = self._attempt(
+                job=job,
+                plan=plan,
+                candidate=candidate,
+                after=candidate_quality,
+                preflight=preflight,
+                postflight=postflight,
+                decision=RepairAttemptDecision.PROMOTION_STALE_CONFLICT,
+                delta=delta,
+                reservation_id=reservation_id,
+                reasons=("REPAIR_MAIN_BRANCH_HEAD_CHANGED",),
+            )
+            return self._save_attempt(
+                job,
+                attempt,
+                RepairLoopStatus.STALE_CONFLICT,
+                spent,
+                "REPAIR_MAIN_BRANCH_HEAD_CHANGED",
+            )
+
+        if promoted.artifact_content_hash != candidate.artifact_content_hash:
+            attempt = self._attempt(
+                job=job,
+                plan=plan,
+                candidate=candidate,
+                after=candidate_quality,
+                preflight=preflight,
+                postflight=postflight,
+                decision=RepairAttemptDecision.PROMOTION_VALIDATION_FAILED,
+                delta=delta,
+                reservation_id=reservation_id,
+                promoted=promoted,
+                reasons=("REPAIR_PROMOTION_CONTENT_HASH_DRIFT",),
+            )
+            return self._save_attempt(
+                job,
+                attempt,
+                RepairLoopStatus.REVIEW_REQUIRED,
+                spent,
+                "REPAIR_PROMOTION_CONTENT_HASH_DRIFT",
+            )
+
+        try:
+            promotion_quality = await self.quality.evaluate_candidate(
+                job=job,
+                candidate=promoted,
+            )
+        except Exception as exc:
+            reason = (
+                "REPAIR_PROMOTION_EXACT_QUALITY_FAILED:"
+                f"{type(exc).__name__}"
+            )
+            attempt = self._attempt(
+                job=job,
+                plan=plan,
+                candidate=candidate,
+                after=candidate_quality,
+                preflight=preflight,
+                postflight=postflight,
+                decision=RepairAttemptDecision.PROMOTION_VALIDATION_FAILED,
+                delta=delta,
+                reservation_id=reservation_id,
+                promoted=promoted,
+                reasons=(reason,),
+            )
+            return self._save_attempt(
+                job,
+                attempt,
+                RepairLoopStatus.REVIEW_REQUIRED,
+                spent,
+                reason,
+            )
+
+        promotion_reason = self._promotion_quality_failure_reason(
+            job=job,
+            candidate_quality=candidate_quality,
+            promoted=promoted,
+            promotion_quality=promotion_quality,
+        )
+        if promotion_reason is not None:
+            attempt = self._attempt(
+                job=job,
+                plan=plan,
+                candidate=candidate,
+                after=candidate_quality,
+                preflight=preflight,
+                postflight=postflight,
+                decision=RepairAttemptDecision.PROMOTION_VALIDATION_FAILED,
+                delta=delta,
+                reservation_id=reservation_id,
+                promoted=promoted,
+                promotion_quality=promotion_quality,
+                reasons=(promotion_reason,),
+            )
+            return self._save_attempt(
+                job,
+                attempt,
+                RepairLoopStatus.REVIEW_REQUIRED,
+                spent,
+                promotion_reason,
+            )
+
+        try:
+            final_version_id = self.artifacts.approve_promoted_version(
+                promoted=promoted,
+                quality=promotion_quality,
+                repair_job_id=job.job_id,
+            )
+        except Exception as exc:
+            reason = f"REPAIR_PROMOTION_APPROVAL_FAILED:{type(exc).__name__}"
+            attempt = self._attempt(
+                job=job,
+                plan=plan,
+                candidate=candidate,
+                after=candidate_quality,
+                preflight=preflight,
+                postflight=postflight,
+                decision=RepairAttemptDecision.PROMOTION_APPROVAL_FAILED,
+                delta=delta,
+                reservation_id=reservation_id,
+                promoted=promoted,
+                promotion_quality=promotion_quality,
+                reasons=(reason,),
+            )
+            return self._save_attempt(
+                job,
+                attempt,
+                RepairLoopStatus.REVIEW_REQUIRED,
+                spent,
+                reason,
+            )
+
+        if final_version_id != promoted.artifact_version_id:
+            reason = "REPAIR_APPROVAL_RETURNED_DIFFERENT_VERSION"
+            attempt = self._attempt(
+                job=job,
+                plan=plan,
+                candidate=candidate,
+                after=candidate_quality,
+                preflight=preflight,
+                postflight=postflight,
+                decision=RepairAttemptDecision.PROMOTION_APPROVAL_FAILED,
+                delta=delta,
+                reservation_id=reservation_id,
+                promoted=promoted,
+                promotion_quality=promotion_quality,
+                reasons=(reason,),
+            )
+            return self._save_attempt(
+                job,
+                attempt,
+                RepairLoopStatus.REVIEW_REQUIRED,
+                spent,
+                reason,
+            )
+
+        attempt = self._attempt(
+            job=job,
+            plan=plan,
+            candidate=candidate,
+            after=candidate_quality,
+            preflight=preflight,
+            postflight=postflight,
+            decision=RepairAttemptDecision.PROMOTED,
+            delta=delta,
+            reservation_id=reservation_id,
+            promoted=promoted,
+            promotion_quality=promotion_quality,
+        )
+        return self.repository.save(
+            replace(
+                job,
+                status=RepairLoopStatus.READY,
+                attempts=(*job.attempts, attempt),
+                spent_usd=spent,
+                final_artifact_version_id=final_version_id,
+                reason_codes=self._reasons(
+                    job,
+                    "REPAIR_PROMOTED_AFTER_EXACT_MAIN_QUALITY_PASS",
+                ),
+            )
+        )
+
+    @staticmethod
+    def _promotion_quality_failure_reason(
+        *,
+        job: AutoRepairJob,
+        candidate_quality: RepairQualitySnapshot,
+        promoted: RepairCandidate,
+        promotion_quality: RepairQualitySnapshot,
+    ) -> str | None:
+        if promotion_quality.artifact_version_id != promoted.artifact_version_id:
+            return "REPAIR_PROMOTION_QUALITY_VERSION_MISMATCH"
+        if promotion_quality.status not in _PASS_QUALITY:
+            return "REPAIR_PROMOTION_EXACT_QUALITY_NOT_PASSING"
+        introduced_hard = (
+            set(promotion_quality.hard_violation_codes)
+            - set(candidate_quality.hard_violation_codes)
+        )
+        if introduced_hard:
+            return "REPAIR_PROMOTION_INTRODUCED_HARD_VIOLATION"
+        score_drift = (
+            promotion_quality.overall_score - candidate_quality.overall_score
+        )
+        if score_drift < -job.spec.policy.max_score_regression:
+            return "REPAIR_PROMOTION_QUALITY_DRIFT_EXCEEDED"
+        return None
 
     def cancel(self, job_id: str) -> AutoRepairJob:
         job = self.repository.get(job_id)
@@ -555,20 +764,17 @@ class AutoRepairEngine:
         reservation_id: str | None = None,
         terminal: RepairLoopStatus | None = None,
     ) -> AutoRepairJob:
-        attempt = RepairAttempt(
-            iteration=plan.iteration,
-            source_artifact_version_id=job.working_source.artifact_version_id,
-            before_quality_result_id=job.current_quality.quality_result_id,
-            before_score=job.current_quality.overall_score,
+        attempt = self._attempt(
+            job=job,
             plan=plan,
             candidate=None,
-            after_quality_result_id=None,
-            after_score=None,
-            score_delta=None,
-            decision=decision,
+            after=None,
             preflight=preflight,
+            postflight=None,
+            decision=decision,
+            delta=None,
             reservation_id=reservation_id,
-            reason_codes=(reason,),
+            reasons=(reason,),
         )
         return self._save_attempt(
             job,
@@ -578,99 +784,37 @@ class AutoRepairEngine:
             reason,
         )
 
-    def _record_candidate_without_quality(
+    def _record_candidate(
         self,
         job: AutoRepairJob,
         *,
         plan: RepairPlan,
         candidate: RepairCandidate,
-        preflight: ConstraintCheck,
-        decision: RepairAttemptDecision,
-        reason: str,
-        reservation_id: str | None,
-        terminal: RepairLoopStatus,
-    ) -> AutoRepairJob:
-        attempt = self._attempt(
-            job,
-            plan,
-            candidate,
-            None,
-            preflight,
-            None,
-            decision,
-            None,
-            reservation_id,
-            (reason,),
-        )
-        return self._save_attempt(
-            job,
-            attempt,
-            terminal,
-            job.spent_usd + candidate.actual_cost_usd,
-            reason,
-        )
-
-    def _reject_candidate(
-        self,
-        job: AutoRepairJob,
-        *,
-        plan: RepairPlan,
-        candidate: RepairCandidate,
+        after: RepairQualitySnapshot | None,
         spent: Decimal,
-        preflight: ConstraintCheck,
-        postflight: ConstraintCheck,
+        preflight: ConstraintCheck | None,
+        postflight: ConstraintCheck | None,
         decision: RepairAttemptDecision,
         reason: str,
         reservation_id: str | None,
         terminal: RepairLoopStatus | None = None,
     ) -> AutoRepairJob:
-        attempt = self._attempt(
-            job,
-            plan,
-            candidate,
-            None,
-            preflight,
-            postflight,
-            decision,
-            None,
-            reservation_id,
-            (reason,),
+        delta = (
+            None
+            if after is None
+            else after.overall_score - job.current_quality.overall_score
         )
-        return self._save_attempt(
-            job,
-            attempt,
-            terminal or self._next_status(job, plan.iteration),
-            spent,
-            reason,
-        )
-
-    def _reject_scored(
-        self,
-        job: AutoRepairJob,
-        plan: RepairPlan,
-        candidate: RepairCandidate,
-        after: RepairQualitySnapshot,
-        spent: Decimal,
-        preflight: ConstraintCheck,
-        postflight: ConstraintCheck,
-        delta: float,
-        decision: RepairAttemptDecision,
-        reason: str,
-        reservation_id: str | None,
-        *,
-        terminal: RepairLoopStatus | None = None,
-    ) -> AutoRepairJob:
         attempt = self._attempt(
-            job,
-            plan,
-            candidate,
-            after,
-            preflight,
-            postflight,
-            decision,
-            delta,
-            reservation_id,
-            (reason,),
+            job=job,
+            plan=plan,
+            candidate=candidate,
+            after=after,
+            preflight=preflight,
+            postflight=postflight,
+            decision=decision,
+            delta=delta,
+            reservation_id=reservation_id,
+            reasons=(reason,),
         )
         return self._save_attempt(
             job,
@@ -682,16 +826,19 @@ class AutoRepairEngine:
 
     @staticmethod
     def _attempt(
+        *,
         job: AutoRepairJob,
         plan: RepairPlan,
-        candidate: RepairCandidate,
+        candidate: RepairCandidate | None,
         after: RepairQualitySnapshot | None,
         preflight: ConstraintCheck | None,
         postflight: ConstraintCheck | None,
         decision: RepairAttemptDecision,
         delta: float | None,
         reservation_id: str | None,
-        reasons: tuple[str, ...],
+        promoted: RepairCandidate | None = None,
+        promotion_quality: RepairQualitySnapshot | None = None,
+        reasons: tuple[str, ...] = (),
     ) -> RepairAttempt:
         return RepairAttempt(
             iteration=plan.iteration,
@@ -709,7 +856,19 @@ class AutoRepairEngine:
             preflight=preflight,
             postflight=postflight,
             reservation_id=reservation_id,
-            actual_cost_usd=candidate.actual_cost_usd,
+            actual_cost_usd=(
+                candidate.actual_cost_usd
+                if candidate is not None
+                else Decimal("0")
+            ),
+            promoted_artifact_version_id=(
+                promoted.artifact_version_id if promoted is not None else None
+            ),
+            promotion_quality_result_id=(
+                promotion_quality.quality_result_id
+                if promotion_quality is not None
+                else None
+            ),
             reason_codes=reasons,
         )
 
