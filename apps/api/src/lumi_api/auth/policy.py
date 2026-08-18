@@ -18,6 +18,8 @@ class Permission(StrEnum):
     BILLING_READ = "billing.read"
     BILLING_MANAGE = "billing.manage"
     ADMIN_AUDIT_READ = "admin.audit.read"
+    AUDIT_EXPORT = "audit.export"
+    GOVERNANCE_MANAGE = "governance.manage"
     API_TOKEN_MANAGE = "api_token.manage"
 
 

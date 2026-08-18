@@ -10,6 +10,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -155,14 +156,89 @@ class InboxEventModel(Base, TenantMixin, CreatedAtMixin):
 
 class AuditEventModel(Base, UUIDPrimaryKeyMixin, TenantMixin, CreatedAtMixin):
     __tablename__ = "audit_events"
+    __table_args__ = (
+        CheckConstraint(
+            "actor_type IN ('USER','API_TOKEN','AGENT','SERVICE','PLATFORM_ADMIN')",
+            name="ck_audit_events_actor_type",
+        ),
+        CheckConstraint(
+            "event_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_audit_events_event_hash",
+        ),
+        CheckConstraint(
+            "result IN ('SUCCESS','DENIED','FAILED')",
+            name="ck_audit_events_result",
+        ),
+        CheckConstraint(
+            "retention_class IN ('SECURITY_AUDIT','BILLING','CONTENT','AGENT_TRACE','TEMP_SANDBOX','EXPORT','ANALYTICS')",
+            name="ck_audit_events_retention_class",
+        ),
+        CheckConstraint(
+            "resource_version IS NULL OR resource_version >= 0",
+            name="ck_audit_events_resource_version",
+        ),
+        Index("ix_audit_events_org_occurred", "organization_id", "occurred_at"),
+        Index(
+            "ix_audit_events_org_actor_occurred",
+            "organization_id",
+            "actor_id",
+            "occurred_at",
+        ),
+        Index(
+            "ix_audit_events_org_action_occurred",
+            "organization_id",
+            "action",
+            "occurred_at",
+        ),
+        Index(
+            "ix_audit_events_org_resource_occurred",
+            "organization_id",
+            "subject_type",
+            "subject_id",
+            "occurred_at",
+        ),
+        Index("ix_audit_events_org_trace", "organization_id", "trace_id"),
+    )
 
     actor_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    actor_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    actor_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    session_ref: Mapped[str | None] = mapped_column(String(255))
+    api_token_ref: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("api_tokens.id", ondelete="SET NULL")
+    )
+    agent_run_ref: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("agent_runs.id", ondelete="SET NULL")
+    )
+    task_ref: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL")
+    )
     action: Mapped[str] = mapped_column(String(160), nullable=False)
     subject_type: Mapped[str] = mapped_column(String(100), nullable=False)
     subject_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    resource_version: Mapped[int | None] = mapped_column(Integer)
+    result: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="SUCCESS"
+    )
+    reason_code: Mapped[str | None] = mapped_column(String(128))
+    request_id: Mapped[str | None] = mapped_column(String(128))
+    trace_id: Mapped[str | None] = mapped_column(String(128))
+    security_metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=JSON_OBJECT_DEFAULT
+    )
     details_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=JSON_OBJECT_DEFAULT
+    )
+    change_summary_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=JSON_OBJECT_DEFAULT
+    )
+    retention_class: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="SECURITY_AUDIT"
+    )
+    retention_policy_version: Mapped[str] = mapped_column(
+        String(64), nullable=False, server_default="technical-baseline-2026-08"
+    )
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     previous_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     event_hash: Mapped[str] = mapped_column(String(64), nullable=False)
