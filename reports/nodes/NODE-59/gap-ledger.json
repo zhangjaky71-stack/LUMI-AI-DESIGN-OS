@@ -1,0 +1,56 @@
+{
+  "node": "NODE-59",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "updated_at": "2026-08-18",
+  "gaps": [
+    {
+      "id": "NODE59-GAP-001",
+      "severity": "P0",
+      "status": "open",
+      "title": "Canonical visual compare renderer",
+      "detail": "Side-by-side raster/design previews, wipe slider and heatmap require canonical preview/render URLs. The UI intentionally does not synthesize previews from storage keys."
+    },
+    {
+      "id": "NODE59-GAP-002",
+      "severity": "P0",
+      "status": "open",
+      "title": "Before/after property values",
+      "detail": "NODE-38 semantic diff currently identifies changed node/property categories but does not expose exact before and after values such as 68→58."
+    },
+    {
+      "id": "NODE59-GAP-003",
+      "severity": "P0",
+      "status": "open",
+      "title": "Approval audit projection",
+      "detail": "ArtifactVersion APPROVED status is visible, but reviewer identity, validation reference and approval timestamp do not yet have a dedicated permission-aware safe read projection."
+    },
+    {
+      "id": "NODE59-GAP-004",
+      "severity": "P0",
+      "status": "open",
+      "title": "Exact BrandRuleSet provenance",
+      "detail": "The persistence model contains a brand rule-set version reference, but the canonical ArtifactVersion public contract used by NODE-59 does not expose it."
+    },
+    {
+      "id": "NODE59-GAP-005",
+      "severity": "P0",
+      "status": "open",
+      "title": "Large history pagination and virtualization",
+      "detail": "Current product projection returns the artifact history set in one response and the inspector list is scroll-bounded, not cursor-paginated/virtualized for very large histories."
+    },
+    {
+      "id": "NODE59-GAP-006",
+      "severity": "P0",
+      "status": "open",
+      "title": "Browser and PostgreSQL E2E",
+      "detail": "Need real database/browser proof for exact open, compare, stale-head restore conflict, fork, approved-version immutability and provenance permissions."
+    },
+    {
+      "id": "NODE59-GAP-007",
+      "severity": "P0",
+      "status": "open",
+      "title": "Hosted GitHub Actions executed green",
+      "detail": "NODE-59 cannot be COMPLETE until hosted CI runs actual steps successfully; account/runner pre-run failures are not code execution evidence."
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "node": "NODE-59",
+  "title": "Version History, Compare & Branch UX",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "branch": "feat/node-59-versions-ui",
+  "stacked_on": "feat/node-58-brand-kit-ui",
+  "implemented": [
+    "safe artifact version-history projection",
+    "minimal artifact and preview metadata projection",
+    "safe allowlisted provenance endpoint",
+    "browser private provenance rejection fence",
+    "authenticated user fork endpoint",
+    "authenticated server-provenanced restore endpoint",
+    "restore branch-head CAS fencing",
+    "exact version timeline and Canvas open",
+    "NODE-38 structured semantic summaries",
+    "exact version compare",
+    "fork and restore-as-new UX",
+    "approval/status visibility",
+    "safe provenance inspector",
+    "concurrent branch-head update notice without auto-switch",
+    "Python and TypeScript contract tests"
+  ],
+  "not_claimed": [
+    "canonical visual side-by-side/wipe/heatmap",
+    "exact before/after property values",
+    "approval audit details",
+    "exact BrandRuleSet public provenance",
+    "large-history pagination/virtualization",
+    "browser/PostgreSQL E2E",
+    "hosted executed-green CI"
+  ]
+}
