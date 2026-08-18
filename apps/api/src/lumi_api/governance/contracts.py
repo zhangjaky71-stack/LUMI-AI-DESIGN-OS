@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
@@ -46,6 +47,24 @@ class AuditActor(GovernanceModel):
     agent_version: str | None = Field(default=None, max_length=160)
     human_initiator_user_id: UUID | None = None
 
+    @field_validator("actor_id")
+    @classmethod
+    def reject_secret_shaped_actor_id(cls, value: str) -> str:
+        from .redaction import redact_audit_text
+
+        if redact_audit_text(value) != value:
+            raise ValueError("AUDIT_ACTOR_ID_SECRET_SHAPED")
+        return value
+
+    @field_validator("session_ref")
+    @classmethod
+    def require_session_hash_ref(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", value) is None:
+            raise ValueError("AUDIT_SESSION_REF_HASH_REQUIRED")
+        return value
+
     @model_validator(mode="after")
     def validate_actor(self) -> AuditActor:
         if self.actor_type is AuditActorType.AGENT:
@@ -67,10 +86,28 @@ class SafeChangeSummary(GovernanceModel):
     version_refs: tuple[str, ...] = ()
     semantic_diff_ref: str | None = Field(default=None, max_length=512)
 
-    @field_validator("changed_fields", "version_refs")
+    @field_validator("changed_fields")
     @classmethod
-    def canonicalize_strings(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+    def canonicalize_changed_fields(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         return tuple(sorted({item.strip() for item in value if item.strip()}))
+
+    @field_validator("version_refs")
+    @classmethod
+    def canonicalize_version_refs(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        from .redaction import sanitize_url
+
+        return tuple(
+            sorted({sanitize_url(item.strip()) for item in value if item.strip()})
+        )
+
+    @field_validator("semantic_diff_ref")
+    @classmethod
+    def sanitize_semantic_diff_ref(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        from .redaction import sanitize_url
+
+        return sanitize_url(value)
 
 
 class AuditWrite(GovernanceModel):
@@ -90,6 +127,17 @@ class AuditWrite(GovernanceModel):
     retention_class: RetentionClass = RetentionClass.SECURITY_AUDIT
     retention_policy_version: str = Field(min_length=1, max_length=64)
     occurred_at: datetime
+
+    @field_validator("security_metadata", "details", mode="before")
+    @classmethod
+    def redact_payload_mappings(cls, value: Any) -> dict[str, Any]:
+        from .redaction import redact_audit_mapping
+
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError("AUDIT_PAYLOAD_MAPPING_REQUIRED")
+        return redact_audit_mapping(value)
 
     @field_validator("occurred_at")
     @classmethod
@@ -136,7 +184,9 @@ class AuditSearch(GovernanceModel):
     @model_validator(mode="after")
     def validate_window(self) -> AuditSearch:
         for value in (self.from_time, self.to_time, self.cursor_occurred_at):
-            if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            if value is not None and (
+                value.tzinfo is None or value.utcoffset() is None
+            ):
                 raise ValueError("AUDIT_SEARCH_TIMESTAMP_MUST_BE_TIMEZONE_AWARE")
         if self.from_time and self.to_time and self.from_time >= self.to_time:
             raise ValueError("AUDIT_SEARCH_TIME_RANGE_INVALID")
