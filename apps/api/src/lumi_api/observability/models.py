@@ -57,18 +57,54 @@ _FORBIDDEN_ATTRIBUTE_MARKERS = (
     "document_text",
     "reasoning",
 )
+_SECRET_VALUE_PREFIXES = (
+    "bearer ",
+    "sk-",
+    "github_pat_",
+    "ghp_",
+    "gho_",
+    "ghu_",
+    "ghs_",
+    "ghr_",
+)
+_SECRET_VALUE_MARKERS = (
+    "x-amz-signature=",
+    "access_token=",
+    "refresh_token=",
+    "api_key=",
+    "apikey=",
+    "client_secret=",
+    "authorization=",
+)
+_SAFE_IDENTIFIER_PATTERN = r"^[A-Za-z0-9._:-]{1,128}$"
+
+
+def _contains_secret_value(value: str) -> bool:
+    normalized = value.strip().casefold()
+    return normalized.startswith(_SECRET_VALUE_PREFIXES) or any(
+        marker in normalized for marker in _SECRET_VALUE_MARKERS
+    )
+
+
+def _safe_text(value: str, *, max_length: int, too_long_code: str) -> str:
+    if len(value) > max_length:
+        raise ValueError(too_long_code)
+    if "\r" in value or "\n" in value or "\x00" in value:
+        raise ValueError("OBSERVABILITY_CONTROL_CHARACTER_FORBIDDEN")
+    if _contains_secret_value(value):
+        raise ValueError("OBSERVABILITY_SECRET_ATTRIBUTE_FORBIDDEN")
+    return value
 
 
 def _safe_scalar(value: Any) -> str | int | float | bool:
     if isinstance(value, bool | int | float):
         return value
     if isinstance(value, str):
-        if len(value) > 256:
-            raise ValueError("OBSERVABILITY_ATTRIBUTE_VALUE_TOO_LONG")
-        normalized = value.casefold()
-        if normalized.startswith(("bearer ", "sk-", "github_pat_", "ghp_")):
-            raise ValueError("OBSERVABILITY_SECRET_ATTRIBUTE_FORBIDDEN")
-        return value
+        return _safe_text(
+            value,
+            max_length=256,
+            too_long_code="OBSERVABILITY_ATTRIBUTE_VALUE_TOO_LONG",
+        )
     raise ValueError("OBSERVABILITY_ATTRIBUTE_SCALAR_REQUIRED")
 
 
@@ -103,6 +139,15 @@ class SpanRecord(ObservabilityModel):
     started_at: datetime
     ended_at: datetime
     attributes: dict[str, str | int | float | bool] = Field(default_factory=dict)
+
+    @field_validator("name")
+    @classmethod
+    def safe_name(cls, value: str) -> str:
+        return _safe_text(
+            value,
+            max_length=160,
+            too_long_code="OBSERVABILITY_SPAN_NAME_TOO_LONG",
+        )
 
     @field_validator("attributes", mode="before")
     @classmethod
@@ -144,9 +189,18 @@ class StructuredLogRecord(ObservabilityModel):
     occurred_at: datetime
     trace_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
     span_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{16}$")
-    request_id: str | None = Field(default=None, max_length=128)
-    correlation_id: str | None = Field(default=None, max_length=128)
+    request_id: str | None = Field(default=None, pattern=_SAFE_IDENTIFIER_PATTERN)
+    correlation_id: str | None = Field(default=None, pattern=_SAFE_IDENTIFIER_PATTERN)
     fields: dict[str, str | int | float | bool] = Field(default_factory=dict)
+
+    @field_validator("message")
+    @classmethod
+    def safe_message(cls, value: str) -> str:
+        return _safe_text(
+            value,
+            max_length=512,
+            too_long_code="OBSERVABILITY_LOG_MESSAGE_TOO_LONG",
+        )
 
     @field_validator("fields", mode="before")
     @classmethod
