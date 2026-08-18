@@ -1,0 +1,219 @@
+name: NODE-65 Audit Governance
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/governance/**"
+      - "apps/api/src/lumi_api/api/v1/governance_*.py"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/src/lumi_api/auth/policy.py"
+      - "apps/api/src/lumi_api/admin/service.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/src/lumi_api/persistence/models_platform.py"
+      - "apps/api/src/lumi_api/persistence/models_governance.py"
+      - "apps/api/migrations/versions/20260818_0025_audit_governance.py"
+      - "apps/api/migrations/versions/20260818_0025_sql/**"
+      - "apps/api/tests/test_governance_node65.py"
+      - "tools/node65/**"
+      - "docs/nodes/NODE-65-AUDIT-GOVERNANCE.md"
+      - "reports/nodes/NODE-65/**"
+      - ".github/workflows/node-65-audit-governance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  SQLALCHEMY_VERSION: "2.0.51"
+  ALEMBIC_VERSION: "1.18.5"
+  ASYNCPG_VERSION: "0.31.0"
+  LUMI_DATABASE_MIGRATION_URL: "postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi"
+
+jobs:
+  governance-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+
+      - name: Compile NODE-65 contracts
+        run: |
+          uv run python -m compileall -q \
+            apps/api/src/lumi_api/governance \
+            apps/api/src/lumi_api/api/v1/governance_dependencies.py \
+            apps/api/src/lumi_api/api/v1/governance_routes.py \
+            apps/api/src/lumi_api/api/v1/governance_schemas.py \
+            apps/api/src/lumi_api/persistence/models_governance.py \
+            apps/api/src/lumi_api/persistence/models_platform.py \
+            apps/api/migrations/versions/20260818_0025_audit_governance.py \
+            apps/api/tests/test_governance_node65.py \
+            tools/node65
+
+      - name: Static Governance acceptance
+        run: uv run python tools/node65/validate_governance.py
+
+      - name: NODE-65 and security-boundary tests
+        run: |
+          uv run pytest -q \
+            apps/api/tests/test_governance_node65.py \
+            apps/api/tests/test_admin_node64.py \
+            apps/api/tests/test_api_v1_contract.py
+
+      - name: Ruff NODE-65 backend
+        run: |
+          uv run ruff check --ignore E501,I001 \
+            apps/api/src/lumi_api/governance \
+            apps/api/src/lumi_api/api/v1/governance_dependencies.py \
+            apps/api/src/lumi_api/api/v1/governance_routes.py \
+            apps/api/src/lumi_api/api/v1/governance_schemas.py \
+            apps/api/src/lumi_api/auth/policy.py \
+            apps/api/src/lumi_api/admin/service.py \
+            apps/api/src/lumi_api/persistence/models_governance.py \
+            apps/api/src/lumi_api/persistence/models_platform.py \
+            apps/api/tests/test_governance_node65.py \
+            tools/node65
+
+      - name: Pyright NODE-65 backend
+        run: |
+          uv run pyright \
+            apps/api/src/lumi_api/governance \
+            apps/api/src/lumi_api/api/v1/governance_dependencies.py \
+            apps/api/src/lumi_api/api/v1/governance_routes.py \
+            apps/api/src/lumi_api/api/v1/governance_schemas.py \
+            apps/api/src/lumi_api/auth/policy.py \
+            apps/api/src/lumi_api/admin/service.py \
+            apps/api/src/lumi_api/persistence/models_governance.py \
+            apps/api/src/lumi_api/persistence/models_platform.py
+
+      - name: Prepare local PostgreSQL
+        run: |
+          cp infra/compose/env.local.example infra/compose/.env
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml up -d --wait --wait-timeout 180 postgres
+
+      - name: Apply migrations through NODE-64
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade 20260818_0024
+
+      - name: Seed legacy audit fixture before NODE-65 hardening
+        run: |
+          compose="docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml"
+          $compose exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -v ON_ERROR_STOP=1 -U lumi_migration -d lumi -c \
+            "INSERT INTO organizations(id,name,slug,created_at,updated_at,version)
+             VALUES ('00000000-0000-7000-8000-000000000650','NODE65 CI','node65-ci',now(),now(),1);
+             INSERT INTO audit_events(
+               id,organization_id,actor_type,actor_id,action,subject_type,subject_id,
+               details_json,previous_hash,event_hash,created_at
+             ) VALUES (
+               '00000000-0000-7000-8000-000000000658',
+               '00000000-0000-7000-8000-000000000650',
+               'user',NULL,'legacy.audit','project','legacy-project',
+               '{}'::jsonb,NULL,'legacy-hash',now()
+             );"
+
+      - name: Apply NODE-65 migration
+        working-directory: apps/api
+        run: |
+          PYTHONPATH=src uv run --no-project \
+            --with "sqlalchemy==${SQLALCHEMY_VERSION}" \
+            --with "alembic==${ALEMBIC_VERSION}" \
+            --with "asyncpg==${ASYNCPG_VERSION}" \
+            alembic upgrade head
+
+      - name: Verify legacy normalization and durable governance schema
+        run: |
+          compose="docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml"
+          normalized="$($compose exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c \
+            "SELECT concat_ws('|',actor_type,actor_id,length(event_hash),
+                    details_json ? 'node65_legacy_actor_type',
+                    details_json ? 'node65_legacy_event_hash')
+             FROM audit_events
+             WHERE id='00000000-0000-7000-8000-000000000658';")"
+          test "$normalized" = "USER|legacy:unknown|64|t|t"
+
+          tables="$($compose exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c \
+            "SELECT concat_ws(',',
+              to_regclass('public.governance_retention_policies'),
+              to_regclass('public.governance_legal_holds'),
+              to_regclass('public.governance_deletion_requests'),
+              to_regclass('public.governance_audit_exports'));" )"
+          test "$tables" = "governance_retention_policies,governance_legal_holds,governance_deletion_requests,governance_audit_exports"
+
+          $compose exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c \
+            "SELECT count(*) FROM pg_trigger WHERE tgname='trg_audit_events_immutable' AND NOT tgisinternal;" | grep -qx 1
+
+          $compose exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -At -U lumi_migration -d lumi -c \
+            "SELECT count(*) FROM governance_retention_policies WHERE active=true;" | grep -qx 7
+
+      - name: Verify append-only Audit trigger rejects UPDATE and DELETE
+        run: |
+          compose="docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml"
+          if $compose exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -v ON_ERROR_STOP=1 -U lumi_migration -d lumi -c \
+            "UPDATE audit_events SET action='mutated' WHERE id='00000000-0000-7000-8000-000000000658';"; then
+            echo "Audit UPDATE unexpectedly succeeded" >&2
+            exit 1
+          fi
+          if $compose exec -T -e PGPASSWORD=lumi_migration_local_only postgres \
+            psql -v ON_ERROR_STOP=1 -U lumi_migration -d lumi -c \
+            "DELETE FROM audit_events WHERE id='00000000-0000-7000-8000-000000000658';"; then
+            echo "Audit DELETE unexpectedly succeeded" >&2
+            exit 1
+          fi
+
+      - name: Verify NODE-65 gap ledger remains fail-closed
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          ledger = json.loads(Path("reports/nodes/NODE-65/gap-ledger.json").read_text(encoding="utf-8"))
+          assert ledger["node"] == "NODE-65"
+          assert ledger["status"] == "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE"
+          assert any(gap["severity"] == "P0" and gap["status"] == "open" for gap in ledger["gaps"])
+          assert any(gap["id"] == "NODE65-GAP-201" and gap["status"] == "closed" for gap in ledger["gaps"])
+          assert any(gap["id"] == "NODE65-GAP-203" and gap["status"] == "closed" for gap in ledger["gaps"])
+          print("NODE65_GAP_LEDGER_PARSE_PASS")
+          PY
+
+      - name: PostgreSQL diagnostics
+        if: failure()
+        run: |
+          mkdir -p reports/nodes/NODE-65/runtime
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml ps > reports/nodes/NODE-65/runtime/compose-ps.txt 2>&1 || true
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml logs --no-color --tail=300 postgres > reports/nodes/NODE-65/runtime/postgres.log 2>&1 || true
+
+      - name: Upload NODE-65 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-65-governance-${{ github.run_id }}
+          path: reports/nodes/NODE-65/runtime
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Cleanup PostgreSQL
+        if: always()
+        run: docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml down --volumes --remove-orphans || true
