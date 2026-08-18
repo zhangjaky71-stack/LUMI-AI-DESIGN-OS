@@ -63,6 +63,33 @@ class PostgresCollaborationRepository(_TransactionalRepository):
             can_edit_design=role in {ProjectRole.ADMIN, ProjectRole.EDITOR},
         )
 
+    def get_presence_identity(
+        self, *, organization_id: UUID, actor_id: str
+    ) -> tuple[str, str | None]:
+        """Return server-authoritative presence profile fields for an authenticated actor."""
+        self._assert_org(organization_id)
+        actor_uuid = self._actor_uuid(actor_id)
+        row = self.session.execute(
+            text(
+                """
+                SELECT u.display_name
+                FROM users u
+                JOIN organization_members om
+                  ON om.user_id=u.id
+                 AND om.organization_id=:organization_id
+                WHERE u.id=:actor_uuid
+                  AND u.status='active'
+                """
+            ),
+            {"organization_id": organization_id, "actor_uuid": actor_uuid},
+        ).mappings().one_or_none()
+        if row is None:
+            raise CollaborationForbidden("ACTIVE_ORGANIZATION_USER_REQUIRED")
+        display_name = str(row["display_name"]).strip()
+        if not display_name:
+            display_name = f"User {str(actor_uuid)[:8]}"
+        return display_name, None
+
     def require_project_artifact_version(
         self,
         *,
