@@ -12,6 +12,8 @@ export type ServerApiRequestOptions = Omit<RequestInit, "body" | "cache"> & {
   json?: unknown;
 };
 
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 export async function serverApiRequest<T>(
   path: string,
   options: ServerApiRequestOptions = {},
@@ -32,10 +34,15 @@ export async function serverApiRequest<T>(
     .map(({ name, value }) => `${name}=${value}`)
     .join("; ");
   if (cookieHeader) headers.set("cookie", cookieHeader);
-  headers.set(
-    "x-request-id",
-    incomingHeaders.get("x-request-id") ?? crypto.randomUUID(),
-  );
+  headers.set("x-request-id", incomingHeaders.get("x-request-id") ?? crypto.randomUUID());
+
+  const method = (options.method ?? "GET").toUpperCase();
+  if (UNSAFE_METHODS.has(method)) {
+    const csrf = cookieStore.get("lumi_csrf")?.value;
+    if (csrf && !headers.has("x-csrf-token")) headers.set("x-csrf-token", csrf);
+    const origin = incomingHeaders.get("origin");
+    if (origin && !headers.has("origin")) headers.set("origin", origin);
+  }
 
   let body = options.body;
   if (options.json !== undefined) {
@@ -45,6 +52,7 @@ export async function serverApiRequest<T>(
 
   const response = await fetch(`${config.apiOrigin}${path}`, {
     ...options,
+    method,
     headers,
     body,
     cache: "no-store",
