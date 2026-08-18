@@ -1,0 +1,106 @@
+name: NODE-59 Versions UI
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/api/v1/artifact_engine_schemas.py"
+      - "apps/api/src/lumi_api/api/v1/version_history_routes.py"
+      - "apps/api/src/lumi_api/api/v1/app.py"
+      - "apps/api/tests/test_node59_versions_ui_contracts.py"
+      - "apps/web/src/lib/versions/**"
+      - "apps/web/src/components/versions/**"
+      - "apps/web/src/components/workspace/ai-workspace.tsx"
+      - "apps/web/src/app/(shell)/workspace/versions.css"
+      - "apps/web/src/app/(shell)/workspace/layout.tsx"
+      - "tools/node59/**"
+      - "docs/runtime/VERSION-HISTORY-UI-V1.md"
+      - "docs/nodes/NODE-59-VERSIONS-UI.md"
+      - "reports/nodes/NODE-59/**"
+      - ".github/workflows/node-59-versions-ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  NODE_VERSION: "24"
+  PNPM_VERSION: "11.4.0"
+  NEXT_TELEMETRY_DISABLED: "1"
+  LUMI_API_ORIGIN: "http://127.0.0.1:8000"
+
+jobs:
+  versions-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+      - name: Compile NODE-59 contracts
+        run: |
+          uv run python -m compileall -q \
+            apps/api/src/lumi_api/api/v1/artifact_engine_schemas.py \
+            apps/api/src/lumi_api/api/v1/version_history_routes.py \
+            apps/api/tests/test_node59_versions_ui_contracts.py \
+            tools/node59
+      - name: Static Versions UI acceptance
+        run: uv run python tools/node59/validate_versions_ui.py
+      - name: NODE-59 API contract tests
+        run: uv run pytest -q apps/api/tests/test_node59_versions_ui_contracts.py apps/api/tests/test_artifact_engine_node42.py
+      - name: Ruff NODE-59 backend
+        run: |
+          uv run ruff check --ignore E501,I001 \
+            apps/api/src/lumi_api/api/v1/artifact_engine_schemas.py \
+            apps/api/src/lumi_api/api/v1/version_history_routes.py \
+            apps/api/tests/test_node59_versions_ui_contracts.py \
+            tools/node59
+      - name: Parse NODE-59 gap ledger
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          ledger = json.loads(Path("reports/nodes/NODE-59/gap-ledger.json").read_text(encoding="utf-8"))
+          assert ledger["node"] == "NODE-59"
+          assert ledger["status"] == "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE"
+          assert any(gap["severity"] == "P0" and gap["status"] == "open" for gap in ledger["gaps"])
+          print("NODE59_GAP_LEDGER_PARSE_PASS")
+          PY
+
+  versions-web:
+    needs: versions-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+          pnpm --version
+      - name: Install frozen JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Versions UI web contract tests
+        run: pnpm --filter @lumi/web exec vitest run src/lib/versions/types.test.ts
+      - name: Typecheck web application
+        run: pnpm --filter @lumi/web typecheck
+      - name: Lint NODE-59 web surface
+        run: |
+          pnpm --filter @lumi/web exec eslint \
+            src/lib/versions \
+            src/components/versions \
+            src/components/workspace/ai-workspace.tsx \
+            'src/app/(shell)/workspace/layout.tsx'
+      - name: Production Next.js build
+        run: pnpm --filter @lumi/web build
