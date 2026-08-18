@@ -14,6 +14,13 @@ locals {
   services_with_s3 = {
     for name, service in var.services : name => service if length(service.s3_bucket_arns) > 0
   }
+  service_security_groups = {
+    for name, _ in var.services : name => (
+      name == "sandbox-runtime"
+      ? [var.app_security_group_id, var.sandbox_egress_security_group_id]
+      : [var.app_security_group_id, var.app_internet_egress_security_group_id]
+    )
+  }
 }
 
 resource "aws_ecs_cluster" "this" {
@@ -430,7 +437,7 @@ resource "aws_ecs_service" "service" {
 
   network_configuration {
     subnets          = var.private_subnet_ids
-    security_groups  = [var.app_security_group_id]
+    security_groups  = local.service_security_groups[each.key]
     assign_public_ip = false
   }
 
