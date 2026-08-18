@@ -35,6 +35,35 @@ def assert_model_gateway_cost_port_has_no_db_sdk() -> None:
                 raise SystemExit("Model Gateway CostAccountingPort imports a DB SDK")
 
 
+def assert_hosted_budget_guard_not_injectable(source: str) -> None:
+    tree = ast.parse(source, filename="apps/api/src/lumi_api/model_gateway_runtime.py")
+    factory = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "build_hosted_model_gateway"
+        ),
+        None,
+    )
+    if factory is None:
+        raise SystemExit("hosted Model Gateway composition function missing")
+    parameter_names = {
+        argument.arg
+        for argument in [
+            *factory.args.posonlyargs,
+            *factory.args.args,
+            *factory.args.kwonlyargs,
+        ]
+    }
+    if factory.args.vararg is not None:
+        parameter_names.add(factory.args.vararg.arg)
+    if factory.args.kwarg is not None:
+        parameter_names.add(factory.args.kwarg.arg)
+    if "budget_guard" in parameter_names:
+        raise SystemExit("hosted Model Gateway must not accept an injectable budget guard")
+
+
 def main() -> int:
     migration = "apps/api/alembic/versions/0011_cost_ledger_budget_quota.py"
     require(
@@ -186,8 +215,7 @@ def main() -> int:
         "budget_guard=budget_guard",
         "hosted Model Gateway requires LUMI_DATABASE_URL for durable accounting",
     )
-    if "budget_guard:" in hosted or "budget_guard =" in hosted:
-        raise SystemExit("hosted Model Gateway must not accept an injectable budget guard")
+    assert_hosted_budget_guard_not_injectable(hosted)
     require(
         "apps/api/pyproject.toml",
         '"lumi-model-gateway"',
