@@ -126,6 +126,13 @@ def main() -> None:
         "reasoning",
     ):
         require(models, sensitive, f"sensitive telemetry marker {sensitive}")
+    for secret_value_marker in (
+        "x-amz-signature=",
+        "access_token=",
+        "refresh_token=",
+        "client_secret=",
+    ):
+        require(models, secret_value_marker, f"secret value marker {secret_value_marker}")
     for low_card in (
         '"service"',
         '"http.method"',
@@ -140,6 +147,7 @@ def main() -> None:
     require(models, "OBSERVABILITY_METRIC_HIGH_CARDINALITY_ATTRIBUTE", "cardinality rejection")
     require(tests, "test_metric_cardinality_guard_rejects_tenant_and_run_ids", "cardinality test")
     require(tests, "test_structured_log_rejects_prompt_or_secret_fields", "log redaction test")
+    require(logging_tests, "test_structured_log_rejects_secret_bearing_values_and_messages", "secret-bearing value regression")
 
     # LangSmith fan-out must reuse the same safety boundary and remain fail-open.
     require(langsmith, "validate_safe_attributes(attributes)", "LangSmith safe attributes")
@@ -175,10 +183,13 @@ def main() -> None:
     require(report, "does **not** currently claim", "explicit non-claims")
     require(report, "OpenTelemetry/Collector", "OTel deployment boundary")
 
-    # NODE-66 response headers must still cover trace reset/idempotency short-circuit responses.
-    require(app, "_install_final_security_headers", "final security header layer")
-    require(app, "HTTP_SECURITY_HEADERS", "NODE-66 header reuse")
-    require(app, 'response.headers["Strict-Transport-Security"]', "production HSTS final layer")
+    # NODE-66 SecurityHTTPMiddleware remains the response-security authority on
+    # contract paths because trace/correlation metadata is fail-open and does not
+    # synthesize a pre-security response. The tests prove headers and prod docs shutdown.
+    require(app, "install_http_security(app, environment=runtime_environment)", "NODE-66 security composition")
+    require(app, "Request/trace metadata itself is fail-open", "middleware ordering rationale")
+    if app.find("install_http_security(app, environment=runtime_environment)") > app.find("install_error_contract(app)"):
+        raise SystemExit("NODE67_VALIDATION_FAILED:security middleware must be installed before request context middleware")
     require(boundary_tests, "test_invalid_trace_restarts_without_weakening_node66_security_headers", "trace reset security test")
     require(boundary_tests, "test_production_invalid_trace_restarts_and_keeps_docs_shutdown_hsts", "trace reset production security test")
 
