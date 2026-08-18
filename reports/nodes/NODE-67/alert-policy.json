@@ -1,0 +1,70 @@
+{
+  "node": "NODE-67",
+  "version": "2026-08-18.v1",
+  "status": "SPECIFIED_CORE_NOT_ROUTED",
+  "rules": [
+    {
+      "key": "core_api_slo_burn",
+      "severity": "P1",
+      "condition": "core_api.availability error-budget burn exceeds policy window",
+      "owner": "platform-sre",
+      "requires_runbook": true
+    },
+    {
+      "key": "agent_failure_spike",
+      "severity": "P1",
+      "condition": "agent.run.failure_ratio exceeds rolling baseline and absolute floor",
+      "owner": "agent-platform",
+      "requires_runbook": true
+    },
+    {
+      "key": "all_providers_unavailable",
+      "severity": "P0",
+      "condition": "provider.available_ratio == 0 for an enabled capability",
+      "owner": "model-platform",
+      "requires_runbook": true
+    },
+    {
+      "key": "queue_oldest_age",
+      "severity": "P1",
+      "condition": "queue.oldest_age_seconds exceeds queue-specific SLO",
+      "owner": "platform-sre",
+      "requires_runbook": true
+    },
+    {
+      "key": "db_connection_exhaustion",
+      "severity": "P0",
+      "condition": "db.connection.utilization_ratio >= 0.95 with sustained acquisition failures",
+      "owner": "platform-sre",
+      "requires_runbook": true
+    },
+    {
+      "key": "ambiguous_paid_side_effect",
+      "severity": "P0",
+      "condition": "paid_side_effect.ambiguous_count > 0",
+      "owner": "platform-billing",
+      "requires_runbook": true
+    },
+    {
+      "key": "security_critical",
+      "severity": "P0",
+      "condition": "security.critical_finding_count > 0",
+      "owner": "security",
+      "requires_runbook": true
+    },
+    {
+      "key": "cost_anomaly",
+      "severity": "P1",
+      "condition": "provider cost rate exceeds versioned anomaly policy",
+      "owner": "finops",
+      "requires_runbook": true
+    },
+    {
+      "key": "telemetry_export_drop",
+      "severity": "P2",
+      "condition": "telemetry exporter drop ratio exceeds policy while business traffic is healthy",
+      "owner": "platform-sre",
+      "requires_runbook": true
+    }
+  ]
+}
