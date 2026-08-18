@@ -53,6 +53,8 @@ def main() -> None:
     require(security_http, "security_sensitive_query_forbidden", "query secret gate")
     require(security_http, "security_json_body_too_large", "JSON body gate")
     require(security_http, "Strict-Transport-Security", "production HSTS")
+    require(security_http, "_DOCS_CSP", "development docs CSP")
+    require(security_http, "https://cdn.jsdelivr.net", "docs CDN allowlist")
     for header in (
         "Content-Security-Policy",
         "X-Content-Type-Options",
@@ -62,8 +64,12 @@ def main() -> None:
     ):
         require(security_http, header, f"API header {header}")
         require(next_config, header, f"Web header {header}")
-    require(app, "install_http_security(app)", "real FastAPI security composition")
+    require(app, "install_http_security(app, environment=runtime_environment)", "real FastAPI security composition")
+    require(app, 'expose_interactive_docs = runtime_environment != "production"', "production docs disable")
+    require(app, 'docs_url="/api/docs" if expose_interactive_docs else None', "production Swagger disable")
+    require(app, 'openapi_url="/api/openapi.json" if expose_interactive_docs else None', "production OpenAPI disable")
     require(node66_tests, "create_contract_app", "real app security test")
+    require(node66_tests, "test_production_contract_app_hides_interactive_docs_and_openapi_http_surface", "production docs test")
     require(next_config, "frame-ancestors 'none'", "clickjacking CSP")
     require(next_config, "upgrade-insecure-requests", "production CSP TLS upgrade")
 
