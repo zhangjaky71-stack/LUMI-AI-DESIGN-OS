@@ -45,15 +45,14 @@ def create_contract_app(*, environment: str | None = None) -> FastAPI:
         redoc_url="/api/redoc" if expose_interactive_docs else None,
         openapi_url="/api/openapi.json" if expose_interactive_docs else None,
     )
-    # Runtime environment is shared with the outer correlation/error boundary so
-    # responses it creates directly keep the same production security-header policy.
-    app.state.runtime_environment = runtime_environment
     # Logs have a safe standard-library JSON baseline immediately. Trace/metric
     # exporters are deliberately composed separately through an OTel/Collector port.
     app.state.telemetry = SafeTelemetry(PythonJsonLoggingSink())
     app.state.telemetry_sampler = DeterministicSampler(normal_sample_rate=0.10)
     # Install before the error contract so RequestIdMiddleware remains outside the
-    # security gate and every security rejection receives the canonical request id.
+    # security gate and every handled security rejection receives the canonical
+    # request id. Request/trace metadata itself is fail-open and does not create a
+    # response that could bypass NODE-66 SecurityHTTPMiddleware.
     install_http_security(app, environment=runtime_environment)
     install_error_contract(app)
     app.add_middleware(IdempotencyReplayMiddleware)
