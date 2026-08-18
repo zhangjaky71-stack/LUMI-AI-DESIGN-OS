@@ -84,7 +84,27 @@ const FORBIDDEN_PUBLIC_KEYS = new Set([
   "scratchpad",
   "raw_response",
   "tool_output",
+  "secret",
+  "password",
+  "credential",
+  "credentials",
+  "api_key",
+  "access_token",
+  "refresh_token",
+  "authorization",
+  "cookie",
+  "cookies",
+  "headers",
 ]);
+const FORBIDDEN_KEY_FRAGMENTS = [
+  "api_key",
+  "access_token",
+  "refresh_token",
+  "authorization",
+  "credential",
+  "password",
+  "secret",
+] as const;
 const EVENT_TYPES = new Set<string>(SAFE_AGENT_EVENT_TYPES);
 
 export function parseAgentRunResource(value: unknown): AgentRunResource {
@@ -164,7 +184,10 @@ function assertPublicPayload(value: unknown): void {
   if (Array.isArray(value)) { value.forEach(assertPublicPayload); return; }
   if (!value || typeof value !== "object") return;
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (FORBIDDEN_PUBLIC_KEYS.has(key)) throw new Error("RUN_EVENT_PRIVATE_FIELD_FORBIDDEN");
+    const normalized = key.toLowerCase();
+    if (FORBIDDEN_PUBLIC_KEYS.has(normalized) || FORBIDDEN_KEY_FRAGMENTS.some((fragment) => normalized.includes(fragment))) {
+      throw new Error("RUN_EVENT_PRIVATE_FIELD_FORBIDDEN");
+    }
     assertPublicPayload(child);
   }
 }
