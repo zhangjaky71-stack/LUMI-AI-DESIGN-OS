@@ -1,0 +1,106 @@
+{
+  "node": "NODE-68",
+  "title": "Backup, Recovery & Disaster Readiness",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "updated_at": "2026-08-18T12:30:00Z",
+  "gaps": [
+    {
+      "id": "NODE68-GAP-101",
+      "severity": "P0",
+      "status": "open",
+      "area": "postgres-pitr",
+      "summary": "Production PostgreSQL backup/PITR configuration, isolated restore and measured RPO/RTO drill evidence are not yet executed. Targets alone are not PASS evidence."
+    },
+    {
+      "id": "NODE68-GAP-102",
+      "severity": "P0",
+      "status": "open",
+      "area": "object-recovery",
+      "summary": "Production object versioning/replication, cross-scope restore and checksum verification adapter/drill remain uncomposed. Recovery core already treats bucket/key/size/SHA-256 as truth and rejects signed URLs."
+    },
+    {
+      "id": "NODE68-GAP-103",
+      "severity": "P0",
+      "status": "open",
+      "area": "runtime-rebuild",
+      "summary": "Production NODE-19 redispatch adapter and empty-broker rebuild drill are not yet composed. Generic recovery only marks proven safe jobs REQUEUE_SAFE; paid-capable jobs without durable idempotency evidence require review."
+    },
+    {
+      "id": "NODE68-GAP-104",
+      "severity": "P0",
+      "status": "open",
+      "area": "agent-resume",
+      "summary": "Production Agent checkpoint resume adapter and restart drill are not yet composed. Core requires exact graph definition hash compatibility and preserves waiting_user instead of auto-resuming it."
+    },
+    {
+      "id": "NODE68-GAP-105",
+      "severity": "P0",
+      "status": "open",
+      "area": "provider-reconcile",
+      "summary": "Provider-specific poll/materialize reconciliation adapters and callback-loss drills remain required. Existing provider_request_id must be reused; unknown paid side effects never auto-rerun."
+    },
+    {
+      "id": "NODE68-GAP-106",
+      "severity": "P0",
+      "status": "open",
+      "area": "drill-evidence",
+      "summary": "Immutable recovery drill/action evidence persistence and measured DB/Object/worker/provider/deploy/site-failure reports remain to be added after the exact current Alembic head is verified."
+    },
+    {
+      "id": "NODE68-GAP-107",
+      "severity": "P0",
+      "status": "open",
+      "area": "deploy-rollback",
+      "summary": "Production application/schema rollback, forward-fix compatibility matrix and blue/green or canary recovery drill remain unverified."
+    },
+    {
+      "id": "NODE68-GAP-108",
+      "severity": "P0",
+      "status": "open",
+      "area": "site-dr",
+      "summary": "Regional/site failover, DNS/control-plane recovery, secret/config restore and external dependency degradation drills remain unverified."
+    },
+    {
+      "id": "NODE68-GAP-109",
+      "severity": "P0",
+      "status": "open",
+      "area": "runbooks",
+      "summary": "Operator runbooks, escalation ownership and scheduled tabletop/live recovery exercises require production review and execution evidence."
+    },
+    {
+      "id": "NODE68-GAP-110",
+      "severity": "P0",
+      "status": "open",
+      "area": "hosted-validation",
+      "summary": "Latest-head NODE-68 pytest/Ruff/Pyright/PostgreSQL recovery validation must actually execute. Pre-run/skipped GitHub Actions jobs are not PASS."
+    },
+    {
+      "id": "NODE68-GAP-201",
+      "severity": "P0",
+      "status": "closed",
+      "area": "recovery-policy-core",
+      "summary": "Durable-evidence recovery dispositions are implemented for runtime jobs, idempotency operations, Agent control/checkpoint evidence and Artifact object verification."
+    },
+    {
+      "id": "NODE68-GAP-202",
+      "severity": "P0",
+      "status": "closed",
+      "area": "paid-side-effect-safety",
+      "summary": "Known native provider requests are classified for reconciliation with preserved operation/provider ids; paid ambiguous side effects are REVIEW_REQUIRED and generic recovery does not submit replacements."
+    },
+    {
+      "id": "NODE68-GAP-203",
+      "severity": "P0",
+      "status": "closed",
+      "area": "checkpoint-compatibility-core",
+      "summary": "Agent recovery validates exact graph definition hash/enabled state and checkpoint presence before RESUME_SAFE; waiting_user remains untouched."
+    },
+    {
+      "id": "NODE68-GAP-204",
+      "severity": "P0",
+      "status": "closed",
+      "area": "object-truth-core",
+      "summary": "Artifact object recovery evidence is internal bucket/key/size/SHA-256 only and signed/public URL references are rejected."
+    }
+  ]
+}
