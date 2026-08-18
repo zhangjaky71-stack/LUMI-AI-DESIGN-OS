@@ -67,10 +67,33 @@ export function parseCanvasProjection(value: unknown): CanvasProjection {
 }
 
 export function wireDescriptor(descriptor: OperationDescriptor): Record<string, unknown> {
+  let payload: Record<string, unknown> = structuredClone(descriptor.payload);
+  if (descriptor.type === "CREATE_NODE") {
+    const node = asRecord(payload.node, "CANVAS_CREATE_NODE_PAYLOAD_INVALID");
+    const transform = asRecord(node.transform ?? {}, "CANVAS_CREATE_TRANSFORM_INVALID");
+    payload = {
+      kind: node.kind,
+      id: node.id,
+      parent_id: node.parent_id,
+      name: node.name,
+      x: transform.x ?? 0,
+      y: transform.y ?? 0,
+      width: transform.width,
+      height: transform.height,
+      ...(typeof payload.index === "number" ? { index: payload.index } : {}),
+    };
+  } else if (descriptor.type === "SET_PROPERTY") {
+    payload = {
+      path: payload.property,
+      value: structuredClone(payload.value),
+    };
+  } else if (descriptor.type === "DELETE_NODE") {
+    payload = { ...payload, recursive: true };
+  }
   return {
     type: descriptor.type,
     target_ids: [...descriptor.targetIds],
-    payload: structuredClone(descriptor.payload),
+    payload,
     ...(descriptor.reason ? { reason: descriptor.reason } : {}),
   };
 }
