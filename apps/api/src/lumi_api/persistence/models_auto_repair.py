@@ -221,6 +221,16 @@ class AutoRepairAttemptModel(Base):
         ForeignKey("artifact_quality_results.quality_result_id", ondelete="RESTRICT"),
         nullable=True,
     )
+    promoted_artifact_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("artifact_versions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    promotion_quality_result_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("artifact_quality_results.quality_result_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     before_score: Mapped[Decimal] = mapped_column(Numeric(8, 4), nullable=False)
     after_score: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
     score_delta: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
