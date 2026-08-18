@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -12,9 +13,10 @@ from lumi_api.idempotency.contracts import (
     canonical_request_hash,
     deterministic_operation_key,
 )
-from lumi_api.idempotency.gateway import GatewayResponse
+from lumi_api.idempotency.gateway import GatewayResponse, OperationHandle
 from lumi_api.idempotency.http import extract_idempotency_key, replay_headers
 from lumi_api.idempotency.policy import DEFAULT_COMPENSATION, GATEWAY_REQUIRED_SIDE_EFFECTS
+from lumi_api.persistence.models import IdempotencyOperation
 
 
 def test_canonical_request_hash_ignores_transport_trace_fields() -> None:
@@ -87,3 +89,19 @@ def test_contract_enums_cover_recovery_outcomes() -> None:
     assert ClaimDecision.RECONCILE == "reconcile"
     assert ClaimDecision.RETRY_SAFE == "retry_safe"
     assert ProviderState.UNKNOWN == "unknown"
+
+
+def test_paid_provider_crash_barrier_is_pinned_in_orm_and_operation_handle() -> None:
+    columns = IdempotencyOperation.__table__.columns
+    assert "provider_attempt_started_at" in columns
+    assert columns["provider_attempt_started_at"].nullable is True
+    assert callable(getattr(OperationHandle, "mark_provider_attempt_started", None))
+
+
+def test_provider_attempt_barrier_migration_follows_current_release_head() -> None:
+    api_root = Path(__file__).resolve().parents[1]
+    migration = api_root / "alembic" / "versions" / "0019_side_effect_provider_attempt_barrier.py"
+    source = migration.read_text(encoding="utf-8")
+    assert 'revision = "0019_side_effect_provider_attempt_barrier"' in source
+    assert 'down_revision = "0018_platform_provider_cost_guard"' in source
+    assert "ADD COLUMN provider_attempt_started_at timestamptz" in source
