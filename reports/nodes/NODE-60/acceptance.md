@@ -23,6 +23,16 @@ Status: **CORE IMPLEMENTED / VALIDATING / NOT COMPLETE**
 - [x] Whole-job failure is represented honestly; no fake per-item retry button is shown.
 - [x] Python/TypeScript tests, runtime contract and explicit P0 gap ledger are present.
 
+## Hosted CI evidence — 2026-08-18
+
+- Pull request: #127 (`feat/node-60-export-ui` → `feat/node-59-versions-ui`).
+- NODE-60 workflow run: `32102738574`.
+- `export-contract` job: `95606281987`, conclusion `failure`, **0 executed steps**.
+- Job step API returned an empty step list.
+- Job log download returned `404 BlobNotFound`.
+- `export-web` was skipped because its dependency did not execute successfully.
+- Therefore no NODE-60 compile/test/lint/build command ran and failed; the hosted result is treated as a pre-run runner/account blocker, not as code-level failure evidence.
+
 ## Required before COMPLETE
 
 - [ ] Cross-format transcoding and WebP/SVG.
