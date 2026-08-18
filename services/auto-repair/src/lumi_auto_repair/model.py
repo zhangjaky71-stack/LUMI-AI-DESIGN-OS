@@ -31,12 +31,16 @@ class RepairLoopStatus(StrEnum):
 class RepairAttemptDecision(StrEnum):
     ACCEPTED_INTERMEDIATE = "ACCEPTED_INTERMEDIATE"
     PROMOTED = "PROMOTED"
+    PROMOTION_STALE_CONFLICT = "PROMOTION_STALE_CONFLICT"
+    PROMOTION_VALIDATION_FAILED = "PROMOTION_VALIDATION_FAILED"
+    PROMOTION_APPROVAL_FAILED = "PROMOTION_APPROVAL_FAILED"
     REJECTED_PREFLIGHT = "REJECTED_PREFLIGHT"
     REJECTED_POSTFLIGHT = "REJECTED_POSTFLIGHT"
     REJECTED_NEW_HARD_VIOLATION = "REJECTED_NEW_HARD_VIOLATION"
     REJECTED_REGRESSION = "REJECTED_REGRESSION"
     REJECTED_INSUFFICIENT_GAIN = "REJECTED_INSUFFICIENT_GAIN"
     EXECUTION_FAILED = "EXECUTION_FAILED"
+    COST_RECONCILIATION_REQUIRED = "COST_RECONCILIATION_REQUIRED"
     BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
 
 
@@ -218,6 +222,12 @@ class BudgetReservation:
     amount_usd: Decimal
     replayed: bool = False
 
+    def __post_init__(self) -> None:
+        if not self.reservation_id:
+            raise ValueError("REPAIR_RESERVATION_ID_REQUIRED")
+        if self.amount_usd < 0:
+            raise ValueError("REPAIR_RESERVATION_AMOUNT_INVALID")
+
 
 @dataclass(frozen=True, slots=True)
 class RepairCandidate:
@@ -232,6 +242,8 @@ class RepairCandidate:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if not self.artifact_version_id or not self.repair_branch_id:
+            raise ValueError("REPAIR_CANDIDATE_IDENTITY_REQUIRED")
         _sha256(self.artifact_content_hash, "repair candidate content hash")
         if self.actual_cost_usd < 0:
             raise ValueError("REPAIR_CANDIDATE_COST_INVALID")
@@ -253,7 +265,24 @@ class RepairAttempt:
     postflight: ConstraintCheck | None = None
     reservation_id: str | None = None
     actual_cost_usd: Decimal = Decimal("0")
+    promoted_artifact_version_id: str | None = None
+    promotion_quality_result_id: str | None = None
     reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.iteration < 1 or self.iteration > 3:
+            raise ValueError("REPAIR_ATTEMPT_ITERATION_INVALID")
+        if not 0 <= self.before_score <= 100:
+            raise ValueError("REPAIR_ATTEMPT_BEFORE_SCORE_INVALID")
+        if self.after_score is not None and not 0 <= self.after_score <= 100:
+            raise ValueError("REPAIR_ATTEMPT_AFTER_SCORE_INVALID")
+        if self.actual_cost_usd < 0:
+            raise ValueError("REPAIR_ATTEMPT_COST_INVALID")
+        if (
+            self.promotion_quality_result_id is not None
+            and self.promoted_artifact_version_id is None
+        ):
+            raise ValueError("REPAIR_PROMOTION_QUALITY_REQUIRES_VERSION")
 
 
 @dataclass(frozen=True, slots=True)
@@ -268,6 +297,24 @@ class AutoRepairJob:
     spent_usd: Decimal = Decimal("0")
     final_artifact_version_id: str | None = None
     reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.job_id:
+            raise ValueError("REPAIR_JOB_ID_REQUIRED")
+        if self.spent_usd < 0:
+            raise ValueError("REPAIR_JOB_SPEND_INVALID")
+        if len(self.attempts) > self.spec.policy.max_iterations:
+            raise ValueError("REPAIR_JOB_ATTEMPT_LIMIT_EXCEEDED")
+        expected_iterations = tuple(range(1, len(self.attempts) + 1))
+        actual_iterations = tuple(item.iteration for item in self.attempts)
+        if actual_iterations != expected_iterations:
+            raise ValueError("REPAIR_JOB_ATTEMPT_SEQUENCE_INVALID")
+        if self.status is RepairLoopStatus.READY and not self.final_artifact_version_id:
+            raise ValueError("REPAIR_READY_REQUIRES_FINAL_VERSION")
+        if self.original_source.organization_id != self.spec.organization_id:
+            raise ValueError("REPAIR_JOB_ORGANIZATION_MISMATCH")
+        if self.original_source.project_id != self.spec.project_id:
+            raise ValueError("REPAIR_JOB_PROJECT_MISMATCH")
 
     @property
     def remaining_budget_usd(self) -> Decimal:
