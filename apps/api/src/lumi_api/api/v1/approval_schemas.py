@@ -24,18 +24,6 @@ class CreateArtifactApprovalRequest(ApiModel):
     title: str = Field(min_length=1, max_length=200)
     summary: str = Field(min_length=1, max_length=4_000)
     expires_at: datetime | None = None
-    agent_run_id: UUID | None = None
-    task_id: UUID | None = None
-    interrupt_id: str | None = Field(default=None, max_length=200)
-    resume_version: int | None = Field(default=None, ge=0)
-
-    @model_validator(mode="after")
-    def validate_bridge(self) -> "CreateArtifactApprovalRequest":
-        if (self.interrupt_id is None) != (self.resume_version is None):
-            raise ValueError("interrupt_id and resume_version must be paired")
-        if self.interrupt_id is not None and self.agent_run_id is None:
-            raise ValueError("agent_run_id is required when interrupt_id is supplied")
-        return self
 
 
 class ApprovalDecisionRequest(ApiModel):
