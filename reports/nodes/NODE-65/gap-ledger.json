@@ -1,0 +1,107 @@
+{
+  "node": "NODE-65",
+  "title": "Audit, Governance & Data Retention",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "updated_at": "2026-08-18T09:18:00Z",
+  "completion_rule": "NODE-65 is complete only after every P0 gap is closed with executed production-like evidence.",
+  "gaps": [
+    {
+      "id": "NODE65-GAP-301",
+      "severity": "P0",
+      "status": "open",
+      "title": "Production Governance service factory composition",
+      "evidence_required": "Deployed API composes PostgresGovernanceServiceFactory with real session factory and proves authenticated org-scoped audit search plus atomic governance mutation+audit commit."
+    },
+    {
+      "id": "NODE65-GAP-302",
+      "severity": "P0",
+      "status": "open",
+      "title": "Mandatory high-risk audit ingress is not wired across all producers",
+      "evidence_required": "Executed matrix proving canonical Audit events for auth/session/token, membership/role, project/archive/delete, sensitive asset download/delete, brand publication, artifact approval/restore, constraint override, external write tools, billing/credits, platform admin/provider/registry/DLQ and agent writes."
+    },
+    {
+      "id": "NODE65-GAP-303",
+      "severity": "P0",
+      "status": "open",
+      "title": "Deletion worker and irreversible adapters are not production-composed",
+      "evidence_required": "Durable idempotent worker proves identify -> hold check -> deactivate -> erase -> object GC -> search/vector GC -> completion, including crash/retry recovery and Legal Hold races."
+    },
+    {
+      "id": "NODE65-GAP-304",
+      "severity": "P0",
+      "status": "open",
+      "title": "Audit export worker/download lifecycle is not production-composed",
+      "evidence_required": "Durable JSON/CSV export job, bounded query, encrypted object result, short-lived signed download, authorization recheck and audit of export/download."
+    },
+    {
+      "id": "NODE65-GAP-305",
+      "severity": "P0",
+      "status": "open",
+      "title": "Retention sweeper and physical GC enforcement are not wired",
+      "evidence_required": "Production-like sweeper proves active policy version selection, candidate calculation, Legal Hold exclusion, object/search/vector deletion and completion evidence without mutating append-only audit facts."
+    },
+    {
+      "id": "NODE65-GAP-306",
+      "severity": "P0",
+      "status": "open",
+      "title": "Platform security unified audit query is incomplete",
+      "evidence_required": "SECURITY_ADMIN can query safe platform-admin audit plus organization canonical audit with explicit source identity and without leaking raw metadata/secrets; ordinary org admins remain tenant-scoped."
+    },
+    {
+      "id": "NODE65-GAP-307",
+      "severity": "P0",
+      "status": "open",
+      "title": "Data-subject scope discovery/anonymization is incomplete",
+      "evidence_required": "Real user/org deletion scope enumerates relational records, object storage, search/vector indexes, analytics identifiers and legally retained references; completion report proves each eligible surface removed/anonymized."
+    },
+    {
+      "id": "NODE65-GAP-308",
+      "severity": "P0",
+      "status": "open",
+      "title": "Hosted CI and production-like E2E not yet executed green",
+      "evidence_required": "GitHub-hosted workflow executes compile, Ruff, Pyright, pytest, full Alembic chain, append-only mutation rejection, legacy normalization, hash-chain writes and API contract regression successfully."
+    },
+    {
+      "id": "NODE65-GAP-401",
+      "severity": "P1",
+      "status": "open",
+      "title": "Jurisdiction-specific retention/legal requirements need professional review",
+      "evidence_required": "Launch-country legal/privacy review approves or replaces technical baseline retention policy versions."
+    },
+    {
+      "id": "NODE65-GAP-201",
+      "severity": "P0",
+      "status": "closed",
+      "title": "Canonical organization Audit facts are append-only",
+      "evidence": "0025 migration adds immutable UPDATE/DELETE trigger; application exposes append/search but no ordinary audit mutation route."
+    },
+    {
+      "id": "NODE65-GAP-202",
+      "severity": "P0",
+      "status": "closed",
+      "title": "Audit payload redaction contract exists",
+      "evidence": "Recursive key redaction, prompt/content hashing, URL query stripping and secret-shaped free-text scrubbing are implemented before persistence."
+    },
+    {
+      "id": "NODE65-GAP-203",
+      "severity": "P0",
+      "status": "closed",
+      "title": "Legal Hold blocks deletion core path",
+      "evidence": "Service checks recorded and live holds; repository rechecks active holds before ERASING and serializes hold/erase transitions per organization."
+    },
+    {
+      "id": "NODE65-GAP-204",
+      "severity": "P1",
+      "status": "closed",
+      "title": "Organization audit read is separated from governance management/export",
+      "evidence": "ADMIN retains admin.audit.read only; OWNER additionally receives governance.manage and audit.export."
+    },
+    {
+      "id": "NODE65-GAP-205",
+      "severity": "P1",
+      "status": "closed",
+      "title": "Agent actor attribution is explicit",
+      "evidence": "AGENT AuditActor requires run ref, version and human initiator and rejects actor_id=system."
+    }
+  ]
+}
