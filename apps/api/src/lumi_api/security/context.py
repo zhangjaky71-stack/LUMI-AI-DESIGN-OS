@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -25,6 +27,84 @@ _UNTRUSTED = {
     ContextTrust.TOOL_RESULT_UNTRUSTED,
     ContextTrust.ASSET_EXTRACT_UNTRUSTED,
 }
+_FORBIDDEN_METADATA_KEY_MARKERS = (
+    "password",
+    "passwd",
+    "authorization",
+    "api_key",
+    "apikey",
+    "access_token",
+    "refresh_token",
+    "session_secret",
+    "cookie",
+    "client_secret",
+    "private_key",
+    "card_number",
+    "cvc",
+    "cvv",
+    "prompt",
+    "raw_content",
+    "document_text",
+    "message_body",
+    "artifact_content",
+)
+_SECRET_VALUE_PREFIXES = (
+    "bearer ",
+    "sk-",
+    "github_pat_",
+    "ghp_",
+    "gho_",
+    "ghu_",
+    "ghs_",
+    "ghr_",
+)
+
+
+def _normalized_key(value: object) -> str:
+    return str(value).strip().casefold().replace("-", "_").replace(".", "_")
+
+
+def _safe_metadata_value(value: Any, *, depth: int = 0) -> Any:
+    if depth > 4:
+        raise SecurityContextError("SECURITY_CONTEXT_METADATA_DEPTH_EXCEEDED")
+    if isinstance(value, Mapping):
+        if len(value) > 32:
+            raise SecurityContextError("SECURITY_CONTEXT_METADATA_ITEMS_EXCEEDED")
+        result: dict[str, Any] = {}
+        for raw_key, item in value.items():
+            key = str(raw_key).strip()
+            if not key or len(key) > 80:
+                raise SecurityContextError("SECURITY_CONTEXT_METADATA_KEY_INVALID")
+            normalized = _normalized_key(key)
+            if any(marker in normalized for marker in _FORBIDDEN_METADATA_KEY_MARKERS):
+                raise SecurityContextError("SECURITY_CONTEXT_METADATA_SENSITIVE_KEY_FORBIDDEN")
+            result[key] = _safe_metadata_value(item, depth=depth + 1)
+        return result
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        if len(value) > 32:
+            raise SecurityContextError("SECURITY_CONTEXT_METADATA_ITEMS_EXCEEDED")
+        return [_safe_metadata_value(item, depth=depth + 1) for item in value]
+    if isinstance(value, bytes | bytearray):
+        raise SecurityContextError("SECURITY_CONTEXT_METADATA_BINARY_FORBIDDEN")
+    if isinstance(value, str):
+        if len(value) > 512:
+            raise SecurityContextError("SECURITY_CONTEXT_METADATA_VALUE_TOO_LONG")
+        normalized = value.strip().casefold()
+        if normalized.startswith(_SECRET_VALUE_PREFIXES) or any(
+            marker in normalized
+            for marker in (
+                "x-amz-signature=",
+                "access_token=",
+                "refresh_token=",
+                "api_key=",
+                "apikey=",
+            )
+        ):
+            raise SecurityContextError("SECURITY_CONTEXT_METADATA_SECRET_VALUE_FORBIDDEN")
+        return value
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    raise SecurityContextError("SECURITY_CONTEXT_METADATA_TYPE_FORBIDDEN")
 
 
 class ContextEnvelope(BaseModel):
@@ -47,7 +127,8 @@ class ContextEnvelope(BaseModel):
 
     @field_validator("source_ref")
     @classmethod
-    def reject_secret_bearing_refs(cls, value: str) -> str:
+    def sanitize_source_ref(cls, value: str) -> str:
+        value = value.strip()
         normalized = value.casefold()
         if any(
             marker in normalized
@@ -61,7 +142,25 @@ class ContextEnvelope(BaseModel):
             )
         ):
             raise SecurityContextError("SECURITY_CONTEXT_SECRET_REF_FORBIDDEN")
+        try:
+            parsed = urlsplit(value)
+        except ValueError as exc:
+            raise SecurityContextError("SECURITY_CONTEXT_SOURCE_REF_INVALID") from exc
+        if parsed.scheme in {"http", "https"}:
+            if not parsed.hostname or parsed.username or parsed.password:
+                raise SecurityContextError("SECURITY_CONTEXT_SOURCE_REF_INVALID")
+            # Query and fragment often carry tracking identifiers or transient access
+            # material. Context identity keeps only the stable public URL portion.
+            return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
         return value
+
+    @field_validator("metadata")
+    @classmethod
+    def validate_safe_metadata(cls, value: dict[str, Any]) -> dict[str, Any]:
+        safe = _safe_metadata_value(value)
+        if not isinstance(safe, dict):  # pragma: no cover - root type is fixed by Pydantic
+            raise SecurityContextError("SECURITY_CONTEXT_METADATA_INVALID")
+        return safe
 
     @model_validator(mode="after")
     def enforce_trust_boundary(self) -> ContextEnvelope:
