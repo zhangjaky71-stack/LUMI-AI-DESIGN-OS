@@ -37,7 +37,7 @@ class CanvasCommandBatchRequest(BaseModel):
     client_batch_id: UUID
     expected_design_document_version_id: UUID
     expected_version_number: int = Field(ge=1)
-    expected_revision: int = Field(ge=0)
+    expected_revision: int = Field(ge=1)
     descriptors: list[CanvasOperationDescriptorRequest] = Field(min_length=1, max_length=128)
 
 
@@ -45,7 +45,7 @@ class CanvasDocumentProjectionResponse(BaseModel):
     design_document_id: UUID
     design_document_version_id: UUID
     version_number: int = Field(ge=1)
-    revision: int = Field(ge=0)
+    revision: int = Field(ge=1)
     content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     active_page_id: UUID
     document: dict[str, Any]
