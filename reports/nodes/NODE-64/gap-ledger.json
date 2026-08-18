@@ -1,0 +1,90 @@
+{
+  "node": "NODE-64",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "updated_at": "2026-08-18",
+  "gaps": [
+    {
+      "id": "NODE64-GAP-001",
+      "severity": "P0",
+      "status": "open",
+      "title": "Production platform-admin service factory is not composed",
+      "evidence": "Admin dependencies fail closed with platform_admin_service_not_composed when app.state.platform_admin_service_factory is absent.",
+      "close_when": "The production API composition installs PostgresPlatformAdminServiceFactory with the real session factory and deployment smoke tests pass."
+    },
+    {
+      "id": "NODE64-GAP-002",
+      "severity": "P0",
+      "status": "open",
+      "title": "DLQ replay adapter is not composed",
+      "evidence": "PlatformAdminService raises ADMIN_DLQ_REPLAY_ADAPTER_NOT_COMPOSED rather than publishing directly.",
+      "close_when": "A production DeadLetterReplayPort publishes through the existing inbox/idempotency path and a duplicate replay race proves exactly-once business effect."
+    },
+    {
+      "id": "NODE64-GAP-003",
+      "severity": "P0",
+      "status": "open",
+      "title": "Registry release-gate evidence adapter is not composed",
+      "evidence": "Production alias promotion raises ADMIN_RELEASE_GATE_EVIDENCE_NOT_COMPOSED and the Admin UI labels the control fail-closed.",
+      "close_when": "Agent/Skill/Recipe aliases can only select a persisted version with verified release-gate evidence, with negative and positive integration tests."
+    },
+    {
+      "id": "NODE64-GAP-004",
+      "severity": "P0",
+      "status": "open",
+      "title": "Global admin authentication/bootstrap transport is not productized",
+      "evidence": "The Admin guard reuses the current organization-scoped browser session as authentication transport before resolving the separate platform_admin_principals record.",
+      "close_when": "A dedicated global-admin authentication/bootstrap flow exists without granting access from Organization OWNER and the first SUPER_ADMIN can be provisioned through an audited deployment process."
+    },
+    {
+      "id": "NODE64-GAP-101",
+      "severity": "P1",
+      "status": "open",
+      "title": "Organization/User/Project support explorer is not yet implemented",
+      "evidence": "NODE-64 core exposes failing run metadata but not full support-search pages.",
+      "close_when": "Metadata-only organization, user, and project support pages ship with session revoke/resend invite actions and audits."
+    },
+    {
+      "id": "NODE64-GAP-102",
+      "severity": "P1",
+      "status": "open",
+      "title": "Admin audit explorer and incident workflow are not yet implemented",
+      "evidence": "Admin audit writes are durable and append-only, but there is no dedicated search/read UI or incident lifecycle in this node implementation.",
+      "close_when": "Authorized audit search and incident pages ship without exposing secrets or private content by default."
+    },
+    {
+      "id": "NODE64-GAP-201",
+      "severity": "P1",
+      "status": "closed",
+      "title": "Organization roles were separated from platform-admin roles",
+      "evidence": "PlatformAdminRole is an independent enum and the service factory requires a platform_admin_principals row."
+    },
+    {
+      "id": "NODE64-GAP-202",
+      "severity": "P1",
+      "status": "closed",
+      "title": "Admin list responses minimize private content",
+      "evidence": "SafeRunSummary excludes run input/output and SafeDeadLetter excludes payload_json; frontend runtime parsers only retain safe fields."
+    },
+    {
+      "id": "NODE64-GAP-203",
+      "severity": "P1",
+      "status": "closed",
+      "title": "Provider and DLQ mutations are permissioned and audited",
+      "evidence": "Service permissions distinguish queue.manage, provider.ops and provider.manage; replay, discard and provider overrides append admin audit events."
+    },
+    {
+      "id": "NODE64-GAP-204",
+      "severity": "P1",
+      "status": "closed",
+      "title": "Feature flags are scoped, expiring and security-policy safe",
+      "evidence": "Flags support global/organization/user scope, optional expiry, owner/reason, and security_locked rows cannot be changed by ordinary feature-flag operations."
+    },
+    {
+      "id": "NODE64-GAP-205",
+      "severity": "P1",
+      "status": "closed",
+      "title": "Break-glass and admin audit records are append-only",
+      "evidence": "Database triggers reject UPDATE/DELETE on platform_admin_audit_events and platform_break_glass_grants; break-glass TTL is capped at 30 minutes."
+    }
+  ]
+}
