@@ -4,6 +4,8 @@ variable "vpc_id" { type = string }
 variable "public_subnet_ids" { type = list(string) }
 variable "private_subnet_ids" { type = list(string) }
 variable "app_security_group_id" { type = string }
+variable "app_internet_egress_security_group_id" { type = string }
+variable "sandbox_egress_security_group_id" { type = string }
 variable "alb_security_group_id" { type = string }
 variable "certificate_arn" { type = string }
 variable "kms_key_arn" { type = string }
@@ -63,6 +65,11 @@ variable "services" {
       service.autoscale_target_value > 0
     ])
     error_message = "Service images must be immutable digests and capacity/metric values must be valid."
+  }
+
+  validation {
+    condition     = contains(keys(var.services), "sandbox-runtime")
+    error_message = "The sandbox-runtime deployment unit is mandatory so restricted egress cannot be bypassed."
   }
 }
 
