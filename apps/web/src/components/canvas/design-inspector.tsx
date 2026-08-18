@@ -1,15 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { OperationDescriptor } from "@lumi/canvas-sdk";
 import type { DesignDocument, DesignNode } from "@lumi/design-ir";
 
-import {
-  brandBindings,
-  commonValue,
-  constraintBadges,
-  layerLabel,
-} from "@/lib/layers/model";
+import { brandBindings, commonValue, constraintBadges, layerLabel } from "@/lib/layers/model";
 
 export function DesignInspector({
   document,
@@ -38,14 +33,8 @@ export function DesignInspector({
   if (!nodes.length) {
     return (
       <aside className="design-inspector" aria-label="Inspector">
-        <header className="inspector-header">
-          <span className="canvas-panel-eyebrow">Properties</span>
-          <strong>Inspector</strong>
-        </header>
-        <div className="inspector-empty">
-          <strong>No selection</strong>
-          <p>Select a layer or object to inspect structured Design IR properties.</p>
-        </div>
+        <header className="inspector-header"><span className="canvas-panel-eyebrow">Properties</span><strong>Inspector</strong></header>
+        <div className="inspector-empty"><strong>No selection</strong><p>Select a layer or object to inspect structured Design IR properties.</p></div>
       </aside>
     );
   }
@@ -61,31 +50,22 @@ export function DesignInspector({
   const rotation = commonValue(nodes, (node) => number(node.transform?.rotation_deg, 0));
   const constraints = single ? constraintBadges(single) : [];
   const bindings = single ? brandBindings(single) : [];
-  const propertyEditable = canEdit && !allLocked;
+  const propertyEditable = canEdit && !anyLocked;
 
   const commitName = () => {
     if (!single || !propertyEditable || !name.trim() || name.trim() === layerLabel(single)) return;
-    onCommit({
-      type: "SET_PROPERTY",
-      targetIds: [single.id],
-      payload: { property: "name", value: name.trim() },
-      reason: "inspector rename",
-    });
+    onCommit({ type: "SET_PROPERTY", targetIds: [single.id], payload: { property: "name", value: name.trim() }, reason: "inspector rename" });
   };
 
   const applyNumber = (field: "x" | "y" | "width" | "height" | "rotation", value: number) => {
     if (!Number.isFinite(value) || !propertyEditable) return;
     const descriptors: OperationDescriptor[] = [];
     for (const node of nodes) {
-      if (node.locked) continue;
       if (field === "x" || field === "y") {
         descriptors.push({
           type: "MOVE_NODE",
           targetIds: [node.id],
-          payload: {
-            x: field === "x" ? value : number(node.transform?.x, 0),
-            y: field === "y" ? value : number(node.transform?.y, 0),
-          },
+          payload: { x: field === "x" ? value : number(node.transform?.x, 0), y: field === "y" ? value : number(node.transform?.y, 0) },
           reason: `inspector ${field}`,
         });
       } else if (field === "width" || field === "height") {
@@ -95,19 +75,11 @@ export function DesignInspector({
         descriptors.push({
           type: "RESIZE_NODE",
           targetIds: [node.id],
-          payload: {
-            width: field === "width" ? value : currentWidth,
-            height: field === "height" ? value : currentHeight,
-          },
+          payload: { width: field === "width" ? value : currentWidth, height: field === "height" ? value : currentHeight },
           reason: `inspector ${field}`,
         });
       } else {
-        descriptors.push({
-          type: "ROTATE_NODE",
-          targetIds: [node.id],
-          payload: { rotation_deg: value },
-          reason: "inspector rotation",
-        });
+        descriptors.push({ type: "ROTATE_NODE", targetIds: [node.id], payload: { rotation_deg: value }, reason: "inspector rotation" });
       }
     }
     if (descriptors.length) onCommitBatch(descriptors);
@@ -116,25 +88,21 @@ export function DesignInspector({
   return (
     <aside className="design-inspector" aria-label="Inspector">
       <header className="inspector-header">
-        <div>
-          <span className="canvas-panel-eyebrow">Properties</span>
-          <strong>{single ? layerLabel(single) : `${nodes.length} layers`}</strong>
-        </div>
+        <div><span className="canvas-panel-eyebrow">Properties</span><strong>{single ? layerLabel(single) : `${nodes.length} layers`}</strong></div>
         <span>{single?.kind ?? "MULTI"}</span>
       </header>
-
       <div className="inspector-scroll">
+        {anyLocked && nodes.length > 1 ? (
+          <div className="inspector-lock-warning" role="status">
+            Mixed locked selection: batch property edits are blocked. Select only editable nodes to apply a partial change explicitly.
+          </div>
+        ) : null}
+
         {single ? (
           <InspectorSection title="Identity">
             <label className="inspector-field inspector-field-wide">
               <span>Name</span>
-              <input
-                value={name}
-                disabled={!propertyEditable}
-                onChange={(event) => setName(event.target.value)}
-                onBlur={commitName}
-                onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
-              />
+              <input value={name} disabled={!propertyEditable} onChange={(event) => setName(event.target.value)} onBlur={commitName} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
             </label>
             <ReadOnlyRow label="Kind" value={single.kind} />
             <ReadOnlyRow label="Role" value={typeof single.role === "string" ? single.role : "—"} />
@@ -153,28 +121,10 @@ export function DesignInspector({
 
         <InspectorSection title="Appearance">
           <div className="inspector-toggle-row">
-            <button
-              type="button"
-              disabled={!canEdit || anyLocked}
-              onClick={() => onCommit({
-                type: "SET_PROPERTY",
-                targetIds: nodes.map((node) => node.id),
-                payload: { property: "visible", value: visible.mixed ? true : !visible.value },
-                reason: "inspector visibility",
-              })}
-            >
+            <button type="button" disabled={!canEdit || anyLocked} onClick={() => onCommit({ type: "SET_PROPERTY", targetIds: nodes.map((node) => node.id), payload: { property: "visible", value: visible.mixed ? true : !visible.value }, reason: "inspector visibility" })}>
               Visibility · {visible.mixed ? "Mixed" : visible.value ? "Visible" : "Hidden"}
             </button>
-            <button
-              type="button"
-              disabled={!canEdit || nodes.some((node) => node.metadata?.source_kind === "page")}
-              onClick={() => onCommit({
-                type: "SET_PROPERTY",
-                targetIds: nodes.map((node) => node.id),
-                payload: { property: "locked", value: !allLocked },
-                reason: allLocked ? "inspector unlock" : "inspector lock",
-              })}
-            >
+            <button type="button" disabled={!canEdit || nodes.some((node) => node.metadata?.source_kind === "page")} onClick={() => onCommit({ type: "SET_PROPERTY", targetIds: nodes.map((node) => node.id), payload: { property: "locked", value: !allLocked }, reason: allLocked ? "inspector unlock" : "inspector lock" })}>
               {allLocked ? "Unlock" : anyLocked ? "Lock all (mixed)" : "Lock"}
             </button>
           </div>
@@ -185,12 +135,7 @@ export function DesignInspector({
             disabled={!propertyEditable}
             min={0}
             max={100}
-            onCommit={(value) => onCommit({
-              type: "SET_PROPERTY",
-              targetIds: nodes.filter((node) => !node.locked).map((node) => node.id),
-              payload: { property: "opacity", value: Math.max(0, Math.min(100, value)) / 100 },
-              reason: "inspector opacity",
-            })}
+            onCommit={(value) => onCommit({ type: "SET_PROPERTY", targetIds: nodes.map((node) => node.id), payload: { property: "opacity", value: Math.max(0, Math.min(100, value)) / 100 }, reason: "inspector opacity" })}
           />
         </InspectorSection>
 
@@ -210,7 +155,7 @@ export function DesignInspector({
                 }}
               />
             </label>
-            <ReadOnlyRow label="Font controls" value="Server text-style projection pending" />
+            <ReadOnlyRow label="Font controls" value="TextStyle projection/edit contract pending" />
           </InspectorSection>
         ) : null}
 
@@ -219,26 +164,18 @@ export function DesignInspector({
             {constraints.length ? constraints.map((constraint) => (
               <div className={`constraint-card severity-${constraint.severity.toLowerCase()}`} key={constraint.id}>
                 <div><strong>{constraint.type}</strong><span>{constraint.severity}</span></div>
-                <p>{constraint.reason}</p>
-                <small>Source: {constraint.source}</small>
+                <p>{constraint.reason}</p><small>Source: {constraint.source}</small>
               </div>
             )) : (
-              <div className="inspector-info-card">
-                <strong>No projected node constraint details</strong>
-                <p>Server NODE-39 validation remains authoritative for every persisted edit. The Inspector never treats an enabled field as proof that an edit is allowed.</p>
-              </div>
+              <div className="inspector-info-card"><strong>No projected node constraint details</strong><p>Server NODE-39 validation remains authoritative for every persisted edit. An enabled field is never treated as proof that an edit is allowed.</p></div>
             )}
           </InspectorSection>
         ) : null}
 
         {single ? (
           <InspectorSection title="Brand Binding">
-            {bindings.length ? bindings.map((binding) => (
-              <div className="brand-binding-row" key={`${binding.property}:${binding.tokenRef}`}>
-                <span>{binding.property}</span><code>{binding.tokenRef}</code>
-              </div>
-            )) : <p className="inspector-muted">No token binding is projected for this node.</p>}
-            <p className="inspector-help">Bound visual properties are read-only in this core slice; NODE-56 will never silently detach a brand token.</p>
+            {bindings.length ? bindings.map((binding) => <div className="brand-binding-row" key={`${binding.property}:${binding.tokenRef}`}><span>{binding.property}</span><code>{binding.tokenRef}</code></div>) : <p className="inspector-muted">No token binding is projected for this node.</p>}
+            <p className="inspector-help">Bound visual properties are read-only in this core slice; NODE-56 never silently detaches a brand token.</p>
           </InspectorSection>
         ) : null}
 
@@ -254,47 +191,17 @@ export function DesignInspector({
   );
 }
 
-function InspectorSection({ title, children }: { title: string; children: React.ReactNode }) {
+function InspectorSection({ title, children }: { title: string; children: ReactNode }) {
   return <section className="inspector-section"><h3>{title}</h3>{children}</section>;
 }
 
-function NumberField({
-  label,
-  value,
-  mixed,
-  disabled,
-  min,
-  max,
-  onCommit,
-}: {
-  label: string;
-  value: number | undefined;
-  mixed: boolean;
-  disabled: boolean;
-  min?: number;
-  max?: number;
-  onCommit: (value: number) => void;
-}) {
+function NumberField({ label, value, mixed, disabled, min, max, onCommit }: { label: string; value: number | undefined; mixed: boolean; disabled: boolean; min?: number; max?: number; onCommit: (value: number) => void }) {
   const [draft, setDraft] = useState(value === undefined ? "" : format(value));
   useEffect(() => setDraft(value === undefined ? "" : format(value)), [value]);
   return (
     <label className="inspector-field">
       <span>{label}</span>
-      <input
-        type="number"
-        value={draft}
-        placeholder={mixed ? "Mixed" : "—"}
-        disabled={disabled}
-        min={min}
-        max={max}
-        step="any"
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => {
-          const parsed = Number(draft);
-          if (draft.trim() && Number.isFinite(parsed)) onCommit(parsed);
-        }}
-        onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
-      />
+      <input type="number" value={draft} placeholder={mixed ? "Mixed" : "—"} disabled={disabled} min={min} max={max} step="any" onChange={(event) => setDraft(event.target.value)} onBlur={() => { const parsed = Number(draft); if (draft.trim() && Number.isFinite(parsed)) onCommit(parsed); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
     </label>
   );
 }
@@ -302,19 +209,9 @@ function NumberField({
 function ReadOnlyRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return <div className="inspector-readonly"><span>{label}</span><span className={mono ? "is-mono" : ""}>{value}</span></div>;
 }
-
-function number(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-function numeric(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function format(value: number): string {
-  return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
-}
-
+function number(value: unknown, fallback: number): number { return typeof value === "number" && Number.isFinite(value) ? value : fallback; }
+function numeric(value: unknown): number | undefined { return typeof value === "number" && Number.isFinite(value) ? value : undefined; }
+function format(value: number): string { return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000); }
 function semanticTags(node: DesignNode): string[] {
   const semantic = node.semantic;
   if (!semantic || typeof semantic !== "object") return [];
