@@ -53,10 +53,9 @@ locals {
       max_capacity  = 8
       environment = merge(local.common_environment, { LUMI_ROLE = "agent-runtime" })
       secret_arns = {
-        LUMI_DATABASE_URL          = local.secret_arns["database/app"]
-        LUMI_REDIS_URL             = local.secret_arns["redis/url"]
-        LUMI_RABBITMQ_URL          = local.secret_arns["rabbitmq/url"]
-        LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"]
+        LUMI_DATABASE_URL = local.secret_arns["database/app"]
+        LUMI_REDIS_URL    = local.secret_arns["redis/url"]
+        LUMI_RABBITMQ_URL = local.secret_arns["rabbitmq/url"]
       }
       s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["sandbox"]]
       autoscale_metric_name  = "AgentPendingRuns"
@@ -71,7 +70,11 @@ locals {
       min_capacity  = 2
       max_capacity  = 6
       environment = merge(local.common_environment, { LUMI_ROLE = "model-gateway" })
-      secret_arns = { LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"] }
+      secret_arns = {
+        LUMI_DATABASE_URL          = local.secret_arns["database/app"]
+        LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"]
+        LUMI_MEDIA_PROVIDER_SECRET = local.secret_arns["providers/media"]
+      }
       s3_bucket_arns         = []
       autoscale_metric_name  = "ModelGatewayInflight"
       autoscale_target_value = 40
@@ -103,9 +106,8 @@ locals {
       max_capacity  = 12
       environment = merge(local.common_environment, { LUMI_ROLE = "worker-media" })
       secret_arns = {
-        LUMI_REDIS_URL             = local.secret_arns["redis/url"]
-        LUMI_RABBITMQ_URL          = local.secret_arns["rabbitmq/url"]
-        LUMI_MEDIA_PROVIDER_SECRET = local.secret_arns["providers/media"]
+        LUMI_REDIS_URL    = local.secret_arns["redis/url"]
+        LUMI_RABBITMQ_URL = local.secret_arns["rabbitmq/url"]
       }
       s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["exports"]]
       autoscale_metric_name  = "MediaQueueBacklog"
