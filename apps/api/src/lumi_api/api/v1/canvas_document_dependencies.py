@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Generator
+from contextlib import AbstractContextManager
 from typing import Annotated, Protocol
 from uuid import UUID
 
@@ -38,16 +40,26 @@ class CanvasDocumentService(Protocol):
     ) -> CanvasCommandBatchResponse: ...
 
 
-def get_canvas_document_service(request: Request) -> CanvasDocumentService:
-    service = getattr(request.app.state, "canvas_document_service", None)
-    if service is None:
+class CanvasDocumentServiceFactory(Protocol):
+    def __call__(self) -> AbstractContextManager[CanvasDocumentService]: ...
+
+
+def get_canvas_document_service(
+    request: Request,
+) -> Generator[CanvasDocumentService, None, None]:
+    factory = getattr(request.app.state, "canvas_document_service_factory", None)
+    if factory is None:
         raise ApiProblem(
             status=503,
             code="canvas_document_service_not_composed",
             title="Canvas document service unavailable",
-            detail="The DesignDocument projection/command service is not composed in this deployment.",
+            detail=(
+                "The request-scoped DesignDocument projection/command service "
+                "factory is not composed in this deployment."
+            ),
         )
-    return service
+    with factory() as service:
+        yield service
 
 
 CanvasDocumentServiceDependency = Annotated[
