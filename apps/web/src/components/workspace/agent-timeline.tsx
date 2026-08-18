@@ -16,7 +16,7 @@ export function AgentTimeline({ control, items, onOpenArtifact, onApprove, appro
   control: RunControlSnapshot | null;
   items: readonly WorkspaceTimelineItem[];
   onOpenArtifact: (artifact: ExactArtifactRef) => void;
-  onApprove?: () => void;
+  onApprove: (() => void) | undefined;
   approvalPending?: boolean;
 }) {
   const [filter, setFilter] = useState<AgentTimelineFilter>("all");
