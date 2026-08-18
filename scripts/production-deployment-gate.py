@@ -15,6 +15,7 @@ REGION = re.compile(r"^[a-z]{2}(?:-gov)?-[a-z]+-[0-9]+$")
 ROLE_ARN = re.compile(r"^arn:aws(?:-[a-z]+)?:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$")
 CERT_ARN = re.compile(r"^arn:aws(?:-[a-z]+)?:acm:[a-z0-9-]+:[0-9]{12}:certificate/[A-Za-z0-9-]+$")
 READY_EXTERNAL = {"READY", "DISABLED_BY_RELEASE_SCOPE"}
+MAX_DAILY_PROVIDER_SPEND_USD = 100.0
 
 
 class DeploymentGateError(RuntimeError):
@@ -108,6 +109,14 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
         for key in sorted(required_limits):
             value = limits.get(key)
             require(isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < float(value) <= 100000, f"first_day_limits.{key} must be finite and positive", blockers)
+        provider_limit = limits.get("daily_provider_spend_usd")
+        require(
+            isinstance(provider_limit, (int, float))
+            and not isinstance(provider_limit, bool)
+            and 0 < float(provider_limit) <= MAX_DAILY_PROVIDER_SPEND_USD,
+            "first_day_limits.daily_provider_spend_usd must be > 0 and <= 100",
+            blockers,
+        )
 
     rollback = manifest.get("rollback")
     if not isinstance(rollback, dict):
