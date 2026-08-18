@@ -2,7 +2,7 @@
   "node": "NODE-67",
   "title": "Observability, Telemetry & SLOs",
   "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
-  "updated_at": "2026-08-18T13:00:00Z",
+  "updated_at": "2026-08-18T13:20:00Z",
   "gaps": [
     {
       "id": "NODE67-GAP-101",
@@ -30,7 +30,7 @@
       "severity": "P0",
       "status": "open",
       "area": "langsmith",
-      "summary": "Fail-open LangSmith port is implemented, but a production LangSmith/OTel adapter, Agent/LLM trace fan-out and eval integration are not composed or executed."
+      "summary": "Fail-open and locally sanitized LangSmith port is implemented, but a production LangSmith/OTel adapter, Agent/LLM trace fan-out and eval integration are not composed or executed."
     },
     {
       "id": "NODE67-GAP-105",
@@ -86,7 +86,7 @@
       "severity": "P0",
       "status": "open",
       "area": "telemetry-governance",
-      "summary": "Production telemetry retention/privacy/access control, Collector backpressure/HA, metric label-value cardinality budgets, sampling-state/cost policy and exporter-drop monitoring require deployment evidence."
+      "summary": "Production telemetry retention/privacy/access control, Collector backpressure/HA, metric label-value cardinality budgets, distributed sampling-state/cost policy and exporter-drop monitoring require deployment evidence."
     },
     {
       "id": "NODE67-GAP-113",
@@ -100,7 +100,7 @@
       "severity": "P0",
       "status": "closed",
       "area": "http-correlation-core",
-      "summary": "RequestIdMiddleware owns bounded X-Request-ID/X-Correlation-ID plus W3C traceparent/tracestate continuation and response propagation. Invalid request/correlation identifiers fall back to canonical generated values; invalid traceparent restarts a local trace; invalid tracestate is discarded without rejecting business requests."
+      "summary": "RequestIdMiddleware owns bounded X-Request-ID/X-Correlation-ID plus W3C traceparent/tracestate continuation and response propagation. Invalid request/correlation identifiers fall back to canonical generated values; invalid traceparent restarts a local trace; invalid tracestate is discarded without rejecting business requests. Locally generated traces advertise random=1, sampled=0 while local recording is deferred."
     },
     {
       "id": "NODE67-GAP-202",
@@ -128,21 +128,21 @@
       "severity": "P0",
       "status": "closed",
       "area": "fail-open-telemetry",
-      "summary": "SafeTelemetry and SafeLangSmithTracer swallow exporter/vendor failures, and malformed telemetry correlation/trace headers are replaced or discarded, so observability cannot become a business availability dependency."
+      "summary": "SafeTelemetry and SafeLangSmithTracer swallow exporter/vendor/telemetry-validation failures, and malformed telemetry correlation/trace headers are replaced or discarded, so observability cannot become a business availability dependency."
     },
     {
       "id": "NODE67-GAP-206",
       "severity": "P0",
       "status": "closed",
       "area": "telemetry-data-safety",
-      "summary": "Structured log/span attribute validation rejects prompt/content/credential/secret fields; metric label keys use a fixed allowlist, organization/run identifier keys are rejected, and HTTP route labels use route templates. Production label-value cardinality budgets remain separately open under NODE67-GAP-112."
+      "summary": "Structured log/span attribute validation rejects prompt/content/credential/secret keys plus obvious embedded credential/signature values; log identifiers/messages are bounded, LangSmith fan-out reuses the safe-attribute boundary, metric label keys use a fixed allowlist, organization/run identifier keys are rejected, and HTTP route labels use route templates. Production label-value cardinality budgets remain separately open under NODE67-GAP-112."
     },
     {
       "id": "NODE67-GAP-207",
       "severity": "P0",
       "status": "closed",
       "area": "sampling-core",
-      "summary": "Deterministic normal-trace sampling is implemented while ERROR/CRITICAL/forced evidence is never sampled away. Distributed sampling-state consistency and production policy remain deployment concerns."
+      "summary": "Deterministic normal-trace sampling is implemented while ERROR/CRITICAL/forced evidence is never sampled away locally; locally generated trace flags correctly mark random trace IDs with sampled unset during deferred recording. Distributed sampled-bit consistency and production policy remain open under telemetry governance."
     },
     {
       "id": "NODE67-GAP-208",
@@ -163,7 +163,7 @@
       "severity": "P0",
       "status": "closed",
       "area": "node66-response-security-compat",
-      "summary": "An outer final response-header enforcement layer preserves NODE-66 CSP/nosniff/frame/referrer/HSTS policy across correlation/idempotency middleware response paths without changing input security gates or production docs shutdown."
+      "summary": "NODE-66 SecurityHTTPMiddleware remains the response-security authority on contract paths; NODE-67 trace/correlation metadata is fail-open and does not synthesize a pre-security response, while boundary tests verify CSP/nosniff/frame/referrer/HSTS policy and production docs shutdown remain intact. No separate final-header middleware is claimed."
     }
   ]
 }
