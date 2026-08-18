@@ -77,7 +77,6 @@ jobs:
         run: |
           pnpm --filter @lumi/web exec eslint \
             src/lib/layers \
-            src/components/canvas \
-            'src/app/(shell)/workspace/canvas.css'
+            src/components/canvas
       - name: Production Next.js build
         run: pnpm --filter @lumi/web build
