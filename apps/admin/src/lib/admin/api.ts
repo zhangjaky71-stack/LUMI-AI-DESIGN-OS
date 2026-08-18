@@ -79,6 +79,15 @@ async function request(
   return payload;
 }
 
+async function permissionScoped<T>(operation: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof AdminApiError && error.status === 403) return fallback;
+    throw error;
+  }
+}
+
 export async function loadAdminPrincipal(organizationId: string): Promise<PlatformAdminPrincipal> {
   return parsePlatformAdminPrincipal(await request(organizationId, "/api/v1/admin/me"));
 }
@@ -88,7 +97,10 @@ export async function loadAdminDashboard(organizationId: string): Promise<AdminD
 }
 
 export async function loadFailingRuns(organizationId: string): Promise<SafeRunSummary[]> {
-  return parseSafeRuns(await request(organizationId, "/api/v1/admin/runs/failing?limit=50"));
+  return permissionScoped(
+    async () => parseSafeRuns(await request(organizationId, "/api/v1/admin/runs/failing?limit=50")),
+    [],
+  );
 }
 
 export async function loadDeadLetters(organizationId: string): Promise<SafeDeadLetter[]> {
@@ -96,7 +108,10 @@ export async function loadDeadLetters(organizationId: string): Promise<SafeDeadL
 }
 
 export async function loadProviders(organizationId: string): Promise<ProviderControlSummary[]> {
-  return parseProviders(await request(organizationId, "/api/v1/admin/providers?limit=100"));
+  return permissionScoped(
+    async () => parseProviders(await request(organizationId, "/api/v1/admin/providers?limit=100")),
+    [],
+  );
 }
 
 export async function loadFeatureFlags(organizationId: string): Promise<FeatureFlag[]> {
