@@ -65,7 +65,7 @@ def clean_manifest(acceptance_path: str) -> dict[str, Any]:
             "max_org_concurrent_agent_runs": 4,
             "max_org_concurrent_generations": 4,
             "max_org_concurrent_video_jobs": 1,
-            "daily_provider_spend_usd": 250,
+            "daily_provider_spend_usd": 100,
             "invite_rate_per_hour": 20,
         },
         "rollback": {
@@ -130,6 +130,13 @@ def main() -> int:
     rollout_swap["rollout"]["public_api_canary_percent"] = 100
     require(gate.evaluate(rollout_swap, decision, acceptance_path)["passed"] is False, "all-at-once public rollout must block")
 
+    provider_spend_above_hard_stop = copy.deepcopy(clean)
+    provider_spend_above_hard_stop["first_day_limits"]["daily_provider_spend_usd"] = 100.01
+    require(
+        gate.evaluate(provider_spend_above_hard_stop, decision, acceptance_path)["passed"] is False,
+        "production provider spend limit above $100 must block",
+    )
+
     no_rollback = copy.deepcopy(clean)
     no_rollback["rollback"]["database_backward_compatible"] = False
     require(gate.evaluate(no_rollback, decision, acceptance_path)["passed"] is False, "unproven DB rollback compatibility must block")
@@ -151,6 +158,7 @@ def main() -> int:
             "migration_swap_blocked": True,
             "mutable_image_blocked": True,
             "all_at_once_rollout_blocked": True,
+            "provider_spend_above_100_blocked": True,
             "db_rollback_unproven_blocked": True,
             "external_pending_blocked": True,
             "missing_approval_blocked": True
