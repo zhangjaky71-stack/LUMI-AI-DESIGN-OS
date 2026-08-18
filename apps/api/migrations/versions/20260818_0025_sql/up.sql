@@ -1,3 +1,55 @@
+UPDATE audit_events
+SET details_json = COALESCE(details_json, '{}'::jsonb) || jsonb_build_object(
+  'node65_legacy_actor_type', actor_type,
+  'node65_legacy_actor_id', actor_id
+)
+WHERE actor_type <> upper(actor_type)
+   OR upper(actor_type) NOT IN ('USER','API_TOKEN','AGENT','SERVICE','PLATFORM_ADMIN')
+   OR actor_id IS NULL
+   OR length(btrim(actor_id)) = 0;
+
+-- statement-breakpoint
+
+UPDATE audit_events
+SET actor_type = CASE
+      WHEN upper(actor_type) IN ('USER','API_TOKEN','AGENT','SERVICE','PLATFORM_ADMIN')
+        THEN upper(actor_type)
+      ELSE 'SERVICE'
+    END,
+    actor_id = COALESCE(NULLIF(btrim(actor_id), ''), 'legacy:unknown');
+
+-- statement-breakpoint
+
+UPDATE audit_events
+SET details_json = COALESCE(details_json, '{}'::jsonb) || jsonb_build_object(
+  'node65_legacy_event_hash', event_hash
+)
+WHERE event_hash !~ '^[0-9a-f]{64}$';
+
+-- statement-breakpoint
+
+UPDATE audit_events
+SET event_hash = encode(digest('node65-legacy:' || id::text || ':' || event_hash, 'sha256'), 'hex')
+WHERE event_hash !~ '^[0-9a-f]{64}$';
+
+-- statement-breakpoint
+
+ALTER TABLE audit_events ALTER COLUMN actor_id SET NOT NULL;
+
+-- statement-breakpoint
+
+ALTER TABLE audit_events
+  ADD CONSTRAINT ck_audit_events_actor_type
+  CHECK (actor_type IN ('USER','API_TOKEN','AGENT','SERVICE','PLATFORM_ADMIN'));
+
+-- statement-breakpoint
+
+ALTER TABLE audit_events
+  ADD CONSTRAINT ck_audit_events_event_hash
+  CHECK (event_hash ~ '^[0-9a-f]{64}$');
+
+-- statement-breakpoint
+
 ALTER TABLE audit_events
   ADD COLUMN IF NOT EXISTS session_ref VARCHAR(255),
   ADD COLUMN IF NOT EXISTS api_token_ref UUID,
