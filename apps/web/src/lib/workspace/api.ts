@@ -83,7 +83,7 @@ export async function resumeAgentRun(
     value: unknown;
   },
 ): Promise<RunControlSnapshot> {
-  const payload = await api.post<unknown>(
+  await api.post<unknown>(
     `/api/v1/agent-runs/${encodeURIComponent(agentRunId)}/resume`,
     {
       operation_id: input.operationId,
@@ -94,7 +94,7 @@ export async function resumeAgentRun(
     },
     { headers: tenantHeaders(organizationId) },
   );
-  return parseRunControlSnapshot(payload);
+  return getRunControl(organizationId, agentRunId);
 }
 
 export function tenantHeaders(
