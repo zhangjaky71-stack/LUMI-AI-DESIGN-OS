@@ -536,7 +536,27 @@ class SideEffectGateway:
             )
             raise
         except SideEffectExecutionError as exc:
+            if handle.provider_request_recorded:
+                await self.fail_needs_reconciliation(
+                    claim.snapshot.id,
+                    lease_owner=lease_owner,
+                    error_code=exc.code,
+                )
+                raise
+            if handle.provider_attempt_started:
+                await self.mark_ambiguous(
+                    claim.snapshot.id,
+                    lease_owner=lease_owner,
+                    reason=(
+                        "generic retryable/final side-effect error occurred after provider attempt "
+                        "started without a durable provider request id; only an explicit "
+                        "provider-not-accepted classification may clear the barrier"
+                    ),
+                )
+                raise AmbiguousSideEffectError(str(exc)) from exc
             if exc.retryable:
+                # No provider attempt ever began, so retrying cannot duplicate a
+                # paid side effect even though the error type is generic.
                 await self.fail_retryable(
                     claim.snapshot.id,
                     lease_owner=lease_owner,
@@ -607,11 +627,11 @@ class SideEffectGateway:
                 SET status = $3, error_category = $4, error_code = $5,
                     completed_at = CASE WHEN $3 = 'failed_final' THEN now() ELSE NULL END,
                     provider_attempt_started_at = CASE
-                        WHEN $6 THEN NULL ELSE provider_attempt_started_at END,
+                        WHEN $6::boolean THEN NULL ELSE provider_attempt_started_at END,
                     lease_owner = NULL, lease_expires_at = NULL,
                     updated_at = now(), version = version + 1
                 WHERE id = $1 AND lease_owner = $2 AND status = 'in_progress'
-                  AND (NOT $6 OR provider_request_id IS NULL)
+                  AND (NOT $6::boolean OR provider_request_id IS NULL)
                 RETURNING id
                 """,
                 operation_id,
