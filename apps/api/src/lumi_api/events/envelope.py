@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from lumi_api.domain.ids import new_uuid7
+from lumi_api.observability import current_telemetry_context, parse_traceparent
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -30,9 +31,11 @@ class EventEnvelope(EventContractModel, Generic[T]):
     aggregate_id: UUID
     aggregate_version: int | None = Field(default=None, ge=1)
     producer: str = Field(pattern=r"^[a-z][a-z0-9_.:-]{0,127}$")
+    request_id: str | None = Field(default=None, min_length=1, max_length=128)
     correlation_id: str | None = Field(default=None, min_length=1, max_length=128)
     causation_id: UUID | None = None
     traceparent: str | None = Field(default=None, pattern=TRACEPARENT_PATTERN)
+    tracestate: str | None = Field(default=None, max_length=512)
     payload: T
 
     @field_validator("occurred_at")
@@ -40,6 +43,13 @@ class EventEnvelope(EventContractModel, Generic[T]):
     def require_timezone(cls, value: datetime) -> datetime:
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("occurred_at must be timezone-aware")
+        return value
+
+    @field_validator("traceparent")
+    @classmethod
+    def require_valid_traceparent(cls, value: str | None) -> str | None:
+        if value is not None:
+            parse_traceparent(value)
         return value
 
 
@@ -52,12 +62,15 @@ def new_event(
     producer: str,
     payload: T,
     aggregate_version: int | None = None,
+    request_id: str | None = None,
     correlation_id: str | None = None,
     causation_id: UUID | None = None,
     traceparent: str | None = None,
+    tracestate: str | None = None,
     occurred_at: datetime | None = None,
     event_id: UUID | None = None,
 ) -> EventEnvelope[T]:
+    telemetry = current_telemetry_context()
     return EventEnvelope[T](
         event_id=event_id or new_uuid7(),
         event_type=event_type,
@@ -67,9 +80,11 @@ def new_event(
         aggregate_id=aggregate_id,
         aggregate_version=aggregate_version,
         producer=producer,
-        correlation_id=correlation_id,
+        request_id=request_id or (telemetry.request_id if telemetry else None),
+        correlation_id=correlation_id or (telemetry.correlation_id if telemetry else None),
         causation_id=causation_id,
-        traceparent=traceparent,
+        traceparent=traceparent or (telemetry.traceparent if telemetry else None),
+        tracestate=tracestate or (telemetry.tracestate if telemetry else None),
         payload=payload,
     )
 
