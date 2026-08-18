@@ -6,6 +6,7 @@ on:
       - "apps/api/src/lumi_api/security/**"
       - "apps/api/src/lumi_api/api/v1/app.py"
       - "apps/api/tests/test_security_node66.py"
+      - "apps/api/tests/test_security_context_node66.py"
       - "apps/api/tests/test_asset_security_contract.py"
       - "apps/api/tests/test_auth_tenant_contract.py"
       - "apps/api/tests/test_project_core_contract.py"
@@ -71,6 +72,7 @@ jobs:
             apps/api/src/lumi_api/security \
             apps/api/src/lumi_api/api/v1/app.py \
             apps/api/tests/test_security_node66.py \
+            apps/api/tests/test_security_context_node66.py \
             tools/node66
 
       - name: Static NODE-66 security acceptance
@@ -81,6 +83,7 @@ jobs:
           PYTHONPATH=apps/api/src:services/tool-gateway/src:services/sandbox-runtime/src \
             uv run pytest -q \
               apps/api/tests/test_security_node66.py \
+              apps/api/tests/test_security_context_node66.py \
               apps/api/tests/test_api_v1_contract.py \
               apps/api/tests/test_asset_security_contract.py \
               apps/api/tests/test_auth_tenant_contract.py \
@@ -116,6 +119,7 @@ jobs:
             apps/api/src/lumi_api/security \
             apps/api/src/lumi_api/api/v1/app.py \
             apps/api/tests/test_security_node66.py \
+            apps/api/tests/test_security_context_node66.py \
             tools/node66
 
       - name: Pyright NODE-66 security core
