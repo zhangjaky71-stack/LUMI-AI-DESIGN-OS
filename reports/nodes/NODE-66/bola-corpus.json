@@ -1,0 +1,225 @@
+{
+  "node": "NODE-66",
+  "status": "PARTIAL_NOT_COMPLETE",
+  "checked_at": "2026-08-18T10:18:00Z",
+  "policy": {
+    "verified_negative_requires": "At least one explicit two-tenant or cross-tenant negative test that exercises the resource authorization boundary and fails closed without resource enumeration.",
+    "partial_means": "Security-relevant authorization or tenant-isolation evidence exists, but a complete explicit two-tenant negative case for the route/resource family has not yet been identified in the current-track corpus.",
+    "missing_means": "No adequate family-level two-tenant negative evidence has been identified yet."
+  },
+  "families": [
+    {
+      "family": "auth_tenant",
+      "resource_types": ["Organization", "BrowserSession", "ApiToken"],
+      "status": "VERIFIED_NEGATIVE",
+      "evidence": [
+        {
+          "file": "apps/api/tests/test_auth_tenant_contract.py",
+          "test": "test_cross_tenant_session_selection_is_not_enumerable",
+          "proves": "A session belonging to ORG_A cannot select ORG_B and fails with TENANT_RESOURCE_NOT_FOUND."
+        },
+        {
+          "file": "apps/api/tests/test_auth_tenant_contract.py",
+          "test": "test_api_token_cannot_escalate_scopes_and_authenticates_tenant",
+          "proves": "API token scope escalation is rejected and the token principal remains bound to its organization."
+        }
+      ]
+    },
+    {
+      "family": "project",
+      "resource_types": ["Project", "Workspace", "Brand binding"],
+      "status": "VERIFIED_NEGATIVE",
+      "evidence": [
+        {
+          "file": "apps/api/tests/test_project_core_contract.py",
+          "test": "test_create_rejects_cross_tenant_workspace_and_brand",
+          "proves": "ORG_A cannot bind an ORG_B workspace or brand during Project creation."
+        },
+        {
+          "file": "apps/api/tests/test_project_core_contract.py",
+          "test": "test_cross_tenant_lookup_is_indistinguishable_from_missing",
+          "proves": "Cross-tenant Project lookup fails as TENANT_RESOURCE_NOT_FOUND and repository lookup returns no resource."
+        }
+      ]
+    },
+    {
+      "family": "asset",
+      "resource_types": ["Asset", "Upload", "Signed download"],
+      "status": "VERIFIED_NEGATIVE",
+      "evidence": [
+        {
+          "file": "apps/api/tests/test_asset_storage_contract.py",
+          "test": "test_cross_tenant_read_and_download_are_indistinguishable_from_missing",
+          "proves": "ORG_B cannot read or obtain a signed download for an ORG_A Asset; both fail as TENANT_RESOURCE_NOT_FOUND."
+        }
+      ]
+    },
+    {
+      "family": "platform_admin_separation",
+      "resource_types": ["PlatformAdminPrincipal", "Privileged operations"],
+      "status": "VERIFIED_BOUNDARY",
+      "evidence": [
+        {
+          "file": "apps/api/tests/test_admin_node64.py",
+          "test": "test_platform_admin_roles_are_separate_from_organization_owner",
+          "proves": "Organization OWNER/ADMIN roles do not exist in the PlatformAdminRole set and the factory requires a platform-admin principal."
+        },
+        {
+          "file": "apps/api/tests/test_admin_node64.py",
+          "test": "test_permission_matrix_does_not_collapse_high_risk_roles",
+          "proves": "Queue/provider/billing/security privileges remain separated across platform-admin roles."
+        }
+      ]
+    },
+    {
+      "family": "artifact_version",
+      "resource_types": ["Artifact", "ArtifactVersion", "Artifact storage"],
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "file": "apps/api/tests/test_artifact_engine_node42.py",
+          "test": "test_cross_tenant_equal_hash_does_not_share_authorization_scope",
+          "proves": "Identical content hashes in two organizations retain different organization IDs and storage buckets."
+        }
+      ],
+      "missing": "Explicit cross-tenant get/version/fork/restore/download denial using an ORG_A principal against an ORG_B ArtifactVersion."
+    },
+    {
+      "family": "task_agent_run",
+      "resource_types": ["Task", "AgentRun", "Run control"],
+      "status": "MISSING",
+      "evidence": [],
+      "missing": "Explicit two-tenant read/control/resume/cancel negative cases for Task and AgentRun."
+    },
+    {
+      "family": "canvas_design_document",
+      "resource_types": ["DesignDocument", "DesignDocumentVersion", "Canvas commands"],
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "file": "apps/api/tests/test_node55_canvas_document_contracts.py",
+          "test": "test_projection_preserves_canonical_identity_without_renderer_state",
+          "proves": "Canonical document/version identity is preserved in projection."
+        }
+      ],
+      "missing": "Explicit two-tenant Canvas projection and command-batch denial against another organization's exact document/version."
+    },
+    {
+      "family": "brand",
+      "resource_types": ["Brand", "BrandRuleSet", "BrandGuideProposal"],
+      "status": "MISSING",
+      "evidence": [],
+      "missing": "Explicit two-tenant Brand/RuleSet/Proposal read and mutation negative cases."
+    },
+    {
+      "family": "approval",
+      "resource_types": ["ApprovalRequest", "ApprovalDecision", "ApprovalEffect"],
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "file": "apps/api/tests/test_node62_approval_safety.py",
+          "test": "test_effect_api_projection_does_not_expose_internal_payload_or_error",
+          "proves": "Approval public projections minimize internal effect data."
+        }
+      ],
+      "missing": "Explicit ORG_A actor vs ORG_B Approval request/decision/effect negative cases."
+    },
+    {
+      "family": "collaboration",
+      "resource_types": ["CommentThread", "Comment", "Mention"],
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "file": "apps/api/tests/test_node61_collaboration_safety.py",
+          "test": "test_project_access_is_explicit_membership_not_org_only",
+          "proves": "Collaboration access requires explicit project access rather than organization membership alone."
+        },
+        {
+          "file": "apps/api/tests/test_node61_collaboration_safety.py",
+          "test": "test_mentions_require_project_access_and_notification_excludes_body",
+          "proves": "Mention target must have project access and notification payload minimizes comment content."
+        }
+      ],
+      "missing": "Explicit two-organization thread/comment read/edit/delete denial using foreign IDs."
+    },
+    {
+      "family": "export",
+      "resource_types": ["ExportJob", "ArtifactVersionSnapshot", "Download"],
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "file": "apps/api/tests/test_node60_export_product_contracts.py",
+          "test": "test_safe_job_output_does_not_expose_storage_locations",
+          "proves": "Public Export job/output contracts omit storage bucket/key internals."
+        }
+      ],
+      "missing": "Explicit two-tenant capability/create/job/cancel/download negative cases for a foreign ArtifactVersion/ExportJob."
+    },
+    {
+      "family": "cost",
+      "resource_types": ["Cost summary", "Usage"],
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "file": "apps/api/tests/test_cost_api_node27.py",
+          "test": "test_cost_api_does_not_expose_financial_write_routes",
+          "proves": "Cost API is read-only."
+        }
+      ],
+      "missing": "Explicit two-tenant Cost summary/usage negative response proving ORG_A cannot query ORG_B cost facts."
+    },
+    {
+      "family": "billing",
+      "resource_types": ["Subscription", "Credit wallet", "Invoice"],
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "file": "apps/api/tests/test_billing_node63.py",
+          "test": "test_billing_read_permission_is_enforced",
+          "proves": "Billing read fails closed without billing.read permission."
+        },
+        {
+          "file": "apps/api/tests/test_billing_node63.py",
+          "test": "test_webhook_router_is_signature_boundary_not_user_auth_boundary",
+          "proves": "Billing webhook and authenticated user Billing routes retain separate trust boundaries."
+        }
+      ],
+      "missing": "Explicit two-tenant subscription/wallet/invoice/portal negative cases using foreign organization data."
+    },
+    {
+      "family": "governance",
+      "resource_types": ["Audit", "LegalHold", "DeletionRequest", "AuditExport"],
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "file": "apps/api/tests/test_governance_node65.py",
+          "test": "test_org_admin_can_read_but_cannot_manage_governance",
+          "proves": "Organization ADMIN audit-read permission does not imply governance manage or audit export."
+        },
+        {
+          "file": "apps/api/tests/test_governance_node65.py",
+          "test": "test_legal_hold_marks_retention_candidate_and_blocks_deletion",
+          "proves": "Legal Hold blocks destructive deletion workflow."
+        }
+      ],
+      "missing": "Explicit two-tenant Audit search/Hold/Deletion/Export denial with foreign organization resource IDs."
+    }
+  ],
+  "acceptance": {
+    "verified_negative_families": ["auth_tenant", "project", "asset"],
+    "verified_non_tenant_boundary_families": ["platform_admin_separation"],
+    "incomplete_families": [
+      "artifact_version",
+      "task_agent_run",
+      "canvas_design_document",
+      "brand",
+      "approval",
+      "collaboration",
+      "export",
+      "cost",
+      "billing",
+      "governance"
+    ],
+    "node66_gap_102_can_close": false
+  }
+}
