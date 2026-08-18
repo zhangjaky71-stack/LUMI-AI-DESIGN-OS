@@ -70,19 +70,21 @@ def main() -> None:
     require(tests, "test_invalid_tracestate_is_discarded_without_breaking_valid_traceparent", "tracestate fail-open test")
     require(tests, "test_traceparent_parser_tolerates_additive_future_version_fields", "future traceparent version test")
 
-    # HTTP ingress owns canonical IDs and uses route templates rather than raw ids.
+    # HTTP ingress owns canonical telemetry IDs and uses route templates rather than raw ids.
     require(errors, 'request.headers.get("X-Correlation-ID")', "correlation header")
     require(errors, 'request.headers.get("traceparent")', "traceparent header")
     require(errors, 'response.headers["X-Request-ID"]', "request response header")
     require(errors, 'response.headers["X-Correlation-ID"]', "correlation response header")
     require(errors, 'response.headers["traceparent"]', "trace response header")
+    require(errors, "Request/correlation/trace headers are telemetry metadata", "telemetry input fail-open policy")
+    forbid(errors, "observability_trace_context_invalid", "telemetry metadata must not reject business requests")
+    require(boundary_tests, "test_invalid_correlation_id_falls_back_to_canonical_request_id", "correlation fail-open test")
     require(errors, 'candidate = getattr(route, "path", None)', "route-template metric label")
     require(errors, 'name="http.server.duration_ms"', "HTTP duration metric")
     require(errors, 'event="http.request.completed"', "HTTP structured log")
     forbid(errors, "request.url.path,\n                    \"http.route\"", "raw path metric label")
 
-    # Trace-context parsing may not swallow downstream business errors.
-    require(errors, "downstream application", "error-boundary comment")
+    # Trace/correlation parsing may not swallow downstream business errors.
     require(boundary_tests, "test_business_value_error_is_not_reclassified_as_trace_context_error", "business error regression")
     require(middleware_tests, "test_downstream_value_error_is_not_misclassified_as_trace_context", "middleware business error regression")
     require(middleware_tests, "test_invalid_trace_does_not_short_circuit_authoritative_auth_semantics", "trace fail-open auth-order regression")
