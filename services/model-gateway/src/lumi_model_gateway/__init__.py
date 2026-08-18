@@ -65,6 +65,7 @@ from .postgres_cost_accounting import (
 )
 from .postgres_registry import PostgresRegistryLoader, RegistryReadConnection
 from .pricing import PriceCard
+from .production import DurableCostGuardRequiredError, build_environment_budget_guard
 from .registry import InMemoryProviderHealthRegistry, InMemoryProviderRegistry
 from .registry_routing import RegistryAwareModelRouter
 from .routing import (
@@ -91,6 +92,7 @@ __all__ = [
     "CostTelemetrySink",
     "DefaultModelPolicyResolver",
     "DeliveryState",
+    "DurableCostGuardRequiredError",
     "ErrorCategory",
     "EvidenceConfidence",
     "InMemoryCapabilityRegistry",
@@ -145,5 +147,6 @@ __all__ = [
     "TelemetryEvent",
     "Timing",
     "Usage",
+    "build_environment_budget_guard",
     "compile_registry_seed",
 ]
