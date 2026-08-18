@@ -28,7 +28,27 @@ _FORBIDDEN_PUBLIC_KEYS = {
     "scratchpad",
     "raw_response",
     "tool_output",
+    "secret",
+    "password",
+    "credential",
+    "credentials",
+    "api_key",
+    "access_token",
+    "refresh_token",
+    "authorization",
+    "cookie",
+    "cookies",
+    "headers",
 }
+_FORBIDDEN_KEY_FRAGMENTS = (
+    "api_key",
+    "access_token",
+    "refresh_token",
+    "authorization",
+    "credential",
+    "password",
+    "secret",
+)
 
 
 class AgentRunInterruptResponse(BaseModel):
@@ -84,6 +104,9 @@ def _assert_public_payload(value: Any) -> None:
     if not isinstance(value, dict):
         return
     for key, item in value.items():
-        if key in _FORBIDDEN_PUBLIC_KEYS:
+        normalized = key.casefold()
+        if normalized in _FORBIDDEN_PUBLIC_KEYS or any(
+            fragment in normalized for fragment in _FORBIDDEN_KEY_FRAGMENTS
+        ):
             raise ValueError("AGENT_WORKSPACE_PRIVATE_EVENT_FIELD_FORBIDDEN")
         _assert_public_payload(item)
