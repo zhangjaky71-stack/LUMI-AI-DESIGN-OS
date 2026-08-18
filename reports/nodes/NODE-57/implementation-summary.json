@@ -1,0 +1,47 @@
+{
+  "node": "NODE-57",
+  "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "branch": "feat/node-57-agent-timeline",
+  "base": "feat/node-56-layers-inspector",
+  "implemented": [
+    "structured public run/task/tool/progress/approval/artifact/error/status Timeline model",
+    "canonical current-stage recovery from RunControlSnapshot including task_id",
+    "durable replay compatible history with existing Last-Event-ID reconnect/dedupe path",
+    "semantic tool-action labels without raw payload rendering",
+    "real current/total count progress only; no fabricated reasoning percentage",
+    "explicit retry/provider fallback and cost summaries from allowlisted fields only",
+    "sticky canonical approval/current-stage UX using existing stale resume fencing",
+    "exact ArtifactVersion Timeline navigation into Canvas",
+    "backend recursive rejection of reasoning and secret-like public event keys",
+    "browser recursive rejection of reasoning and secret-like public event keys",
+    "strict Timeline display allowlist that ignores unrelated payload fields",
+    "Timeline All/Agent/Artifacts/Attention filters",
+    "unit coverage for canonical recovery, approval, retry/fallback, progress, artifact identity, safe projection and errors"
+  ],
+  "evidence": [
+    "apps/api/src/lumi_api/api/v1/agent_workspace_schemas.py",
+    "apps/api/tests/test_node57_agent_timeline_contracts.py",
+    "apps/web/src/lib/workspace/types.ts",
+    "apps/web/src/lib/workspace/timeline.ts",
+    "apps/web/src/lib/workspace/reducer.ts",
+    "apps/web/src/components/workspace/agent-timeline.tsx",
+    "apps/web/src/components/workspace/ai-workspace.tsx",
+    "apps/web/src/app/(shell)/workspace/timeline.css",
+    "apps/web/src/lib/workspace/timeline.test.ts",
+    "apps/web/src/lib/workspace/types.test.ts",
+    "apps/web/src/lib/workspace/reducer.test.ts",
+    "apps/web/src/lib/workspace/stream.test.ts",
+    "tools/node57/validate_agent_timeline.py",
+    "docs/runtime/AGENT-TIMELINE-V1.md",
+    "reports/nodes/NODE-57/gap-ledger.json"
+  ],
+  "not_claimed": [
+    "production durable AgentEventReplayPort composition complete",
+    "independent canonical TaskGraph history API complete",
+    "producer retry/fallback/cost/error-action semantics standardized",
+    "Admin/Dev debug timeline complete",
+    "browser refresh/reconnect E2E green",
+    "safe-summary producer review green",
+    "hosted CI green"
+  ]
+}
