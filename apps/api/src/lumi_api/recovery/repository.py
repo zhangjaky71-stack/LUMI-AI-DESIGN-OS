@@ -111,18 +111,11 @@ class PostgresRecoveryScanner:
 
     @staticmethod
     def _runtime(row: RuntimeJobModel) -> RuntimeJobEvidence:
-        if row.operation_id is None:
-            # RuntimeJobEvidence keeps a UUID field so recovery decisions can state the
-            # exact preserved identity. A nil UUID means the legacy job has no durable
-            # operation identity and therefore cannot be treated as paid-idempotent.
-            operation_id = UUID(int=0)
-        else:
-            operation_id = row.operation_id
         return RuntimeJobEvidence(
             job_id=row.id,
             organization_id=row.organization_id,
             project_id=row.project_id,
-            operation_id=operation_id,
+            operation_id=row.operation_id,
             job_kind=row.job_kind,
             status=row.status,
             attempt_count=row.attempt_count,
