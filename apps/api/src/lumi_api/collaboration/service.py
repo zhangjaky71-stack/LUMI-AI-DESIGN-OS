@@ -11,8 +11,8 @@ from .contracts import (
     PresenceState,
     ThreadStatus,
 )
-from .postgres_repository import PostgresCollaborationRepository
 from .presence import PRESENCE_TTL_SECONDS, PresencePort
+from .repository import PostgresCollaborationRepository
 
 
 class CollaborationService:
@@ -172,28 +172,11 @@ class CollaborationService:
             actor_id=actor_id,
         )
         if artifact_version_id is not None:
-            artifact_row = self.repository.session.execute(
-                __import__("sqlalchemy").text(
-                    """
-                    SELECT a.id
-                    FROM artifact_versions av
-                    JOIN artifacts a ON a.id=av.artifact_id AND a.organization_id=av.organization_id
-                    WHERE av.id=:version_id
-                      AND av.organization_id=:organization_id
-                      AND a.project_id=:project_id
-                      AND a.deleted_at IS NULL
-                    """
-                ),
-                {
-                    "version_id": artifact_version_id,
-                    "organization_id": organization_id,
-                    "project_id": project_id,
-                },
-            ).scalar_one_or_none()
-            if artifact_row is None:
-                from .postgres_repository import CollaborationNotFound
-
-                raise CollaborationNotFound("ARTIFACT_VERSION_NOT_FOUND")
+            self.repository.require_project_artifact_version(
+                organization_id=organization_id,
+                project_id=project_id,
+                artifact_version_id=artifact_version_id,
+            )
         value = PresenceState(
             user_id=actor_id,
             display_name=display_name.strip(),
