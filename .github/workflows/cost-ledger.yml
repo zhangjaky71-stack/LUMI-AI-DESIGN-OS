@@ -5,11 +5,14 @@ on:
     paths:
       - "apps/api/alembic/**"
       - "apps/api/src/lumi_api/costs/**"
+      - "apps/api/src/lumi_api/model_gateway_runtime.py"
       - "apps/api/src/lumi_api/idempotency/ledger.py"
       - "apps/api/src/lumi_api/persistence/models/**"
       - "apps/api/src/lumi_api/api/**"
       - "apps/api/tests/test_cost_*.py"
+      - "apps/api/pyproject.toml"
       - "services/model-gateway/**"
+      - "pyproject.toml"
       - "scripts/validate_idempotency_contract.py"
       - "scripts/validate_cost_ledger_contract.py"
       - "scripts/integration_cost_ledger.py"
@@ -37,8 +40,10 @@ jobs:
           PYTHONPATH=apps/api/src:services/model-gateway/src
           python -m compileall -q
           apps/api/src/lumi_api/costs
+          apps/api/src/lumi_api/model_gateway_runtime.py
           apps/api/src/lumi_api/api/v1/cost_router.py
           apps/api/src/lumi_api/idempotency/ledger.py
+          apps/api/src/lumi_api/persistence/models/platform_cost_guard.py
           services/model-gateway/src/lumi_model_gateway
           apps/api/tests/test_cost_contracts.py
           apps/api/tests/test_cost_api_contract.py
@@ -87,8 +92,10 @@ jobs:
         run: >-
           uv run ruff check
           apps/api/src/lumi_api/costs
+          apps/api/src/lumi_api/model_gateway_runtime.py
           apps/api/src/lumi_api/idempotency/ledger.py
           apps/api/src/lumi_api/persistence/models/platform.py
+          apps/api/src/lumi_api/persistence/models/platform_cost_guard.py
           apps/api/src/lumi_api/persistence/models/__init__.py
           apps/api/src/lumi_api/api/contract_app.py
           apps/api/src/lumi_api/api/v1/contracts.py
@@ -112,6 +119,8 @@ jobs:
         run: >-
           uv run pyright
           apps/api/src/lumi_api/costs
+          apps/api/src/lumi_api/model_gateway_runtime.py
+          apps/api/src/lumi_api/persistence/models/platform_cost_guard.py
           apps/api/src/lumi_api/api/v1/cost_router.py
           apps/api/tests/test_cost_contracts.py
           apps/api/tests/test_cost_api_contract.py
