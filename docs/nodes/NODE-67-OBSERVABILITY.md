@@ -12,7 +12,7 @@
 
 生产故障不能靠“用户截图 + 猜”。建立从 Browser/API/Graph/Agent/Tool/Model/Queue/Worker/DB 到 Artifact 的关联观测，同时控制 PII、secret、高基数和 telemetry cost。
 
-OpenTelemetry 是 vendor-neutral instrumentation 层，统一 traces/metrics correlation；LangSmith 专注 Agent/LLM trace 与 eval，不替代基础设施可观测。业务运行不得依赖 Collector、trace backend 或 LangSmith 可用性。
+OpenTelemetry 是 vendor-neutral instrumentation 层，统一 traces/metrics correlation；LangSmith 专注 Agent/LLM trace 与 eval，不替代基础设施可观测。业务运行不得依赖 Collector、trace backend、LangSmith，**也不得依赖客户端提供正确的 telemetry headers**。
 
 当前实现已落地 correlation、安全 telemetry model、HTTP 基础 instrumentation、message propagation helper、fail-open telemetry、sampling、SLO/error-budget policy 与 dashboard/alert specification。**OpenTelemetry SDK/OTLP exporter/Collector、LangSmith adapter、生产 dashboards/alerts/synthetics 仍是 P0。**
 
@@ -32,7 +32,16 @@ operation_id
 provider_request_id
 ```
 
-当前 HTTP middleware 已支持 bounded `X-Request-ID` / `X-Correlation-ID` 与 W3C `traceparent` / `tracestate` 继续传播。Canonical EventEnvelope 可继承 request/correlation/trace context，供 queue/message consumer 创建 child context。
+当前 HTTP middleware 支持 bounded `X-Request-ID` / `X-Correlation-ID` 与 W3C `traceparent` / `tracestate` 继续传播，并统一采用 **telemetry metadata fail-open**：
+
+- 非法 `X-Request-ID` → 生成新的 canonical request ID；
+- 非法 `X-Correlation-ID` → 丢弃客户端值并回退到 canonical request ID；
+- 非法 `traceparent` → 不拒绝业务请求，启动新的本地 trace，并丢弃关联的 `tracestate`；
+- 合法 `traceparent` + 非法 `tracestate` → 保留 trace continuation，仅丢弃 `tracestate`；
+- `tracestate` 按 W3C grammar 做 member/key/value/duplicate/size 边界验证；
+- version `00` 使用固定长度语义；更高未知版本只消费已知前缀并降级输出为当前支持格式。
+
+Canonical EventEnvelope 可继承 request/correlation/trace context，供 queue/message consumer 创建 child context。
 
 日志不用每次全塞全部字段；业务 refs 进入 span/log 前必须经过 safe-field contract，metric labels 禁止 organization/run 等高基数维度。
 
@@ -108,7 +117,7 @@ Quality：constraint fail / critic score / repair success。
 
 Business：project creation / generation / export；禁止把用户内容放进 metric label。
 
-当前 `MetricPoint` 强制固定低基数 label allowlist；HTTP duration metric 已接入。其它生产 metric producers 仍是 P0。
+当前 `MetricPoint` 强制固定 metric label key allowlist；HTTP duration metric 已接入并使用 route template，而不是带 resource ID 的 raw URL。其它生产 metric producers、真实 cardinality budget 与 backend enforcement 仍是 P0。
 
 ## 6. Logs
 
@@ -135,7 +144,7 @@ safe fields
 - expensive full Agent traces：按环境/privacy/cost policy；
 - telemetry exporter failure：fail-open，但必须有 dropped-telemetry 指标/告警。
 
-当前 deterministic sampler 保证 ERROR/CRITICAL/forced evidence 不会被采掉。Collector tail/adaptive sampling 与 dropped-exporter observability 仍是部署 P0。
+当前 deterministic sampler 保证 ERROR/CRITICAL/forced evidence 不会被采掉。Collector tail/adaptive sampling、distributed sampling-state consistency 与 dropped-exporter observability 仍是部署 P0。
 
 ## 8. Dashboards
 
@@ -247,11 +256,15 @@ storage roundtrip scoped
 当前 core tests覆盖：
 
 - HTTP request/correlation/trace propagation；
+- invalid request/correlation metadata 的 fail-open fallback；
+- malformed W3C `traceparent` → new trace，不阻断业务；
+- malformed `tracestate` → discard，不破坏合法 trace continuation；
+- future traceparent version additive-field compatibility；
 - canonical event propagation / message continuation；
-- malformed W3C trace rejection；
 - telemetry exporter/LangSmith failure不影响业务；
+- downstream business `ValueError` 不会被重分类为 observability 输入错误；
 - log/attribute secret与 raw-content rejection；
-- metric high-cardinality guard；
+- metric high-cardinality key guard 与 HTTP route-template label；
 - error/critical sampling；
 - SLO/error-budget math；
 - middleware order 与 NODE-66 response-security compatibility。
@@ -260,11 +273,11 @@ storage roundtrip scoped
 
 ## 16. 验收标准
 
-- [x] HTTP correlation/request/trace context core implemented。
+- [x] HTTP correlation/request/trace context core implemented，非法 telemetry headers fail-open。
 - [x] EventEnvelope producer propagation 与 message continuation helper implemented。
 - [x] vendor-neutral telemetry contracts implemented。
 - [x] telemetry / LangSmith failures fail-open，不改变业务状态。
-- [x] logs/span fields有 secret/raw-content guard，metric labels有低基数 guard。
+- [x] logs/span fields有 secret/raw-content guard，metric label keys 有固定 allowlist且 HTTP 使用 route template。
 - [x] deterministic sampling 保证错误/关键证据不被采掉。
 - [x] SLO / error-budget core policy与 dashboard/alert specifications已建立。
 - [ ] Trace 可从 request 实际追到 Graph/Tool/Model/provider/Artifact。
