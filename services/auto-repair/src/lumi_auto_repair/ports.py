@@ -38,9 +38,16 @@ class RepairArtifactPort(Protocol):
         *,
         original_source: RepairSourceSnapshot,
         candidate: RepairCandidate,
-        quality: RepairQualitySnapshot,
         repair_job_id: str,
         actor_id: str,
+    ) -> RepairCandidate: ...
+
+    def approve_promoted_version(
+        self,
+        *,
+        promoted: RepairCandidate,
+        quality: RepairQualitySnapshot,
+        repair_job_id: str,
     ) -> str: ...
 
 
