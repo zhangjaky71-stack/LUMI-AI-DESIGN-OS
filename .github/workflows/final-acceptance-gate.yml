@@ -51,8 +51,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v6
-      - name: Require canonical frozen dependency graph
-        run: uv sync --frozen
+      - name: Require canonical frozen dependency graph for every workspace package
+        run: uv sync --all-packages --frozen
 
   final-decision:
     if: github.event_name == 'workflow_dispatch' && inputs.release_manifest_path != '' && inputs.acceptance_evidence_path != ''
