@@ -44,6 +44,7 @@ def main() -> None:
     node_doc = read("docs/nodes/NODE-66-SECURITY-HARDENING.md")
     report = read("reports/nodes/NODE-66/implementation.md")
     ledger = json.loads(read("reports/nodes/NODE-66/gap-ledger.json"))
+    bola = json.loads(read("reports/nodes/NODE-66/bola-corpus.json"))
 
     codeql = read(".github/workflows/codeql.yml")
     dependency_review = read(".github/workflows/dependency-review.yml")
@@ -172,10 +173,12 @@ def main() -> None:
         "severity: CRITICAL,HIGH",
         "uv lock --check",
         "tools/node21/test_docker_sandbox.py",
+        ".github/workflows/node-66-security-dast.yml",
     ):
         require(security_workflow, marker, f"blocking security workflow {marker}")
     forbid(security_workflow, "continue-on-error: true", "NODE-66 blocking gate downgrade")
     require(security_workflow, 'exit-code: "1"', "Trivy blocking exit")
+    require(security_workflow, "--format requirements.txt", "documented uv export format")
 
     # DAST wiring is guarded and blocking, but actual execution remains a P0.
     require(dast_workflow, "vars.LUMI_STAGING_URL", "staging target source")
@@ -185,6 +188,51 @@ def main() -> None:
     require(dast_workflow, "zaproxy/action-baseline@v0.15.0", "ZAP baseline action")
     require(dast_workflow, "fail_action: true", "ZAP blocking result")
     require(dast_workflow, "allow_issue_writing: false", "ZAP no issue mutation")
+
+    # BOLA inventory must be evidence-backed and remain fail-closed until every
+    # mandatory tenant resource family has an explicit two-tenant negative case.
+    mandatory_bola_families = {
+        "auth_tenant",
+        "project",
+        "asset",
+        "artifact_version",
+        "task_agent_run",
+        "canvas_design_document",
+        "brand",
+        "approval",
+        "collaboration",
+        "export",
+        "cost",
+        "billing",
+        "governance",
+        "platform_admin_separation",
+    }
+    families = {item["family"]: item for item in bola["families"]}
+    if set(families) != mandatory_bola_families:
+        missing = sorted(mandatory_bola_families - set(families))
+        extra = sorted(set(families) - mandatory_bola_families)
+        raise SystemExit(f"NODE66_VALIDATION_FAILED:BOLA family inventory mismatch:missing={missing}:extra={extra}")
+    if bola["status"] != "PARTIAL_NOT_COMPLETE":
+        raise SystemExit("NODE66_VALIDATION_FAILED:BOLA corpus must remain partial until all families verify")
+    if bola["acceptance"]["node66_gap_102_can_close"] is not False:
+        raise SystemExit("NODE66_VALIDATION_FAILED:BOLA GAP-102 cannot close while incomplete families remain")
+    for family in bola["families"]:
+        if family["status"] not in {"VERIFIED_NEGATIVE", "VERIFIED_BOUNDARY", "PARTIAL", "MISSING"}:
+            raise SystemExit(f"NODE66_VALIDATION_FAILED:unknown BOLA status:{family['family']}:{family['status']}")
+        for evidence in family.get("evidence", []):
+            source = read(evidence["file"])
+            require(source, f"def {evidence['test']}", f"BOLA evidence {family['family']}:{evidence['test']}")
+    for verified in ("auth_tenant", "project", "asset"):
+        if families[verified]["status"] != "VERIFIED_NEGATIVE":
+            raise SystemExit(f"NODE66_VALIDATION_FAILED:BOLA verified family regressed:{verified}")
+    if families["platform_admin_separation"]["status"] != "VERIFIED_BOUNDARY":
+        raise SystemExit("NODE66_VALIDATION_FAILED:Platform Admin separation evidence regressed")
+    incomplete = [
+        name for name, family in families.items()
+        if family["status"] in {"PARTIAL", "MISSING"}
+    ]
+    if not incomplete:
+        raise SystemExit("NODE66_VALIDATION_FAILED:BOLA corpus claims completion without explicit review")
 
     # Threat model/version/non-claims are acceptance inputs, not decorative docs.
     for marker in (
@@ -217,6 +265,8 @@ def main() -> None:
     for gap_id in ("NODE66-GAP-208", "NODE66-GAP-209"):
         if not any(gap["id"] == gap_id and gap["status"] == "closed" for gap in ledger["gaps"]):
             raise SystemExit(f"NODE66_VALIDATION_FAILED:missing closed wiring evidence:{gap_id}")
+    if not any(gap["id"] == "NODE66-GAP-102" and gap["status"] == "open" for gap in ledger["gaps"]):
+        raise SystemExit("NODE66_VALIDATION_FAILED:BOLA GAP-102 must remain open for partial corpus")
 
     print("NODE66_SECURITY_STATIC_ACCEPTANCE_PASS")
 
