@@ -59,6 +59,7 @@ from .platform import (
     UsageCounter,
     UsageLedger,
 )
+from .platform_cost_guard import PlatformProviderCostGuard
 from .project import (
     Brand,
     BrandFont,
@@ -136,6 +137,7 @@ __all__ = [
     "OutboxEvent",
     "PasswordCredential",
     "PasswordResetToken",
+    "PlatformProviderCostGuard",
     "Project",
     "ProjectBriefVersion",
     "ProjectMember",
