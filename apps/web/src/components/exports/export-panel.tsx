@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 
 import { ApiError } from "@/lib/api/problem";
 import {
@@ -26,8 +27,8 @@ type SelectionState = {
   outputName: string;
 };
 
-const ACTIVE = new Set(["PENDING", "RENDERING", "PACKAGING", "VALIDATING"]);
-const STAGES = ["PENDING", "RENDERING", "PACKAGING", "VALIDATING", "READY"] as const;
+const ACTIVE = new Set<ExportJob["status"]>(["PLANNED", "QUEUED", "RENDERING", "PACKAGING"]);
+const STAGES = ["PLANNED", "QUEUED", "RENDERING", "PACKAGING", "READY"] as const;
 
 export function ExportPanel({
   organizationId,
@@ -286,12 +287,13 @@ function ExportJobView({
         </details>
       ) : null}
       {job.status === "FAILED" ? <p className="export-muted">Partial per-item retry is not exposed because the current NODE-49 job model fails the job as a whole.</p> : null}
+      {job.status === "EXPIRED" ? <p className="export-muted">This export job is expired and cannot issue a new download grant.</p> : null}
     </div>
   );
 }
 
 function Info({ label, value }: { label: string; value: string }) { return <div><dt>{label}</dt><dd>{value}</dd></div>; }
-function patchSelection(setter: React.Dispatch<React.SetStateAction<Record<string, SelectionState>>>, id: string, patch: Partial<SelectionState>) { setter((current) => ({ ...current, [id]: { ...(current[id] ?? { checked: false, format: null, outputName: "" }), ...patch } })); }
+function patchSelection(setter: Dispatch<SetStateAction<Record<string, SelectionState>>>, id: string, patch: Partial<SelectionState>) { setter((current) => ({ ...current, [id]: { ...(current[id] ?? { checked: false, format: null, outputName: "" }), ...patch } })); }
 function dedupeArtifacts(values: readonly ExactArtifactRef[]): ExactArtifactRef[] { const seen = new Set<string>(); return values.filter((item) => { if (seen.has(item.artifactVersionId)) return false; seen.add(item.artifactVersionId); return true; }); }
 function defaultOutputName(artifact: ExactArtifactRef, extension: string): string { const base = (artifact.label ?? "artifact").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "artifact"; const version = artifact.versionNumber ? `-v${artifact.versionNumber}` : ""; return `${base}${version}.${extension}`.slice(0, 240); }
 function openSignedUrl(value: string) { const url = new URL(value, window.location.origin); const localHttp = url.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(url.hostname); if (url.protocol !== "https:" && !localHttp) throw new Error("EXPORT_DOWNLOAD_URL_PROTOCOL_FORBIDDEN"); window.location.assign(url.toString()); }
