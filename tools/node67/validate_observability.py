@@ -33,9 +33,11 @@ def main() -> None:
     event_envelope = read("apps/api/src/lumi_api/events/envelope.py")
     outbox = read("apps/api/src/lumi_api/events/outbox.py")
     tests = read("apps/api/tests/test_observability_node67.py")
+    logging_tests = read("apps/api/tests/test_observability_logging_node67.py")
     boundary_tests = read("apps/api/tests/test_observability_security_boundary_node67.py")
     middleware_tests = read("apps/api/tests/test_observability_middleware_order_node67.py")
     event_tests = read("apps/api/tests/test_event_contract.py")
+    workflow = read(".github/workflows/node-67-observability.yml")
 
     node_doc = read("docs/nodes/NODE-67-OBSERVABILITY.md")
     report = read("reports/nodes/NODE-67/implementation.md")
@@ -63,12 +65,15 @@ def main() -> None:
     require(context, 'char in {",", "="}', "W3C tracestate value grammar")
     require(context, 'version == "00" and len(normalized) != 55', "traceparent v00 length")
     require(context, 'version != "00" and len(normalized) > 55', "future traceparent version tolerance")
+    require(context, 'trace_flags: str = "02"', "local random/deferred trace flags")
+    require(context, "def random_trace_id", "random trace flag accessor")
     require(context, '"request_id": self.request_id', "event request correlation fields")
     require(context, '"correlation_id": self.correlation_id', "event correlation id fields")
     require(context, '"traceparent": self.traceparent', "event traceparent fields")
     require(tests, "test_invalid_traceparent_restarts_trace_without_failing_business_request", "traceparent fail-open test")
     require(tests, "test_invalid_tracestate_is_discarded_without_breaking_valid_traceparent", "tracestate fail-open test")
     require(tests, "test_traceparent_parser_tolerates_additive_future_version_fields", "future traceparent version test")
+    require(boundary_tests, 'assert restarted.trace_flags == "02"', "restarted trace flag regression")
 
     # HTTP ingress owns canonical telemetry IDs and uses route templates rather than raw ids.
     require(errors, 'request.headers.get("X-Correlation-ID")', "correlation header")
@@ -88,6 +93,7 @@ def main() -> None:
     require(boundary_tests, "test_business_value_error_is_not_reclassified_as_trace_context_error", "business error regression")
     require(middleware_tests, "test_downstream_value_error_is_not_misclassified_as_trace_context", "middleware business error regression")
     require(middleware_tests, "test_invalid_trace_does_not_short_circuit_authoritative_auth_semantics", "trace fail-open auth-order regression")
+    require(workflow, "apps/api/tests/test_observability_middleware_order_node67.py", "middleware-order CI coverage")
 
     # Auth uses middleware-generated ids, not raw trace headers.
     require(auth_guard, 'request_id = getattr(request.state, "request_id", "unassigned")', "auth canonical request id")
@@ -135,13 +141,19 @@ def main() -> None:
     require(tests, "test_metric_cardinality_guard_rejects_tenant_and_run_ids", "cardinality test")
     require(tests, "test_structured_log_rejects_prompt_or_secret_fields", "log redaction test")
 
+    # LangSmith fan-out must reuse the same safety boundary and remain fail-open.
+    require(langsmith, "validate_safe_attributes(attributes)", "LangSmith safe attributes")
+    require(langsmith, "OBSERVABILITY_LANGSMITH_RUN_NAME_INVALID", "LangSmith bounded run name")
+    require(langsmith, "except Exception:", "LangSmith fail-open")
+    require(langsmith, "self.dropped += 1", "LangSmith drop evidence")
+    require(logging_tests, "test_langsmith_fanout_reuses_safe_attribute_boundary", "LangSmith safety regression")
+    require(logging_tests, "test_langsmith_invalid_run_name_is_dropped_not_raised", "LangSmith fail-open validation regression")
+
     # Exporter/vendor failure cannot fail business logic.
     require(telemetry, "except Exception:", "telemetry fail-open")
     require(telemetry, "self.dropped_spans += 1", "span drop evidence")
     require(telemetry, "self.dropped_metrics += 1", "metric drop evidence")
     require(telemetry, "self.dropped_logs += 1", "log drop evidence")
-    require(langsmith, "except Exception:", "LangSmith fail-open")
-    require(langsmith, "self.dropped += 1", "LangSmith drop evidence")
     require(tests, "test_safe_telemetry_swallow_sink_failures", "telemetry outage test")
     require(tests, "test_langsmith_outage_never_raises_into_business_code", "LangSmith outage test")
 
