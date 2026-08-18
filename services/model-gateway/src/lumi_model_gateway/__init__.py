@@ -58,14 +58,8 @@ from .ports import (
     ProviderHealthRegistry,
     ProviderRegistry,
 )
-from .postgres_cost_accounting import (
-    CostAccountingConnection,
-    CostAccountingDatabaseError,
-    PostgresCostAccounting,
-)
 from .postgres_registry import PostgresRegistryLoader, RegistryReadConnection
 from .pricing import PriceCard
-from .production import DurableCostGuardRequiredError, build_environment_budget_guard
 from .registry import InMemoryProviderHealthRegistry, InMemoryProviderRegistry
 from .registry_routing import RegistryAwareModelRouter
 from .routing import (
@@ -84,15 +78,12 @@ __all__ = [
     "Capability",
     "CapabilityClaim",
     "CapabilityRegistry",
-    "CostAccountingConnection",
-    "CostAccountingDatabaseError",
     "CostAccountingPort",
     "CostConfidence",
     "CostEstimate",
     "CostTelemetrySink",
     "DefaultModelPolicyResolver",
     "DeliveryState",
-    "DurableCostGuardRequiredError",
     "ErrorCategory",
     "EvidenceConfidence",
     "InMemoryCapabilityRegistry",
@@ -118,7 +109,6 @@ __all__ = [
     "PaidInvocationGuard",
     "PaidInvocationGuardRequiredError",
     "PaidStreamGuard",
-    "PostgresCostAccounting",
     "PostgresRegistryLoader",
     "PriceCard",
     "PricingSnapshot",
@@ -147,6 +137,5 @@ __all__ = [
     "TelemetryEvent",
     "Timing",
     "Usage",
-    "build_environment_budget_guard",
     "compile_registry_seed",
 ]
