@@ -34,6 +34,7 @@ members = [
 lumi-auth = { workspace = true }
 lumi-domain = { workspace = true }
 lumi-project-core = { workspace = true }
+lumi-model-gateway = { workspace = true }
 lumi-asset-storage = { workspace = true }
 
 [tool.ruff]
