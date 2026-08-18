@@ -134,19 +134,21 @@ locals {
 module "platform_app" {
   source = "../../../modules/platform-app"
 
-  project                    = local.project
-  environment                = local.environment
-  vpc_id                     = local.core.vpc_id
-  public_subnet_ids          = local.core.public_subnet_ids
-  private_subnet_ids         = local.core.private_subnet_ids
-  app_security_group_id      = local.core.app_security_group_id
-  alb_security_group_id      = local.core.alb_security_group_id
-  certificate_arn            = var.certificate_arn
-  kms_key_arn                = local.core.kms_key_arn
-  domain_name                = var.domain_name
-  hosted_zone_id             = var.hosted_zone_id
-  services                   = local.services
-  waf_rate_limit_requests_per_5m = var.waf_rate_limit_requests_per_5m
+  project                               = local.project
+  environment                           = local.environment
+  vpc_id                                = local.core.vpc_id
+  public_subnet_ids                      = local.core.public_subnet_ids
+  private_subnet_ids                     = local.core.private_subnet_ids
+  app_security_group_id                  = local.core.app_security_group_id
+  app_internet_egress_security_group_id = local.core.app_internet_egress_security_group_id
+  sandbox_egress_security_group_id       = local.core.sandbox_egress_security_group_id
+  alb_security_group_id                  = local.core.alb_security_group_id
+  certificate_arn                        = var.certificate_arn
+  kms_key_arn                            = local.core.kms_key_arn
+  domain_name                            = var.domain_name
+  hosted_zone_id                         = var.hosted_zone_id
+  services                               = local.services
+  waf_rate_limit_requests_per_5m         = var.waf_rate_limit_requests_per_5m
   tags = {
     Owner       = "platform"
     DataClass   = "customer-production"
