@@ -10,6 +10,7 @@ from lumi_api.auth import AccessPolicyService, OrganizationRole
 from lumi_api.governance import (
     AuditActor,
     AuditActorType,
+    AuditExportRequest,
     AuditPage,
     AuditRecord,
     AuditResult,
@@ -61,6 +62,7 @@ class FakeRepository:
         self.holds: list[LegalHold] = []
         self.deletions: dict[UUID, DeletionRequest] = {}
         self.export_ids: list[UUID] = []
+        self.export_requests: list[AuditExportRequest] = []
 
     def append_audit(self, event: AuditWrite) -> AuditRecord:
         self.events.append(event)
@@ -70,7 +72,9 @@ class FakeRepository:
         del query
         return AuditPage(items=tuple(_record(event) for event in self.events))
 
-    def active_retention_policy(self, retention_class: RetentionClass) -> RetentionPolicy:
+    def active_retention_policy(
+        self, retention_class: RetentionClass
+    ) -> RetentionPolicy:
         return RetentionPolicy(
             id=uuid4(),
             retention_class=retention_class,
@@ -163,16 +167,30 @@ class FakeRepository:
             organization_id=organization_id,
             subject_type=subject_type,
             subject_id=subject_id,
-            status=DeletionStatus.HOLD_BLOCKED if blocked else DeletionStatus.IDENTIFIED,
+            status=(
+                DeletionStatus.HOLD_BLOCKED
+                if blocked
+                else DeletionStatus.IDENTIFIED
+            ),
             requested_by_user_id=actor_user_id,
             reason=reason,
-            scope={},
+            scope={"subject_type": subject_type, "subject_id": subject_id},
             hold_blockers=hold_blockers,
             object_gc_status="BLOCKED" if blocked else "PENDING",
             search_gc_status="BLOCKED" if blocked else "PENDING",
             requested_at=NOW,
             updated_at=NOW,
             version=1,
+        )
+        self.deletions[request_id] = request
+        return request
+
+    def mark_deletion_deactivated(self, request_id: UUID) -> DeletionRequest:
+        request = self.deletions[request_id].model_copy(
+            update={
+                "status": DeletionStatus.DEACTIVATED,
+                "version": self.deletions[request_id].version + 1,
+            }
         )
         self.deletions[request_id] = request
         return request
@@ -214,11 +232,26 @@ class FakeRepository:
         self.deletions[request_id] = request
         return request
 
-    def create_audit_export(self, **kwargs) -> UUID:
-        del kwargs
+    def create_audit_export(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        request: AuditExportRequest,
+    ) -> UUID:
+        del organization_id, actor_user_id
         export_id = uuid4()
         self.export_ids.append(export_id)
+        self.export_requests.append(request)
         return export_id
+
+
+class DeactivationPort:
+    def __init__(self) -> None:
+        self.deactivated: list[UUID] = []
+
+    def deactivate_subject(self, request: DeletionRequest) -> None:
+        self.deactivated.append(request.id)
 
 
 class ObjectPort:
@@ -235,6 +268,14 @@ class SearchPort:
 
     def delete_subject_search_refs(self, request: DeletionRequest) -> None:
         self.deleted.append(request.id)
+
+
+class ExportPort:
+    def __init__(self) -> None:
+        self.scheduled: list[UUID] = []
+
+    def schedule(self, export_id: UUID) -> None:
+        self.scheduled.append(export_id)
 
 
 def test_redaction_removes_secrets_and_hashes_content() -> None:
@@ -308,8 +349,14 @@ def test_record_redacts_before_repository_append() -> None:
 
 def test_org_admin_can_read_but_cannot_manage_governance() -> None:
     policy = AccessPolicyService()
-    admin = tuple(item.value for item in policy.permissions_for_roles((OrganizationRole.ADMIN,)))
-    owner = tuple(item.value for item in policy.permissions_for_roles((OrganizationRole.OWNER,)))
+    admin = tuple(
+        item.value
+        for item in policy.permissions_for_roles((OrganizationRole.ADMIN,))
+    )
+    owner = tuple(
+        item.value
+        for item in policy.permissions_for_roles((OrganizationRole.OWNER,))
+    )
     assert "admin.audit.read" in admin
     assert "governance.manage" not in admin
     assert "audit.export" not in admin
@@ -370,7 +417,43 @@ def test_legal_hold_marks_retention_candidate_and_blocks_deletion() -> None:
         )
 
 
-def test_deletion_requires_object_and_search_propagation() -> None:
+def test_hold_added_after_deletion_request_still_blocks_execution() -> None:
+    repo = FakeRepository()
+    permissions = ("governance.manage",)
+    service = GovernanceService(
+        repo,  # type: ignore[arg-type]
+        subject_deactivation_port=DeactivationPort(),
+        object_deletion_port=ObjectPort(),
+        search_deletion_port=SearchPort(),
+    )
+    subject_id = str(uuid4())
+    deletion = service.request_deletion(
+        organization_id=repo.organization_id,
+        subject_type="USER",
+        subject_id=subject_id,
+        reason="Customer requested account deletion",
+        actor_user_id=repo.user_id,
+        permissions=permissions,
+    )
+    assert deletion.hold_blockers == ()
+    service.create_legal_hold(
+        organization_id=repo.organization_id,
+        hold_key="case-after-request",
+        scope_type="USER",
+        scope_id=subject_id,
+        reason="New legal preservation requirement",
+        actor_user_id=repo.user_id,
+        permissions=permissions,
+    )
+    with pytest.raises(GovernanceConflict, match="LEGAL_HOLD_BLOCKS_DELETION"):
+        service.execute_deletion(
+            deletion,
+            actor_user_id=repo.user_id,
+            permissions=permissions,
+        )
+
+
+def test_deletion_requires_deactivation_object_and_search_propagation() -> None:
     repo = FakeRepository()
     permissions = ("governance.manage",)
     deletion = GovernanceService(repo).request_deletion(  # type: ignore[arg-type]
@@ -388,10 +471,12 @@ def test_deletion_requires_object_and_search_propagation() -> None:
             permissions=permissions,
         )
 
+    deactivation = DeactivationPort()
     objects = ObjectPort()
     search = SearchPort()
     service = GovernanceService(  # type: ignore[arg-type]
         repo,
+        subject_deactivation_port=deactivation,
         object_deletion_port=objects,
         search_deletion_port=search,
     )
@@ -401,21 +486,77 @@ def test_deletion_requires_object_and_search_propagation() -> None:
         permissions=permissions,
     )
     assert completed.status is DeletionStatus.COMPLETED
+    assert deactivation.deactivated == [deletion.id]
     assert objects.deleted == [deletion.id]
     assert search.deleted == [deletion.id]
+    assert repo.events[-1].details["deactivation"] == "DEACTIVATED"
     assert repo.events[-1].details["object_gc"] == "COMPLETED"
     assert repo.events[-1].details["search_gc"] == "COMPLETED"
 
 
-def test_migration_makes_audit_append_only_and_defines_retention_classes() -> None:
+def test_audit_export_fails_closed_before_creating_orphan_and_redacts_filters() -> None:
+    repo = FakeRepository()
+    request = AuditExportRequest(
+        export_format="JSON",
+        filters={"Authorization": "Bearer raw", "prompt": "private query"},
+    )
+    with pytest.raises(GovernanceUnavailable, match="AUDIT_EXPORT_PORT_NOT_COMPOSED"):
+        GovernanceService(repo).request_audit_export(  # type: ignore[arg-type]
+            organization_id=repo.organization_id,
+            actor_user_id=repo.user_id,
+            request=request,
+            permissions=("audit.export",),
+        )
+    assert repo.export_ids == []
+
+    port = ExportPort()
+    service = GovernanceService(  # type: ignore[arg-type]
+        repo,
+        audit_export_port=port,
+    )
+    export_id = service.request_audit_export(
+        organization_id=repo.organization_id,
+        actor_user_id=repo.user_id,
+        request=request,
+        permissions=("audit.export",),
+    )
+    assert port.scheduled == [export_id]
+    persisted = repo.export_requests[-1]
+    assert persisted.filters["Authorization"] == "[REDACTED]"
+    assert str(persisted.filters["prompt"]).startswith("sha256:")
+
+
+def test_migration_repository_and_api_encode_governance_safety_contracts() -> None:
     migration = (
         ROOT / "apps/api/migrations/versions/20260818_0025_sql/up.sql"
     ).read_text(encoding="utf-8")
+    repository = (
+        ROOT / "apps/api/src/lumi_api/governance/repository.py"
+    ).read_text(encoding="utf-8")
+    app_source = (
+        ROOT / "apps/api/src/lumi_api/api/v1/app.py"
+    ).read_text(encoding="utf-8")
+    routes = (
+        ROOT / "apps/api/src/lumi_api/api/v1/governance_routes.py"
+    ).read_text(encoding="utf-8")
+
     assert "trg_audit_events_immutable" in migration
     assert "BEFORE UPDATE OR DELETE ON audit_events" in migration
+    assert "ck_audit_events_actor_type" in migration
+    assert "ck_audit_events_event_hash" in migration
+    assert "node65_legacy_actor_type" in migration
+    assert "node65_legacy_event_hash" in migration
     for retention_class in RetentionClass:
         assert retention_class.value in migration
     assert "governance_legal_holds" in migration
     assert "governance_deletion_requests" in migration
     assert "governance_audit_exports" in migration
     assert "legal review required before jurisdictional launch" in migration
+
+    assert "pg_advisory_xact_lock" in repository
+    assert "previous_hash" in repository
+    assert "NOT EXISTS" in repository and "governance_legal_holds" in repository
+    assert "jsonb_array_length" in repository
+    assert "app.include_router(governance_router" in app_source
+    assert "dependencies=[Depends(enforce_api_auth)]" in app_source
+    assert '"governance.manage"' not in routes
