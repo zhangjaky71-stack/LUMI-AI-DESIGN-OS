@@ -1,5 +1,5 @@
 export type ExportFormat = "ORIGINAL" | "PNG" | "JPEG" | "MP4" | "PDF" | "PPTX";
-export type ExportJobStatus = "PENDING" | "RENDERING" | "PACKAGING" | "VALIDATING" | "READY" | "FAILED" | "CANCELLED";
+export type ExportJobStatus = "PLANNED" | "QUEUED" | "RENDERING" | "PACKAGING" | "READY" | "FAILED" | "CANCELLED" | "EXPIRED";
 
 export type ExportFormatCapability = {
   format: ExportFormat;
@@ -112,7 +112,7 @@ export function parseExportJob(value: unknown): ExportJob {
     projectId: requiredString(record.project_id ?? record.projectId, "EXPORT_PROJECT_ID_REQUIRED"),
     taskId: requiredString(record.task_id ?? record.taskId, "EXPORT_TASK_ID_REQUIRED"),
     operationId: requiredString(record.operation_id ?? record.operationId, "EXPORT_OPERATION_ID_REQUIRED"),
-    status: enumValue(record.status, ["PENDING", "RENDERING", "PACKAGING", "VALIDATING", "READY", "FAILED", "CANCELLED"] as const, "EXPORT_STATUS_INVALID"),
+    status: enumValue(record.status, ["PLANNED", "QUEUED", "RENDERING", "PACKAGING", "READY", "FAILED", "CANCELLED", "EXPIRED"] as const, "EXPORT_STATUS_INVALID"),
     items: array(record.items, "EXPORT_ITEMS_INVALID").map(parseItem),
     outputs: array(record.outputs, "EXPORT_OUTPUTS_INVALID").map(parseOutput),
     package: nullableRecord(record.package, parsePackage),
