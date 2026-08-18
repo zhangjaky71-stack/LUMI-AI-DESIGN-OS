@@ -25,6 +25,10 @@ from .contracts import (
 )
 from .gateway import PostgresCostGateway, usage_facts_from_values
 from .model_gateway_adapter import PostgresModelCostAccounting
+from .platform_guard import (
+    PlatformGuardedCostGateway,
+    PlatformProviderCostGuardUnavailable,
+)
 
 __all__ = [
     "ActualCost",
@@ -39,6 +43,8 @@ __all__ = [
     "CostLedgerConflict",
     "CostSummary",
     "LedgerWriteResult",
+    "PlatformGuardedCostGateway",
+    "PlatformProviderCostGuardUnavailable",
     "PostgresCostGateway",
     "PostgresModelCostAccounting",
     "QuotaExceeded",
