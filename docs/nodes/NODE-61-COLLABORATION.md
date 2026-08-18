@@ -1,38 +1,38 @@
 # NODE-61 — Collaboration Engine
 
 > Phase: 8 SaaS & Collaboration  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: CORE IMPLEMENTED / VALIDATING / NOT COMPLETE  
 > Priority: P1 / PRODUCT MATURITY  
-> Depends on: NODE-16, NODE-40, NODE-42, NODE-52  
-> Produces: Presence、Comments、Mentions、共享编辑协议、WebSocket协作层与冲突策略
+> Depends on: NODE-16, NODE-40, NODE-42, NODE-52, NODE-55, NODE-59  
+> Produces: durable Comments/Threads、Mention Outbox、ephemeral Presence contract、Workspace collaboration UI、安全协作边界
 
 ---
 
 ## 1. 目标
 
-让 Designer、Marketing、Manager、Client 和 AI Agent 能在同一 Project 协作。实时协作必须建立在 Design IR/Artifact 版本系统之上，不允许 CRDT 或 WebSocket 临时状态反客为主成为业务唯一真相。
+让 Designer、Marketing、Manager、Client 和 AI Agent 能在同一 Project 协作。实时协作必须建立在 Design IR/Artifact 版本系统之上，不允许 CRDT、Presence 或 WebSocket 临时状态反客为主成为业务唯一真相。
 
-## 2. 协作能力分层
+## 2. 当前实现基线
 
-### P0/P1 基础协作
+本节点已经实现可审查的 collaboration core：
 
 ```text
-project sharing
-member roles
-comments
-mentions
-review threads
-presence
-selection/cursor awareness
+Project access fence
+→ exact ArtifactVersion thread
+→ durable Comment / CommentRevision
+→ optional Design Node anchor
+→ Mention validation + Outbox IDs
+→ Workspace CommentsPanel
 ```
 
-### P1 实时编辑
+Presence 当前为明确的 ephemeral contract：
 
 ```text
-concurrent canvas edits
-optimistic local operations
-reconnect/rebase
-conflict indication
+heartbeat = 10s
+TTL = 30s
+persistent DB table = none
+production Redis adapter = pending
+realtime gateway = pending
 ```
 
 ## 3. Presence
@@ -42,133 +42,196 @@ Presence 是 ephemeral：
 ```text
 user_id
 project_id
-document_id
+artifact_version_id?
+current_frame_id?
 cursor?
 selection_ids[]
-active_frame_id?
 last_seen
 ```
 
-存 Redis/Realtime layer，不进入 Design IR，不长期审计每个鼠标坐标。
+关键安全约束：
 
-## 4. Transport
+- `user_id` 只能来自认证 actor；
+- heartbeat 不接受 `display_name/avatar_url`；
+- display name 从 `users + organization_members` 服务端读取；
+- avatar 在没有 canonical profile source 前保持空；
+- Presence 不进入 Design IR，不写 PostgreSQL 长期表；
+- 当前 test/dev adapter 为 TTL in-memory，production Redis composition 仍是 P0 gap。
 
-P1 使用 WebSocket 或可替换 realtime transport：
+## 4. Durable Comments / Threads
+
+新增 canonical PostgreSQL resources：
+
+```text
+comment_threads
+comments
+comment_revisions
+```
+
+Thread 固定绑定：
+
+```text
+organization_id
+project_id
+artifact_id
+artifact_version_id   # exact, immutable context
+design_node_id?
+x/y?
+status
+```
+
+Comment edit/delete 通过 revision + `If-Match` 做 optimistic concurrency fence；删除后的公开投影只显示 `[deleted]`，revision audit 仍保存原快照供授权审计。
+
+## 5. Historical Context / Re-anchor
+
+当用户打开新的 ArtifactVersion 时，旧 thread 不自动迁移：
+
+```text
+old exact version
+→ historical thread
+→ needs_reanchor=true
+→ user review required
+```
+
+Workspace 已将当前版本与历史 thread 分离展示，并标记 `NEEDS RE-ANCHOR`。显式 reviewed re-anchor command 尚未实现，继续列 P0 gap。
+
+## 6. Mentions / Notifications
+
+Mention 只能指向：
+
+- 当前 organization member；
+- 且是 Project creator 或 `project_members` 显式成员。
+
+Mention 与 Comment/Revision 在同一数据库事务内写入 Outbox。Outbox payload 只携带 project/thread/comment/user IDs，不复制评论正文，降低通知管道扩大敏感内容暴露面的风险。
+
+Mention picker 与真实通知 consumer/delivery UX 尚未完成。
+
+## 7. Project Permissions
+
+Collaboration access fail-closed：
+
+```text
+organization member
+AND
+(project creator OR explicit project_members member)
+```
+
+角色：
+
+- `viewer`：读取 + 评论；
+- `editor`：评论 + thread resolve/reopen + Design edit permission projection；
+- `admin`：管理型协作操作；
+- thread creator 可 resolve/reopen 自己的 thread。
+
+浏览器尚未完整投影角色以预先隐藏所有无权限控件，因此仍保留 role-aware UI gap；服务端拒绝始终是最终边界。
+
+## 8. Canvas / Design Truth Boundary
+
+Collaboration router **没有任何 DesignDocument mutation endpoint**。
+
+所有设计编辑仍必须进入 NODE-55：
+
+```text
+Browser collaboration intent
+→ Canvas DesignOps API
+→ server authorization
+→ version fence
+→ constraints
+→ canonical DesignDocumentVersion
+```
+
+Presence/Comments 不能绕过 Hard Constraints，也不能自行成为 Canvas canonical history。
+
+## 9. Realtime Transport
+
+Canonical 目标仍是：
 
 ```text
 Browser
-↔ Collaboration Gateway
-↔ Presence / Operation fanout
+↔ authenticated Collaboration Gateway
+↔ Redis Presence / operation fanout
 ↔ Design Operation API
 ```
 
-业务 write仍需服务端授权、version/constraint验证。
+当前只完成 request/response + polling core。WebSocket/SSE、disconnect cleanup、fanout ordering、reconnect/rebase、backpressure 和生产 Redis adapter 尚未闭合，因此 NODE-61 不能宣称完整 realtime collaboration。
 
-## 5. CRDT Boundary
+## 10. Workspace UI
 
-可使用 Yjs/CRDT 处理 collaborative view/edit synchronization，但：
+Workspace Inspector 已挂载：
 
-```text
-CRDT runtime state ≠ canonical Design IR history
-```
+- current exact version comments；
+- selected Canvas node 作为新 thread 的可选 anchor；
+- reply；
+- resolve/reopen；
+- historical threads；
+- `NEEDS RE-ANCHOR` 提示。
 
-服务端定期/按operation把协作变化归一化为 Design Operations/DesignDocumentVersion。CRDT data type不渗透 Agent、Artifact、Export contract。
+尚未开放：mention picker、comment edit/delete/audit UI、角色驱动 controls、显式 re-anchor command、Presence avatars/cursors。
 
-## 6. Comments
+## 11. Agent Collaboration
 
-Comment 绑定：
+AI Agent 后续可以作为可识别 actor 参与协作，但当前 core 不允许 Agent 通过 Comments/Presence 获得额外设计权限。Agent comment execution / `@LUMI` thread command 尚未纳入本节点完成范围。
 
-```text
-Project
-ArtifactVersion
-DesignDocumentVersion
-Node ID
-Frame ID
-Canvas coordinate/region
-```
+## 12. Tests / Static Acceptance
 
-若Node后来删除，comment仍能通过version snapshot查看历史上下文。
+当前证据覆盖：
 
-## 7. Threads
+- Presence TTL / expiry；
+- Presence 无 durable SQL model；
+- server-authoritative presence identity；
+- exact ArtifactVersion comment binding；
+- historical version 不自动改写；
+- deleted public projection + durable revision audit；
+- Comment edit/delete `If-Match`；
+- Project membership fail-closed；
+- Mention access + body-free Outbox；
+- Thread resolve 不触碰 Artifact approval；
+- Collaboration routes 无 Design mutation bypass；
+- Workspace CommentsPanel exact-version mounting。
 
-```text
-OPEN
-RESOLVED
-REOPENED
-```
+专用 static validator：`tools/node61/validate_collaboration.py`。
 
-支持mention、reply、resolve。编辑/删除comment保留audit event。
+## 13. 开放 P0
 
-## 8. Permissions
+以 `reports/nodes/NODE-61/gap-ledger.json` 为准，主要包括：
 
-Viewer：查看/comment按策略；Editor：设计编辑；Approver由 NODE-62 permission；Guest link如果实现必须独立token/expiry权限。
+- production Redis PresencePort；
+- authenticated realtime transport；
+- role-aware collaboration controls；
+- mention picker + notification delivery；
+- comment edit/delete/audit UI；
+- realtime multi-user Canvas conflict UX；
+- explicit re-anchor；
+- pagination / retention / privacy operations；
+- Browser + PostgreSQL + Redis multi-user E2E；
+- Hosted GitHub Actions executed green。
 
-Presence信息只广播给有同Project访问权的用户。
+## 14. 验收状态
 
-## 9. Concurrent Edit
-
-P0策略：optimistic version + explicit conflict。
-
-P1 realtime：
-
-- 不冲突不同node ops可合并；
-- 同property同时改采用明确策略（operation sequence/CRDT last-writer with metadata）并可显示“某人更新了此属性”；
-- Hard constraints始终server enforcement。
-
-## 10. Agent Collaboration
-
-AI Agent表现为可识别actor：
-
-```text
-actor_type=AGENT
-agent_run_id
-```
-
-用户可以在comment/command里 @LUMI 请求处理线程，但Agent不能自动拥有评论者没有的权限。
-
-## 11. Notifications
-
-事件：mention、comment reply、approval request、artifact ready。P0站内；email adapter可选。通知内容避免把敏感资产直接放邮件。
-
-## 12. Reconnect
-
-WebSocket断线：
-
-```text
-buffer safe local ops
-→ reconnect
-→ get canonical version
-→ rebase/resolve
-```
-
-冲突不能静默丢本地编辑。
-
-## 13. Tests
-
-- 2 users不同node并发；
--同property冲突；
-- presence tenant isolation；
-- comment绑定旧version；
-- mention permission；
-- reconnect/rebase；
-- Agent actor audit；
-- CRDT state重启后canonical恢复。
-
-## 14. 验收标准
-
-- [ ] Team成员可同时查看Project。
-- [ ] Presence/comments/mentions可用。
-- [ ] Realtime状态不成为唯一真相。
-- [ ] Hard constraints并发时仍执行。
-- [ ] reconnect不丢数据。
-- [ ] Agent身份与人类身份可区分。
+- [x] Team 成员通过 canonical Project access fence 协作。
+- [x] Durable comments/threads 与 exact ArtifactVersion 绑定。
+- [x] Mentions durable + permission validated，Outbox 不复制正文。
+- [x] Presence 生命周期为 ephemeral，未成为 DB/Design 真相。
+- [x] Collaboration 不创建 DesignOps bypass。
+- [x] Workspace 已挂载 durable CommentsPanel。
+- [ ] Production Redis/WebSocket realtime presence 可用。
+- [ ] Reconnect/rebase 与多用户冲突 E2E 通过。
+- [ ] Realtime Canvas collaboration 在 Hard Constraints 下验证。
+- [ ] 完整角色 UI / mention / edit-delete / re-anchor UX 完成。
+- [ ] Hosted CI 执行真实步骤 green。
 
 ## 15. Definition of Done
 
+当前不满足完整 DoD：
+
 ```text
-collaboration backend + UI implemented
-+ multi-user E2E green
-+ reconnect/conflict tests green
+collaboration core implemented
++ durable comments UI mounted
++ safety/static contract tests authored
+BUT
+production realtime + multi-user E2E + Hosted green remain open
 ```
+
+因此状态保持 **NOT COMPLETE**。
 
 下一节点：NODE-62 Approval Engine。
