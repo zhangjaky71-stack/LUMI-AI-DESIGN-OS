@@ -4,6 +4,7 @@ from fastapi import Depends, FastAPI
 
 from .agent_run_routes import router as agent_run_router
 from .agent_workspace_routes import router as agent_workspace_router
+from .approval_routes import router as approval_router
 from .artifact_engine_routes import router as artifact_engine_router
 from .asset_routes import router as asset_router
 from .asset_intelligence_routes import router as asset_intelligence_router
@@ -46,6 +47,7 @@ def create_contract_app() -> FastAPI:
     app.include_router(version_history_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(export_product_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(collaboration_router, dependencies=[Depends(enforce_api_auth)])
+    app.include_router(approval_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(brand_registry_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(brand_rules_router, dependencies=[Depends(enforce_api_auth)])
     app.include_router(identity_engine_router, dependencies=[Depends(enforce_api_auth)])
