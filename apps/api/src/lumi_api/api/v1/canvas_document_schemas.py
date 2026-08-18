@@ -11,6 +11,7 @@ CanvasOperationType = Literal[
     "SET_PROPERTY",
     "MOVE_NODE",
     "RESIZE_NODE",
+    "ROTATE_NODE",
     "REPLACE_ASSET",
     "SET_TEXT",
 ]
