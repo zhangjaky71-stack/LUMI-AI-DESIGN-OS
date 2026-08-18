@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Request, status
 
 from lumi_api.artifact_engine import ProvenanceEnvelope
-from lumi_api.artifacts.models import CreatedByType, ProvenanceRecord
+from lumi_api.artifacts.models import ArtifactBranch, CreatedByType, ProvenanceRecord
 
 from .artifact_engine_dependencies import ArtifactEngineServiceDependency
 from .artifact_engine_routes import _invoke, _scope
@@ -121,6 +121,7 @@ def get_artifact_version_history(
 
 @router.get(
     "/artifacts/{artifact_id}/branches",
+    response_model=list[ArtifactBranch],
     responses=_ERROR_RESPONSES,
     tags=["version-history"],
 )
@@ -128,7 +129,7 @@ def list_artifact_branches(
     artifact_id: UUID,
     organization_id: OrganizationId,
     service: ArtifactEngineServiceDependency,
-):
+) -> list[ArtifactBranch]:
     artifact = _scope(
         organization_id,
         _invoke(lambda: service.repository.get_artifact(artifact_id)),
@@ -188,6 +189,7 @@ def get_safe_version_provenance(
 
 @router.post(
     "/artifact-versions/{version_id}/fork-user",
+    response_model=ArtifactBranch,
     status_code=status.HTTP_201_CREATED,
     responses=_ERROR_RESPONSES,
     tags=["version-history"],
@@ -198,7 +200,7 @@ def fork_artifact_version_for_user(
     request: Request,
     organization_id: OrganizationId,
     service: ArtifactEngineServiceDependency,
-):
+) -> ArtifactBranch:
     source = _scope(
         organization_id,
         _invoke(lambda: service.repository.get_version(version_id)),
@@ -219,6 +221,7 @@ def fork_artifact_version_for_user(
 
 @router.post(
     "/artifact-versions/{version_id}/restore-user",
+    response_model=ArtifactVersionHistoryItem,
     status_code=status.HTTP_201_CREATED,
     responses=_ERROR_RESPONSES,
     tags=["version-history"],
@@ -229,7 +232,7 @@ def restore_artifact_version_for_user(
     request: Request,
     organization_id: OrganizationId,
     service: ArtifactEngineServiceDependency,
-):
+) -> ArtifactVersionHistoryItem:
     source = _scope(
         organization_id,
         _invoke(lambda: service.repository.get_version(version_id)),
@@ -261,4 +264,4 @@ def restore_artifact_version_for_user(
             created_at=datetime.now(timezone.utc),
         )
     )
-    return _scope(organization_id, restored)
+    return _history_item(_scope(organization_id, restored))
