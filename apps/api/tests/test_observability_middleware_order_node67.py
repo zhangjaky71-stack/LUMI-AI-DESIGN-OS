@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from lumi_api.api.v1.app import create_contract_app
+from lumi_api.api.v1.errors import install_error_contract
 
 
 def test_sensitive_query_is_rejected_before_idempotency_short_circuit() -> None:
@@ -37,3 +39,18 @@ def test_invalid_trace_is_rejected_before_idempotency_short_circuit() -> None:
     assert response.status_code == 400
     assert response.json()["code"] == "observability_trace_context_invalid"
     assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_downstream_value_error_is_not_misclassified_as_trace_context() -> None:
+    app = FastAPI()
+    install_error_contract(app)
+
+    @app.get("/boom")
+    def boom() -> None:
+        raise ValueError("downstream-value-error")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/boom")
+
+    assert response.status_code == 500
+    assert "observability_trace_context_invalid" not in response.text
