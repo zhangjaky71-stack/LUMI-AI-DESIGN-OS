@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 from dataclasses import dataclass
 from uuid import uuid4
-
-import pytest
 
 from lumi_api.api.v1 import approval_routes
 from lumi_api.approvals import ApprovalDecisionKind
@@ -39,7 +38,6 @@ def test_approval_outbox_payloads_are_id_only_and_do_not_copy_feedback() -> None
     assert '"approval_id"' in creation_source
     assert '"artifact_version_id"' in creation_source
     assert '"decision"' in decision_source
-    # Feedback is stored in canonical decision/effect records, not copied to approval.decided Outbox.
     decided_payload = decision_source.split('event_type="approval.decided"', 1)[1].split("now=command.decided_at", 1)[0]
     assert "feedback" not in decided_payload
     assert "reason" not in decided_payload
@@ -66,36 +64,38 @@ class _FakeRuntime:
         return {"ok": True}
 
 
-@pytest.mark.asyncio
-async def test_agent_bridge_resumes_with_formal_approval_id_and_decision() -> None:
-    runtime = _FakeRuntime()
-    approval_id = uuid4()
-    run_id = uuid4()
-    operation_id = uuid4()
-    organization_id = uuid4()
-    adapter = AgentRunApprovalResumeAdapter(
-        runtime,
-        request_context_factory=lambda org, approval: {"organization_id": str(org), "approval_id": str(approval)},
-    )
+def test_agent_bridge_resumes_with_formal_approval_id_and_decision() -> None:
+    async def scenario() -> None:
+        runtime = _FakeRuntime()
+        approval_id = uuid4()
+        run_id = uuid4()
+        operation_id = uuid4()
+        organization_id = uuid4()
+        adapter = AgentRunApprovalResumeAdapter(
+            runtime,
+            request_context_factory=lambda org, approval: {"organization_id": str(org), "approval_id": str(approval)},
+        )
 
-    await adapter.resume_from_approval(
-        organization_id=organization_id,
-        approval_id=approval_id,
-        agent_run_id=run_id,
-        operation_id=operation_id,
-        resume_version=4,
-        interrupt_id="interrupt-4",
-        decision=ApprovalDecisionKind.CHANGES_REQUESTED,
-        reason="Move the CTA",
-        feedback={"node_ids": [str(uuid4())]},
-    )
+        await adapter.resume_from_approval(
+            organization_id=organization_id,
+            approval_id=approval_id,
+            agent_run_id=run_id,
+            operation_id=operation_id,
+            resume_version=4,
+            interrupt_id="interrupt-4",
+            decision=ApprovalDecisionKind.CHANGES_REQUESTED,
+            reason="Move the CTA",
+            feedback={"node_ids": [str(uuid4())]},
+        )
 
-    assert runtime.call is not None
-    assert runtime.call["kind"] == "approval"
-    assert runtime.call["operation_id"] == operation_id
-    assert runtime.call["value"]["approval_id"] == str(approval_id)
-    assert runtime.call["value"]["decision"] == "CHANGES_REQUESTED"
-    assert runtime.call["value"]["reason"] == "Move the CTA"
+        assert runtime.call is not None
+        assert runtime.call["kind"] == "approval"
+        assert runtime.call["operation_id"] == operation_id
+        assert runtime.call["value"]["approval_id"] == str(approval_id)
+        assert runtime.call["value"]["decision"] == "CHANGES_REQUESTED"
+        assert runtime.call["value"]["reason"] == "Move the CTA"
+
+    asyncio.run(scenario())
 
 
 def test_public_approval_routes_do_not_accept_graph_bridge_fields() -> None:
