@@ -1,26 +1,7 @@
-import type {
-  ExactArtifactRef,
-  RunControlSnapshot,
-  SafeRunEvent,
-} from "@/lib/workspace/types";
+import type { ExactArtifactRef, RunControlSnapshot, SafeRunEvent } from "@/lib/workspace/types";
 
-export type TimelineItemType =
-  | "run"
-  | "task"
-  | "tool"
-  | "progress"
-  | "approval"
-  | "artifact"
-  | "error"
-  | "status";
-
-export type TimelineItemStatus =
-  | "running"
-  | "waiting"
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "info";
+export type TimelineItemType = "run" | "task" | "tool" | "progress" | "approval" | "artifact" | "error" | "status";
+export type TimelineItemStatus = "running" | "waiting" | "completed" | "failed" | "cancelled" | "info";
 
 export type WorkspaceTimelineItem = {
   id: string;
@@ -43,41 +24,97 @@ export function eventTimelineItem(event: SafeRunEvent): WorkspaceTimelineItem | 
   const base = { id: event.eventId, occurredAt: event.occurredAt };
   const taskId = publicString(payload.task_id ?? payload.taskId);
   const node = publicString(payload.node ?? payload.node_name ?? payload.nodeName);
+  const taskFields = taskId ? { taskId } : {};
+  const nodeFields = node ? { node } : {};
 
   switch (event.eventType) {
     case "run.started":
       return { ...base, type: "run", status: "running", label: "Run started", safeSummary: publicSummary(payload) ?? "Agent execution started." };
-    case "node.started":
-      return { ...base, type: "task", status: "running", label: humanize(node ?? "Next task"), safeSummary: publicSummary(payload), ...(taskId ? { taskId } : {}), ...(node ? { node } : {}) };
+    case "node.started": {
+      const summary = publicSummary(payload);
+      return { ...base, type: "task", status: "running", label: humanize(node ?? "Next task"), ...taskFields, ...nodeFields, ...(summary ? { safeSummary: summary } : {}) };
+    }
     case "agent.status": {
       const status = publicString(payload.status);
-      return { ...base, type: statusLooksError(status) ? "error" : "status", status: statusLooksError(status) ? "failed" : "info", label: status ? humanize(status) : "Agent status", safeSummary: publicSummary(payload), ...(taskId ? { taskId } : {}), ...(publicErrorCode(payload) ? { errorCode: publicErrorCode(payload)! } : {}), ...(retrySummary(payload) ? { retrySummary: retrySummary(payload)! } : {}) };
+      const summary = publicSummary(payload);
+      const errorCode = publicErrorCode(payload);
+      const retry = retrySummary(payload);
+      return {
+        ...base,
+        type: statusLooksError(status) ? "error" : "status",
+        status: statusLooksError(status) ? "failed" : "info",
+        label: status ? humanize(status) : "Agent status",
+        ...taskFields,
+        ...(summary ? { safeSummary: summary } : {}),
+        ...(errorCode ? { errorCode } : {}),
+        ...(retry ? { retrySummary: retry } : {}),
+      };
     }
     case "agent.delta": {
       const summary = publicString(payload.text ?? payload.delta);
-      return summary ? { ...base, type: "status", status: "info", label: "Agent update", safeSummary: summary, ...(taskId ? { taskId } : {}) } : null;
+      return summary ? { ...base, type: "status", status: "info", label: "Agent update", safeSummary: summary, ...taskFields } : null;
     }
     case "tool.call": {
       const tool = publicString(payload.tool_name ?? payload.tool);
-      return { ...base, type: "tool", status: "completed", label: toolAction(tool), safeSummary: publicSummary(payload), ...(taskId ? { taskId } : {}), ...(costSummary(payload) ? { costSummary: costSummary(payload)! } : {}), ...(retrySummary(payload) ? { retrySummary: retrySummary(payload)! } : {}) };
+      const summary = publicSummary(payload);
+      const cost = costSummary(payload);
+      const retry = retrySummary(payload);
+      return {
+        ...base,
+        type: "tool",
+        status: "completed",
+        label: toolAction(tool),
+        ...taskFields,
+        ...(summary ? { safeSummary: summary } : {}),
+        ...(cost ? { costSummary: cost } : {}),
+        ...(retry ? { retrySummary: retry } : {}),
+      };
     }
     case "task.progress": {
       const progress = progressCounts(payload);
+      const summary = publicSummary(payload);
+      const cost = costSummary(payload);
+      const retry = retrySummary(payload);
       const label = publicString(payload.label ?? payload.stage) ?? (node ? humanize(node) : "Task progress");
-      return { ...base, type: "progress", status: "running", label, safeSummary: publicSummary(payload), ...(taskId ? { taskId } : {}), ...(node ? { node } : {}), ...(progress ? { progress } : {}), ...(costSummary(payload) ? { costSummary: costSummary(payload)! } : {}), ...(retrySummary(payload) ? { retrySummary: retrySummary(payload)! } : {}) };
+      return {
+        ...base,
+        type: "progress",
+        status: "running",
+        label,
+        ...taskFields,
+        ...nodeFields,
+        ...(summary ? { safeSummary: summary } : {}),
+        ...(progress ? { progress } : {}),
+        ...(cost ? { costSummary: cost } : {}),
+        ...(retry ? { retrySummary: retry } : {}),
+      };
     }
     case "approval.required":
-      return { ...base, type: "approval", status: "waiting", label: "Approval required", safeSummary: publicSummary(payload) ?? "The run is waiting for a user decision.", ...(taskId ? { taskId } : {}), ...(node ? { node } : {}) };
+      return { ...base, type: "approval", status: "waiting", label: "Approval required", safeSummary: publicSummary(payload) ?? "The run is waiting for a user decision.", ...taskFields, ...nodeFields };
     case "artifact.created": {
       const artifact = exactArtifactFromPayload(payload);
-      return { ...base, type: "artifact", status: artifact ? "completed" : "failed", label: artifact ? (artifact.label ?? "Artifact created") : "Artifact event incomplete", safeSummary: artifact ? `Created exact artifact version ${artifact.versionNumber ? `v${artifact.versionNumber}` : shortId(artifact.artifactVersionId)}.` : "The event did not contain an exact artifact version, so no Canvas link is shown.", ...(taskId ? { taskId } : {}), ...(artifact ? { artifact } : {}) };
+      return {
+        ...base,
+        type: "artifact",
+        status: artifact ? "completed" : "failed",
+        label: artifact ? (artifact.label ?? "Artifact created") : "Artifact event incomplete",
+        safeSummary: artifact
+          ? `Created exact artifact version ${artifact.versionNumber ? `v${artifact.versionNumber}` : shortId(artifact.artifactVersionId)}.`
+          : "The event did not contain an exact artifact version, so no Canvas link is shown.",
+        ...taskFields,
+        ...(artifact ? { artifact } : {}),
+      };
     }
-    case "run.completed":
-      return { ...base, type: "run", status: "completed", label: "Run complete", safeSummary: publicSummary(payload) ?? "Agent execution completed.", ...(costSummary(payload) ? { costSummary: costSummary(payload)! } : {}) };
+    case "run.completed": {
+      const cost = costSummary(payload);
+      return { ...base, type: "run", status: "completed", label: "Run complete", safeSummary: publicSummary(payload) ?? "Agent execution completed.", ...(cost ? { costSummary: cost } : {}) };
+    }
     case "run.cancelled":
       return { ...base, type: "run", status: "cancelled", label: "Run cancelled", safeSummary: "The run stopped. External side effects already accepted by providers may still require reconciliation." };
-    case "run.waiting_external":
-      return { ...base, type: "task", status: "waiting", label: "Waiting for external work", safeSummary: publicSummary(payload) ?? "A provider or background job has not finished yet.", ...(taskId ? { taskId } : {}), ...(retrySummary(payload) ? { retrySummary: retrySummary(payload)! } : {}) };
+    case "run.waiting_external": {
+      const retry = retrySummary(payload);
+      return { ...base, type: "task", status: "waiting", label: "Waiting for external work", safeSummary: publicSummary(payload) ?? "A provider or background job has not finished yet.", ...taskFields, ...(retry ? { retrySummary: retry } : {}) };
+    }
     default:
       return null;
   }
@@ -89,6 +126,7 @@ export function canonicalTimelineItem(control: RunControlSnapshot | null): Works
   const interrupt = control.interrupts.find((item) => item.kind === "approval" || item.kind === "review") ?? control.interrupts[0];
   const next = control.nextNodes[0];
   const taskFields = control.taskId ? { taskId: control.taskId } : {};
+
   if (control.errorCode || status === "failed") {
     return {
       id: `canonical:${control.agentRunId}:${control.resumeVersion}:error`,
@@ -96,9 +134,9 @@ export function canonicalTimelineItem(control: RunControlSnapshot | null): Works
       status: "failed",
       label: "Run needs attention",
       safeSummary: control.errorCode ? `The run stopped with error code ${control.errorCode}.` : "The run failed.",
-      errorCode: control.errorCode ?? undefined,
       occurredAt: control.updatedAt,
       ...taskFields,
+      ...(control.errorCode ? { errorCode: control.errorCode } : {}),
     };
   }
   if (interrupt) {
@@ -108,9 +146,9 @@ export function canonicalTimelineItem(control: RunControlSnapshot | null): Works
       status: "waiting",
       label: interrupt.kind === "approval" || interrupt.kind === "review" ? "Waiting for approval" : "Waiting for user input",
       safeSummary: interrupt.node ? `Paused at ${humanize(interrupt.node)}.` : "The run is paused for user input.",
-      node: interrupt.node ?? undefined,
       occurredAt: control.updatedAt,
       ...taskFields,
+      ...(interrupt.node ? { node: interrupt.node } : {}),
     };
   }
   if (status === "succeeded" || status === "completed") {
@@ -120,46 +158,48 @@ export function canonicalTimelineItem(control: RunControlSnapshot | null): Works
     return { id: `canonical:${control.agentRunId}:${control.resumeVersion}:cancelled`, type: "run", status: "cancelled", label: "Run cancelled", occurredAt: control.updatedAt, ...taskFields };
   }
   if (status.includes("waiting") || status.includes("external")) {
-    return { id: `canonical:${control.agentRunId}:${control.resumeVersion}:external`, type: "task", status: "waiting", label: "Waiting for external work", safeSummary: control.route ? `Current route: ${humanize(control.route)}.` : undefined, occurredAt: control.updatedAt, ...taskFields };
+    const summary = control.route ? `Current route: ${humanize(control.route)}.` : null;
+    return { id: `canonical:${control.agentRunId}:${control.resumeVersion}:external`, type: "task", status: "waiting", label: "Waiting for external work", occurredAt: control.updatedAt, ...taskFields, ...(summary ? { safeSummary: summary } : {}) };
   }
   return {
     id: `canonical:${control.agentRunId}:${control.resumeVersion}:active`,
     type: "task",
     status: "running",
     label: next ? humanize(next) : "Agent working",
-    safeSummary: control.repairIteration > 0 ? `Repair pass ${control.repairIteration} of ${Math.max(control.maxRepairIterations, control.repairIteration)}.` : control.route ? `Current route: ${humanize(control.route)}.` : "Canonical run state is active.",
-    node: next,
+    safeSummary: control.repairIteration > 0
+      ? `Repair pass ${control.repairIteration} of ${Math.max(control.maxRepairIterations, control.repairIteration)}.`
+      : control.route
+        ? `Current route: ${humanize(control.route)}.`
+        : "Canonical run state is active.",
     occurredAt: control.updatedAt,
     ...taskFields,
+    ...(next ? { node: next } : {}),
   };
 }
 
 export function timelineVisibleSummary(item: WorkspaceTimelineItem): string | null {
-  const pieces = [item.safeSummary, item.progress ? `${item.progress.current}/${item.progress.total}` : null, item.retrySummary, item.costSummary].filter((value): value is string => Boolean(value));
+  const pieces = [item.safeSummary, item.progress ? `${item.progress.current}/${item.progress.total}` : null, item.retrySummary, item.costSummary]
+    .filter((value): value is string => Boolean(value));
   return pieces.length ? pieces.join(" · ") : null;
 }
 
 function publicSummary(payload: Readonly<Record<string, unknown>>): string | null {
   return publicString(payload.safe_summary ?? payload.safeSummary ?? payload.message ?? payload.summary ?? payload.action);
 }
-
 function progressCounts(payload: Readonly<Record<string, unknown>>): { current: number; total: number } | null {
   const current = publicInteger(payload.current ?? payload.completed ?? payload.done);
   const total = publicInteger(payload.total ?? payload.target);
-  if (current !== null && total !== null && total > 0 && current >= 0 && current <= total) return { current, total };
-  return null;
+  return current !== null && total !== null && total > 0 && current >= 0 && current <= total ? { current, total } : null;
 }
-
 function retrySummary(payload: Readonly<Record<string, unknown>>): string | null {
   const attempt = publicInteger(payload.retry_attempt ?? payload.attempt);
-  const provider = publicString(payload.fallback_provider ?? payload.provider_fallback ?? payload.provider);
+  const fallback = publicString(payload.fallback_provider ?? payload.provider_fallback);
+  const provider = fallback ?? publicString(payload.provider);
   const retrying = payload.retrying === true || (attempt !== null && attempt > 1);
-  if (retrying && provider) return `Retry ${attempt ?? ""} using ${humanize(provider)}`.trim();
+  if (retrying && provider) return `Retry${attempt ? ` ${attempt}` : ""} using ${humanize(provider)}`;
   if (retrying) return attempt ? `Retry attempt ${attempt}` : "Retrying automatically";
-  if (publicString(payload.fallback_provider ?? payload.provider_fallback)) return `Switched provider to ${humanize(provider!)}`;
-  return null;
+  return fallback ? `Switched provider to ${humanize(fallback)}` : null;
 }
-
 function costSummary(payload: Readonly<Record<string, unknown>>): string | null {
   const credits = publicNumber(payload.credits_used ?? payload.credits);
   const cost = publicNumber(payload.cost_usd ?? payload.actual_cost_usd ?? payload.estimated_cost_usd);
@@ -167,11 +207,7 @@ function costSummary(payload: Readonly<Record<string, unknown>>): string | null 
   if (credits !== null && credits >= 0) return `${credits} credits`;
   return null;
 }
-
-function publicErrorCode(payload: Readonly<Record<string, unknown>>): string | null {
-  return publicString(payload.error_code ?? payload.errorCode ?? payload.reason_code);
-}
-
+function publicErrorCode(payload: Readonly<Record<string, unknown>>): string | null { return publicString(payload.error_code ?? payload.errorCode ?? payload.reason_code); }
 function exactArtifactFromPayload(payload: Readonly<Record<string, unknown>>): ExactArtifactRef | null {
   const artifactId = publicString(payload.artifact_id ?? payload.artifactId);
   const artifactVersionId = publicString(payload.artifact_version_id ?? payload.artifactVersionId);
@@ -181,7 +217,6 @@ function exactArtifactFromPayload(payload: Readonly<Record<string, unknown>>): E
   const previewRef = publicString(payload.preview_ref ?? payload.previewRef);
   return { artifactId, artifactVersionId, ...(version && version > 0 ? { versionNumber: version } : {}), ...(label ? { label } : {}), ...(previewRef ? { previewRef } : {}) };
 }
-
 function toolAction(tool: string | null): string {
   if (!tool) return "Used a tool";
   const normalized = tool.toLowerCase();
@@ -192,16 +227,8 @@ function toolAction(tool: string | null): string {
   if (normalized.includes("export")) return "Prepared export";
   return `Used ${humanize(tool)}`;
 }
-
-function statusLooksError(status: string | null): boolean {
-  return Boolean(status && ["failed", "error", "blocked"].some((part) => status.toLowerCase().includes(part)));
-}
-
-function publicString(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const text = value.trim();
-  return text ? text.slice(0, 1200) : null;
-}
+function statusLooksError(status: string | null): boolean { return Boolean(status && ["failed", "error", "blocked"].some((part) => status.toLowerCase().includes(part))); }
+function publicString(value: unknown): string | null { if (typeof value !== "string") return null; const text = value.trim(); return text ? text.slice(0, 1200) : null; }
 function publicInteger(value: unknown): number | null { return Number.isInteger(value) ? value as number : null; }
 function publicNumber(value: unknown): number | null { return typeof value === "number" && Number.isFinite(value) ? value : null; }
 function humanize(value: string): string { return value.replace(/[._/-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()); }
