@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 from lumi_api.api.v1.app import create_contract_app
@@ -28,6 +29,18 @@ def _security_app(*, environment: str = "development", limit: int = 1024) -> Fas
     @app.get("/ok")
     def ok():
         return {"ok": True}
+
+    @app.get("/weak-headers")
+    def weak_headers():
+        return JSONResponse(
+            {"ok": True},
+            headers={
+                "Content-Security-Policy": "default-src *",
+                "X-Frame-Options": "SAMEORIGIN",
+                "Referrer-Policy": "unsafe-url",
+                "Strict-Transport-Security": "max-age=1",
+            },
+        )
 
     @app.post("/echo")
     def echo():
@@ -69,6 +82,16 @@ def test_production_http_gate_adds_hsts() -> None:
     with TestClient(_security_app(environment="production")) as client:
         response = client.get("/ok")
     assert response.status_code == 200
+    assert response.headers["strict-transport-security"].startswith("max-age=63072000")
+
+
+def test_security_middleware_overrides_weaker_downstream_headers() -> None:
+    with TestClient(_security_app(environment="production")) as client:
+        response = client.get("/weak-headers")
+    assert response.status_code == 200
+    assert response.headers["content-security-policy"].startswith("default-src 'none'")
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
     assert response.headers["strict-transport-security"].startswith("max-age=63072000")
 
 
