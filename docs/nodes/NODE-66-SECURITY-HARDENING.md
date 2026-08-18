@@ -6,7 +6,7 @@
 > Depends on: NODE-16, NODE-18, NODE-20, NODE-21, NODE-25, NODE-65  
 > Current stacked base: `feat/node-65-audit-governance`  
 > Current stacked head: `feat/node-66-security-hardening`  
-> Produces: Threat Model、Security Test Corpus、HTTP/Browser Hardening、Trust Labels、Security Release Gate、SAST/SCA/Secret Scan integration 与 production security gap ledger
+> Produces: Threat Model、Security Test Corpus、HTTP/Browser Hardening、Trust Labels、Security Release Gate、blocking SAST/SCA/Secret/IaC/Image scans、SBOM、Staging DAST wiring 与 production security gap ledger
 
 ---
 
@@ -72,7 +72,9 @@ NODE-66 新增并真实挂载 FastAPI Security Middleware：
 - 禁止 `access_token` / `refresh_token` / `api_key` / password / secret / card 等敏感 query 参数；
 - 对可证明的 `Content-Length` JSON request 做 app-level size limit；
 - API response 添加 CSP、nosniff、frame deny、no-referrer、Permissions-Policy、COOP/CORP；
-- production mode 添加 HSTS。
+- production mode 添加 HSTS；
+- production 关闭 `/api/docs`、`/api/redoc`、`/api/openapi.json` HTTP 暴露；
+- development Swagger/ReDoc 使用单独 CDN-limited CSP，不降低普通 API 的 `default-src 'none'` 策略。
 
 边界：chunked/streamed body 的完整 byte limit 必须由 ingress/proxy 真实验证，仍是 P0。
 
@@ -92,7 +94,7 @@ Strict-Transport-Security (production only)
 
 NODE-66 static gate 会扫描 app source，禁止新增 `dangerouslySetInnerHTML` 和显式 credential query URL。
 
-当前 CSP 为 Next compatibility 仍允许 inline script/style；nonce/hash CSP 属 residual hardening，不虚报关闭。
+当前 CSP 为 Next compatibility 仍允许 inline script/style；nonce/hash CSP 属 residual hardening，不虚报关闭。Development `connect-src` 明确保留本地 HTTP/WS；production 仅允许 HTTPS/WSS。
 
 ## 7. Prompt Injection / Agent Goal Hijack
 
@@ -175,7 +177,7 @@ bounded output + timeout
 workspace/archive traversal validation
 ```
 
-这代表**源码级 local backend 安全基线**，不代表 production runtime 已通过 escape test。Production seccomp/AppArmor/runtime/infra verification 保持 P0。
+这代表**源码级 local backend 安全基线**，不代表 production runtime 已通过 escape test。NODE-66 CI 会构建 exact Sandbox image、检查 ambient secret configuration、执行 Trivy CRITICAL/HIGH image scan 并重跑 NODE-21 Docker attack/functional suite；这些步骤仍需 latest-head Hosted 执行证据。Production seccomp/AppArmor/runtime/infra verification 保持 P0。
 
 ## 11. Secrets
 
@@ -186,13 +188,14 @@ workspace/archive traversal validation
 - Sandbox long-lived secret env deny；
 - NODE-65 Audit redaction；
 - NODE-66 URL query credential deny；
-- secret-bearing Context source ref deny。
+- secret-bearing Context source ref deny；
+- NODE-66 Trivy filesystem secret scan wiring。
 
 Production Secret Manager/workload identity + rotation exercise仍是 P0。
 
 ## 12. Supply Chain
 
-仓库已有：
+仓库原有：
 
 ```text
 uv.lock / pnpm-lock.yaml
@@ -201,9 +204,19 @@ CodeQL (Python + JavaScript/TypeScript, subject to repo policy)
 Gitleaks
 ```
 
-NODE-66 CI 增加 lock consistency 和跨模块 security corpus。
+由于原有 Dependency Review 在 repository capability 不可用时允许 non-blocking fallback，NODE-66 不把“workflow 存在”当 release evidence，而新增独立 blocking gates：
 
-未关闭：container/IaC scan、SBOM、image digest/signature/provenance、生产 vulnerability exception evidence。
+```text
+uv lock --check
+pip-audit 2.10.1
+Bandit 1.9.4 (High severity / Medium+ confidence)
+pnpm audit --audit-level high
+Trivy 0.36.0 filesystem vuln/secret/misconfiguration
+CycloneDX SBOM
+Trivy CRITICAL/HIGH Sandbox image scan
+```
+
+未关闭：这些扫描的 current-head executed-green 证据、所有 production image coverage、image digest/signature/attestation/provenance、正式 vulnerability exception approval/expiry evidence。
 
 ## 13. API Abuse / Denial of Wallet
 
@@ -267,20 +280,36 @@ latest-head security CI not actually executing
 
 ## 17. Security Tooling / CI
 
-NODE-66 release corpus 将执行：
+Current-track NODE-66 release corpus 已接：
 
 - compile/static security acceptance；
 - API HTTP/trust/release-gate tests；
 - Tool Gateway SSRF tests；
 - Sandbox security/archive/artifact tests；
+- exact Sandbox image build + image config checks + Docker attack/functional suite；
 - Asset security tests；
 - Auth/API regressions；
 - Web TypeScript/lint/build；
-- lock consistency；
-- CodeQL/Dependency Review/Gitleaks workflow presence；
+- `uv lock --check` / frozen pnpm install；
+- blocking pip-audit 2.10.1；
+- blocking Bandit 1.9.4 High/Medium+；
+- blocking pnpm high audit；
+- blocking Trivy filesystem vuln/secret/misconfiguration；
+- CycloneDX SBOM generation；
+- blocking Sandbox image CRITICAL/HIGH Trivy scan；
+- existing CodeQL/Dependency Review/Gitleaks workflow presence checks；
 - gap ledger fail-closed assertion。
 
-Staging DAST、container/IaC/SBOM、独立 pentest 需要真实环境/工具执行，保持 open gate。
+另有 `.github/workflows/node-66-security-dast.yml`：
+
+- scheduled/manual；
+- 只读取 `vars.LUMI_STAGING_URL`；
+- target 必须 HTTPS、无 URL credentials/query/fragment、不能是明确 internal/non-global IP；
+- OWASP ZAP Baseline v0.15.0；
+- `fail_action=true`；
+- 不自动创建/修改 GitHub issue。
+
+如果 `LUMI_STAGING_URL` 未配置或 Hosted Actions 未运行，DAST 仍无执行证据。Authenticated/active DAST 与独立 penetration test 继续保持 open gate。
 
 ## 18. 验收状态
 
@@ -290,9 +319,11 @@ Staging DAST、container/IaC/SBOM、独立 pentest 需要真实环境/工具执�
 - [ ] Prompt Injection fixtures 通过 production Agent end-to-end。
 - [x] Sandbox source-level isolation/escape-policy suite 已存在并纳入 corpus。
 - [ ] Production-equivalent Sandbox escape suite 全绿。
-- [x] CodeQL/Dependency Review/Gitleaks 已接仓库 CI。
-- [ ] Container/IaC/SBOM/DAST production gates 执行。
-- [x] API/Web security headers 与 query-secret gate 已实现。
+- [x] Blocking SAST/SCA/filesystem secret+IaC/Sandbox image scan 与 SBOM 已接 NODE-66 CI。
+- [x] CodeQL/Dependency Review/Gitleaks 已保留并纳入 static gate。
+- [x] Guarded staging ZAP Baseline workflow 已接入。
+- [ ] Blocking SAST/SCA/Trivy/SBOM/ZAP latest-head 执行证据全绿。
+- [x] API/Web security headers、production docs shutdown 与 query-secret gate 已实现。
 - [ ] Secret Manager/workload identity/rotation 完成。
 - [ ] Critical/High latest-head release gate满足并有 named Security sign-off。
 - [ ] Independent penetration test完成。
