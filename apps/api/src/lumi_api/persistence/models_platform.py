@@ -162,6 +162,10 @@ class AuditEventModel(Base, UUIDPrimaryKeyMixin, TenantMixin, CreatedAtMixin):
             name="ck_audit_events_actor_type",
         ),
         CheckConstraint(
+            "event_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_audit_events_event_hash",
+        ),
+        CheckConstraint(
             "result IN ('SUCCESS','DENIED','FAILED')",
             name="ck_audit_events_result",
         ),
@@ -174,8 +178,18 @@ class AuditEventModel(Base, UUIDPrimaryKeyMixin, TenantMixin, CreatedAtMixin):
             name="ck_audit_events_resource_version",
         ),
         Index("ix_audit_events_org_occurred", "organization_id", "occurred_at"),
-        Index("ix_audit_events_org_actor_occurred", "organization_id", "actor_id", "occurred_at"),
-        Index("ix_audit_events_org_action_occurred", "organization_id", "action", "occurred_at"),
+        Index(
+            "ix_audit_events_org_actor_occurred",
+            "organization_id",
+            "actor_id",
+            "occurred_at",
+        ),
+        Index(
+            "ix_audit_events_org_action_occurred",
+            "organization_id",
+            "action",
+            "occurred_at",
+        ),
         Index(
             "ix_audit_events_org_resource_occurred",
             "organization_id",
@@ -202,7 +216,9 @@ class AuditEventModel(Base, UUIDPrimaryKeyMixin, TenantMixin, CreatedAtMixin):
     subject_type: Mapped[str] = mapped_column(String(100), nullable=False)
     subject_id: Mapped[str] = mapped_column(String(160), nullable=False)
     resource_version: Mapped[int | None] = mapped_column(Integer)
-    result: Mapped[str] = mapped_column(String(16), nullable=False, server_default="SUCCESS")
+    result: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="SUCCESS"
+    )
     reason_code: Mapped[str | None] = mapped_column(String(128))
     request_id: Mapped[str | None] = mapped_column(String(128))
     trace_id: Mapped[str | None] = mapped_column(String(128))
