@@ -70,6 +70,9 @@ jobs:
       - name: Static NODE-67 observability acceptance
         run: uv run python tools/node67/validate_observability.py
 
+      - name: Validate middleware runtime order
+        run: uv run python tools/node67/validate_middleware_order.py
+
       - name: Run NODE-67 observability and correlation contracts
         run: |
           PYTHONPATH=apps/api/src:services/tool-gateway/src:services/sandbox-runtime/src \
