@@ -73,15 +73,9 @@ class MaskSpec:
             raise ValueError("IMAGE_EDIT_MASK_ID_VERSION_REQUIRED")
         if self.source_width <= 0 or self.source_height <= 0:
             raise ValueError("IMAGE_EDIT_MASK_SOURCE_DIMENSIONS_INVALID")
-        if (
-            self.editable_rect.right > self.source_width
-            or self.editable_rect.bottom > self.source_height
-        ):
+        if self.editable_rect.right > self.source_width or self.editable_rect.bottom > self.source_height:
             raise ValueError("IMAGE_EDIT_MASK_OUTSIDE_SOURCE")
-        if (
-            len(self.source_checksum_sha256) != 64
-            or len(self.checksum_sha256) != 64
-        ):
+        if len(self.source_checksum_sha256) != 64 or len(self.checksum_sha256) != 64:
             raise ValueError("IMAGE_EDIT_MASK_CHECKSUM_INVALID")
         if "://" in self.durable_ref:
             raise ValueError("IMAGE_EDIT_MASK_DURABLE_REF_URL_FORBIDDEN")
@@ -185,20 +179,14 @@ class ImageEditSpec:
     recipe_version: str | None = None
     skill_versions: Mapping[str, str] = field(default_factory=dict)
     seed: int | None = None
+    target_branch_id: str | None = None
 
     def __post_init__(self) -> None:
-        if (
-            isinstance(self.budget_limit_usd, float)
-            or not self.budget_limit_usd.is_finite()
-            or self.budget_limit_usd < 0
-        ):
+        if isinstance(self.budget_limit_usd, float) or not self.budget_limit_usd.is_finite() or self.budget_limit_usd < 0:
             raise ValueError("IMAGE_EDIT_BUDGET_INVALID")
         if len(self.code_git_sha) != 40:
             raise ValueError("IMAGE_EDIT_GIT_SHA_INVALID")
-        if (
-            self.source.organization_id != self.organization_id
-            or self.source.project_id != self.project_id
-        ):
+        if self.source.organization_id != self.organization_id or self.source.project_id != self.project_id:
             raise ValueError("IMAGE_EDIT_SOURCE_SCOPE_MISMATCH")
         if self.design_document_version is not None and self.design_document_version < 0:
             raise ValueError("IMAGE_EDIT_DESIGN_DOCUMENT_VERSION_INVALID")
@@ -210,16 +198,13 @@ class ImageEditSpec:
         for region in self.protected_regions:
             if region.source_checksum_sha256 != self.source.checksum_sha256:
                 raise ValueError("IMAGE_EDIT_PROTECTED_SOURCE_HASH_MISMATCH")
-            if (
-                region.rect.right > self.source.width
-                or region.rect.bottom > self.source.height
-            ):
+            if region.rect.right > self.source.width or region.rect.bottom > self.source.height:
                 raise ValueError("IMAGE_EDIT_PROTECTED_REGION_OUTSIDE_SOURCE")
         if self.mask:
-            if (
-                self.mask.source_asset_id,
-                self.mask.source_asset_version,
-            ) != (self.source.asset_id, self.source.asset_version):
+            if (self.mask.source_asset_id, self.mask.source_asset_version) != (
+                self.source.asset_id,
+                self.source.asset_version,
+            ):
                 raise ValueError("IMAGE_EDIT_MASK_SOURCE_VERSION_MISMATCH")
             if self.mask.source_checksum_sha256 != self.source.checksum_sha256:
                 raise ValueError("IMAGE_EDIT_MASK_SOURCE_CHECKSUM_MISMATCH")
@@ -228,6 +213,8 @@ class ImageEditSpec:
                 self.source.height,
             ):
                 raise ValueError("IMAGE_EDIT_MASK_SOURCE_DIMENSION_MISMATCH")
+        if self.target_branch_id is not None and not self.target_branch_id.strip():
+            raise ValueError("IMAGE_EDIT_TARGET_BRANCH_INVALID")
         _canonical(self.skill_versions)
 
     @property
