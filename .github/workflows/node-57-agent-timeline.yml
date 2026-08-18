@@ -1,0 +1,106 @@
+name: NODE-57 Agent Timeline
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/api/v1/agent_workspace_schemas.py"
+      - "apps/api/tests/test_node57_agent_timeline_contracts.py"
+      - "apps/web/src/lib/workspace/**"
+      - "apps/web/src/components/workspace/agent-timeline.tsx"
+      - "apps/web/src/components/workspace/ai-workspace.tsx"
+      - "apps/web/src/app/(shell)/workspace/timeline.css"
+      - "apps/web/src/app/(shell)/workspace/layout.tsx"
+      - "tools/node57/**"
+      - "docs/runtime/AGENT-TIMELINE-V1.md"
+      - "docs/nodes/NODE-57-AGENT-TIMELINE.md"
+      - "reports/nodes/NODE-57/**"
+      - ".github/workflows/node-57-agent-timeline.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  NODE_VERSION: "24"
+  PNPM_VERSION: "11.4.0"
+  NEXT_TELEMETRY_DISABLED: "1"
+  LUMI_API_ORIGIN: "http://127.0.0.1:8000"
+
+jobs:
+  timeline-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install frozen Python workspace
+        run: uv sync --all-packages --frozen
+      - name: Compile NODE-57 public event contracts
+        run: |
+          uv run python -m compileall -q \
+            apps/api/src/lumi_api/api/v1/agent_workspace_schemas.py \
+            apps/api/tests/test_node57_agent_timeline_contracts.py \
+            tools/node57
+      - name: Static Agent Timeline acceptance
+        run: uv run python tools/node57/validate_agent_timeline.py
+      - name: NODE-57 secret fence tests
+        run: uv run pytest -q apps/api/tests/test_node57_agent_timeline_contracts.py
+      - name: Ruff NODE-57 API checks
+        run: |
+          uv run ruff check --ignore E501,I001 \
+            apps/api/src/lumi_api/api/v1/agent_workspace_schemas.py \
+            apps/api/tests/test_node57_agent_timeline_contracts.py \
+            tools/node57
+      - name: Parse NODE-57 gap ledger
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          ledger = json.loads(Path("reports/nodes/NODE-57/gap-ledger.json").read_text(encoding="utf-8"))
+          assert ledger["node"] == "NODE-57"
+          assert ledger["status"] == "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE"
+          assert any(gap["severity"] == "P0" for gap in ledger["gaps"])
+          print("NODE57_GAP_LEDGER_PARSE_PASS")
+          PY
+
+  timeline-web:
+    needs: timeline-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+          pnpm --version
+      - name: Install frozen JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Workspace Timeline and replay tests
+        run: |
+          pnpm --filter @lumi/web exec vitest run \
+            src/lib/workspace/timeline.test.ts \
+            src/lib/workspace/types.test.ts \
+            src/lib/workspace/reducer.test.ts \
+            src/lib/workspace/stream.test.ts
+      - name: Typecheck web application
+        run: pnpm --filter @lumi/web typecheck
+      - name: Lint NODE-57 web surface
+        run: |
+          pnpm --filter @lumi/web exec eslint \
+            src/lib/workspace \
+            src/components/workspace/agent-timeline.tsx \
+            src/components/workspace/ai-workspace.tsx
+      - name: Production Next.js build
+        run: pnpm --filter @lumi/web build
