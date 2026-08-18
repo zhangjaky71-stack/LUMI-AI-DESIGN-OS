@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Awaitable, Callable
-from contextlib import ExitStack
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
@@ -74,39 +73,23 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         )
         request.state.request_id = request_id
 
-        correlation_id = request.headers.get("X-Correlation-ID")
-        if correlation_id is not None and not _CORRELATION_ID_RE.fullmatch(correlation_id):
-            return _simple_problem(
-                request,
-                status=400,
-                code="observability_correlation_id_invalid",
-                title="Invalid correlation identifier",
-                detail="X-Correlation-ID must use the supported bounded identifier format.",
-            )
+        supplied_correlation_id = request.headers.get("X-Correlation-ID")
+        correlation_id = (
+            supplied_correlation_id
+            if supplied_correlation_id is not None
+            and _CORRELATION_ID_RE.fullmatch(supplied_correlation_id)
+            else None
+        )
 
-        # Only trace-context parsing/entry errors are observability input errors.
-        # Do not wrap call_next in this ValueError handler: downstream application,
-        # auth, persistence, or provider ValueErrors must keep their authoritative
-        # error semantics rather than being misclassified as malformed trace context.
-        with ExitStack() as stack:
-            try:
-                telemetry_context = stack.enter_context(
-                    start_request_context(
-                        request_id=request_id,
-                        correlation_id=correlation_id,
-                        traceparent=request.headers.get("traceparent"),
-                        tracestate=request.headers.get("tracestate"),
-                    )
-                )
-            except ValueError as exc:
-                return _simple_problem(
-                    request,
-                    status=400,
-                    code="observability_trace_context_invalid",
-                    title="Invalid trace context",
-                    detail=str(exc),
-                )
-
+        # Request/correlation/trace headers are telemetry metadata, not business
+        # authorization or request validity. Invalid values are replaced/discarded
+        # by the observability context rather than rejecting the business request.
+        with start_request_context(
+            request_id=request_id,
+            correlation_id=correlation_id,
+            traceparent=request.headers.get("traceparent"),
+            tracestate=request.headers.get("tracestate"),
+        ) as telemetry_context:
             request.state.telemetry_context = telemetry_context
             started_at = datetime.now(UTC)
             started_clock = perf_counter()
