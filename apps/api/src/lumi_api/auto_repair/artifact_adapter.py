@@ -9,10 +9,7 @@ from lumi_api.artifact_engine.ports import (
     ArtifactRuntimeRepository,
 )
 from lumi_api.artifact_engine.service import ArtifactEngineService
-from lumi_api.artifacts.models import (
-    CreatedByType,
-    LineageEdgeType,
-)
+from lumi_api.artifacts.models import CreatedByType, LineageEdgeType
 from lumi_api.domain.ids import new_uuid7
 from lumi_auto_repair import (
     RepairCandidate,
@@ -20,6 +17,8 @@ from lumi_auto_repair import (
     RepairSourceSnapshot,
     RepairStaleConflict,
 )
+
+_PASS_QUALITY = {"PASS", "PASS_WITH_WARNINGS"}
 
 
 class Node42RepairArtifactAdapter:
@@ -107,15 +106,14 @@ class Node42RepairArtifactAdapter:
         *,
         original_source: RepairSourceSnapshot,
         candidate: RepairCandidate,
-        quality: RepairQualitySnapshot,
         repair_job_id: str,
         actor_id: str,
-    ) -> str:
-        source = self.repository.get_version(
-            UUID(candidate.artifact_version_id)
-        )
+    ) -> RepairCandidate:
+        source = self.repository.get_version(UUID(candidate.artifact_version_id))
         if str(source.artifact_id) != original_source.artifact_id:
             raise ValueError("REPAIR_PROMOTION_ARTIFACT_MISMATCH")
+        if source.content_hash != candidate.artifact_content_hash:
+            raise ValueError("REPAIR_PROMOTION_CANDIDATE_HASH_MISMATCH")
         envelope = self.repository.get_provenance_envelope(source.id)
         inputs = tuple(
             dict.fromkeys(
@@ -128,9 +126,7 @@ class Node42RepairArtifactAdapter:
         provenance = envelope.model_copy(
             update={
                 "record": envelope.record.model_copy(
-                    update={
-                        "input_artifact_version_ids": inputs,
-                    }
+                    update={"input_artifact_version_ids": inputs}
                 ),
                 "agent_version": "auto-repair/1.0.0",
             }
@@ -166,18 +162,11 @@ class Node42RepairArtifactAdapter:
                     )[:200],
                     created_at=datetime.now(UTC),
                     primary_file_id=primary_file_id,
-                    design_document_version_id=(
-                        source.design_document_version_id
-                    ),
-                    quality_score=quality.overall_score / 100,
-                    constraint_snapshot_hash=(
-                        source.constraint_snapshot_hash
-                    ),
+                    design_document_version_id=source.design_document_version_id,
+                    quality_score=None,
+                    constraint_snapshot_hash=source.constraint_snapshot_hash,
                     lineage_sources=(
-                        (
-                            source.id,
-                            LineageEdgeType.EDITED_FROM,
-                        ),
+                        (source.id, LineageEdgeType.EDITED_FROM),
                     ),
                 )
             )
@@ -185,15 +174,39 @@ class Node42RepairArtifactAdapter:
             raise RepairStaleConflict(
                 "REPAIR_MAIN_BRANCH_HEAD_CHANGED"
             ) from exc
+        return RepairCandidate(
+            artifact_version_id=str(promoted.id),
+            artifact_content_hash=promoted.content_hash,
+            repair_branch_id=str(promoted.branch_id),
+            changed_node_ids=candidate.changed_node_ids,
+            actual_cost_usd=candidate.actual_cost_usd * 0,
+            metadata={
+                "promotion_source_candidate_version_id": candidate.artifact_version_id,
+                "promotion_reason": "exact-main-version-revalidation-required",
+            },
+        )
+
+    def approve_promoted_version(
+        self,
+        *,
+        promoted: RepairCandidate,
+        quality: RepairQualitySnapshot,
+        repair_job_id: str,
+    ) -> str:
+        if quality.artifact_version_id != promoted.artifact_version_id:
+            raise ValueError("REPAIR_PROMOTION_QUALITY_VERSION_MISMATCH")
+        if quality.status not in _PASS_QUALITY:
+            raise ValueError("REPAIR_PROMOTION_QUALITY_NOT_PASSING")
+        version = self.repository.get_version(UUID(promoted.artifact_version_id))
+        if version.content_hash != promoted.artifact_content_hash:
+            raise ValueError("REPAIR_PROMOTION_CONTENT_HASH_MISMATCH")
         now = datetime.now(UTC)
-        ready = self.service.mark_ready(promoted.id, occurred_at=now)
+        ready = self.service.mark_ready(version.id, occurred_at=now)
         approved, _ = self.service.approve_version(
             ready.id,
             approved_by_id=f"auto-repair:{repair_job_id}"[:200],
             approved_at=now,
-            validation_ref=(
-                f"quality-result:{quality.quality_result_id}"
-            ),
+            validation_ref=f"quality-result:{quality.quality_result_id}",
         )
         return str(approved.id)
 
