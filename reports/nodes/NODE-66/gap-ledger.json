@@ -2,7 +2,7 @@
   "node": "NODE-66",
   "title": "Security Hardening & Threat Model",
   "status": "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE",
-  "updated_at": "2026-08-18T10:09:00Z",
+  "updated_at": "2026-08-18T11:58:00Z",
   "gaps": [
     {
       "id": "NODE66-GAP-101",
@@ -72,7 +72,7 @@
       "severity": "P0",
       "status": "open",
       "area": "dast-pentest",
-      "summary": "A guarded blocking ZAP baseline workflow is wired to LUMI_STAGING_URL, but no current-track staging scan evidence exists yet and authenticated/active DAST plus independent penetration/red-team evidence remain required."
+      "summary": "A guarded blocking ZAP baseline workflow is wired to LUMI_STAGING_URL with HTTPS, credential-free URL and all-resolved-address public-IP validation, but no current-track staging scan evidence exists yet and authenticated/active DAST plus independent penetration/red-team evidence remain required."
     },
     {
       "id": "NODE66-GAP-111",
@@ -89,6 +89,13 @@
       "summary": "Latest-head NODE-66 hosted CI/security suites, production-like E2E and named Security sign-off must execute; skipped/pre-run jobs are not PASS."
     },
     {
+      "id": "NODE66-GAP-113",
+      "severity": "P0",
+      "status": "open",
+      "area": "browser-strict-csp",
+      "summary": "The Web app has a production CSP baseline, but script-src still permits unsafe-inline and connect-src remains scheme-wide. A nonce/hash-based strict CSP with an explicit endpoint allowlist requires Next.js dynamic-rendering/cache impact review plus browser E2E before it can replace the current compatibility baseline."
+    },
+    {
       "id": "NODE66-GAP-201",
       "severity": "P0",
       "status": "closed",
@@ -100,14 +107,14 @@
       "severity": "P0",
       "status": "closed",
       "area": "browser-headers",
-      "summary": "Next.js emits CSP/frame/referrer/nosniff/permissions/COOP security headers with production HSTS baseline."
+      "summary": "Next.js emits a CSP compatibility baseline plus frame/referrer/nosniff/permissions/COOP security headers with production HSTS. Strict nonce/hash CSP remains separately open as NODE66-GAP-113."
     },
     {
       "id": "NODE66-GAP-203",
       "severity": "P0",
       "status": "closed",
       "area": "ssrf-core",
-      "summary": "Existing Tool Gateway SSRF policy and regression corpus cover private/link-local/metadata targets, mixed DNS, redirect revalidation, pinned IP handoff, no ambient auth and response limits."
+      "summary": "Existing Tool Gateway SSRF policy and regression corpus cover private/link-local/metadata targets, mixed DNS, web.fetch redirect revalidation, pinned IP handoff, no ambient auth and response limits. MCP production transport proof remains separately open as NODE66-GAP-104."
     },
     {
       "id": "NODE66-GAP-204",
@@ -149,7 +156,7 @@
       "severity": "P0",
       "status": "closed",
       "area": "dast-workflow-wiring",
-      "summary": "A separate scheduled/manual ZAP baseline workflow is wired with HTTPS-only staging target validation, blocking findings and no automatic issue mutation; execution evidence remains NODE66-GAP-110."
+      "summary": "A separate scheduled/manual ZAP baseline workflow is wired with HTTPS-only staging target validation, credential-free URLs, DNS resolution requiring every target address to be public/global, blocking findings and no automatic issue mutation; execution evidence remains NODE66-GAP-110."
     }
   ]
 }
