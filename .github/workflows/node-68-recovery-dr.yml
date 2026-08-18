@@ -7,6 +7,7 @@ on:
       - "apps/api/src/lumi_api/persistence/models_execution.py"
       - "apps/api/src/lumi_api/persistence/models_control_plane.py"
       - "apps/api/src/lumi_api/persistence/models_queue_runtime.py"
+      - "apps/api/src/lumi_api/persistence/models_artifacts.py"
       - "apps/api/tests/test_recovery_node68.py"
       - "tools/node68/**"
       - "docs/nodes/NODE-68-RECOVERY-DR.md"
@@ -119,7 +120,7 @@ jobs:
               "runtime_jobs": {"status", "operation_id", "attempt_count", "max_attempts", "next_retry_at", "started_at"},
               "idempotency_operations": {"status", "paid", "lease_owner", "lease_expires_at", "provider_request_id", "recovery_state"},
               "agent_run_control": {"control_status", "graph_key", "graph_version", "graph_definition_hash", "checkpoint_id", "checkpoint_namespace", "resume_version"},
-              "artifact_files": {"bucket", "storage_key", "size_bytes", "checksum_sha256"},
+              "artifact_files": {"bucket", "object_key", "byte_size", "checksum_sha256"},
           }
           with psycopg.connect(url) as conn:
               for table, required in expected.items():
