@@ -67,7 +67,7 @@ class FailingLangSmith:
         raise RuntimeError("langsmith offline")
 
 
-def test_traceparent_parser_rejects_zero_ids_and_invalid_version() -> None:
+def test_traceparent_parser_rejects_zero_ids_invalid_version_and_uppercase() -> None:
     parsed = parse_traceparent("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
     assert parsed is not None
     assert parsed.trace_id == "4bf92f3577b34da6a3ce929d0e0e4736"
@@ -75,6 +75,19 @@ def test_traceparent_parser_rejects_zero_ids_and_invalid_version() -> None:
         parse_traceparent("00-00000000000000000000000000000000-00f067aa0ba902b7-01")
     with pytest.raises(ValueError, match="VERSION_INVALID"):
         parse_traceparent("ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+    with pytest.raises(ValueError, match="TRACEPARENT_INVALID"):
+        parse_traceparent("00-4BF92F3577B34DA6A3CE929D0E0E4736-00f067aa0ba902b7-01")
+
+
+def test_traceparent_parser_tolerates_additive_future_version_fields() -> None:
+    parsed = parse_traceparent(
+        "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-ff-future-field"
+    )
+    assert parsed is not None
+    assert parsed.version == "01"
+    assert parsed.trace_id == "4bf92f3577b34da6a3ce929d0e0e4736"
+    assert parsed.parent_span_id == "00f067aa0ba902b7"
+    assert parsed.trace_flags == "03"
 
 
 def test_request_context_continues_trace_with_new_server_span() -> None:
@@ -89,6 +102,42 @@ def test_request_context_continues_trace_with_new_server_span() -> None:
         assert context.parent_span_id == "00f067aa0ba902b7"
         assert context.span_id != context.parent_span_id
         assert context.tracestate == "vendor=value"
+
+
+def test_invalid_traceparent_restarts_trace_and_discards_tracestate() -> None:
+    with start_request_context(
+        request_id="request-reset",
+        correlation_id="corr-reset",
+        traceparent="not-a-valid-traceparent",
+        tracestate="vendor=value",
+    ) as context:
+        assert len(context.trace_id) == 32
+        assert context.parent_span_id is None
+        assert context.tracestate is None
+
+
+def test_invalid_tracestate_is_discarded_without_breaking_valid_traceparent() -> None:
+    incoming = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    with start_request_context(
+        request_id="request-state",
+        correlation_id="corr-state",
+        traceparent=incoming,
+        tracestate="vendor=bad=value",
+    ) as context:
+        assert context.trace_id == "4bf92f3577b34da6a3ce929d0e0e4736"
+        assert context.parent_span_id == "00f067aa0ba902b7"
+        assert context.tracestate is None
+
+
+def test_tracestate_accepts_empty_members_and_level2_multitenant_key() -> None:
+    incoming = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    with start_request_context(
+        request_id="request-state-2",
+        correlation_id="corr-state-2",
+        traceparent=incoming,
+        tracestate=",tenant@vendor=value, ,other=ok",
+    ) as context:
+        assert context.tracestate == "tenant@vendor=value,other=ok"
 
 
 def test_message_context_creates_child_span_from_event_traceparent() -> None:
@@ -263,15 +312,26 @@ def test_http_middleware_emits_response_correlation_and_safe_records() -> None:
     assert len(sink.logs) == 1
 
 
-def test_invalid_traceparent_fails_as_bounded_400_not_500() -> None:
+def test_invalid_traceparent_restarts_trace_without_failing_business_request() -> None:
     app = FastAPI()
     install_error_contract(app)
 
     @app.get("/ok")
     def ok():
-        return {"ok": True}
+        context = current_telemetry_context()
+        assert context is not None
+        return {"trace_id": context.trace_id}
 
     with TestClient(app) as client:
-        response = client.get("/ok", headers={"traceparent": "not-a-traceparent"})
-    assert response.status_code == 400
-    assert response.json()["code"] == "observability_trace_context_invalid"
+        response = client.get(
+            "/ok",
+            headers={
+                "traceparent": "not-a-traceparent",
+                "tracestate": "vendor=value",
+            },
+        )
+    assert response.status_code == 200
+    assert len(response.json()["trace_id"]) == 32
+    outgoing = parse_traceparent(response.headers["traceparent"])
+    assert outgoing is not None
+    assert response.headers.get("tracestate") is None
