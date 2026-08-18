@@ -64,7 +64,6 @@ class ApprovalResponse(ApiModel):
     summary: str
     expires_at: datetime | None = None
     resolved_at: datetime | None = None
-    interrupt_id: str | None = None
     created_at: datetime
     updated_at: datetime
     version: int
@@ -75,7 +74,7 @@ class ApprovalEffectResponse(ApiModel):
     effect_type: ApprovalEffectType
     status: ApprovalEffectStatus
     attempt_count: int = Field(ge=0)
-    last_error: str | None = None
+    has_error: bool = False
     completed_at: datetime | None = None
 
 
