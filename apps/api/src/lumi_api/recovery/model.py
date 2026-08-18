@@ -33,7 +33,7 @@ class RuntimeJobEvidence(RecoveryModel):
     job_id: UUID
     organization_id: UUID
     project_id: UUID
-    operation_id: UUID
+    operation_id: UUID | None = None
     job_kind: str = Field(min_length=1, max_length=100)
     status: str
     attempt_count: int = Field(ge=0)
@@ -108,6 +108,12 @@ class RecoveryDecision(RecoveryModel):
     preserve_operation_id: UUID | None = None
     preserve_provider_request_id: str | None = None
     evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class RecoveryPlan(RecoveryModel):
+    organization_id: UUID
+    generated_at: datetime
+    decisions: tuple[RecoveryDecision, ...]
 
 
 class RecoveryDrillMeasurement(RecoveryModel):
