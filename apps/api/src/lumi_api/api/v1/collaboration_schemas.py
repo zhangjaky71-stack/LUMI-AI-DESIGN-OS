@@ -48,8 +48,6 @@ class ThreadStatusRequest(ApiModel):
 
 
 class PresenceHeartbeatRequest(ApiModel):
-    display_name: str = Field(min_length=1, max_length=200)
-    avatar_url: str | None = Field(default=None, max_length=2_000)
     color: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
     artifact_version_id: UUID | None = None
     current_frame_id: UUID | None = None
