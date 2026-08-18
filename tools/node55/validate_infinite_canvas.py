@@ -80,17 +80,17 @@ def main() -> None:
     require(
         "apps/web/src/lib/canvas/types.ts",
         'value === "lumi.design-ir/1.0"',
-        'node.parent_id = rootId',
+        "node.parent_id = rootId",
         'descriptor.type === "CREATE_NODE"',
         'descriptor.type === "SET_PROPERTY"',
-        'recursive: true',
+        "recursive: true",
     )
     require(
         "apps/web/src/lib/canvas/use-autosave.ts",
         "MAX_PENDING_COMMANDS = 120",
         "AUTOSAVE_DELAY_MS = 700",
         "activeBatchRef",
-        'error.status === 409',
+        "error.status === 409",
         'setSaveState("conflict")',
         "beforeunload",
     )
@@ -102,7 +102,7 @@ def main() -> None:
     require(
         "apps/web/src/components/canvas/infinite-canvas.tsx",
         "new CanvasController",
-        "beginTransform(\"move\"",
+        'beginTransform("move"',
         "controller.selectAt",
         "controller.pan",
         "controller.zoomToCursor",
