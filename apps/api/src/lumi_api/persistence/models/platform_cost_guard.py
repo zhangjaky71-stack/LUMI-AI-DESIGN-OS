@@ -15,7 +15,10 @@ class PlatformProviderCostGuard(MutableTimestampMixin, Base):
 
     __tablename__ = "platform_provider_cost_guard"
     __table_args__ = (
-        CheckConstraint("daily_cap_usd > 0", name="cap"),
+        CheckConstraint(
+            "daily_cap_usd > 0 AND daily_cap_usd <= 100.00000000",
+            name="cap",
+        ),
         CheckConstraint("length(policy_key) BETWEEN 1 AND 64", name="key"),
     )
 
