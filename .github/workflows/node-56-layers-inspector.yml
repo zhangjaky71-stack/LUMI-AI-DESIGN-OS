@@ -1,0 +1,83 @@
+name: NODE-56 Layers Inspector
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/src/lib/layers/**"
+      - "apps/web/src/components/canvas/**"
+      - "apps/web/src/app/(shell)/workspace/canvas.css"
+      - "packages/canvas-sdk/src/controller.ts"
+      - "packages/canvas-sdk/tests/canvas-node56.test.ts"
+      - "tools/node56/**"
+      - "docs/runtime/LAYERS-INSPECTOR-V1.md"
+      - "docs/nodes/NODE-56-LAYERS-INSPECTOR.md"
+      - "reports/nodes/NODE-56/**"
+      - ".github/workflows/node-56-layers-inspector.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "24"
+  PNPM_VERSION: "11.4.0"
+  NEXT_TELEMETRY_DISABLED: "1"
+  LUMI_API_ORIGIN: "http://127.0.0.1:8000"
+
+jobs:
+  layers-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Static Layers Inspector acceptance
+        run: python tools/node56/validate_layers_inspector.py
+      - name: Parse NODE-56 gap ledger
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          ledger = json.loads(Path("reports/nodes/NODE-56/gap-ledger.json").read_text(encoding="utf-8"))
+          assert ledger["node"] == "NODE-56"
+          assert ledger["status"] == "CORE_IMPLEMENTED_VALIDATING_NOT_COMPLETE"
+          assert any(gap["severity"] == "P0" for gap in ledger["gaps"])
+          print("NODE56_GAP_LEDGER_PARSE_PASS")
+          PY
+
+  layers-web:
+    needs: layers-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+          pnpm --version
+      - name: Install frozen JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Canvas SDK NODE-56 batch tests
+        run: pnpm --filter @lumi/canvas-sdk exec vitest run tests/canvas-node56.test.ts
+      - name: Web Layers model tests
+        run: pnpm --filter @lumi/web exec vitest run src/lib/layers/model.test.ts
+      - name: Typecheck Canvas SDK
+        run: pnpm --filter @lumi/canvas-sdk typecheck
+      - name: Typecheck web application
+        run: pnpm --filter @lumi/web typecheck
+      - name: Lint NODE-56 web surface
+        run: |
+          pnpm --filter @lumi/web exec eslint \
+            src/lib/layers \
+            src/components/canvas \
+            'src/app/(shell)/workspace/canvas.css'
+      - name: Production Next.js build
+        run: pnpm --filter @lumi/web build
