@@ -5,7 +5,18 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,6 +27,7 @@ from .model_support import JSON_OBJECT_DEFAULT
 class PlatformAdminPrincipalModel(Base):
     __tablename__ = "platform_admin_principals"
     __table_args__ = (
+        UniqueConstraint("user_id", name="uq_platform_admin_principal_user"),
         CheckConstraint(
             "role IN ('SUPPORT_READ','OPS','BILLING_ADMIN','AI_CONFIG_ADMIN','SECURITY_ADMIN','SUPER_ADMIN')",
             name="ck_platform_admin_role",
@@ -28,7 +40,6 @@ class PlatformAdminPrincipalModel(Base):
         PGUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
     )
     role: Mapped[str] = mapped_column(String(40), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
