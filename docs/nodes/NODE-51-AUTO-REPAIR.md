@@ -1,10 +1,12 @@
 # NODE-51 — Auto Repair Loop
 
 > Phase: 6 Generation & Quality  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: IMPLEMENTED / VALIDATING / NOT COMPLETE  
 > Priority: P0/P1 CORE QUALITY  
 > Depends on: NODE-47, NODE-50, NODE-32, NODE-27  
 > Produces: Critic→RepairPlan→执行→再评估的有界闭环、回退/预算控制
+>
+> Implementation evidence and unresolved production gaps: [NODE-51-AUTO-REPAIR-IMPLEMENTATION.md](NODE-51-AUTO-REPAIR-IMPLEMENTATION.md)
 
 ---
 
@@ -136,12 +138,14 @@ resolution upscale route
 
 ## 15. 验收标准
 
-- [ ] Repair Loop严格有界。
-- [ ] 最小修改优先。
-- [ ] worse candidate不覆盖好版本。
-- [ ] budget/constraints始终生效。
-- [ ] before/after质量可解释。
-- [ ] stale user edit不会被repair覆盖。
+- [x] Repair Loop严格有界（service contract + deterministic tests 已提交）。
+- [x] 最小修改优先（planner priority + no-repeat signature）。
+- [x] worse candidate不覆盖好版本（repair branch + staged final version + exact QualityResult + final CAS）。
+- [x] budget/constraints始终生效（NODE-27 envelope + NODE-39 pre/postflight）。
+- [x] before/after质量可解释（attempt + exact candidate/final QualityResult refs）。
+- [x] stale user edit不会被repair覆盖（early/late CAS conflict → STALE_CONFLICT）。
+
+以上为实现级验收项；真实 provider、真实 Design IR raster preview、真实人类反馈与 Hosted CI 仍需完成验证，因此本节点不能标记 COMPLETE。
 
 ## 16. Definition of Done
 
@@ -151,4 +155,4 @@ auto repair orchestrator implemented
 + golden repair eval improves baseline
 ```
 
-完成 Phase 6，下一节点：NODE-52 App Shell。
+当前为 IMPLEMENTED / VALIDATING；详细缺口见实施文档与 gap ledger。完成 Phase 6 后下一节点：NODE-52 App Shell。
