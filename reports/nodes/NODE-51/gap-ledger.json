@@ -1,0 +1,63 @@
+{
+  "node": "NODE-51",
+  "status": "IMPLEMENTED_VALIDATING_NOT_COMPLETE",
+  "generated_for_branch": "feat/node-51-auto-repair",
+  "gaps": [
+    {
+      "id": "NODE51-GAP-01",
+      "area": "design-preview-renderer",
+      "severity": "P0",
+      "status": "OPEN",
+      "description": "No production Design IR to raster preview renderer is currently composed. DesignPreviewRenderPort is mandatory and fails closed; repaired Design IR never reuses a stale source preview.",
+      "completion_evidence": "A concrete renderer implementation plus exact-preview integration tests and quality evaluation against the rendered repaired DesignDocumentVersion."
+    },
+    {
+      "id": "NODE51-GAP-02",
+      "area": "asset-intelligence-repair-context",
+      "severity": "P0",
+      "status": "OPEN",
+      "description": "RepairImageEditContextPort still requires production composition with NODE-45/NODE-39/NODE-43/NODE-44 to resolve exact authorized SourceImageRef, mask, protected regions, brand rules and identity requirements.",
+      "completion_evidence": "Production context resolver with tenant/rights/protected-content tests and exact source/mask checks."
+    },
+    {
+      "id": "NODE51-GAP-03",
+      "area": "regeneration-backend",
+      "severity": "P1",
+      "status": "OPEN",
+      "description": "REGENERATE_ELEMENT and REGENERATE_ARTIFACT remain behind GenerationRepairBackend and are not yet concretely composed to NODE-46 on this branch.",
+      "completion_evidence": "Concrete NODE-46 backend or policy removal of unsupported repair kinds, with branch/cost/provenance/quality tests."
+    },
+    {
+      "id": "NODE51-GAP-04",
+      "area": "real-paid-provider-acceptance",
+      "severity": "P0",
+      "status": "OPEN",
+      "description": "No real paid NODE-47 provider call has completed the NODE-51 loop with downstream ActualCost evidence and repair-envelope reconciliation on this branch.",
+      "completion_evidence": "Real provider request id, completed edit, downstream cost projection, envelope release and exact candidate/final QualityResults."
+    },
+    {
+      "id": "NODE51-GAP-05",
+      "area": "human-golden-evaluation",
+      "severity": "P1",
+      "status": "OPEN",
+      "description": "No real human accept/reject or golden repair uplift evaluation has been produced. Unit/synthetic evidence is not treated as production calibration.",
+      "completion_evidence": "Versioned golden set plus human review showing quality uplift and no protected-content regression."
+    },
+    {
+      "id": "NODE51-GAP-06",
+      "area": "workspace-lock",
+      "severity": "P1",
+      "status": "OPEN",
+      "description": "services/auto-repair is intentionally visible through PYTHONPATH/Pyright extraPaths but is not yet a uv workspace member because the frozen lockfile cannot be safely hand-edited.",
+      "completion_evidence": "Real uv lock regeneration with services/auto-repair added to workspace members and frozen install passing."
+    },
+    {
+      "id": "NODE51-GAP-07",
+      "area": "hosted-ci",
+      "severity": "P0",
+      "status": "OPEN",
+      "description": "NODE-51 Hosted CI has not yet produced code-execution evidence. Earlier NODE-50 runs failed before the first step and cannot validate NODE-51 code.",
+      "completion_evidence": "NODE-51 workflow run with non-empty executed steps and passing contract, tests/typecheck and PostgreSQL jobs."
+    }
+  ]
+}
