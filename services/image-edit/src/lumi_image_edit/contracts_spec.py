@@ -185,6 +185,7 @@ class ImageEditSpec:
     recipe_version: str | None = None
     skill_versions: Mapping[str, str] = field(default_factory=dict)
     seed: int | None = None
+    target_branch_id: str | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -228,6 +229,8 @@ class ImageEditSpec:
                 self.source.height,
             ):
                 raise ValueError("IMAGE_EDIT_MASK_SOURCE_DIMENSION_MISMATCH")
+        if self.target_branch_id is not None and not self.target_branch_id.strip():
+            raise ValueError("IMAGE_EDIT_TARGET_BRANCH_INVALID")
         _canonical(self.skill_versions)
 
     @property

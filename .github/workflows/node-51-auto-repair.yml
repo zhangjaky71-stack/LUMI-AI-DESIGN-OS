@@ -1,0 +1,210 @@
+name: NODE-51 Auto Repair
+
+on:
+  pull_request:
+    paths:
+      - "services/auto-repair/**"
+      - "services/image-edit/src/lumi_image_edit/contracts_spec.py"
+      - "apps/api/src/lumi_api/auto_repair/**"
+      - "apps/api/src/lumi_api/image_edit/artifact_adapter.py"
+      - "apps/api/src/lumi_api/persistence/models_auto_repair.py"
+      - "apps/api/src/lumi_api/persistence/models.py"
+      - "apps/api/migrations/versions/20260818_0020_auto_repair.py"
+      - "apps/api/migrations/versions/20260818_0020_sql/**"
+      - "apps/api/tests/test_node51_auto_repair_contracts.py"
+      - "tools/node51/**"
+      - "docs/nodes/NODE-51-AUTO-REPAIR*.md"
+      - "reports/nodes/NODE-51/**"
+      - "pyproject.toml"
+      - ".github/workflows/node-51-auto-repair.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+  PYTHONPATH: "apps/api/src:services/auto-repair/src:services/image-edit/src:services/visual-critic/src:services/model-gateway/src:services/asset-intelligence/src"
+
+jobs:
+  repair-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: Compile NODE-51 runtime
+        run: |
+          uv run python -m compileall -q \
+            services/auto-repair/src/lumi_auto_repair \
+            apps/api/src/lumi_api/auto_repair \
+            apps/api/src/lumi_api/persistence/models_auto_repair.py \
+            apps/api/src/lumi_api/image_edit/artifact_adapter.py \
+            apps/api/migrations/versions/20260818_0020_auto_repair.py \
+            tools/node51
+      - name: Static NODE-51 validator
+        run: uv run python tools/node51/validate_auto_repair.py
+      - name: Parse production gap ledger
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+
+          ledger = json.loads(
+              Path("reports/nodes/NODE-51/gap-ledger.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          assert ledger["node"] == "NODE-51"
+          assert ledger["status"] == "IMPLEMENTED_VALIDATING_NOT_COMPLETE"
+          assert len(ledger["gaps"]) == 7
+          assert any(gap["severity"] == "P0" for gap in ledger["gaps"])
+          print("NODE51_GAP_LEDGER_PARSE_PASS")
+          PY
+
+  repair-quality:
+    needs: repair-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: NODE-51 bounded repair tests
+        run: |
+          uv run pytest -q \
+            services/auto-repair/tests/test_engine.py \
+            services/auto-repair/tests/test_planner_and_codec.py \
+            apps/api/tests/test_node51_auto_repair_contracts.py
+      - name: NODE-47 compatibility regression
+        run: |
+          uv run pytest -q \
+            services/image-edit/tests/test_image_edit_planning_node47.py \
+            services/image-edit/tests/test_image_edit_runtime_node47.py \
+            services/image-edit/tests/test_image_edit_safety_node47.py
+      - name: Ruff semantic checks
+        run: |
+          uv run ruff check --ignore E501,I001 \
+            services/auto-repair/src/lumi_auto_repair \
+            services/auto-repair/tests \
+            apps/api/src/lumi_api/auto_repair \
+            apps/api/src/lumi_api/persistence/models_auto_repair.py \
+            apps/api/src/lumi_api/image_edit/artifact_adapter.py \
+            apps/api/tests/test_node51_auto_repair_contracts.py \
+            tools/node51
+      - name: Pyright
+        run: uv run pyright -p services/auto-repair/pyrightconfig.json
+
+  repair-db:
+    needs: repair-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: lumi
+          POSTGRES_PASSWORD: lumi
+          POSTGRES_DB: lumi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lumi -d lumi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://lumi:lumi@localhost:5432/lumi
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Install frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: Migrate full schema through NODE-51
+        run: uv run alembic -c apps/api/alembic.ini upgrade head
+      - name: Verify bounded repair schema and governance
+        run: |
+          uv run python - <<'PY'
+          import os
+
+          import psycopg
+
+          expected_tables = {
+              "repair_policy_snapshots",
+              "auto_repair_jobs",
+              "auto_repair_attempts",
+              "repair_learning_signals",
+          }
+          expected_attempt_columns = {
+              "candidate_artifact_version_id",
+              "after_quality_result_id",
+              "promoted_artifact_version_id",
+              "promotion_quality_result_id",
+              "reservation_id",
+              "actual_cost_usd",
+          }
+          expected_constraints = {
+              "uq_auto_repair_operation",
+              "ck_auto_repair_ready_final",
+              "ck_auto_repair_iteration",
+              "ck_auto_repair_promoted_decision",
+              "ck_repair_learning_human_actor",
+              "ck_repair_learning_training_governance",
+          }
+          url = os.environ["DATABASE_URL"].replace(
+              "postgresql+psycopg",
+              "postgresql",
+          )
+          with psycopg.connect(url) as conn:
+              tables = {
+                  row[0]
+                  for row in conn.execute(
+                      "select tablename from pg_tables where schemaname='public'"
+                  ).fetchall()
+              }
+              attempt_columns = {
+                  row[0]
+                  for row in conn.execute(
+                      "select column_name from information_schema.columns "
+                      "where table_schema='public' and table_name='auto_repair_attempts'"
+                  ).fetchall()
+              }
+              constraints = {
+                  row[0]
+                  for row in conn.execute(
+                      "select conname from pg_constraint where conname = any(%s)",
+                      (list(expected_constraints),),
+                  ).fetchall()
+              }
+              revision = conn.execute(
+                  "select version_num from alembic_version"
+              ).fetchone()[0]
+          assert expected_tables <= tables, expected_tables - tables
+          assert expected_attempt_columns <= attempt_columns, (
+              expected_attempt_columns - attempt_columns
+          )
+          assert constraints == expected_constraints, expected_constraints - constraints
+          assert revision == "20260818_0020", revision
+          print("NODE51_DATABASE_ACCEPTANCE_PASS")
+          PY

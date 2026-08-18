@@ -40,6 +40,7 @@ src = [
   "services/knowledge/src",
   "services/visual-critic/src",
   "services/asset-intelligence/src",
+  "services/auto-repair/src",
   "evals",
 ]
 
@@ -58,6 +59,7 @@ known-first-party = [
   "lumi_knowledge",
   "lumi_visual_critic",
   "lumi_asset_intelligence",
+  "lumi_auto_repair",
   "evals",
 ]
 known-third-party = ["fastapi"]
@@ -67,17 +69,20 @@ pythonVersion = "3.12"
 typeCheckingMode = "standard"
 include = ["apps", "services", "evals"]
 exclude = ["**/__pycache__", ".venv"]
+extraPaths = ["services/auto-repair/src"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
 pythonpath = [
   ".",
   "services/tool-gateway/src",
+  "services/auto-repair/src",
 ]
 testpaths = [
   "apps/api/tests",
   "apps/agent-runtime/tests",
   "apps/worker-media/tests",
   "services/tool-gateway/tests",
+  "services/auto-repair/tests",
   "evals/tests",
 ]

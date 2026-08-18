@@ -11,10 +11,7 @@ from lumi_image_edit import (
     ImageEditSpec,
     ValidatedImage,
 )
-from lumi_api.artifact_engine.contracts import (
-    ProvenanceEnvelope,
-    VersionCreateCommand,
-)
+from lumi_api.artifact_engine.contracts import ProvenanceEnvelope, VersionCreateCommand
 from lumi_api.artifact_engine.service import ArtifactEngineService
 from lumi_api.artifacts.models import (
     ArtifactFile,
@@ -39,7 +36,7 @@ class ArtifactAssetProjectionPort(Protocol):
 
 
 class Node42ImageEditArtifactAdapter:
-    """Append-only edit versions; rejected candidates never advance the source branch."""
+    """Append-only edit versions; rejected candidates never advance a requested branch."""
 
     def __init__(
         self,
@@ -59,21 +56,14 @@ class Node42ImageEditArtifactAdapter:
     ) -> ArtifactEditResult:
         source_id = UUID(spec.source.artifact_version_id)
         source = self.service.repository.get_version(source_id)
-        if (
-            str(source.artifact_id) != spec.source.artifact_id
-            or str(source.organization_id) != spec.organization_id
-        ):
+        if str(source.artifact_id) != spec.source.artifact_id or str(source.organization_id) != spec.organization_id:
             raise ValueError("IMAGE_EDIT_ARTIFACT_SOURCE_SCOPE_MISMATCH")
         if source.content_hash != spec.source.checksum_sha256:
             raise ValueError("IMAGE_EDIT_ARTIFACT_SOURCE_HASH_CHANGED")
 
         now = datetime.now(UTC)
         file_id = new_uuid7()
-        created_type = (
-            CreatedByType.AGENT
-            if spec.agent_run_id
-            else CreatedByType.SYSTEM
-        )
+        created_type = CreatedByType.AGENT if spec.agent_run_id else CreatedByType.SYSTEM
         created_id = spec.agent_run_id
         artifact_file = ArtifactFile(
             id=file_id,
@@ -93,9 +83,7 @@ class Node42ImageEditArtifactAdapter:
             ),
         )
         record = ProvenanceRecord(
-            agent_run_id=(
-                UUID(spec.agent_run_id) if spec.agent_run_id else None
-            ),
+            agent_run_id=UUID(spec.agent_run_id) if spec.agent_run_id else None,
             task_id=UUID(spec.task_id),
             provider=provenance.provider,
             model=provenance.model,
@@ -115,13 +103,20 @@ class Node42ImageEditArtifactAdapter:
 
         target_branch_id = source.branch_id
         expected_head = source.id
+        if spec.target_branch_id is not None:
+            requested = self.service.repository.get_branch(UUID(spec.target_branch_id))
+            if requested.organization_id != source.organization_id:
+                raise PermissionError("IMAGE_EDIT_TARGET_BRANCH_ORG_MISMATCH")
+            if requested.artifact_id != source.artifact_id:
+                raise ValueError("IMAGE_EDIT_TARGET_BRANCH_ARTIFACT_MISMATCH")
+            if requested.head_version_id != source.id:
+                raise ValueError("IMAGE_EDIT_TARGET_BRANCH_HEAD_MISMATCH")
+            target_branch_id = requested.id
+
         if validation.decision != "PASS":
             branch = self.service.fork_version(
                 source.id,
-                name=(
-                    f"image-edit-{validation.decision.lower()}-"
-                    f"{provenance.edit_id[:8]}"
-                ),
+                name=f"image-edit-{validation.decision.lower()}-{provenance.edit_id[:8]}",
                 created_by_type=created_type,
                 created_by_id=created_id,
                 created_at=now,
@@ -151,10 +146,7 @@ class Node42ImageEditArtifactAdapter:
         )
         status = version.status.value
         if validation.decision == "PASS":
-            status = self.service.mark_ready(
-                version.id,
-                occurred_at=now,
-            ).status.value
+            status = self.service.mark_ready(version.id, occurred_at=now).status.value
 
         candidate_asset_id = UUID(image.asset_id) if image.asset_id else None
         asset_id = self.asset_projection.project(
