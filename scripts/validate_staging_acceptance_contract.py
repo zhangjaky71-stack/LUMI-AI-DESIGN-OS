@@ -21,6 +21,16 @@ REQUIRED_IMAGES = [
     "worker-media",
     "sandbox-runtime",
 ]
+MODEL_GATEWAY_REQUIRED_SOURCES = [
+    "services/model-gateway",
+    "apps/api/src/lumi_api/model_gateway_runtime.py",
+    "apps/api/src/lumi_api/model_gateway_bootstrap.py",
+    "apps/api/src/lumi_api/model_gateway_service.py",
+    "apps/api/src/lumi_api/model_gateway_cli.py",
+    "apps/api/src/lumi_api/model_paid_guard.py",
+    "apps/api/src/lumi_api/idempotency/gateway.py",
+    "apps/api/src/lumi_api/costs/model_gateway_adapter.py",
+]
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -56,11 +66,7 @@ def clean_image_set(git_sha: str) -> dict[str, Any]:
     for name in REQUIRED_IMAGES:
         source_paths = [f"apps/{name}"]
         if name == "model-gateway":
-            source_paths = [
-                "services/model-gateway",
-                "apps/api/src/lumi_api/model_gateway_runtime.py",
-                "apps/api/src/lumi_api/costs/model_gateway_adapter.py",
-            ]
+            source_paths = list(MODEL_GATEWAY_REQUIRED_SOURCES)
         provenance[name] = {
             "git_sha": git_sha,
             "build_recipe_ref": f"fixture:build:{name}",
@@ -171,19 +177,34 @@ def main() -> int:
         "image provenance SHA mismatch must block",
     )
 
-    missing_model_gateway_source = copy.deepcopy(clean)
-    missing_model_gateway_source["container_image_set"]["provenance"]["model-gateway"][
-        "source_paths"
-    ] = ["services/model-gateway"]
-    missing_source_decision = gate.evaluate(manifest, parity, missing_model_gateway_source)
-    require(
-        missing_source_decision["passed"] is False,
-        "model-gateway image without hosted cost composition sources must block",
-    )
-    require(
-        any("model-gateway image provenance is missing required hosted sources" in item for item in missing_source_decision["blockers"]),
-        "missing model-gateway source blocker must be explicit",
-    )
+    for required_source in (
+        "apps/api/src/lumi_api/model_gateway_service.py",
+        "apps/api/src/lumi_api/model_gateway_cli.py",
+        "apps/api/src/lumi_api/model_paid_guard.py",
+        "apps/api/src/lumi_api/idempotency/gateway.py",
+        "apps/api/src/lumi_api/costs/model_gateway_adapter.py",
+    ):
+        missing_model_gateway_source = copy.deepcopy(clean)
+        source_paths = missing_model_gateway_source["container_image_set"]["provenance"][
+            "model-gateway"
+        ]["source_paths"]
+        source_paths.remove(required_source)
+        missing_source_decision = gate.evaluate(
+            manifest,
+            parity,
+            missing_model_gateway_source,
+        )
+        require(
+            missing_source_decision["passed"] is False,
+            f"model-gateway image without {required_source} must block",
+        )
+        require(
+            any(
+                "model-gateway image provenance is missing required hosted sources" in item
+                for item in missing_source_decision["blockers"]
+            ),
+            "missing model-gateway source blocker must be explicit",
+        )
 
     not_run = copy.deepcopy(clean)
     not_run["scenario_results"]["E2E-01"] = {"status": "NOT_RUN"}
@@ -234,7 +255,9 @@ def main() -> int:
             "empty_template_blocked": True,
             "mutable_image_blocked": True,
             "image_provenance_sha_swap_blocked": True,
-            "model_gateway_hosted_sources_required": True,
+            "model_gateway_executable_sources_required": True,
+            "model_gateway_paid_guard_source_required": True,
+            "model_gateway_idempotency_source_required": True,
             "p0_not_run_blocked": True,
             "unevidenced_pass_blocked": True,
             "invalid_external_blocked": True,
