@@ -77,6 +77,10 @@ class ToolSideEffectGuardRequiredError(ToolGatewayError):
     code = "TOOL_SIDE_EFFECT_GUARD_REQUIRED"
 
 
+class ToolAuditUnavailableError(ToolGatewayError):
+    code = "TOOL_AUDIT_UNAVAILABLE"
+
+
 class ToolOutputOffloadRequiredError(ToolGatewayError):
     code = "TOOL_OUTPUT_OFFLOAD_REQUIRED"
 
