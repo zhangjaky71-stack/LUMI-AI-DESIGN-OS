@@ -31,7 +31,7 @@ def p0_tool_definitions() -> tuple[ToolDefinition, ...]:
                 "type": "object",
                 "required": ["query"],
                 "properties": {
-                    "query": {"type": "string", "minLength": 1, "maxLength": 2000},
+                    "query": {"type": "string", "minLength": 1, "maxLength": 400},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 20},
                 },
                 "additionalProperties": False,
