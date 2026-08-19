@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+ROLLBACK_GATE_PATH = ROOT / "scripts" / "production-rollback-gate.py"
 
 
 class RollbackDecisionError(RuntimeError):
@@ -19,6 +22,15 @@ def load_json(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise RollbackDecisionError(f"{path} must contain a JSON object")
     return payload
+
+
+def load_rollback_gate() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("lumi_production_rollback_gate", ROLLBACK_GATE_PATH)
+    if spec is None or spec.loader is None:
+        raise RollbackDecisionError("unable to import production rollback gate")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def repo_path(path: Path) -> str:
@@ -106,20 +118,17 @@ def validate_smoke(
 def evaluate(
     current: dict[str, Any],
     previous: dict[str, Any],
-    rollback_gate: dict[str, Any],
+    previous_path: Path,
     previous_runtime: dict[str, Any],
     previous_smoke: dict[str, Any],
     restored_runtime: dict[str, Any],
     restored_smoke: dict[str, Any],
     refs: list[dict[str, str]],
 ) -> dict[str, Any]:
-    blockers: list[str] = []
-    if rollback_gate.get("schema_version") != 1 or rollback_gate.get("passed") is not True:
-        blockers.append("rollback gate is not passed=true")
-    if rollback_gate.get("current_deployment_id") != current.get("deployment_id"):
-        blockers.append("rollback gate current deployment mismatch")
-    if rollback_gate.get("previous_deployment_id") != previous.get("deployment_id"):
-        blockers.append("rollback gate previous deployment mismatch")
+    gate = load_rollback_gate().evaluate(current, previous, previous_path)
+    blockers = list(gate.get("blockers") or [])
+    if gate.get("passed") is not True:
+        blockers.append("production rollback relationship is not passed=true")
     validate_runtime(previous_runtime, previous, label="rollback-target", blockers=blockers)
     validate_smoke(previous_smoke, previous, label="rollback-target", blockers=blockers)
     validate_runtime(restored_runtime, current, label="roll-forward", blockers=blockers)
@@ -127,17 +136,19 @@ def evaluate(
 
     current_rc = current.get("release_candidate", {})
     previous_rc = previous.get("release_candidate", {})
+    blockers = sorted(set(blockers))
     payload: dict[str, Any] = {
         "schema_version": 1,
         "current_deployment_id": current.get("deployment_id"),
         "previous_deployment_id": previous.get("deployment_id"),
         "release_candidate": current_rc,
         "previous_release_candidate": previous_rc,
+        "rollback_gate_id": gate.get("gate_id"),
         "rollback_executed": True,
-        "roll_forward_restored": True if not blockers else False,
+        "roll_forward_restored": not blockers,
         "passed": not blockers,
         "evidence_refs": refs,
-        "blockers": sorted(set(blockers)),
+        "blockers": blockers,
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     payload["decision_id"] = hashlib.sha256(canonical.encode()).hexdigest()
@@ -148,7 +159,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Finalize production rollback+roll-forward rehearsal evidence")
     parser.add_argument("--current-manifest", required=True)
     parser.add_argument("--previous-manifest", required=True)
-    parser.add_argument("--rollback-gate", required=True)
     parser.add_argument("--previous-runtime", required=True)
     parser.add_argument("--previous-smoke", required=True)
     parser.add_argument("--restored-runtime", required=True)
@@ -156,8 +166,8 @@ def main() -> int:
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
+    previous_path = Path(args.previous_manifest)
     paths = [
-        Path(args.rollback_gate),
         Path(args.previous_runtime),
         Path(args.previous_smoke),
         Path(args.restored_runtime),
@@ -166,12 +176,12 @@ def main() -> int:
     try:
         result = evaluate(
             load_json(Path(args.current_manifest)),
-            load_json(Path(args.previous_manifest)),
+            load_json(previous_path),
+            previous_path,
             load_json(paths[0]),
             load_json(paths[1]),
             load_json(paths[2]),
             load_json(paths[3]),
-            load_json(paths[4]),
             [evidence_ref(path) for path in paths],
         )
     except (OSError, json.JSONDecodeError, RollbackDecisionError) as exc:
