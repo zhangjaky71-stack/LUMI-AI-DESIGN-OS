@@ -11,6 +11,7 @@ from uuid import UUID, uuid5
 import asyncpg
 from lumi_asset_storage.s3 import S3ObjectStore
 from lumi_image_generation.asset_intelligence_adapter import ReferenceAuthorizationError
+from lumi_image_generation.errors import ImageGenerationTransientError
 from lumi_image_generation.model import (
     AuthorizedReference,
     ImageGenerationSpec,
@@ -177,17 +178,25 @@ class S3GeneratedImageStore:
             f"generated/v1/{spec.organization_id}/{spec.project_id}/"
             f"{safe_candidate}/{image.checksum_sha256}.{extension}"
         )
-        await self.object_store.put_bytes(
-            bucket=self.bucket,
-            object_key=object_key,
-            data=image.content,
-            content_type=image.mime_type,
-            max_bytes=self.max_bytes,
-            metadata={
-                "lumi-generation-operation": spec.operation_id,
-                "lumi-checksum-sha256": image.checksum_sha256,
-            },
-        )
+        try:
+            await self.object_store.put_bytes(
+                bucket=self.bucket,
+                object_key=object_key,
+                data=image.content,
+                content_type=image.mime_type,
+                max_bytes=self.max_bytes,
+                metadata={
+                    "lumi-generation-operation": spec.operation_id,
+                    "lumi-checksum-sha256": image.checksum_sha256,
+                },
+            )
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise ImageGenerationTransientError(
+                "GENERATION_STORAGE_TEMPORARY",
+                f"durable generated image storage failed: {type(exc).__name__}",
+            ) from exc
         return StoredImage(
             storage_key=object_key,
             mime_type=image.mime_type,
