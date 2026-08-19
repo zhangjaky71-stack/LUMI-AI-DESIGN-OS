@@ -1,0 +1,77 @@
+name: Tool Gateway P0 E2E Evidence
+
+on:
+  pull_request:
+    paths:
+      - "services/tool-gateway/**"
+      - "apps/api/src/lumi_api/tool_data_control.py"
+      - "apps/api/src/lumi_api/tool_side_effect_control.py"
+      - "apps/api/src/lumi_api/tool_audit_control.py"
+      - "apps/api/src/lumi_api/tool_approval_control.py"
+      - "apps/agent-runtime/src/lumi_agent_runtime/**"
+      - "services/sandbox-runtime/**"
+      - "infra/iac/environments/staging/**"
+      - "staging/acceptance/tool-gateway-e2e-v1.json"
+      - "scripts/validate_tool_gateway_e2e_evidence.py"
+      - ".github/workflows/tool-gateway-e2e-evidence.yml"
+  workflow_dispatch:
+    inputs:
+      evidence_path:
+        description: "Completed Tool Gateway E2E JSON or full staging evidence under reports/staging-acceptance/"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile Tool Gateway E2E validator
+        run: python3 -m py_compile scripts/validate_tool_gateway_e2e_evidence.py
+      - name: Validate canonical evidence template JSON
+        run: python3 -m json.tool staging/acceptance/tool-gateway-e2e-v1.json >/dev/null
+      - name: Drill fail-closed Tool Gateway E2E evidence contract
+        run: python3 scripts/validate_tool_gateway_e2e_evidence.py --self-test
+
+  evidence-decision:
+    if: github.event_name == 'workflow_dispatch' && inputs.evidence_path != ''
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      LUMI_TOOL_GATEWAY_E2E_EVIDENCE: ${{ inputs.evidence_path }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Constrain evidence path
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          workspace = Path.cwd().resolve()
+          allowed = (workspace / "reports" / "staging-acceptance").resolve()
+          target = (workspace / os.environ["LUMI_TOOL_GATEWAY_E2E_EVIDENCE"]).resolve()
+          try:
+              target.relative_to(allowed)
+          except ValueError as exc:
+              raise SystemExit("evidence_path escapes reports/staging-acceptance/") from exc
+          if target.suffix != ".json" or not target.is_file():
+              raise SystemExit("evidence_path must be an existing JSON file")
+          print(target.relative_to(workspace))
+          PY
+      - name: Require real Tool Gateway P0 E2E evidence
+        run: >-
+          python3 scripts/validate_tool_gateway_e2e_evidence.py
+          --evidence "$LUMI_TOOL_GATEWAY_E2E_EVIDENCE"
