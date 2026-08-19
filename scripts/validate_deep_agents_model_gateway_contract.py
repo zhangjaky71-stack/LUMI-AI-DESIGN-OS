@@ -58,6 +58,60 @@ def assert_model_chat_boundary() -> None:
             raise SystemExit(f"{path}: raw provider credential escapes Model Gateway: {credential}")
 
 
+def assert_hosted_runtime_composition() -> None:
+    path = ROOT / "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/runtime_factory.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    hosted = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef)
+            and node.name == "HostedDeepAgentRuntimeFactory"
+        ),
+        None,
+    )
+    if hosted is None:
+        raise SystemExit(f"{path}: HostedDeepAgentRuntimeFactory is missing")
+    initializer = next(
+        (
+            node
+            for node in hosted.body
+            if isinstance(node, ast.FunctionDef) and node.name == "__init__"
+        ),
+        None,
+    )
+    if initializer is None:
+        raise SystemExit(f"{path}: hosted runtime constructor is missing")
+    argument_names = {
+        argument.arg
+        for argument in (
+            *initializer.args.posonlyargs,
+            *initializer.args.args,
+            *initializer.args.kwonlyargs,
+        )
+    }
+    if "models" in argument_names:
+        raise SystemExit(
+            f"{path}: hosted runtime must not expose model-provider injection"
+        )
+    has_http_provider = False
+    for node in ast.walk(initializer):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        owner = node.func.value
+        if (
+            node.func.attr == "from_env"
+            and isinstance(owner, ast.Name)
+            and owner.id == "HttpProfileModelProvider"
+        ):
+            has_http_provider = True
+            break
+    if not has_http_provider:
+        raise SystemExit(
+            f"{path}: hosted runtime must construct HttpProfileModelProvider.from_env()"
+        )
+
+
 def main() -> int:
     require(
         "apps/agent-runtime/pyproject.toml",
@@ -93,7 +147,14 @@ def main() -> int:
         "budget_limit_usd=context.budget_limit_usd",
     )
     require(
+        "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/runtime_factory.py",
+        "class HostedDeepAgentRuntimeFactory(BoundedDeepAgentRuntimeFactory)",
+        "models=HttpProfileModelProvider.from_env()",
+    )
+    assert_hosted_runtime_composition()
+    require(
         "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/__init__.py",
+        "HostedDeepAgentRuntimeFactory",
         "HttpProfileModelProvider",
         "ModelGatewayChatModel",
     )
@@ -104,6 +165,7 @@ def main() -> int:
         "test_secret_is_not_serialized_or_repr_exposed",
         "test_profile_provider_propagates_root_and_subagent_budget",
         "test_missing_internal_gateway_config_fails_closed",
+        "test_hosted_factory_does_not_expose_model_injection",
     )
     require(
         "services/model-gateway/src/lumi_model_gateway/profile_routing.py",
