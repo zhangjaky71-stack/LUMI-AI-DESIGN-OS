@@ -19,6 +19,7 @@ locals {
     "internal/tool-gateway",
     "internal/sandbox-runtime",
     "internal/side-effect-control",
+    "internal/tool-audit",
   ])
 }
 
