@@ -33,8 +33,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Validate final acceptance contract
-        run: python3 scripts/validate_final_acceptance_contract.py
+      - name: Validate final acceptance contracts
+        run: |
+          python3 scripts/validate_final_acceptance_contract.py
+          python3 scripts/validate_security_release_decision_contract.py
       - name: Validate JSON and Python syntax
         run: |
           python3 -m json.tool final/acceptance/manifest-v1.json >/dev/null
@@ -43,6 +45,10 @@ jobs:
           python3 -m py_compile \
             scripts/final-acceptance-gate.py \
             scripts/create-final-acceptance-evidence.py \
+            scripts/final-acceptance-assembler.py \
+            scripts/validate_final_acceptance_package.py \
+            scripts/security-release-decision.py \
+            scripts/validate_security_release_decision_contract.py \
             scripts/validate_final_acceptance_contract.py \
             scripts/validate_uv_workspace_lock.py
 
@@ -104,6 +110,8 @@ jobs:
               fh.write(f'FINAL_EVIDENCE={evidence.relative_to(root).as_posix()}\n')
               fh.write(f'FINAL_OUTPUT={output.relative_to(root).as_posix()}\n')
           PY
+      - name: Require canonical assembled and frozen package
+        run: python3 scripts/validate_final_acceptance_package.py --release "$FINAL_RELEASE"
       - name: Evaluate final product acceptance
         run: |
           python3 scripts/final-acceptance-gate.py \
