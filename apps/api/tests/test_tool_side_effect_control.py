@@ -70,7 +70,12 @@ def _body(*, organization_id: UUID | None = None) -> bytes:
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
-def _signed_headers(body: bytes, *, service: str = "tool-gateway", timestamp: int = _NOW) -> dict[str, str]:
+def _signed_headers(
+    body: bytes,
+    *,
+    service: str = "tool-gateway",
+    timestamp: int = _NOW,
+) -> dict[str, str]:
     body_hash = hashlib.sha256(body).hexdigest()
     message = f"{service}\n{timestamp}\nPOST\n{_PATH}\n{body_hash}".encode("utf-8")
     signature = hmac.new(_SECRET.encode("utf-8"), message, hashlib.sha256).hexdigest()
@@ -122,7 +127,11 @@ def test_unsigned_claim_is_rejected_before_ledger(monkeypatch) -> None:
     body = _body()
 
     with _client(fake) as client:
-        response = client.post(_PATH, content=body, headers={"Content-Type": "application/json"})
+        response = client.post(
+            _PATH,
+            content=body,
+            headers={"Content-Type": "application/json"},
+        )
 
     assert response.status_code == 401
     assert response.json()["code"] == "SIDE_EFFECT_CONTROL_CALLER_FORBIDDEN"
@@ -136,7 +145,11 @@ def test_tampered_body_is_rejected_before_ledger(monkeypatch) -> None:
     tampered = signed_body.replace(b"python", b"python3", 1)
 
     with _client(fake) as client:
-        response = client.post(_PATH, content=tampered, headers=_signed_headers(signed_body))
+        response = client.post(
+            _PATH,
+            content=tampered,
+            headers=_signed_headers(signed_body),
+        )
 
     assert response.status_code == 401
     assert response.json()["code"] == "SIDE_EFFECT_CONTROL_SIGNATURE_INVALID"
