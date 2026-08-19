@@ -35,6 +35,11 @@
     "public_api_alarm_rollback": true,
     "internal_service_strategy": "ROLLING_CIRCUIT_BREAKER"
   },
+  "recovery": {
+    "database_pitr_max_rpo_minutes": 5,
+    "database_pitr_max_rto_minutes": 60,
+    "object_version_recovery_required": true
+  },
   "first_day_limits": {
     "max_org_concurrent_agent_runs": 4,
     "max_org_concurrent_generations": 4,
