@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from lumi_domain.job_dispatch import (
     IMAGE_TRANSFORM_JOB_KIND,
@@ -101,7 +101,11 @@ def stage_image_transform_dispatch(
         generation=generation,
         trace_id=trace_id,
     )
+    operation_id = dispatch.message.operation_id
+    if operation_id is None:
+        raise ValueError("MEDIA_DISPATCH_OPERATION_REQUIRED")
     event = OutboxEvent(
+        id=_dispatch_event_id(operation_id, dispatch.message.job_id),
         organization_id=dispatch.message.organization_id,
         event_name=MEDIA_DISPATCH_EVENT_NAME,
         aggregate_type="task",
@@ -112,6 +116,10 @@ def stage_image_transform_dispatch(
     )
     session.add(event)
     return event
+
+
+def _dispatch_event_id(operation_id: UUID, task_id: UUID) -> UUID:
+    return uuid5(operation_id, f"lumi:image-transform-dispatch:{task_id}")
 
 
 def _object(value: object, error: str) -> dict[str, Any]:
