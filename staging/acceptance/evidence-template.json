@@ -46,7 +46,20 @@
       },
       "agent-runtime": {"git_sha":"PENDING","build_recipe_ref":"PENDING","entrypoint":"PENDING","sbom_ref":"PENDING","provenance_ref":"PENDING","source_paths":[]},
       "model-gateway": {"git_sha":"PENDING","build_recipe_ref":"PENDING","entrypoint":"PENDING","sbom_ref":"PENDING","provenance_ref":"PENDING","source_paths":[]},
-      "tool-gateway": {"git_sha":"PENDING","build_recipe_ref":"PENDING","entrypoint":"PENDING","sbom_ref":"PENDING","provenance_ref":"PENDING","source_paths":[]},
+      "tool-gateway": {
+        "git_sha": "PENDING",
+        "build_recipe_ref": "PENDING",
+        "entrypoint": "PENDING",
+        "sbom_ref": "PENDING",
+        "provenance_ref": "PENDING",
+        "source_paths": [
+          "services/tool-gateway/Dockerfile",
+          "services/tool-gateway/pyproject.toml",
+          "services/tool-gateway/src/lumi_tool_gateway/service.py",
+          "services/tool-gateway/src/lumi_tool_gateway/result_offload.py",
+          "services/asset-storage/src/lumi_asset_storage/s3.py"
+        ]
+      },
       "worker-media": {"git_sha":"PENDING","build_recipe_ref":"PENDING","entrypoint":"PENDING","sbom_ref":"PENDING","provenance_ref":"PENDING","source_paths":[]},
       "sandbox-runtime": {"git_sha":"PENDING","build_recipe_ref":"PENDING","entrypoint":"PENDING","sbom_ref":"PENDING","provenance_ref":"PENDING","source_paths":[]}
     }
