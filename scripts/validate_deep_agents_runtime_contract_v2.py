@@ -57,10 +57,53 @@ def assert_public_exports_are_bounded() -> None:
     for node in tree.body:
         if isinstance(node, ast.ImportFrom):
             imported.update(alias.asname or alias.name for alias in node.names)
-    if "BoundedDeepAgentRuntimeFactory" not in imported:
-        raise SystemExit("bounded production Deep Agent factory is not exported")
+    for required in (
+        "BoundedDeepAgentRuntimeFactory",
+        "HostedDeepAgentRuntimeFactory",
+    ):
+        if required not in imported:
+            raise SystemExit(f"required bounded Deep Agent factory is not exported: {required}")
     if "DeepAgentRuntimeFactory" in imported:
         raise SystemExit("unbounded raw DeepAgentRuntimeFactory must not be exported")
+
+
+def assert_hosted_model_provider_is_fixed() -> None:
+    path = ROOT / "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/runtime_factory.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    hosted = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef)
+            and node.name == "HostedDeepAgentRuntimeFactory"
+        ),
+        None,
+    )
+    if hosted is None:
+        raise SystemExit("HostedDeepAgentRuntimeFactory is required for production")
+    initializer = next(
+        (
+            node
+            for node in hosted.body
+            if isinstance(node, ast.FunctionDef) and node.name == "__init__"
+        ),
+        None,
+    )
+    if initializer is None:
+        raise SystemExit("HostedDeepAgentRuntimeFactory.__init__ is required")
+    arguments = {
+        argument.arg
+        for argument in (
+            *initializer.args.posonlyargs,
+            *initializer.args.args,
+            *initializer.args.kwonlyargs,
+        )
+    }
+    if "models" in arguments:
+        raise SystemExit("hosted Deep Agent runtime must not expose model injection")
+    text = ast.unparse(initializer)
+    if "HttpProfileModelProvider.from_env()" not in text:
+        raise SystemExit("hosted Deep Agent runtime must bind private Model Gateway from env")
 
 
 def main() -> int:
@@ -76,6 +119,7 @@ def main() -> int:
         "content_hash",
         "max_total_subagent_calls",
         "max_parallel_subagents",
+        "budget_limit_usd: str | None = None",
     )
     factory = require(
         "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/factory.py",
@@ -89,10 +133,18 @@ def main() -> int:
         "host-local Deep Agents backend is forbidden",
         "deep_agent_definition_hash",
         "recursion_limit",
+        "budget_limit_usd=context.budget_limit_usd",
     )
     for forbidden in ("FilesystemBackend(", "LocalShellBackend(", "DockerBackend("):
         if forbidden in factory:
             raise SystemExit(f"factory directly constructs host-local backend: {forbidden}")
+    require(
+        "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/runtime_factory.py",
+        "class BoundedDeepAgentRuntimeFactory",
+        "class HostedDeepAgentRuntimeFactory",
+        "HttpProfileModelProvider.from_env()",
+    )
+    assert_hosted_model_provider_is_fixed()
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/graph_limits.py",
         "class LimitedCompiledDeepAgent",
@@ -137,8 +189,18 @@ def main() -> int:
         "graph_catalog.verify",
     )
     require(
+        "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py",
+        "class ModelGatewayChatModel",
+        "class HttpProfileModelProvider",
+        "HttpModelGatewayClient",
+        'uuid5(parent_operation_id, f"lumi-model-turn-v1:{digest}")',
+    )
+    require(
         "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/__init__.py",
         "BoundedDeepAgentRuntimeFactory",
+        "HostedDeepAgentRuntimeFactory",
+        "HttpProfileModelProvider",
+        "ModelGatewayChatModel",
         "LumiToolGatewayProvider",
         "Node25ToolGatewayInvoker",
         "DeepAgentControlPlaneCompiler",
@@ -173,6 +235,10 @@ def main() -> int:
         "apps/agent-runtime/tests/test_deep_runtime_tooling.py",
         "test_framework_tool_call_id_becomes_stable_idempotency_key",
         "test_subagent_parent_scope_is_forwarded",
+    )
+    require(
+        "apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py",
+        "test_hosted_factory_does_not_expose_model_injection",
     )
     assert_no_ambient_authority()
     print("NODE-29 Deep Agents runtime static contract: PASS")
