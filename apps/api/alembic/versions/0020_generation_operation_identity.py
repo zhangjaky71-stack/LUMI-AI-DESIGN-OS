@@ -7,6 +7,7 @@ Create Date: 2026-08-19
 
 from __future__ import annotations
 
+import sqlalchemy as sa
 from alembic import op
 
 revision = "0020_generation_operation_identity"
@@ -44,7 +45,7 @@ def upgrade() -> None:
         "generations",
         ["organization_id", "operation_id"],
         unique=True,
-        postgresql_where=op.inline_literal("operation_id IS NOT NULL"),
+        postgresql_where=sa.text("operation_id IS NOT NULL"),
     )
 
 
