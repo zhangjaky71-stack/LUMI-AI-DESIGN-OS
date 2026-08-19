@@ -39,11 +39,12 @@ from .http_transport import (
     encode_tool_result,
     verify_internal_request,
 )
-from .native import SandboxExecuteAdapter
+from .native import SafeWebFetchAdapter, SandboxExecuteAdapter
 from .ports import ToolAdapter
 from .result_offload import S3ResultOffloader
 from .sandbox_transport import HttpSandboxExecutor
 from .side_effect_control import HttpSideEffectControlClient, RemoteSideEffectGuard
+from .web_transport import PinnedStdlibHTTPTransport
 
 _ALLOWED_CALLERS = frozenset({"agent-runtime"})
 _MAX_BODY_BYTES = 2 * 1024 * 1024
@@ -249,6 +250,7 @@ def _build_hosted_adapters() -> dict[str, ToolAdapter]:
     Missing tools keep readiness blocked; no placeholder/no-op adapters are permitted.
     """
     return {
+        "web.fetch@1.0.0": SafeWebFetchAdapter(PinnedStdlibHTTPTransport()),
         "sandbox.execute@1.0.0": SandboxExecuteAdapter(HttpSandboxExecutor.from_env()),
     }
 
