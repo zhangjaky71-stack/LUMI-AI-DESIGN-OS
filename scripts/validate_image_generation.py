@@ -22,6 +22,8 @@ WORKER_PORTS = ROOT / "apps/worker-media/src/lumi_worker_media/image_generation_
 WORKER_ARTIFACTS = ROOT / "apps/worker-media/src/lumi_worker_media/image_generation_artifacts.py"
 WORKER_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/image_generation_runtime.py"
 WORKER_APP = ROOT / "apps/worker-media/src/lumi_worker_media/app.py"
+WORKER_CLI = ROOT / "apps/worker-media/src/lumi_worker_media/worker_cli.py"
+WORKER_DOCKERFILE = ROOT / "apps/worker-media/Dockerfile"
 WORKFLOW_MODEL = ROOT / "apps/api/src/lumi_api/persistence/models/workflow.py"
 WORKER_PROJECT = ROOT / "apps/worker-media/pyproject.toml"
 WORKSPACE = ROOT / "pyproject.toml"
@@ -85,6 +87,8 @@ def validate_python_contract() -> None:
     worker_artifacts = WORKER_ARTIFACTS.read_text(encoding="utf-8")
     worker_runtime = WORKER_RUNTIME.read_text(encoding="utf-8")
     worker_app = WORKER_APP.read_text(encoding="utf-8")
+    worker_cli = WORKER_CLI.read_text(encoding="utf-8")
+    worker_dockerfile = WORKER_DOCKERFILE.read_text(encoding="utf-8")
     workflow_model = WORKFLOW_MODEL.read_text(encoding="utf-8")
 
     require("budget_limit_usd: Decimal" in model, "generation budget must use Decimal")
@@ -277,6 +281,22 @@ def validate_python_contract() -> None:
     require(
         "JobState.RETRYING" in image_task_block and "JobState.FAILED" in image_task_block,
         "Celery image task retry/failure propagation missing",
+    )
+
+    require(
+        "celery_app.worker_main" in worker_cli
+        and "QUEUE_BY_JOB_KIND" in worker_cli
+        and "LUMI_WORKER_MEDIA_CONCURRENCY" in worker_cli,
+        "production Worker Media Celery entrypoint missing or unconstrained",
+    )
+    require(
+        "uv sync --all-packages --frozen --no-dev" in worker_dockerfile,
+        "Worker Media image must use canonical frozen all-workspace install",
+    )
+    require("USER 10001:10001" in worker_dockerfile, "Worker Media image must run non-root")
+    require(
+        'CMD ["python", "-m", "lumi_worker_media.worker_cli"]' in worker_dockerfile,
+        "Worker Media image must start the production Celery entrypoint",
     )
 
     generation_block = workflow_model.split("class Generation(", 1)[1].split(
