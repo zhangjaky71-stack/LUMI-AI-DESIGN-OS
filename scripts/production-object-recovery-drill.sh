@@ -24,6 +24,7 @@ V1_FILE="$TMP_DIR/v1"
 V2_FILE="$TMP_DIR/v2"
 RECOVERED_FILE="$TMP_DIR/recovered"
 CURRENT_FILE="$TMP_DIR/current"
+CROSS_REGION_FILE="$TMP_DIR/cross-region.json"
 CLEANED=false
 
 cleanup() {
@@ -102,7 +103,31 @@ REMAINING="$(jq --arg key "$KEY" '[
 ] | length' <<<"$AFTER")"
 [[ "$REMAINING" -eq 0 ]] || { echo "drill cleanup left object versions behind" >&2; exit 70; }
 CLEANED=true
-rm -rf "$TMP_DIR"
+
+# The protected Production DR workflow initializes this exact state root before
+# invoking the object drill. Reuse canonical Terraform outputs rather than
+# duplicating bucket/region configuration in workflow inputs.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CORE_DIR="$REPO_ROOT/infra/iac/environments/production/core"
+SOURCE_BUCKETS="$(terraform -chdir="$CORE_DIR" output -json bucket_names)"
+DR_BUCKETS="$(terraform -chdir="$CORE_DIR" output -json object_dr_bucket_names)"
+DR_REGION="$(terraform -chdir="$CORE_DIR" output -raw object_dr_region)"
+[[ -n "${AWS_REGION:-}" && -n "$DR_REGION" && "$AWS_REGION" != "$DR_REGION" ]] || {
+  echo "cross-region object recovery outputs are missing or not cross-region" >&2
+  exit 71
+}
+
+bash "$REPO_ROOT/scripts/production-object-cross-region-drill.sh" \
+  "$(jq -r '.assets' <<<"$SOURCE_BUCKETS")" \
+  "$(jq -r '.assets' <<<"$DR_BUCKETS")" \
+  "$(jq -r '.exports' <<<"$SOURCE_BUCKETS")" \
+  "$(jq -r '.exports' <<<"$DR_BUCKETS")" \
+  "$DR_REGION" \
+  "$DEPLOYMENT_ID" \
+  "$RUN_ID" \
+  "$CROSS_REGION_FILE"
+
+test "$(jq -r '.passed' "$CROSS_REGION_FILE")" = true
 
 jq -n \
   --arg deployment_id "$DEPLOYMENT_ID" \
@@ -117,7 +142,12 @@ jq -n \
   --arg restored_sha256 "$CURRENT_SHA" \
   --argjson version_count_before_cleanup "$VERSION_COUNT" \
   --argjson delete_marker_count_before_cleanup "$MARKER_COUNT" \
-  '{schema_version:1,deployment_id:$deployment_id,bucket:$bucket,key:$key,versioning:"Enabled",expected_sha256:$expected_sha256,corrupt_sha256:$corrupt_sha256,restored_sha256:$restored_sha256,v1_version_id:$v1_version_id,corrupt_version_id:$corrupt_version_id,delete_marker_version_id:$delete_marker_version_id,restored_version_id:$restored_version_id,version_count_before_cleanup:$version_count_before_cleanup,delete_marker_count_before_cleanup:$delete_marker_count_before_cleanup,cleanup_complete:true,passed:($expected_sha256 == $restored_sha256)}' \
+  --slurpfile cross_region "$CROSS_REGION_FILE" \
+  '{schema_version:1,deployment_id:$deployment_id,bucket:$bucket,key:$key,versioning:"Enabled",expected_sha256:$expected_sha256,corrupt_sha256:$corrupt_sha256,restored_sha256:$restored_sha256,v1_version_id:$v1_version_id,corrupt_version_id:$corrupt_version_id,delete_marker_version_id:$delete_marker_version_id,restored_version_id:$restored_version_id,version_count_before_cleanup:$version_count_before_cleanup,delete_marker_count_before_cleanup:$delete_marker_count_before_cleanup,cleanup_complete:true,cross_region:$cross_region[0],passed:($expected_sha256 == $restored_sha256 and $cross_region[0].passed == true)}' \
   > "$OUTPUT_JSON"
+
+test "$(jq -r '.passed' "$OUTPUT_JSON")" = true
+rm -rf "$TMP_DIR"
+trap - EXIT
 
 echo "production object recovery drill: PASS"
