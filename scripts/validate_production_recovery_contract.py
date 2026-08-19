@@ -132,6 +132,10 @@ def fixtures() -> list[dict[str, Any]]:
     cleanup = {
         "schema_version": 1,
         "deployment_id": manifest["deployment_id"],
+        "source_region": "ap-northeast-1",
+        "recovery_region": "ap-southeast-1",
+        "database_evidence_source_versions_remaining": 0,
+        "database_evidence_recovery_versions_remaining": 0,
         "recovery_instance_deleted": True,
         "database_evidence_object_deleted": True,
         "passed": True,
@@ -160,6 +164,7 @@ def source_contract() -> None:
     cross_drill = (ROOT / "scripts/production-object-cross-region-drill.sh").read_text()
     cleanup = (ROOT / "scripts/cleanup-production-object-dr-replicas.sh").read_text()
     db_verify = (ROOT / "scripts/production-recovery-db-verify.py").read_text()
+    dr_workflow = (ROOT / ".github/workflows/production-dr-rehearsal.yml").read_text()
 
     for token in (
         'object_dr_purposes = toset(["assets", "exports"])',
@@ -185,6 +190,22 @@ def source_contract() -> None:
     require("SET TRANSACTION READ ONLY" in db_verify, "DB read-only transaction missing")
     require('"error": str(exc)' not in db_verify, "DB verifier may leak exception context")
 
+    forbidden_unversioned_delete = 'aws s3api delete-object --bucket "$EXPORTS_BUCKET" --key "$DB_EVIDENCE_KEY"'
+    require(
+        forbidden_unversioned_delete not in dr_workflow,
+        "DR workflow must not create a fresh DeleteMarker after exact version cleanup",
+    )
+    require(
+        "database_evidence_source_versions_remaining" in dr_workflow
+        and "database_evidence_recovery_versions_remaining" in dr_workflow,
+        "DR workflow must record exact source/recovery residual version counts",
+    )
+    require(
+        'list-object-versions --region "$AWS_REGION" --bucket "$EXPORTS_BUCKET"' in dr_workflow
+        and 'list-object-versions --region "$DR_REGION" --bucket "$DR_EXPORTS"' in dr_workflow,
+        "DR workflow must verify exact version/delete-marker cleanup in both Regions",
+    )
+
 
 def main() -> int:
     module = load_decision()
@@ -206,6 +227,10 @@ def main() -> int:
     must_block(module, lambda f: f[4]["cross_region"]["pairs"][0].__setitem__("destination_replication_status", "PENDING"), "destination not REPLICA")
     must_block(module, lambda f: f[4]["cross_region"]["pairs"][0].__setitem__("destination_sha256", "1" * 64), "CRR checksum mismatch")
     must_block(module, lambda f: f[5].__setitem__("recovery_instance_deleted", False), "temporary RDS cleanup")
+    must_block(module, lambda f: f[5].__setitem__("database_evidence_source_versions_remaining", 1), "source DeleteMarker/version residue")
+    must_block(module, lambda f: f[5].__setitem__("database_evidence_recovery_versions_remaining", 1), "recovery DeleteMarker/version residue")
+    must_block(module, lambda f: f[5].__setitem__("source_region", "ap-southeast-1"), "cleanup source region mismatch")
+    must_block(module, lambda f: f[5].__setitem__("recovery_region", "ap-northeast-1"), "cleanup recovery region mismatch")
     must_block(module, lambda f: f[1]["services"][0].__setitem__("image_matches", False), "baseline runtime mismatch")
 
     print("production recovery contract: PASS")
