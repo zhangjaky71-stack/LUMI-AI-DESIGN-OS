@@ -1,7 +1,8 @@
 variable "account_id" { type = string }
 variable "region" { type = string }
 variable "object_dr_region" {
-  type = string
+  type    = string
+  default = "ap-southeast-1"
   validation {
     condition     = length(trimspace(var.object_dr_region)) > 0 && var.object_dr_region != var.region
     error_message = "Production object_dr_region must be configured and differ from the primary region."
