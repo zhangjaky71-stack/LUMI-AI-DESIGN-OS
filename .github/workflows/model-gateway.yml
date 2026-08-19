@@ -22,6 +22,8 @@ on:
       - "apps/api/tests/integration/test_model_paid_guard_postgres.py"
       - "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py"
       - "apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py"
+      - "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py"
+      - "apps/worker-media/tests/test_image_gateway_runtime.py"
       - "scripts/validate_model_gateway_contract.py"
       - "scripts/validate_deep_agents_model_gateway_contract.py"
       - "scripts/integration_model_gateway.py"
@@ -59,6 +61,8 @@ jobs:
           apps/api/tests/test_model_gateway_media_bootstrap.py
           apps/api/tests/test_provider_output_store.py
           apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py
+          apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py
+          apps/worker-media/tests/test_image_gateway_runtime.py
           scripts/validate_model_gateway_contract.py
           scripts/validate_deep_agents_model_gateway_contract.py
       - name: Static architecture and secret boundary
@@ -101,6 +105,8 @@ jobs:
           apps/api/src/lumi_api/provider_output_store.py
           apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py
           apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py
+          apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py
+          apps/worker-media/tests/test_image_gateway_runtime.py
           apps/api/tests/test_model_gateway_media_bootstrap.py
           apps/api/tests/test_model_paid_guard.py
           apps/api/tests/test_provider_output_store.py
@@ -122,6 +128,8 @@ jobs:
           apps/api/src/lumi_api/provider_output_store.py
           apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py
           apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py
+          apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py
+          apps/worker-media/tests/test_image_gateway_runtime.py
           apps/api/tests/test_model_gateway_media_bootstrap.py
           apps/api/tests/test_model_paid_guard.py
           apps/api/tests/test_provider_output_store.py
@@ -139,6 +147,7 @@ jobs:
           services/asset-storage/tests/test_s3_bounded_bytes.py
           apps/api/tests/test_model_gateway_media_bootstrap.py
           apps/api/tests/test_provider_output_store.py
+          apps/worker-media/tests/test_image_gateway_runtime.py
           -q
 
       - name: Deep Agents HTTP model boundary tests
