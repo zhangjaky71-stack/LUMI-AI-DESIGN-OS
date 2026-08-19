@@ -7,7 +7,6 @@ import urllib.error
 import urllib.request
 from typing import Any
 from urllib.parse import urlparse
-from uuid import UUID
 
 from .contracts import ToolAdapterOutput, ToolDefinition, ToolRequest, canonical_json_bytes
 from .errors import ToolDataControlUnavailableError
@@ -16,6 +15,7 @@ from .http_transport import sign_internal_request
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _DEFAULT_TIMEOUT_SECONDS = 15.0
 _PROJECT_QUERY_PATH = "/internal/v1/tool-data/project/query"
+_PROJECT_SUMMARY_QUERY = "project.summary"
 
 
 class HttpToolDataClient:
@@ -49,20 +49,16 @@ class HttpToolDataClient:
         )
 
     async def project_query(self, request: ToolRequest) -> dict[str, Any]:
-        raw_project_id = request.arguments.get("project_id")
-        if not isinstance(raw_project_id, str):
-            raise ToolDataControlUnavailableError("project query project_id is invalid")
-        try:
-            project_id = str(UUID(raw_project_id))
-        except ValueError as exc:
-            raise ToolDataControlUnavailableError("project query project_id is invalid") from exc
+        query = request.arguments.get("query")
+        if query != _PROJECT_SUMMARY_QUERY:
+            raise ToolDataControlUnavailableError("project query is unsupported")
         return await self._post(
             _PROJECT_QUERY_PATH,
             {
                 "organization_id": str(request.organization_id),
                 "agent_run_id": str(request.agent_run_id),
                 "task_id": str(request.task_id),
-                "project_id": project_id,
+                "query": query,
             },
         )
 
