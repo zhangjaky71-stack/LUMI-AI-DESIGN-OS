@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from decimal import Decimal
+from uuid import UUID
 
 import asyncpg
 import pytest
@@ -162,89 +164,94 @@ def _pending(*, provider_request_id: str = "req_pg_1") -> PendingInvocationRecor
     )
 
 
+async def _delete_generation() -> None:
+    connection = await asyncpg.connect(_dsn())
+    try:
+        await connection.execute(
+            "DELETE FROM generations WHERE organization_id = $1 AND operation_id = $2",
+            UUID(ORG),
+            UUID(OPERATION),
+        )
+    finally:
+        await connection.close()
+
+
 @pytest.fixture(autouse=True)
-async def cleanup_generation() -> None:
-    connection = await asyncpg.connect(_dsn())
-    try:
-        await connection.execute(
-            "DELETE FROM generations WHERE organization_id = $1 AND operation_id = $2",
-            __import__("uuid").UUID(ORG),
-            __import__("uuid").UUID(OPERATION),
-        )
-    finally:
-        await connection.close()
+def cleanup_generation() -> None:
+    asyncio.run(_delete_generation())
     yield
-    connection = await asyncpg.connect(_dsn())
-    try:
-        await connection.execute(
-            "DELETE FROM generations WHERE organization_id = $1 AND operation_id = $2",
-            __import__("uuid").UUID(ORG),
-            __import__("uuid").UUID(OPERATION),
-        )
-    finally:
-        await connection.close()
+    asyncio.run(_delete_generation())
 
 
-@pytest.mark.asyncio
-async def test_spec_and_job_round_trip_use_canonical_generations_row() -> None:
-    repository = PostgresGenerationRepository(os.environ["DATABASE_URL"])
-    spec = _spec()
-    job = _job(spec)
-    await repository.save_spec(spec)
-    await repository.save(job)
+def test_spec_and_job_round_trip_use_canonical_generations_row() -> None:
+    async def run() -> None:
+        repository = PostgresGenerationRepository(os.environ["DATABASE_URL"])
+        spec = _spec()
+        job = _job(spec)
+        await repository.save_spec(spec)
+        await repository.save(job)
 
-    assert await repository.get_spec(ORG, OPERATION) == spec
-    assert await repository.get_by_operation(ORG, OPERATION) == job
-    assert await repository.get(ORG, GENERATION) == job
+        assert await repository.get_spec(ORG, OPERATION) == spec
+        assert await repository.get_by_operation(ORG, OPERATION) == job
+        assert await repository.get(ORG, GENERATION) == job
 
-    connection = await asyncpg.connect(_dsn())
-    try:
-        row = await connection.fetchrow(
-            """
-            SELECT provider, model, capability, status,
-                   request_json::text AS request_text,
-                   result_json::text AS result_text
-            FROM generations
-            WHERE organization_id = $1 AND operation_id = $2
-            """,
-            __import__("uuid").UUID(ORG),
-            __import__("uuid").UUID(OPERATION),
-        )
-    finally:
-        await connection.close()
-    assert row is not None
-    assert row["provider"] == "model-gateway"
-    assert row["model"] == "routing-pending"
-    assert row["capability"] == "image.generate"
-    assert row["status"] == "running"
-    assert "image_base64" not in row["result_text"]
-    assert "b64_json" not in row["result_text"]
-    assert "semantic_hash" in row["request_text"]
+        connection = await asyncpg.connect(_dsn())
+        try:
+            row = await connection.fetchrow(
+                """
+                SELECT provider, model, capability, status,
+                       request_json::text AS request_text,
+                       result_json::text AS result_text
+                FROM generations
+                WHERE organization_id = $1 AND operation_id = $2
+                """,
+                UUID(ORG),
+                UUID(OPERATION),
+            )
+        finally:
+            await connection.close()
+        assert row is not None
+        assert row["provider"] == "model-gateway"
+        assert row["model"] == "routing-pending"
+        assert row["capability"] == "image.generate"
+        assert row["status"] == "running"
+        assert "image_base64" not in row["result_text"]
+        assert "b64_json" not in row["result_text"]
+        assert "semantic_hash" in row["request_text"]
 
-
-@pytest.mark.asyncio
-async def test_same_operation_changed_semantics_fails_closed() -> None:
-    repository = PostgresGenerationRepository(os.environ["DATABASE_URL"])
-    await repository.save_spec(_spec())
-    with pytest.raises(OperationSemanticConflict, match="GENERATION_OPERATION_SPEC_CONFLICT"):
-        await repository.save_spec(_spec(content="different request"))
+    asyncio.run(run())
 
 
-@pytest.mark.asyncio
-async def test_pending_provider_request_cannot_be_rebound() -> None:
-    repository = PostgresGenerationRepository(os.environ["DATABASE_URL"])
-    spec = _spec()
-    await repository.save_spec(spec)
-    await repository.save(_job(spec, pending=True))
-    first = _pending()
-    await repository.save_pending(first)
-    assert await repository.get_pending(ORG, GENERATION, CANDIDATE) == first
+def test_same_operation_changed_semantics_fails_closed() -> None:
+    async def run() -> None:
+        repository = PostgresGenerationRepository(os.environ["DATABASE_URL"])
+        await repository.save_spec(_spec())
+        with pytest.raises(
+            OperationSemanticConflict,
+            match="GENERATION_OPERATION_SPEC_CONFLICT",
+        ):
+            await repository.save_spec(_spec(content="different request"))
 
-    with pytest.raises(
-        GenerationRepositoryError,
-        match="PENDING_INVOCATION_PROVIDER_REQUEST_CHANGED",
-    ):
-        await repository.save_pending(_pending(provider_request_id="req_pg_2"))
+    asyncio.run(run())
 
-    await repository.delete_pending(ORG, GENERATION, CANDIDATE)
-    assert await repository.get_pending(ORG, GENERATION, CANDIDATE) is None
+
+def test_pending_provider_request_cannot_be_rebound() -> None:
+    async def run() -> None:
+        repository = PostgresGenerationRepository(os.environ["DATABASE_URL"])
+        spec = _spec()
+        await repository.save_spec(spec)
+        await repository.save(_job(spec, pending=True))
+        first = _pending()
+        await repository.save_pending(first)
+        assert await repository.get_pending(ORG, GENERATION, CANDIDATE) == first
+
+        with pytest.raises(
+            GenerationRepositoryError,
+            match="PENDING_INVOCATION_PROVIDER_REQUEST_CHANGED",
+        ):
+            await repository.save_pending(_pending(provider_request_id="req_pg_2"))
+
+        await repository.delete_pending(ORG, GENERATION, CANDIDATE)
+        assert await repository.get_pending(ORG, GENERATION, CANDIDATE) is None
+
+    asyncio.run(run())
