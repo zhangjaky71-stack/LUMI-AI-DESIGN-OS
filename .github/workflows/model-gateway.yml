@@ -4,16 +4,21 @@ on:
   pull_request:
     paths:
       - "services/model-gateway/**"
+      - "services/asset-storage/src/lumi_asset_storage/s3.py"
+      - "services/asset-storage/tests/test_s3_bounded_bytes.py"
       - "apps/api/src/lumi_api/model_gateway_runtime.py"
       - "apps/api/src/lumi_api/model_gateway_bootstrap.py"
       - "apps/api/src/lumi_api/model_gateway_service.py"
       - "apps/api/src/lumi_api/model_gateway_cli.py"
       - "apps/api/src/lumi_api/model_paid_guard.py"
+      - "apps/api/src/lumi_api/provider_output_store.py"
       - "apps/api/src/lumi_api/costs/**"
       - "apps/api/src/lumi_api/idempotency/**"
       - "apps/api/src/lumi_api/persistence/models/platform.py"
       - "apps/api/alembic/versions/0019_side_effect_provider_attempt_barrier.py"
+      - "apps/api/tests/test_model_gateway_media_bootstrap.py"
       - "apps/api/tests/test_model_paid_guard.py"
+      - "apps/api/tests/test_provider_output_store.py"
       - "apps/api/tests/integration/test_model_paid_guard_postgres.py"
       - "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py"
       - "apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py"
@@ -43,11 +48,16 @@ jobs:
         run: >-
           python -m compileall -q
           services/model-gateway/src/lumi_model_gateway
+          services/asset-storage/src/lumi_asset_storage/s3.py
+          services/asset-storage/tests/test_s3_bounded_bytes.py
           apps/api/src/lumi_api/model_gateway_runtime.py
           apps/api/src/lumi_api/model_gateway_bootstrap.py
           apps/api/src/lumi_api/model_gateway_service.py
           apps/api/src/lumi_api/model_gateway_cli.py
           apps/api/src/lumi_api/model_paid_guard.py
+          apps/api/src/lumi_api/provider_output_store.py
+          apps/api/tests/test_model_gateway_media_bootstrap.py
+          apps/api/tests/test_provider_output_store.py
           apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py
           scripts/validate_model_gateway_contract.py
           scripts/validate_deep_agents_model_gateway_contract.py
@@ -81,14 +91,19 @@ jobs:
         run: >-
           uv run ruff check
           services/model-gateway
+          services/asset-storage/src/lumi_asset_storage/s3.py
+          services/asset-storage/tests/test_s3_bounded_bytes.py
           apps/api/src/lumi_api/model_gateway_runtime.py
           apps/api/src/lumi_api/model_gateway_bootstrap.py
           apps/api/src/lumi_api/model_gateway_service.py
           apps/api/src/lumi_api/model_gateway_cli.py
           apps/api/src/lumi_api/model_paid_guard.py
+          apps/api/src/lumi_api/provider_output_store.py
           apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py
           apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py
+          apps/api/tests/test_model_gateway_media_bootstrap.py
           apps/api/tests/test_model_paid_guard.py
+          apps/api/tests/test_provider_output_store.py
           apps/api/tests/integration/test_model_paid_guard_postgres.py
           scripts/validate_model_gateway_contract.py
           scripts/validate_deep_agents_model_gateway_contract.py
@@ -98,14 +113,18 @@ jobs:
         run: >-
           uv run pyright
           services/model-gateway
+          services/asset-storage/src/lumi_asset_storage/s3.py
           apps/api/src/lumi_api/model_gateway_runtime.py
           apps/api/src/lumi_api/model_gateway_bootstrap.py
           apps/api/src/lumi_api/model_gateway_service.py
           apps/api/src/lumi_api/model_gateway_cli.py
           apps/api/src/lumi_api/model_paid_guard.py
+          apps/api/src/lumi_api/provider_output_store.py
           apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py
           apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py
+          apps/api/tests/test_model_gateway_media_bootstrap.py
           apps/api/tests/test_model_paid_guard.py
+          apps/api/tests/test_provider_output_store.py
           apps/api/tests/integration/test_model_paid_guard_postgres.py
 
       - name: Model gateway unit tests
@@ -113,6 +132,14 @@ jobs:
           uv run python -m unittest discover
           -s services/model-gateway/tests
           -p 'test_*.py'
+
+      - name: Hosted media output boundary tests
+        run: >-
+          uv run pytest
+          services/asset-storage/tests/test_s3_bounded_bytes.py
+          apps/api/tests/test_model_gateway_media_bootstrap.py
+          apps/api/tests/test_provider_output_store.py
+          -q
 
       - name: Deep Agents HTTP model boundary tests
         run: uv run pytest apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py -q
