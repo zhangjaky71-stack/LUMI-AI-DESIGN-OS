@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from lumi_image_generation.model import ImageGenerationSpec, OutputRequirements
@@ -50,6 +50,22 @@ def _spec(*, task_id: str, operation_id: str) -> ImageGenerationSpec:
     )
 
 
+def _task(*, task_id: UUID) -> Task:
+    return Task(
+        id=task_id,
+        organization_id=ORG_ID,
+        project_id=PROJECT_A_ID,
+        type="image.transform",
+        status="pending",
+        input_json={},
+        output_json={},
+        priority=100,
+        attempt_count=0,
+        max_attempts=4,
+        budget_reserved=Decimal("0"),
+    )
+
+
 async def _acceptance() -> None:
     engine = create_engine()
     try:
@@ -59,28 +75,10 @@ async def _acceptance() -> None:
             try:
                 task_id = uuid4()
                 operation_id = uuid4()
-                session.add(
-                    Task(
-                        id=task_id,
-                        organization_id=ORG_ID,
-                        project_id=PROJECT_A_ID,
-                        type="image.transform",
-                        status="pending",
-                        input_json={},
-                        output_json={},
-                        priority=100,
-                        attempt_count=0,
-                        max_attempts=4,
-                        budget_reserved=Decimal("0"),
-                    )
-                )
-                await session.flush()
-
                 spec = _spec(task_id=str(task_id), operation_id=str(operation_id))
                 canonical_spec = encode_spec(spec)
                 payload = GenerationCreate(
                     project_id=PROJECT_A_ID,
-                    task_id=task_id,
                     capability="image.generate",
                     request=canonical_spec,
                 )
@@ -139,6 +137,9 @@ async def _acceptance() -> None:
                         Generation.operation_id == operation_id,
                     )
                 )
+                task_count = await session.scalar(
+                    select(func.count()).select_from(Task).where(Task.id == task_id)
+                )
                 outbox_rows = (
                     await session.execute(
                         select(OutboxEvent).where(
@@ -165,10 +166,15 @@ async def _acceptance() -> None:
                 task = await session.get(Task, task_id)
 
                 assert generation_count == 1
+                assert task_count == 1
                 assert len(outbox_rows) == 1
                 assert len(idempotency_rows) == 1
                 assert idempotency_rows[0].idempotency_key == "node-73-1-integration-key-0001"
+                assert first.task_id == task_id
                 assert task is not None
+                assert task.organization_id == ORG_ID
+                assert task.project_id == PROJECT_A_ID
+                assert task.type == "image.transform"
                 assert task.input_json["schema_version"] == 1
                 assert task.input_json["job_kind"] == "image.transform"
                 assert outbox_rows[0].payload_json["task_name"] == "lumi.jobs.image.transform"
@@ -183,6 +189,31 @@ async def _acceptance() -> None:
                         "trace_id": "node-73-1-integration",
                     }
                 ]
+
+                # Preserve compatibility for internal callers that already created the
+                # canonical Task and pass its id explicitly.
+                explicit_task_id = uuid4()
+                explicit_operation_id = uuid4()
+                session.add(_task(task_id=explicit_task_id))
+                await session.flush()
+                explicit_spec = _spec(
+                    task_id=str(explicit_task_id),
+                    operation_id=str(explicit_operation_id),
+                )
+                explicit = await service.create(
+                    organization_id=ORG_ID,
+                    payload=GenerationCreate(
+                        project_id=PROJECT_A_ID,
+                        task_id=explicit_task_id,
+                        capability="image.generate",
+                        request=encode_spec(explicit_spec),
+                    ),
+                    idempotency_key="node-73-1-explicit-task-0001",
+                    trace_id="node-73-1-explicit-task",
+                )
+                await session.flush()
+                assert explicit.task_id == explicit_task_id
+                assert await session.get(Task, explicit_task_id) is not None
             finally:
                 await session.close()
                 await transaction.rollback()
