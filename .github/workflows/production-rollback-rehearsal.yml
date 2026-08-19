@@ -1,0 +1,271 @@
+name: Production Rollback Rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      current_manifest_path:
+        description: "Current deployment manifest under reports/production-deployments/<id>/manifest.json"
+        required: true
+        type: string
+      previous_manifest_path:
+        description: "Rollback target manifest declared by current rollback.previous_manifest_ref"
+        required: true
+        type: string
+      rollback_ack:
+        description: "REHEARSE_PRODUCTION_ROLLBACK:<current-id>:TO:<previous-id>"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  CURRENT_MANIFEST_INPUT: ${{ inputs.current_manifest_path }}
+  PREVIOUS_MANIFEST_INPUT: ${{ inputs.previous_manifest_path }}
+  ROLLBACK_ACK: ${{ inputs.rollback_ack }}
+
+jobs:
+  rollback-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      current_deployment_id: ${{ steps.release.outputs.current_deployment_id }}
+      previous_deployment_id: ${{ steps.release.outputs.previous_deployment_id }}
+      current_version: ${{ steps.release.outputs.current_version }}
+      previous_version: ${{ steps.release.outputs.previous_version }}
+      account_id: ${{ steps.release.outputs.account_id }}
+      region: ${{ steps.release.outputs.region }}
+      role_arn: ${{ steps.release.outputs.role_arn }}
+      domain: ${{ steps.release.outputs.domain }}
+      certificate_arn: ${{ steps.release.outputs.certificate_arn }}
+      current_api: ${{ steps.release.outputs.current_api }}
+      current_agent: ${{ steps.release.outputs.current_agent }}
+      current_model: ${{ steps.release.outputs.current_model }}
+      current_tool: ${{ steps.release.outputs.current_tool }}
+      current_worker: ${{ steps.release.outputs.current_worker }}
+      current_sandbox: ${{ steps.release.outputs.current_sandbox }}
+      previous_api: ${{ steps.release.outputs.previous_api }}
+      previous_agent: ${{ steps.release.outputs.previous_agent }}
+      previous_model: ${{ steps.release.outputs.previous_model }}
+      previous_tool: ${{ steps.release.outputs.previous_tool }}
+      previous_worker: ${{ steps.release.outputs.previous_worker }}
+      previous_sandbox: ${{ steps.release.outputs.previous_sandbox }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Resolve rollback manifests inside frozen production evidence root
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path.cwd().resolve()
+          allowed = (root / 'reports' / 'production-deployments').resolve()
+          current = (root / os.environ['CURRENT_MANIFEST_INPUT']).resolve()
+          previous = (root / os.environ['PREVIOUS_MANIFEST_INPUT']).resolve()
+          for label, path in [('current', current), ('previous', previous)]:
+              try:
+                  path.relative_to(allowed)
+              except ValueError as exc:
+                  raise SystemExit(f'{label} manifest escapes reports/production-deployments') from exc
+              if path.name != 'manifest.json' or not path.is_file():
+                  raise SystemExit(f'{label} manifest must be an existing manifest.json')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'CURRENT_MANIFEST={current.relative_to(root).as_posix()}\n')
+              fh.write(f'PREVIOUS_MANIFEST={previous.relative_to(root).as_posix()}\n')
+          PY
+      - name: Require fail-closed rollback relationship
+        run: |
+          mkdir -p reports/production-deployments/runtime/rollback-rehearsal
+          python3 scripts/production-rollback-gate.py \
+            --current-manifest "$CURRENT_MANIFEST" \
+            --previous-manifest "$PREVIOUS_MANIFEST" \
+            --output reports/production-deployments/runtime/rollback-rehearsal/rollback-gate.json
+      - name: Export immutable rollback metadata
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          emit() { printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"; }
+          emit current_deployment_id "$(jq -r '.deployment_id' "$CURRENT_MANIFEST")"
+          emit previous_deployment_id "$(jq -r '.deployment_id' "$PREVIOUS_MANIFEST")"
+          emit current_version "$(jq -r '.release_candidate.version' "$CURRENT_MANIFEST")"
+          emit previous_version "$(jq -r '.release_candidate.version' "$PREVIOUS_MANIFEST")"
+          emit account_id "$(jq -r '.aws.account_id' "$CURRENT_MANIFEST")"
+          emit region "$(jq -r '.aws.region' "$CURRENT_MANIFEST")"
+          emit role_arn "$(jq -r '.aws.production_role_arn' "$CURRENT_MANIFEST")"
+          emit domain "$(jq -r '.edge.domain' "$CURRENT_MANIFEST")"
+          emit certificate_arn "$(jq -r '.edge.certificate_arn' "$CURRENT_MANIFEST")"
+          for prefix in current previous; do
+            if [[ "$prefix" == current ]]; then file="$CURRENT_MANIFEST"; else file="$PREVIOUS_MANIFEST"; fi
+            emit "${prefix}_api" "$(jq -r '.images.api' "$file")"
+            emit "${prefix}_agent" "$(jq -r '.images["agent-runtime"]' "$file")"
+            emit "${prefix}_model" "$(jq -r '.images["model-gateway"]' "$file")"
+            emit "${prefix}_tool" "$(jq -r '.images["tool-gateway"]' "$file")"
+            emit "${prefix}_worker" "$(jq -r '.images["worker-media"]' "$file")"
+            emit "${prefix}_sandbox" "$(jq -r '.images["sandbox-runtime"]' "$file")"
+          done
+
+  rehearse:
+    needs: [rollback-gate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    environment: production
+    env:
+      AWS_REGION: ${{ needs.rollback-gate.outputs.region }}
+      TF_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+      TF_VAR_account_id: ${{ needs.rollback-gate.outputs.account_id }}
+      TF_VAR_region: ${{ needs.rollback-gate.outputs.region }}
+      TF_VAR_core_state_bucket: ${{ vars.TERRAFORM_STATE_BUCKET }}
+      TF_VAR_certificate_arn: ${{ needs.rollback-gate.outputs.certificate_arn }}
+      TF_VAR_domain_name: ${{ needs.rollback-gate.outputs.domain }}
+      TF_VAR_hosted_zone_id: ${{ vars.ROUTE53_HOSTED_ZONE_ID }}
+      CURRENT_MANIFEST: ${{ inputs.current_manifest_path }}
+      PREVIOUS_MANIFEST: ${{ inputs.previous_manifest_path }}
+      CURRENT_DEPLOYMENT_ID: ${{ needs.rollback-gate.outputs.current_deployment_id }}
+      PREVIOUS_DEPLOYMENT_ID: ${{ needs.rollback-gate.outputs.previous_deployment_id }}
+      CURRENT_VERSION: ${{ needs.rollback-gate.outputs.current_version }}
+      PREVIOUS_VERSION: ${{ needs.rollback-gate.outputs.previous_version }}
+      RELEASE_DOMAIN: ${{ needs.rollback-gate.outputs.domain }}
+      MANIFEST_ROLE_ARN: ${{ needs.rollback-gate.outputs.role_arn }}
+      CURRENT_API: ${{ needs.rollback-gate.outputs.current_api }}
+      CURRENT_AGENT: ${{ needs.rollback-gate.outputs.current_agent }}
+      CURRENT_MODEL: ${{ needs.rollback-gate.outputs.current_model }}
+      CURRENT_TOOL: ${{ needs.rollback-gate.outputs.current_tool }}
+      CURRENT_WORKER: ${{ needs.rollback-gate.outputs.current_worker }}
+      CURRENT_SANDBOX: ${{ needs.rollback-gate.outputs.current_sandbox }}
+      PREVIOUS_API: ${{ needs.rollback-gate.outputs.previous_api }}
+      PREVIOUS_AGENT: ${{ needs.rollback-gate.outputs.previous_agent }}
+      PREVIOUS_MODEL: ${{ needs.rollback-gate.outputs.previous_model }}
+      PREVIOUS_TOOL: ${{ needs.rollback-gate.outputs.previous_tool }}
+      PREVIOUS_WORKER: ${{ needs.rollback-gate.outputs.previous_worker }}
+      PREVIOUS_SANDBOX: ${{ needs.rollback-gate.outputs.previous_sandbox }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+      - name: Require protected production role and explicit rehearsal acknowledgement
+        shell: bash
+        env:
+          ENVIRONMENT_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          test -n "$TF_STATE_BUCKET"
+          test "$ENVIRONMENT_DEPLOY_ROLE_ARN" = "$MANIFEST_ROLE_ARN"
+          test "$ROLLBACK_ACK" = "REHEARSE_PRODUCTION_ROLLBACK:${CURRENT_DEPLOYMENT_ID}:TO:${PREVIOUS_DEPLOYMENT_ID}"
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          aws-region: ${{ needs.rollback-gate.outputs.region }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: lumi-production-rollback-${{ github.run_id }}
+      - name: Verify AWS account identity
+        run: test "$(aws sts get-caller-identity --query Account --output text)" = "$TF_VAR_account_id"
+      - name: Initialize production application state
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/backend.hcl <<BACKEND
+          bucket       = "$TF_STATE_BUCKET"
+          key          = "lumi/production/app/terraform.tfstate"
+          region       = "$AWS_REGION"
+          encrypt      = true
+          use_lockfile = true
+          BACKEND
+          terraform -chdir=infra/iac/environments/production/app init -input=false -backend-config=/tmp/backend.hcl
+          mkdir -p reports/production-deployments/runtime/rollback-rehearsal
+      - name: Roll back application images to previous immutable release
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TF_VAR_api_image="$PREVIOUS_API"
+          export TF_VAR_agent_runtime_image="$PREVIOUS_AGENT"
+          export TF_VAR_model_gateway_image="$PREVIOUS_MODEL"
+          export TF_VAR_tool_gateway_image="$PREVIOUS_TOOL"
+          export TF_VAR_worker_media_image="$PREVIOUS_WORKER"
+          export TF_VAR_sandbox_runtime_image="$PREVIOUS_SANDBOX"
+          terraform -chdir=infra/iac/environments/production/app plan -input=false -out=rollback.tfplan
+          terraform -chdir=infra/iac/environments/production/app apply -input=false -auto-approve rollback.tfplan
+      - name: Verify previous six-runtime identity
+        run: |
+          bash scripts/capture-production-runtime-identity.sh \
+            infra/iac/environments/production/app \
+            "$PREVIOUS_MANIFEST" \
+            reports/production-deployments/runtime/rollback-rehearsal/previous-runtime.json
+      - name: Smoke previous application version against forward database schema
+        run: |
+          python3 scripts/production-read-only-smoke.py \
+            --base-url "https://${RELEASE_DOMAIN}" \
+            --expected-version "$PREVIOUS_VERSION" \
+            --expected-host "$RELEASE_DOMAIN" \
+            --output reports/production-deployments/runtime/rollback-rehearsal/previous-smoke.json
+      - name: Roll forward exact current RC after rehearsal
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TF_VAR_api_image="$CURRENT_API"
+          export TF_VAR_agent_runtime_image="$CURRENT_AGENT"
+          export TF_VAR_model_gateway_image="$CURRENT_MODEL"
+          export TF_VAR_tool_gateway_image="$CURRENT_TOOL"
+          export TF_VAR_worker_media_image="$CURRENT_WORKER"
+          export TF_VAR_sandbox_runtime_image="$CURRENT_SANDBOX"
+          terraform -chdir=infra/iac/environments/production/app plan -input=false -out=rollforward.tfplan
+          terraform -chdir=infra/iac/environments/production/app apply -input=false -auto-approve rollforward.tfplan
+      - name: Verify restored current six-runtime identity
+        run: |
+          bash scripts/capture-production-runtime-identity.sh \
+            infra/iac/environments/production/app \
+            "$CURRENT_MANIFEST" \
+            reports/production-deployments/runtime/rollback-rehearsal/restored-runtime.json
+      - name: Smoke restored current RC
+        run: |
+          python3 scripts/production-read-only-smoke.py \
+            --base-url "https://${RELEASE_DOMAIN}" \
+            --expected-version "$CURRENT_VERSION" \
+            --expected-host "$RELEASE_DOMAIN" \
+            --output reports/production-deployments/runtime/rollback-rehearsal/restored-smoke.json
+      - name: Finalize rollback and roll-forward decision
+        run: |
+          python3 scripts/production-rollback-rehearsal-decision.py \
+            --current-manifest "$CURRENT_MANIFEST" \
+            --previous-manifest "$PREVIOUS_MANIFEST" \
+            --rollback-gate reports/production-deployments/runtime/rollback-rehearsal/rollback-gate.json \
+            --previous-runtime reports/production-deployments/runtime/rollback-rehearsal/previous-runtime.json \
+            --previous-smoke reports/production-deployments/runtime/rollback-rehearsal/previous-smoke.json \
+            --restored-runtime reports/production-deployments/runtime/rollback-rehearsal/restored-runtime.json \
+            --restored-smoke reports/production-deployments/runtime/rollback-rehearsal/restored-smoke.json \
+            --output reports/production-deployments/runtime/rollback-rehearsal/decision.json
+      - name: Best-effort restore current RC after failed rehearsal
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          export TF_VAR_api_image="$CURRENT_API"
+          export TF_VAR_agent_runtime_image="$CURRENT_AGENT"
+          export TF_VAR_model_gateway_image="$CURRENT_MODEL"
+          export TF_VAR_tool_gateway_image="$CURRENT_TOOL"
+          export TF_VAR_worker_media_image="$CURRENT_WORKER"
+          export TF_VAR_sandbox_runtime_image="$CURRENT_SANDBOX"
+          terraform -chdir=infra/iac/environments/production/app plan -input=false -out=emergency-restore.tfplan
+          terraform -chdir=infra/iac/environments/production/app apply -input=false -auto-approve emergency-restore.tfplan
+          bash scripts/capture-production-runtime-identity.sh \
+            infra/iac/environments/production/app \
+            "$CURRENT_MANIFEST" \
+            reports/production-deployments/runtime/rollback-rehearsal/emergency-restored-runtime.json
+      - name: Archive rollback rehearsal evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-rollback-rehearsal-${{ needs.rollback-gate.outputs.current_deployment_id }}-${{ github.run_id }}
+          path: reports/production-deployments/runtime/rollback-rehearsal/
+          if-no-files-found: error
+          retention-days: 90
