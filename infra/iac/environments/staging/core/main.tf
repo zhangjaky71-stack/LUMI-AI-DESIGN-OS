@@ -13,6 +13,7 @@ locals {
     "rabbitmq/url",
     "providers/model",
     "providers/media",
+    "providers/search",
     "billing/webhook",
     "auth/signing",
     "internal/model-gateway",
