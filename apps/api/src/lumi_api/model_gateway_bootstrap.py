@@ -10,9 +10,9 @@ from lumi_model_gateway import (
     InMemoryProviderRegistry,
     ModelGatewayAPI,
     ModelRouter,
-    OpenAIResponsesAdapter,
     PriceCard,
 )
+from lumi_model_gateway.openai_tool_adapter import OpenAIResponsesToolAdapter
 
 from .model_gateway_runtime import build_hosted_model_gateway
 
@@ -76,7 +76,7 @@ def build_hosted_model_gateway_from_secret(
             ),
         )
         registry.register(
-            OpenAIResponsesAdapter(
+            OpenAIResponsesToolAdapter(
                 api_key=api_key,
                 model=model,
                 price_card=price_card,
