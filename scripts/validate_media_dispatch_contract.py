@@ -88,7 +88,7 @@ def main() -> int:
         "GENERATION_OPERATION_ALREADY_EXISTS",
         "pg_advisory_xact_lock",
         "await self._lock_idempotency",
-        "await self._lock_operation",
+        "await self._lock_generation_operation",
         "await self.session.flush()",
     )
     forbid(
@@ -130,7 +130,7 @@ def main() -> int:
         "GENERATION_OPERATION_ALREADY_EXISTS",
         "assert generation_count == 1",
         "assert len(outbox_rows) == 1",
-        "assert idempotency_count == 1",
+        "assert len(idempotency_rows) == 1",
     )
 
     # Job outbox and domain outbox are mutually exclusive and independently attempted.
