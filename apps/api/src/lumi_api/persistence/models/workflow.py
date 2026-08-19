@@ -6,6 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
+    CHAR,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -211,8 +212,36 @@ class TaskDependency(IdMixin, CreatedAtMixin, Base):
 class Approval(IdMixin, MutableTimestampMixin, Base):
     __tablename__ = "approvals"
     __table_args__ = (
+        CheckConstraint(
+            "(task_id IS NULL AND tool_key IS NULL AND tool_request_hash IS NULL) OR "
+            "(task_id IS NOT NULL AND agent_run_id IS NOT NULL "
+            "AND tool_key IS NOT NULL AND tool_request_hash IS NOT NULL)",
+            name="tool_scope_complete",
+        ),
+        CheckConstraint(
+            "tool_request_hash IS NULL OR tool_request_hash ~ '^[0-9a-f]{64}$'",
+            name="tool_request_hash",
+        ),
         Index("ix_approvals_org_project", "organization_id", "project_id"),
         Index("ix_approvals_status_created", "status", "created_at"),
+        Index(
+            "uq_approvals_tool_request",
+            "organization_id",
+            "task_id",
+            "tool_key",
+            "tool_request_hash",
+            unique=True,
+            postgresql_where=text("tool_key IS NOT NULL"),
+        ),
+        Index(
+            "ix_approvals_tool_pending",
+            "organization_id",
+            "project_id",
+            "agent_run_id",
+            "task_id",
+            "status",
+            postgresql_where=text("tool_key IS NOT NULL"),
+        ),
     )
 
     organization_id: Mapped[UUID] = mapped_column(
@@ -235,6 +264,13 @@ class Approval(IdMixin, MutableTimestampMixin, Base):
         ForeignKey("agent_runs.id", ondelete="CASCADE"),
         nullable=True,
     )
+    task_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    tool_key: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    tool_request_hash: Mapped[str | None] = mapped_column(CHAR(64), nullable=True)
     requested_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     decided_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
