@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import unittest
 from decimal import Decimal
-from uuid import UUID
 
 from lumi_image_generation.model import (
     GatewayGenerationRequest,
