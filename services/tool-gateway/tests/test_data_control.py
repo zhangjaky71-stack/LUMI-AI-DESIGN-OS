@@ -6,7 +6,13 @@ from uuid import uuid4
 
 from lumi_tool_gateway.catalog import build_p0_registry
 from lumi_tool_gateway.contracts import ToolPermissionContext, ToolRequest
-from lumi_tool_gateway.data_control import HttpToolDataClient, ProjectQueryAdapter
+from lumi_tool_gateway.data_control import (
+    ArtifactQueryAdapter,
+    AssetReadAdapter,
+    HttpToolDataClient,
+    MediaInspectAdapter,
+    ProjectQueryAdapter,
+)
 from lumi_tool_gateway.errors import ToolDataControlUnavailableError, ToolInputValidationError
 from lumi_tool_gateway.schema import SchemaValidator
 
@@ -18,15 +24,37 @@ class _CapturingClient(HttpToolDataClient):
 
     async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         self.calls.append((path, dict(payload)))
+        if path.endswith("/project/query"):
+            return {
+                "project_id": str(uuid4()),
+                "name": "Canonical Project",
+                "status": "active",
+                "summary": {"goal": "launch"},
+            }
+        if path.endswith("/artifact/query"):
+            return {
+                "artifact_id": str(payload["artifact_id"]),
+                "project_id": str(uuid4()),
+                "kind": "poster",
+                "title": "Poster",
+                "metadata": {},
+                "latest_version": None,
+            }
         return {
-            "project_id": str(uuid4()),
-            "name": "Canonical Project",
-            "status": "active",
-            "summary": {"goal": "launch"},
+            "asset_id": str(payload["asset_id"]),
+            "kind": "image",
+            "status": "ready",
+            "files": [],
+            "metadata": {},
         }
 
 
-def _request(*, query: str = "project.summary") -> ToolRequest:
+def _request(
+    *,
+    name: str = "project.query",
+    arguments: dict[str, Any] | None = None,
+    permission: str = "tool.project.query",
+) -> ToolRequest:
     organization_id = uuid4()
     return ToolRequest(
         tool_call_id=uuid4(),
@@ -34,16 +62,16 @@ def _request(*, query: str = "project.summary") -> ToolRequest:
         agent_run_id=uuid4(),
         task_id=uuid4(),
         actor_agent="design-agent",
-        name="project.query",
+        name=name,
         version="1.0.0",
-        arguments={"query": query},
-        purpose="Read the canonical project summary for the active task.",
+        arguments=arguments or {"query": "project.summary"},
+        purpose="Read canonical task-scoped data.",
         permission_context=ToolPermissionContext(
             organization_id=organization_id,
             actor_id="agent-runtime:design-agent",
-            granted_permissions=frozenset({"tool.project.query"}),
-            agent_allow_patterns=("project.*",),
-            organization_allow_patterns=("project.*",),
+            granted_permissions=frozenset({permission}),
+            agent_allow_patterns=("*",),
+            organization_allow_patterns=("*",),
         ),
     )
 
@@ -71,11 +99,81 @@ class ToolDataControlTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.data["name"], "Canonical Project")
         self.assertIn("Canonical Project", result.summary)
+        self.assertTrue(result.resource_refs[0].startswith("project://"))
+
+    async def test_asset_artifact_and_media_clients_send_task_scope(self) -> None:
+        client = _CapturingClient()
+        asset_id = str(uuid4())
+        artifact_id = str(uuid4())
+        asset_request = _request(
+            name="asset.read",
+            arguments={"asset_id": asset_id},
+            permission="tool.asset.read",
+        )
+        artifact_request = _request(
+            name="artifact.query",
+            arguments={"artifact_id": artifact_id},
+            permission="tool.artifact.query",
+        )
+        media_request = _request(
+            name="media.inspect",
+            arguments={"asset_id": asset_id},
+            permission="tool.media.inspect",
+        )
+
+        await client.asset_read(asset_request)
+        await client.artifact_query(artifact_request)
+        await client.media_inspect(media_request)
+
+        self.assertEqual(len(client.calls), 3)
+        for _, payload in client.calls:
+            self.assertIn("organization_id", payload)
+            self.assertIn("agent_run_id", payload)
+            self.assertIn("task_id", payload)
+            self.assertNotIn("project_id", payload)
+        self.assertEqual(client.calls[0][1]["asset_id"], asset_id)
+        self.assertEqual(client.calls[1][1]["artifact_id"], artifact_id)
+        self.assertEqual(client.calls[2][1]["asset_id"], asset_id)
+
+    async def test_read_adapters_return_internal_resource_refs(self) -> None:
+        client = _CapturingClient()
+        asset_id = str(uuid4())
+        artifact_id = str(uuid4())
+        registry = build_p0_registry()
+
+        asset_result = await AssetReadAdapter(client).invoke(
+            registry.resolve("asset.read", "1.0.0"),
+            _request(
+                name="asset.read",
+                arguments={"asset_id": asset_id},
+                permission="tool.asset.read",
+            ),
+        )
+        artifact_result = await ArtifactQueryAdapter(client).invoke(
+            registry.resolve("artifact.query", "1.0.0"),
+            _request(
+                name="artifact.query",
+                arguments={"artifact_id": artifact_id},
+                permission="tool.artifact.query",
+            ),
+        )
+        media_result = await MediaInspectAdapter(client).invoke(
+            registry.resolve("media.inspect", "1.0.0"),
+            _request(
+                name="media.inspect",
+                arguments={"asset_id": asset_id},
+                permission="tool.media.inspect",
+            ),
+        )
+
+        self.assertEqual(asset_result.resource_refs, (f"asset://{asset_id}",))
+        self.assertEqual(artifact_result.resource_refs, (f"artifact://{artifact_id}",))
+        self.assertEqual(media_result.resource_refs, (f"asset://{asset_id}",))
 
     async def test_client_rejects_unsupported_project_query(self) -> None:
         client = _CapturingClient()
         with self.assertRaises(ToolDataControlUnavailableError):
-            await client.project_query(_request(query="project.delete"))
+            await client.project_query(_request(arguments={"query": "project.delete"}))
         self.assertEqual(client.calls, [])
 
     def test_catalog_rejects_legacy_project_id_and_unknown_query(self) -> None:
