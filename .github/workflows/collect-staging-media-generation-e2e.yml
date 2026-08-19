@@ -1,0 +1,196 @@
+name: Collect Staging Media Generation E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_git_sha:
+        description: "Exact 40-character RC Git SHA already deployed to Production-like Staging"
+        required: true
+        type: string
+      collect_ack:
+        description: "Required acknowledgement: COLLECT_STAGING_E2E"
+        required: true
+        type: string
+      timeout_seconds:
+        description: "Collector terminal wait timeout (60..1800 seconds)"
+        required: false
+        default: "900"
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  TF_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+  RELEASE_GIT_SHA: ${{ inputs.release_git_sha }}
+  COLLECT_ACK: ${{ inputs.collect_ack }}
+  COLLECT_TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
+
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: staging
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Require exact RC checkout and explicit acknowledgement
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$COLLECT_ACK" = "COLLECT_STAGING_E2E"
+          [[ "$RELEASE_GIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_GIT_SHA"
+          [[ "$COLLECT_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]]
+          test "$COLLECT_TIMEOUT_SECONDS" -ge 60
+          test "$COLLECT_TIMEOUT_SECONDS" -le 1800
+
+      - uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: lumi-staging-e2e-${{ github.run_id }}
+
+      - name: Resolve canonical Staging exports evidence bucket
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$TF_STATE_BUCKET"
+          cat > /tmp/core-backend.hcl <<EOF
+          bucket       = "$TF_STATE_BUCKET"
+          key          = "lumi/staging/core/terraform.tfstate"
+          region       = "$AWS_REGION"
+          encrypt      = true
+          use_lockfile = true
+          EOF
+          terraform -chdir=infra/iac/environments/staging/core init \
+            -input=false \
+            -backend-config=/tmp/core-backend.hcl
+          bucket="$(terraform -chdir=infra/iac/environments/staging/core output -json bucket_names | jq -r '.exports')"
+          test -n "$bucket"
+          test "$bucket" != "null"
+          evidence_key="acceptance/node73/e2e-03/${RELEASE_GIT_SHA}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
+          printf 'EVIDENCE_BUCKET=%s\nEVIDENCE_KEY=%s\n' "$bucket" "$evidence_key" >> "$GITHUB_ENV"
+
+      - name: Resolve deployed API service task and network identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cluster="lumi-staging-cluster"
+          aws ecs describe-services \
+            --cluster "$cluster" \
+            --services api \
+            --output json > /tmp/api-service.json
+          jq -e '.failures | length == 0' /tmp/api-service.json >/dev/null
+          jq -e '.services | length == 1' /tmp/api-service.json >/dev/null
+          task_definition="$(jq -r '.services[0].taskDefinition' /tmp/api-service.json)"
+          network_configuration="$(jq -c '.services[0].networkConfiguration' /tmp/api-service.json)"
+          test -n "$task_definition"
+          test "$task_definition" != "null"
+          jq -e '.awsvpcConfiguration.subnets | length > 0' <<<"$network_configuration" >/dev/null
+          jq -e '.awsvpcConfiguration.securityGroups | length > 0' <<<"$network_configuration" >/dev/null
+          printf 'ECS_CLUSTER=%s\nAPI_TASK_DEFINITION=%s\n' "$cluster" "$task_definition" >> "$GITHUB_ENV"
+          printf '%s' "$network_configuration" > /tmp/api-network.json
+
+      - name: Launch one-shot collector inside the deployed API trust boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg sha "$RELEASE_GIT_SHA" \
+            --arg run "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --arg bucket "$EVIDENCE_BUCKET" \
+            --arg key "$EVIDENCE_KEY" \
+            --arg region "$AWS_REGION" \
+            --arg timeout "$COLLECT_TIMEOUT_SECONDS" \
+            '{
+              containerOverrides: [{
+                name: "api",
+                command: ["python", "-m", "lumi_api.staging_media_e2e_collector"],
+                environment: [
+                  {name: "LUMI_E2E_RELEASE_GIT_SHA", value: $sha},
+                  {name: "LUMI_E2E_RUN_ID", value: $run},
+                  {name: "LUMI_E2E_EVIDENCE_BUCKET", value: $bucket},
+                  {name: "LUMI_E2E_EVIDENCE_KEY", value: $key},
+                  {name: "LUMI_E2E_AWS_REGION", value: $region},
+                  {name: "LUMI_E2E_TIMEOUT_SECONDS", value: $timeout}
+                ]
+              }]
+            }' > /tmp/collector-overrides.json
+
+          aws ecs run-task \
+            --cluster "$ECS_CLUSTER" \
+            --launch-type FARGATE \
+            --task-definition "$API_TASK_DEFINITION" \
+            --network-configuration "file:///tmp/api-network.json" \
+            --overrides "file:///tmp/collector-overrides.json" \
+            --started-by "node73-e2e-${GITHUB_RUN_ID}" \
+            --output json > /tmp/run-task.json
+
+          jq -e '.failures | length == 0' /tmp/run-task.json >/dev/null
+          task_arn="$(jq -r '.tasks[0].taskArn' /tmp/run-task.json)"
+          test -n "$task_arn"
+          test "$task_arn" != "null"
+          printf 'ECS_TASK_ARN=%s\n' "$task_arn" >> "$GITHUB_ENV"
+          mkdir -p reports/staging-acceptance/runtime
+          cp /tmp/run-task.json reports/staging-acceptance/runtime/media-e2e-run-task.json
+
+      - name: Require collector task exit zero
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$ECS_TASK_ARN"
+          aws ecs describe-tasks \
+            --cluster "$ECS_CLUSTER" \
+            --tasks "$ECS_TASK_ARN" \
+            --output json > reports/staging-acceptance/runtime/media-e2e-task-final.json
+          jq -e '.failures | length == 0' reports/staging-acceptance/runtime/media-e2e-task-final.json >/dev/null
+          exit_code="$(jq -r '.tasks[0].containers[] | select(.name == "api") | .exitCode' reports/staging-acceptance/runtime/media-e2e-task-final.json)"
+          test "$exit_code" = "0"
+
+      - name: Download immutable collector evidence from scoped exports prefix
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/staging-acceptance/runtime
+          aws s3 cp \
+            "s3://${EVIDENCE_BUCKET}/${EVIDENCE_KEY}" \
+            reports/staging-acceptance/runtime/media-generation-e2e.json \
+            --only-show-errors
+          aws s3api head-object \
+            --bucket "$EVIDENCE_BUCKET" \
+            --key "$EVIDENCE_KEY" \
+            --output json > reports/staging-acceptance/runtime/media-generation-e2e-head.json
+          jq -e --arg sha "$RELEASE_GIT_SHA" '.Metadata["release-git-sha"] == $sha' \
+            reports/staging-acceptance/runtime/media-generation-e2e-head.json >/dev/null
+          jq -e '.Metadata["scenario"] == "E2E-03" and .Metadata["synthetic-only"] == "true"' \
+            reports/staging-acceptance/runtime/media-generation-e2e-head.json >/dev/null
+
+      - name: Validate collector evidence fail-closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validate_media_generation_e2e_evidence.py --self-test
+          python scripts/validate_media_generation_e2e_evidence.py \
+            --evidence reports/staging-acceptance/runtime/media-generation-e2e.json \
+            > reports/staging-acceptance/runtime/media-generation-e2e-validation.json
+          jq -e --arg sha "$RELEASE_GIT_SHA" '.status == "PASS" and .release_git_sha == $sha' \
+            reports/staging-acceptance/runtime/media-generation-e2e-validation.json >/dev/null
+          sha256sum reports/staging-acceptance/runtime/media-generation-e2e.json \
+            > reports/staging-acceptance/runtime/media-generation-e2e.sha256
+
+      - name: Upload collector evidence package
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-media-generation-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/staging-acceptance/runtime/
+          if-no-files-found: warn
+          retention-days: 30
