@@ -7,6 +7,8 @@ on:
       - "apps/api/src/lumi_api/tool_data_control.py"
       - "apps/api/src/lumi_api/persistence/models/project.py"
       - "apps/api/src/lumi_api/persistence/models/workflow.py"
+      - "apps/api/src/lumi_api/persistence/models/asset.py"
+      - "apps/api/src/lumi_api/persistence/models/design.py"
       - "apps/api/tests/test_tool_data_control.py"
       - "apps/api/tests/integration/test_tool_data_control_postgres.py"
       - "services/tool-gateway/src/lumi_tool_gateway/catalog.py"
@@ -45,6 +47,8 @@ jobs:
         run: |
           python -m compileall -q \
             apps/api/src/lumi_api/tool_data_control.py \
+            apps/api/src/lumi_api/persistence/models/asset.py \
+            apps/api/src/lumi_api/persistence/models/design.py \
             apps/api/tests/test_tool_data_control.py \
             apps/api/tests/integration/test_tool_data_control_postgres.py \
             services/tool-gateway/src/lumi_tool_gateway/data_control.py \
@@ -121,7 +125,7 @@ jobs:
         run: bash scripts/db-local schema-check
       - name: Seed deterministic tenant fixtures
         run: make db-seed
-      - name: Real PostgreSQL task-derived project scope acceptance
+      - name: Real PostgreSQL task-derived project and resource scope acceptance
         env:
           LUMI_DB_INTEGRATION: "1"
         run: uv run pytest apps/api/tests/integration/test_tool_data_control_postgres.py -q
