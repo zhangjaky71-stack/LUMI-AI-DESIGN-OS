@@ -8,6 +8,7 @@ from decimal import Decimal
 from lumi_image_generation.errors import ImageGenerationTransientError
 from lumi_image_generation.model import ImageGenerationSpec, OutputRequirements, ValidatedImage
 from lumi_worker_media.image_generation_ports import S3GeneratedImageStore
+from lumi_worker_media.image_generation_runtime import _ClassifyingS3ObjectStore
 
 
 class _FakePutStore:
@@ -20,6 +21,15 @@ class _FakePutStore:
         if self.error is not None:
             raise self.error
         return object()
+
+
+class _FakeS3ClientError(RuntimeError):
+    def __init__(self, *, status: int, code: str) -> None:
+        super().__init__("provider detail must not escape")
+        self.response = {
+            "ResponseMetadata": {"HTTPStatusCode": status},
+            "Error": {"Code": code},
+        }
 
 
 def _spec() -> ImageGenerationSpec:
@@ -98,6 +108,43 @@ class GeneratedImageStorageTests(unittest.TestCase):
             )
         self.assertTrue(raised.exception.retryable)
         self.assertEqual(raised.exception.code, "GENERATION_STORAGE_TEMPORARY")
+
+    def test_hosted_store_known_s3_503_remains_retryable(self) -> None:
+        backend = _FakePutStore(
+            error=_FakeS3ClientError(status=503, code="ServiceUnavailable")
+        )
+        classified = _ClassifyingS3ObjectStore(backend)  # type: ignore[arg-type]
+        store = S3GeneratedImageStore(
+            bucket="lumi-assets",
+            object_store=classified,
+        )
+        with self.assertRaises(ImageGenerationTransientError) as raised:
+            asyncio.run(
+                store.store(
+                    spec=_spec(),
+                    candidate_id="image-candidate:test",
+                    image=_image(),
+                )
+            )
+        self.assertEqual(raised.exception.code, "GENERATION_STORAGE_TEMPORARY")
+
+    def test_hosted_store_known_s3_403_fails_without_retry_loop(self) -> None:
+        backend = _FakePutStore(error=_FakeS3ClientError(status=403, code="AccessDenied"))
+        classified = _ClassifyingS3ObjectStore(backend)  # type: ignore[arg-type]
+        store = S3GeneratedImageStore(
+            bucket="lumi-assets",
+            object_store=classified,
+        )
+        with self.assertRaisesRegex(ValueError, "GENERATION_STORAGE_S3_REJECTED") as raised:
+            asyncio.run(
+                store.store(
+                    spec=_spec(),
+                    candidate_id="image-candidate:test",
+                    image=_image(),
+                )
+            )
+        self.assertNotIn("provider detail", str(raised.exception))
+        self.assertEqual(len(backend.calls), 1)
 
     def test_store_backend_validation_failure_remains_permanent(self) -> None:
         backend = _FakePutStore(error=ValueError("S3_OBJECT_TOO_LARGE"))
