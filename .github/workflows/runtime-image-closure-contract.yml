@@ -19,7 +19,9 @@ on:
       - "services/sandbox-runtime/Dockerfile"
       - "services/sandbox-runtime/pyproject.toml"
       - "services/sandbox-runtime/src/lumi_sandbox_runtime/**"
+      - "infra/iac/environments/staging/core/**"
       - "infra/iac/environments/staging/app/**"
+      - "infra/iac/environments/production/core/**"
       - "infra/iac/environments/production/app/**"
       - "scripts/validate_runtime_image_closure.py"
       - ".github/workflows/runtime-image-closure-contract.yml"
@@ -38,7 +40,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Compile runtime closure validator and production entrypoints
+      - name: Compile runtime closure validator and hosted entrypoints
         shell: bash
         run: |
           set -euo pipefail
@@ -46,6 +48,9 @@ jobs:
           for path in \
             apps/api/src/lumi_api/cli.py \
             apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/runtime_factory.py \
+            services/tool-gateway/src/lumi_tool_gateway/cli.py \
+            services/tool-gateway/src/lumi_tool_gateway/service.py \
+            services/tool-gateway/src/lumi_tool_gateway/http_transport.py \
             apps/worker-media/src/lumi_worker_media/worker_cli.py; do
             python -m compileall -q "$path"
           done
