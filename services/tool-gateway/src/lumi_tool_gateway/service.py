@@ -9,9 +9,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .api import ToolGatewayAPI
+from .audit_control import HttpAuditSink
 from .catalog import build_p0_registry
 from .errors import (
     ToolAmbiguousSideEffectError,
+    ToolAuditUnavailableError,
     ToolDisabledError,
     ToolGatewayError,
     ToolIdempotencyConflictError,
@@ -77,10 +79,12 @@ def create_runtime_app() -> FastAPI:
     adapters = _build_hosted_adapters()
     required = frozenset(definition.key for definition in registry.definitions() if definition.enabled)
     side_effect_guard = RemoteSideEffectGuard(HttpSideEffectControlClient.from_env())
+    audit_sink = HttpAuditSink.from_env()
     gateway = ToolGateway(
         registry=registry,
         adapters=adapters,
         side_effect_guard=side_effect_guard,
+        audit_sink=audit_sink,
     )
     return create_tool_gateway_app(
         ToolGatewayServiceRuntime(
@@ -90,9 +94,7 @@ def create_runtime_app() -> FastAPI:
             tool_count=len(registry.definitions()),
             adapter_keys=frozenset(adapters),
             required_adapter_keys=required,
-            # NODE-20 is now a real remote binding. The remaining three stay blocked
-            # until their durable production implementations are installed.
-            runtime_bindings=frozenset({"side-effect-guard"}),
+            runtime_bindings=frozenset({"side-effect-guard", "audit-sink"}),
         )
     )
 
@@ -149,7 +151,11 @@ def create_tool_gateway_app(runtime: ToolGatewayServiceRuntime) -> FastAPI:
             return _error(425, exc.code, str(exc))
         except (ToolIdempotencyConflictError, ToolPriorSideEffectFailedError) as exc:
             return _error(409, exc.code, str(exc))
-        except (ToolAmbiguousSideEffectError, ToolSideEffectControlUnavailableError) as exc:
+        except (
+            ToolAmbiguousSideEffectError,
+            ToolAuditUnavailableError,
+            ToolSideEffectControlUnavailableError,
+        ) as exc:
             return _error(503, exc.code, str(exc))
         except ToolInputValidationError as exc:
             return _error(422, exc.code, str(exc))
