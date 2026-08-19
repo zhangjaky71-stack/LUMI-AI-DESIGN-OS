@@ -63,6 +63,7 @@
           "services/tool-gateway/src/lumi_tool_gateway/result_offload.py",
           "services/tool-gateway/src/lumi_tool_gateway/data_control.py",
           "services/tool-gateway/src/lumi_tool_gateway/catalog.py",
+          "services/tool-gateway/src/lumi_tool_gateway/schema.py",
           "services/tool-gateway/src/lumi_tool_gateway/http_transport.py",
           "services/asset-storage/src/lumi_asset_storage/s3.py"
         ]
