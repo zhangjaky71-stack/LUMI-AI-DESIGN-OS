@@ -24,6 +24,7 @@ from .errors import (
     ToolNotFoundError,
     ToolPermissionDeniedError,
     ToolPriorSideEffectFailedError,
+    ToolResultOffloadUnavailableError,
     ToolSideEffectControlUnavailableError,
     ToolVersionError,
 )
@@ -40,6 +41,7 @@ from .http_transport import (
 )
 from .native import SandboxExecuteAdapter
 from .ports import ToolAdapter
+from .result_offload import S3ResultOffloader
 from .sandbox_transport import HttpSandboxExecutor
 from .side_effect_control import HttpSideEffectControlClient, RemoteSideEffectGuard
 
@@ -79,15 +81,19 @@ def create_runtime_app() -> FastAPI:
     environment = os.getenv("LUMI_ENV", os.getenv("LUMI_ENVIRONMENT", "unknown"))
     registry = build_p0_registry()
     adapters = _build_hosted_adapters()
-    required = frozenset(definition.key for definition in registry.definitions() if definition.enabled)
+    required = frozenset(
+        definition.key for definition in registry.definitions() if definition.enabled
+    )
     approval_resolver = HttpApprovalResolver.from_env()
     side_effect_guard = RemoteSideEffectGuard(HttpSideEffectControlClient.from_env())
     audit_sink = HttpAuditSink.from_env()
+    result_offloader = S3ResultOffloader.from_env()
     gateway = ToolGateway(
         registry=registry,
         adapters=adapters,
         approval_resolver=approval_resolver,
         side_effect_guard=side_effect_guard,
+        result_offloader=result_offloader,
         audit_sink=audit_sink,
     )
     return create_tool_gateway_app(
@@ -99,7 +105,12 @@ def create_runtime_app() -> FastAPI:
             adapter_keys=frozenset(adapters),
             required_adapter_keys=required,
             runtime_bindings=frozenset(
-                {"approval-resolver", "side-effect-guard", "audit-sink"}
+                {
+                    "approval-resolver",
+                    "audit-sink",
+                    "result-offloader",
+                    "side-effect-guard",
+                }
             ),
         )
     )
@@ -161,6 +172,7 @@ def create_tool_gateway_app(runtime: ToolGatewayServiceRuntime) -> FastAPI:
             ToolAmbiguousSideEffectError,
             ToolApprovalControlUnavailableError,
             ToolAuditUnavailableError,
+            ToolResultOffloadUnavailableError,
             ToolSideEffectControlUnavailableError,
         ) as exc:
             return _error(503, exc.code, str(exc))
@@ -190,12 +202,24 @@ async def _decode_internal_tool_request(
         try:
             parsed_length = int(content_length)
         except ValueError:
-            return _error(400, "TOOL_GATEWAY_CONTENT_LENGTH_INVALID", "invalid content length")
+            return _error(
+                400,
+                "TOOL_GATEWAY_CONTENT_LENGTH_INVALID",
+                "invalid content length",
+            )
         if parsed_length < 0 or parsed_length > _MAX_BODY_BYTES:
-            return _error(413, "TOOL_GATEWAY_REQUEST_TOO_LARGE", "request body is too large")
+            return _error(
+                413,
+                "TOOL_GATEWAY_REQUEST_TOO_LARGE",
+                "request body is too large",
+            )
     body = await request.body()
     if len(body) > _MAX_BODY_BYTES:
-        return _error(413, "TOOL_GATEWAY_REQUEST_TOO_LARGE", "request body is too large")
+        return _error(
+            413,
+            "TOOL_GATEWAY_REQUEST_TOO_LARGE",
+            "request body is too large",
+        )
     try:
         verify_internal_request(
             secret=runtime.auth_secret,
