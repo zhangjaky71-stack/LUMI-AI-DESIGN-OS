@@ -324,7 +324,7 @@ jobs:
             "$DEPLOYMENT_ID" \
             "$GITHUB_RUN_ID" \
             reports/production-recovery/runtime/object-recovery.json
-      - name: Delete isolated RDS and transient verifier object
+      - name: Delete isolated RDS and verify transient verifier evidence is fully purged
         if: always()
         shell: bash
         run: |
@@ -332,6 +332,10 @@ jobs:
           mkdir -p reports/production-recovery/runtime
           RDS_DELETED=false
           OBJECT_DELETED=false
+          SOURCE_REMAINING=-1
+          DR_REMAINING=-1
+          DR_REGION=""
+          DR_EXPORTS=""
           if [[ -n "${TARGET_ID:-}" ]] && aws rds describe-db-instances --db-instance-identifier "$TARGET_ID" >/dev/null 2>&1; then
             aws rds delete-db-instance --db-instance-identifier "$TARGET_ID" --skip-final-snapshot --delete-automated-backups >/tmp/dr-delete.json 2>/tmp/dr-delete.err
             delete_rc=$?
@@ -343,20 +347,42 @@ jobs:
             RDS_DELETED=true
           fi
           if [[ -n "${EXPORTS_BUCKET:-}" && -n "${DB_EVIDENCE_KEY:-}" ]]; then
-            aws s3api delete-object --bucket "$EXPORTS_BUCKET" --key "$DB_EVIDENCE_KEY" >/tmp/dr-evidence-delete.json 2>/tmp/dr-evidence-delete.err
-            if [[ $? -eq 0 ]] && ! aws s3api head-object --bucket "$EXPORTS_BUCKET" --key "$DB_EVIDENCE_KEY" >/dev/null 2>&1; then
-              OBJECT_DELETED=true
+            DR_REGION="$(terraform -chdir=infra/iac/environments/production/core output -raw object_dr_region 2>/tmp/dr-region.err)"
+            DR_EXPORTS="$(terraform -chdir=infra/iac/environments/production/core output -json object_dr_bucket_names 2>/tmp/dr-buckets.err | jq -r '.exports // empty')"
+            if [[ -n "$DR_REGION" && -n "$DR_EXPORTS" && "$DR_REGION" != "$AWS_REGION" ]]; then
+              SOURCE_LISTING="$(aws s3api list-object-versions --region "$AWS_REGION" --bucket "$EXPORTS_BUCKET" --prefix "$DB_EVIDENCE_KEY" 2>/tmp/dr-source-list.err)"
+              source_rc=$?
+              DR_LISTING="$(aws s3api list-object-versions --region "$DR_REGION" --bucket "$DR_EXPORTS" --prefix "$DB_EVIDENCE_KEY" 2>/tmp/dr-destination-list.err)"
+              dr_rc=$?
+              if [[ $source_rc -eq 0 && $dr_rc -eq 0 ]]; then
+                SOURCE_REMAINING="$(jq --arg key "$DB_EVIDENCE_KEY" '[
+                  (.Versions // [])[] | select(.Key == $key),
+                  (.DeleteMarkers // [])[] | select(.Key == $key)
+                ] | length' <<<"$SOURCE_LISTING")"
+                DR_REMAINING="$(jq --arg key "$DB_EVIDENCE_KEY" '[
+                  (.Versions // [])[] | select(.Key == $key),
+                  (.DeleteMarkers // [])[] | select(.Key == $key)
+                ] | length' <<<"$DR_LISTING")"
+                [[ "$SOURCE_REMAINING" -eq 0 && "$DR_REMAINING" -eq 0 ]] && OBJECT_DELETED=true
+              fi
             fi
           fi
           jq -n \
             --arg deployment_id "$DEPLOYMENT_ID" \
             --arg recovery_instance_id "${TARGET_ID:-UNKNOWN}" \
+            --arg database_evidence_key "${DB_EVIDENCE_KEY:-UNKNOWN}" \
+            --arg source_bucket "${EXPORTS_BUCKET:-UNKNOWN}" \
+            --arg source_region "$AWS_REGION" \
+            --arg recovery_bucket "${DR_EXPORTS:-UNKNOWN}" \
+            --arg recovery_region "${DR_REGION:-UNKNOWN}" \
+            --argjson source_versions_remaining "$SOURCE_REMAINING" \
+            --argjson recovery_versions_remaining "$DR_REMAINING" \
             --argjson recovery_instance_deleted "$RDS_DELETED" \
             --argjson database_evidence_object_deleted "$OBJECT_DELETED" \
-            '{schema_version:1,deployment_id:$deployment_id,recovery_instance_id:$recovery_instance_id,recovery_instance_deleted:$recovery_instance_deleted,database_evidence_object_deleted:$database_evidence_object_deleted,passed:($recovery_instance_deleted and $database_evidence_object_deleted)}' \
+            '{schema_version:1,deployment_id:$deployment_id,recovery_instance_id:$recovery_instance_id,database_evidence_key:$database_evidence_key,source_bucket:$source_bucket,source_region:$source_region,recovery_bucket:$recovery_bucket,recovery_region:$recovery_region,database_evidence_source_versions_remaining:$source_versions_remaining,database_evidence_recovery_versions_remaining:$recovery_versions_remaining,recovery_instance_deleted:$recovery_instance_deleted,database_evidence_object_deleted:$database_evidence_object_deleted,passed:($recovery_instance_deleted and $database_evidence_object_deleted and $source_versions_remaining == 0 and $recovery_versions_remaining == 0)}' \
             > reports/production-recovery/runtime/cleanup.json
-          if [[ "$RDS_DELETED" != true || "$OBJECT_DELETED" != true ]]; then
-            echo "DR cleanup incomplete; manual cleanup required" >&2
+          if [[ "$RDS_DELETED" != true || "$OBJECT_DELETED" != true || "$SOURCE_REMAINING" -ne 0 || "$DR_REMAINING" -ne 0 ]]; then
+            echo "DR cleanup incomplete; exact source/DR evidence versions must be zero" >&2
             exit 1
           fi
           exit 0
