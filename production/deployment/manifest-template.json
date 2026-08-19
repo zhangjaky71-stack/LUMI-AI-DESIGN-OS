@@ -38,7 +38,9 @@
   "recovery": {
     "database_pitr_max_rpo_minutes": 5,
     "database_pitr_max_rto_minutes": 60,
-    "object_version_recovery_required": true
+    "object_version_recovery_required": true,
+    "object_cross_region_replication_required": true,
+    "object_replication_rtc_minutes": 15
   },
   "first_day_limits": {
     "max_org_concurrent_agent_runs": 4,
