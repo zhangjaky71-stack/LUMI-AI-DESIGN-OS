@@ -88,6 +88,7 @@ jobs:
             test "$(jq -r '.repository.full_name' <<<"$run")" = "$GITHUB_REPOSITORY"
             test "$(jq -r '.head_branch' <<<"$run")" = "$GITHUB_REF_NAME"
             test "$(jq -r '.head_sha' <<<"$run")" = "$RC_SHA"
+            test "$(jq -r '.event' <<<"$run")" = "workflow_dispatch"
             test "$(jq -r '.status' <<<"$run")" = "completed"
             test "$(jq -r '.conclusion' <<<"$run")" = "success"
           done
@@ -122,6 +123,7 @@ jobs:
           one /tmp/lumi-deploy-evidence runtime-identity.json "$EVIDENCE_DIR/runtime-identity.json"
           one /tmp/lumi-deploy-evidence rollout-evidence.json "$EVIDENCE_DIR/rollout-evidence.json"
           one /tmp/lumi-deploy-evidence production-smoke.json "$EVIDENCE_DIR/production-smoke.json"
+          one /tmp/lumi-rollback-evidence rollback-gate.json "$EVIDENCE_DIR/rollback/rollback-gate.json"
           one /tmp/lumi-rollback-evidence previous-runtime.json "$EVIDENCE_DIR/rollback/previous-runtime.json"
           one /tmp/lumi-rollback-evidence previous-smoke.json "$EVIDENCE_DIR/rollback/previous-smoke.json"
           one /tmp/lumi-rollback-evidence restored-runtime.json "$EVIDENCE_DIR/rollback/restored-runtime.json"
