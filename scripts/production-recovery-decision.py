@@ -12,6 +12,8 @@ EXPECTED_POLICY = {
     "database_pitr_max_rpo_minutes": 5,
     "database_pitr_max_rto_minutes": 60,
     "object_version_recovery_required": True,
+    "object_cross_region_replication_required": True,
+    "object_replication_rtc_minutes": 15,
 }
 
 
@@ -56,6 +58,7 @@ def evaluate(
     rds_restore: dict[str, Any],
     database_verify: dict[str, Any],
     object_recovery: dict[str, Any],
+    cross_region_object_recovery: dict[str, Any],
     cleanup: dict[str, Any],
     refs: list[dict[str, str]],
 ) -> dict[str, Any]:
@@ -147,6 +150,55 @@ def evaluate(
     if object_recovery.get("v1_version_id") == object_recovery.get("restored_version_id"):
         blockers.append("object recovery must restore v1 as a new current version")
 
+    if (
+        cross_region_object_recovery.get("schema_version") != 1
+        or cross_region_object_recovery.get("passed") is not True
+    ):
+        blockers.append("cross-region object recovery rehearsal is not passed=true")
+    if cross_region_object_recovery.get("deployment_id") != deployment_id:
+        blockers.append("cross-region object recovery deployment_id mismatch")
+    source_region = cross_region_object_recovery.get("source_region")
+    destination_region = cross_region_object_recovery.get("destination_region")
+    manifest_aws = manifest.get("aws")
+    if not isinstance(manifest_aws, dict) or source_region != manifest_aws.get("region"):
+        blockers.append("cross-region object recovery source region does not match production")
+    if not isinstance(destination_region, str) or not destination_region or destination_region == source_region:
+        blockers.append("cross-region object recovery destination must differ from source")
+    if cross_region_object_recovery.get("rtc_minutes") != 15:
+        blockers.append("cross-region object recovery must use the 15-minute RTC contract")
+    if cross_region_object_recovery.get("cleanup_complete") is not True:
+        blockers.append("cross-region object recovery cleanup is incomplete")
+    pairs = cross_region_object_recovery.get("pairs")
+    if not isinstance(pairs, list) or len(pairs) != 2:
+        blockers.append("cross-region object recovery must verify assets and exports")
+    else:
+        by_purpose = {
+            item.get("purpose"): item
+            for item in pairs
+            if isinstance(item, dict) and isinstance(item.get("purpose"), str)
+        }
+        if set(by_purpose) != {"assets", "exports"}:
+            blockers.append("cross-region object recovery purpose set must be assets+exports")
+        for purpose in ("assets", "exports"):
+            item = by_purpose.get(purpose)
+            if not isinstance(item, dict):
+                continue
+            lag = item.get("replication_lag_seconds")
+            if item.get("passed") is not True:
+                blockers.append(f"cross-region {purpose} replication drill is not passed=true")
+            if item.get("source_region") != source_region or item.get("destination_region") != destination_region:
+                blockers.append(f"cross-region {purpose} region identity mismatch")
+            if item.get("source_replication_status") != "COMPLETED":
+                blockers.append(f"cross-region {purpose} source replication is not COMPLETED")
+            if item.get("destination_replication_status") != "REPLICA":
+                blockers.append(f"cross-region {purpose} destination is not REPLICA")
+            if item.get("rtc_minutes") != 15:
+                blockers.append(f"cross-region {purpose} RTC contract mismatch")
+            if not isinstance(lag, (int, float)) or isinstance(lag, bool) or lag < 0 or lag > 900:
+                blockers.append(f"cross-region {purpose} replication lag exceeds 15 minutes")
+            if item.get("expected_sha256") != item.get("destination_sha256"):
+                blockers.append(f"cross-region {purpose} replica checksum mismatch")
+
     if cleanup.get("schema_version") != 1 or cleanup.get("passed") is not True:
         blockers.append("DR cleanup evidence is not passed=true")
     if cleanup.get("deployment_id") != deployment_id:
@@ -164,6 +216,8 @@ def evaluate(
         "recovery_policy": manifest.get("recovery", {}),
         "observed_rpo_minutes": rpo,
         "observed_rto_minutes": rto,
+        "object_dr_destination_region": destination_region,
+        "object_dr_max_replication_lag_seconds": cross_region_object_recovery.get("max_replication_lag_seconds"),
         "passed": not blockers,
         "evidence_refs": refs,
         "blockers": blockers,
@@ -180,6 +234,7 @@ def main() -> int:
     parser.add_argument("--rds-restore", required=True)
     parser.add_argument("--database-verify", required=True)
     parser.add_argument("--object-recovery", required=True)
+    parser.add_argument("--cross-region-object-recovery", required=True)
     parser.add_argument("--cleanup", required=True)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
@@ -189,6 +244,7 @@ def main() -> int:
         Path(args.rds_restore),
         Path(args.database_verify),
         Path(args.object_recovery),
+        Path(args.cross_region_object_recovery),
         Path(args.cleanup),
     ]
     try:
@@ -199,6 +255,7 @@ def main() -> int:
             load_json(paths[2]),
             load_json(paths[3]),
             load_json(paths[4]),
+            load_json(paths[5]),
             [freeze(path) for path in paths],
         )
     except (OSError, json.JSONDecodeError, RecoveryDecisionError) as exc:
