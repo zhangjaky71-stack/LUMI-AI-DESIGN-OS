@@ -13,7 +13,7 @@ from .queue_contracts import JobKind, JobMessage, queue_for, retry_policy_for
 from .task_base import RuntimeTask
 from .topology import build_job_queues
 
-broker = os.getenv("RABBITMQ_URL", "memory://")
+broker = os.getenv("LUMI_RABBITMQ_URL") or os.getenv("RABBITMQ_URL", "memory://")
 configured_backend = os.getenv("CELERY_RESULT_BACKEND")
 backend = configured_backend or ("cache+memory://" if broker == "memory://" else None)
 celery_app = Celery("lumi-worker-media", broker=broker, backend=backend)
