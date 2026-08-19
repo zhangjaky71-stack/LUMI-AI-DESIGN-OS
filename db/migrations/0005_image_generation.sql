@@ -1,3 +1,11 @@
+-- LEGACY_REFERENCE_ONLY: DO NOT APPLY TO STAGING OR PRODUCTION.
+--
+-- This pre-Alembic NODE-46 reference schema is retained only for historical
+-- design review. The production source of truth is the canonical Alembic
+-- `generations` table plus versioned request_json/result_json snapshots used by
+-- apps/worker-media/src/lumi_worker_media/image_generation_repository.py.
+-- Release gates MUST NOT apply this file or require image_generation_* tables.
+
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS image_generation_jobs (
