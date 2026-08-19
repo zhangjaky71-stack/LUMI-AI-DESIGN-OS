@@ -15,6 +15,7 @@ locals {
     "providers/media",
     "billing/webhook",
     "auth/signing",
+    "internal/model-gateway",
   ])
 }
 
