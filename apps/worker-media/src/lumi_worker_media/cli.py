@@ -70,12 +70,23 @@ async def _dispatch_outbox(
     domain_dispatcher = OutboxDispatcher(dsn, KombuDomainPublisher(broker_url))
     job_dispatcher = MediaJobOutboxDispatcher(dsn, CeleryJobPublisher())
     while True:
-        job_published = await job_dispatcher.dispatch_batch(limit=limit)
-        domain_published = await domain_dispatcher.dispatch_batch(limit=limit)
+        job_published = 0
+        domain_published = 0
+        failures: list[tuple[str, Exception]] = []
+        try:
+            job_published = await job_dispatcher.dispatch_batch(limit=limit)
+        except Exception as exc:
+            failures.append(("jobs", exc))
+        try:
+            domain_published = await domain_dispatcher.dispatch_batch(limit=limit)
+        except Exception as exc:
+            failures.append(("domain", exc))
+
         published = job_published + domain_published
-        print(
-            f"published={published} jobs={job_published} domain={domain_published}"
-        )
+        print(f"published={published} jobs={job_published} domain={domain_published}")
+        if failures:
+            channels = ",".join(name for name, _ in failures)
+            raise RuntimeError(f"OUTBOX_DISPATCH_FAILED:{channels}") from failures[0][1]
         if not watch:
             return
         if published == 0:
