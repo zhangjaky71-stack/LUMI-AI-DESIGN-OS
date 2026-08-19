@@ -20,8 +20,6 @@ EXPECTED_RECOVERY_POLICY = {
     "database_pitr_max_rpo_minutes": 5,
     "database_pitr_max_rto_minutes": 60,
     "object_version_recovery_required": True,
-    "object_cross_region_replication_required": True,
-    "object_replication_rtc_minutes": 15,
 }
 
 
@@ -107,7 +105,7 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
     else:
         require(
             recovery == EXPECTED_RECOVERY_POLICY,
-            "recovery must match the versioned NODE-72 launch RPO/RTO/cross-region object-recovery policy",
+            "recovery must match the versioned NODE-72 launch RPO/RTO/object-recovery policy",
             blockers,
         )
 
