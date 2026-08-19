@@ -116,6 +116,7 @@ class DeepAgentRuntimeFactory:
                 parent_allowed_tools=effective_root_tools,
                 allowed_tools=child_allowed,
                 trace_id=context.trace_id,
+                budget_limit_usd=context.budget_limit_usd,
             )
             child_model = await self.models.model_for_subagent(
                 definition=child,
