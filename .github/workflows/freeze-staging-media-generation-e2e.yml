@@ -1,0 +1,172 @@
+name: Freeze Staging Media Generation E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_git_sha:
+        description: "Exact 40-character RC Git SHA"
+        required: true
+        type: string
+      collector_run_id:
+        description: "Successful Collect Staging Media Generation E2E workflow run ID"
+        required: true
+        type: string
+      freeze_ack:
+        description: "Required acknowledgement: FREEZE_STAGING_MEDIA_E2E:<rc-sha>"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  RC_SHA: ${{ inputs.release_git_sha }}
+  COLLECTOR_RUN_ID: ${{ inputs.collector_run_id }}
+  FREEZE_ACK: ${{ inputs.freeze_ack }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  freeze:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Require exact RC checkout and explicit acknowledgement
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RC_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$COLLECTOR_RUN_ID" =~ ^[0-9]+$ ]]
+          test "$FREEZE_ACK" = "FREEZE_STAGING_MEDIA_E2E:${RC_SHA}"
+          test "$(git rev-parse HEAD)" = "$RC_SHA"
+          destination="reports/staging-acceptance/${RC_SHA}/media-generation-e2e"
+          printf 'DESTINATION=%s\n' "$destination" >> "$GITHUB_ENV"
+
+      - name: Require successful collector run from this repository branch and exact RC SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          run="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${COLLECTOR_RUN_ID}")"
+          test "$(jq -r '.repository.full_name' <<<"$run")" = "$GITHUB_REPOSITORY"
+          test "$(jq -r '.head_branch' <<<"$run")" = "$GITHUB_REF_NAME"
+          test "$(jq -r '.head_sha' <<<"$run")" = "$RC_SHA"
+          test "$(jq -r '.event' <<<"$run")" = "workflow_dispatch"
+          test "$(jq -r '.status' <<<"$run")" = "completed"
+          test "$(jq -r '.conclusion' <<<"$run")" = "success"
+          test "$(jq -r '.name' <<<"$run")" = "Collect Staging Media Generation E2E"
+          jq '{id, name, event, status, conclusion, head_branch, head_sha, run_attempt, created_at, updated_at, html_url}' \
+            <<<"$run" > /tmp/collector-run.json
+
+      - name: Download collector artifact without trusting internal artifact paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/lumi-staging-media-e2e
+          mkdir -p /tmp/lumi-staging-media-e2e
+          gh run download "$COLLECTOR_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir /tmp/lumi-staging-media-e2e
+
+      - name: Materialize exactly one validated evidence package
+        shell: bash
+        run: |
+          set -euo pipefail
+          one() {
+            local root="$1" name="$2" destination="$3"
+            mapfile -t matches < <(find "$root" -type f -name "$name" -print)
+            if [[ ${#matches[@]} -ne 1 ]]; then
+              echo "expected exactly one $name below $root, found ${#matches[@]}" >&2
+              exit 65
+            fi
+            cp -- "${matches[0]}" "$destination"
+          }
+
+          rm -rf /tmp/frozen-media-e2e
+          mkdir -p /tmp/frozen-media-e2e
+          one /tmp/lumi-staging-media-e2e media-generation-e2e.json /tmp/frozen-media-e2e/evidence.json
+          one /tmp/lumi-staging-media-e2e media-generation-e2e-validation.json /tmp/frozen-media-e2e/validation.json
+          one /tmp/lumi-staging-media-e2e media-generation-e2e-head.json /tmp/frozen-media-e2e/s3-head.json
+          one /tmp/lumi-staging-media-e2e media-generation-e2e.sha256 /tmp/frozen-media-e2e/evidence.sha256
+          cp /tmp/collector-run.json /tmp/frozen-media-e2e/source-run.json
+
+      - name: Revalidate frozen evidence and source run identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validate_media_generation_e2e_evidence.py --self-test
+          python scripts/validate_media_generation_e2e_evidence.py \
+            --evidence /tmp/frozen-media-e2e/evidence.json \
+            > /tmp/recomputed-validation.json
+          jq -e --arg sha "$RC_SHA" '.status == "PASS" and .release_git_sha == $sha and .scenario_id == "E2E-03"' \
+            /tmp/recomputed-validation.json >/dev/null
+          jq -e --arg sha "$RC_SHA" '.status == "PASS" and .release_git_sha == $sha and .scenario_id == "E2E-03"' \
+            /tmp/frozen-media-e2e/validation.json >/dev/null
+          cmp -s /tmp/recomputed-validation.json /tmp/frozen-media-e2e/validation.json || {
+            echo "collector validation output does not match freeze-time recomputation" >&2
+            exit 66
+          }
+          expected_sha="$(sha256sum /tmp/frozen-media-e2e/evidence.json | awk '{print $1}')"
+          recorded_sha="$(awk '{print $1}' /tmp/frozen-media-e2e/evidence.sha256)"
+          test "$expected_sha" = "$recorded_sha"
+          jq -e --arg sha "$RC_SHA" '.Metadata["release-git-sha"] == $sha and .Metadata["scenario"] == "E2E-03" and .Metadata["synthetic-only"] == "true"' \
+            /tmp/frozen-media-e2e/s3-head.json >/dev/null
+          jq -e --arg sha "$RC_SHA" '.head_sha == $sha and .name == "Collect Staging Media Generation E2E" and .event == "workflow_dispatch" and .conclusion == "success"' \
+            /tmp/frozen-media-e2e/source-run.json >/dev/null
+
+      - name: Preserve immutable RC evidence boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -d "$DESTINATION" ]]; then
+            if diff -qr "$DESTINATION" /tmp/frozen-media-e2e >/dev/null; then
+              echo "identical staging media E2E evidence is already frozen"
+              printf 'FREEZE_NOOP=true\n' >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "refusing to overwrite non-identical frozen staging media E2E evidence for $RC_SHA" >&2
+            exit 67
+          fi
+          mkdir -p "$(dirname "$DESTINATION")"
+          cp -R /tmp/frozen-media-e2e "$DESTINATION"
+          printf 'FREEZE_NOOP=false\n' >> "$GITHUB_ENV"
+
+      - name: Refuse changes outside exact RC media E2E evidence directory
+        if: env.FREEZE_NOOP != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          target_prefix="${DESTINATION}/"
+          mapfile -t changed < <({ git diff --name-only; git ls-files --others --exclude-standard; } | sort -u)
+          [[ ${#changed[@]} -gt 0 ]] || { echo "no evidence changes detected" >&2; exit 68; }
+          for path in "${changed[@]}"; do
+            [[ "$path" == "$target_prefix"* ]] || {
+              echo "refusing unexpected change outside staging E2E evidence boundary: $path" >&2
+              exit 69
+            }
+          done
+
+      - name: Commit only validated immutable Staging media E2E evidence
+        if: env.FREEZE_NOOP != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "lumi-release-evidence-bot"
+          git config user.email "lumi-release-evidence-bot@users.noreply.github.com"
+          git add -- "$DESTINATION"
+          target_prefix="${DESTINATION}/"
+          while IFS= read -r path; do
+            [[ "$path" == "$target_prefix"* ]] || {
+              echo "unexpected staged path: $path" >&2
+              exit 70
+            }
+          done < <(git diff --cached --name-only)
+          git commit -m "release: freeze staging media E2E ${RC_SHA}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
