@@ -75,15 +75,15 @@ def validate_source_chain() -> None:
             )
 
     workflow = STAGING_WORKFLOW.read_text(encoding="utf-8")
-    required_command = (
-        "python3 scripts/validate_side_effect_control_provenance.py "
-        '--evidence "$LUMI_STAGING_EVIDENCE_PATH"'
-    )
-    if required_command not in workflow:
-        raise SideEffectProvenanceError(
-            "Staging Acceptance must validate side-effect-control image provenance "
-            "against the submitted evidence"
-        )
+    for fragment in (
+        "python3 scripts/validate_side_effect_control_provenance.py",
+        '--evidence "$LUMI_STAGING_EVIDENCE_PATH"',
+    ):
+        if fragment not in workflow:
+            raise SideEffectProvenanceError(
+                "Staging Acceptance must validate side-effect-control image provenance "
+                "against the submitted evidence"
+            )
 
 
 def self_test() -> None:
