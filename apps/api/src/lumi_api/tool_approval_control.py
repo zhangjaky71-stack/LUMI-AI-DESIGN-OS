@@ -175,7 +175,11 @@ def create_tool_approval_control_router(runtime: ToolApprovalControlRuntime) -> 
             if not isinstance(arguments, dict):
                 raise ValueError("TOOL_APPROVAL_ARGUMENTS_INVALID")
             approval_raw = payload.get("approval_id")
-            approval_id = UUID(approval_raw) if isinstance(approval_raw, str) and approval_raw else None
+            approval_id = (
+                UUID(approval_raw)
+                if isinstance(approval_raw, str) and approval_raw
+                else None
+            )
             request_hash = _request_hash(
                 organization_id=organization_id,
                 agent_run_id=agent_run_id,
@@ -239,7 +243,11 @@ def create_tool_approval_public_router(
                 )
             )
             if approval is None:
-                return _error(404, "TOOL_APPROVAL_NOT_FOUND", "tool approval was not found")
+                return _error(
+                    404,
+                    "TOOL_APPROVAL_NOT_FOUND",
+                    "tool approval was not found",
+                )
             return JSONResponse(status_code=200, content=_public_payload(approval))
 
     @router.post("/{approval_id}:decide")
@@ -257,7 +265,11 @@ def create_tool_approval_public_router(
                 "artifact.approve permission is required",
             )
         if not idempotency_key.strip() or len(idempotency_key) > 512:
-            return _error(422, "TOOL_APPROVAL_IDEMPOTENCY_KEY_INVALID", "invalid idempotency key")
+            return _error(
+                422,
+                "TOOL_APPROVAL_IDEMPOTENCY_KEY_INVALID",
+                "invalid idempotency key",
+            )
         async with session_factory() as session:
             async with session.begin():
                 approval = await session.scalar(
@@ -271,11 +283,18 @@ def create_tool_approval_public_router(
                     .with_for_update()
                 )
                 if approval is None:
-                    return _error(404, "TOOL_APPROVAL_NOT_FOUND", "tool approval was not found")
+                    return _error(
+                        404,
+                        "TOOL_APPROVAL_NOT_FOUND",
+                        "tool approval was not found",
+                    )
                 desired = "approved" if body.decision == "APPROVE" else "rejected"
                 current = approval.status.strip().lower()
                 if current == desired:
-                    return JSONResponse(status_code=200, content=_public_payload(approval))
+                    return JSONResponse(
+                        status_code=200,
+                        content=_public_payload(approval),
+                    )
                 if current != "pending":
                     return _error(
                         409,
@@ -285,7 +304,11 @@ def create_tool_approval_public_router(
                 approval.status = desired
                 approval.decided_by = context.actor_id
                 approval.decided_at = datetime.now(UTC)
-                approval.reason = body.reason.strip() if body.reason and body.reason.strip() else None
+                approval.reason = (
+                    body.reason.strip()
+                    if body.reason and body.reason.strip()
+                    else None
+                )
                 approval.version += 1
             await session.refresh(approval)
             return JSONResponse(status_code=200, content=_public_payload(approval))
@@ -353,18 +376,33 @@ def _request_hash(
     return hashlib.sha256(encoded).hexdigest()
 
 
-async def _authenticated_json(request: Request, secret: str) -> dict[str, Any] | JSONResponse:
+async def _authenticated_json(
+    request: Request,
+    secret: str,
+) -> dict[str, Any] | JSONResponse:
     length_raw = request.headers.get("content-length")
     if length_raw is not None:
         try:
             length = int(length_raw)
         except ValueError:
-            return _error(400, "TOOL_APPROVAL_CONTENT_LENGTH_INVALID", "invalid content length")
+            return _error(
+                400,
+                "TOOL_APPROVAL_CONTENT_LENGTH_INVALID",
+                "invalid content length",
+            )
         if length < 0 or length > _MAX_BODY_BYTES:
-            return _error(413, "TOOL_APPROVAL_REQUEST_TOO_LARGE", "request body is too large")
+            return _error(
+                413,
+                "TOOL_APPROVAL_REQUEST_TOO_LARGE",
+                "request body is too large",
+            )
     body = await request.body()
     if len(body) > _MAX_BODY_BYTES:
-        return _error(413, "TOOL_APPROVAL_REQUEST_TOO_LARGE", "request body is too large")
+        return _error(
+            413,
+            "TOOL_APPROVAL_REQUEST_TOO_LARGE",
+            "request body is too large",
+        )
     auth_error = _verify_auth(request, body, secret)
     if auth_error is not None:
         return auth_error
@@ -373,36 +411,65 @@ async def _authenticated_json(request: Request, secret: str) -> dict[str, Any] |
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         return _error(422, "TOOL_APPROVAL_JSON_INVALID", str(exc))
     if not isinstance(payload, dict):
-        return _error(422, "TOOL_APPROVAL_OBJECT_REQUIRED", "request body must be an object")
+        return _error(
+            422,
+            "TOOL_APPROVAL_OBJECT_REQUIRED",
+            "request body must be an object",
+        )
     return dict(payload)
 
 
 def _verify_auth(request: Request, body: bytes, secret: str) -> JSONResponse | None:
     service = request.headers.get(_SERVICE_HEADER)
     if service not in _ALLOWED_CALLERS:
-        return _error(401, "TOOL_APPROVAL_CALLER_FORBIDDEN", "internal authentication failed")
+        return _error(
+            401,
+            "TOOL_APPROVAL_CALLER_FORBIDDEN",
+            "internal authentication failed",
+        )
     try:
         timestamp = int(request.headers.get(_TIMESTAMP_HEADER, ""))
     except ValueError:
-        return _error(401, "TOOL_APPROVAL_TIMESTAMP_INVALID", "internal authentication failed")
+        return _error(
+            401,
+            "TOOL_APPROVAL_TIMESTAMP_INVALID",
+            "internal authentication failed",
+        )
     if abs(int(time.time()) - timestamp) > _MAX_SKEW_SECONDS:
-        return _error(401, "TOOL_APPROVAL_TIMESTAMP_EXPIRED", "internal authentication failed")
+        return _error(
+            401,
+            "TOOL_APPROVAL_TIMESTAMP_EXPIRED",
+            "internal authentication failed",
+        )
     signature = request.headers.get(_SIGNATURE_HEADER)
     if signature is None or len(signature) != 64:
-        return _error(401, "TOOL_APPROVAL_SIGNATURE_INVALID", "internal authentication failed")
+        return _error(
+            401,
+            "TOOL_APPROVAL_SIGNATURE_INVALID",
+            "internal authentication failed",
+        )
     body_hash = hashlib.sha256(body).hexdigest()
     message = (
         f"{service}\n{timestamp}\n{request.method.upper()}\n{request.url.path}\n{body_hash}"
     ).encode("utf-8")
     expected = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(signature.lower(), expected):
-        return _error(401, "TOOL_APPROVAL_SIGNATURE_INVALID", "internal authentication failed")
+        return _error(
+            401,
+            "TOOL_APPROVAL_SIGNATURE_INVALID",
+            "internal authentication failed",
+        )
     return None
 
 
 def _required_string(payload: dict[str, Any], key: str, max_length: int) -> str:
     value = payload.get(key)
-    if not isinstance(value, str) or not value or len(value) > max_length or "\x00" in value:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > max_length
+        or "\x00" in value
+    ):
         raise ValueError(f"TOOL_APPROVAL_FIELD_INVALID:{key}")
     return value
 
