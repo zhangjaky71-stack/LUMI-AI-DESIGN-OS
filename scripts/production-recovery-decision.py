@@ -225,6 +225,24 @@ def evaluate(
         blockers.append("temporary RDS recovery instance was not deleted")
     if cleanup.get("database_evidence_object_deleted") is not True:
         blockers.append("temporary database evidence current object was not deleted")
+    source_versions_remaining = cleanup.get("database_evidence_source_versions_remaining")
+    recovery_versions_remaining = cleanup.get("database_evidence_recovery_versions_remaining")
+    if (
+        isinstance(source_versions_remaining, bool)
+        or not isinstance(source_versions_remaining, int)
+        or source_versions_remaining != 0
+    ):
+        blockers.append("database recovery evidence source versions/delete-markers remain")
+    if (
+        isinstance(recovery_versions_remaining, bool)
+        or not isinstance(recovery_versions_remaining, int)
+        or recovery_versions_remaining != 0
+    ):
+        blockers.append("database recovery evidence recovery-region versions/delete-markers remain")
+    if cleanup.get("source_region") != source_region:
+        blockers.append("DR cleanup source region mismatch")
+    if cleanup.get("recovery_region") != destination_region:
+        blockers.append("DR cleanup recovery region mismatch")
 
     blockers = sorted(set(blockers))
     payload: dict[str, Any] = {
@@ -236,6 +254,8 @@ def evaluate(
         "observed_rto_minutes": rto,
         "object_dr_destination_region": destination_region,
         "object_dr_max_replication_lag_seconds": max_object_lag,
+        "database_evidence_source_versions_remaining": source_versions_remaining,
+        "database_evidence_recovery_versions_remaining": recovery_versions_remaining,
         "passed": not blockers,
         "evidence_refs": refs,
         "blockers": blockers,
