@@ -113,7 +113,7 @@ async def verify() -> dict[str, Any]:
     started = datetime.now(UTC)
     expected_head = required_env("LUMI_EXPECTED_MIGRATION_HEAD")
     database_url = recovery_url()
-    engine = create_async_engine(database_url, pool_pre_ping=True, poolclass=None)
+    engine = create_async_engine(database_url, pool_pre_ping=True)
     invariant_results: dict[str, int] = {}
     workload_results: dict[str, int] = {}
     try:
@@ -191,8 +191,18 @@ def main() -> int:
         print(json.dumps({"status": "PASS" if payload["passed"] else "BLOCK", "evidence_sha256": evidence["sha256"]}, sort_keys=True))
         return 0 if payload["passed"] else 2
     except Exception as exc:
-        # Never print the database URL or any credential-bearing value.
-        print(json.dumps({"status": "BLOCK", "error_type": type(exc).__name__, "error": str(exc)}, sort_keys=True))
+        # Exception strings from DB/AWS libraries can contain connection endpoints,
+        # request context, or credential-adjacent values. Never serialize them.
+        print(
+            json.dumps(
+                {
+                    "status": "BLOCK",
+                    "error_type": type(exc).__name__,
+                    "error": "production recovery verifier failed; inspect protected service logs",
+                },
+                sort_keys=True,
+            )
+        )
         return 2
 
 
