@@ -187,7 +187,6 @@ def _validate_calls(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
         "web.fetch http_status must be 2xx/3xx",
     )
     _string(fetch.get("content_type"), "calls.web.fetch.content_type")
-
     _uuid(normalized["project.query"].get("project_id"), "calls.project.query.project_id")
 
     for tool in ("asset.read", "media.inspect"):
@@ -247,7 +246,8 @@ def _validate_replay(payload: dict[str, Any], calls: dict[str, dict[str, Any]]) 
     _status(replay.get("status"), "idempotent_replay.status")
     _require(replay.get("tool") == "asset.write-derived", "replay tool must be asset.write-derived")
     first_call = _uuid(replay.get("first_tool_call_id"), "idempotent_replay.first_tool_call_id")
-    _uuid(replay.get("replay_tool_call_id"), "idempotent_replay.replay_tool_call_id")
+    replay_call = _uuid(replay.get("replay_tool_call_id"), "idempotent_replay.replay_tool_call_id")
+    _require(first_call != replay_call, "replay tool_call_id must be a new call")
     write = calls["asset.write-derived"]
     _require(first_call == write["tool_call_id"], "replay first_tool_call_id must match write call")
     operation_id = _string(replay.get("operation_id"), "idempotent_replay.operation_id")
@@ -262,10 +262,7 @@ def _validate_replay(payload: dict[str, Any], calls: dict[str, dict[str, Any]]) 
     _require(first_ref == write["asset_ref"], "replay first asset ref must match write")
     _require(replay_ref == first_ref, "replay must return the same derived asset ref")
     _bool(replay.get("replayed"), True, "idempotent_replay.replayed")
-    _require(
-        replay.get("adapter_invocation_count") == 1,
-        "replay adapter_invocation_count must be 1",
-    )
+    _require(replay.get("adapter_invocation_count") == 1, "replay adapter_invocation_count must be 1")
     _require(
         replay.get("duplicate_derived_asset_count") == 0,
         "replay duplicate_derived_asset_count must be 0",
@@ -279,9 +276,12 @@ def _validate_offload(payload: dict[str, Any], calls: dict[str, dict[str, Any]])
     assert isinstance(offload, dict)
     _status(offload.get("status"), "result_offload.status")
     tool = _string(offload.get("tool"), "result_offload.tool")
-    _require(tool in REQUIRED_TOOLS, "result_offload.tool must be a P0 tool")
+    _require(tool == "sandbox.execute", "result_offload.tool must be sandbox.execute")
     tool_call_id = _uuid(offload.get("tool_call_id"), "result_offload.tool_call_id")
-    _require(tool_call_id == calls[tool]["tool_call_id"], "offload tool_call_id must match call")
+    _require(
+        tool_call_id != calls["sandbox.execute"]["tool_call_id"],
+        "result offload must use a separate sandbox tool_call_id",
+    )
     inline = offload.get("inline_limit_bytes")
     serialized = offload.get("serialized_result_bytes")
     _require(isinstance(inline, int) and inline > 0, "inline_limit_bytes must be positive")
@@ -297,11 +297,7 @@ def _validate_offload(payload: dict[str, Any], calls: dict[str, dict[str, Any]])
     _require(bool(_SHA256.fullmatch(digest)), "result_offload.sha256 must be sha256")
     assert match is not None
     _require(match.group(1) == digest, "result_offload sha256 must match result_ref")
-    _bool(
-        offload.get("object_head_verified"),
-        True,
-        "result_offload.object_head_verified",
-    )
+    _bool(offload.get("object_head_verified"), True, "result_offload.object_head_verified")
     _bool(offload.get("public_url_returned"), False, "result_offload.public_url_returned")
     _evidence_ref(offload.get("evidence_ref"), "result_offload.evidence_ref")
 
@@ -313,7 +309,7 @@ def _validate_audit(payload: dict[str, Any]) -> None:
     _status(audit.get("status"), "durable_audit.status")
     expected = audit.get("expected_call_count")
     persisted = audit.get("persisted_call_count")
-    _require(isinstance(expected, int) and expected >= 9, "expected_call_count must be >= 9")
+    _require(isinstance(expected, int) and expected >= 10, "expected_call_count must be >= 10")
     _require(persisted == expected, "persisted_call_count must equal expected_call_count")
     _require(audit.get("missing_tool_calls") == [], "durable_audit missing_tool_calls must be empty")
     _require(audit.get("cross_tenant_rows") == 0, "durable_audit cross_tenant_rows must be 0")
@@ -335,11 +331,7 @@ def _validate_provider(payload: dict[str, Any]) -> None:
         provider.get("provider_host") == "api.search.brave.com",
         "provider_search.provider_host must be api.search.brave.com",
     )
-    _bool(
-        provider.get("live_request_observed"),
-        True,
-        "provider_search.live_request_observed",
-    )
+    _bool(provider.get("live_request_observed"), True, "provider_search.live_request_observed")
     _require(provider.get("provider_http_status") == 200, "provider_search HTTP status must be 200")
     _require(
         isinstance(provider.get("result_count"), int) and provider["result_count"] > 0,
@@ -385,7 +377,8 @@ def validate_contract(payload: dict[str, Any]) -> None:
 
 def _bind_to_staging_evidence(root: dict[str, Any], contract: dict[str, Any]) -> None:
     release = root.get("release_candidate")
-    images = root.get("container_image_set", {}).get("images") if isinstance(root.get("container_image_set"), dict) else None
+    image_set = root.get("container_image_set")
+    images = image_set.get("images") if isinstance(image_set, dict) else None
     _require(isinstance(release, dict), "staging release_candidate is missing")
     _require(isinstance(images, dict), "staging container image set is missing")
     assert isinstance(release, dict)
@@ -504,7 +497,7 @@ def _valid_fixture() -> dict[str, Any]:
     payload["result_offload"] = {
         "status": "PASS",
         "tool": "sandbox.execute",
-        "tool_call_id": calls["sandbox.execute"]["tool_call_id"],
+        "tool_call_id": "88888888-8888-4888-8888-888888888888",
         "inline_limit_bytes": 65536,
         "serialized_result_bytes": 70000,
         "inline_data_present": False,
@@ -516,8 +509,8 @@ def _valid_fixture() -> dict[str, Any]:
     }
     payload["durable_audit"] = {
         "status": "PASS",
-        "expected_call_count": 9,
-        "persisted_call_count": 9,
+        "expected_call_count": 10,
+        "persisted_call_count": 10,
         "missing_tool_calls": [],
         "cross_tenant_rows": 0,
         "secret_material_present": False,
@@ -542,6 +535,7 @@ def _valid_fixture() -> dict[str, Any]:
 def self_test() -> None:
     valid = _valid_fixture()
     validate_contract(valid)
+
     broken = copy.deepcopy(valid)
     broken["idempotent_replay"]["duplicate_derived_asset_count"] = 1
     try:
@@ -550,6 +544,7 @@ def self_test() -> None:
         pass
     else:
         raise ToolGatewayE2EEvidenceError("self-test accepted duplicate derived asset")
+
     broken = copy.deepcopy(valid)
     broken["provider_search"]["live_request_observed"] = False
     try:
@@ -558,6 +553,17 @@ def self_test() -> None:
         pass
     else:
         raise ToolGatewayE2EEvidenceError("self-test accepted non-live web search evidence")
+
+    broken = copy.deepcopy(valid)
+    broken["result_offload"]["tool_call_id"] = broken["calls"]["sandbox.execute"]["tool_call_id"]
+    try:
+        validate_contract(broken)
+    except ToolGatewayE2EEvidenceError:
+        pass
+    else:
+        raise ToolGatewayE2EEvidenceError(
+            "self-test accepted offload evidence from the normal sandbox call"
+        )
 
 
 def main() -> int:
