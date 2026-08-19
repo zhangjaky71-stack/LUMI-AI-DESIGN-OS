@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,6 +47,29 @@ def validate_catalog() -> None:
             raise SystemExit(f"write tool bypasses idempotency: {definition.key}")
     if any("sql" in item.name.lower() for item in definitions):
         raise SystemExit("unrestricted SQL tool is forbidden in NODE-25 P0")
+
+
+def validate_dependency_boundary() -> None:
+    path = ROOT / "services/tool-gateway/pyproject.toml"
+    payload = tomllib.loads(path.read_text(encoding="utf-8"))
+    project = payload.get("project")
+    if not isinstance(project, dict):
+        raise SystemExit("Tool Gateway pyproject has no [project] table")
+    dependencies = project.get("dependencies")
+    if not isinstance(dependencies, list) or not all(
+        isinstance(item, str) for item in dependencies
+    ):
+        raise SystemExit("Tool Gateway dependencies must be an explicit string list")
+    expected = {
+        "fastapi==0.139.2",
+        "lumi-asset-storage[s3]",
+        "uvicorn[standard]>=0.35,<1",
+    }
+    if set(dependencies) != expected or len(dependencies) != len(expected):
+        raise SystemExit(
+            "Tool Gateway dependency allowlist mismatch: "
+            f"expected={sorted(expected)} actual={sorted(dependencies)}"
+        )
 
 
 def validate_service_import_boundary() -> None:
@@ -121,6 +145,17 @@ def main() -> int:
         "ToolInternalError",
     )
     require(
+        "services/tool-gateway/src/lumi_tool_gateway/service.py",
+        "HttpApprovalResolver.from_env()",
+        "HttpAuditSink.from_env()",
+        "RemoteSideEffectGuard",
+        "S3ResultOffloader.from_env()",
+        '"approval-resolver"',
+        '"audit-sink"',
+        '"result-offloader"',
+        '"side-effect-guard"',
+    )
+    require(
         "services/tool-gateway/src/lumi_tool_gateway/ssrf.py",
         'scheme not in {"http", "https"}',
         "host.docker.internal",
@@ -145,10 +180,7 @@ def main() -> int:
         "os.system",
         "Popen(",
     )
-    require(
-        "services/tool-gateway/pyproject.toml",
-        "dependencies = []",
-    )
+    validate_dependency_boundary()
     validate_catalog()
     validate_service_import_boundary()
     print("NODE-25 Tool Gateway architecture/security contract: PASS")
