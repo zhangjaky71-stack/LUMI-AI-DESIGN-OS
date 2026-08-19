@@ -1,0 +1,90 @@
+name: Regenerate Canonical UV Lock
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: regenerate-uv-lock-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  regenerate-canonical-lock:
+    if: github.ref_type == 'branch' && github.ref_name == 'release-closure-p0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Require a clean release branch checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_TYPE" = "branch"
+          test "$GITHUB_REF_NAME" = "release-closure-p0"
+          test -z "$(git status --porcelain)"
+
+      - name: Regenerate uv.lock with the pinned resolver
+        run: uv lock
+
+      - name: Require uv.lock to be the only generated change
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed < <(git diff --name-only)
+          if [ "${#changed[@]}" -eq 0 ]; then
+            echo "uv.lock is already canonical; refusing an empty regeneration commit" >&2
+            exit 1
+          fi
+          if [ "${#changed[@]}" -ne 1 ] || [ "${changed[0]}" != "uv.lock" ]; then
+            printf 'unexpected generated path: %s\n' "${changed[@]}" >&2
+            exit 1
+          fi
+          git diff --check -- uv.lock
+
+      - name: Verify exact workspace membership in regenerated lock
+        run: python3 scripts/validate_uv_workspace_lock.py
+
+      - name: Verify canonical lock freshness
+        run: uv lock --check
+
+      - name: Verify frozen all-workspace installation
+        run: uv sync --all-packages --frozen
+
+      - name: Verify release Python contracts compile under regenerated lock
+        run: >-
+          uv run python -m compileall -q
+          scripts/validate_uv_workspace_lock.py
+          scripts/staging-acceptance-gate.py
+          scripts/validate_staging_acceptance_contract.py
+          scripts/final-acceptance-gate.py
+          scripts/validate_final_acceptance_contract.py
+          apps/api/src/lumi_api/product_app.py
+          apps/api/src/lumi_api/generations
+          apps/api/src/lumi_api/media_dispatch.py
+
+      - name: Commit canonical uv.lock without rebasing or force-pushing
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- uv.lock
+          test "$(git diff --cached --name-only)" = "uv.lock"
+          git commit -m "chore(release): regenerate canonical uv lock"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
