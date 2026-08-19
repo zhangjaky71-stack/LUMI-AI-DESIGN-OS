@@ -215,7 +215,7 @@ def hosted_media_contract() -> None:
         "provider-output/v1/",
     )
     require(
-        "services/asset-storage/tests/test_s3_bytes_boundary.py",
+        "services/asset-storage/tests/test_s3_bounded_bytes.py",
         "put_bytes",
         "get_bytes",
         "max_bytes",
