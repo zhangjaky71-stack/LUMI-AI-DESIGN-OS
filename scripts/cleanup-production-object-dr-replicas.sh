@@ -19,7 +19,11 @@ VERSION_IDS=("$@")
   echo "destination region must differ from AWS_REGION" >&2
   exit 64
 }
-[[ "$KEY" == _node73-drill/* ]] || { echo "refusing to clean non-drill key" >&2; exit 64; }
+case "$KEY" in
+  _node73-drill/*|recovery-evidence/v1/*) ;;
+  *) echo "refusing to clean key outside NODE-73 recovery namespaces" >&2; exit 64 ;;
+esac
+[[ "$KEY" != *".."* && "$KEY" != */../* ]] || { echo "unsafe cleanup key" >&2; exit 64; }
 [[ ${#VERSION_IDS[@]} -ge 1 ]] || { echo "at least one source VersionId required" >&2; exit 64; }
 
 for version_id in "${VERSION_IDS[@]}"; do
@@ -44,14 +48,14 @@ for version_id in "${VERSION_IDS[@]}"; do
 done
 
 # COMPLETED on every source version means the destination replicas exist. Purge
-# only this deterministic NODE-73 drill key; never accept a broad prefix here.
+# only the exact allowlisted recovery key; never accept a broad customer prefix.
 listing="$(aws s3api list-object-versions \
   --region "$DESTINATION_REGION" \
   --bucket "$DESTINATION_BUCKET" \
   --prefix "$KEY")"
 replica_count="$(jq --arg key "$KEY" '[.Versions[]? | select(.Key == $key)] | length' <<<"$listing")"
 [[ "$replica_count" -ge ${#VERSION_IDS[@]} ]] || {
-  echo "destination does not contain all completed drill replicas" >&2
+  echo "destination does not contain all completed recovery replicas" >&2
   exit 66
 }
 
@@ -59,7 +63,7 @@ deletes="$(jq -c --arg key "$KEY" '[
   (.Versions // [])[] | select(.Key == $key) | {Key:.Key,VersionId:.VersionId},
   (.DeleteMarkers // [])[] | select(.Key == $key) | {Key:.Key,VersionId:.VersionId}
 ]' <<<"$listing")"
-[[ "$deletes" != "[]" ]] || { echo "destination drill replicas unexpectedly empty" >&2; exit 66; }
+[[ "$deletes" != "[]" ]] || { echo "destination recovery replicas unexpectedly empty" >&2; exit 66; }
 
 aws s3api delete-objects \
   --region "$DESTINATION_REGION" \
@@ -75,6 +79,6 @@ remaining="$(jq --arg key "$KEY" '[
   (.Versions // [])[] | select(.Key == $key),
   (.DeleteMarkers // [])[] | select(.Key == $key)
 ] | length' <<<"$after")"
-[[ "$remaining" -eq 0 ]] || { echo "destination drill cleanup incomplete" >&2; exit 67; }
+[[ "$remaining" -eq 0 ]] || { echo "destination recovery cleanup incomplete" >&2; exit 67; }
 
-echo "replicated object recovery drill cleanup: PASS"
+echo "replicated recovery object cleanup: PASS"
