@@ -150,6 +150,38 @@ jobs:
             apps/worker-media/tests/test_worker_cli.py \
             apps/worker-media/tests/integration/test_image_generation_repository_postgres.py
 
+  worker-media-image-smoke:
+    needs: image-generation-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build frozen Worker Media image
+        run: docker build -f apps/worker-media/Dockerfile -t lumi-worker-media:${{ github.sha }} .
+      - name: Verify packaged production entrypoint contract
+        run: >-
+          docker run --rm --entrypoint python
+          lumi-worker-media:${{ github.sha }}
+          -c "from lumi_worker_media.worker_cli import worker_argv; argv=worker_argv(); assert argv[0]=='worker'; assert any(v.startswith('--queues=') for v in argv); print(argv)"
+      - name: Start Worker Media container and assert process liveness
+        shell: bash
+        run: |
+          docker run -d --name lumi-worker-media-smoke lumi-worker-media:${{ github.sha }}
+          for attempt in $(seq 1 15); do
+            if [ "$(docker inspect -f '{{.State.Running}}' lumi-worker-media-smoke 2>/dev/null || true)" = "true" ]; then
+              sleep 2
+              test "$(docker inspect -f '{{.State.Running}}' lumi-worker-media-smoke)" = "true"
+              docker logs lumi-worker-media-smoke
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs lumi-worker-media-smoke || true
+          exit 1
+      - name: Cleanup Worker Media smoke container
+        if: always()
+        run: docker rm -f lumi-worker-media-smoke >/dev/null 2>&1 || true
+
   image-generation-integration:
     needs: image-generation-quality
     runs-on: ubuntu-24.04
