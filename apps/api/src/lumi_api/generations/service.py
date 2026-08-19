@@ -17,7 +17,7 @@ from lumi_api.media_dispatch import (
     stage_image_transform_dispatch,
 )
 from lumi_api.persistence.base import utc_now
-from lumi_api.persistence.models import Generation, IdempotencyOperation, Project, Task
+from lumi_api.persistence.models import AgentRun, Generation, IdempotencyOperation, Project, Task
 
 from .errors import GenerationConflict, GenerationInvalid, GenerationNotFound
 
@@ -31,8 +31,9 @@ class ImageGenerationControlPlane:
     """Canonical DB-only producer for hosted image generation.
 
     The caller owns the surrounding transaction. This service never talks to the
-    broker or a model provider. It atomically binds the existing Task, canonical
-    Generation snapshot, NODE-20 idempotency operation, and job-dispatch outbox.
+    broker or a model provider. It atomically materializes or binds the canonical
+    image.transform Task, Generation snapshot, NODE-20 idempotency operation, and
+    job-dispatch outbox.
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -66,7 +67,7 @@ class ImageGenerationControlPlane:
                 )
             raise GenerationConflict(f"GENERATION_IDEMPOTENCY_STATE:{operation.status}")
 
-        task_id = self._required_task_id(payload, spec)
+        task_id = self._resolve_task_id(payload, spec)
         await self._validate_scope(
             organization_id=organization_id,
             payload=payload,
@@ -85,19 +86,21 @@ class ImageGenerationControlPlane:
         if existing is not None:
             raise GenerationConflict("GENERATION_OPERATION_ALREADY_EXISTS")
 
+        await self._lock_task_identity(task_id=task_id)
         task = await self._lock_task(
             organization_id=organization_id,
             project_id=payload.project_id,
             task_id=task_id,
         )
         if task is None:
-            raise GenerationNotFound("GENERATION_TASK_NOT_FOUND_OR_FORBIDDEN")
-        if task.type != IMAGE_TRANSFORM_JOB_KIND:
-            raise GenerationInvalid("GENERATION_TASK_TYPE_MISMATCH")
-        if task.status not in {"pending", "retrying"}:
-            raise GenerationConflict(f"GENERATION_TASK_NOT_DISPATCHABLE:{task.status}")
-        if task.agent_run_id != payload.agent_run_id:
-            raise GenerationInvalid("GENERATION_TASK_AGENT_RUN_MISMATCH")
+            if payload.task_id is not None:
+                raise GenerationNotFound("GENERATION_TASK_NOT_FOUND_OR_FORBIDDEN")
+            task = await self._materialize_task(
+                organization_id=organization_id,
+                payload=payload,
+                task_id=task_id,
+            )
+        self._validate_task(task=task, payload=payload)
 
         canonical_spec = encode_spec(spec)
         canonical_task_input: dict[str, Any] = {
@@ -181,16 +184,14 @@ class ImageGenerationControlPlane:
             raise GenerationInvalid(f"GENERATION_SPEC_INVALID:{exc}") from exc
 
     @staticmethod
-    def _required_task_id(payload: GenerationCreate, spec: ImageGenerationSpec) -> UUID:
-        if payload.task_id is None:
-            raise GenerationInvalid("GENERATION_TASK_ID_REQUIRED")
+    def _resolve_task_id(payload: GenerationCreate, spec: ImageGenerationSpec) -> UUID:
         try:
             spec_task_id = UUID(spec.task_id)
         except ValueError as exc:
             raise GenerationInvalid("GENERATION_SPEC_TASK_ID_INVALID") from exc
-        if spec_task_id != payload.task_id:
+        if payload.task_id is not None and spec_task_id != payload.task_id:
             raise GenerationInvalid("GENERATION_SPEC_TASK_MISMATCH")
-        return payload.task_id
+        return payload.task_id or spec_task_id
 
     async def _validate_scope(
         self,
@@ -226,6 +227,23 @@ class ImageGenerationControlPlane:
         if project is None or project.status == "archived":
             raise GenerationNotFound("GENERATION_PROJECT_NOT_FOUND_OR_FORBIDDEN")
 
+        if payload.agent_run_id is not None:
+            agent_run = await self.session.scalar(
+                select(AgentRun.id).where(
+                    AgentRun.id == payload.agent_run_id,
+                    AgentRun.organization_id == organization_id,
+                    AgentRun.project_id == payload.project_id,
+                )
+            )
+            if agent_run is None:
+                raise GenerationNotFound("GENERATION_AGENT_RUN_NOT_FOUND_OR_FORBIDDEN")
+
+    async def _lock_task_identity(self, *, task_id: UUID) -> None:
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"),
+            {"key": _task_lock_key(task_id)},
+        )
+
     async def _lock_task(
         self,
         *,
@@ -243,6 +261,42 @@ class ImageGenerationControlPlane:
             .with_for_update()
         )
         return result.scalar_one_or_none()
+
+    async def _materialize_task(
+        self,
+        *,
+        organization_id: UUID,
+        payload: GenerationCreate,
+        task_id: UUID,
+    ) -> Task:
+        existing = await self.session.scalar(
+            select(Task.id).where(Task.id == task_id).with_for_update()
+        )
+        if existing is not None:
+            raise GenerationNotFound("GENERATION_TASK_NOT_FOUND_OR_FORBIDDEN")
+
+        task = Task(
+            id=task_id,
+            organization_id=organization_id,
+            project_id=payload.project_id,
+            agent_run_id=payload.agent_run_id,
+            type=IMAGE_TRANSFORM_JOB_KIND,
+            status="pending",
+            input_json={},
+            output_json={},
+        )
+        self.session.add(task)
+        await self.session.flush()
+        return task
+
+    @staticmethod
+    def _validate_task(*, task: Task, payload: GenerationCreate) -> None:
+        if task.type != IMAGE_TRANSFORM_JOB_KIND:
+            raise GenerationInvalid("GENERATION_TASK_TYPE_MISMATCH")
+        if task.status not in {"pending", "retrying"}:
+            raise GenerationConflict(f"GENERATION_TASK_NOT_DISPATCHABLE:{task.status}")
+        if task.agent_run_id != payload.agent_run_id:
+            raise GenerationInvalid("GENERATION_TASK_AGENT_RUN_MISMATCH")
 
     async def _generation_by_operation(
         self,
@@ -339,5 +393,12 @@ def _idempotency_lock_key(organization_id: UUID, idempotency_key: str) -> int:
 def _operation_lock_key(organization_id: UUID, operation_id: UUID) -> int:
     digest = hashlib.sha256(
         f"{_OPERATION_TYPE}:operation\x00{organization_id}\x00{operation_id}".encode("utf-8")
+    ).digest()
+    return int.from_bytes(digest[:8], "big", signed=True)
+
+
+def _task_lock_key(task_id: UUID) -> int:
+    digest = hashlib.sha256(
+        f"{_OPERATION_TYPE}:task\x00{task_id}".encode("utf-8")
     ).digest()
     return int.from_bytes(digest[:8], "big", signed=True)
