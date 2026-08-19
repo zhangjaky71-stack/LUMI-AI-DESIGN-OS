@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -13,6 +14,20 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONTRACT = ROOT / "staging" / "acceptance" / "media-generation-e2e-v1.json"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_SENSITIVE_KEY_FRAGMENTS = frozenset(
+    {
+        "authorization",
+        "bearer",
+        "cookie",
+        "credential",
+        "password",
+        "secret",
+        "session_token",
+        "api_token",
+        "access_key",
+        "private_key",
+    }
+)
 
 
 class EvidenceError(RuntimeError):
@@ -40,6 +55,37 @@ def required_uuid(value: Any, name: str) -> UUID:
         raise EvidenceError(f"{name} must be a UUID") from exc
 
 
+def canonical_snapshot_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def validate_snapshot_safety(value: Any, *, path: str = "snapshot", depth: int = 0) -> None:
+    if depth > 24:
+        raise EvidenceError(f"{path} exceeds maximum evidence nesting depth")
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            validate_snapshot_safety(item, path=f"{path}[{index}]", depth=depth + 1)
+        return
+    if not isinstance(value, dict):
+        raise EvidenceError(f"{path} contains unsupported value {type(value).__name__}")
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise EvidenceError(f"{path} contains a non-string key")
+        normalized = key.casefold().replace("-", "_")
+        if any(fragment in normalized for fragment in _SENSITIVE_KEY_FRAGMENTS):
+            raise EvidenceError(f"{path}.{key} contains a forbidden sensitive evidence field")
+        validate_snapshot_safety(item, path=f"{path}.{key}", depth=depth + 1)
+
+
 def validate_contract(contract: dict[str, Any]) -> None:
     if contract.get("schema_version") != 1:
         raise EvidenceError("media generation E2E contract schema_version must be 1")
@@ -59,8 +105,10 @@ def validate_contract(contract: dict[str, Any]) -> None:
     if job_contract != expected:
         raise EvidenceError("media generation E2E job contract drifted from canonical dispatch")
     terminal = contract.get("required_terminal_state")
-    if terminal != {"task_status": "succeeded", "generation_status": "succeeded"}:
-        raise EvidenceError("media generation E2E terminal state must require task/generation succeeded")
+    if terminal != {"task_status": "succeeded", "generation_status": "completed"}:
+        raise EvidenceError(
+            "media generation E2E terminal state must require task succeeded/generation completed"
+        )
     stages = contract.get("required_evidence_stages")
     expected_stages = [
         "api_request",
@@ -165,6 +213,12 @@ def validate_evidence(contract: dict[str, Any], evidence: dict[str, Any]) -> dic
         digest = required_string(stage.get("sha256"), f"E2E-03.evidence.{stage_name}.sha256").lower()
         if not SHA256.fullmatch(digest):
             raise EvidenceError(f"E2E-03 evidence stage {stage_name} sha256 must be 64 lowercase hex")
+        snapshot = stage.get("snapshot")
+        if not isinstance(snapshot, dict):
+            raise EvidenceError(f"E2E-03 evidence stage {stage_name} snapshot must be an object")
+        validate_snapshot_safety(snapshot, path=f"E2E-03.evidence.{stage_name}.snapshot")
+        if canonical_snapshot_sha256(snapshot) != digest:
+            raise EvidenceError(f"E2E-03 evidence stage {stage_name} sha256 does not match snapshot")
 
     return {
         "status": "PASS",
@@ -192,7 +246,15 @@ def self_test(contract: dict[str, Any]) -> None:
     organization_id = UUID("33333333-3333-4333-8333-333333333333")
     project_id = UUID("44444444-4444-4444-8444-444444444444")
     trace_id = "trace-e2e-contract"
-    digest = "a" * 64
+    stage_names = contract["required_evidence_stages"]
+    stages = {}
+    for name in stage_names:
+        snapshot = {"stage": name, "fixture": True}
+        stages[name] = {
+            "ref": f"fixture:{name}",
+            "sha256": canonical_snapshot_sha256(snapshot),
+            "snapshot": snapshot,
+        }
     observed = {
         "request_id": "request-e2e-contract",
         "trace_id": trace_id,
@@ -210,7 +272,7 @@ def self_test(contract: dict[str, Any]) -> None:
         "task_name": "lumi.jobs.image.transform",
         "queue": "lumi.media.image",
         "task_status": "succeeded",
-        "generation_status": "succeeded",
+        "generation_status": "completed",
         "provenance_code_git_sha": "c" * 40,
         "storage_ref": "s3://lumi-contract/generated/v1/result.png",
         "broker_message": {
@@ -220,10 +282,7 @@ def self_test(contract: dict[str, Any]) -> None:
             "operation_id": str(operation_id),
             "trace_id": trace_id,
         },
-        "evidence": {
-            name: {"ref": f"fixture:{name}", "sha256": digest}
-            for name in contract["required_evidence_stages"]
-        },
+        "evidence": stages,
     }
     fixture = {
         "release_candidate": {"git_sha": "c" * 40},
@@ -260,6 +319,25 @@ def self_test(contract: dict[str, Any]) -> None:
     del missing_stage["scenario_results"]["E2E-03"]["media_generation"]["evidence"]["worker_execution"]
     drills.append(("missing worker evidence", missing_stage))
 
+    tampered_snapshot = copy.deepcopy(fixture)
+    tampered_snapshot["scenario_results"]["E2E-03"]["media_generation"]["evidence"]["task_row"][
+        "snapshot"
+    ]["fixture"] = False
+    drills.append(("stage snapshot hash mismatch", tampered_snapshot))
+
+    secret_snapshot = copy.deepcopy(fixture)
+    secret_snapshot["scenario_results"]["E2E-03"]["media_generation"]["evidence"]["api_request"][
+        "snapshot"
+    ]["authorization"] = "Bearer forbidden"
+    secret_snapshot["scenario_results"]["E2E-03"]["media_generation"]["evidence"]["api_request"][
+        "sha256"
+    ] = canonical_snapshot_sha256(
+        secret_snapshot["scenario_results"]["E2E-03"]["media_generation"]["evidence"]["api_request"][
+            "snapshot"
+        ]
+    )
+    drills.append(("sensitive stage snapshot", secret_snapshot))
+
     for label, candidate in drills:
         try:
             validate_evidence(contract, candidate)
@@ -284,7 +362,7 @@ def main() -> int:
         if not args.evidence:
             raise EvidenceError("--evidence is required unless --self-test is used")
         result = validate_evidence(contract, load_json(Path(args.evidence)))
-    except (EvidenceError, OSError, json.JSONDecodeError) as exc:
+    except (EvidenceError, OSError, json.JSONDecodeError, ValueError) as exc:
         print(json.dumps({"status": "BLOCKED", "error": str(exc)}, indent=2, sort_keys=True))
         return 1
     print(json.dumps(result, indent=2, sort_keys=True))
