@@ -58,6 +58,7 @@ def main() -> int:
         "MEDIA_DISPATCH_GENERATION_PROJECT_MISMATCH",
         "MEDIA_DISPATCH_GENERATION_OPERATION_REQUIRED",
         "MEDIA_DISPATCH_GENERATION_SPEC_MISMATCH",
+        "id=_dispatch_event_id(operation_id, dispatch.message.job_id)",
         "session.add(event)",
         "never touch the broker",
     )
@@ -123,11 +124,32 @@ def main() -> int:
         "apps/api/src/lumi_api/cli.py",
         'uvicorn.run("lumi_api.product_app:app"',
     )
+
+    # Database-level identity remains authoritative if any future writer bypasses
+    # the control-plane service or its advisory locks.
+    require(
+        "apps/api/src/lumi_api/persistence/models/workflow.py",
+        '"uq_generations_org_operation"',
+        'unique=True',
+        'postgresql_where=text("operation_id IS NOT NULL")',
+    )
+    require(
+        "apps/api/alembic/versions/0020_generation_operation_identity.py",
+        'revision = "0020_generation_operation_identity"',
+        'down_revision = "0019_side_effect_provider_attempt_barrier"',
+        "GENERATION_OPERATION_DUPLICATES_REQUIRE_RECONCILIATION",
+        'GROUP BY organization_id, operation_id',
+        'HAVING count(*) > 1',
+        'postgresql_where=sa.text("operation_id IS NOT NULL")',
+        'op.drop_index(_INDEX_NAME, table_name="generations")',
+    )
     require(
         "apps/api/tests/integration/test_generation_control_plane_postgres.py",
         "test_generation_control_plane_transaction_and_replay",
         "assert replay.id == first.id",
         "GENERATION_OPERATION_ALREADY_EXISTS",
+        "with pytest.raises(IntegrityError)",
+        "async with session.begin_nested()",
         "assert generation_count == 1",
         "assert len(outbox_rows) == 1",
         "assert len(idempotency_rows) == 1",
