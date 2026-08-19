@@ -12,6 +12,7 @@ from .control_plane import (
 )
 from .errors import DeepAgentRuntimeError
 from .factory import CompiledDeepAgent
+from .model_gateway_chat import HttpProfileModelProvider, ModelGatewayChatModel
 from .node25_adapter import Node25ToolGatewayInvoker, StaticToolDefinitionReader
 from .ports import (
     DeepAgentBackendProvider,
@@ -50,7 +51,9 @@ __all__ = [
     "DeepSubagentDefinition",
     "DelegationLimits",
     "DelegationUsage",
+    "HttpProfileModelProvider",
     "LumiToolGatewayProvider",
+    "ModelGatewayChatModel",
     "Node25ToolGatewayInvoker",
     "ProfileModelProvider",
     "StaticCheckpointerProvider",
