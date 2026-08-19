@@ -17,6 +17,7 @@ locals {
     "auth/signing",
     "internal/model-gateway",
     "internal/tool-gateway",
+    "internal/sandbox-runtime",
   ])
 }
 
