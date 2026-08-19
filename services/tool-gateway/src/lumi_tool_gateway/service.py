@@ -11,11 +11,16 @@ from fastapi.responses import JSONResponse
 from .api import ToolGatewayAPI
 from .catalog import build_p0_registry
 from .errors import (
+    ToolAmbiguousSideEffectError,
     ToolDisabledError,
     ToolGatewayError,
+    ToolIdempotencyConflictError,
+    ToolIdempotencyInProgressError,
     ToolInputValidationError,
     ToolNotFoundError,
     ToolPermissionDeniedError,
+    ToolPriorSideEffectFailedError,
+    ToolSideEffectControlUnavailableError,
     ToolVersionError,
 )
 from .gateway import ToolGateway
@@ -32,6 +37,7 @@ from .http_transport import (
 from .native import SandboxExecuteAdapter
 from .ports import ToolAdapter
 from .sandbox_transport import HttpSandboxExecutor
+from .side_effect_control import HttpSideEffectControlClient, RemoteSideEffectGuard
 
 _ALLOWED_CALLERS = frozenset({"agent-runtime"})
 _MAX_BODY_BYTES = 2 * 1024 * 1024
@@ -70,17 +76,23 @@ def create_runtime_app() -> FastAPI:
     registry = build_p0_registry()
     adapters = _build_hosted_adapters()
     required = frozenset(definition.key for definition in registry.definitions() if definition.enabled)
+    side_effect_guard = RemoteSideEffectGuard(HttpSideEffectControlClient.from_env())
+    gateway = ToolGateway(
+        registry=registry,
+        adapters=adapters,
+        side_effect_guard=side_effect_guard,
+    )
     return create_tool_gateway_app(
         ToolGatewayServiceRuntime(
-            api=ToolGatewayAPI(ToolGateway(registry=registry, adapters=adapters)),
+            api=ToolGatewayAPI(gateway),
             auth_secret=auth_secret,
             environment=environment,
             tool_count=len(registry.definitions()),
             adapter_keys=frozenset(adapters),
             required_adapter_keys=required,
-            # Production guard/audit/approval/offload bindings must be real persisted
-            # implementations before any tool invocation is admitted.
-            runtime_bindings=frozenset(),
+            # NODE-20 is now a real remote binding. The remaining three stay blocked
+            # until their durable production implementations are installed.
+            runtime_bindings=frozenset({"side-effect-guard"}),
         )
     )
 
@@ -133,6 +145,12 @@ def create_tool_gateway_app(runtime: ToolGatewayServiceRuntime) -> FastAPI:
             return _error(403, exc.code, str(exc))
         except (ToolNotFoundError, ToolVersionError, ToolDisabledError) as exc:
             return _error(404, exc.code, str(exc))
+        except ToolIdempotencyInProgressError as exc:
+            return _error(425, exc.code, str(exc))
+        except (ToolIdempotencyConflictError, ToolPriorSideEffectFailedError) as exc:
+            return _error(409, exc.code, str(exc))
+        except (ToolAmbiguousSideEffectError, ToolSideEffectControlUnavailableError) as exc:
+            return _error(503, exc.code, str(exc))
         except ToolInputValidationError as exc:
             return _error(422, exc.code, str(exc))
         except ToolGatewayError as exc:
