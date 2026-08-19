@@ -67,6 +67,7 @@ def main() -> int:
         "publish_attempts = publish_attempts + 1",
         "SET published_at = now()",
         "await asyncio.to_thread(self.publisher.publish, dispatch)",
+        "if failure is not None",
         "exchange=JOBS_EXCHANGE.name",
         "routing_key=IMAGE_TRANSFORM_ROUTING_KEY",
     )
@@ -105,8 +106,20 @@ def main() -> int:
         "dispatch-outbox",
         "MediaJobOutboxDispatcher",
         "CeleryJobPublisher",
+        "failures: list[tuple[str, Exception]] = []",
+        "job_published = await job_dispatcher.dispatch_batch",
+        "domain_published = await domain_dispatcher.dispatch_batch",
+        'failures.append(("jobs", exc))',
+        'failures.append(("domain", exc))',
+        "OUTBOX_DISPATCH_FAILED",
         "replay-dead-letter",
         "DEAD_LETTER_ALREADY_REPLAYED",
+    )
+    require(
+        "apps/worker-media/tests/test_queue_cli.py",
+        "test_domain_dispatch_still_runs_when_job_dispatch_fails",
+        'assert calls == ["jobs", "domain"]',
+        "OUTBOX_DISPATCH_FAILED:jobs",
     )
     require(
         "apps/api/alembic/versions/0008_queue_event_runtime.py",
