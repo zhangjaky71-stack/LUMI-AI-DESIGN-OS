@@ -5,6 +5,9 @@ on:
     paths:
       - "services/model-gateway/**"
       - "apps/api/src/lumi_api/model_gateway_runtime.py"
+      - "apps/api/src/lumi_api/model_gateway_bootstrap.py"
+      - "apps/api/src/lumi_api/model_gateway_service.py"
+      - "apps/api/src/lumi_api/model_gateway_cli.py"
       - "apps/api/src/lumi_api/model_paid_guard.py"
       - "apps/api/src/lumi_api/costs/**"
       - "apps/api/src/lumi_api/idempotency/**"
@@ -12,7 +15,10 @@ on:
       - "apps/api/alembic/versions/0019_side_effect_provider_attempt_barrier.py"
       - "apps/api/tests/test_model_paid_guard.py"
       - "apps/api/tests/integration/test_model_paid_guard_postgres.py"
+      - "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py"
+      - "apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py"
       - "scripts/validate_model_gateway_contract.py"
+      - "scripts/validate_deep_agents_model_gateway_contract.py"
       - "scripts/integration_model_gateway.py"
       - "docs/runtime/MODEL-GATEWAY-V1.md"
       - "reports/nodes/NODE-22/**"
@@ -25,7 +31,33 @@ permissions:
   contents: read
 
 jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile Model Gateway source boundary
+        run: >-
+          python -m compileall -q
+          services/model-gateway/src/lumi_model_gateway
+          apps/api/src/lumi_api/model_gateway_runtime.py
+          apps/api/src/lumi_api/model_gateway_bootstrap.py
+          apps/api/src/lumi_api/model_gateway_service.py
+          apps/api/src/lumi_api/model_gateway_cli.py
+          apps/api/src/lumi_api/model_paid_guard.py
+          apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py
+          scripts/validate_model_gateway_contract.py
+          scripts/validate_deep_agents_model_gateway_contract.py
+      - name: Static architecture and secret boundary
+        run: python scripts/validate_model_gateway_contract.py
+      - name: Deep Agents private Model Gateway boundary
+        run: python scripts/validate_deep_agents_model_gateway_contract.py
+
   model-gateway:
+    needs: source-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -50,10 +82,16 @@ jobs:
           uv run ruff check
           services/model-gateway
           apps/api/src/lumi_api/model_gateway_runtime.py
+          apps/api/src/lumi_api/model_gateway_bootstrap.py
+          apps/api/src/lumi_api/model_gateway_service.py
+          apps/api/src/lumi_api/model_gateway_cli.py
           apps/api/src/lumi_api/model_paid_guard.py
+          apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py
+          apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py
           apps/api/tests/test_model_paid_guard.py
           apps/api/tests/integration/test_model_paid_guard_postgres.py
           scripts/validate_model_gateway_contract.py
+          scripts/validate_deep_agents_model_gateway_contract.py
           scripts/integration_model_gateway.py
 
       - name: Model gateway type check
@@ -61,7 +99,12 @@ jobs:
           uv run pyright
           services/model-gateway
           apps/api/src/lumi_api/model_gateway_runtime.py
+          apps/api/src/lumi_api/model_gateway_bootstrap.py
+          apps/api/src/lumi_api/model_gateway_service.py
+          apps/api/src/lumi_api/model_gateway_cli.py
           apps/api/src/lumi_api/model_paid_guard.py
+          apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py
+          apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py
           apps/api/tests/test_model_paid_guard.py
           apps/api/tests/integration/test_model_paid_guard_postgres.py
 
@@ -70,6 +113,9 @@ jobs:
           uv run python -m unittest discover
           -s services/model-gateway/tests
           -p 'test_*.py'
+
+      - name: Deep Agents HTTP model boundary tests
+        run: uv run pytest apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py -q
 
       - name: Hosted paid guard unit tests
         run: uv run pytest apps/api/tests/test_model_paid_guard.py -q
