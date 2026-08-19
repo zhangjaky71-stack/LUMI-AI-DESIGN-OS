@@ -21,6 +21,7 @@ locals {
     "internal/side-effect-control",
     "internal/tool-audit",
     "internal/tool-approval",
+    "internal/tool-data",
   ])
 }
 
