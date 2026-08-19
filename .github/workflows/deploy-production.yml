@@ -127,6 +127,7 @@ jobs:
       RELEASE_VERSION: ${{ needs.release-gate.outputs.version }}
       RELEASE_DOMAIN: ${{ needs.release-gate.outputs.domain }}
       MANIFEST_ROLE_ARN: ${{ needs.release-gate.outputs.production_role_arn }}
+      MANIFEST_PATH: ${{ inputs.manifest_path }}
       TF_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
       TF_VAR_account_id: ${{ needs.release-gate.outputs.account_id }}
       TF_VAR_region: ${{ needs.release-gate.outputs.region }}
@@ -257,6 +258,13 @@ jobs:
       - name: Capture and verify ECS deployment state
         if: inputs.operation == 'deploy-release'
         run: bash scripts/capture-ecs-deployment-state.sh infra/iac/environments/production/app reports/production-deployments/runtime/ecs-deployment-state.json
+      - name: Verify exact six-runtime image identity in ECS
+        if: inputs.operation == 'deploy-release'
+        run: |
+          bash scripts/capture-production-runtime-identity.sh \
+            infra/iac/environments/production/app \
+            "$MANIFEST_PATH" \
+            reports/production-deployments/runtime/runtime-identity.json
       - name: Read-only production smoke
         if: inputs.operation == 'deploy-release'
         run: |
