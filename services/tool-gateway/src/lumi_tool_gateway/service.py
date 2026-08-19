@@ -118,15 +118,15 @@ def create_tool_gateway_app(runtime: ToolGatewayServiceRuntime) -> FastAPI:
 
     @app.post(INVOKE_PATH, tags=["internal"])
     async def invoke(request: Request) -> JSONResponse:
+        decoded = await _decode_internal_tool_request(request, runtime)
+        if isinstance(decoded, JSONResponse):
+            return decoded
         if runtime.missing_runtime_bindings:
             return _error(
                 503,
                 "TOOL_GATEWAY_RUNTIME_NOT_READY",
                 "Tool Gateway production bindings are incomplete",
             )
-        decoded = await _decode_internal_tool_request(request, runtime)
-        if isinstance(decoded, JSONResponse):
-            return decoded
         try:
             result = await runtime.api.invoke(decoded)
         except ToolPermissionDeniedError as exc:
