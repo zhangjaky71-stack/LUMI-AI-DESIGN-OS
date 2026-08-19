@@ -10,8 +10,10 @@ on:
       - "services/artifact-history/**"
       - "services/brand-rules/**"
       - "services/identity-engine/**"
+      - "apps/worker-media/Dockerfile"
       - "apps/worker-media/src/lumi_worker_media/app.py"
       - "apps/worker-media/src/lumi_worker_media/job_runtime.py"
+      - "apps/worker-media/src/lumi_worker_media/worker_cli.py"
       - "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py"
       - "apps/worker-media/src/lumi_worker_media/image_generation_codec.py"
       - "apps/worker-media/src/lumi_worker_media/image_generation_repository.py"
@@ -22,6 +24,7 @@ on:
       - "apps/worker-media/tests/test_image_generation_codec.py"
       - "apps/worker-media/tests/test_image_generation_ports.py"
       - "apps/worker-media/tests/test_image_task_entrypoint.py"
+      - "apps/worker-media/tests/test_worker_cli.py"
       - "apps/worker-media/tests/integration/test_image_generation_repository_postgres.py"
       - "apps/worker-media/pyproject.toml"
       - "apps/api/alembic/**"
@@ -59,6 +62,7 @@ jobs:
           services/image-generation/tests
           apps/worker-media/src/lumi_worker_media/app.py
           apps/worker-media/src/lumi_worker_media/job_runtime.py
+          apps/worker-media/src/lumi_worker_media/worker_cli.py
           apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py
           apps/worker-media/src/lumi_worker_media/image_generation_codec.py
           apps/worker-media/src/lumi_worker_media/image_generation_repository.py
@@ -69,6 +73,7 @@ jobs:
           apps/worker-media/tests/test_image_generation_codec.py
           apps/worker-media/tests/test_image_generation_ports.py
           apps/worker-media/tests/test_image_task_entrypoint.py
+          apps/worker-media/tests/test_worker_cli.py
           apps/worker-media/tests/integration/test_image_generation_repository_postgres.py
           scripts/validate_image_generation.py
           scripts/benchmark_image_generation.py
@@ -104,6 +109,7 @@ jobs:
           apps/worker-media/tests/test_image_generation_codec.py
           apps/worker-media/tests/test_image_generation_ports.py
           apps/worker-media/tests/test_image_task_entrypoint.py
+          apps/worker-media/tests/test_worker_cli.py
           -q
       - name: Ruff correctness gate
         run: >-
@@ -112,6 +118,7 @@ jobs:
           services/image-generation/tests
           apps/worker-media/src/lumi_worker_media/app.py
           apps/worker-media/src/lumi_worker_media/job_runtime.py
+          apps/worker-media/src/lumi_worker_media/worker_cli.py
           apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py
           apps/worker-media/src/lumi_worker_media/image_generation_codec.py
           apps/worker-media/src/lumi_worker_media/image_generation_repository.py
@@ -122,6 +129,7 @@ jobs:
           apps/worker-media/tests/test_image_generation_codec.py
           apps/worker-media/tests/test_image_generation_ports.py
           apps/worker-media/tests/test_image_task_entrypoint.py
+          apps/worker-media/tests/test_worker_cli.py
           apps/worker-media/tests/integration/test_image_generation_repository_postgres.py
           scripts/validate_image_generation.py
           scripts/benchmark_image_generation.py
@@ -129,6 +137,7 @@ jobs:
         run: |
           uv run pyright -p services/image-generation/pyrightconfig.json
           uv run pyright \
+            apps/worker-media/src/lumi_worker_media/worker_cli.py \
             apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py \
             apps/worker-media/src/lumi_worker_media/image_generation_codec.py \
             apps/worker-media/src/lumi_worker_media/image_generation_repository.py \
@@ -138,6 +147,7 @@ jobs:
             apps/worker-media/tests/test_image_gateway_runtime.py \
             apps/worker-media/tests/test_image_generation_codec.py \
             apps/worker-media/tests/test_image_generation_ports.py \
+            apps/worker-media/tests/test_worker_cli.py \
             apps/worker-media/tests/integration/test_image_generation_repository_postgres.py
 
   image-generation-integration:
