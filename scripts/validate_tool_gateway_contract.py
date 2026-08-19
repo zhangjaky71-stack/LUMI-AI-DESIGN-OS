@@ -150,6 +150,7 @@ def main() -> int:
         "HttpAuditSink.from_env()",
         "RemoteSideEffectGuard",
         "S3ResultOffloader.from_env()",
+        '"web.fetch@1.0.0": SafeWebFetchAdapter(PinnedStdlibHTTPTransport())',
         '"approval-resolver"',
         '"audit-sink"',
         '"result-offloader"',
@@ -172,6 +173,14 @@ def main() -> int:
         '"User-Agent": "LUMI-ToolGateway/1.0"',
         "SandboxExecutor(Protocol)",
     )
+    require(
+        "services/tool-gateway/src/lumi_tool_gateway/web_transport.py",
+        "socket.create_connection(",
+        "(self._pinned_ip, self.port)",
+        "ssl.create_default_context()",
+        "server_hostname=self.host",
+        'key.lower() in {"host", "authorization", "cookie", "proxy-authorization"}',
+    )
     forbid(
         "services/tool-gateway/src/lumi_tool_gateway/native.py",
         '"Authorization"',
@@ -179,6 +188,13 @@ def main() -> int:
         "shell=True",
         "os.system",
         "Popen(",
+    )
+    forbid(
+        "services/tool-gateway/src/lumi_tool_gateway/web_transport.py",
+        "urllib.request",
+        "requests.",
+        "httpx.",
+        "ProxyHandler",
     )
     validate_dependency_boundary()
     validate_catalog()
