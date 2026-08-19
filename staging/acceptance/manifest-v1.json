@@ -13,6 +13,7 @@
     {"id":"ACC-01","category":"accounts","title":"Org A/B, ops and billing test-account isolation matrix","priority":"P0","severity":"high","external_dependency":false},
     {"id":"E2E-01","category":"golden_e2e","title":"Boutique coffee brand end-to-end project","priority":"P0","severity":"critical","external_dependency":false},
     {"id":"E2E-02","category":"golden_e2e","title":"Precision edit preserves product, logo and QR invariants","priority":"P0","severity":"critical","external_dependency":false},
+    {"id":"E2E-03","category":"golden_e2e","title":"Canonical media generation proves API producer, deterministic outbox, Worker execution, durable Artifact and Provenance on the accepted RC","priority":"P0","severity":"critical","external_dependency":false},
     {"id":"RES-01","category":"resilience","title":"Agent Runtime restart and resume","priority":"P0","severity":"high","external_dependency":false},
     {"id":"RES-02","category":"resilience","title":"Worker restart and queued-job recovery","priority":"P0","severity":"high","external_dependency":false},
     {"id":"RES-03","category":"resilience","title":"Provider 429/5xx retry, reconciliation and user state","priority":"P0","severity":"high","external_dependency":false},
