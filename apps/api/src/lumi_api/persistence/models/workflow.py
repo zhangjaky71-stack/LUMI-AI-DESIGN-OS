@@ -249,6 +249,13 @@ class Generation(IdMixin, CreatedAtMixin, Base):
         Index("ix_generations_task_created", "task_id", "created_at"),
         Index("ix_generations_agent_run_created", "agent_run_id", "created_at"),
         Index("ix_generations_status_created", "status", "created_at"),
+        Index(
+            "uq_generations_org_operation",
+            "organization_id",
+            "operation_id",
+            unique=True,
+            postgresql_where=text("operation_id IS NOT NULL"),
+        ),
     )
 
     organization_id: Mapped[UUID] = mapped_column(
