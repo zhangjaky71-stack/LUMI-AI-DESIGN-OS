@@ -1,0 +1,54 @@
+name: Runtime Image Closure Contract
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/Dockerfile"
+      - "apps/api/src/lumi_api/cli.py"
+      - "apps/agent-runtime/Dockerfile"
+      - "apps/agent-runtime/pyproject.toml"
+      - "apps/agent-runtime/src/lumi_agent_runtime/runtime_*.py"
+      - "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/**"
+      - "services/model-gateway/Dockerfile"
+      - "apps/api/src/lumi_api/model_gateway_*.py"
+      - "services/tool-gateway/Dockerfile"
+      - "services/tool-gateway/pyproject.toml"
+      - "services/tool-gateway/src/lumi_tool_gateway/**"
+      - "apps/worker-media/Dockerfile"
+      - "apps/worker-media/src/lumi_worker_media/**"
+      - "services/sandbox-runtime/Dockerfile"
+      - "services/sandbox-runtime/pyproject.toml"
+      - "services/sandbox-runtime/src/lumi_sandbox_runtime/**"
+      - "infra/iac/environments/staging/app/**"
+      - "infra/iac/environments/production/app/**"
+      - "scripts/validate_runtime_image_closure.py"
+      - ".github/workflows/runtime-image-closure-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-image-closure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Compile runtime closure validator and production entrypoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q scripts/validate_runtime_image_closure.py
+          for path in \
+            apps/api/src/lumi_api/cli.py \
+            apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/runtime_factory.py \
+            apps/worker-media/src/lumi_worker_media/worker_cli.py; do
+            python -m compileall -q "$path"
+          done
+
+      - name: Require all six runtimes to have real frozen production image closure
+        run: python scripts/validate_runtime_image_closure.py
