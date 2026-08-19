@@ -64,7 +64,7 @@ def validate_source_chain() -> None:
     for fragment in (
         "COPY . /workspace",
         "uv sync --all-packages --frozen --no-dev",
-        'USER 10001:10001',
+        "USER 10001:10001",
     ):
         if fragment not in dockerfile:
             raise ToolResultOffloadProvenanceError(
@@ -127,21 +127,26 @@ def validate_source_chain() -> None:
         ):
             if fragment not in block:
                 raise ToolResultOffloadProvenanceError(
-                    f"{path.relative_to(ROOT)} missing least-privilege offload wiring: {fragment}"
+                    f"{path.relative_to(ROOT)} missing least-privilege offload wiring: "
+                    f"{fragment}"
                 )
-        if 'local.bucket_arns["assets"]' in block or 'local.bucket_arns["sandbox"]' in block:
+        forbidden_buckets = (
+            'local.bucket_arns["assets"]',
+            'local.bucket_arns["sandbox"]',
+        )
+        if any(fragment in block for fragment in forbidden_buckets):
             raise ToolResultOffloadProvenanceError(
                 f"{path.relative_to(ROOT)} grants Tool Gateway non-exports bucket access"
             )
 
     storage = STORAGE_MODULE.read_text(encoding="utf-8")
     for fragment in (
-        'block_public_acls       = true',
-        'block_public_policy     = true',
-        'restrict_public_buckets = true',
+        "block_public_acls       = true",
+        "block_public_policy     = true",
+        "restrict_public_buckets = true",
         'object_ownership = "BucketOwnerEnforced"',
         'sse_algorithm     = "aws:kms"',
-        'bucket_key_enabled = true',
+        "bucket_key_enabled = true",
         'variable = "aws:SecureTransport"',
         'each.key == "exports"',
         'id     = "expire-exports"',
@@ -156,7 +161,7 @@ def validate_source_chain() -> None:
         "services_with_s3",
         '"s3:PutObject"',
         '"kms:Encrypt"',
-        'resources = each.value.s3_bucket_arns',
+        "resources = each.value.s3_bucket_arns",
     ):
         if fragment not in compute:
             raise ToolResultOffloadProvenanceError(
@@ -190,7 +195,9 @@ def _load(path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise ToolResultOffloadProvenanceError(f"unable to read evidence JSON: {path}") from exc
+        raise ToolResultOffloadProvenanceError(
+            f"unable to read evidence JSON: {path}"
+        ) from exc
     if not isinstance(payload, dict):
         raise ToolResultOffloadProvenanceError("evidence must be a JSON object")
     return payload
