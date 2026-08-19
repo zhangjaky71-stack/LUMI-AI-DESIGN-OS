@@ -15,6 +15,9 @@ from .http_transport import sign_internal_request
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _DEFAULT_TIMEOUT_SECONDS = 15.0
 _PROJECT_QUERY_PATH = "/internal/v1/tool-data/project/query"
+_ASSET_READ_PATH = "/internal/v1/tool-data/asset/read"
+_ARTIFACT_QUERY_PATH = "/internal/v1/tool-data/artifact/query"
+_MEDIA_INSPECT_PATH = "/internal/v1/tool-data/media/inspect"
 _PROJECT_SUMMARY_QUERY = "project.summary"
 
 
@@ -52,15 +55,35 @@ class HttpToolDataClient:
         query = request.arguments.get("query")
         if query != _PROJECT_SUMMARY_QUERY:
             raise ToolDataControlUnavailableError("project query is unsupported")
-        return await self._post(
-            _PROJECT_QUERY_PATH,
-            {
-                "organization_id": str(request.organization_id),
-                "agent_run_id": str(request.agent_run_id),
-                "task_id": str(request.task_id),
-                "query": query,
-            },
-        )
+        payload = self._scope_payload(request)
+        payload["query"] = query
+        return await self._post(_PROJECT_QUERY_PATH, payload)
+
+    async def asset_read(self, request: ToolRequest) -> dict[str, Any]:
+        asset_id = _resource_id(request, "asset_id")
+        payload = self._scope_payload(request)
+        payload["asset_id"] = asset_id
+        return await self._post(_ASSET_READ_PATH, payload)
+
+    async def artifact_query(self, request: ToolRequest) -> dict[str, Any]:
+        artifact_id = _resource_id(request, "artifact_id")
+        payload = self._scope_payload(request)
+        payload["artifact_id"] = artifact_id
+        return await self._post(_ARTIFACT_QUERY_PATH, payload)
+
+    async def media_inspect(self, request: ToolRequest) -> dict[str, Any]:
+        asset_id = _resource_id(request, "asset_id")
+        payload = self._scope_payload(request)
+        payload["asset_id"] = asset_id
+        return await self._post(_MEDIA_INSPECT_PATH, payload)
+
+    @staticmethod
+    def _scope_payload(request: ToolRequest) -> dict[str, Any]:
+        return {
+            "organization_id": str(request.organization_id),
+            "agent_run_id": str(request.agent_run_id),
+            "task_id": str(request.task_id),
+        }
 
     async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         body = canonical_json_bytes(payload)
@@ -144,4 +167,82 @@ class ProjectQueryAdapter:
         return ToolAdapterOutput(
             data=data,
             summary=f"Project {name} is {status}.",
+            resource_refs=(f"project://{project_id}",),
         )
+
+
+class AssetReadAdapter:
+    def __init__(self, client: HttpToolDataClient) -> None:
+        self.client = client
+
+    async def invoke(
+        self,
+        definition: ToolDefinition,
+        request: ToolRequest,
+    ) -> ToolAdapterOutput:
+        if definition.name != "asset.read":
+            raise ToolDataControlUnavailableError("asset read adapter received wrong tool")
+        data = await self.client.asset_read(request)
+        asset_id = _required_response_id(data, "asset_id")
+        status = str(data.get("status") or "unknown")
+        return ToolAdapterOutput(
+            data=data,
+            summary=f"Read asset {asset_id} ({status}).",
+            resource_refs=(f"asset://{asset_id}",),
+        )
+
+
+class ArtifactQueryAdapter:
+    def __init__(self, client: HttpToolDataClient) -> None:
+        self.client = client
+
+    async def invoke(
+        self,
+        definition: ToolDefinition,
+        request: ToolRequest,
+    ) -> ToolAdapterOutput:
+        if definition.name != "artifact.query":
+            raise ToolDataControlUnavailableError("artifact query adapter received wrong tool")
+        data = await self.client.artifact_query(request)
+        artifact_id = _required_response_id(data, "artifact_id")
+        return ToolAdapterOutput(
+            data=data,
+            summary=f"Read artifact {artifact_id}.",
+            resource_refs=(f"artifact://{artifact_id}",),
+        )
+
+
+class MediaInspectAdapter:
+    def __init__(self, client: HttpToolDataClient) -> None:
+        self.client = client
+
+    async def invoke(
+        self,
+        definition: ToolDefinition,
+        request: ToolRequest,
+    ) -> ToolAdapterOutput:
+        if definition.name != "media.inspect":
+            raise ToolDataControlUnavailableError("media inspect adapter received wrong tool")
+        data = await self.client.media_inspect(request)
+        asset_id = _required_response_id(data, "asset_id")
+        return ToolAdapterOutput(
+            data=data,
+            summary=f"Inspected media asset {asset_id}.",
+            resource_refs=(f"asset://{asset_id}",),
+        )
+
+
+def _resource_id(request: ToolRequest, key: str) -> str:
+    value = request.arguments.get(key)
+    if not isinstance(value, str) or not value or len(value) > 128 or "\x00" in value:
+        raise ToolDataControlUnavailableError(f"invalid resource id: {key}")
+    return value
+
+
+def _required_response_id(payload: dict[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value or len(value) > 128:
+        raise ToolDataControlUnavailableError(
+            f"canonical Tool Data response is missing required id: {key}"
+        )
+    return value
