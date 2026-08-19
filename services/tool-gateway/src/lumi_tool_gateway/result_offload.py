@@ -54,15 +54,16 @@ class S3ResultOffloader:
         region = os.getenv("LUMI_S3_REGION", "")
         if not region or len(region) > 64 or "\x00" in region:
             raise ValueError("LUMI_S3_REGION_REQUIRED")
-        max_bytes = _env_max_bytes()
         store = S3ObjectStore(
             endpoint_url=os.getenv("LUMI_S3_ENDPOINT_URL") or None,
             region_name=region,
-            access_key_id=os.getenv("AWS_ACCESS_KEY_ID") or None,
-            secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY") or None,
             force_path_style=_env_bool("LUMI_S3_FORCE_PATH_STYLE", default=False),
         )
-        return cls(store=store, bucket=bucket, max_bytes=max_bytes)
+        return cls(
+            store=store,
+            bucket=bucket,
+            max_bytes=_env_max_bytes(),
+        )
 
     async def store(
         self,
@@ -72,8 +73,14 @@ class S3ResultOffloader:
         resolved_tool: str,
         payload: bytes,
     ) -> str:
-        organization = _uuid_segment(organization_id, "TOOL_RESULT_ORGANIZATION_ID_INVALID")
-        tool_call = _uuid_segment(tool_call_id, "TOOL_RESULT_TOOL_CALL_ID_INVALID")
+        organization = _uuid_segment(
+            organization_id,
+            "TOOL_RESULT_ORGANIZATION_ID_INVALID",
+        )
+        tool_call = _uuid_segment(
+            tool_call_id,
+            "TOOL_RESULT_TOOL_CALL_ID_INVALID",
+        )
         if not resolved_tool or len(resolved_tool) > 320 or "\x00" in resolved_tool:
             raise ToolResultOffloadUnavailableError("resolved tool identity is invalid")
         if not isinstance(payload, bytes):
