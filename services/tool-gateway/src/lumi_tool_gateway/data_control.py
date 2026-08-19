@@ -7,6 +7,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 from urllib.parse import urlparse
+from uuid import UUID
 
 from .contracts import ToolAdapterOutput, ToolDefinition, ToolRequest, canonical_json_bytes
 from .errors import ToolDataControlUnavailableError
@@ -16,9 +17,11 @@ _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _DEFAULT_TIMEOUT_SECONDS = 15.0
 _PROJECT_QUERY_PATH = "/internal/v1/tool-data/project/query"
 _ASSET_READ_PATH = "/internal/v1/tool-data/asset/read"
+_ASSET_WRITE_DERIVED_PATH = "/internal/v1/tool-data/asset/write-derived"
 _ARTIFACT_QUERY_PATH = "/internal/v1/tool-data/artifact/query"
 _MEDIA_INSPECT_PATH = "/internal/v1/tool-data/media/inspect"
 _PROJECT_SUMMARY_QUERY = "project.summary"
+_ARTIFACT_REF_PREFIX = "artifact://"
 
 
 class HttpToolDataClient:
@@ -64,6 +67,23 @@ class HttpToolDataClient:
         payload = self._scope_payload(request)
         payload["asset_id"] = asset_id
         return await self._post(_ASSET_READ_PATH, payload)
+
+    async def asset_write_derived(self, request: ToolRequest) -> dict[str, Any]:
+        source_asset_id = _resource_id(request, "source_asset_id")
+        artifact_ref = _artifact_ref(request.arguments.get("artifact_ref"))
+        metadata = request.arguments.get("metadata", {})
+        if not isinstance(metadata, dict):
+            raise ToolDataControlUnavailableError("derived asset metadata must be an object")
+        payload = self._scope_payload(request)
+        payload.update(
+            {
+                "tool_call_id": str(request.tool_call_id),
+                "source_asset_id": source_asset_id,
+                "artifact_ref": artifact_ref,
+                "metadata": dict(metadata),
+            }
+        )
+        return await self._post(_ASSET_WRITE_DERIVED_PATH, payload)
 
     async def artifact_query(self, request: ToolRequest) -> dict[str, Any]:
         artifact_id = _resource_id(request, "artifact_id")
@@ -192,6 +212,30 @@ class AssetReadAdapter:
         )
 
 
+class AssetWriteDerivedAdapter:
+    def __init__(self, client: HttpToolDataClient) -> None:
+        self.client = client
+
+    async def invoke(
+        self,
+        definition: ToolDefinition,
+        request: ToolRequest,
+    ) -> ToolAdapterOutput:
+        if definition.name != "asset.write-derived":
+            raise ToolDataControlUnavailableError(
+                "derived asset adapter received wrong tool"
+            )
+        data = await self.client.asset_write_derived(request)
+        asset_id = _required_response_id(data, "asset_id")
+        asset_ref = f"asset://{asset_id}"
+        return ToolAdapterOutput(
+            data=data,
+            summary=f"Created derived asset {asset_id}.",
+            resource_refs=(asset_ref,),
+            side_effect_ref=asset_ref,
+        )
+
+
 class ArtifactQueryAdapter:
     def __init__(self, client: HttpToolDataClient) -> None:
         self.client = client
@@ -234,15 +278,33 @@ class MediaInspectAdapter:
 
 def _resource_id(request: ToolRequest, key: str) -> str:
     value = request.arguments.get(key)
-    if not isinstance(value, str) or not value or len(value) > 128 or "\x00" in value:
+    if not isinstance(value, str):
         raise ToolDataControlUnavailableError(f"invalid resource id: {key}")
-    return value
+    try:
+        return str(UUID(value))
+    except ValueError as exc:
+        raise ToolDataControlUnavailableError(f"invalid resource id: {key}") from exc
+
+
+def _artifact_ref(value: Any) -> str:
+    if not isinstance(value, str) or not value.startswith(_ARTIFACT_REF_PREFIX):
+        raise ToolDataControlUnavailableError("invalid artifact reference")
+    raw = value[len(_ARTIFACT_REF_PREFIX) :]
+    try:
+        return f"{_ARTIFACT_REF_PREFIX}{UUID(raw)}"
+    except ValueError as exc:
+        raise ToolDataControlUnavailableError("invalid artifact reference") from exc
 
 
 def _required_response_id(payload: dict[str, Any], key: str) -> str:
     value = payload.get(key)
-    if not isinstance(value, str) or not value or len(value) > 128:
+    if not isinstance(value, str):
         raise ToolDataControlUnavailableError(
             f"canonical Tool Data response is missing required id: {key}"
         )
-    return value
+    try:
+        return str(UUID(value))
+    except ValueError as exc:
+        raise ToolDataControlUnavailableError(
+            f"canonical Tool Data response has invalid id: {key}"
+        ) from exc
