@@ -250,6 +250,12 @@ def create_tool_approval_public_router(
         context: RequestContext = Depends(get_request_context),
         idempotency_key: str = Header(alias="Idempotency-Key"),
     ) -> JSONResponse:
+        if "artifact.approve" not in context.permissions:
+            return _error(
+                403,
+                "TOOL_APPROVAL_PERMISSION_DENIED",
+                "artifact.approve permission is required",
+            )
         if not idempotency_key.strip() or len(idempotency_key) > 512:
             return _error(422, "TOOL_APPROVAL_IDEMPOTENCY_KEY_INVALID", "invalid idempotency key")
         async with session_factory() as session:
