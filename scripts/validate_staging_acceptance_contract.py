@@ -4,6 +4,9 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -23,11 +26,14 @@ REQUIRED_IMAGES = [
 ]
 MODEL_GATEWAY_REQUIRED_SOURCES = [
     "services/model-gateway",
+    "services/model-gateway/src/lumi_model_gateway/openai_image_adapter.py",
+    "services/asset-storage/src/lumi_asset_storage/s3.py",
     "apps/api/src/lumi_api/model_gateway_runtime.py",
     "apps/api/src/lumi_api/model_gateway_bootstrap.py",
     "apps/api/src/lumi_api/model_gateway_service.py",
     "apps/api/src/lumi_api/model_gateway_cli.py",
     "apps/api/src/lumi_api/model_paid_guard.py",
+    "apps/api/src/lumi_api/provider_output_store.py",
     "apps/api/src/lumi_api/idempotency/gateway.py",
     "apps/api/src/lumi_api/costs/model_gateway_adapter.py",
 ]
@@ -135,6 +141,43 @@ def clean_evidence(manifest: dict[str, Any], parity: dict[str, Any]) -> dict[str
     }
 
 
+def cli_contract_smoke(clean: dict[str, Any]) -> None:
+    with tempfile.TemporaryDirectory(prefix="lumi-node71-") as temp_dir:
+        temp = Path(temp_dir)
+        evidence = temp / "evidence.json"
+        output = temp / "decision.json"
+        markdown = temp / "decision.md"
+        evidence.write_text(json.dumps(clean), encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(GATE),
+                "--evidence",
+                str(evidence),
+                "--output",
+                str(output),
+                "--markdown",
+                str(markdown),
+            ],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        require(
+            result.returncode == 0,
+            "workflow CLI contract (--output/--markdown) must execute a clean decision",
+        )
+        require(output.is_file(), "workflow CLI contract must emit decision JSON")
+        require(markdown.is_file(), "workflow CLI contract must emit decision markdown")
+        parsed = load_json(output)
+        require(parsed.get("passed") is True, "CLI smoke decision must preserve PASS")
+        require(
+            "Status: **PASS**" in markdown.read_text(encoding="utf-8"),
+            "CLI smoke markdown must render decision status",
+        )
+
+
 def main() -> int:
     manifest = load_json(MANIFEST)
     parity = load_json(PARITY)
@@ -147,6 +190,11 @@ def main() -> int:
     require(len(ids) == len(set(ids)), "scenario IDs must be unique")
     require(all(item.get("priority") in {"P0", "P1"} for item in scenarios), "scenario priorities must be P0/P1")
     require(all(item.get("severity") in {"critical", "high", "medium", "low"} for item in scenarios), "scenario severities invalid")
+    require(
+        set(getattr(gate, "MODEL_GATEWAY_REQUIRED_SOURCE_PATHS", set()))
+        == set(MODEL_GATEWAY_REQUIRED_SOURCES),
+        "NODE-71 model-gateway provenance list drifted from contract drills",
+    )
 
     pending = gate.evaluate(manifest, parity, template)
     require(pending["passed"] is False, "empty evidence template must never pass")
@@ -160,6 +208,7 @@ def main() -> int:
         decision["container_image_set"]["images"] == clean["container_image_set"]["images"],
         "accepted decision must freeze immutable image digests",
     )
+    cli_contract_smoke(clean)
 
     mutable_image = copy.deepcopy(clean)
     mutable_image["container_image_set"]["images"]["model-gateway"] = (
@@ -177,13 +226,7 @@ def main() -> int:
         "image provenance SHA mismatch must block",
     )
 
-    for required_source in (
-        "apps/api/src/lumi_api/model_gateway_service.py",
-        "apps/api/src/lumi_api/model_gateway_cli.py",
-        "apps/api/src/lumi_api/model_paid_guard.py",
-        "apps/api/src/lumi_api/idempotency/gateway.py",
-        "apps/api/src/lumi_api/costs/model_gateway_adapter.py",
-    ):
+    for required_source in MODEL_GATEWAY_REQUIRED_SOURCES:
         missing_model_gateway_source = copy.deepcopy(clean)
         source_paths = missing_model_gateway_source["container_image_set"]["provenance"][
             "model-gateway"
@@ -255,9 +298,11 @@ def main() -> int:
             "empty_template_blocked": True,
             "mutable_image_blocked": True,
             "image_provenance_sha_swap_blocked": True,
-            "model_gateway_executable_sources_required": True,
-            "model_gateway_paid_guard_source_required": True,
-            "model_gateway_idempotency_source_required": True,
+            "model_gateway_all_required_sources_drilled": True,
+            "model_gateway_media_adapter_source_required": True,
+            "model_gateway_provider_output_store_source_required": True,
+            "model_gateway_asset_storage_source_required": True,
+            "workflow_cli_output_markdown_smoke": True,
             "p0_not_run_blocked": True,
             "unevidenced_pass_blocked": True,
             "invalid_external_blocked": True,
