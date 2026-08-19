@@ -22,6 +22,7 @@ _ALLOWED_CALLERS = frozenset({"tool-gateway"})
 _SERVICE_HEADER = "X-Lumi-Service"
 _TIMESTAMP_HEADER = "X-Lumi-Timestamp"
 _SIGNATURE_HEADER = "X-Lumi-Signature"
+_PROJECT_SUMMARY_QUERY = "project.summary"
 
 
 class ToolDataStore:
@@ -34,22 +35,23 @@ class ToolDataStore:
         organization_id: UUID,
         agent_run_id: UUID,
         task_id: UUID,
-        project_id: UUID,
+        query: str,
     ) -> dict[str, Any]:
+        if query != _PROJECT_SUMMARY_QUERY:
+            raise ValueError("TOOL_DATA_PROJECT_QUERY_UNSUPPORTED")
         async with self._session_factory() as session:
             task = await session.scalar(
-                select(Task.id).where(
+                select(Task).where(
                     Task.id == task_id,
                     Task.organization_id == organization_id,
                     Task.agent_run_id == agent_run_id,
-                    Task.project_id == project_id,
                 )
             )
             if task is None:
                 raise KeyError("TOOL_DATA_TASK_NOT_FOUND_OR_FORBIDDEN")
             project = await session.scalar(
                 select(Project).where(
-                    Project.id == project_id,
+                    Project.id == task.project_id,
                     Project.organization_id == organization_id,
                     Project.deleted_at.is_(None),
                 )
@@ -96,9 +98,11 @@ def create_tool_data_control_router(runtime: ToolDataControlRuntime) -> APIRoute
                 organization_id=UUID(_required_string(payload, "organization_id", 36)),
                 agent_run_id=UUID(_required_string(payload, "agent_run_id", 36)),
                 task_id=UUID(_required_string(payload, "task_id", 36)),
-                project_id=UUID(_required_string(payload, "project_id", 36)),
+                query=_required_string(payload, "query", 128),
             )
-        except (KeyError, ValueError) as exc:
+        except ValueError as exc:
+            return _error(422, "TOOL_DATA_QUERY_INVALID", str(exc))
+        except KeyError as exc:
             return _error(404, "TOOL_DATA_NOT_FOUND_OR_FORBIDDEN", str(exc))
         except Exception:
             return _error(
