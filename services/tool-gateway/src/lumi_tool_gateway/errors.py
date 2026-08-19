@@ -33,6 +33,10 @@ class ToolApprovalControlUnavailableError(ToolGatewayError):
     code = "TOOL_APPROVAL_CONTROL_UNAVAILABLE"
 
 
+class ToolDataControlUnavailableError(ToolGatewayError):
+    code = "TOOL_DATA_CONTROL_UNAVAILABLE"
+
+
 class ToolInputValidationError(ToolGatewayError):
     code = "TOOL_INPUT_SCHEMA_INVALID"
 
