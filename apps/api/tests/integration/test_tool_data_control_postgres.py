@@ -21,7 +21,10 @@ from lumi_api.persistence.session import create_engine
 from lumi_api.tool_data_control import ToolDataStore
 
 if os.environ.get("LUMI_DB_INTEGRATION") != "1":
-    pytest.skip("set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests", allow_module_level=True)
+    pytest.skip(
+        "set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests",
+        allow_module_level=True,
+    )
 
 
 async def _acceptance() -> None:
@@ -128,7 +131,10 @@ async def _acceptance() -> None:
                 assert '"bucket"' not in artifact_json
                 assert '"object_key"' not in artifact_json
 
-                with pytest.raises(KeyError, match="TOOL_DATA_ASSET_NOT_FOUND_OR_FORBIDDEN"):
+                with pytest.raises(
+                    KeyError,
+                    match="TOOL_DATA_ASSET_NOT_FOUND_OR_FORBIDDEN",
+                ):
                     await store.read_asset(
                         organization_id=ORG_ID,
                         agent_run_id=agent_run.id,
@@ -147,7 +153,10 @@ async def _acceptance() -> None:
                         artifact_id=foreign_artifact.id,
                     )
 
-                with pytest.raises(KeyError, match="TOOL_DATA_TASK_NOT_FOUND_OR_FORBIDDEN"):
+                with pytest.raises(
+                    KeyError,
+                    match="TOOL_DATA_TASK_NOT_FOUND_OR_FORBIDDEN",
+                ):
                     await store.query_project(
                         organization_id=uuid4(),
                         agent_run_id=agent_run.id,
@@ -155,7 +164,10 @@ async def _acceptance() -> None:
                         query="project.summary",
                     )
 
-                with pytest.raises(KeyError, match="TOOL_DATA_TASK_NOT_FOUND_OR_FORBIDDEN"):
+                with pytest.raises(
+                    KeyError,
+                    match="TOOL_DATA_TASK_NOT_FOUND_OR_FORBIDDEN",
+                ):
                     await store.query_project(
                         organization_id=ORG_ID,
                         agent_run_id=uuid4(),
@@ -163,7 +175,10 @@ async def _acceptance() -> None:
                         query="project.summary",
                     )
 
-                with pytest.raises(ValueError, match="TOOL_DATA_PROJECT_QUERY_UNSUPPORTED"):
+                with pytest.raises(
+                    ValueError,
+                    match="TOOL_DATA_PROJECT_QUERY_UNSUPPORTED",
+                ):
                     await store.query_project(
                         organization_id=ORG_ID,
                         agent_run_id=agent_run.id,
