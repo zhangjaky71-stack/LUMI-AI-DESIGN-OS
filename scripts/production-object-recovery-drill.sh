@@ -18,9 +18,6 @@ mkdir -p "$(dirname "$OUTPUT_JSON")"
 VERSIONING="$(aws s3api get-bucket-versioning --bucket "$BUCKET" --query Status --output text)"
 [[ "$VERSIONING" == "Enabled" ]] || { echo "object recovery drill requires bucket versioning=Enabled" >&2; exit 65; }
 
-# Production DR owns one canonical critical-bucket topology. Resolve it before
-# writing drill data so the EXIT trap can also remove any replicas after an
-# intermediate failure.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CORE_DIR="$REPO_ROOT/infra/iac/environments/production/core"
 SOURCE_BUCKETS="$(terraform -chdir="$CORE_DIR" output -json bucket_names)"
@@ -69,6 +66,10 @@ cleanup() {
     set +e
     purge_exact_key "$BUCKET" "$AWS_REGION" "$KEY"
     purge_exact_key "$DR_EXPORTS" "$DR_REGION" "$KEY"
+    if [[ -n "${DB_EVIDENCE_KEY:-}" && "$DB_EVIDENCE_KEY" == recovery-evidence/v1/* ]]; then
+      purge_exact_key "$BUCKET" "$AWS_REGION" "$DB_EVIDENCE_KEY"
+      purge_exact_key "$DR_EXPORTS" "$DR_REGION" "$DB_EVIDENCE_KEY"
+    fi
     rm -rf "$TMP_DIR"
     set -e
   fi
@@ -120,15 +121,8 @@ VERSION_COUNT="$(jq --arg key "$KEY" '[.Versions[]? | select(.Key == $key)] | le
 MARKER_COUNT="$(jq --arg key "$KEY" '[.DeleteMarkers[]? | select(.Key == $key)] | length' <<<"$VERSIONS_BEFORE_CLEANUP")"
 [[ "$VERSION_COUNT" -ge 3 && "$MARKER_COUNT" -ge 1 ]] || { echo "version history incomplete before cleanup" >&2; exit 69; }
 
-# Delete-marker replication is disabled by design, but the three data versions
-# are critical-bucket writes and therefore replicate. Require all three source
-# versions to finish CRR and then purge their exact destination key before the
-# source versions are permanently removed.
 bash "$REPO_ROOT/scripts/cleanup-production-object-dr-replicas.sh" \
-  "$BUCKET" \
-  "$DR_EXPORTS" \
-  "$DR_REGION" \
-  "$KEY" \
+  "$BUCKET" "$DR_EXPORTS" "$DR_REGION" "$KEY" \
   "$V1_VERSION" "$V2_VERSION" "$RESTORED_VERSION"
 
 DELETES="$(jq -c --arg key "$KEY" '[
@@ -149,6 +143,38 @@ DR_REMAINING="$(jq --arg key "$KEY" '[
   (.DeleteMarkers // [])[] | select(.Key == $key)
 ] | length' <<<"$DR_AFTER")"
 [[ "$DR_REMAINING" -eq 0 ]] || { echo "drill cleanup left destination replicas behind" >&2; exit 70; }
+
+# The verifier JSON is also written to canonical exports and therefore CRR. It
+# contains no credentials, but it is transient runtime evidence and must not
+# leave hidden historical data versions in either Region after the artifact has
+# been downloaded by the workflow.
+[[ -n "${DB_EVIDENCE_KEY:-}" ]] || { echo "DB_EVIDENCE_KEY is required" >&2; exit 71; }
+EXPECTED_DB_PREFIX="recovery-evidence/v1/${DEPLOYMENT_ID}/${RUN_ID}/"
+[[ "$DB_EVIDENCE_KEY" == "$EXPECTED_DB_PREFIX"* && "$DB_EVIDENCE_KEY" != *".."* ]] || {
+  echo "DB_EVIDENCE_KEY is outside the current recovery run scope" >&2
+  exit 71
+}
+DB_LISTING="$(aws s3api list-object-versions --bucket "$BUCKET" --prefix "$DB_EVIDENCE_KEY")"
+mapfile -t DB_VERSION_IDS < <(jq -r --arg key "$DB_EVIDENCE_KEY" '.Versions[]? | select(.Key == $key) | .VersionId' <<<"$DB_LISTING")
+[[ ${#DB_VERSION_IDS[@]} -ge 1 ]] || { echo "database recovery evidence VersionId missing" >&2; exit 71; }
+bash "$REPO_ROOT/scripts/cleanup-production-object-dr-replicas.sh" \
+  "$BUCKET" "$DR_EXPORTS" "$DR_REGION" "$DB_EVIDENCE_KEY" \
+  "${DB_VERSION_IDS[@]}"
+purge_exact_key "$BUCKET" "$AWS_REGION" "$DB_EVIDENCE_KEY"
+DB_SOURCE_AFTER="$(aws s3api list-object-versions --bucket "$BUCKET" --prefix "$DB_EVIDENCE_KEY")"
+DB_DR_AFTER="$(aws s3api list-object-versions --region "$DR_REGION" --bucket "$DR_EXPORTS" --prefix "$DB_EVIDENCE_KEY")"
+DB_SOURCE_REMAINING="$(jq --arg key "$DB_EVIDENCE_KEY" '[
+  (.Versions // [])[] | select(.Key == $key),
+  (.DeleteMarkers // [])[] | select(.Key == $key)
+] | length' <<<"$DB_SOURCE_AFTER")"
+DB_DR_REMAINING="$(jq --arg key "$DB_EVIDENCE_KEY" '[
+  (.Versions // [])[] | select(.Key == $key),
+  (.DeleteMarkers // [])[] | select(.Key == $key)
+] | length' <<<"$DB_DR_AFTER")"
+[[ "$DB_SOURCE_REMAINING" -eq 0 && "$DB_DR_REMAINING" -eq 0 ]] || {
+  echo "database recovery evidence version cleanup incomplete" >&2
+  exit 71
+}
 CLEANED=true
 
 bash "$REPO_ROOT/scripts/production-object-cross-region-drill.sh" \
@@ -177,7 +203,7 @@ jq -n \
   --argjson version_count_before_cleanup "$VERSION_COUNT" \
   --argjson delete_marker_count_before_cleanup "$MARKER_COUNT" \
   --slurpfile cross_region "$CROSS_REGION_FILE" \
-  '{schema_version:1,deployment_id:$deployment_id,bucket:$bucket,key:$key,versioning:"Enabled",expected_sha256:$expected_sha256,corrupt_sha256:$corrupt_sha256,restored_sha256:$restored_sha256,v1_version_id:$v1_version_id,corrupt_version_id:$corrupt_version_id,delete_marker_version_id:$delete_marker_version_id,restored_version_id:$restored_version_id,version_count_before_cleanup:$version_count_before_cleanup,delete_marker_count_before_cleanup:$delete_marker_count_before_cleanup,cleanup_complete:true,replica_cleanup_complete:true,cross_region:$cross_region[0],passed:($expected_sha256 == $restored_sha256 and $cross_region[0].passed == true)}' \
+  '{schema_version:1,deployment_id:$deployment_id,bucket:$bucket,key:$key,versioning:"Enabled",expected_sha256:$expected_sha256,corrupt_sha256:$corrupt_sha256,restored_sha256:$restored_sha256,v1_version_id:$v1_version_id,corrupt_version_id:$corrupt_version_id,delete_marker_version_id:$delete_marker_version_id,restored_version_id:$restored_version_id,version_count_before_cleanup:$version_count_before_cleanup,delete_marker_count_before_cleanup:$delete_marker_count_before_cleanup,cleanup_complete:true,replica_cleanup_complete:true,database_evidence_versions_cleaned:true,cross_region:$cross_region[0],passed:($expected_sha256 == $restored_sha256 and $cross_region[0].passed == true)}' \
   > "$OUTPUT_JSON"
 
 test "$(jq -r '.passed' "$OUTPUT_JSON")" = true
