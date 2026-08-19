@@ -15,6 +15,7 @@ from .catalog import build_p0_registry
 from .data_control import (
     ArtifactQueryAdapter,
     AssetReadAdapter,
+    AssetWriteDerivedAdapter,
     HttpToolDataClient,
     MediaInspectAdapter,
     ProjectQueryAdapter,
@@ -261,6 +262,7 @@ def _build_hosted_adapters() -> dict[str, ToolAdapter]:
     data_client = HttpToolDataClient.from_env()
     return {
         "asset.read@1.0.0": AssetReadAdapter(data_client),
+        "asset.write-derived@1.0.0": AssetWriteDerivedAdapter(data_client),
         "artifact.query@1.0.0": ArtifactQueryAdapter(data_client),
         "media.inspect@1.0.0": MediaInspectAdapter(data_client),
         "project.query@1.0.0": ProjectQueryAdapter(data_client),
