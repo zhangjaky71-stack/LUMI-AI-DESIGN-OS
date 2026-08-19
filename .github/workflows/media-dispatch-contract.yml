@@ -50,6 +50,8 @@ jobs:
           apps/api/src/lumi_api/generations
           apps/api/src/lumi_api/product_app.py
           apps/api/src/lumi_api/cli.py
+          apps/api/src/lumi_api/persistence/models/workflow.py
+          apps/api/alembic/versions/0020_generation_operation_identity.py
           apps/api/tests/test_media_dispatch.py
           apps/api/tests/integration/test_generation_control_plane_postgres.py
           apps/worker-media/src/lumi_worker_media/queue_contracts.py
@@ -93,6 +95,8 @@ jobs:
           apps/api/src/lumi_api/generations
           apps/api/src/lumi_api/product_app.py
           apps/api/src/lumi_api/cli.py
+          apps/api/src/lumi_api/persistence/models/workflow.py
+          apps/api/alembic/versions/0020_generation_operation_identity.py
           apps/api/tests/test_media_dispatch.py
           apps/api/tests/integration/test_generation_control_plane_postgres.py
           apps/worker-media/src/lumi_worker_media/queue_contracts.py
@@ -113,6 +117,7 @@ jobs:
           apps/api/src/lumi_api/generations
           apps/api/src/lumi_api/product_app.py
           apps/api/src/lumi_api/cli.py
+          apps/api/src/lumi_api/persistence/models/workflow.py
           apps/worker-media/src/lumi_worker_media/queue_contracts.py
           apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py
           apps/worker-media/src/lumi_worker_media/cli.py
