@@ -84,7 +84,7 @@ def make_fixture(matrix: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]
             "evidence_refs": [copy.deepcopy(evidence_ref)],
             "blockers": [],
         }
-        if name in {"performance", "ai_regression", "staging_acceptance", "production_deployment"}:
+        if name in {"recovery", "performance", "ai_regression", "staging_acceptance", "production_deployment"}:
             payload["release_candidate"] = rc()
         write_json(path, payload)
         upstream_paths[name] = path
@@ -217,13 +217,28 @@ def main() -> int:
         upstream_hash_bad["upstream_gates"]["security"]["sha256"] = "0" * 64
         require(evaluate_case(gate, matrix, upstream_hash_bad, copy.deepcopy(clean_evidence), evidence_path)["accepted"] is False, "upstream SHA mismatch must block")
 
+        recovery_path = upstream_paths["recovery"]
+        recovery_payload = json.loads(recovery_path.read_text(encoding="utf-8"))
+        recovery_original = copy.deepcopy(recovery_payload)
+        recovery_payload["release_candidate"]["git_sha"] = "d" * 40
+        write_json(recovery_path, recovery_payload)
+        recovery_swap = copy.deepcopy(clean_release)
+        recovery_swap["upstream_gates"]["recovery"]["sha256"] = sha(recovery_path)
+        require(
+            evaluate_case(gate, matrix, recovery_swap, copy.deepcopy(clean_evidence), evidence_path)["accepted"] is False,
+            "recovery upstream RC swap must block",
+        )
+        write_json(recovery_path, recovery_original)
+
         staging_path = upstream_paths["staging_acceptance"]
         staging_payload = json.loads(staging_path.read_text(encoding="utf-8"))
+        staging_original = copy.deepcopy(staging_payload)
         staging_payload["release_candidate"]["git_sha"] = "e" * 40
         write_json(staging_path, staging_payload)
         rc_swap = copy.deepcopy(clean_release)
         rc_swap["upstream_gates"]["staging_acceptance"]["sha256"] = sha(staging_path)
         require(evaluate_case(gate, matrix, rc_swap, copy.deepcopy(clean_evidence), evidence_path)["accepted"] is False, "upstream RC swap must block")
+        write_json(staging_path, staging_original)
 
         deployment_path = ROOT / clean_release["production"]["deployment_manifest_path"]
         deployment_payload = json.loads(deployment_path.read_text(encoding="utf-8"))
@@ -254,6 +269,7 @@ def main() -> int:
                 "upstream_false_blocked": True,
                 "upstream_missing_evidence_blocked": True,
                 "upstream_hash_swap_blocked": True,
+                "recovery_rc_swap_blocked": True,
                 "upstream_rc_swap_blocked": True,
                 "production_rc_swap_blocked": True,
                 "acceptance_hash_swap_blocked": True
