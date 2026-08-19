@@ -1,0 +1,128 @@
+name: Assemble Final Acceptance Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: "Immutable final release identifier"
+        required: true
+        type: string
+      production_manifest:
+        description: "Frozen Production deployment manifest path"
+        required: true
+        type: string
+      security_decision:
+        description: "Frozen Security decision path"
+        required: true
+        type: string
+      recovery_decision:
+        description: "Frozen Recovery decision path"
+        required: true
+        type: string
+      performance_decision:
+        description: "Frozen Performance decision path"
+        required: true
+        type: string
+      ai_regression_decision:
+        description: "Frozen AI Regression decision path"
+        required: true
+        type: string
+      staging_acceptance_decision:
+        description: "Frozen Staging Acceptance decision path"
+        required: true
+        type: string
+      production_deployment_decision:
+        description: "Frozen Production Deployment decision path"
+        required: true
+        type: string
+      authorization:
+        description: "Frozen release authorization path"
+        required: true
+        type: string
+      scenario_results:
+        description: "Frozen 46-scenario results path"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_ID: ${{ inputs.release_id }}
+  PRODUCTION_MANIFEST: ${{ inputs.production_manifest }}
+  SECURITY_DECISION: ${{ inputs.security_decision }}
+  RECOVERY_DECISION: ${{ inputs.recovery_decision }}
+  PERFORMANCE_DECISION: ${{ inputs.performance_decision }}
+  AI_REGRESSION_DECISION: ${{ inputs.ai_regression_decision }}
+  STAGING_ACCEPTANCE_DECISION: ${{ inputs.staging_acceptance_decision }}
+  PRODUCTION_DEPLOYMENT_DECISION: ${{ inputs.production_deployment_decision }}
+  AUTHORIZATION: ${{ inputs.authorization }}
+  SCENARIO_RESULTS: ${{ inputs.scenario_results }}
+
+jobs:
+  assemble:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Refuse unsafe release identifiers
+        run: |
+          [[ "$RELEASE_ID" =~ ^[A-Za-z0-9._-]+$ ]]
+          test "$RELEASE_ID" != "PENDING"
+          test ! -e "reports/final-acceptance/${RELEASE_ID}/release-manifest.json"
+          test ! -e "reports/final-acceptance/${RELEASE_ID}/acceptance-evidence.json"
+      - name: Assemble only from frozen exact-RC evidence
+        run: |
+          python3 scripts/final-acceptance-assembler.py \
+            --release-id "$RELEASE_ID" \
+            --production-manifest "$PRODUCTION_MANIFEST" \
+            --security "$SECURITY_DECISION" \
+            --recovery "$RECOVERY_DECISION" \
+            --performance "$PERFORMANCE_DECISION" \
+            --ai-regression "$AI_REGRESSION_DECISION" \
+            --staging-acceptance "$STAGING_ACCEPTANCE_DECISION" \
+            --production-deployment "$PRODUCTION_DEPLOYMENT_DECISION" \
+            --authorization "$AUTHORIZATION" \
+            --scenario-results "$SCENARIO_RESULTS"
+          test -f "reports/final-acceptance/${RELEASE_ID}/release.json"
+          mv "reports/final-acceptance/${RELEASE_ID}/release.json" \
+             "reports/final-acceptance/${RELEASE_ID}/release-manifest.json"
+      - name: Validate assembled package without declaring Final PASS
+        run: |
+          python3 scripts/validate_final_acceptance_package.py \
+            --release "reports/final-acceptance/${RELEASE_ID}/release-manifest.json"
+      - name: Refuse changes outside the final package boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="reports/final-acceptance/${RELEASE_ID}/"
+          mapfile -t changed < <({ git diff --name-only; git ls-files --others --exclude-standard; } | sort -u)
+          [[ ${#changed[@]} -gt 0 ]] || { echo "no final package files produced" >&2; exit 65; }
+          for path in "${changed[@]}"; do
+            [[ "$path" == "$prefix"* ]] || { echo "unexpected change outside final package boundary: $path" >&2; exit 66; }
+          done
+      - name: Commit only the validated package
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "lumi-release-evidence-bot"
+          git config user.email "lumi-release-evidence-bot@users.noreply.github.com"
+          git add -- "reports/final-acceptance/${RELEASE_ID}"
+          test ! "$(git diff --cached --name-only | wc -l)" -eq 0
+          while IFS= read -r path; do
+            [[ "$path" == "reports/final-acceptance/${RELEASE_ID}/"* ]] || { echo "unexpected staged path: $path" >&2; exit 66; }
+          done < <(git diff --cached --name-only)
+          git commit -m "release: assemble final acceptance ${RELEASE_ID}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+      - name: Explain next mandatory gate
+        run: |
+          echo "Package assembled only; NODE-73 is not accepted by this workflow."
+          echo "Run Final Product Acceptance Gate with:"
+          echo "  reports/final-acceptance/${RELEASE_ID}/release-manifest.json"
+          echo "  reports/final-acceptance/${RELEASE_ID}/acceptance-evidence.json"
