@@ -36,6 +36,7 @@ from .errors import (
     ToolResultOffloadUnavailableError,
     ToolSideEffectControlUnavailableError,
     ToolVersionError,
+    ToolWebSearchUnavailableError,
 )
 from .gateway import ToolGateway
 from .http_transport import (
@@ -48,10 +49,11 @@ from .http_transport import (
     encode_tool_result,
     verify_internal_request,
 )
-from .native import SafeWebFetchAdapter, SandboxExecuteAdapter
+from .native import SafeWebFetchAdapter, SandboxExecuteAdapter, WebSearchAdapter
 from .ports import ToolAdapter
 from .result_offload import S3ResultOffloader
 from .sandbox_transport import HttpSandboxExecutor
+from .search_backend import BraveSearchBackend
 from .side_effect_control import HttpSideEffectControlClient, RemoteSideEffectGuard
 from .web_transport import PinnedStdlibHTTPTransport
 
@@ -185,6 +187,7 @@ def create_tool_gateway_app(runtime: ToolGatewayServiceRuntime) -> FastAPI:
             ToolDataControlUnavailableError,
             ToolResultOffloadUnavailableError,
             ToolSideEffectControlUnavailableError,
+            ToolWebSearchUnavailableError,
         ) as exc:
             return _error(503, exc.code, str(exc))
         except ToolInputValidationError as exc:
@@ -266,8 +269,9 @@ def _build_hosted_adapters() -> dict[str, ToolAdapter]:
         "artifact.query@1.0.0": ArtifactQueryAdapter(data_client),
         "media.inspect@1.0.0": MediaInspectAdapter(data_client),
         "project.query@1.0.0": ProjectQueryAdapter(data_client),
-        "web.fetch@1.0.0": SafeWebFetchAdapter(PinnedStdlibHTTPTransport()),
         "sandbox.execute@1.0.0": SandboxExecuteAdapter(HttpSandboxExecutor.from_env()),
+        "web.fetch@1.0.0": SafeWebFetchAdapter(PinnedStdlibHTTPTransport()),
+        "web.search@1.0.0": WebSearchAdapter(BraveSearchBackend.from_env()),
     }
 
 
