@@ -41,11 +41,17 @@ def main() -> int:
         "dead_letter_records",
     )
     require(
-        "apps/worker-media/src/lumi_worker_media/queue_contracts.py",
+        "services/domain/src/lumi_domain/job_dispatch.py",
         "MAX_JOB_MESSAGE_BYTES = 64 * 1024",
         "JOB_MESSAGE_BINARY_FORBIDDEN",
         "JOB_MESSAGE_SECRET_FIELD_FORBIDDEN",
+        'allowed = {"job_id", "organization_id", "project_id", "operation_id", "trace_id"}',
+    )
+    require(
+        "apps/worker-media/src/lumi_worker_media/queue_contracts.py",
+        "from lumi_domain.job_dispatch import MAX_JOB_MESSAGE_BYTES, JobMessage, validate_job_payload",
         "provider_reconciliation_required=True",
+        'JobKind.IMAGE_TRANSFORM: "lumi.media.image"',
     )
     require(
         "apps/worker-media/src/lumi_worker_media/app.py",
