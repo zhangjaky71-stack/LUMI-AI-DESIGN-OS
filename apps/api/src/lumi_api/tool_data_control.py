@@ -5,6 +5,7 @@ import hmac
 import json
 import os
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -20,6 +21,7 @@ from lumi_api.persistence.models import (
     ArtifactVersion,
     Asset,
     AssetFile,
+    AssetRights,
     Project,
     Task,
 )
@@ -31,6 +33,7 @@ _SERVICE_HEADER = "X-Lumi-Service"
 _TIMESTAMP_HEADER = "X-Lumi-Timestamp"
 _SIGNATURE_HEADER = "X-Lumi-Signature"
 _PROJECT_SUMMARY_QUERY = "project.summary"
+_ARTIFACT_REF_PREFIX = "artifact://"
 
 
 class ToolDataStore:
@@ -85,16 +88,12 @@ class ToolDataStore:
                 agent_run_id=agent_run_id,
                 task_id=task_id,
             )
-            asset = await session.scalar(
-                select(Asset).where(
-                    Asset.id == asset_id,
-                    Asset.organization_id == organization_id,
-                    Asset.project_id == project_id,
-                    Asset.deleted_at.is_(None),
-                )
+            asset = await self._scoped_asset(
+                session,
+                organization_id=organization_id,
+                project_id=project_id,
+                asset_id=asset_id,
             )
-            if asset is None:
-                raise KeyError("TOOL_DATA_ASSET_NOT_FOUND_OR_FORBIDDEN")
             files = (
                 await session.scalars(
                     select(AssetFile)
@@ -144,15 +143,12 @@ class ToolDataStore:
                 agent_run_id=agent_run_id,
                 task_id=task_id,
             )
-            artifact = await session.scalar(
-                select(Artifact).where(
-                    Artifact.id == artifact_id,
-                    Artifact.organization_id == organization_id,
-                    Artifact.project_id == project_id,
-                )
+            artifact = await self._scoped_artifact(
+                session,
+                organization_id=organization_id,
+                project_id=project_id,
+                artifact_id=artifact_id,
             )
-            if artifact is None:
-                raise KeyError("TOOL_DATA_ARTIFACT_NOT_FOUND_OR_FORBIDDEN")
             version = await session.scalar(
                 select(ArtifactVersion)
                 .where(
@@ -200,6 +196,85 @@ class ToolDataStore:
                 "latest_version": version_payload,
             }
 
+    async def write_derived_asset(
+        self,
+        *,
+        organization_id: UUID,
+        agent_run_id: UUID,
+        task_id: UUID,
+        tool_call_id: UUID,
+        source_asset_id: UUID,
+        artifact_ref: str,
+        metadata: dict[str, Any],
+    ) -> dict[str, Any]:
+        artifact_id = _artifact_ref_id(artifact_ref)
+        async with self._session_factory() as session, session.begin():
+            project_id = await self._task_project_id(
+                session,
+                organization_id=organization_id,
+                agent_run_id=agent_run_id,
+                task_id=task_id,
+            )
+            source_asset = await self._scoped_asset(
+                session,
+                organization_id=organization_id,
+                project_id=project_id,
+                asset_id=source_asset_id,
+            )
+            if source_asset.status != "ready":
+                raise ValueError("TOOL_DATA_SOURCE_ASSET_NOT_READY")
+            await self._scoped_artifact(
+                session,
+                organization_id=organization_id,
+                project_id=project_id,
+                artifact_id=artifact_id,
+            )
+            source_rights = await session.scalar(
+                select(AssetRights).where(
+                    AssetRights.organization_id == organization_id,
+                    AssetRights.asset_id == source_asset_id,
+                )
+            )
+            derived = Asset(
+                organization_id=organization_id,
+                project_id=project_id,
+                kind=source_asset.kind,
+                source="derived",
+                original_name=source_asset.original_name,
+                status="ready",
+                metadata_json={
+                    **metadata,
+                    "source_asset_id": str(source_asset_id),
+                    "artifact_ref": artifact_ref,
+                    "tool_call_id": str(tool_call_id),
+                    "derived_by": "tool:asset.write-derived:1.0.0",
+                },
+            )
+            session.add(derived)
+            await session.flush()
+            if source_rights is not None:
+                session.add(
+                    AssetRights(
+                        organization_id=organization_id,
+                        asset_id=derived.id,
+                        scope=source_rights.scope,
+                        source=source_rights.source,
+                        attribution_required=source_rights.attribution_required,
+                        expires_at=source_rights.expires_at,
+                        policy_json=dict(source_rights.policy_json),
+                        source_type=source_rights.source_type,
+                        owner_assertion=source_rights.owner_assertion,
+                        license_type=source_rights.license_type,
+                        commercial_use=source_rights.commercial_use,
+                        redistribution=source_rights.redistribution,
+                        training_use=source_rights.training_use,
+                        source_reference=source_rights.source_reference,
+                        review_status=source_rights.review_status,
+                    )
+                )
+            await session.flush()
+            return self._asset_payload(derived, ())
+
     @staticmethod
     async def _task_project_id(
         session: AsyncSession,
@@ -220,7 +295,46 @@ class ToolDataStore:
         return task.project_id
 
     @staticmethod
-    def _asset_payload(asset: Asset, files: list[AssetFile]) -> dict[str, Any]:
+    async def _scoped_asset(
+        session: AsyncSession,
+        *,
+        organization_id: UUID,
+        project_id: UUID,
+        asset_id: UUID,
+    ) -> Asset:
+        asset = await session.scalar(
+            select(Asset).where(
+                Asset.id == asset_id,
+                Asset.organization_id == organization_id,
+                Asset.project_id == project_id,
+                Asset.deleted_at.is_(None),
+            )
+        )
+        if asset is None:
+            raise KeyError("TOOL_DATA_ASSET_NOT_FOUND_OR_FORBIDDEN")
+        return asset
+
+    @staticmethod
+    async def _scoped_artifact(
+        session: AsyncSession,
+        *,
+        organization_id: UUID,
+        project_id: UUID,
+        artifact_id: UUID,
+    ) -> Artifact:
+        artifact = await session.scalar(
+            select(Artifact).where(
+                Artifact.id == artifact_id,
+                Artifact.organization_id == organization_id,
+                Artifact.project_id == project_id,
+            )
+        )
+        if artifact is None:
+            raise KeyError("TOOL_DATA_ARTIFACT_NOT_FOUND_OR_FORBIDDEN")
+        return artifact
+
+    @staticmethod
+    def _asset_payload(asset: Asset, files: Sequence[AssetFile]) -> dict[str, Any]:
         return {
             "asset_id": str(asset.id),
             "project_id": str(asset.project_id),
@@ -294,10 +408,9 @@ def create_tool_data_control_router(runtime: ToolDataControlRuntime) -> APIRoute
         payload_or_error = await _authenticated_json(request, runtime.auth_secret)
         if isinstance(payload_or_error, JSONResponse):
             return payload_or_error
-        payload = payload_or_error
         return await _resource_response(
             runtime.store.read_asset,
-            payload,
+            payload_or_error,
             resource_key="asset_id",
         )
 
@@ -306,10 +419,9 @@ def create_tool_data_control_router(runtime: ToolDataControlRuntime) -> APIRoute
         payload_or_error = await _authenticated_json(request, runtime.auth_secret)
         if isinstance(payload_or_error, JSONResponse):
             return payload_or_error
-        payload = payload_or_error
         return await _resource_response(
             runtime.store.query_artifact,
-            payload,
+            payload_or_error,
             resource_key="artifact_id",
         )
 
@@ -318,12 +430,39 @@ def create_tool_data_control_router(runtime: ToolDataControlRuntime) -> APIRoute
         payload_or_error = await _authenticated_json(request, runtime.auth_secret)
         if isinstance(payload_or_error, JSONResponse):
             return payload_or_error
-        payload = payload_or_error
         return await _resource_response(
             runtime.store.inspect_media,
-            payload,
+            payload_or_error,
             resource_key="asset_id",
         )
+
+    @router.post("/asset/write-derived")
+    async def asset_write_derived(request: Request) -> JSONResponse:
+        payload_or_error = await _authenticated_json(request, runtime.auth_secret)
+        if isinstance(payload_or_error, JSONResponse):
+            return payload_or_error
+        payload = payload_or_error
+        try:
+            result = await runtime.store.write_derived_asset(
+                organization_id=UUID(_required_string(payload, "organization_id", 36)),
+                agent_run_id=UUID(_required_string(payload, "agent_run_id", 36)),
+                task_id=UUID(_required_string(payload, "task_id", 36)),
+                tool_call_id=UUID(_required_string(payload, "tool_call_id", 36)),
+                source_asset_id=UUID(_required_string(payload, "source_asset_id", 36)),
+                artifact_ref=_required_string(payload, "artifact_ref", 128),
+                metadata=_optional_object(payload, "metadata"),
+            )
+        except ValueError as exc:
+            return _error(422, "TOOL_DATA_WRITE_INVALID", str(exc))
+        except KeyError as exc:
+            return _error(404, "TOOL_DATA_NOT_FOUND_OR_FORBIDDEN", str(exc))
+        except Exception:
+            return _error(
+                503,
+                "TOOL_DATA_CONTROL_UNAVAILABLE",
+                "canonical Tool Data control plane is unavailable",
+            )
+        return JSONResponse(status_code=200, content=result)
 
     return router
 
@@ -399,6 +538,23 @@ def _verify_auth(request: Request, body: bytes, secret: str) -> JSONResponse | N
     if not hmac.compare_digest(signature.lower(), expected):
         return _error(401, "TOOL_DATA_SIGNATURE_INVALID", "internal authentication failed")
     return None
+
+
+def _artifact_ref_id(value: str) -> UUID:
+    if not value.startswith(_ARTIFACT_REF_PREFIX):
+        raise ValueError("TOOL_DATA_ARTIFACT_REF_INVALID")
+    raw = value[len(_ARTIFACT_REF_PREFIX) :]
+    try:
+        return UUID(raw)
+    except ValueError as exc:
+        raise ValueError("TOOL_DATA_ARTIFACT_REF_INVALID") from exc
+
+
+def _optional_object(payload: dict[str, Any], key: str) -> dict[str, Any]:
+    value = payload.get(key, {})
+    if not isinstance(value, dict):
+        raise ValueError(f"TOOL_DATA_FIELD_INVALID:{key}")
+    return dict(value)
 
 
 def _required_string(payload: dict[str, Any], key: str, max_length: int) -> str:
