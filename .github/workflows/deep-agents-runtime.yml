@@ -4,8 +4,10 @@ on:
   pull_request:
     paths:
       - "apps/agent-runtime/**"
+      - "services/model-gateway/**"
       - "services/tool-gateway/**"
       - "scripts/validate_deep_agents_runtime_contract*.py"
+      - "scripts/validate_deep_agents_model_gateway_contract.py"
       - "scripts/integration_deep_agent*.py"
       - "docs/runtime/DEEP-AGENTS-RUNTIME-V1.md"
       - "reports/nodes/NODE-29/**"
@@ -31,7 +33,9 @@ jobs:
           apps/agent-runtime/tests/test_deep_runtime_contracts.py
           apps/agent-runtime/tests/test_deep_runtime_factory.py
           apps/agent-runtime/tests/test_deep_runtime_tooling.py
+          apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py
           scripts/validate_deep_agents_runtime_contract_v2.py
+          scripts/validate_deep_agents_model_gateway_contract.py
           scripts/integration_deep_agents_runtime.py
           scripts/integration_deep_agent_tool_gateway.py
           scripts/integration_deep_agent_node28_stack.py
@@ -47,6 +51,8 @@ jobs:
         run: >-
           PYTHONPATH=apps/agent-runtime/src
           python scripts/validate_deep_agents_runtime_contract_v2.py
+      - name: NODE-22/NODE-29 private Model Gateway contract
+        run: python scripts/validate_deep_agents_model_gateway_contract.py
       - name: Dependency-free NODE-29 contract tests
         run: >-
           PYTHONPATH=apps/agent-runtime/src
@@ -93,6 +99,7 @@ jobs:
           apps/agent-runtime/tests/test_deep_runtime_contracts.py
           apps/agent-runtime/tests/test_deep_runtime_factory.py
           apps/agent-runtime/tests/test_deep_runtime_tooling.py
+          apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py
           -q
       - name: Current create_deep_agent integration
         run: >-
@@ -109,7 +116,9 @@ jobs:
           apps/agent-runtime/tests/test_deep_runtime_contracts.py
           apps/agent-runtime/tests/test_deep_runtime_factory.py
           apps/agent-runtime/tests/test_deep_runtime_tooling.py
+          apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py
           scripts/validate_deep_agents_runtime_contract_v2.py
+          scripts/validate_deep_agents_model_gateway_contract.py
           scripts/integration_deep_agents_runtime.py
           scripts/integration_deep_agent_tool_gateway.py
           scripts/integration_deep_agent_node28_stack.py
@@ -120,6 +129,7 @@ jobs:
           apps/agent-runtime/tests/test_deep_runtime_contracts.py
           apps/agent-runtime/tests/test_deep_runtime_factory.py
           apps/agent-runtime/tests/test_deep_runtime_tooling.py
+          apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py
 
   deep-stack:
     needs: deep-quality
