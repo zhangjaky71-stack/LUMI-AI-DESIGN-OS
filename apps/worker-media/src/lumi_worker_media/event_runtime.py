@@ -10,6 +10,7 @@ from uuid import UUID
 import asyncpg
 from kombu import Connection, Producer
 from lumi_domain import new_uuid7
+from lumi_domain.job_dispatch import JOB_DISPATCH_EVENT_NAME
 
 from .observability import bind_event_correlation, reset_event_correlation
 from .queue_contracts import ErrorCategory, classify_error
@@ -80,6 +81,8 @@ class KombuDomainPublisher:
 
 
 class OutboxDispatcher:
+    """Dispatch domain events only; broker job dispatch rows use MediaJobOutboxDispatcher."""
+
     def __init__(self, dsn: str, publisher: DomainPublisher) -> None:
         self.dsn = dsn
         self.publisher = publisher
@@ -97,11 +100,13 @@ class OutboxDispatcher:
                            schema_version, payload_json, created_at
                     FROM outbox_events
                     WHERE published_at IS NULL
+                      AND event_name <> $2
                     ORDER BY created_at, id
                     FOR UPDATE SKIP LOCKED
                     LIMIT $1
                     """,
                     limit,
+                    JOB_DISPATCH_EVENT_NAME,
                 )
                 for row in rows:
                     record = OutboxRecord(
