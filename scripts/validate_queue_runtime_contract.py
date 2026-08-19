@@ -37,12 +37,18 @@ def main() -> int:
         "ON CONFLICT (consumer, event_id) DO NOTHING",
         "publish_attempts =",
         "published_at = now()",
+        "event_name <> $2",
+        "JOB_DISPATCH_EVENT_NAME",
         "message.reject(requeue=False)",
         "dead_letter_records",
     )
     require(
         "services/domain/src/lumi_domain/job_dispatch.py",
         "MAX_JOB_MESSAGE_BYTES = 64 * 1024",
+        'JOB_DISPATCH_EVENT_NAME = "job.dispatch.requested"',
+        'IMAGE_TRANSFORM_TASK_NAME = "lumi.jobs.image.transform"',
+        'IMAGE_TRANSFORM_QUEUE = "lumi.media.image"',
+        'IMAGE_TRANSFORM_ROUTING_KEY = "image.transform"',
         "JOB_MESSAGE_BINARY_FORBIDDEN",
         "JOB_MESSAGE_SECRET_FIELD_FORBIDDEN",
         'allowed = {"job_id", "organization_id", "project_id", "operation_id", "trace_id"}',
@@ -52,6 +58,17 @@ def main() -> int:
         "from lumi_domain.job_dispatch import MAX_JOB_MESSAGE_BYTES, JobMessage, validate_job_payload",
         "provider_reconciliation_required=True",
         'JobKind.IMAGE_TRANSFORM: "lumi.media.image"',
+    )
+    require(
+        "apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py",
+        "class MediaJobOutboxDispatcher",
+        "event_name = $2",
+        "FOR UPDATE SKIP LOCKED",
+        "publish_attempts = publish_attempts + 1",
+        "SET published_at = now()",
+        "await asyncio.to_thread(self.publisher.publish, dispatch)",
+        "exchange=JOBS_EXCHANGE.name",
+        "routing_key=IMAGE_TRANSFORM_ROUTING_KEY",
     )
     require(
         "apps/worker-media/src/lumi_worker_media/app.py",
@@ -85,6 +102,9 @@ def main() -> int:
     )
     require(
         "apps/worker-media/src/lumi_worker_media/cli.py",
+        "dispatch-outbox",
+        "MediaJobOutboxDispatcher",
+        "CeleryJobPublisher",
         "replay-dead-letter",
         "DEAD_LETTER_ALREADY_REPLAYED",
     )
