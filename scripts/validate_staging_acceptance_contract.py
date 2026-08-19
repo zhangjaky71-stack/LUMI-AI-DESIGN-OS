@@ -37,6 +37,18 @@ MODEL_GATEWAY_REQUIRED_SOURCES = [
     "apps/api/src/lumi_api/idempotency/gateway.py",
     "apps/api/src/lumi_api/costs/model_gateway_adapter.py",
 ]
+WORKER_MEDIA_REQUIRED_SOURCES = [
+    "services/image-generation",
+    "services/asset-storage/src/lumi_asset_storage/s3.py",
+    "apps/worker-media/src/lumi_worker_media/app.py",
+    "apps/worker-media/src/lumi_worker_media/job_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/image_generation_codec.py",
+    "apps/worker-media/src/lumi_worker_media/image_generation_repository.py",
+    "apps/worker-media/src/lumi_worker_media/image_generation_ports.py",
+    "apps/worker-media/src/lumi_worker_media/image_generation_artifacts.py",
+    "apps/worker-media/src/lumi_worker_media/image_generation_runtime.py",
+]
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -73,6 +85,8 @@ def clean_image_set(git_sha: str) -> dict[str, Any]:
         source_paths = [f"apps/{name}"]
         if name == "model-gateway":
             source_paths = list(MODEL_GATEWAY_REQUIRED_SOURCES)
+        elif name == "worker-media":
+            source_paths = list(WORKER_MEDIA_REQUIRED_SOURCES)
         provenance[name] = {
             "git_sha": git_sha,
             "build_recipe_ref": f"fixture:build:{name}",
@@ -195,6 +209,11 @@ def main() -> int:
         == set(MODEL_GATEWAY_REQUIRED_SOURCES),
         "NODE-71 model-gateway provenance list drifted from contract drills",
     )
+    require(
+        set(getattr(gate, "WORKER_MEDIA_REQUIRED_SOURCE_PATHS", set()))
+        == set(WORKER_MEDIA_REQUIRED_SOURCES),
+        "NODE-71 worker-media provenance list drifted from contract drills",
+    )
 
     pending = gate.evaluate(manifest, parity, template)
     require(pending["passed"] is False, "empty evidence template must never pass")
@@ -247,6 +266,29 @@ def main() -> int:
                 for item in missing_source_decision["blockers"]
             ),
             "missing model-gateway source blocker must be explicit",
+        )
+
+    for required_source in WORKER_MEDIA_REQUIRED_SOURCES:
+        missing_worker_source = copy.deepcopy(clean)
+        source_paths = missing_worker_source["container_image_set"]["provenance"][
+            "worker-media"
+        ]["source_paths"]
+        source_paths.remove(required_source)
+        missing_source_decision = gate.evaluate(
+            manifest,
+            parity,
+            missing_worker_source,
+        )
+        require(
+            missing_source_decision["passed"] is False,
+            f"worker-media image without {required_source} must block",
+        )
+        require(
+            any(
+                "worker-media image provenance is missing required hosted image sources" in item
+                for item in missing_source_decision["blockers"]
+            ),
+            "missing worker-media hosted image source blocker must be explicit",
         )
 
     not_run = copy.deepcopy(clean)
@@ -302,6 +344,12 @@ def main() -> int:
             "model_gateway_media_adapter_source_required": True,
             "model_gateway_provider_output_store_source_required": True,
             "model_gateway_asset_storage_source_required": True,
+            "worker_media_all_required_image_sources_drilled": True,
+            "worker_media_generation_domain_source_required": True,
+            "worker_media_gateway_source_required": True,
+            "worker_media_durable_storage_source_required": True,
+            "worker_media_artifact_source_required": True,
+            "worker_media_composition_root_source_required": True,
             "workflow_cli_output_markdown_smoke": True,
             "p0_not_run_blocked": True,
             "unevidenced_pass_blocked": True,
