@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 import asyncpg
+from lumi_asset_storage.models import ObjectHead
+from lumi_asset_storage.s3 import S3ObjectStore
 from lumi_image_generation.inmemory import StaticReferenceAuthorizer
 from lumi_image_generation.model import GenerationJob, ImageGenerationSpec
 from lumi_image_generation.pipeline import ImageGenerationPipeline
@@ -26,6 +29,65 @@ from .queue_contracts import JobMessage
 
 _TASK_INPUT_SCHEMA_VERSION = 1
 _JOB_KIND = "image.transform"
+_TRANSIENT_S3_HTTP_STATUSES = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+_TRANSIENT_S3_ERROR_CODES = frozenset(
+    {
+        "InternalError",
+        "OperationAborted",
+        "RequestTimeout",
+        "RequestTimeoutException",
+        "ServiceUnavailable",
+        "SlowDown",
+        "Throttling",
+        "ThrottlingException",
+        "TooManyRequestsException",
+    }
+)
+_PERMANENT_S3_ERROR_CODES = frozenset(
+    {
+        "AccessDenied",
+        "AuthorizationHeaderMalformed",
+        "ExpiredToken",
+        "InvalidAccessKeyId",
+        "InvalidBucketName",
+        "InvalidToken",
+        "NoSuchBucket",
+        "SignatureDoesNotMatch",
+    }
+)
+
+
+class _ClassifyingS3ObjectStore(S3ObjectStore):
+    """Fail fast for known permanent S3 rejection while preserving transient retry semantics."""
+
+    def __init__(self, backend: S3ObjectStore) -> None:
+        self._backend = backend
+
+    async def put_bytes(
+        self,
+        *,
+        bucket: str,
+        object_key: str,
+        data: bytes,
+        content_type: str,
+        max_bytes: int,
+        metadata: dict[str, str] | None = None,
+    ) -> ObjectHead:
+        try:
+            return await self._backend.put_bytes(
+                bucket=bucket,
+                object_key=object_key,
+                data=data,
+                content_type=content_type,
+                max_bytes=max_bytes,
+                metadata=metadata,
+            )
+        except ValueError:
+            raise
+        except Exception as exc:
+            if _classify_s3_error(exc) == "permanent":
+                raise ValueError("GENERATION_STORAGE_S3_REJECTED") from exc
+            raise
 
 
 class HostedImageGenerationRuntime:
@@ -67,7 +129,7 @@ class HostedImageGenerationRuntime:
             reference_resolver=PostgresReferenceAuthorizer(database_dsn),
             gateway=HostedImageModelGatewayAdapter.from_env(),
             output_fetcher=S3ProviderOutputFetcher.from_env(),
-            storage=S3GeneratedImageStore.from_env(),
+            storage=_generated_store_from_env(asset_bucket),
             artifacts=PostgresArtifactCandidateAdapter(database_dsn, bucket=asset_bucket),
             costs=PostgresGenerationCostObserver(database_dsn),
             events=PostgresGenerationEventSink(database_dsn),
@@ -155,6 +217,51 @@ def encode_task_input(spec: ImageGenerationSpec) -> dict[str, Any]:
     }
 
 
+def _generated_store_from_env(bucket: str) -> S3GeneratedImageStore:
+    region = os.getenv("LUMI_S3_REGION") or os.getenv("AWS_REGION") or "us-east-1"
+    backend = S3ObjectStore(
+        endpoint_url=os.getenv("LUMI_S3_ENDPOINT_URL"),
+        region_name=region,
+        access_key_id=os.getenv("LUMI_S3_ACCESS_KEY_ID"),
+        secret_access_key=os.getenv("LUMI_S3_SECRET_ACCESS_KEY"),
+        force_path_style=_env_bool("LUMI_S3_FORCE_PATH_STYLE"),
+    )
+    return S3GeneratedImageStore(
+        bucket=bucket,
+        object_store=_ClassifyingS3ObjectStore(backend),
+    )
+
+
+def _classify_s3_error(exc: Exception) -> str:
+    status, code = _s3_error_signature(exc)
+    if status in _TRANSIENT_S3_HTTP_STATUSES or code in _TRANSIENT_S3_ERROR_CODES:
+        return "transient"
+    if code in _PERMANENT_S3_ERROR_CODES:
+        return "permanent"
+    if status is not None and 400 <= status < 500:
+        return "permanent"
+    return "unknown"
+
+
+def _s3_error_signature(exc: Exception) -> tuple[int | None, str | None]:
+    response = getattr(exc, "response", None)
+    if not isinstance(response, Mapping):
+        return None, None
+    metadata = response.get("ResponseMetadata")
+    status: int | None = None
+    if isinstance(metadata, Mapping):
+        raw_status = metadata.get("HTTPStatusCode")
+        if isinstance(raw_status, int):
+            status = raw_status
+    error = response.get("Error")
+    code: str | None = None
+    if isinstance(error, Mapping):
+        raw_code = error.get("Code")
+        if isinstance(raw_code, str) and raw_code:
+            code = raw_code
+    return status, code
+
+
 def _task_output(job: GenerationJob) -> dict[str, Any]:
     return {
         "generation_id": job.generation_id,
@@ -187,6 +294,17 @@ def _required_env(name: str, *, max_length: int) -> str:
     if not value or len(value) > max_length or "\x00" in value:
         raise RuntimeError(f"{name}_REQUIRED")
     return value
+
+
+def _env_bool(name: str) -> bool:
+    value = os.getenv(name, "").strip().casefold()
+    if not value:
+        return False
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise RuntimeError(f"{name}_INVALID")
 
 
 def _asyncpg_dsn(database_dsn: str) -> str:
