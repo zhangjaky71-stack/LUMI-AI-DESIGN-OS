@@ -72,6 +72,68 @@ def main() -> int:
         "access_token",
         "provider_secret",
     )
+
+    # Product/control-plane producer: Task + Generation + idempotency + outbox share
+    # one caller-owned database transaction and never publish directly.
+    require(
+        "apps/api/src/lumi_api/generations/service.py",
+        "class ImageGenerationControlPlane",
+        "The caller owns the surrounding transaction",
+        "stage_image_transform_dispatch",
+        "IdempotencyOperation",
+        "canonical_task_input",
+        "task.input_json = canonical_task_input",
+        'status="in_progress"',
+        'operation.status = "succeeded"',
+        "GENERATION_OPERATION_ALREADY_EXISTS",
+        "pg_advisory_xact_lock",
+        "await self._lock_idempotency",
+        "await self._lock_operation",
+        "await self.session.flush()",
+    )
+    forbid(
+        "apps/api/src/lumi_api/generations/service.py",
+        "from celery",
+        "import celery",
+        ".send_task(",
+        "kombu",
+        "pika",
+        "api_key",
+        "access_token",
+        "provider_secret",
+    )
+    require(
+        "apps/api/src/lumi_api/generations/gateway.py",
+        "class GenerationRuntimeGateway",
+        "async with self._session_factory() as session, session.begin()",
+        'self._require(context, "project.write")',
+        'self._require(context, "project.read")',
+        "ImageGenerationControlPlane(session).create",
+        "ImageGenerationControlPlane(session).get",
+        "return getattr(self._base, name)",
+    )
+    require(
+        "apps/api/src/lumi_api/product_app.py",
+        "from lumi_api.asset_app import app, session_factory, settings",
+        "GenerationRuntimeGateway(base_gateway, session_factory)",
+        'app.title = "LUMI Product Control Plane"',
+        'await session.execute(text("SELECT 1"))',
+    )
+    require(
+        "apps/api/src/lumi_api/cli.py",
+        'uvicorn.run("lumi_api.product_app:app"',
+    )
+    require(
+        "apps/api/tests/integration/test_generation_control_plane_postgres.py",
+        "test_generation_control_plane_transaction_and_replay",
+        "assert replay.id == first.id",
+        "GENERATION_OPERATION_ALREADY_EXISTS",
+        "assert generation_count == 1",
+        "assert len(outbox_rows) == 1",
+        "assert idempotency_count == 1",
+    )
+
+    # Job outbox and domain outbox are mutually exclusive and independently attempted.
     require(
         "apps/worker-media/src/lumi_worker_media/event_runtime.py",
         "event_name <> $2",
@@ -93,8 +155,12 @@ def main() -> int:
         "apps/worker-media/src/lumi_worker_media/cli.py",
         "MediaJobOutboxDispatcher",
         "CeleryJobPublisher",
+        "failures: list[tuple[str, Exception]] = []",
         "job_published = await job_dispatcher.dispatch_batch",
         "domain_published = await domain_dispatcher.dispatch_batch",
+        'failures.append(("jobs", exc))',
+        'failures.append(("domain", exc))',
+        "OUTBOX_DISPATCH_FAILED",
     )
     require(
         "apps/api/src/lumi_api/persistence/models/platform.py",
