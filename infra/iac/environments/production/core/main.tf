@@ -18,6 +18,7 @@ locals {
     "internal/model-gateway",
     "internal/tool-gateway",
     "internal/sandbox-runtime",
+    "internal/side-effect-control",
   ])
 }
 
