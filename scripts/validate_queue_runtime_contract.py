@@ -52,12 +52,24 @@ def main() -> int:
         "task_acks_late=False",
         "task_reject_on_worker_lost=False",
         '"lumi.assets.validate"',
+        'name="lumi.jobs.image.transform"',
+        "_execute_image_generation_job(parsed)",
+        "HostedImageGenerationRuntime.from_env()",
+        "TaskJobStore(_database_dsn())",
+        "handler=runtime.execute",
+        "outcome.state == JobState.RETRYING",
+        "outcome.state == JobState.FAILED",
+        'os.getenv("LUMI_DATABASE_URL")',
     )
-    forbid(
-        "apps/worker-media/src/lumi_worker_media/app.py",
-        "task_acks_late=True",
-        "task_reject_on_worker_lost=True",
-    )
+    app = (ROOT / "apps/worker-media/src/lumi_worker_media/app.py").read_text(encoding="utf-8")
+    image_start = app.index('name="lumi.jobs.image.transform"')
+    video_start = app.index('@celery_app.task(name="lumi.jobs.video.render"')
+    image_block = app[image_start:video_start]
+    if '"status": "accepted"' in image_block:
+        raise SystemExit(
+            "apps/worker-media/src/lumi_worker_media/app.py: "
+            "image.transform must not regress to accepted placeholder"
+        )
     require(
         "apps/worker-media/src/lumi_worker_media/task_base.py",
         "RuntimeTask",
