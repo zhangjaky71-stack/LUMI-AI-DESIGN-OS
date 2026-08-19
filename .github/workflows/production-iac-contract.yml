@@ -24,14 +24,19 @@ jobs:
         run: |
           python3 scripts/validate_production_deployment_contract.py
           python3 scripts/validate_production_iac_contract.py
+          python3 scripts/validate_production_readiness_contract.py
           python3 scripts/validate_hosted_media_runtime_contract.py
       - name: Python syntax
         run: |
           python3 -m py_compile \
             scripts/production-deployment-gate.py \
+            scripts/production-deployment-decision.py \
+            scripts/production-rollback-gate.py \
+            scripts/production-rollback-rehearsal-decision.py \
             scripts/production-read-only-smoke.py \
             scripts/validate_production_deployment_contract.py \
             scripts/validate_production_iac_contract.py \
+            scripts/validate_production_readiness_contract.py \
             scripts/validate_hosted_media_runtime_contract.py
       - name: Shell syntax
         run: |
@@ -39,6 +44,8 @@ jobs:
           bash -n scripts/create-predeploy-rds-snapshot.sh
           bash -n scripts/ecs-run-one-shot-task.sh
           bash -n scripts/capture-ecs-deployment-state.sh
+          bash -n scripts/capture-production-runtime-identity.sh
+          bash -n scripts/capture-production-rollout-evidence.sh
       - name: Deployment manifest JSON syntax
         run: python3 -m json.tool production/deployment/manifest-template.json >/dev/null
 
