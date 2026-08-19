@@ -159,6 +159,7 @@ locals {
         LUMI_TOOL_AUDIT_AUTH_SECRET          = local.secret_arns["internal/tool-audit"]
         LUMI_TOOL_APPROVAL_AUTH_SECRET       = local.secret_arns["internal/tool-approval"]
         LUMI_TOOL_DATA_AUTH_SECRET           = local.secret_arns["internal/tool-data"]
+        LUMI_BRAVE_SEARCH_API_KEY            = local.secret_arns["providers/search"]
       }
       s3_bucket_arns         = [local.bucket_arns["exports"]]
       autoscale_metric_name  = "ToolGatewayInflight"
@@ -167,11 +168,11 @@ locals {
 
     worker-media = {
       image         = var.worker_media_image
-      cpu           = 4096
-      memory        = 8192
-      desired_count = 3
-      min_capacity  = 3
-      max_capacity  = 24
+      cpu            = 4096
+      memory         = 8192
+      desired_count  = 3
+      min_capacity   = 3
+      max_capacity   = 24
       environment = merge(
         local.common_environment,
         local.model_gateway_environment,
