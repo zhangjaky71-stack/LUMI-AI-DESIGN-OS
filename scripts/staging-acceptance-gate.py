@@ -22,6 +22,17 @@ REQUIRED_IMAGES = {
     "worker-media",
     "sandbox-runtime",
 }
+API_REQUIRED_SOURCE_PATHS = {
+    "apps/api/Dockerfile",
+    "apps/api/pyproject.toml",
+    "apps/api/alembic.ini",
+    "apps/api/alembic/versions/0020_generation_operation_identity.py",
+    "apps/api/src/lumi_api/cli.py",
+    "apps/api/src/lumi_api/product_app.py",
+    "apps/api/src/lumi_api/generations/gateway.py",
+    "apps/api/src/lumi_api/generations/service.py",
+    "apps/api/src/lumi_api/media_dispatch.py",
+}
 MODEL_GATEWAY_REQUIRED_SOURCE_PATHS = {
     "services/model-gateway",
     "services/model-gateway/src/lumi_model_gateway/openai_image_adapter.py",
@@ -141,6 +152,15 @@ def validate_container_image_set(
             "provenance_ref": item.get("provenance_ref"),
             "source_paths": source_paths,
         }
+
+    api = normalized_provenance.get("api", {})
+    api_sources = set(api.get("source_paths") or [])
+    missing_api_sources = sorted(API_REQUIRED_SOURCE_PATHS - api_sources)
+    if missing_api_sources:
+        blockers.append(
+            "api image provenance is missing required generation control-plane sources: "
+            + ", ".join(missing_api_sources)
+        )
 
     model_gateway = normalized_provenance.get("model-gateway", {})
     model_sources = set(model_gateway.get("source_paths") or [])
