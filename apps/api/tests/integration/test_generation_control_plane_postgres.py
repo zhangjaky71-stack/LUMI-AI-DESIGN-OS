@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lumi_api.api.v1.contracts import GenerationCreate
+from lumi_api.generations.errors import GenerationConflict
 from lumi_api.generations.service import ImageGenerationControlPlane
 from lumi_api.persistence.models import Generation, IdempotencyOperation, OutboxEvent, Task
 from lumi_api.persistence.seed import ORG_ID, PROJECT_A_ID
@@ -99,6 +100,17 @@ async def _acceptance() -> None:
                 await session.flush()
                 assert replay.id == first.id
 
+                with pytest.raises(
+                    GenerationConflict,
+                    match="GENERATION_OPERATION_ALREADY_EXISTS",
+                ):
+                    await service.create(
+                        organization_id=ORG_ID,
+                        payload=payload,
+                        idempotency_key="node-73-1-integration-key-0002",
+                        trace_id="alternate-key",
+                    )
+
                 generation_count = await session.scalar(
                     select(func.count()).select_from(Generation).where(
                         Generation.organization_id == ORG_ID,
@@ -114,19 +126,26 @@ async def _acceptance() -> None:
                         )
                     )
                 ).scalars().all()
-                idempotency_count = await session.scalar(
-                    select(func.count()).select_from(IdempotencyOperation).where(
-                        IdempotencyOperation.organization_id == ORG_ID,
-                        IdempotencyOperation.operation_type == "api.v1.generation.create",
-                        IdempotencyOperation.idempotency_key
-                        == "node-73-1-integration-key-0001",
+                idempotency_rows = (
+                    await session.execute(
+                        select(IdempotencyOperation).where(
+                            IdempotencyOperation.organization_id == ORG_ID,
+                            IdempotencyOperation.operation_type == "api.v1.generation.create",
+                            IdempotencyOperation.idempotency_key.in_(
+                                (
+                                    "node-73-1-integration-key-0001",
+                                    "node-73-1-integration-key-0002",
+                                )
+                            ),
+                        )
                     )
-                )
+                ).scalars().all()
                 task = await session.get(Task, task_id)
 
                 assert generation_count == 1
                 assert len(outbox_rows) == 1
-                assert idempotency_count == 1
+                assert len(idempotency_rows) == 1
+                assert idempotency_rows[0].idempotency_key == "node-73-1-integration-key-0001"
                 assert task is not None
                 assert task.input_json["schema_version"] == 1
                 assert task.input_json["job_kind"] == "image.transform"
