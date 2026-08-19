@@ -75,6 +75,74 @@ def scan_callers() -> None:
                     )
 
 
+def hosted_composition_contract() -> None:
+    path = ROOT / "apps/api/src/lumi_api/model_gateway_runtime.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    factory = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "build_hosted_model_gateway"
+        ),
+        None,
+    )
+    if factory is None:
+        raise SystemExit(f"{path}: hosted model gateway factory is missing")
+
+    argument_names = {
+        argument.arg
+        for argument in (
+            *factory.args.posonlyargs,
+            *factory.args.args,
+            *factory.args.kwonlyargs,
+        )
+    }
+    forbidden_injections = argument_names & {"paid_guard", "paid_stream_guard"}
+    if forbidden_injections:
+        raise SystemExit(
+            f"{path}: hosted composition exposes unsafe paid-guard injection: "
+            f"{sorted(forbidden_injections)}"
+        )
+
+    has_postgres_guard = False
+    model_gateway_paid_guard_is_bound = False
+    model_gateway_stream_guard_is_injected = False
+    for node in ast.walk(factory):
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "paid_guard"
+            for target in node.targets
+        ):
+            if (
+                isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == "PostgresModelPaidInvocationGuard"
+            ):
+                has_postgres_guard = True
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "ModelGateway"
+        ):
+            for keyword in node.keywords:
+                if keyword.arg == "paid_guard":
+                    model_gateway_paid_guard_is_bound = (
+                        isinstance(keyword.value, ast.Name)
+                        and keyword.value.id == "paid_guard"
+                    )
+                if keyword.arg == "paid_stream_guard":
+                    model_gateway_stream_guard_is_injected = True
+
+    if not has_postgres_guard or not model_gateway_paid_guard_is_bound:
+        raise SystemExit(
+            f"{path}: hosted Model Gateway must bind PostgresModelPaidInvocationGuard"
+        )
+    if model_gateway_stream_guard_is_injected:
+        raise SystemExit(
+            f"{path}: hosted streaming must remain fail-closed until a durable stream guard exists"
+        )
+
+
 def main() -> int:
     require(
         "services/model-gateway/src/lumi_model_gateway/models.py",
@@ -136,6 +204,32 @@ def main() -> int:
         "reference_assets",
         "inputs",
     )
+    require(
+        "apps/api/src/lumi_api/model_paid_guard.py",
+        "class PostgresModelPaidInvocationGuard",
+        "await handle.mark_provider_attempt_started()",
+        "DeliveryState.NOT_ACCEPTED",
+        "RetryableSideEffectError",
+        "SideEffectGateway",
+        "MODEL_PAID_GUARD_RESULT_SCHEMA_UNSUPPORTED",
+        "durable model result replay identity mismatch",
+    )
+    require(
+        "apps/api/src/lumi_api/model_gateway_runtime.py",
+        "PostgresModelPaidInvocationGuard",
+        "LedgerBudgetGuard",
+        "PostgresModelCostAccounting",
+        "Streaming is intentionally fail-closed",
+    )
+    require(
+        "apps/api/tests/integration/test_model_paid_guard_postgres.py",
+        "successful_invocation_replays_without_second_provider_call",
+        "not_accepted_preserves_safe_retry_semantics",
+        "unknown_delivery_is_persistently_fail_closed",
+        "provider_model_scope_supports_cross_provider_fallback_identity",
+        "changed_semantics_on_same_paid_identity_fails_closed",
+    )
+    hosted_composition_contract()
     scan_callers()
     print("NODE-22 model gateway architecture/security contract: PASS")
     return 0
