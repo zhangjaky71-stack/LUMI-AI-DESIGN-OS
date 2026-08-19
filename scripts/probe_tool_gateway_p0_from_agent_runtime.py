@@ -6,7 +6,6 @@ import json
 import os
 import urllib.error
 import urllib.request
-from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -76,10 +75,7 @@ class ToolGatewayProbeClient:
             },
         )
         try:
-            with urllib.request.urlopen(
-                outbound,
-                timeout=_DEFAULT_TIMEOUT_SECONDS,
-            ) as response:
+            with urllib.request.urlopen(outbound, timeout=_DEFAULT_TIMEOUT_SECONDS) as response:
                 raw = response.read(_MAX_RESPONSE_BYTES + 1)
                 status = int(response.status)
         except urllib.error.HTTPError as exc:
@@ -108,8 +104,11 @@ class ToolGatewayProbeClient:
             "resolved_version": result.resolved_version,
             "summary": result.summary,
             "resource_refs": list(result.resource_refs),
+            "truncated": result.truncated,
+            "full_result_ref": result.full_result_ref,
             "replayed": result.replayed,
             "approval_id": result.approval_id,
+            "error_code": result.error_code,
             "data": result.data,
         }
 
@@ -209,13 +208,7 @@ async def run_probe() -> dict[str, Any]:
         ),
         (
             "sandbox.execute",
-            {
-                "command": [
-                    "python",
-                    "-c",
-                    "import sys; sys.stdout.write('LUMI-P0-' + ('x' * 70000))",
-                ]
-            },
+            {"command": ["python", "-c", "print('LUMI-P0-SANDBOX-OK')"]},
             f"{idempotency_key}-sandbox",
         ),
     ]
@@ -261,8 +254,28 @@ async def run_probe() -> dict[str, Any]:
     first_asset_ref = _first_ref(first_write_result, "asset://")
     replay_asset_ref = _first_ref(replay_result, "asset://")
 
-    sandbox_result = calls["sandbox.execute"]["result"]
-    offload_ref = _first_ref(sandbox_result, "s3ref://")
+    offload_request = _request(
+        organization_id=organization_id,
+        agent_run_id=agent_run_id,
+        task_id=task_id,
+        name="sandbox.execute",
+        arguments={
+            "command": [
+                "python",
+                "-c",
+                "import sys; sys.stdout.write('LUMI-P0-' + ('x' * 70000))",
+            ]
+        },
+        trace_id=f"{trace_prefix}-offload-sandbox.execute",
+        idempotency_key=f"{idempotency_key}-sandbox-offload",
+    )
+    offload_result = await client.invoke(offload_request)
+    offload_ref = offload_result.get("full_result_ref")
+    if not isinstance(offload_ref, str) or not offload_ref.startswith("s3ref://"):
+        raise ProbeError("oversized sandbox result did not produce a durable s3ref:// full_result_ref")
+    if offload_result.get("truncated") is not True:
+        raise ProbeError("oversized sandbox result was not marked truncated")
+
     return {
         "schema_version": 1,
         "probe_id": str(uuid4()),
@@ -286,8 +299,12 @@ async def run_probe() -> dict[str, Any]:
         },
         "result_offload": {
             "tool": "sandbox.execute",
+            "tool_call_id": str(offload_request.tool_call_id),
+            "trace_id": offload_request.trace_id,
             "result_ref": offload_ref,
-            "inline_data_present": sandbox_result.get("data") is not None,
+            "inline_data_present": offload_result.get("data") is not None,
+            "truncated": offload_result.get("truncated"),
+            "result": offload_result,
         },
     }
 
