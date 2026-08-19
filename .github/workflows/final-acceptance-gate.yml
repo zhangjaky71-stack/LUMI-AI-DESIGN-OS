@@ -38,6 +38,7 @@ jobs:
           python3 scripts/validate_final_acceptance_contract.py
           python3 scripts/validate_security_release_decision_contract.py
           python3 scripts/validate_final_acceptance_assembler_contract.py
+          python3 scripts/validate_side_effect_control_provenance.py --self-test
       - name: Validate JSON and Python syntax
         run: |
           python3 -m json.tool final/acceptance/manifest-v1.json >/dev/null
@@ -52,6 +53,7 @@ jobs:
             scripts/validate_security_release_decision_contract.py \
             scripts/validate_final_acceptance_assembler_contract.py \
             scripts/validate_final_acceptance_contract.py \
+            scripts/validate_side_effect_control_provenance.py \
             scripts/validate_uv_workspace_lock.py
 
   canonical-lock-gate:
