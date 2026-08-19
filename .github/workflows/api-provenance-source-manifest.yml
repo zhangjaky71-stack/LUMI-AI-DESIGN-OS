@@ -1,0 +1,37 @@
+name: API Provenance Source Manifest
+
+on:
+  pull_request:
+    paths:
+      - "staging/acceptance/api-provenance-sources-v1.json"
+      - "staging/acceptance/evidence-template.json"
+      - "scripts/staging-acceptance-gate.py"
+      - "scripts/validate_staging_acceptance_contract.py"
+      - "scripts/validate_side_effect_control_provenance.py"
+      - "scripts/validate_tool_audit_provenance.py"
+      - "scripts/validate_tool_approval_provenance.py"
+      - "scripts/validate_api_provenance_source_manifest.py"
+      - "apps/api/**"
+      - ".github/workflows/api-provenance-source-manifest.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  api-provenance-source-manifest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile provenance manifest validator
+        run: python -m compileall -q scripts/validate_api_provenance_source_manifest.py
+      - name: Require one canonical API provenance source union
+        run: python scripts/validate_api_provenance_source_manifest.py
+      - name: Validate manifest and template JSON syntax
+        run: |
+          python -m json.tool staging/acceptance/api-provenance-sources-v1.json >/dev/null
+          python -m json.tool staging/acceptance/evidence-template.json >/dev/null
