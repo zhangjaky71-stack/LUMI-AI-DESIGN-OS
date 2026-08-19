@@ -6,7 +6,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lumi_api.persistence.models import AgentRun, Task
 from lumi_api.persistence.seed import ORG_ID, PROJECT_A_ID
@@ -22,7 +22,8 @@ async def _acceptance() -> None:
     try:
         async with engine.connect() as connection:
             transaction = await connection.begin()
-            session = AsyncSession(bind=connection, expire_on_commit=False)
+            factory = async_sessionmaker(bind=connection, expire_on_commit=False)
+            session: AsyncSession = factory()
             try:
                 agent_run = AgentRun(
                     organization_id=ORG_ID,
@@ -53,7 +54,7 @@ async def _acceptance() -> None:
                 session.add(task)
                 await session.flush()
 
-                store = ToolDataStore(lambda: session)  # type: ignore[arg-type]
+                store = ToolDataStore(factory)
                 result = await store.query_project(
                     organization_id=ORG_ID,
                     agent_run_id=agent_run.id,
