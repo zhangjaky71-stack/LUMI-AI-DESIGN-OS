@@ -4,12 +4,14 @@ import asyncio
 import unittest
 from decimal import Decimal
 
+from lumi_image_generation.errors import ImageGenerationTransientError
 from lumi_image_generation.model import (
     GatewayGenerationRequest,
     OutputRequirements,
     PromptBlocks,
 )
 from lumi_model_gateway.estimate_transport import HttpRouteEstimate
+from lumi_model_gateway.http_transport import ModelGatewayHttpError
 from lumi_model_gateway.models import (
     CostConfidence,
     CostEstimate,
@@ -70,12 +72,28 @@ class _FakeGatewayClient:
         )
 
 
+class _FailingGatewayClient:
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    async def estimate(self, request: object) -> HttpRouteEstimate:
+        del request
+        raise self.error
+
+    async def invoke(self, request: object) -> ModelResult:
+        del request
+        raise AssertionError("invoke must not run when estimate failed")
+
+
 class _FakeObjectStore:
-    def __init__(self) -> None:
+    def __init__(self, *, error: Exception | None = None) -> None:
         self.calls: list[tuple[str, str, int]] = []
+        self.error = error
 
     async def get_bytes(self, *, bucket: str, object_key: str, max_bytes: int) -> bytes:
         self.calls.append((bucket, object_key, max_bytes))
+        if self.error is not None:
+            raise self.error
         return b"png-bytes"
 
 
@@ -132,6 +150,34 @@ class ImageGatewayRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "IMAGE_GATEWAY_OUTPUT_MUST_BE_ASSET_REF"):
             asyncio.run(adapter.invoke(_request()))
 
+    def test_private_gateway_503_is_retryable(self) -> None:
+        adapter = HostedImageModelGatewayAdapter(
+            _FailingGatewayClient(
+                ModelGatewayHttpError(503, "MODEL_GATEWAY_UNAVAILABLE", "temporary")
+            )  # type: ignore[arg-type]
+        )
+        with self.assertRaises(ImageGenerationTransientError) as raised:
+            asyncio.run(adapter.estimate(_request()))
+        self.assertTrue(raised.exception.retryable)
+        self.assertEqual(raised.exception.code, "GENERATION_GATEWAY_ESTIMATE_TEMPORARY")
+
+    def test_private_gateway_400_remains_permanent(self) -> None:
+        error = ModelGatewayHttpError(400, "MODEL_GATEWAY_BAD_REQUEST", "bad request")
+        adapter = HostedImageModelGatewayAdapter(
+            _FailingGatewayClient(error)  # type: ignore[arg-type]
+        )
+        with self.assertRaises(ModelGatewayHttpError) as raised:
+            asyncio.run(adapter.estimate(_request()))
+        self.assertIs(raised.exception, error)
+
+    def test_private_gateway_transport_failure_is_retryable(self) -> None:
+        adapter = HostedImageModelGatewayAdapter(
+            _FailingGatewayClient(OSError("connection reset"))  # type: ignore[arg-type]
+        )
+        with self.assertRaises(ImageGenerationTransientError) as raised:
+            asyncio.run(adapter.estimate(_request()))
+        self.assertEqual(raised.exception.code, "GENERATION_GATEWAY_ESTIMATE_TEMPORARY")
+
     def test_fetcher_reads_only_provider_output_prefix_from_same_bucket(self) -> None:
         store = _FakeObjectStore()
         fetcher = S3ProviderOutputFetcher(
@@ -150,6 +196,36 @@ class ImageGatewayRuntimeTests(unittest.TestCase):
             store.calls,
             [("lumi-assets", "provider-output/v1/org/op/abc.png", 1024)],
         )
+
+    def test_fetcher_storage_transport_failure_is_retryable(self) -> None:
+        fetcher = S3ProviderOutputFetcher(
+            bucket="lumi-assets",
+            object_store=_FakeObjectStore(error=RuntimeError("s3 unavailable")),  # type: ignore[arg-type]
+        )
+        with self.assertRaises(ImageGenerationTransientError) as raised:
+            asyncio.run(
+                fetcher.fetch(
+                    "s3://lumi-assets/provider-output/v1/org/op/abc.png",
+                    "image/png",
+                )
+            )
+        self.assertEqual(
+            raised.exception.code,
+            "GENERATION_PROVIDER_OUTPUT_STORAGE_TEMPORARY",
+        )
+
+    def test_fetcher_storage_validation_failure_remains_permanent(self) -> None:
+        fetcher = S3ProviderOutputFetcher(
+            bucket="lumi-assets",
+            object_store=_FakeObjectStore(error=ValueError("S3_OBJECT_TOO_LARGE")),  # type: ignore[arg-type]
+        )
+        with self.assertRaisesRegex(ValueError, "S3_OBJECT_TOO_LARGE"):
+            asyncio.run(
+                fetcher.fetch(
+                    "s3://lumi-assets/provider-output/v1/org/op/abc.png",
+                    "image/png",
+                )
+            )
 
     def test_fetcher_rejects_cross_bucket_encoded_and_traversal_refs(self) -> None:
         store = _FakeObjectStore()
