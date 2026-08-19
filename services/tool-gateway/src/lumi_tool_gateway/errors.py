@@ -89,6 +89,10 @@ class ToolOutputOffloadRequiredError(ToolGatewayError):
     code = "TOOL_OUTPUT_OFFLOAD_REQUIRED"
 
 
+class ToolResultOffloadUnavailableError(ToolGatewayError):
+    code = "TOOL_RESULT_OFFLOAD_UNAVAILABLE"
+
+
 class ToolSSRFBlockedError(ToolGatewayError):
     code = "TOOL_SSRF_BLOCKED"
 
