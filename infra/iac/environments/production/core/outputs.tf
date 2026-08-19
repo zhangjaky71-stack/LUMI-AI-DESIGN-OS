@@ -12,7 +12,7 @@ output "bucket_names" { value = module.platform_core.bucket_names }
 output "object_dr_region" { value = var.object_dr_region }
 output "object_dr_bucket_names" { value = { for purpose, bucket in aws_s3_bucket.object_dr : purpose => bucket.id } }
 output "object_dr_bucket_arns" { value = { for purpose, bucket in aws_s3_bucket.object_dr : purpose => bucket.arn } }
-output "object_dr_replication_rule_ids" { value = { for purpose, replication in aws_s3_bucket_replication_configuration.object_dr : purpose => replication.rule[0].id } }
+output "object_dr_replication_rule_ids" { value = { for purpose in local.object_dr_purposes : purpose => "lumi-${purpose}-cross-region-dr" } }
 output "secret_arns" { value = module.platform_core.secret_arns }
 output "postgres_endpoint" { value = module.platform_core.postgres_endpoint }
 output "postgres_port" { value = module.platform_core.postgres_port }
