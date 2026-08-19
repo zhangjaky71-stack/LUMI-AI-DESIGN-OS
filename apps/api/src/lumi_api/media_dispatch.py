@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any
 from uuid import UUID
 
 from lumi_domain.job_dispatch import (
+    IMAGE_TRANSFORM_JOB_KIND,
+    IMAGE_TRANSFORM_QUEUE,
+    IMAGE_TRANSFORM_TASK_NAME,
     JOB_DISPATCH_EVENT_NAME,
     JOB_DISPATCH_SCHEMA_VERSION,
     JobDispatch,
@@ -15,26 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .persistence.models import Generation, OutboxEvent, Task
 
-IMAGE_TRANSFORM_JOB_KIND = "image.transform"
-IMAGE_TRANSFORM_TASK_NAME = "lumi.jobs.image.transform"
-IMAGE_TRANSFORM_QUEUE = "lumi.media.image"
 IMAGE_TASK_INPUT_SCHEMA_VERSION = 1
 MEDIA_DISPATCH_EVENT_NAME = JOB_DISPATCH_EVENT_NAME
 MEDIA_DISPATCH_SCHEMA_VERSION = JOB_DISPATCH_SCHEMA_VERSION
 CanonicalMediaDispatch = JobDispatch
-
-
-class MediaTaskBroker(Protocol):
-    """Infrastructure port implemented by the outbox publisher process, never HTTP routes."""
-
-    async def publish_task(
-        self,
-        *,
-        task_name: str,
-        queue: str,
-        args: list[object],
-        kwargs: dict[str, object],
-    ) -> None: ...
 
 
 def build_image_transform_dispatch(
@@ -108,7 +94,7 @@ def stage_image_transform_dispatch(
     generation: Generation,
     trace_id: str | None,
 ) -> OutboxEvent:
-    """Stage a dispatch in the caller's DB transaction; this function never touches the broker."""
+    """Stage the canonical dispatch in the caller's transaction; never touch the broker."""
 
     dispatch = build_image_transform_dispatch(
         task=task,
@@ -126,48 +112,6 @@ def stage_image_transform_dispatch(
     )
     session.add(event)
     return event
-
-
-async def publish_media_outbox_event(
-    *,
-    event: OutboxEvent,
-    broker: MediaTaskBroker,
-    published_at: datetime | None = None,
-) -> bool:
-    """Publish one staged event and update its in-session delivery state."""
-
-    if event.published_at is not None:
-        return False
-    if event.event_name != MEDIA_DISPATCH_EVENT_NAME:
-        raise ValueError("MEDIA_DISPATCH_EVENT_NAME_MISMATCH")
-    if event.aggregate_type != "task":
-        raise ValueError("MEDIA_DISPATCH_AGGREGATE_TYPE_MISMATCH")
-    if event.schema_version != MEDIA_DISPATCH_SCHEMA_VERSION:
-        raise ValueError("MEDIA_DISPATCH_EVENT_SCHEMA_UNSUPPORTED")
-    dispatch = _canonical_dispatch_from_payload(event.payload_json)
-    if dispatch.message.job_id != event.aggregate_id:
-        raise ValueError("MEDIA_DISPATCH_AGGREGATE_ID_MISMATCH")
-    if dispatch.message.organization_id != event.organization_id:
-        raise ValueError("MEDIA_DISPATCH_EVENT_ORGANIZATION_MISMATCH")
-
-    event.publish_attempts += 1
-    await broker.publish_task(
-        task_name=dispatch.task_name,
-        queue=dispatch.queue,
-        args=[dispatch.message.as_dict()],
-        kwargs={},
-    )
-    event.published_at = published_at or datetime.now(UTC)
-    return True
-
-
-def _canonical_dispatch_from_payload(value: object) -> JobDispatch:
-    dispatch = JobDispatch.from_outbox_payload(value)
-    if dispatch.task_name != IMAGE_TRANSFORM_TASK_NAME:
-        raise ValueError("MEDIA_DISPATCH_TASK_NAME_MISMATCH")
-    if dispatch.queue != IMAGE_TRANSFORM_QUEUE:
-        raise ValueError("MEDIA_DISPATCH_QUEUE_MISMATCH")
-    return dispatch
 
 
 def _object(value: object, error: str) -> dict[str, Any]:
