@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 FINAL_STATUSES = {"PASS", "FAIL", "BLOCKED_EXTERNAL", "DEFERRED_NON_CRITICAL"}
-IDENTITY_GATES = {"performance", "ai_regression", "staging_acceptance", "production_deployment"}
+IDENTITY_GATES = {"recovery", "performance", "ai_regression", "staging_acceptance", "production_deployment"}
 
 
 class FinalAcceptanceError(RuntimeError):
