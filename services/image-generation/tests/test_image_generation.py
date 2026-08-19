@@ -336,7 +336,10 @@ def test_async_pending_state_survives_and_resumes() -> None:
     started = asyncio.run(pipeline.start(_spec(), created_at=NOW))
     assert started.status == "PROVIDER_PENDING"
     candidate = started.candidates[0]
-    assert repository.get_pending(ORG, started.generation_id, candidate.candidate_id) is not None
+    assert (
+        asyncio.run(repository.get_pending(ORG, started.generation_id, candidate.candidate_id))
+        is not None
+    )
 
     resumed = asyncio.run(
         pipeline.resume_pending(
@@ -347,7 +350,10 @@ def test_async_pending_state_survives_and_resumes() -> None:
     )
     assert resumed.status == "COMPLETED"
     assert resumed.candidates[0].status == "READY"
-    assert repository.get_pending(ORG, started.generation_id, candidate.candidate_id) is None
+    assert (
+        asyncio.run(repository.get_pending(ORG, started.generation_id, candidate.candidate_id))
+        is None
+    )
     assert len(costs.records) == 1
     assert history.versions[resumed.candidates[0].artifact_version_id].status == "READY"  # type: ignore[index]
 
