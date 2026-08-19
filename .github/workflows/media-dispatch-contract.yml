@@ -6,7 +6,13 @@ on:
       - "services/domain/src/lumi_domain/job_dispatch.py"
       - "services/domain/tests/test_job_dispatch.py"
       - "apps/api/src/lumi_api/media_dispatch.py"
+      - "apps/api/src/lumi_api/generations/**"
+      - "apps/api/src/lumi_api/product_app.py"
+      - "apps/api/src/lumi_api/cli.py"
+      - "apps/api/src/lumi_api/persistence/**"
+      - "apps/api/alembic/**"
       - "apps/api/tests/test_media_dispatch.py"
+      - "apps/api/tests/integration/test_generation_control_plane_postgres.py"
       - "apps/api/pyproject.toml"
       - "apps/worker-media/src/lumi_worker_media/queue_contracts.py"
       - "apps/worker-media/src/lumi_worker_media/event_runtime.py"
@@ -14,6 +20,7 @@ on:
       - "apps/worker-media/src/lumi_worker_media/cli.py"
       - "apps/worker-media/tests/test_queue_contracts.py"
       - "apps/worker-media/tests/test_job_dispatch_runtime.py"
+      - "apps/worker-media/tests/test_queue_cli.py"
       - "apps/worker-media/pyproject.toml"
       - "scripts/validate_media_dispatch_contract.py"
       - "scripts/validate_queue_runtime_contract.py"
@@ -40,13 +47,18 @@ jobs:
           services/domain/src/lumi_domain/job_dispatch.py
           services/domain/tests/test_job_dispatch.py
           apps/api/src/lumi_api/media_dispatch.py
+          apps/api/src/lumi_api/generations
+          apps/api/src/lumi_api/product_app.py
+          apps/api/src/lumi_api/cli.py
           apps/api/tests/test_media_dispatch.py
+          apps/api/tests/integration/test_generation_control_plane_postgres.py
           apps/worker-media/src/lumi_worker_media/queue_contracts.py
           apps/worker-media/src/lumi_worker_media/event_runtime.py
           apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py
           apps/worker-media/src/lumi_worker_media/cli.py
           apps/worker-media/tests/test_queue_contracts.py
           apps/worker-media/tests/test_job_dispatch_runtime.py
+          apps/worker-media/tests/test_queue_cli.py
           scripts/validate_media_dispatch_contract.py
           scripts/validate_queue_runtime_contract.py
 
@@ -69,6 +81,7 @@ jobs:
           apps/api/tests/test_media_dispatch.py
           apps/worker-media/tests/test_queue_contracts.py
           apps/worker-media/tests/test_job_dispatch_runtime.py
+          apps/worker-media/tests/test_queue_cli.py
           -q
 
       - name: Ruff correctness gate
@@ -77,13 +90,18 @@ jobs:
           services/domain/src/lumi_domain/job_dispatch.py
           services/domain/tests/test_job_dispatch.py
           apps/api/src/lumi_api/media_dispatch.py
+          apps/api/src/lumi_api/generations
+          apps/api/src/lumi_api/product_app.py
+          apps/api/src/lumi_api/cli.py
           apps/api/tests/test_media_dispatch.py
+          apps/api/tests/integration/test_generation_control_plane_postgres.py
           apps/worker-media/src/lumi_worker_media/queue_contracts.py
           apps/worker-media/src/lumi_worker_media/event_runtime.py
           apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py
           apps/worker-media/src/lumi_worker_media/cli.py
           apps/worker-media/tests/test_queue_contracts.py
           apps/worker-media/tests/test_job_dispatch_runtime.py
+          apps/worker-media/tests/test_queue_cli.py
           scripts/validate_media_dispatch_contract.py
           scripts/validate_queue_runtime_contract.py
 
@@ -92,6 +110,61 @@ jobs:
           uv run pyright
           services/domain/src/lumi_domain/job_dispatch.py
           apps/api/src/lumi_api/media_dispatch.py
+          apps/api/src/lumi_api/generations
+          apps/api/src/lumi_api/product_app.py
+          apps/api/src/lumi_api/cli.py
           apps/worker-media/src/lumi_worker_media/queue_contracts.py
           apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py
           apps/worker-media/src/lumi_worker_media/cli.py
+
+  generation-control-plane-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Frozen Python workspace install
+        run: uv sync --all-packages --frozen
+      - name: Prepare local infrastructure
+        run: make infra-env
+      - name: Start PostgreSQL infrastructure
+        run: make infra-up
+      - name: Upgrade empty database
+        run: make db-upgrade
+      - name: Verify ORM migration drift
+        run: bash scripts/db-local schema-check
+      - name: Seed deterministic fixtures
+        run: make db-seed
+      - name: Run NODE-73.1 producer transaction acceptance
+        env:
+          LUMI_DB_INTEGRATION: "1"
+        run: >-
+          uv run pytest
+          apps/api/tests/integration/test_generation_control_plane_postgres.py
+          -q
+      - name: Capture database diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p reports/media-dispatch-contract
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml ps > reports/media-dispatch-contract/compose-ps.txt 2>&1 || true
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml logs --no-color --tail=300 postgres > reports/media-dispatch-contract/postgres.log 2>&1 || true
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: media-dispatch-contract-${{ github.run_id }}
+          path: reports/media-dispatch-contract
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Cleanup
+        if: always()
+        run: CONFIRM=1 make infra-reset || true
