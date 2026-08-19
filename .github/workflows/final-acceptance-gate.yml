@@ -37,6 +37,7 @@ jobs:
         run: |
           python3 scripts/validate_final_acceptance_contract.py
           python3 scripts/validate_security_release_decision_contract.py
+          python3 scripts/validate_final_acceptance_assembler_contract.py
       - name: Validate JSON and Python syntax
         run: |
           python3 -m json.tool final/acceptance/manifest-v1.json >/dev/null
@@ -49,6 +50,7 @@ jobs:
             scripts/validate_final_acceptance_package.py \
             scripts/security-release-decision.py \
             scripts/validate_security_release_decision_contract.py \
+            scripts/validate_final_acceptance_assembler_contract.py \
             scripts/validate_final_acceptance_contract.py \
             scripts/validate_uv_workspace_lock.py
 
