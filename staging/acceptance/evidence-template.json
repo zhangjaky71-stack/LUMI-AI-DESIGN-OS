@@ -41,6 +41,8 @@
           "apps/api/src/lumi_api/tool_audit_control.py",
           "apps/api/src/lumi_api/persistence/models/platform.py",
           "apps/api/src/lumi_api/tool_approval_control.py",
+          "apps/api/src/lumi_api/tool_data_control.py",
+          "apps/api/src/lumi_api/persistence/models/project.py",
           "apps/api/src/lumi_api/persistence/models/workflow.py"
         ]
       },
@@ -57,6 +59,9 @@
           "services/tool-gateway/pyproject.toml",
           "services/tool-gateway/src/lumi_tool_gateway/service.py",
           "services/tool-gateway/src/lumi_tool_gateway/result_offload.py",
+          "services/tool-gateway/src/lumi_tool_gateway/data_control.py",
+          "services/tool-gateway/src/lumi_tool_gateway/catalog.py",
+          "services/tool-gateway/src/lumi_tool_gateway/http_transport.py",
           "services/asset-storage/src/lumi_asset_storage/s3.py"
         ]
       },
