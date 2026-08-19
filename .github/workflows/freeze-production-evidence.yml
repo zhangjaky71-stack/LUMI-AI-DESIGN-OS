@@ -1,0 +1,182 @@
+name: Freeze Production Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: "Current manifest under reports/production-deployments/<deployment-id>/manifest.json"
+        required: true
+        type: string
+      deploy_run_id:
+        description: "Successful Deploy Production workflow run ID"
+        required: true
+        type: string
+      rollback_run_id:
+        description: "Successful Production Rollback Rehearsal workflow run ID"
+        required: true
+        type: string
+      freeze_ack:
+        description: "FREEZE_PRODUCTION_EVIDENCE:<deployment-id>"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  MANIFEST_INPUT: ${{ inputs.manifest_path }}
+  DEPLOY_RUN_ID: ${{ inputs.deploy_run_id }}
+  ROLLBACK_RUN_ID: ${{ inputs.rollback_run_id }}
+  FREEZE_ACK: ${{ inputs.freeze_ack }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  freeze:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Resolve manifest and exact evidence destination
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path.cwd().resolve()
+          allowed = (root / 'reports' / 'production-deployments').resolve()
+          manifest = (root / os.environ['MANIFEST_INPUT']).resolve()
+          try:
+              relative = manifest.relative_to(allowed)
+          except ValueError as exc:
+              raise SystemExit('manifest escapes reports/production-deployments') from exc
+          if manifest.name != 'manifest.json' or not manifest.is_file():
+              raise SystemExit('manifest must be an existing manifest.json')
+          deployment_id = __import__('json').loads(manifest.read_text())['deployment_id']
+          if not isinstance(deployment_id, str) or not deployment_id:
+              raise SystemExit('manifest deployment_id missing')
+          if manifest.parent.name != deployment_id:
+              raise SystemExit('manifest parent directory must equal deployment_id')
+          evidence = manifest.parent / 'evidence'
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'MANIFEST_PATH={manifest.relative_to(root).as_posix()}\n')
+              fh.write(f'DEPLOYMENT_ID={deployment_id}\n')
+              fh.write(f'EVIDENCE_DIR={evidence.relative_to(root).as_posix()}\n')
+          PY
+          test "$FREEZE_ACK" = "FREEZE_PRODUCTION_EVIDENCE:${DEPLOYMENT_ID}"
+          [[ "$DEPLOY_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$ROLLBACK_RUN_ID" =~ ^[0-9]+$ ]]
+      - name: Require source runs from this repository and current branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          for run_id in "$DEPLOY_RUN_ID" "$ROLLBACK_RUN_ID"; do
+            run="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}")"
+            test "$(jq -r '.repository.full_name' <<<"$run")" = "$GITHUB_REPOSITORY"
+            test "$(jq -r '.head_branch' <<<"$run")" = "$GITHUB_REF_NAME"
+            test "$(jq -r '.status' <<<"$run")" = "completed"
+            test "$(jq -r '.conclusion' <<<"$run")" = "success"
+          done
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${DEPLOY_RUN_ID}" --jq '.name')" = "Deploy Production"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${ROLLBACK_RUN_ID}" --jq '.name')" = "Production Rollback Rehearsal"
+      - name: Download source artifacts without trusting artifact paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/lumi-deploy-evidence /tmp/lumi-rollback-evidence
+          mkdir -p /tmp/lumi-deploy-evidence /tmp/lumi-rollback-evidence
+          gh run download "$DEPLOY_RUN_ID" --repo "$GITHUB_REPOSITORY" --dir /tmp/lumi-deploy-evidence
+          gh run download "$ROLLBACK_RUN_ID" --repo "$GITHUB_REPOSITORY" --dir /tmp/lumi-rollback-evidence
+      - name: Materialize exactly one copy of each required raw evidence file
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$EVIDENCE_DIR"
+          mkdir -p "$EVIDENCE_DIR/rollback"
+          one() {
+            local root="$1" name="$2" destination="$3"
+            mapfile -t matches < <(find "$root" -type f -name "$name" -print)
+            if [[ ${#matches[@]} -ne 1 ]]; then
+              echo "expected exactly one $name below $root, found ${#matches[@]}" >&2
+              exit 65
+            fi
+            cp -- "${matches[0]}" "$destination"
+          }
+          one /tmp/lumi-deploy-evidence deployment-gate.json "$EVIDENCE_DIR/deployment-gate.json"
+          one /tmp/lumi-deploy-evidence predeploy-snapshot.json "$EVIDENCE_DIR/predeploy-snapshot.json"
+          one /tmp/lumi-deploy-evidence migration.json "$EVIDENCE_DIR/migration.json"
+          one /tmp/lumi-deploy-evidence runtime-identity.json "$EVIDENCE_DIR/runtime-identity.json"
+          one /tmp/lumi-deploy-evidence rollout-evidence.json "$EVIDENCE_DIR/rollout-evidence.json"
+          one /tmp/lumi-deploy-evidence production-smoke.json "$EVIDENCE_DIR/production-smoke.json"
+          one /tmp/lumi-rollback-evidence previous-runtime.json "$EVIDENCE_DIR/rollback/previous-runtime.json"
+          one /tmp/lumi-rollback-evidence previous-smoke.json "$EVIDENCE_DIR/rollback/previous-smoke.json"
+          one /tmp/lumi-rollback-evidence restored-runtime.json "$EVIDENCE_DIR/rollback/restored-runtime.json"
+          one /tmp/lumi-rollback-evidence restored-smoke.json "$EVIDENCE_DIR/rollback/restored-smoke.json"
+      - name: Recompute rollback decision from frozen raw evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_manifest="$(jq -r '.rollback.previous_manifest_ref' "$MANIFEST_PATH")"
+          test -f "$previous_manifest"
+          python3 scripts/production-rollback-rehearsal-decision.py \
+            --current-manifest "$MANIFEST_PATH" \
+            --previous-manifest "$previous_manifest" \
+            --rollback-gate "$EVIDENCE_DIR/rollback/rollback-gate.json" \
+            --previous-runtime "$EVIDENCE_DIR/rollback/previous-runtime.json" \
+            --previous-smoke "$EVIDENCE_DIR/rollback/previous-smoke.json" \
+            --restored-runtime "$EVIDENCE_DIR/rollback/restored-runtime.json" \
+            --restored-smoke "$EVIDENCE_DIR/rollback/restored-smoke.json" \
+            --output "$EVIDENCE_DIR/rollback/decision.json"
+          test "$(jq -r '.passed' "$EVIDENCE_DIR/rollback/decision.json")" = true
+      - name: Generate canonical NODE-72 production deployment decision
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/production-deployment-decision.py \
+            --manifest "$MANIFEST_PATH" \
+            --deployment-gate "$EVIDENCE_DIR/deployment-gate.json" \
+            --predeploy-snapshot "$EVIDENCE_DIR/predeploy-snapshot.json" \
+            --migration "$EVIDENCE_DIR/migration.json" \
+            --runtime-identity "$EVIDENCE_DIR/runtime-identity.json" \
+            --rollout-evidence "$EVIDENCE_DIR/rollout-evidence.json" \
+            --smoke "$EVIDENCE_DIR/production-smoke.json" \
+            --rollback-rehearsal "$EVIDENCE_DIR/rollback/decision.json" \
+            --output "$(dirname "$MANIFEST_PATH")/decision.json"
+          test "$(jq -r '.passed' "$(dirname "$MANIFEST_PATH")/decision.json")" = true
+      - name: Refuse to freeze changes outside this deployment evidence boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          target_prefix="$(dirname "$MANIFEST_PATH")/"
+          mapfile -t changed < <({ git diff --name-only; git ls-files --others --exclude-standard; } | sort -u)
+          [[ ${#changed[@]} -gt 0 ]] || { echo "no new evidence to freeze"; exit 0; }
+          for path in "${changed[@]}"; do
+            [[ "$path" == "$target_prefix"* ]] || {
+              echo "refusing unexpected change outside deployment evidence boundary: $path" >&2
+              exit 66
+            }
+          done
+      - name: Commit only validated frozen production evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "lumi-release-evidence-bot"
+          git config user.email "lumi-release-evidence-bot@users.noreply.github.com"
+          git add -- "$(dirname "$MANIFEST_PATH")/decision.json" "$EVIDENCE_DIR"
+          if git diff --cached --quiet; then
+            echo "validated evidence already frozen; no commit required"
+            exit 0
+          fi
+          target_prefix="$(dirname "$MANIFEST_PATH")/"
+          while IFS= read -r path; do
+            [[ "$path" == "$target_prefix"* ]] || { echo "unexpected staged path: $path" >&2; exit 66; }
+          done < <(git diff --cached --name-only)
+          git commit -m "release: freeze production evidence ${DEPLOYMENT_ID}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
