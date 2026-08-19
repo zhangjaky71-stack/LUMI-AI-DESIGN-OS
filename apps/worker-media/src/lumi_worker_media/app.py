@@ -5,7 +5,7 @@ import os
 from uuid import UUID
 
 from celery import Celery
-from lumi_asset_storage import S3ObjectStore
+from lumi_asset_storage.s3 import S3ObjectStore
 
 from .asset_config import AssetWorkerSettings
 from .asset_validation import validate_asset_run
