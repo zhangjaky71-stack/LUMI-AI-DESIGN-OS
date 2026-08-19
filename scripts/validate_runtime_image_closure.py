@@ -75,6 +75,7 @@ RUNTIMES: tuple[RuntimeContract, ...] = (
         entrypoint_sources=(
             "services/tool-gateway/src/lumi_tool_gateway/cli.py",
             "services/tool-gateway/src/lumi_tool_gateway/service.py",
+            "services/tool-gateway/src/lumi_tool_gateway/http_transport.py",
             "services/tool-gateway/src/lumi_tool_gateway/api.py",
             "services/tool-gateway/src/lumi_tool_gateway/gateway.py",
         ),
@@ -82,6 +83,26 @@ RUNTIMES: tuple[RuntimeContract, ...] = (
         required_source_fragments=(
             ("services/tool-gateway/src/lumi_tool_gateway/api.py", "class ToolGatewayAPI"),
             ("services/tool-gateway/src/lumi_tool_gateway/gateway.py", "class ToolGateway"),
+            (
+                "services/tool-gateway/src/lumi_tool_gateway/http_transport.py",
+                "hmac.compare_digest",
+            ),
+            (
+                "services/tool-gateway/src/lumi_tool_gateway/http_transport.py",
+                'service: str = "agent-runtime"',
+            ),
+            (
+                "services/tool-gateway/src/lumi_tool_gateway/service.py",
+                '_ALLOWED_CALLERS = frozenset({"agent-runtime"})',
+            ),
+            (
+                "services/tool-gateway/src/lumi_tool_gateway/service.py",
+                'LUMI_TOOL_GATEWAY_AUTH_SECRET',
+            ),
+            (
+                "services/tool-gateway/src/lumi_tool_gateway/service.py",
+                "status_code=200 if ready else 503",
+            ),
         ),
     ),
     RuntimeContract(
@@ -110,6 +131,13 @@ RUNTIMES: tuple[RuntimeContract, ...] = (
     ),
 )
 
+_TOOL_GATEWAY_IAC_FILES = (
+    "infra/iac/environments/staging/core/main.tf",
+    "infra/iac/environments/production/core/main.tf",
+    "infra/iac/environments/staging/app/main.tf",
+    "infra/iac/environments/production/app/main.tf",
+)
+
 
 def _text(relative: str) -> str:
     path = ROOT / relative
@@ -132,6 +160,38 @@ def _require_all(haystack: str, fragments: Iterable[str], *, label: str) -> None
     for fragment in fragments:
         if fragment not in haystack:
             raise RuntimeClosureError(f"{label} missing required fragment: {fragment}")
+
+
+def _validate_tool_gateway_iac_boundary() -> None:
+    staging_core = _text(_TOOL_GATEWAY_IAC_FILES[0])
+    production_core = _text(_TOOL_GATEWAY_IAC_FILES[1])
+    for label, source in (
+        (_TOOL_GATEWAY_IAC_FILES[0], staging_core),
+        (_TOOL_GATEWAY_IAC_FILES[1], production_core),
+    ):
+        _require_all(source, ('"internal/tool-gateway"',), label=label)
+
+    for relative in _TOOL_GATEWAY_IAC_FILES[2:]:
+        source = _text(relative)
+        _require_all(
+            source,
+            (
+                "LUMI_TOOL_GATEWAY_URL",
+                "tool-gateway.${local.environment}.lumi.internal:8080",
+                "LUMI_TOOL_GATEWAY_AUTH_SECRET",
+                'local.secret_arns["internal/tool-gateway"]',
+            ),
+            label=relative,
+        )
+        if source.count("LUMI_TOOL_GATEWAY_AUTH_SECRET") < 2:
+            raise RuntimeClosureError(
+                f"{relative} must inject the dedicated Tool Gateway secret into both "
+                "agent-runtime and tool-gateway"
+            )
+        if "agent-runtime" not in source or "tool-gateway" not in source:
+            raise RuntimeClosureError(
+                f"{relative} is missing the private Tool Gateway caller/service pair"
+            )
 
 
 def validate_runtime(contract: RuntimeContract) -> dict[str, object]:
@@ -161,6 +221,8 @@ def validate_runtime(contract: RuntimeContract) -> dict[str, object]:
             raise RuntimeClosureError(
                 f"{contract.name} production source {relative} missing boundary: {fragment}"
             )
+    if contract.name == "tool-gateway":
+        _validate_tool_gateway_iac_boundary()
 
     return {
         "runtime": contract.name,
