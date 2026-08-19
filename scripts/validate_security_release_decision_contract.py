@@ -39,7 +39,11 @@ def job(name: str, *, conclusion: str = "success", with_steps: bool = True) -> d
 
 
 def fixtures() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    rc = {"git_sha": "a" * 40, "version": "1.0.0-rc.1", "migration_head": "0020_generation_operation_identity"}
+    rc = {
+        "git_sha": "a" * 40,
+        "version": "1.0.0-rc.1",
+        "migration_head": "0020_generation_operation_identity",
+    }
     manifest = {
         "schema_version": 1,
         "environment": "production",
@@ -93,21 +97,29 @@ def main() -> int:
 
     workflow = WORKFLOW.read_text(encoding="utf-8")
     for token in (
-        'test "$(jq -r \' .name\'',
         "workflow_dispatch",
-        'test "$(jq -r \'.head_sha\'',
-        'gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${SECURITY_RUN_ID}/jobs?per_page=100"',
+        "Security Release Gate",
+        ".head_sha",
+        "$RC_SHA",
+        "actions/runs/${SECURITY_RUN_ID}/jobs?per_page=100",
         "security-release-decision.py",
         'prefix="${SECURITY_DIR}/"',
         'git push origin "HEAD:${GITHUB_REF_NAME}"',
     ):
-        if token.startswith('test "$(jq'):
-            continue
         require(token in workflow, f"freezer workflow missing {token!r}")
-    require('test "$(jq -r \'.name\' "$SECURITY_DIR/evidence/workflow-run.json")" = "Security Release Gate"' in workflow,
-            "freezer must bind exact workflow name")
-    require('test "$(jq -r \'.head_sha\' "$SECURITY_DIR/evidence/workflow-run.json")" = "$RC_SHA"' in workflow,
-            "freezer must bind exact RC SHA")
+
+    require(
+        "workflow-run.json" in workflow and "jobs.json" in workflow,
+        "freezer must persist raw run and job metadata",
+    )
+    require(
+        'test "$(jq -r \'.event\'' in workflow and '"workflow_dispatch"' in workflow,
+        "freezer must require workflow_dispatch source evidence",
+    )
+    require(
+        'test "$(jq -r \'.head_sha\'' in workflow,
+        "freezer must compare exact RC head_sha",
+    )
 
     print("security release decision contract: PASS")
     return 0
