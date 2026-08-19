@@ -32,7 +32,9 @@ class ToolSideEffectControlRuntime:
     auth_secret: str
 
 
-def build_tool_side_effect_control_runtime(database_url: str) -> ToolSideEffectControlRuntime:
+def build_tool_side_effect_control_runtime(
+    database_url: str,
+) -> ToolSideEffectControlRuntime:
     secret = os.getenv("LUMI_SIDE_EFFECT_CONTROL_AUTH_SECRET", "")
     if len(secret) < 32 or len(secret) > 8192 or "\x00" in secret:
         raise RuntimeError("LUMI_SIDE_EFFECT_CONTROL_AUTH_SECRET_REQUIRED")
@@ -98,12 +100,20 @@ def create_tool_side_effect_control_router(
         try:
             await runtime.gateway.mark_provider_attempt_started(
                 UUID(operation_id),
-                lease_owner=_required_string(payload_or_error, "lease_owner", max_length=200),
+                lease_owner=_required_string(
+                    payload_or_error,
+                    "lease_owner",
+                    max_length=200,
+                ),
             )
         except ValueError as exc:
             return _error(422, "SIDE_EFFECT_CONTROL_REQUEST_INVALID", str(exc))
         except Exception as exc:
-            return _error(409, str(getattr(exc, "code", "SIDE_EFFECT_CONTROL_ATTEMPT_FAILED")), str(exc))
+            return _error(
+                409,
+                str(getattr(exc, "code", "SIDE_EFFECT_CONTROL_ATTEMPT_FAILED")),
+                str(exc),
+            )
         return JSONResponse(status_code=200, content={"status": "attempt_started"})
 
     @router.post("/{operation_id}/succeed")
@@ -120,15 +130,26 @@ def create_tool_side_effect_control_router(
                 UUID(operation_id),
                 lease_owner=_required_string(payload, "lease_owner", max_length=200),
                 result=SideEffectResult(
-                    result_ref=_optional_string(payload.get("result_ref"), max_length=2048),
+                    result_ref=_optional_string(
+                        payload.get("result_ref"),
+                        max_length=2048,
+                    ),
                     result_json=result_json,
-                    response_status=_bounded_int(payload.get("response_status", 200), 100, 599),
+                    response_status=_bounded_int(
+                        payload.get("response_status", 200),
+                        100,
+                        599,
+                    ),
                 ),
             )
         except ValueError as exc:
             return _error(422, "SIDE_EFFECT_CONTROL_REQUEST_INVALID", str(exc))
         except Exception as exc:
-            return _error(409, str(getattr(exc, "code", "SIDE_EFFECT_CONTROL_SUCCEED_FAILED")), str(exc))
+            return _error(
+                409,
+                str(getattr(exc, "code", "SIDE_EFFECT_CONTROL_SUCCEED_FAILED")),
+                str(exc),
+            )
         return JSONResponse(status_code=200, content={"status": "succeeded"})
 
     @router.post("/{operation_id}/ambiguous")
@@ -146,24 +167,43 @@ def create_tool_side_effect_control_router(
         except ValueError as exc:
             return _error(422, "SIDE_EFFECT_CONTROL_REQUEST_INVALID", str(exc))
         except Exception as exc:
-            return _error(409, str(getattr(exc, "code", "SIDE_EFFECT_CONTROL_AMBIGUOUS_FAILED")), str(exc))
+            return _error(
+                409,
+                str(getattr(exc, "code", "SIDE_EFFECT_CONTROL_AMBIGUOUS_FAILED")),
+                str(exc),
+            )
         return JSONResponse(status_code=200, content={"status": "ambiguous"})
 
     return router
 
 
-async def _authenticated_json(request: Request, secret: str) -> dict[str, Any] | JSONResponse:
+async def _authenticated_json(
+    request: Request,
+    secret: str,
+) -> dict[str, Any] | JSONResponse:
     content_length = request.headers.get("content-length")
     if content_length is not None:
         try:
             parsed_length = int(content_length)
         except ValueError:
-            return _error(400, "SIDE_EFFECT_CONTROL_CONTENT_LENGTH_INVALID", "invalid content length")
+            return _error(
+                400,
+                "SIDE_EFFECT_CONTROL_CONTENT_LENGTH_INVALID",
+                "invalid content length",
+            )
         if parsed_length < 0 or parsed_length > _MAX_BODY_BYTES:
-            return _error(413, "SIDE_EFFECT_CONTROL_REQUEST_TOO_LARGE", "request body is too large")
+            return _error(
+                413,
+                "SIDE_EFFECT_CONTROL_REQUEST_TOO_LARGE",
+                "request body is too large",
+            )
     body = await request.body()
     if len(body) > _MAX_BODY_BYTES:
-        return _error(413, "SIDE_EFFECT_CONTROL_REQUEST_TOO_LARGE", "request body is too large")
+        return _error(
+            413,
+            "SIDE_EFFECT_CONTROL_REQUEST_TOO_LARGE",
+            "request body is too large",
+        )
     auth_error = _verify_auth(request, body, secret)
     if auth_error is not None:
         return auth_error
@@ -172,35 +212,64 @@ async def _authenticated_json(request: Request, secret: str) -> dict[str, Any] |
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         return _error(422, "SIDE_EFFECT_CONTROL_JSON_INVALID", str(exc))
     if not isinstance(payload, dict):
-        return _error(422, "SIDE_EFFECT_CONTROL_OBJECT_REQUIRED", "request body must be an object")
+        return _error(
+            422,
+            "SIDE_EFFECT_CONTROL_OBJECT_REQUIRED",
+            "request body must be an object",
+        )
     return dict(payload)
 
 
 def _verify_auth(request: Request, body: bytes, secret: str) -> JSONResponse | None:
     service = request.headers.get(_SERVICE_HEADER)
     if service not in _ALLOWED_CALLERS:
-        return _error(401, "SIDE_EFFECT_CONTROL_CALLER_FORBIDDEN", "internal authentication failed")
+        return _error(
+            401,
+            "SIDE_EFFECT_CONTROL_CALLER_FORBIDDEN",
+            "internal authentication failed",
+        )
     timestamp_raw = request.headers.get(_TIMESTAMP_HEADER)
     try:
         timestamp = int(timestamp_raw or "")
     except ValueError:
-        return _error(401, "SIDE_EFFECT_CONTROL_TIMESTAMP_INVALID", "internal authentication failed")
+        return _error(
+            401,
+            "SIDE_EFFECT_CONTROL_TIMESTAMP_INVALID",
+            "internal authentication failed",
+        )
     if abs(int(time.time()) - timestamp) > _MAX_SKEW_SECONDS:
-        return _error(401, "SIDE_EFFECT_CONTROL_TIMESTAMP_EXPIRED", "internal authentication failed")
+        return _error(
+            401,
+            "SIDE_EFFECT_CONTROL_TIMESTAMP_EXPIRED",
+            "internal authentication failed",
+        )
     signature = request.headers.get(_SIGNATURE_HEADER)
     if signature is None or len(signature) != 64:
-        return _error(401, "SIDE_EFFECT_CONTROL_SIGNATURE_INVALID", "internal authentication failed")
+        return _error(
+            401,
+            "SIDE_EFFECT_CONTROL_SIGNATURE_INVALID",
+            "internal authentication failed",
+        )
     body_hash = hashlib.sha256(body).hexdigest()
     message = (
         f"{service}\n{timestamp}\n{request.method.upper()}\n{request.url.path}\n{body_hash}"
     ).encode("utf-8")
     expected = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(signature.lower(), expected):
-        return _error(401, "SIDE_EFFECT_CONTROL_SIGNATURE_INVALID", "internal authentication failed")
+        return _error(
+            401,
+            "SIDE_EFFECT_CONTROL_SIGNATURE_INVALID",
+            "internal authentication failed",
+        )
     return None
 
 
-def _required_string(payload: dict[str, Any], key: str, *, max_length: int = 512) -> str:
+def _required_string(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    max_length: int = 512,
+) -> str:
     value = payload.get(key)
     if not isinstance(value, str) or not value or len(value) > max_length or "\x00" in value:
         raise ValueError(f"SIDE_EFFECT_CONTROL_FIELD_INVALID:{key}")
@@ -216,7 +285,9 @@ def _optional_string(value: Any, *, max_length: int) -> str | None:
 
 
 def _bounded_int(value: Any, minimum: int, maximum: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("SIDE_EFFECT_CONTROL_INTEGER_INVALID")
+    if not minimum <= value <= maximum:
         raise ValueError("SIDE_EFFECT_CONTROL_INTEGER_INVALID")
     return value
 
