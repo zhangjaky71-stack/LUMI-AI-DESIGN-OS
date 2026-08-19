@@ -17,6 +17,8 @@
     "apps/api/src/lumi_api/tool_audit_control.py",
     "apps/api/src/lumi_api/persistence/models/platform.py",
     "apps/api/src/lumi_api/tool_approval_control.py",
+    "apps/api/src/lumi_api/tool_data_control.py",
+    "apps/api/src/lumi_api/persistence/models/project.py",
     "apps/api/src/lumi_api/persistence/models/workflow.py"
   ]
 }
