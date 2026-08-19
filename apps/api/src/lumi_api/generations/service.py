@@ -73,9 +73,14 @@ class ImageGenerationControlPlane:
             spec=spec,
             task_id=task_id,
         )
+        operation_id = UUID(spec.operation_id)
+        await self._lock_generation_operation(
+            organization_id=organization_id,
+            operation_id=operation_id,
+        )
         existing = await self._generation_by_operation(
             organization_id=organization_id,
-            operation_id=UUID(spec.operation_id),
+            operation_id=operation_id,
         )
         if existing is not None:
             raise GenerationConflict("GENERATION_OPERATION_ALREADY_EXISTS")
@@ -121,7 +126,7 @@ class ImageGenerationControlPlane:
             project_id=payload.project_id,
             task_id=task_id,
             agent_run_id=payload.agent_run_id,
-            operation_id=UUID(spec.operation_id),
+            operation_id=operation_id,
             provider=_PROVIDER_PENDING,
             model=_MODEL_PENDING,
             capability=_IMAGE_CAPABILITY,
@@ -198,7 +203,7 @@ class ImageGenerationControlPlane:
         try:
             spec_organization_id = UUID(spec.organization_id)
             spec_project_id = UUID(spec.project_id)
-            spec_operation_id = UUID(spec.operation_id)
+            UUID(spec.operation_id)
             spec_agent_run_id = UUID(spec.agent_run_id) if spec.agent_run_id else None
         except ValueError as exc:
             raise GenerationInvalid("GENERATION_SPEC_SCOPE_INVALID") from exc
@@ -208,8 +213,6 @@ class ImageGenerationControlPlane:
             raise GenerationInvalid("GENERATION_SPEC_PROJECT_MISMATCH")
         if spec_agent_run_id != payload.agent_run_id:
             raise GenerationInvalid("GENERATION_SPEC_AGENT_RUN_MISMATCH")
-        if not spec_operation_id:
-            raise GenerationInvalid("GENERATION_OPERATION_ID_REQUIRED")
         if UUID(spec.task_id) != task_id:
             raise GenerationInvalid("GENERATION_SPEC_TASK_MISMATCH")
 
@@ -270,7 +273,18 @@ class ImageGenerationControlPlane:
     ) -> None:
         await self.session.execute(
             text("SELECT pg_advisory_xact_lock(:key)"),
-            {"key": _lock_key(organization_id, idempotency_key)},
+            {"key": _idempotency_lock_key(organization_id, idempotency_key)},
+        )
+
+    async def _lock_generation_operation(
+        self,
+        *,
+        organization_id: UUID,
+        operation_id: UUID,
+    ) -> None:
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"),
+            {"key": _operation_lock_key(organization_id, operation_id)},
         )
 
     async def _get_idempotency_operation(
@@ -315,8 +329,15 @@ class ImageGenerationControlPlane:
         return generation
 
 
-def _lock_key(organization_id: UUID, idempotency_key: str) -> int:
+def _idempotency_lock_key(organization_id: UUID, idempotency_key: str) -> int:
     digest = hashlib.sha256(
-        f"{_OPERATION_TYPE}\x00{organization_id}\x00{idempotency_key}".encode("utf-8")
+        f"{_OPERATION_TYPE}:idempotency\x00{organization_id}\x00{idempotency_key}".encode("utf-8")
+    ).digest()
+    return int.from_bytes(digest[:8], "big", signed=True)
+
+
+def _operation_lock_key(organization_id: UUID, operation_id: UUID) -> int:
+    digest = hashlib.sha256(
+        f"{_OPERATION_TYPE}:operation\x00{organization_id}\x00{operation_id}".encode("utf-8")
     ).digest()
     return int.from_bytes(digest[:8], "big", signed=True)
