@@ -9,6 +9,7 @@ from lumi_tool_gateway.contracts import ToolPermissionContext, ToolRequest
 from lumi_tool_gateway.data_control import (
     ArtifactQueryAdapter,
     AssetReadAdapter,
+    AssetWriteDerivedAdapter,
     HttpToolDataClient,
     MediaInspectAdapter,
     ProjectQueryAdapter,
@@ -43,6 +44,17 @@ class _CapturingClient(HttpToolDataClient):
                 "metadata": {},
                 "latest_version": None,
             }
+        if path.endswith("/asset/write-derived"):
+            return {
+                "asset_id": str(uuid4()),
+                "project_id": str(uuid4()),
+                "kind": "image",
+                "source": "derived",
+                "name": "derived.png",
+                "status": "ready",
+                "metadata": dict(payload.get("metadata", {})),
+                "files": [],
+            }
         return {
             "asset_id": str(payload["asset_id"]),
             "kind": "image",
@@ -57,6 +69,7 @@ def _request(
     name: str = "project.query",
     arguments: dict[str, Any] | None = None,
     permission: str = "tool.project.query",
+    idempotency_key: str | None = None,
 ) -> ToolRequest:
     organization_id = uuid4()
     return ToolRequest(
@@ -68,7 +81,7 @@ def _request(
         name=name,
         version="1.0.0",
         arguments=arguments or {"query": "project.summary"},
-        purpose="Read canonical task-scoped data.",
+        purpose="Use canonical task-scoped data.",
         permission_context=ToolPermissionContext(
             organization_id=organization_id,
             actor_id="agent-runtime:design-agent",
@@ -76,6 +89,7 @@ def _request(
             agent_allow_patterns=("*",),
             organization_allow_patterns=("*",),
         ),
+        idempotency_key=idempotency_key,
     )
 
 
@@ -172,6 +186,48 @@ class ToolDataControlTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(asset_result.resource_refs, (f"asset://{asset_id}",))
         self.assertEqual(artifact_result.resource_refs, (f"artifact://{artifact_id}",))
         self.assertEqual(media_result.resource_refs, (f"asset://{asset_id}",))
+
+    async def test_derived_asset_client_sends_canonical_side_effect_scope(self) -> None:
+        client = _CapturingClient()
+        source_asset_id = str(uuid4())
+        artifact_id = uuid4()
+        request = _request(
+            name="asset.write-derived",
+            arguments={
+                "source_asset_id": source_asset_id,
+                "artifact_ref": f"artifact://{artifact_id}",
+                "metadata": {"variant": "social"},
+            },
+            permission="tool.asset.write-derived",
+            idempotency_key="derived-1",
+        )
+        await client.asset_write_derived(request)
+
+        path, payload = client.calls[0]
+        self.assertEqual(path, "/internal/v1/tool-data/asset/write-derived")
+        self.assertEqual(payload["tool_call_id"], str(request.tool_call_id))
+        self.assertEqual(payload["source_asset_id"], source_asset_id)
+        self.assertEqual(payload["artifact_ref"], f"artifact://{artifact_id}")
+        self.assertEqual(payload["metadata"], {"variant": "social"})
+        self.assertNotIn("project_id", payload)
+
+    async def test_derived_asset_adapter_returns_durable_side_effect_ref(self) -> None:
+        client = _CapturingClient()
+        request = _request(
+            name="asset.write-derived",
+            arguments={
+                "source_asset_id": str(uuid4()),
+                "artifact_ref": f"artifact://{uuid4()}",
+            },
+            permission="tool.asset.write-derived",
+            idempotency_key="derived-2",
+        )
+        definition = build_p0_registry().resolve("asset.write-derived", "1.0.0")
+        result = await AssetWriteDerivedAdapter(client).invoke(definition, request)
+
+        self.assertEqual(result.resource_refs, (result.side_effect_ref,))
+        self.assertIsNotNone(result.side_effect_ref)
+        self.assertTrue(result.side_effect_ref.startswith("asset://"))
 
     async def test_client_rejects_unsupported_project_query(self) -> None:
         client = _CapturingClient()
