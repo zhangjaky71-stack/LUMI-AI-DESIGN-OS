@@ -1,0 +1,109 @@
+name: Tool Gateway P0 Evidence Assembly
+
+on:
+  pull_request:
+    paths:
+      - "scripts/collect_tool_gateway_p0_readiness.py"
+      - "scripts/derive_tool_gateway_p0_search_evidence.py"
+      - "scripts/assemble_tool_gateway_p0_e2e_evidence.py"
+      - "scripts/merge_tool_gateway_e2e_into_staging_evidence.py"
+      - "scripts/validate_tool_gateway_e2e_evidence.py"
+      - "scripts/collect_tool_gateway_p0_db_evidence.py"
+      - "scripts/verify_tool_gateway_p0_offload_s3.py"
+      - "scripts/probe_tool_gateway_p0_from_agent_runtime.py"
+      - "staging/acceptance/tool-gateway-e2e-v1.json"
+      - ".github/workflows/tool-gateway-p0-evidence-assembly.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  assembly-source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile evidence assembly sources
+        run: |
+          python3 -m py_compile \
+            scripts/collect_tool_gateway_p0_readiness.py \
+            scripts/derive_tool_gateway_p0_search_evidence.py \
+            scripts/assemble_tool_gateway_p0_e2e_evidence.py \
+            scripts/merge_tool_gateway_e2e_into_staging_evidence.py \
+            scripts/validate_tool_gateway_e2e_evidence.py \
+            scripts/collect_tool_gateway_p0_db_evidence.py \
+            scripts/verify_tool_gateway_p0_offload_s3.py \
+            scripts/probe_tool_gateway_p0_from_agent_runtime.py
+      - name: Drill canonical Tool Gateway E2E contract
+        run: python3 scripts/validate_tool_gateway_e2e_evidence.py --self-test
+      - name: Require independent evidence joins and no synthetic secret material
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          assembler = Path(
+              "scripts/assemble_tool_gateway_p0_e2e_evidence.py"
+          ).read_text(encoding="utf-8")
+          search = Path(
+              "scripts/derive_tool_gateway_p0_search_evidence.py"
+          ).read_text(encoding="utf-8")
+          readiness = Path(
+              "scripts/collect_tool_gateway_p0_readiness.py"
+          ).read_text(encoding="utf-8")
+
+          required = (
+              'parser.add_argument("--staging"',
+              'parser.add_argument("--probe"',
+              'parser.add_argument("--db"',
+              'parser.add_argument("--s3"',
+              'parser.add_argument("--readiness"',
+              'parser.add_argument("--search"',
+              'validate_contract(payload)',
+              'merged = merge(staging, assembled)',
+              'derived.get("adapter_invocation_count") != 1',
+              'derived.get("duplicate_derived_asset_count") != 0',
+              'audit.get("cross_tenant_rows") != 0',
+              's3.get("object_head_verified") is not True',
+              'search.get("live_request_observed") is not True',
+              'tool_call_id != calls["sandbox.execute"]["tool_call_id"]',
+          )
+          for marker in required:
+              if marker not in assembler:
+                  raise SystemExit(f"evidence assembler missing boundary: {marker}")
+
+          search_required = (
+              '"successful Agent Runtime web.search call on the digest-pinned RC plus "',
+              '"direct_packet_capture": False',
+              '"provider_http_status": 200',
+              '"redirect_followed": False',
+          )
+          for marker in search_required:
+              if marker not in search:
+                  raise SystemExit(f"search evidence derivation missing: {marker}")
+
+          readiness_required = (
+              '"adapter_count": 8',
+              '"runtime_binding_count": 4',
+              '"missing_adapters": []',
+              '"missing_runtime_bindings": []',
+          )
+          for marker in readiness_required:
+              if marker not in readiness:
+                  raise SystemExit(f"readiness collector missing: {marker}")
+
+          forbidden = (
+              "get_secret_value",
+              'boto3.client("secretsmanager"',
+              "generate_presigned_url",
+              '"verdict": "PASS"\n        }',
+          )
+          combined = assembler + "\n" + search + "\n" + readiness
+          for marker in forbidden:
+              if marker in combined:
+                  raise SystemExit(f"assembly source contains forbidden marker: {marker}")
+          print("Tool Gateway P0 evidence assembly source contract: PASS")
+          PY
