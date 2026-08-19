@@ -18,6 +18,10 @@ from lumi_api.tool_audit_control import (
     build_tool_audit_control_runtime,
     create_tool_audit_control_router,
 )
+from lumi_api.tool_data_control import (
+    build_tool_data_control_runtime,
+    create_tool_data_control_router,
+)
 from lumi_api.tool_side_effect_control import (
     build_tool_side_effect_control_runtime,
     create_tool_side_effect_control_router,
@@ -64,6 +68,17 @@ if _internal_controls_required or _approval_secret_present:
 else:
     app.state.tool_approval_control_enabled = False
 
+_data_secret_present = bool(os.getenv("LUMI_TOOL_DATA_AUTH_SECRET", ""))
+if _internal_controls_required or _data_secret_present:
+    app.include_router(
+        create_tool_data_control_router(
+            build_tool_data_control_runtime(session_factory)
+        )
+    )
+    app.state.tool_data_control_enabled = True
+else:
+    app.state.tool_data_control_enabled = False
+
 app.include_router(create_tool_approval_public_router(session_factory))
 
 
@@ -89,6 +104,8 @@ async def health_ready() -> dict[str, str]:
         raise HTTPException(status_code=503, detail="tool audit control plane unavailable")
     if _internal_controls_required and not app.state.tool_approval_control_enabled:
         raise HTTPException(status_code=503, detail="tool approval control plane unavailable")
+    if _internal_controls_required and not app.state.tool_data_control_enabled:
+        raise HTTPException(status_code=503, detail="tool data control plane unavailable")
     return _payload()
 
 
