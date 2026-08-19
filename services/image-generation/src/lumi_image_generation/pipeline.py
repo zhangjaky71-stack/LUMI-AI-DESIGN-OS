@@ -160,7 +160,10 @@ class ImageGenerationPipeline:
         self.events = events
 
     async def start(self, spec: ImageGenerationSpec, *, created_at: str) -> GenerationJob:
-        existing = self.repository.get_by_operation(spec.organization_id, spec.operation_id)
+        existing = await self.repository.get_by_operation(
+            spec.organization_id,
+            spec.operation_id,
+        )
         if existing is not None:
             if existing.semantic_hash != spec.semantic_hash:
                 raise OperationSemanticConflict("GENERATION_OPERATION_SEMANTIC_CONFLICT")
@@ -194,8 +197,8 @@ class ImageGenerationPipeline:
             candidates=(),
             created_at=created_at,
         )
-        self.repository.save_spec(spec)
-        self.repository.save(job)
+        await self.repository.save_spec(spec)
+        await self.repository.save(job)
         await self.events.emit(
             "generation.started",
             organization_id=spec.organization_id,
@@ -232,7 +235,7 @@ class ImageGenerationPipeline:
                     error_code=f"GENERATION_GATEWAY_EXCEPTION:{type(exc).__name__}",
                 )
                 job = _replace_candidate(job, candidate)
-                self.repository.save(job)
+                await self.repository.save(job)
                 continue
 
             await self.events.emit(
@@ -259,7 +262,7 @@ class ImageGenerationPipeline:
                     model=result.model,
                     provider_request_id=result.provider_request_id,
                 )
-                self.repository.save_pending(
+                await self.repository.save_pending(
                     PendingInvocationRecord(
                         organization_id=spec.organization_id,
                         generation_id=generation_id,
@@ -295,7 +298,7 @@ class ImageGenerationPipeline:
                     error_code=f"GENERATION_PROVIDER_{result.status}",
                 )
             job = _replace_candidate(job, candidate)
-            self.repository.save(job)
+            await self.repository.save(job)
 
         return await self._finalize(job, completed_at=created_at)
 
@@ -306,10 +309,10 @@ class ImageGenerationPipeline:
         generation_id: str,
         completed_at: str,
     ) -> GenerationJob:
-        job = self.repository.get(organization_id, generation_id)
+        job = await self.repository.get(organization_id, generation_id)
         if job is None:
             raise ImageGenerationPipelineError("GENERATION_JOB_NOT_FOUND")
-        spec = self.repository.get_spec(organization_id, job.operation_id)
+        spec = await self.repository.get_spec(organization_id, job.operation_id)
         if spec is None:
             raise ImageGenerationPipelineError("GENERATION_SPEC_SNAPSHOT_MISSING")
 
@@ -323,7 +326,7 @@ class ImageGenerationPipeline:
         for candidate in tuple(job.candidates):
             if candidate.status != "PROVIDER_PENDING":
                 continue
-            pending = self.repository.get_pending(
+            pending = await self.repository.get_pending(
                 organization_id,
                 generation_id,
                 candidate.candidate_id,
@@ -335,7 +338,7 @@ class ImageGenerationPipeline:
                     error_code="GENERATION_PENDING_STATE_MISSING",
                 )
                 job = _replace_candidate(job, failed)
-                self.repository.save(job)
+                await self.repository.save(job)
                 continue
 
             try:
@@ -350,7 +353,7 @@ class ImageGenerationPipeline:
                     error_code=f"GENERATION_POLL_DEFERRED:{type(exc).__name__}",
                 )
                 job = _replace_candidate(job, deferred)
-                self.repository.save(job)
+                await self.repository.save(job)
                 await self.events.emit(
                     "generation.provider_submitted",
                     organization_id=organization_id,
@@ -367,12 +370,12 @@ class ImageGenerationPipeline:
                 continue
 
             if result.status == "PENDING":
-                self.repository.save_pending(replace(pending, result=result))
+                await self.repository.save_pending(replace(pending, result=result))
                 job = _replace_candidate(job, replace(candidate, error_code=None))
-                self.repository.save(job)
+                await self.repository.save(job)
                 continue
 
-            self.repository.delete_pending(
+            await self.repository.delete_pending(
                 organization_id,
                 generation_id,
                 candidate.candidate_id,
@@ -406,7 +409,7 @@ class ImageGenerationPipeline:
                     error_code=error_code,
                 )
             job = _replace_candidate(job, completed)
-            self.repository.save(job)
+            await self.repository.save(job)
 
         return await self._finalize(job, completed_at=completed_at)
 
@@ -582,7 +585,7 @@ class ImageGenerationPipeline:
     async def _finalize(self, job: GenerationJob, *, completed_at: str) -> GenerationJob:
         if any(candidate.status == "PROVIDER_PENDING" for candidate in job.candidates):
             updated = replace(job, status="PROVIDER_PENDING")
-            self.repository.save(updated)
+            await self.repository.save(updated)
             return updated
 
         ready = sum(candidate.status == "READY" for candidate in job.candidates)
@@ -601,7 +604,7 @@ class ImageGenerationPipeline:
             completed_at=completed_at,
             error_code=error_code,
         )
-        self.repository.save(updated)
+        await self.repository.save(updated)
         event_type = "generation.failed" if status == "FAILED" else "generation.completed"
         await self.events.emit(
             event_type,
