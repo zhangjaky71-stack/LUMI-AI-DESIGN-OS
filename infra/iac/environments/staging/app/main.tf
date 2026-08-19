@@ -20,6 +20,10 @@ locals {
     LUMI_SERVICE_DISCOVERY = "staging.lumi.internal"
   }
 
+  model_gateway_environment = {
+    LUMI_MODEL_GATEWAY_URL = "http://model-gateway.${local.environment}.lumi.internal:8080"
+  }
+
   services = {
     api = {
       image             = var.api_image
@@ -51,11 +55,16 @@ locals {
       desired_count = 2
       min_capacity  = 2
       max_capacity  = 8
-      environment = merge(local.common_environment, { LUMI_ROLE = "agent-runtime" })
+      environment = merge(
+        local.common_environment,
+        local.model_gateway_environment,
+        { LUMI_ROLE = "agent-runtime" },
+      )
       secret_arns = {
-        LUMI_DATABASE_URL = local.secret_arns["database/app"]
-        LUMI_REDIS_URL    = local.secret_arns["redis/url"]
-        LUMI_RABBITMQ_URL = local.secret_arns["rabbitmq/url"]
+        LUMI_DATABASE_URL              = local.secret_arns["database/app"]
+        LUMI_REDIS_URL                 = local.secret_arns["redis/url"]
+        LUMI_RABBITMQ_URL              = local.secret_arns["rabbitmq/url"]
+        LUMI_MODEL_GATEWAY_AUTH_SECRET = local.secret_arns["internal/model-gateway"]
       }
       s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["sandbox"]]
       autoscale_metric_name  = "AgentPendingRuns"
@@ -63,17 +72,19 @@ locals {
     }
 
     model-gateway = {
-      image         = var.model_gateway_image
-      cpu           = 1024
-      memory        = 2048
-      desired_count = 2
-      min_capacity  = 2
-      max_capacity  = 6
+      image          = var.model_gateway_image
+      cpu            = 1024
+      memory         = 2048
+      desired_count  = 2
+      min_capacity   = 2
+      max_capacity   = 6
+      container_port = 8080
       environment = merge(local.common_environment, { LUMI_ROLE = "model-gateway" })
       secret_arns = {
-        LUMI_DATABASE_URL          = local.secret_arns["database/app"]
-        LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"]
-        LUMI_MEDIA_PROVIDER_SECRET = local.secret_arns["providers/media"]
+        LUMI_DATABASE_URL              = local.secret_arns["database/app"]
+        LUMI_MODEL_PROVIDER_SECRET     = local.secret_arns["providers/model"]
+        LUMI_MEDIA_PROVIDER_SECRET     = local.secret_arns["providers/media"]
+        LUMI_MODEL_GATEWAY_AUTH_SECRET = local.secret_arns["internal/model-gateway"]
       }
       s3_bucket_arns         = []
       autoscale_metric_name  = "ModelGatewayInflight"
@@ -104,10 +115,15 @@ locals {
       desired_count = 2
       min_capacity  = 2
       max_capacity  = 12
-      environment = merge(local.common_environment, { LUMI_ROLE = "worker-media" })
+      environment = merge(
+        local.common_environment,
+        local.model_gateway_environment,
+        { LUMI_ROLE = "worker-media" },
+      )
       secret_arns = {
-        LUMI_REDIS_URL    = local.secret_arns["redis/url"]
-        LUMI_RABBITMQ_URL = local.secret_arns["rabbitmq/url"]
+        LUMI_REDIS_URL                 = local.secret_arns["redis/url"]
+        LUMI_RABBITMQ_URL              = local.secret_arns["rabbitmq/url"]
+        LUMI_MODEL_GATEWAY_AUTH_SECRET = local.secret_arns["internal/model-gateway"]
       }
       s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["exports"]]
       autoscale_metric_name  = "MediaQueueBacklog"
