@@ -22,11 +22,12 @@ class StaticReferenceAuthorizer:
     def __init__(self, references: Mapping[tuple[str, str], AuthorizedReference]) -> None:
         self.references = dict(references)
 
-    def authorize(
+    async def authorize(
         self,
         spec: ImageGenerationSpec,
         references: tuple[ImageReference, ...],
     ) -> tuple[AuthorizedReference, ...]:
+        del spec
         result: list[AuthorizedReference] = []
         for reference in references:
             item = self.references.get((reference.asset_id, reference.asset_version))
