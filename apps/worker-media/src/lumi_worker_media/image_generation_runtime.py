@@ -110,7 +110,7 @@ class HostedImageGenerationRuntime:
         try:
             row = await connection.fetchrow(
                 """
-                SELECT task_type, input_json
+                SELECT type, input_json
                 FROM tasks
                 WHERE id=$1 AND organization_id=$2 AND project_id=$3
                 """,
@@ -122,7 +122,7 @@ class HostedImageGenerationRuntime:
             await connection.close()
         if row is None:
             raise RuntimeError("IMAGE_GENERATION_TASK_NOT_FOUND")
-        if row["task_type"] != _JOB_KIND:
+        if row["type"] != _JOB_KIND:
             raise RuntimeError("IMAGE_GENERATION_TASK_TYPE_MISMATCH")
         input_payload = _json_object(row["input_json"])
         if input_payload.get("schema_version") != _TASK_INPUT_SCHEMA_VERSION:
