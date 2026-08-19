@@ -15,21 +15,22 @@ locals {
     "providers/media",
     "billing/webhook",
     "auth/signing",
+    "internal/model-gateway",
   ])
 }
 
 module "platform_core" {
   source = "../../../modules/platform-core"
 
-  project                = local.project
-  environment            = local.environment
-  account_id             = var.account_id
-  region                 = var.region
-  vpc_cidr               = "10.40.0.0/16"
-  availability_zones     = var.availability_zones
-  public_subnet_cidrs    = ["10.40.0.0/24", "10.40.1.0/24", "10.40.2.0/24"]
-  private_subnet_cidrs   = ["10.40.16.0/20", "10.40.32.0/20", "10.40.48.0/20"]
-  data_subnet_cidrs      = ["10.40.80.0/24", "10.40.81.0/24", "10.40.82.0/24"]
+  project                 = local.project
+  environment             = local.environment
+  account_id              = var.account_id
+  region                  = var.region
+  vpc_cidr                = "10.40.0.0/16"
+  availability_zones      = var.availability_zones
+  public_subnet_cidrs     = ["10.40.0.0/24", "10.40.1.0/24", "10.40.2.0/24"]
+  private_subnet_cidrs    = ["10.40.16.0/20", "10.40.32.0/20", "10.40.48.0/20"]
+  data_subnet_cidrs       = ["10.40.80.0/24", "10.40.81.0/24", "10.40.82.0/24"]
   postgres_engine_version = var.postgres_engine_version
   db_instance_class       = var.db_instance_class
   db_multi_az              = true
