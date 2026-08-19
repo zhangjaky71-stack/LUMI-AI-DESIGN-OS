@@ -265,6 +265,13 @@ jobs:
             infra/iac/environments/production/app \
             "$MANIFEST_PATH" \
             reports/production-deployments/runtime/runtime-identity.json
+      - name: Capture live canary and alarm rollback configuration
+        if: inputs.operation == 'deploy-release'
+        run: |
+          bash scripts/capture-production-rollout-evidence.sh \
+            infra/iac/environments/production/app \
+            "$MANIFEST_PATH" \
+            reports/production-deployments/runtime/rollout-evidence.json
       - name: Read-only production smoke
         if: inputs.operation == 'deploy-release'
         run: |
