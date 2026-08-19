@@ -164,6 +164,28 @@ def hosted_media_contract() -> None:
         'ModelOutput(kind="b64_json"',
     )
     require(
+        "services/model-gateway/src/lumi_model_gateway/api.py",
+        "async def estimate(self, request: ModelRequest) -> RouteCandidate",
+        "decision = await self.gateway.router.route(request)",
+    )
+    require(
+        "services/model-gateway/src/lumi_model_gateway/estimate_transport.py",
+        '"/internal/v1/models/estimate"',
+        "class HttpModelGatewayEstimateClient",
+        "sign_internal_request",
+        "decode_route_estimate",
+    )
+    require(
+        "apps/api/src/lumi_api/model_gateway_service.py",
+        '_ESTIMATE_PATH = "/internal/v1/models/estimate"',
+        "candidate = await runtime.api.estimate(decoded)",
+        "encode_route_candidate(candidate)",
+        'LUMI_MEDIA_PROVIDER_SECRET',
+        "S3ProviderOutputStore.from_env()",
+        "media_provider_secret=media_provider_secret",
+        "provider_output_store=provider_output_store",
+    )
+    require(
         "apps/api/src/lumi_api/provider_output_store.py",
         "class S3ProviderOutputStore",
         'os.getenv("LUMI_PROVIDER_OUTPUT_BUCKET", "")',
@@ -192,17 +214,37 @@ def hosted_media_contract() -> None:
         '"image_output_usd_per_million_tokens"',
     )
     require(
-        "apps/api/src/lumi_api/model_gateway_service.py",
-        'LUMI_MEDIA_PROVIDER_SECRET',
-        "S3ProviderOutputStore.from_env()",
-        "media_provider_secret=media_provider_secret",
-        "provider_output_store=provider_output_store",
+        "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py",
+        "class HostedImageModelGatewayAdapter",
+        "HttpModelGatewayEstimateClient",
+        "caller_service=\"worker-media\"",
+        "class S3ProviderOutputFetcher",
+        '"provider-output/v1/"',
+        "PROVIDER_OUTPUT_BUCKET_MISMATCH",
+        "IMAGE_GATEWAY_OUTPUT_MUST_BE_ASSET_REF",
+    )
+    forbid(
+        "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py",
+        "OPENAI_API_KEY",
+        "LUMI_MODEL_PROVIDER_SECRET",
+        "LUMI_MEDIA_PROVIDER_SECRET",
+        "api.openai.com",
     )
     require(
         "services/model-gateway/tests/test_openai_image_adapter.py",
         "test_",
         "DeliveryState.ACCEPTED",
         "asset_ref",
+    )
+    require(
+        "services/model-gateway/tests/test_estimate_transport.py",
+        "test_estimate_uses_distinct_signed_internal_path",
+        "/internal/v1/models/estimate",
+    )
+    require(
+        "apps/worker-media/tests/test_image_gateway_runtime.py",
+        "test_private_gateway_estimate_and_invoke_map_to_node46_contract",
+        "test_fetcher_rejects_cross_bucket_encoded_and_traversal_refs",
     )
     require(
         "apps/api/tests/test_model_gateway_media_bootstrap.py",
