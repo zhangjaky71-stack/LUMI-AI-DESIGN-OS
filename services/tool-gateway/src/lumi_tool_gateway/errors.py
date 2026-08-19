@@ -53,6 +53,26 @@ class ToolIdempotencyRequiredError(ToolGatewayError):
     code = "TOOL_IDEMPOTENCY_KEY_REQUIRED"
 
 
+class ToolIdempotencyConflictError(ToolGatewayError):
+    code = "TOOL_IDEMPOTENCY_CONFLICT"
+
+
+class ToolIdempotencyInProgressError(ToolGatewayError):
+    code = "TOOL_IDEMPOTENCY_IN_PROGRESS"
+
+
+class ToolPriorSideEffectFailedError(ToolGatewayError):
+    code = "TOOL_PRIOR_SIDE_EFFECT_FAILED"
+
+
+class ToolAmbiguousSideEffectError(ToolGatewayError):
+    code = "TOOL_AMBIGUOUS_SIDE_EFFECT"
+
+
+class ToolSideEffectControlUnavailableError(ToolGatewayError):
+    code = "TOOL_SIDE_EFFECT_CONTROL_UNAVAILABLE"
+
+
 class ToolSideEffectGuardRequiredError(ToolGatewayError):
     code = "TOOL_SIDE_EFFECT_GUARD_REQUIRED"
 
