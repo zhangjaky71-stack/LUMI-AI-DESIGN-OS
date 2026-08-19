@@ -9,6 +9,7 @@ import pytest
 from lumi_image_generation.model import ImageGenerationSpec, OutputRequirements
 from lumi_image_generation.spec_codec import encode_spec
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lumi_api.api.v1.contracts import GenerationCreate
@@ -76,11 +77,12 @@ async def _acceptance() -> None:
                 await session.flush()
 
                 spec = _spec(task_id=str(task_id), operation_id=str(operation_id))
+                canonical_spec = encode_spec(spec)
                 payload = GenerationCreate(
                     project_id=PROJECT_A_ID,
                     task_id=task_id,
                     capability="image.generate",
-                    request=encode_spec(spec),
+                    request=canonical_spec,
                 )
                 service = ImageGenerationControlPlane(session)
                 first = await service.create(
@@ -110,6 +112,26 @@ async def _acceptance() -> None:
                         idempotency_key="node-73-1-integration-key-0002",
                         trace_id="alternate-key",
                     )
+
+                # Prove the invariant is durable even if a future writer bypasses the
+                # control-plane service and attempts a raw ORM insert.
+                with pytest.raises(IntegrityError):
+                    async with session.begin_nested():
+                        session.add(
+                            Generation(
+                                organization_id=ORG_ID,
+                                project_id=PROJECT_A_ID,
+                                task_id=task_id,
+                                operation_id=operation_id,
+                                provider="model-gateway",
+                                model="routing-pending",
+                                capability="image.generate",
+                                status="pending",
+                                request_json=canonical_spec,
+                                result_json={},
+                            )
+                        )
+                        await session.flush()
 
                 generation_count = await session.scalar(
                     select(func.count()).select_from(Generation).where(
