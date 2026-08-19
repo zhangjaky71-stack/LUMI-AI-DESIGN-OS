@@ -9,7 +9,11 @@ on:
       - "apps/api/tests/test_media_dispatch.py"
       - "apps/api/pyproject.toml"
       - "apps/worker-media/src/lumi_worker_media/queue_contracts.py"
+      - "apps/worker-media/src/lumi_worker_media/event_runtime.py"
+      - "apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py"
+      - "apps/worker-media/src/lumi_worker_media/cli.py"
       - "apps/worker-media/tests/test_queue_contracts.py"
+      - "apps/worker-media/tests/test_job_dispatch_runtime.py"
       - "apps/worker-media/pyproject.toml"
       - "scripts/validate_media_dispatch_contract.py"
       - "scripts/validate_queue_runtime_contract.py"
@@ -38,11 +42,15 @@ jobs:
           apps/api/src/lumi_api/media_dispatch.py
           apps/api/tests/test_media_dispatch.py
           apps/worker-media/src/lumi_worker_media/queue_contracts.py
+          apps/worker-media/src/lumi_worker_media/event_runtime.py
+          apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py
+          apps/worker-media/src/lumi_worker_media/cli.py
           apps/worker-media/tests/test_queue_contracts.py
+          apps/worker-media/tests/test_job_dispatch_runtime.py
           scripts/validate_media_dispatch_contract.py
           scripts/validate_queue_runtime_contract.py
 
-      - name: Validate canonical producer source contract
+      - name: Validate canonical producer and publisher source contract
         run: python scripts/validate_media_dispatch_contract.py
 
       - uses: astral-sh/setup-uv@v9.0.0
@@ -60,6 +68,7 @@ jobs:
           services/domain/tests/test_job_dispatch.py
           apps/api/tests/test_media_dispatch.py
           apps/worker-media/tests/test_queue_contracts.py
+          apps/worker-media/tests/test_job_dispatch_runtime.py
           -q
 
       - name: Ruff correctness gate
@@ -70,7 +79,11 @@ jobs:
           apps/api/src/lumi_api/media_dispatch.py
           apps/api/tests/test_media_dispatch.py
           apps/worker-media/src/lumi_worker_media/queue_contracts.py
+          apps/worker-media/src/lumi_worker_media/event_runtime.py
+          apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py
+          apps/worker-media/src/lumi_worker_media/cli.py
           apps/worker-media/tests/test_queue_contracts.py
+          apps/worker-media/tests/test_job_dispatch_runtime.py
           scripts/validate_media_dispatch_contract.py
           scripts/validate_queue_runtime_contract.py
 
@@ -80,3 +93,5 @@ jobs:
           services/domain/src/lumi_domain/job_dispatch.py
           apps/api/src/lumi_api/media_dispatch.py
           apps/worker-media/src/lumi_worker_media/queue_contracts.py
+          apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py
+          apps/worker-media/src/lumi_worker_media/cli.py
