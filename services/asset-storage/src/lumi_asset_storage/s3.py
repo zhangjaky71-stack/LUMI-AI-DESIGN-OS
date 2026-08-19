@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -164,7 +166,8 @@ class S3ObjectStore:
             ChecksumMode="ENABLED",
         )
         metadata = {
-            str(key).lower(): str(value) for key, value in dict(response.get("Metadata", {})).items()
+            str(key).lower(): str(value)
+            for key, value in dict(response.get("Metadata", {})).items()
         }
         return ObjectHead(
             bucket=bucket,
@@ -223,7 +226,12 @@ class S3ObjectStore:
     async def download_to_path(self, *, bucket: str, object_key: str, path: str) -> None:
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        await asyncio.to_thread(self.client.download_file, bucket, object_key, str(destination))
+        await asyncio.to_thread(
+            self.client.download_file,
+            bucket,
+            object_key,
+            str(destination),
+        )
 
     async def upload_from_path(
         self,
@@ -245,5 +253,75 @@ class S3ObjectStore:
             )
         return await self.head(bucket=bucket, object_key=object_key)
 
+    async def put_bytes(
+        self,
+        *,
+        bucket: str,
+        object_key: str,
+        data: bytes,
+        content_type: str,
+        max_bytes: int,
+        metadata: dict[str, str] | None = None,
+    ) -> ObjectHead:
+        if not bucket or not object_key:
+            raise ValueError("S3_OBJECT_LOCATION_REQUIRED")
+        if not content_type or "\x00" in content_type:
+            raise ValueError("S3_CONTENT_TYPE_INVALID")
+        if max_bytes <= 0:
+            raise ValueError("S3_MAX_BYTES_INVALID")
+        if not isinstance(data, bytes):
+            raise TypeError("S3_BYTES_REQUIRED")
+        if len(data) > max_bytes:
+            raise ValueError("S3_OBJECT_TOO_LARGE")
+        checksum = base64.b64encode(hashlib.sha256(data).digest()).decode("ascii")
+        await asyncio.to_thread(
+            self.client.put_object,
+            Bucket=bucket,
+            Key=object_key,
+            Body=data,
+            ContentType=content_type,
+            ChecksumSHA256=checksum,
+            Metadata=dict(metadata or {}),
+        )
+        return await self.head(bucket=bucket, object_key=object_key)
+
+    async def get_bytes(
+        self,
+        *,
+        bucket: str,
+        object_key: str,
+        max_bytes: int,
+    ) -> bytes:
+        if not bucket or not object_key:
+            raise ValueError("S3_OBJECT_LOCATION_REQUIRED")
+        if max_bytes <= 0:
+            raise ValueError("S3_MAX_BYTES_INVALID")
+        head = await self.head(bucket=bucket, object_key=object_key)
+        if head.content_length > max_bytes:
+            raise ValueError("S3_OBJECT_TOO_LARGE")
+        response = await asyncio.to_thread(
+            self.client.get_object,
+            Bucket=bucket,
+            Key=object_key,
+        )
+        body = response.get("Body")
+        if body is None or not hasattr(body, "read"):
+            raise RuntimeError("S3_OBJECT_BODY_MISSING")
+        try:
+            data = await asyncio.to_thread(body.read, max_bytes + 1)
+        finally:
+            close = getattr(body, "close", None)
+            if callable(close):
+                await asyncio.to_thread(close)
+        if not isinstance(data, bytes):
+            raise RuntimeError("S3_OBJECT_BODY_INVALID")
+        if len(data) > max_bytes:
+            raise ValueError("S3_OBJECT_TOO_LARGE")
+        return data
+
     async def delete_candidate(self, *, bucket: str, object_key: str) -> None:
-        await asyncio.to_thread(self.client.delete_object, Bucket=bucket, Key=object_key)
+        await asyncio.to_thread(
+            self.client.delete_object,
+            Bucket=bucket,
+            Key=object_key,
+        )
