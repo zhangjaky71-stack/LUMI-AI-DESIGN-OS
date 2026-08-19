@@ -18,6 +18,11 @@ LEGACY_MIGRATION = ROOT / "db/migrations/0005_image_generation.sql"
 WORKER_CODEC = ROOT / "apps/worker-media/src/lumi_worker_media/image_generation_codec.py"
 WORKER_REPOSITORY = ROOT / "apps/worker-media/src/lumi_worker_media/image_generation_repository.py"
 WORKER_GATEWAY = ROOT / "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py"
+WORKER_PORTS = ROOT / "apps/worker-media/src/lumi_worker_media/image_generation_ports.py"
+WORKER_ARTIFACTS = ROOT / "apps/worker-media/src/lumi_worker_media/image_generation_artifacts.py"
+WORKER_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/image_generation_runtime.py"
+WORKER_APP = ROOT / "apps/worker-media/src/lumi_worker_media/app.py"
+WORKFLOW_MODEL = ROOT / "apps/api/src/lumi_api/persistence/models/workflow.py"
 WORKER_PROJECT = ROOT / "apps/worker-media/pyproject.toml"
 WORKSPACE = ROOT / "pyproject.toml"
 
@@ -76,6 +81,11 @@ def validate_python_contract() -> None:
     worker_codec = WORKER_CODEC.read_text(encoding="utf-8")
     worker_repository = WORKER_REPOSITORY.read_text(encoding="utf-8")
     worker_gateway = WORKER_GATEWAY.read_text(encoding="utf-8")
+    worker_ports = WORKER_PORTS.read_text(encoding="utf-8")
+    worker_artifacts = WORKER_ARTIFACTS.read_text(encoding="utf-8")
+    worker_runtime = WORKER_RUNTIME.read_text(encoding="utf-8")
+    worker_app = WORKER_APP.read_text(encoding="utf-8")
+    workflow_model = WORKFLOW_MODEL.read_text(encoding="utf-8")
 
     require("budget_limit_usd: Decimal" in model, "generation budget must use Decimal")
     require("operation_id" in pipeline and "semantic_hash" in pipeline, "operation idempotency missing")
@@ -87,6 +97,11 @@ def validate_python_contract() -> None:
     require("variant_operation_id=_variant_operation_id" in pipeline, "variant paid operation missing")
     require("resume_pending" in pipeline, "async resumability missing")
     require("validate_provider_image" in pipeline, "provider output integrity gate missing")
+    require("def _raise_if_retryable" in pipeline, "transient generation retry propagation missing")
+    require(
+        'existing is not None and existing.status != "RUNNING"' in pipeline,
+        "RUNNING generation retry/resume contract missing",
+    )
     require("async def get_by_operation" in ports, "generation repository port must be async")
     require("async def save_pending" in ports, "pending repository port must be async")
     require("constraint_snapshot_hash(spec)" in artifact, "Artifact must bind full constraint snapshot")
@@ -145,10 +160,20 @@ def validate_python_contract() -> None:
         "GENERATION_SPEC_SEMANTIC_HASH_MISMATCH" in worker_codec,
         "generation snapshot semantic integrity check missing",
     )
+
     require(
         "class HostedImageModelGatewayAdapter" in worker_gateway
         and "HttpModelGatewayEstimateClient" in worker_gateway,
         "Worker Media must use private Model Gateway for image execution",
+    )
+    require(
+        "ImageGenerationTransientError" in worker_gateway
+        and "_TRANSIENT_HTTP_STATUSES" in worker_gateway,
+        "private Model Gateway/S3 transient classification missing",
+    )
+    require(
+        "provider-output/v1/" in worker_gateway,
+        "Worker Media provider output fetcher must be bound to provider staging namespace",
     )
     for secret_marker in (
         "OPENAI_API_KEY",
@@ -160,6 +185,104 @@ def validate_python_contract() -> None:
             secret_marker not in worker_gateway,
             f"provider boundary leaked into Worker Media: {secret_marker}",
         )
+
+    require(
+        "class PostgresReferenceAuthorizer" in worker_ports
+        and "commercial_use" in worker_ports
+        and "GENERATION_REFERENCE_RIGHTS_UNKNOWN" in worker_ports,
+        "hosted reference-rights fail-closed adapter missing",
+    )
+    require(
+        "class S3GeneratedImageStore" in worker_ports
+        and 'f"generated/v1/' in worker_ports
+        and "GENERATION_STORAGE_TEMPORARY" in worker_ports,
+        "durable generated-image storage/retry boundary missing",
+    )
+    require(
+        "class PostgresGenerationCostObserver" in worker_ports
+        and "FROM cost_ledger" in worker_ports,
+        "NODE-27 generation cost observer missing",
+    )
+    require(
+        "INSERT INTO cost_ledger" not in worker_ports,
+        "Worker Media must never duplicate Model Gateway provider cost writes",
+    )
+    require(
+        "class PostgresGenerationEventSink" in worker_ports
+        and "INSERT INTO outbox_events" in worker_ports,
+        "canonical generation outbox sink missing",
+    )
+
+    for table in (
+        "artifacts",
+        "artifact_branches",
+        "artifact_versions",
+        "artifact_files",
+        "artifact_provenance",
+    ):
+        require(
+            f"INSERT INTO {table}" in worker_artifacts,
+            f"hosted artifact adapter must write canonical {table}",
+        )
+    require(
+        'stored.storage_key.startswith("generated/v1/")' in worker_artifacts,
+        "Artifact files must reference durable generated images, not provider staging",
+    )
+
+    require(
+        "class HostedImageGenerationRuntime" in worker_runtime,
+        "hosted NODE-46 composition root missing",
+    )
+    for marker in (
+        "PostgresGenerationRepository",
+        "PostgresReferenceAuthorizer",
+        "HostedImageModelGatewayAdapter",
+        "S3ProviderOutputFetcher",
+        "S3GeneratedImageStore",
+        "PostgresArtifactCandidateAdapter",
+        "PostgresGenerationCostObserver",
+        "PostgresGenerationEventSink",
+    ):
+        require(marker in worker_runtime, f"hosted image composition missing {marker}")
+    require(
+        "SELECT type, input_json" in worker_runtime and "SELECT task_type" not in worker_runtime,
+        "hosted image runtime must read canonical tasks.type",
+    )
+    require(
+        "image_generation_spec" in worker_runtime
+        and "IMAGE_GENERATION_TASK_OPERATION_MISMATCH" in worker_runtime,
+        "task DB snapshot/scope validation missing",
+    )
+
+    image_task_block = worker_app.split("def image_transform", 1)[1].split(
+        '@celery_app.task(name="lumi.jobs.video.render"', 1
+    )[0]
+    require(
+        '"status": "accepted"' not in image_task_block,
+        "image.transform must not regress to accepted-only placeholder",
+    )
+    require(
+        "HostedImageGenerationRuntime" in worker_app
+        and "TaskJobStore" in worker_app
+        and "execute_job" in worker_app,
+        "Celery image.transform must enter durable NODE-46 runtime",
+    )
+    require(
+        "JobState.RETRYING" in image_task_block and "JobState.FAILED" in image_task_block,
+        "Celery image task retry/failure propagation missing",
+    )
+
+    generation_block = workflow_model.split("class Generation(", 1)[1].split(
+        "class ProviderRequest(", 1
+    )[0]
+    require(
+        'status: Mapped[str] = mapped_column(String(32)' in generation_block,
+        "canonical generations.status storage contract missing",
+    )
+    require(
+        "CheckConstraint" not in generation_block,
+        "canonical generations.status must remain open to NODE-46 lifecycle states",
+    )
 
 
 def validate_workspace_contract() -> None:
