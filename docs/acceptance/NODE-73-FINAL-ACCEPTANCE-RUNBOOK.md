@@ -266,6 +266,8 @@ support/admin/on-call
 
 Source Terraform is not Production evidence.
 
+For the image-generation path specifically, the accepted Worker Media image provenance must include the executable Celery/task runtime, NODE-46 domain package, private Model Gateway adapter, versioned generation codec, canonical Postgres repository, reference/cost/outbox/storage ports, canonical artifact adapter, Hosted composition root and bounded S3 implementation. A worker-media digest without those source bindings is not acceptable evidence.
+
 ## 14. Freeze acceptance evidence
 
 After all scenario statuses are final, compute the SHA-256 of `acceptance-evidence.json` and put the exact path/hash into `release-manifest.json`.
@@ -352,8 +354,25 @@ Final acceptance is the start of governed operations, not permission to stop val
 
 ## 20. Current project state
 
-As of this source baseline, NODE-68～72 still contain unresolved runtime/cloud evidence requirements and GitHub hosted CI has been blocked before runner start by an account Billing/spending-limit condition on the latest readiness nodes.
+The code-addressable image-generation release path is now materially stronger than the earlier source baseline:
 
-Therefore this runbook's current final outcome is intentionally:
+- `image.transform` no longer returns an accepted-only placeholder; it enters the canonical TaskJobStore and Hosted NODE-46 runtime.
+- the Hosted runtime reads the versioned generation spec from canonical `tasks.type/input_json`, validates org/project/task/operation scope, resolves reference rights fail-closed, and composes the private Model Gateway, bounded S3 staging fetch, durable `generated/v1` storage, canonical `generations`, artifact/provenance rows, NODE-27 cost observation and outbox events;
+- paid Provider retries remain under NODE-20 operation identities, while transient private-Gateway/S3 failures propagate through the same RUNNING generation and only missing variants are resumed;
+- Worker Media does not write a second provider-cost ledger;
+- NODE-46 CI/static contracts cover the Hosted chain, and NODE-71 now requires both Model Gateway and Worker Media image source provenance with per-required-path negative drills.
+
+These are source/contract closures, not deployment proof. Final acceptance remains blocked by at least:
+
+- canonical `uv.lock` regeneration and successful `uv sync --all-packages --frozen`;
+- successful trusted PostgreSQL migration/ORM-drift/NODE-20/NODE-27/NODE-46 integration execution;
+- real six-runtime image build/start/promotion evidence with immutable digests, SBOM and provenance;
+- proof that the deployed Worker Media image contains and executes the required image-generation sources and can reach the private Model Gateway/S3/DB boundaries;
+- Production-like Staging, Production smoke/canary/rollback and DR evidence;
+- remaining NODE-68～72 runtime/cloud evidence requirements.
+
+The latest sampled GitHub-hosted Image Generation, Staging Acceptance and Final Product Acceptance jobs still fail before any step executes (`steps=null`, `logs_url=null`) with downstream jobs skipped. They therefore provide neither code-failure diagnostics nor PASS evidence.
+
+Therefore this runbook's current final outcome remains intentionally:
 
 # NOT ACCEPTED — SEE BLOCKING GAPS
