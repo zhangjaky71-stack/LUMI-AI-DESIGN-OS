@@ -4,11 +4,20 @@ on:
   pull_request:
     paths:
       - "services/model-gateway/**"
+      - "apps/api/src/lumi_api/model_gateway_runtime.py"
+      - "apps/api/src/lumi_api/model_paid_guard.py"
+      - "apps/api/src/lumi_api/costs/**"
+      - "apps/api/src/lumi_api/idempotency/**"
+      - "apps/api/src/lumi_api/persistence/models/platform.py"
+      - "apps/api/alembic/versions/0019_side_effect_provider_attempt_barrier.py"
+      - "apps/api/tests/test_model_paid_guard.py"
+      - "apps/api/tests/integration/test_model_paid_guard_postgres.py"
       - "scripts/validate_model_gateway_contract.py"
       - "scripts/integration_model_gateway.py"
       - "docs/runtime/MODEL-GATEWAY-V1.md"
       - "reports/nodes/NODE-22/**"
       - "pyproject.toml"
+      - "uv.lock"
       - "Makefile"
   workflow_dispatch:
 
@@ -40,17 +49,30 @@ jobs:
         run: >-
           uv run ruff check
           services/model-gateway
+          apps/api/src/lumi_api/model_gateway_runtime.py
+          apps/api/src/lumi_api/model_paid_guard.py
+          apps/api/tests/test_model_paid_guard.py
+          apps/api/tests/integration/test_model_paid_guard_postgres.py
           scripts/validate_model_gateway_contract.py
           scripts/integration_model_gateway.py
 
       - name: Model gateway type check
-        run: uv run pyright services/model-gateway
+        run: >-
+          uv run pyright
+          services/model-gateway
+          apps/api/src/lumi_api/model_gateway_runtime.py
+          apps/api/src/lumi_api/model_paid_guard.py
+          apps/api/tests/test_model_paid_guard.py
+          apps/api/tests/integration/test_model_paid_guard_postgres.py
 
       - name: Model gateway unit tests
         run: >-
           uv run python -m unittest discover
           -s services/model-gateway/tests
           -p 'test_*.py'
+
+      - name: Hosted paid guard unit tests
+        run: uv run pytest apps/api/tests/test_model_paid_guard.py -q
 
       - name: Mock provider full integration
         run: uv run python scripts/integration_model_gateway.py
@@ -60,3 +82,67 @@ jobs:
         run: |
           test -z "${OPENAI_API_KEY:-}"
           echo "NODE-22 contract is deterministic without live provider keys"
+
+  hosted-paid-guard-postgres:
+    needs: model-gateway
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+      LUMI_DB_INTEGRATION: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+
+      - name: Prepare local infrastructure
+        run: make infra-env
+
+      - name: Start local dependencies
+        run: make infra-up
+
+      - name: Upgrade database and verify ORM drift
+        run: |
+          make db-upgrade
+          bash scripts/db-local schema-check
+          make db-seed
+
+      - name: Durable paid invocation PostgreSQL acceptance
+        run: uv run pytest apps/api/tests/integration/test_model_paid_guard_postgres.py -q
+
+      - name: Migration downgrade/upgrade smoke
+        run: bash scripts/db-local downgrade-smoke
+
+      - name: Capture diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p reports/nodes/NODE-22/runtime
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml ps \
+            > reports/nodes/NODE-22/runtime/compose-ps.txt 2>&1 || true
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml logs \
+            --no-color --tail=300 postgres \
+            > reports/nodes/NODE-22/runtime/postgres.log 2>&1 || true
+
+      - name: Upload NODE-22 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-22-model-paid-guard-${{ github.run_id }}
+          path: reports/nodes/NODE-22/runtime
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: CONFIRM=1 make infra-reset || true
