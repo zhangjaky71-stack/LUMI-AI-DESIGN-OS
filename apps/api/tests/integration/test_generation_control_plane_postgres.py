@@ -1,0 +1,153 @@
+from __future__ import annotations
+
+import asyncio
+import os
+from decimal import Decimal
+from uuid import uuid4
+
+import pytest
+from lumi_image_generation.model import ImageGenerationSpec, OutputRequirements
+from lumi_image_generation.spec_codec import encode_spec
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from lumi_api.api.v1.contracts import GenerationCreate
+from lumi_api.generations.service import ImageGenerationControlPlane
+from lumi_api.persistence.models import Generation, IdempotencyOperation, OutboxEvent, Task
+from lumi_api.persistence.seed import ORG_ID, PROJECT_A_ID
+from lumi_api.persistence.session import create_engine
+
+if os.environ.get("LUMI_DB_INTEGRATION") != "1":
+    pytest.skip("set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests", allow_module_level=True)
+
+
+def _spec(*, task_id: str, operation_id: str) -> ImageGenerationSpec:
+    return ImageGenerationSpec(
+        organization_id=str(ORG_ID),
+        project_id=str(PROJECT_A_ID),
+        task_id=task_id,
+        operation_id=operation_id,
+        purpose="NODE-73.1 canonical dispatch integration",
+        mode="TEXT_TO_IMAGE",
+        prompt_compilation_ref="prompt://node-73-1/integration",
+        objective="Create a deterministic integration fixture image.",
+        content="A minimal neutral product scene.",
+        visual_direction="minimal",
+        aspect_ratio="1:1",
+        target_width=1024,
+        target_height=1024,
+        variant_count=1,
+        references=(),
+        identity_requirements=(),
+        brand_rule_set_version=None,
+        constraints=(),
+        quality_profile="DRAFT",
+        budget_limit_usd=Decimal("1.00"),
+        output_requirements=OutputRequirements(format="PNG"),
+        code_git_sha="a" * 40,
+    )
+
+
+async def _acceptance() -> None:
+    engine = create_engine()
+    try:
+        async with engine.connect() as connection:
+            transaction = await connection.begin()
+            session = AsyncSession(bind=connection, expire_on_commit=False)
+            try:
+                task_id = uuid4()
+                operation_id = uuid4()
+                session.add(
+                    Task(
+                        id=task_id,
+                        organization_id=ORG_ID,
+                        project_id=PROJECT_A_ID,
+                        type="image.transform",
+                        status="pending",
+                        input_json={},
+                        output_json={},
+                        priority=100,
+                        attempt_count=0,
+                        max_attempts=4,
+                        budget_reserved=Decimal("0"),
+                    )
+                )
+                await session.flush()
+
+                spec = _spec(task_id=str(task_id), operation_id=str(operation_id))
+                payload = GenerationCreate(
+                    project_id=PROJECT_A_ID,
+                    task_id=task_id,
+                    capability="image.generate",
+                    request=encode_spec(spec),
+                )
+                service = ImageGenerationControlPlane(session)
+                first = await service.create(
+                    organization_id=ORG_ID,
+                    payload=payload,
+                    idempotency_key="node-73-1-integration-key-0001",
+                    trace_id="node-73-1-integration",
+                )
+                await session.flush()
+
+                replay = await service.create(
+                    organization_id=ORG_ID,
+                    payload=payload,
+                    idempotency_key="node-73-1-integration-key-0001",
+                    trace_id="different-transient-trace",
+                )
+                await session.flush()
+                assert replay.id == first.id
+
+                generation_count = await session.scalar(
+                    select(func.count()).select_from(Generation).where(
+                        Generation.organization_id == ORG_ID,
+                        Generation.operation_id == operation_id,
+                    )
+                )
+                outbox_rows = (
+                    await session.execute(
+                        select(OutboxEvent).where(
+                            OutboxEvent.organization_id == ORG_ID,
+                            OutboxEvent.event_name == "job.dispatch.requested",
+                            OutboxEvent.aggregate_id == task_id,
+                        )
+                    )
+                ).scalars().all()
+                idempotency_count = await session.scalar(
+                    select(func.count()).select_from(IdempotencyOperation).where(
+                        IdempotencyOperation.organization_id == ORG_ID,
+                        IdempotencyOperation.operation_type == "api.v1.generation.create",
+                        IdempotencyOperation.idempotency_key
+                        == "node-73-1-integration-key-0001",
+                    )
+                )
+                task = await session.get(Task, task_id)
+
+                assert generation_count == 1
+                assert len(outbox_rows) == 1
+                assert idempotency_count == 1
+                assert task is not None
+                assert task.input_json["schema_version"] == 1
+                assert task.input_json["job_kind"] == "image.transform"
+                assert outbox_rows[0].payload_json["task_name"] == "lumi.jobs.image.transform"
+                assert outbox_rows[0].payload_json["queue"] == "lumi.media.image"
+                assert outbox_rows[0].payload_json["kwargs"] == {}
+                assert outbox_rows[0].payload_json["args"] == [
+                    {
+                        "job_id": str(task_id),
+                        "organization_id": str(ORG_ID),
+                        "project_id": str(PROJECT_A_ID),
+                        "operation_id": str(operation_id),
+                        "trace_id": "node-73-1-integration",
+                    }
+                ]
+            finally:
+                await session.close()
+                await transaction.rollback()
+    finally:
+        await engine.dispose()
+
+
+def test_generation_control_plane_transaction_and_replay() -> None:
+    asyncio.run(_acceptance())
