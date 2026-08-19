@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import os
 import unittest
 from decimal import Decimal
@@ -26,6 +27,7 @@ from lumi_agent_runtime.deep_runtime.model_gateway_chat import (
     HttpProfileModelProvider,
     ModelGatewayChatModel,
 )
+from lumi_agent_runtime.deep_runtime.runtime_factory import HostedDeepAgentRuntimeFactory
 
 _SECRET = "x" * 32
 
@@ -208,6 +210,13 @@ class ModelGatewayChatTests(unittest.IsolatedAsyncioTestCase):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(DeepAgentModelBoundaryError):
                 HttpProfileModelProvider.from_env()
+
+    def test_hosted_factory_does_not_expose_model_injection(self) -> None:
+        parameters = inspect.signature(HostedDeepAgentRuntimeFactory).parameters
+        self.assertNotIn("models", parameters)
+        self.assertIn("tools", parameters)
+        self.assertIn("backends", parameters)
+        self.assertIn("checkpointers", parameters)
 
     async def test_refusal_only_result_fails_closed(self) -> None:
         model = _model()
