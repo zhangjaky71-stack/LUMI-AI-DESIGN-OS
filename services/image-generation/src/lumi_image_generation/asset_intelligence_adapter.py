@@ -32,7 +32,7 @@ class AssetIntelligenceReferenceAuthorizer:
         self.permission_tags = permission_tags
         self.require_commercial_rights = require_commercial_rights
 
-    def authorize(
+    async def authorize(
         self,
         spec: ImageGenerationSpec,
         references: tuple[ImageReference, ...],
