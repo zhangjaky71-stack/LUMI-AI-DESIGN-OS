@@ -25,6 +25,7 @@ jobs:
           python3 scripts/validate_production_deployment_contract.py
           python3 scripts/validate_production_iac_contract.py
           python3 scripts/validate_production_readiness_contract.py
+          python3 scripts/validate_production_evidence_freezer_contract.py
           python3 scripts/validate_hosted_media_runtime_contract.py
       - name: Python syntax
         run: |
@@ -37,6 +38,7 @@ jobs:
             scripts/validate_production_deployment_contract.py \
             scripts/validate_production_iac_contract.py \
             scripts/validate_production_readiness_contract.py \
+            scripts/validate_production_evidence_freezer_contract.py \
             scripts/validate_hosted_media_runtime_contract.py
       - name: Shell syntax
         run: |
