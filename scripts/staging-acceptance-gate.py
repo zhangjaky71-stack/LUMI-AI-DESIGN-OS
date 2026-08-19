@@ -24,11 +24,14 @@ REQUIRED_IMAGES = {
 }
 MODEL_GATEWAY_REQUIRED_SOURCE_PATHS = {
     "services/model-gateway",
+    "services/model-gateway/src/lumi_model_gateway/openai_image_adapter.py",
+    "services/asset-storage/src/lumi_asset_storage/s3.py",
     "apps/api/src/lumi_api/model_gateway_runtime.py",
     "apps/api/src/lumi_api/model_gateway_bootstrap.py",
     "apps/api/src/lumi_api/model_gateway_service.py",
     "apps/api/src/lumi_api/model_gateway_cli.py",
     "apps/api/src/lumi_api/model_paid_guard.py",
+    "apps/api/src/lumi_api/provider_output_store.py",
     "apps/api/src/lumi_api/idempotency/gateway.py",
     "apps/api/src/lumi_api/costs/model_gateway_adapter.py",
 }
@@ -315,21 +318,54 @@ def evaluate(manifest: dict[str, Any], parity_contract: dict[str, Any], evidence
     return canonical
 
 
+def render_markdown(decision: dict[str, Any]) -> str:
+    summary = decision.get("summary") if isinstance(decision.get("summary"), dict) else {}
+    blockers = decision.get("blockers") if isinstance(decision.get("blockers"), list) else []
+    status = "PASS" if decision.get("passed") is True else "BLOCKED"
+    lines = [
+        "# NODE-71 Staging Acceptance Decision",
+        "",
+        f"- Status: **{status}**",
+        f"- Decision ID: `{decision.get('decision_id', 'UNKNOWN')}`",
+        f"- P0: {summary.get('p0_passed', 0)}/{summary.get('p0_total', 0)} passed",
+        f"- Parity: {summary.get('parity_passed', 0)}/{summary.get('parity_total', 0)} passed",
+        f"- Blocking count: {summary.get('blocking_count', len(blockers))}",
+        "",
+        "## Blockers",
+        "",
+    ]
+    if blockers:
+        lines.extend(f"- {str(item)}" for item in blockers)
+    else:
+        lines.append("- None")
+    return "\n".join(lines) + "\n"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Evaluate NODE-71 Production-like Staging acceptance evidence")
     parser.add_argument("--manifest", default="staging/acceptance/manifest-v1.json")
     parser.add_argument("--parity-contract", default="staging/acceptance/environment-parity-v1.json")
     parser.add_argument("--evidence", required=True)
-    parser.add_argument("--out", default="artifacts/node-71-staging-decision.json")
+    parser.add_argument(
+        "--out",
+        "--output",
+        dest="output",
+        default="artifacts/node-71-staging-decision.json",
+    )
+    parser.add_argument("--markdown")
     args = parser.parse_args()
 
     manifest = load_json(Path(args.manifest))
     parity = load_json(Path(args.parity_contract))
     evidence = load_json(Path(args.evidence))
     decision = evaluate(manifest, parity, evidence)
-    output = Path(args.out)
+    output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(decision, indent=2, sort_keys=True), encoding="utf-8")
+    if args.markdown:
+        markdown = Path(args.markdown)
+        markdown.parent.mkdir(parents=True, exist_ok=True)
+        markdown.write_text(render_markdown(decision), encoding="utf-8")
     print(json.dumps(decision, indent=2, sort_keys=True))
     return 0 if decision["passed"] else 1
 
