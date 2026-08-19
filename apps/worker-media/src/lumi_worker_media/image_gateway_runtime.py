@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
-from typing import cast
+from typing import Awaitable, TypeVar, cast
 from urllib.parse import urlsplit
 
 from lumi_asset_storage.s3 import S3ObjectStore
+from lumi_image_generation.errors import ImageGenerationTransientError
 from lumi_image_generation.model import (
     FetchedImage,
     GatewayGenerationRequest,
@@ -15,10 +16,13 @@ from lumi_image_generation.model import (
 from lumi_image_generation.model_gateway_adapter import to_model_request
 from lumi_image_generation.ports import GatewayEstimate
 from lumi_model_gateway.estimate_transport import HttpModelGatewayEstimateClient
+from lumi_model_gateway.http_transport import ModelGatewayHttpError
 from lumi_model_gateway.models import ModelResult
 
 _MAX_IMAGE_BYTES = 100 * 1024 * 1024
 _PROVIDER_OUTPUT_PREFIX = "provider-output/v1/"
+_TRANSIENT_HTTP_STATUSES = frozenset({408, 425, 429})
+_T = TypeVar("_T")
 
 
 class HostedImageModelGatewayAdapter:
@@ -41,7 +45,10 @@ class HostedImageModelGatewayAdapter:
         )
 
     async def estimate(self, request: GatewayGenerationRequest) -> GatewayEstimate:
-        estimate = await self.client.estimate(to_model_request(request))
+        estimate = await _gateway_call(
+            self.client.estimate(to_model_request(request)),
+            code="GENERATION_GATEWAY_ESTIMATE_TEMPORARY",
+        )
         if estimate.amount_usd is None:
             raise ValueError("GENERATION_PROVIDER_COST_ESTIMATE_REQUIRED")
         return GatewayEstimate(
@@ -54,8 +61,14 @@ class HostedImageModelGatewayAdapter:
 
     async def invoke(self, request: GatewayGenerationRequest) -> GatewayGenerationResult:
         model_request = to_model_request(request)
-        routed = await self.client.estimate(model_request)
-        result = await self.client.invoke(model_request)
+        routed = await _gateway_call(
+            self.client.estimate(model_request),
+            code="GENERATION_GATEWAY_ESTIMATE_TEMPORARY",
+        )
+        result = await _gateway_call(
+            self.client.invoke(model_request),
+            code="GENERATION_GATEWAY_INVOKE_TEMPORARY",
+        )
         reasons = (
             routed.reason_codes
             if routed.provider == result.provider and routed.model == result.model
@@ -110,16 +123,41 @@ class S3ProviderOutputFetcher:
 
     async def fetch(self, ref: str, declared_mime_type: str | None) -> FetchedImage:
         object_key = _provider_output_key(ref, expected_bucket=self.bucket)
-        content = await self.object_store.get_bytes(
-            bucket=self.bucket,
-            object_key=object_key,
-            max_bytes=self.max_bytes,
-        )
+        try:
+            content = await self.object_store.get_bytes(
+                bucket=self.bucket,
+                object_key=object_key,
+                max_bytes=self.max_bytes,
+            )
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise ImageGenerationTransientError(
+                "GENERATION_PROVIDER_OUTPUT_STORAGE_TEMPORARY",
+                f"provider output staging read failed: {type(exc).__name__}",
+            ) from exc
         return FetchedImage(
             source_ref=ref,
             content=content,
             declared_mime_type=declared_mime_type,
         )
+
+
+async def _gateway_call(awaitable: Awaitable[_T], *, code: str) -> _T:
+    try:
+        return await awaitable
+    except ModelGatewayHttpError as exc:
+        if exc.status in _TRANSIENT_HTTP_STATUSES or exc.status >= 500:
+            raise ImageGenerationTransientError(
+                code,
+                f"private model gateway transient HTTP failure: {exc.status}",
+            ) from exc
+        raise
+    except (TimeoutError, OSError) as exc:
+        raise ImageGenerationTransientError(
+            code,
+            f"private model gateway transport failure: {type(exc).__name__}",
+        ) from exc
 
 
 def _generation_result(
