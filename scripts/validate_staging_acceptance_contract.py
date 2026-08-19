@@ -16,6 +16,9 @@ MANIFEST = ROOT / "staging" / "acceptance" / "manifest-v1.json"
 PARITY = ROOT / "staging" / "acceptance" / "environment-parity-v1.json"
 TEMPLATE = ROOT / "staging" / "acceptance" / "evidence-template.json"
 GATE = ROOT / "scripts" / "staging-acceptance-gate.py"
+API_DOCKERFILE = ROOT / "apps" / "api" / "Dockerfile"
+API_PYPROJECT = ROOT / "apps" / "api" / "pyproject.toml"
+API_CLI = ROOT / "apps" / "api" / "src" / "lumi_api" / "cli.py"
 REQUIRED_IMAGES = [
     "api",
     "agent-runtime",
@@ -23,6 +26,17 @@ REQUIRED_IMAGES = [
     "tool-gateway",
     "worker-media",
     "sandbox-runtime",
+]
+API_REQUIRED_SOURCES = [
+    "apps/api/Dockerfile",
+    "apps/api/pyproject.toml",
+    "apps/api/alembic.ini",
+    "apps/api/alembic/versions/0020_generation_operation_identity.py",
+    "apps/api/src/lumi_api/cli.py",
+    "apps/api/src/lumi_api/product_app.py",
+    "apps/api/src/lumi_api/generations/gateway.py",
+    "apps/api/src/lumi_api/generations/service.py",
+    "apps/api/src/lumi_api/media_dispatch.py",
 ]
 MODEL_GATEWAY_REQUIRED_SOURCES = [
     "services/model-gateway",
@@ -74,6 +88,25 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(f"staging acceptance contract invalid: {message}")
 
 
+def validate_api_image_source_contract() -> None:
+    require(API_DOCKERFILE.is_file(), "canonical apps/api/Dockerfile is required")
+    dockerfile = API_DOCKERFILE.read_text(encoding="utf-8")
+    require("FROM ghcr.io/astral-sh/uv:0.11.28 AS uv" in dockerfile, "api image must pin the canonical uv builder")
+    require("FROM python:3.12-slim" in dockerfile, "api image must pin Python 3.12 slim runtime")
+    require("COPY . /workspace" in dockerfile, "api image must build from the repository workspace")
+    require("uv sync --all-packages --frozen --no-dev" in dockerfile, "api image dependency install must be frozen")
+    require("USER 10001:10001" in dockerfile, "api image must run as the canonical non-root uid/gid")
+    require('CMD ["lumi-api"]' in dockerfile, "api image must execute the lumi-api console entrypoint")
+
+    pyproject = API_PYPROJECT.read_text(encoding="utf-8")
+    require('lumi-api = "lumi_api.cli:main"' in pyproject, "lumi-api console entrypoint must resolve to lumi_api.cli:main")
+    cli = API_CLI.read_text(encoding="utf-8")
+    require('uvicorn.run("lumi_api.product_app:app"' in cli, "api CLI must start the product control plane")
+
+    for relative in API_REQUIRED_SOURCES:
+        require((ROOT / relative).exists(), f"api provenance source {relative} must exist in the accepted source tree")
+
+
 def clean_image_set(git_sha: str) -> dict[str, Any]:
     images = {
         name: (
@@ -85,7 +118,9 @@ def clean_image_set(git_sha: str) -> dict[str, Any]:
     provenance: dict[str, Any] = {}
     for name in REQUIRED_IMAGES:
         source_paths = [f"apps/{name}"]
-        if name == "model-gateway":
+        if name == "api":
+            source_paths = list(API_REQUIRED_SOURCES)
+        elif name == "model-gateway":
             source_paths = list(MODEL_GATEWAY_REQUIRED_SOURCES)
         elif name == "worker-media":
             source_paths = list(WORKER_MEDIA_REQUIRED_SOURCES)
@@ -180,17 +215,33 @@ def cli_contract_smoke(clean: dict[str, Any]) -> None:
             capture_output=True,
             text=True,
         )
-        require(
-            result.returncode == 0,
-            "workflow CLI contract (--output/--markdown) must execute a clean decision",
-        )
+        require(result.returncode == 0, "workflow CLI contract (--output/--markdown) must execute a clean decision")
         require(output.is_file(), "workflow CLI contract must emit decision JSON")
         require(markdown.is_file(), "workflow CLI contract must emit decision markdown")
         parsed = load_json(output)
         require(parsed.get("passed") is True, "CLI smoke decision must preserve PASS")
+        require("Status: **PASS**" in markdown.read_text(encoding="utf-8"), "CLI smoke markdown must render decision status")
+
+
+def drill_required_sources(
+    *,
+    gate: ModuleType,
+    manifest: dict[str, Any],
+    parity: dict[str, Any],
+    clean: dict[str, Any],
+    service: str,
+    required_sources: list[str],
+    blocker_fragment: str,
+) -> None:
+    for required_source in required_sources:
+        missing_source = copy.deepcopy(clean)
+        source_paths = missing_source["container_image_set"]["provenance"][service]["source_paths"]
+        source_paths.remove(required_source)
+        decision = gate.evaluate(manifest, parity, missing_source)
+        require(decision["passed"] is False, f"{service} image without {required_source} must block")
         require(
-            "Status: **PASS**" in markdown.read_text(encoding="utf-8"),
-            "CLI smoke markdown must render decision status",
+            any(blocker_fragment in item for item in decision["blockers"]),
+            f"missing {service} source blocker must be explicit",
         )
 
 
@@ -199,6 +250,7 @@ def main() -> int:
     parity = load_json(PARITY)
     template = load_json(TEMPLATE)
     gate = load_gate()
+    validate_api_image_source_contract()
 
     scenarios = manifest.get("scenarios")
     require(isinstance(scenarios, list) and len(scenarios) >= 25, "acceptance manifest must cover the full product surface")
@@ -207,13 +259,15 @@ def main() -> int:
     require(all(item.get("priority") in {"P0", "P1"} for item in scenarios), "scenario priorities must be P0/P1")
     require(all(item.get("severity") in {"critical", "high", "medium", "low"} for item in scenarios), "scenario severities invalid")
     require(
-        set(getattr(gate, "MODEL_GATEWAY_REQUIRED_SOURCE_PATHS", set()))
-        == set(MODEL_GATEWAY_REQUIRED_SOURCES),
+        set(getattr(gate, "API_REQUIRED_SOURCE_PATHS", set())) == set(API_REQUIRED_SOURCES),
+        "NODE-71 api provenance list drifted from contract drills",
+    )
+    require(
+        set(getattr(gate, "MODEL_GATEWAY_REQUIRED_SOURCE_PATHS", set())) == set(MODEL_GATEWAY_REQUIRED_SOURCES),
         "NODE-71 model-gateway provenance list drifted from contract drills",
     )
     require(
-        set(getattr(gate, "WORKER_MEDIA_REQUIRED_SOURCE_PATHS", set()))
-        == set(WORKER_MEDIA_REQUIRED_SOURCES),
+        set(getattr(gate, "WORKER_MEDIA_REQUIRED_SOURCE_PATHS", set())) == set(WORKER_MEDIA_REQUIRED_SOURCES),
         "NODE-71 worker-media provenance list drifted from contract drills",
     )
 
@@ -232,66 +286,40 @@ def main() -> int:
     cli_contract_smoke(clean)
 
     mutable_image = copy.deepcopy(clean)
-    mutable_image["container_image_set"]["images"]["model-gateway"] = (
-        "example.invalid/lumi-model-gateway:latest"
-    )
-    require(
-        gate.evaluate(manifest, parity, mutable_image)["passed"] is False,
-        "mutable model-gateway image must block",
-    )
+    mutable_image["container_image_set"]["images"]["model-gateway"] = "example.invalid/lumi-model-gateway:latest"
+    require(gate.evaluate(manifest, parity, mutable_image)["passed"] is False, "mutable model-gateway image must block")
 
     provenance_sha_swap = copy.deepcopy(clean)
     provenance_sha_swap["container_image_set"]["provenance"]["api"]["git_sha"] = "d" * 40
-    require(
-        gate.evaluate(manifest, parity, provenance_sha_swap)["passed"] is False,
-        "image provenance SHA mismatch must block",
+    require(gate.evaluate(manifest, parity, provenance_sha_swap)["passed"] is False, "image provenance SHA mismatch must block")
+
+    drill_required_sources(
+        gate=gate,
+        manifest=manifest,
+        parity=parity,
+        clean=clean,
+        service="api",
+        required_sources=API_REQUIRED_SOURCES,
+        blocker_fragment="api image provenance is missing required generation control-plane sources",
     )
-
-    for required_source in MODEL_GATEWAY_REQUIRED_SOURCES:
-        missing_model_gateway_source = copy.deepcopy(clean)
-        source_paths = missing_model_gateway_source["container_image_set"]["provenance"][
-            "model-gateway"
-        ]["source_paths"]
-        source_paths.remove(required_source)
-        missing_source_decision = gate.evaluate(
-            manifest,
-            parity,
-            missing_model_gateway_source,
-        )
-        require(
-            missing_source_decision["passed"] is False,
-            f"model-gateway image without {required_source} must block",
-        )
-        require(
-            any(
-                "model-gateway image provenance is missing required hosted sources" in item
-                for item in missing_source_decision["blockers"]
-            ),
-            "missing model-gateway source blocker must be explicit",
-        )
-
-    for required_source in WORKER_MEDIA_REQUIRED_SOURCES:
-        missing_worker_source = copy.deepcopy(clean)
-        source_paths = missing_worker_source["container_image_set"]["provenance"][
-            "worker-media"
-        ]["source_paths"]
-        source_paths.remove(required_source)
-        missing_source_decision = gate.evaluate(
-            manifest,
-            parity,
-            missing_worker_source,
-        )
-        require(
-            missing_source_decision["passed"] is False,
-            f"worker-media image without {required_source} must block",
-        )
-        require(
-            any(
-                "worker-media image provenance is missing required hosted image sources" in item
-                for item in missing_source_decision["blockers"]
-            ),
-            "missing worker-media hosted image source blocker must be explicit",
-        )
+    drill_required_sources(
+        gate=gate,
+        manifest=manifest,
+        parity=parity,
+        clean=clean,
+        service="model-gateway",
+        required_sources=MODEL_GATEWAY_REQUIRED_SOURCES,
+        blocker_fragment="model-gateway image provenance is missing required hosted sources",
+    )
+    drill_required_sources(
+        gate=gate,
+        manifest=manifest,
+        parity=parity,
+        clean=clean,
+        service="worker-media",
+        required_sources=WORKER_MEDIA_REQUIRED_SOURCES,
+        blocker_fragment="worker-media image provenance is missing required hosted image sources",
+    )
 
     not_run = copy.deepcopy(clean)
     not_run["scenario_results"]["E2E-01"] = {"status": "NOT_RUN"}
@@ -342,6 +370,15 @@ def main() -> int:
             "empty_template_blocked": True,
             "mutable_image_blocked": True,
             "image_provenance_sha_swap_blocked": True,
+            "api_all_required_sources_drilled": True,
+            "api_build_recipe_source_required": True,
+            "api_console_entrypoint_source_required": True,
+            "api_product_app_source_required": True,
+            "api_generation_gateway_source_required": True,
+            "api_generation_service_source_required": True,
+            "api_media_dispatch_source_required": True,
+            "api_generation_operation_migration_source_required": True,
+            "api_frozen_non_root_image_contract": True,
             "model_gateway_all_required_sources_drilled": True,
             "model_gateway_media_adapter_source_required": True,
             "model_gateway_provider_output_store_source_required": True,
