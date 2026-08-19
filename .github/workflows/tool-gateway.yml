@@ -4,19 +4,29 @@ on:
   pull_request:
     paths:
       - "services/tool-gateway/**"
+      - "services/asset-storage/src/lumi_asset_storage/s3.py"
       - "apps/api/src/lumi_api/idempotency/**"
       - "apps/api/src/lumi_api/tool_side_effect_control.py"
+      - "apps/api/src/lumi_api/tool_audit_control.py"
+      - "apps/api/src/lumi_api/tool_approval_control.py"
       - "apps/api/src/lumi_api/product_app.py"
+      - "infra/iac/modules/storage/**"
+      - "infra/iac/modules/compute/**"
       - "infra/iac/environments/staging/core/main.tf"
       - "infra/iac/environments/staging/app/main.tf"
       - "infra/iac/environments/production/core/main.tf"
       - "infra/iac/environments/production/app/main.tf"
       - "scripts/validate_tool_gateway_contract.py"
       - "scripts/validate_idempotency_contract.py"
+      - "scripts/validate_side_effect_control_provenance.py"
+      - "scripts/validate_tool_audit_provenance.py"
+      - "scripts/validate_tool_approval_provenance.py"
+      - "scripts/validate_tool_result_offload_provenance.py"
       - "scripts/integration_tool_gateway.py"
       - "docs/runtime/TOOL-GATEWAY-V1.md"
       - "reports/nodes/NODE-25/**"
       - "pyproject.toml"
+      - "uv.lock"
       - "Makefile"
   workflow_dispatch:
 
@@ -32,28 +42,47 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Compile Tool Gateway and private NODE-20 control boundary
+      - name: Compile Tool Gateway and private control boundaries
         run: |
           PYTHONPATH=services/tool-gateway/src python -m compileall -q \
             services/tool-gateway/src \
             services/tool-gateway/tests \
             apps/api/src/lumi_api/tool_side_effect_control.py \
+            apps/api/src/lumi_api/tool_audit_control.py \
+            apps/api/src/lumi_api/tool_approval_control.py \
             scripts/validate_tool_gateway_contract.py \
+            scripts/validate_side_effect_control_provenance.py \
+            scripts/validate_tool_audit_provenance.py \
+            scripts/validate_tool_approval_provenance.py \
+            scripts/validate_tool_result_offload_provenance.py \
             scripts/integration_tool_gateway.py
       - name: Architecture and security contract
         run: >-
           PYTHONPATH=services/tool-gateway/src
           python scripts/validate_tool_gateway_contract.py
+      - name: Hosted production binding provenance contracts
+        run: |
+          python scripts/validate_side_effect_control_provenance.py --self-test
+          python scripts/validate_tool_audit_provenance.py --self-test
+          python scripts/validate_tool_approval_provenance.py --self-test
+          python scripts/validate_tool_result_offload_provenance.py --self-test
 
   tool-security:
     needs: tool-contract
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Require canonical frozen workspace
+        run: uv sync --all-packages --frozen
       - name: Revalidate NODE-20 idempotency boundary
         run: python scripts/validate_idempotency_contract.py
       - name: Revalidate NODE-21 sandbox boundary
@@ -61,15 +90,9 @@ jobs:
           PYTHONPATH=services/sandbox-runtime/src
           python scripts/validate_sandbox_runtime_contract.py
       - name: Tool Gateway unit and security tests
-        run: >-
-          PYTHONPATH=services/tool-gateway/src
-          python -m unittest discover
-          -s services/tool-gateway/tests
-          -p 'test_*.py'
+        run: uv run pytest services/tool-gateway/tests -q
       - name: Deterministic Tool Gateway integration
-        run: >-
-          PYTHONPATH=services/tool-gateway/src
-          python scripts/integration_tool_gateway.py
+        run: uv run python scripts/integration_tool_gateway.py
 
   tool-quality:
     needs: tool-security
@@ -92,8 +115,14 @@ jobs:
           uv run ruff check
           services/tool-gateway
           apps/api/src/lumi_api/tool_side_effect_control.py
+          apps/api/src/lumi_api/tool_audit_control.py
+          apps/api/src/lumi_api/tool_approval_control.py
           apps/api/src/lumi_api/product_app.py
           scripts/validate_tool_gateway_contract.py
+          scripts/validate_side_effect_control_provenance.py
+          scripts/validate_tool_audit_provenance.py
+          scripts/validate_tool_approval_provenance.py
+          scripts/validate_tool_result_offload_provenance.py
           scripts/integration_tool_gateway.py
       - name: Tool Gateway Pyright gate
         run: >-
@@ -101,5 +130,7 @@ jobs:
           services/tool-gateway/src/lumi_tool_gateway
           services/tool-gateway/tests
           apps/api/src/lumi_api/tool_side_effect_control.py
+          apps/api/src/lumi_api/tool_audit_control.py
+          apps/api/src/lumi_api/tool_approval_control.py
           apps/api/src/lumi_api/product_app.py
           scripts/integration_tool_gateway.py
