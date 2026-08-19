@@ -25,11 +25,13 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Compile NODE-29 runtime and tests
+      - name: Compile NODE-29 runtime and hosted service
         run: >-
           PYTHONPATH=apps/agent-runtime/src
           python -m compileall -q
           apps/agent-runtime/src/lumi_agent_runtime/deep_runtime
+          apps/agent-runtime/src/lumi_agent_runtime/runtime_cli.py
+          apps/agent-runtime/src/lumi_agent_runtime/runtime_service.py
           apps/agent-runtime/tests/test_deep_runtime_contracts.py
           apps/agent-runtime/tests/test_deep_runtime_factory.py
           apps/agent-runtime/tests/test_deep_runtime_tooling.py
@@ -113,6 +115,8 @@ jobs:
         run: >-
           uv run ruff check
           apps/agent-runtime/src/lumi_agent_runtime/deep_runtime
+          apps/agent-runtime/src/lumi_agent_runtime/runtime_cli.py
+          apps/agent-runtime/src/lumi_agent_runtime/runtime_service.py
           apps/agent-runtime/tests/test_deep_runtime_contracts.py
           apps/agent-runtime/tests/test_deep_runtime_factory.py
           apps/agent-runtime/tests/test_deep_runtime_tooling.py
@@ -126,6 +130,8 @@ jobs:
         run: >-
           uv run pyright
           apps/agent-runtime/src/lumi_agent_runtime/deep_runtime
+          apps/agent-runtime/src/lumi_agent_runtime/runtime_cli.py
+          apps/agent-runtime/src/lumi_agent_runtime/runtime_service.py
           apps/agent-runtime/tests/test_deep_runtime_contracts.py
           apps/agent-runtime/tests/test_deep_runtime_factory.py
           apps/agent-runtime/tests/test_deep_runtime_tooling.py
