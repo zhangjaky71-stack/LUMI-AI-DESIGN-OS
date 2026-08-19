@@ -159,6 +159,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Finalize production rollback+roll-forward rehearsal evidence")
     parser.add_argument("--current-manifest", required=True)
     parser.add_argument("--previous-manifest", required=True)
+    parser.add_argument("--rollback-gate", required=True)
     parser.add_argument("--previous-runtime", required=True)
     parser.add_argument("--previous-smoke", required=True)
     parser.add_argument("--restored-runtime", required=True)
@@ -166,22 +167,30 @@ def main() -> int:
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
+    current_path = Path(args.current_manifest)
     previous_path = Path(args.previous_manifest)
+    gate_path = Path(args.rollback_gate)
     paths = [
+        gate_path,
         Path(args.previous_runtime),
         Path(args.previous_smoke),
         Path(args.restored_runtime),
         Path(args.restored_smoke),
     ]
     try:
+        current = load_json(current_path)
+        previous = load_json(previous_path)
+        gate_result = load_rollback_gate().evaluate(current, previous, previous_path)
+        gate_path.parent.mkdir(parents=True, exist_ok=True)
+        gate_path.write_text(json.dumps(gate_result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         result = evaluate(
-            load_json(Path(args.current_manifest)),
-            load_json(previous_path),
+            current,
+            previous,
             previous_path,
-            load_json(paths[0]),
             load_json(paths[1]),
             load_json(paths[2]),
             load_json(paths[3]),
+            load_json(paths[4]),
             [evidence_ref(path) for path in paths],
         )
     except (OSError, json.JSONDecodeError, RollbackDecisionError) as exc:
