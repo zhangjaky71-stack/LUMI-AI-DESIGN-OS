@@ -13,14 +13,18 @@ on:
       - "apps/api/src/lumi_api/product_app.py"
       - "apps/api/src/lumi_api/project_app.py"
       - "apps/api/src/lumi_api/generations/**"
+      - "apps/api/src/lumi_api/idempotency/**"
+      - "apps/api/src/lumi_api/tool_side_effect_control.py"
       - "apps/api/src/lumi_api/media_dispatch.py"
       - "apps/api/src/lumi_api/persistence/**"
+      - "apps/api/tests/test_tool_side_effect_control.py"
       - "services/domain/src/lumi_domain/job_dispatch.py"
       - "services/image-generation/src/lumi_image_generation/model.py"
       - "services/image-generation/src/lumi_image_generation/spec_codec.py"
       - "services/asset-storage/src/lumi_asset_storage/s3.py"
       - "scripts/staging-acceptance-gate.py"
       - "scripts/validate_staging_acceptance_contract.py"
+      - "scripts/validate_side_effect_control_provenance.py"
       - "staging/acceptance/**"
       - "uv.lock"
       - ".github/workflows/api-image-identity-contract.yml"
@@ -54,14 +58,20 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Compile NODE-71 acceptance contracts
+      - name: Compile NODE-71 acceptance contracts and private NODE-20 control
         run: >-
           python -m compileall -q
           scripts/staging-acceptance-gate.py
           scripts/validate_staging_acceptance_contract.py
+          scripts/validate_side_effect_control_provenance.py
+          apps/api/src/lumi_api/tool_side_effect_control.py
+          apps/api/tests/test_tool_side_effect_control.py
 
       - name: Drill NODE-71 API provenance source contract
         run: python scripts/validate_staging_acceptance_contract.py
+
+      - name: Drill private Tool Gateway side-effect provenance contract
+        run: python scripts/validate_side_effect_control_provenance.py --self-test
 
       - name: Build canonical API image from frozen workspace
         run: docker build --file apps/api/Dockerfile --tag lumi-api:node71 .
