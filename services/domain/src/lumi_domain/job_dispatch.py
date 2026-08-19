@@ -6,6 +6,8 @@ from typing import Any
 from uuid import UUID
 
 MAX_JOB_MESSAGE_BYTES = 64 * 1024
+JOB_DISPATCH_EVENT_NAME = "job.dispatch.requested"
+JOB_DISPATCH_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +54,59 @@ class JobMessage:
         )
         validate_job_payload(message.as_dict())
         return message
+
+
+@dataclass(frozen=True, slots=True)
+class JobDispatch:
+    """Strict outbox-to-broker envelope for one positional JobMessage argument."""
+
+    task_name: str
+    queue: str
+    message: JobMessage
+
+    def as_outbox_payload(self) -> dict[str, object]:
+        if not self.task_name or len(self.task_name) > 150:
+            raise ValueError("JOB_DISPATCH_TASK_NAME_INVALID")
+        if not self.queue or len(self.queue) > 150:
+            raise ValueError("JOB_DISPATCH_QUEUE_INVALID")
+        payload: dict[str, object] = {
+            "task_name": self.task_name,
+            "queue": self.queue,
+            "args": [self.message.as_dict()],
+            "kwargs": {},
+        }
+        validate_job_payload(payload)
+        return payload
+
+    @classmethod
+    def from_outbox_payload(cls, value: object) -> JobDispatch:
+        if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+            raise ValueError("JOB_DISPATCH_PAYLOAD_OBJECT_REQUIRED")
+        allowed = {"task_name", "queue", "args", "kwargs"}
+        unknown = set(value) - allowed
+        missing = allowed - set(value)
+        if unknown:
+            raise ValueError(f"JOB_DISPATCH_UNKNOWN_FIELDS:{','.join(sorted(unknown))}")
+        if missing:
+            raise ValueError(f"JOB_DISPATCH_REQUIRED:{','.join(sorted(missing))}")
+        task_name = value["task_name"]
+        queue = value["queue"]
+        if not isinstance(task_name, str) or not task_name or len(task_name) > 150:
+            raise ValueError("JOB_DISPATCH_TASK_NAME_INVALID")
+        if not isinstance(queue, str) or not queue or len(queue) > 150:
+            raise ValueError("JOB_DISPATCH_QUEUE_INVALID")
+        args = value["args"]
+        if not isinstance(args, list) or len(args) != 1 or not isinstance(args[0], dict):
+            raise ValueError("JOB_DISPATCH_ARGS_INVALID")
+        kwargs = value["kwargs"]
+        if not isinstance(kwargs, dict) or kwargs:
+            raise ValueError("JOB_DISPATCH_KWARGS_FORBIDDEN")
+        validate_job_payload(value)
+        return cls(
+            task_name=task_name,
+            queue=queue,
+            message=JobMessage.from_mapping(args[0]),
+        )
 
 
 def validate_job_payload(payload: Any) -> None:
