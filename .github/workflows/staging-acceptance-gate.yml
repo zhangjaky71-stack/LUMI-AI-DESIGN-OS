@@ -39,6 +39,8 @@ jobs:
           python-version: "3.12"
       - name: Validate staging acceptance contract
         run: python3 scripts/validate_staging_acceptance_contract.py
+      - name: Require one canonical API provenance source union
+        run: python3 scripts/validate_api_provenance_source_manifest.py
       - name: Drill canonical media-generation E2E evidence validator
         run: python3 scripts/validate_media_generation_e2e_evidence.py --self-test
       - name: Drill canonical Tool Gateway side-effect provenance validator
@@ -53,6 +55,7 @@ jobs:
             scripts/staging-acceptance-gate.py \
             scripts/staging-preflight.py \
             scripts/validate_staging_acceptance_contract.py \
+            scripts/validate_api_provenance_source_manifest.py \
             scripts/validate_media_generation_e2e_evidence.py \
             scripts/validate_side_effect_control_provenance.py \
             scripts/validate_tool_audit_provenance.py \
@@ -67,6 +70,7 @@ jobs:
               Path('staging/acceptance/manifest-v1.json'),
               Path('staging/acceptance/environment-parity-v1.json'),
               Path('staging/acceptance/evidence-template.json'),
+              Path('staging/acceptance/api-provenance-sources-v1.json'),
               Path('staging/acceptance/media-generation-e2e-v1.json'),
           ]:
               json.loads(path.read_text(encoding='utf-8'))
