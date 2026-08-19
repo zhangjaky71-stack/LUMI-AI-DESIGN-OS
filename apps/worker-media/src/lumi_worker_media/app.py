@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from typing import Any
 from uuid import UUID
 
 from celery import Celery
@@ -9,7 +10,9 @@ from lumi_asset_storage.s3 import S3ObjectStore
 
 from .asset_config import AssetWorkerSettings
 from .asset_validation import validate_asset_run
-from .queue_contracts import JobKind, JobMessage, queue_for, retry_policy_for
+from .image_generation_runtime import HostedImageGenerationRuntime
+from .job_runtime import JobOutcome, TaskJobStore, execute_job
+from .queue_contracts import JobKind, JobMessage, JobState, queue_for, retry_policy_for
 from .task_base import RuntimeTask
 from .topology import build_job_queues
 
@@ -48,10 +51,48 @@ def health_ping() -> dict[str, str]:
     return health_payload()
 
 
-@celery_app.task(name="lumi.jobs.image.transform", base=RuntimeTask)
-def image_transform(message: dict[str, object]) -> dict[str, object]:
+@celery_app.task(
+    name="lumi.jobs.image.transform",
+    bind=True,
+    max_retries=3,
+    base=RuntimeTask,
+)
+def image_transform(self: object, message: dict[str, object]) -> dict[str, object]:
     parsed = JobMessage.from_mapping(message)
-    return {"job_id": str(parsed.job_id), "status": "accepted", "kind": JobKind.IMAGE_TRANSFORM}
+    outcome = asyncio.run(_execute_image_generation_job(parsed))
+    if outcome.state == JobState.RETRYING:
+        retries = getattr(getattr(self, "request", None), "retries", 0)
+        policy = retry_policy_for(JobKind.IMAGE_TRANSFORM)
+        retry = getattr(self, "retry")
+        countdown = policy.delay_seconds(
+            attempt=max(1, outcome.attempt_count),
+            jitter_seed=retries,
+        )
+        raise retry(
+            exc=RuntimeError(str(outcome.output.get("error", "IMAGE_GENERATION_RETRY"))),
+            countdown=countdown,
+        )
+    if outcome.state == JobState.FAILED:
+        raise RuntimeError(
+            "IMAGE_GENERATION_JOB_FAILED:"
+            + str(outcome.output.get("error", "unknown"))[:1000]
+        )
+    return {
+        "job_id": str(parsed.job_id),
+        "state": outcome.state.value,
+        "attempt_count": outcome.attempt_count,
+        **outcome.output,
+    }
+
+
+async def _execute_image_generation_job(message: JobMessage) -> JobOutcome:
+    runtime = HostedImageGenerationRuntime.from_env()
+    store = TaskJobStore(_database_dsn())
+    return await execute_job(
+        store=store,
+        message=message,
+        handler=runtime.execute,
+    )
 
 
 @celery_app.task(name="lumi.jobs.video.render", base=RuntimeTask)
@@ -104,3 +145,14 @@ def asset_validate(self: object, validation_run_id: str) -> str:
         retry = getattr(self, "retry")
         countdown = policy.delay_seconds(attempt=retries + 1, jitter_seed=retries)
         raise retry(exc=exc, countdown=countdown)
+
+
+def _database_dsn() -> str:
+    value = os.getenv("LUMI_DATABASE_URL") or os.getenv("DATABASE_URL")
+    if not value:
+        raise RuntimeError("LUMI_DATABASE_URL_REQUIRED")
+    if value.startswith("postgresql+asyncpg://"):
+        return "postgresql://" + value[len("postgresql+asyncpg://") :]
+    if value.startswith("postgresql://"):
+        return value
+    raise RuntimeError("LUMI_DATABASE_URL_MUST_USE_POSTGRESQL")
