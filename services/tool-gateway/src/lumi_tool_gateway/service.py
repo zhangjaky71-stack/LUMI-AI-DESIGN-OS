@@ -9,10 +9,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .api import ToolGatewayAPI
+from .approval_control import HttpApprovalResolver
 from .audit_control import HttpAuditSink
 from .catalog import build_p0_registry
 from .errors import (
     ToolAmbiguousSideEffectError,
+    ToolApprovalControlUnavailableError,
     ToolAuditUnavailableError,
     ToolDisabledError,
     ToolGatewayError,
@@ -78,11 +80,13 @@ def create_runtime_app() -> FastAPI:
     registry = build_p0_registry()
     adapters = _build_hosted_adapters()
     required = frozenset(definition.key for definition in registry.definitions() if definition.enabled)
+    approval_resolver = HttpApprovalResolver.from_env()
     side_effect_guard = RemoteSideEffectGuard(HttpSideEffectControlClient.from_env())
     audit_sink = HttpAuditSink.from_env()
     gateway = ToolGateway(
         registry=registry,
         adapters=adapters,
+        approval_resolver=approval_resolver,
         side_effect_guard=side_effect_guard,
         audit_sink=audit_sink,
     )
@@ -94,7 +98,9 @@ def create_runtime_app() -> FastAPI:
             tool_count=len(registry.definitions()),
             adapter_keys=frozenset(adapters),
             required_adapter_keys=required,
-            runtime_bindings=frozenset({"side-effect-guard", "audit-sink"}),
+            runtime_bindings=frozenset(
+                {"approval-resolver", "side-effect-guard", "audit-sink"}
+            ),
         )
     )
 
@@ -153,6 +159,7 @@ def create_tool_gateway_app(runtime: ToolGatewayServiceRuntime) -> FastAPI:
             return _error(409, exc.code, str(exc))
         except (
             ToolAmbiguousSideEffectError,
+            ToolApprovalControlUnavailableError,
             ToolAuditUnavailableError,
             ToolSideEffectControlUnavailableError,
         ) as exc:
