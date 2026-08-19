@@ -29,6 +29,10 @@ locals {
     LUMI_TOOL_GATEWAY_URL = "http://tool-gateway.${local.environment}.lumi.internal:8080"
   }
 
+  sandbox_runtime_environment = {
+    LUMI_SANDBOX_RUNTIME_URL = "http://sandbox-runtime.${local.environment}.lumi.internal:8080"
+  }
+
   services = {
     api = {
       image             = var.api_image
@@ -113,11 +117,16 @@ locals {
       min_capacity   = 3
       max_capacity   = 12
       container_port = 8080
-      environment = merge(local.common_environment, { LUMI_ROLE = "tool-gateway" })
+      environment = merge(
+        local.common_environment,
+        local.sandbox_runtime_environment,
+        { LUMI_ROLE = "tool-gateway" },
+      )
       secret_arns = {
-        LUMI_DATABASE_URL             = local.secret_arns["database/app"]
-        LUMI_AUTH_SIGNING_SECRET      = local.secret_arns["auth/signing"]
-        LUMI_TOOL_GATEWAY_AUTH_SECRET = local.secret_arns["internal/tool-gateway"]
+        LUMI_DATABASE_URL                 = local.secret_arns["database/app"]
+        LUMI_AUTH_SIGNING_SECRET          = local.secret_arns["auth/signing"]
+        LUMI_TOOL_GATEWAY_AUTH_SECRET     = local.secret_arns["internal/tool-gateway"]
+        LUMI_SANDBOX_RUNTIME_AUTH_SECRET  = local.secret_arns["internal/sandbox-runtime"]
       }
       s3_bucket_arns         = []
       autoscale_metric_name  = "ToolGatewayInflight"
@@ -152,16 +161,18 @@ locals {
     }
 
     sandbox-runtime = {
-      image         = var.sandbox_runtime_image
-      cpu           = 2048
-      memory        = 4096
-      desired_count = 3
-      min_capacity  = 3
-      max_capacity  = 12
+      image          = var.sandbox_runtime_image
+      cpu            = 2048
+      memory         = 4096
+      desired_count  = 3
+      min_capacity   = 3
+      max_capacity   = 12
+      container_port = 8080
       environment = merge(local.common_environment, { LUMI_ROLE = "sandbox-runtime" })
       secret_arns = {
-        LUMI_REDIS_URL    = local.secret_arns["redis/url"]
-        LUMI_RABBITMQ_URL = local.secret_arns["rabbitmq/url"]
+        LUMI_REDIS_URL                    = local.secret_arns["redis/url"]
+        LUMI_RABBITMQ_URL                 = local.secret_arns["rabbitmq/url"]
+        LUMI_SANDBOX_RUNTIME_AUTH_SECRET  = local.secret_arns["internal/sandbox-runtime"]
       }
       s3_bucket_arns         = [local.bucket_arns["sandbox"]]
       autoscale_metric_name  = "SandboxQueueBacklog"
