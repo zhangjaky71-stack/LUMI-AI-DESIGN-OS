@@ -28,6 +28,7 @@ from lumi_model_gateway.http_transport import (
 )
 
 from .model_gateway_bootstrap import build_hosted_model_gateway_from_secret
+from .provider_output_store import S3ProviderOutputStore
 
 _INVOKE_PATH = "/internal/v1/models/invoke"
 _ALLOWED_CALLERS = frozenset({"agent-runtime", "worker-media"})
@@ -48,10 +49,16 @@ def create_runtime_app() -> FastAPI:
     database_dsn = _required_env("LUMI_DATABASE_URL", max_length=8192)
     auth_secret = _required_env("LUMI_MODEL_GATEWAY_AUTH_SECRET", max_length=8192)
     provider_secret = _required_env("LUMI_MODEL_PROVIDER_SECRET", max_length=262_144)
+    media_provider_secret = _required_env(
+        "LUMI_MEDIA_PROVIDER_SECRET",
+        max_length=262_144,
+    )
     environment = os.getenv("LUMI_ENV", os.getenv("LUMI_ENVIRONMENT", "unknown"))
     bootstrap = build_hosted_model_gateway_from_secret(
         database_dsn=database_dsn,
         provider_secret=provider_secret,
+        media_provider_secret=media_provider_secret,
+        provider_output_store=S3ProviderOutputStore.from_env(),
     )
     return create_model_gateway_app(
         ModelGatewayServiceRuntime(
@@ -98,12 +105,24 @@ def create_model_gateway_app(runtime: ModelGatewayServiceRuntime) -> FastAPI:
             try:
                 parsed_length = int(content_length)
             except ValueError:
-                return _error(400, "MODEL_GATEWAY_CONTENT_LENGTH_INVALID", "invalid content length")
+                return _error(
+                    400,
+                    "MODEL_GATEWAY_CONTENT_LENGTH_INVALID",
+                    "invalid content length",
+                )
             if parsed_length < 0 or parsed_length > _MAX_BODY_BYTES:
-                return _error(413, "MODEL_GATEWAY_REQUEST_TOO_LARGE", "request body is too large")
+                return _error(
+                    413,
+                    "MODEL_GATEWAY_REQUEST_TOO_LARGE",
+                    "request body is too large",
+                )
         body = await request.body()
         if len(body) > _MAX_BODY_BYTES:
-            return _error(413, "MODEL_GATEWAY_REQUEST_TOO_LARGE", "request body is too large")
+            return _error(
+                413,
+                "MODEL_GATEWAY_REQUEST_TOO_LARGE",
+                "request body is too large",
+            )
         try:
             verify_internal_request(
                 secret=runtime.auth_secret,
@@ -116,7 +135,11 @@ def create_model_gateway_app(runtime: ModelGatewayServiceRuntime) -> FastAPI:
                 signature=request.headers.get(AUTH_SIGNATURE_HEADER),
             )
         except InternalModelGatewayAuthError as exc:
-            return _error(401, str(exc), "internal model gateway authentication failed")
+            return _error(
+                401,
+                str(exc),
+                "internal model gateway authentication failed",
+            )
         try:
             payload = json.loads(body.decode("utf-8"))
             if not isinstance(payload, dict):
@@ -152,7 +175,11 @@ def create_model_gateway_app(runtime: ModelGatewayServiceRuntime) -> FastAPI:
         except ModelGatewayError as exc:
             return _error(503, exc.code, str(exc))
         except Exception:
-            return _error(500, "MODEL_GATEWAY_INTERNAL_ERROR", "internal model gateway failure")
+            return _error(
+                500,
+                "MODEL_GATEWAY_INTERNAL_ERROR",
+                "internal model gateway failure",
+            )
         return JSONResponse(status_code=200, content=encode_model_result(result))
 
     return app
@@ -178,30 +205,36 @@ async def _database_ready(database_dsn: str) -> tuple[bool, str]:
             SELECT EXISTS (
                 SELECT 1
                 FROM information_schema.columns
-                WHERE table_schema = current_schema()
+                WHERE table_schema = 'public'
                   AND table_name = 'idempotency_operations'
                   AND column_name = 'provider_attempt_started_at'
             )
             """
         )
-        guard = await connection.fetchrow(
+        if not barrier_exists:
+            return False, "provider_attempt_barrier_missing"
+        policy = await connection.fetchrow(
             """
-            SELECT daily_cap_usd, enabled, fail_closed
+            SELECT daily_cap_usd, enabled, fail_closed, currency, window
             FROM platform_provider_cost_guard
             WHERE policy_key = 'platform'
             """
         )
-        if not barrier_exists:
-            return False, "provider_attempt_barrier_missing"
-        if guard is None:
-            return False, "provider_cost_guard_missing"
-        if not bool(guard["enabled"]) or not bool(guard["fail_closed"]):
-            return False, "provider_cost_guard_not_fail_closed"
-        if Decimal(guard["daily_cap_usd"]) > Decimal("100.00000000"):
-            return False, "provider_cost_guard_cap_invalid"
+        if policy is None:
+            return False, "platform_provider_cost_guard_missing"
+        cap = Decimal(str(policy["daily_cap_usd"]))
+        if (
+            policy["enabled"] is not True
+            or policy["fail_closed"] is not True
+            or policy["currency"] != "USD"
+            or policy["window"] != "UTC_DAY"
+            or cap <= 0
+            or cap > Decimal("100.00000000")
+        ):
+            return False, "platform_provider_cost_guard_invalid"
         return True, "ok"
     except Exception:
-        return False, "unavailable"
+        return False, "database_guard_check_failed"
     finally:
         if connection is not None:
             await connection.close()
@@ -210,12 +243,12 @@ async def _database_ready(database_dsn: str) -> tuple[bool, str]:
 def _required_env(name: str, *, max_length: int) -> str:
     value = os.getenv(name, "")
     if not value or len(value) > max_length or "\x00" in value:
-        raise RuntimeError(f"MODEL_GATEWAY_REQUIRED_ENV_INVALID:{name}")
+        raise RuntimeError(f"{name}_REQUIRED")
     return value
 
 
 def _error(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(
         status_code=status,
-        content={"code": code[:128], "message": message[:2000]},
+        content={"code": code, "message": message[:2000]},
     )
