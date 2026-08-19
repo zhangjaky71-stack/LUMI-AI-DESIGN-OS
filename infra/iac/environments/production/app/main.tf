@@ -138,7 +138,11 @@ locals {
         local.side_effect_control_environment,
         local.tool_audit_environment,
         local.tool_approval_environment,
-        { LUMI_ROLE = "tool-gateway" },
+        {
+          LUMI_ROLE               = "tool-gateway"
+          LUMI_TOOL_RESULT_BUCKET = local.bucket_names["exports"]
+          LUMI_S3_REGION          = var.region
+        },
       )
       secret_arns = {
         LUMI_DATABASE_URL                    = local.secret_arns["database/app"]
@@ -149,7 +153,7 @@ locals {
         LUMI_TOOL_AUDIT_AUTH_SECRET          = local.secret_arns["internal/tool-audit"]
         LUMI_TOOL_APPROVAL_AUTH_SECRET       = local.secret_arns["internal/tool-approval"]
       }
-      s3_bucket_arns         = []
+      s3_bucket_arns         = [local.bucket_arns["exports"]]
       autoscale_metric_name  = "ToolGatewayInflight"
       autoscale_target_value = 40
     }
