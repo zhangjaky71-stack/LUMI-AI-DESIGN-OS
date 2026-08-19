@@ -41,6 +41,8 @@ jobs:
         run: python3 scripts/validate_staging_acceptance_contract.py
       - name: Drill canonical media-generation E2E evidence validator
         run: python3 scripts/validate_media_generation_e2e_evidence.py --self-test
+      - name: Drill canonical Tool Gateway side-effect provenance validator
+        run: python3 scripts/validate_side_effect_control_provenance.py --self-test
       - name: Python syntax
         run: |
           python3 -m py_compile \
@@ -48,6 +50,7 @@ jobs:
             scripts/staging-preflight.py \
             scripts/validate_staging_acceptance_contract.py \
             scripts/validate_media_generation_e2e_evidence.py \
+            scripts/validate_side_effect_control_provenance.py \
             scripts/validate_uv_workspace_lock.py
       - name: JSON contract syntax
         run: |
@@ -136,6 +139,10 @@ jobs:
               raise SystemExit('evidence_path does not exist')
           print(target.relative_to(workspace))
           PY
+      - name: Require canonical Tool Gateway side-effect API provenance
+        run: >-
+          python3 scripts/validate_side_effect_control_provenance.py
+          --evidence "$LUMI_STAGING_EVIDENCE_PATH"
       - name: Require structured canonical media-generation E2E evidence
         run: >-
           python3 scripts/validate_media_generation_e2e_evidence.py
