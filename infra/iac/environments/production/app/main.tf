@@ -41,6 +41,10 @@ locals {
     LUMI_TOOL_AUDIT_URL = "http://api.${local.environment}.lumi.internal:8000"
   }
 
+  tool_approval_environment = {
+    LUMI_TOOL_APPROVAL_URL = "http://api.${local.environment}.lumi.internal:8000"
+  }
+
   services = {
     api = {
       image             = var.api_image
@@ -61,6 +65,7 @@ locals {
         LUMI_AUTH_SIGNING_SECRET             = local.secret_arns["auth/signing"]
         LUMI_SIDE_EFFECT_CONTROL_AUTH_SECRET = local.secret_arns["internal/side-effect-control"]
         LUMI_TOOL_AUDIT_AUTH_SECRET          = local.secret_arns["internal/tool-audit"]
+        LUMI_TOOL_APPROVAL_AUTH_SECRET       = local.secret_arns["internal/tool-approval"]
       }
       s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["exports"]]
       autoscale_metric_name  = "ApiConcurrentRequests"
@@ -132,6 +137,7 @@ locals {
         local.sandbox_runtime_environment,
         local.side_effect_control_environment,
         local.tool_audit_environment,
+        local.tool_approval_environment,
         { LUMI_ROLE = "tool-gateway" },
       )
       secret_arns = {
@@ -141,6 +147,7 @@ locals {
         LUMI_SANDBOX_RUNTIME_AUTH_SECRET     = local.secret_arns["internal/sandbox-runtime"]
         LUMI_SIDE_EFFECT_CONTROL_AUTH_SECRET = local.secret_arns["internal/side-effect-control"]
         LUMI_TOOL_AUDIT_AUTH_SECRET          = local.secret_arns["internal/tool-audit"]
+        LUMI_TOOL_APPROVAL_AUTH_SECRET       = local.secret_arns["internal/tool-approval"]
       }
       s3_bucket_arns         = []
       autoscale_metric_name  = "ToolGatewayInflight"
