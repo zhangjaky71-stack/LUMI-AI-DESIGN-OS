@@ -35,6 +35,18 @@ MODEL_GATEWAY_REQUIRED_SOURCE_PATHS = {
     "apps/api/src/lumi_api/idempotency/gateway.py",
     "apps/api/src/lumi_api/costs/model_gateway_adapter.py",
 }
+WORKER_MEDIA_REQUIRED_SOURCE_PATHS = {
+    "services/image-generation",
+    "services/asset-storage/src/lumi_asset_storage/s3.py",
+    "apps/worker-media/src/lumi_worker_media/app.py",
+    "apps/worker-media/src/lumi_worker_media/job_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/image_generation_codec.py",
+    "apps/worker-media/src/lumi_worker_media/image_generation_repository.py",
+    "apps/worker-media/src/lumi_worker_media/image_generation_ports.py",
+    "apps/worker-media/src/lumi_worker_media/image_generation_artifacts.py",
+    "apps/worker-media/src/lumi_worker_media/image_generation_runtime.py",
+}
 
 
 class AcceptanceError(RuntimeError):
@@ -135,6 +147,15 @@ def validate_container_image_set(
         blockers.append(
             "model-gateway image provenance is missing required hosted sources: "
             + ", ".join(missing_sources)
+        )
+
+    worker_media = normalized_provenance.get("worker-media", {})
+    worker_sources = set(worker_media.get("source_paths") or [])
+    missing_worker_sources = sorted(WORKER_MEDIA_REQUIRED_SOURCE_PATHS - worker_sources)
+    if missing_worker_sources:
+        blockers.append(
+            "worker-media image provenance is missing required hosted image sources: "
+            + ", ".join(missing_worker_sources)
         )
 
     normalized = {
