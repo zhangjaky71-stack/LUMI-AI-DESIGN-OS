@@ -6,10 +6,19 @@ on:
       - "apps/api/Dockerfile"
       - "apps/api/pyproject.toml"
       - "apps/api/alembic/**"
+      - "apps/api/src/lumi_api/api/v1/**"
+      - "apps/api/src/lumi_api/asset_app.py"
+      - "apps/api/src/lumi_api/assets/runtime.py"
       - "apps/api/src/lumi_api/cli.py"
       - "apps/api/src/lumi_api/product_app.py"
+      - "apps/api/src/lumi_api/project_app.py"
       - "apps/api/src/lumi_api/generations/**"
       - "apps/api/src/lumi_api/media_dispatch.py"
+      - "apps/api/src/lumi_api/persistence/**"
+      - "services/domain/src/lumi_domain/job_dispatch.py"
+      - "services/image-generation/src/lumi_image_generation/model.py"
+      - "services/image-generation/src/lumi_image_generation/spec_codec.py"
+      - "services/asset-storage/src/lumi_asset_storage/s3.py"
       - "scripts/staging-acceptance-gate.py"
       - "scripts/validate_staging_acceptance_contract.py"
       - "staging/acceptance/**"
@@ -99,15 +108,8 @@ jobs:
             fi
             if curl --fail --silent --show-error http://127.0.0.1:8000/health/live >/tmp/live.json \
               && curl --fail --silent --show-error http://127.0.0.1:8000/health/ready >/tmp/ready.json; then
-              python - <<'PY'
-          import json
-          from pathlib import Path
-
-          for name in ("live", "ready"):
-              payload = json.loads(Path(f"/tmp/{name}.json").read_text())
-              assert payload["service"] == "api", payload
-              assert payload["status"] == "ok", payload
-          PY
+              jq -e '.service == "api" and .status == "ok"' /tmp/live.json >/dev/null
+              jq -e '.service == "api" and .status == "ok"' /tmp/ready.json >/dev/null
               exit 0
             fi
             sleep 1
