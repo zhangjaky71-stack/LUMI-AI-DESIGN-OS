@@ -69,6 +69,11 @@ def clean_manifest(acceptance_path: str) -> dict[str, Any]:
             "public_api_alarm_rollback": True,
             "internal_service_strategy": "ROLLING_CIRCUIT_BREAKER",
         },
+        "recovery": {
+            "database_pitr_max_rpo_minutes": 5,
+            "database_pitr_max_rto_minutes": 60,
+            "object_version_recovery_required": True,
+        },
         "first_day_limits": {
             "max_org_concurrent_agent_runs": 4,
             "max_org_concurrent_generations": 4,
@@ -127,6 +132,15 @@ def main() -> int:
         template["first_day_limits"]["daily_provider_spend_usd"] == 100,
         "production manifest template must encode the $100 provider hard stop",
     )
+    require(
+        template["recovery"]
+        == {
+            "database_pitr_max_rpo_minutes": 5,
+            "database_pitr_max_rto_minutes": 60,
+            "object_version_recovery_required": True,
+        },
+        "production manifest template must encode the canonical launch recovery policy",
+    )
 
     result = gate.evaluate(clean, decision, acceptance_path)
     require(result["passed"] is True, "clean contract fixture must pass")
@@ -176,6 +190,27 @@ def main() -> int:
         "all-at-once public rollout must block",
     )
 
+    relaxed_rpo = copy.deepcopy(clean)
+    relaxed_rpo["recovery"]["database_pitr_max_rpo_minutes"] = 30
+    require(
+        gate.evaluate(relaxed_rpo, decision, acceptance_path)["passed"] is False,
+        "release must not relax the 5-minute launch RPO policy",
+    )
+
+    relaxed_rto = copy.deepcopy(clean)
+    relaxed_rto["recovery"]["database_pitr_max_rto_minutes"] = 240
+    require(
+        gate.evaluate(relaxed_rto, decision, acceptance_path)["passed"] is False,
+        "release must not relax the 60-minute launch RTO policy",
+    )
+
+    object_recovery_disabled = copy.deepcopy(clean)
+    object_recovery_disabled["recovery"]["object_version_recovery_required"] = False
+    require(
+        gate.evaluate(object_recovery_disabled, decision, acceptance_path)["passed"] is False,
+        "release must not disable object version recovery rehearsal",
+    )
+
     provider_spend_above_hard_stop = copy.deepcopy(clean)
     provider_spend_above_hard_stop["first_day_limits"]["daily_provider_spend_usd"] = 100.01
     require(
@@ -217,6 +252,9 @@ def main() -> int:
                     "mutable_image_blocked": True,
                     "accepted_image_swap_blocked": True,
                     "all_at_once_rollout_blocked": True,
+                    "recovery_rpo_relaxation_blocked": True,
+                    "recovery_rto_relaxation_blocked": True,
+                    "object_recovery_disable_blocked": True,
                     "provider_spend_above_100_blocked": True,
                     "db_rollback_unproven_blocked": True,
                     "external_pending_blocked": True,
