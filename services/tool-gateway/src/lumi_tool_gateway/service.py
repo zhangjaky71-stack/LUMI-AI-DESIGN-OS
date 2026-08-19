@@ -29,10 +29,20 @@ from .http_transport import (
     encode_tool_result,
     verify_internal_request,
 )
+from .native import SandboxExecuteAdapter
 from .ports import ToolAdapter
+from .sandbox_transport import HttpSandboxExecutor
 
 _ALLOWED_CALLERS = frozenset({"agent-runtime"})
 _MAX_BODY_BYTES = 2 * 1024 * 1024
+_REQUIRED_RUNTIME_BINDINGS = frozenset(
+    {
+        "approval-resolver",
+        "audit-sink",
+        "result-offloader",
+        "side-effect-guard",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,10 +53,15 @@ class ToolGatewayServiceRuntime:
     tool_count: int
     adapter_keys: frozenset[str]
     required_adapter_keys: frozenset[str]
+    runtime_bindings: frozenset[str]
 
     @property
     def missing_adapter_keys(self) -> tuple[str, ...]:
         return tuple(sorted(self.required_adapter_keys - self.adapter_keys))
+
+    @property
+    def missing_runtime_bindings(self) -> tuple[str, ...]:
+        return tuple(sorted(_REQUIRED_RUNTIME_BINDINGS - self.runtime_bindings))
 
 
 def create_runtime_app() -> FastAPI:
@@ -63,6 +78,9 @@ def create_runtime_app() -> FastAPI:
             tool_count=len(registry.definitions()),
             adapter_keys=frozenset(adapters),
             required_adapter_keys=required,
+            # Production guard/audit/approval/offload bindings must be real persisted
+            # implementations before any tool invocation is admitted.
+            runtime_bindings=frozenset(),
         )
     )
 
@@ -82,13 +100,15 @@ def create_tool_gateway_app(runtime: ToolGatewayServiceRuntime) -> FastAPI:
 
     @app.get("/health/ready", tags=["health"])
     async def health_ready() -> JSONResponse:
-        missing = runtime.missing_adapter_keys
-        ready = not missing
+        missing_adapters = runtime.missing_adapter_keys
+        missing_bindings = runtime.missing_runtime_bindings
+        ready = not missing_adapters and not missing_bindings
         return JSONResponse(
             status_code=200 if ready else 503,
             content={
                 **_health_payload(runtime, status="ok" if ready else "not_ready"),
-                "missing_adapters": list(missing),
+                "missing_adapters": list(missing_adapters),
+                "missing_runtime_bindings": list(missing_bindings),
             },
         )
 
@@ -98,6 +118,12 @@ def create_tool_gateway_app(runtime: ToolGatewayServiceRuntime) -> FastAPI:
 
     @app.post(INVOKE_PATH, tags=["internal"])
     async def invoke(request: Request) -> JSONResponse:
+        if runtime.missing_runtime_bindings:
+            return _error(
+                503,
+                "TOOL_GATEWAY_RUNTIME_NOT_READY",
+                "Tool Gateway production bindings are incomplete",
+            )
         decoded = await _decode_internal_tool_request(request, runtime)
         if isinstance(decoded, JSONResponse):
             return decoded
@@ -164,11 +190,12 @@ async def _decode_internal_tool_request(
 def _build_hosted_adapters() -> dict[str, ToolAdapter]:
     """Production adapter composition point.
 
-    NODE-73 P0 intentionally fails readiness while any enabled P0 tool lacks a real
-    server-side adapter. Adapters are added here as their downstream runtime boundary
-    becomes deployable; placeholder/no-op adapters are forbidden.
+    Only adapters backed by real downstream runtime boundaries may be registered here.
+    Missing tools keep readiness blocked; no placeholder/no-op adapters are permitted.
     """
-    return {}
+    return {
+        "sandbox.execute@1.0.0": SandboxExecuteAdapter(HttpSandboxExecutor.from_env()),
+    }
 
 
 def _health_payload(runtime: ToolGatewayServiceRuntime, *, status: str) -> dict[str, Any]:
@@ -178,6 +205,7 @@ def _health_payload(runtime: ToolGatewayServiceRuntime, *, status: str) -> dict[
         "environment": runtime.environment,
         "tool_count": runtime.tool_count,
         "adapter_count": len(runtime.adapter_keys),
+        "runtime_binding_count": len(runtime.runtime_bindings),
     }
 
 
