@@ -183,8 +183,9 @@ def validate_source_chain() -> None:
                     f"{path.relative_to(ROOT)} missing Tool Data wiring: {fragment}"
                 )
         if source.count("LUMI_TOOL_DATA_AUTH_SECRET") != 2:
+            relative = path.relative_to(ROOT)
             raise ToolDataProvenanceError(
-                f"{path.relative_to(ROOT)} must inject Tool Data secret only into API and Tool Gateway"
+                f"{relative} must inject Tool Data secret only into API and Tool Gateway"
             )
         agent_block = _terraform_service_block(source, "agent-runtime")
         if "LUMI_TOOL_DATA" in agent_block or "internal/tool-data" in agent_block:
@@ -208,7 +209,9 @@ def _terraform_service_block(source: str, service_name: str) -> str:
     marker = f"    {service_name} = {{"
     start = source.find(marker)
     if start < 0:
-        raise ToolDataProvenanceError(f"Terraform service block is missing: {service_name}")
+        raise ToolDataProvenanceError(
+            f"Terraform service block is missing: {service_name}"
+        )
     brace = source.find("{", start)
     depth = 0
     for index in range(brace, len(source)):
