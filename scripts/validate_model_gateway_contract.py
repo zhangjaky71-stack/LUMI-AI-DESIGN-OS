@@ -143,6 +143,85 @@ def hosted_composition_contract() -> None:
         )
 
 
+def hosted_media_contract() -> None:
+    require(
+        "services/model-gateway/src/lumi_model_gateway/openai_image_adapter.py",
+        'https://api.openai.com/v1/images/generations',
+        '_MAX_IMAGE_BYTES = 100 * 1024 * 1024',
+        '_MAX_B64_CHARS',
+        'base64.b64decode(b64_value, validate=True)',
+        'response.headers.get("x-request-id")',
+        'delivery_state=DeliveryState.ACCEPTED',
+        'ProviderBinaryOutputStore',
+        'ModelOutput(kind="asset_ref", value=asset_ref, mime_type=mime_type)',
+        '_SUPPORTED_SIZES = frozenset({"1024x1024", "1024x1536", "1536x1024"})',
+    )
+    forbid(
+        "services/model-gateway/src/lumi_model_gateway/openai_image_adapter.py",
+        "import openai",
+        "from openai",
+        'ModelOutput(kind="image_base64"',
+        'ModelOutput(kind="b64_json"',
+    )
+    require(
+        "apps/api/src/lumi_api/provider_output_store.py",
+        "class S3ProviderOutputStore",
+        'os.getenv("LUMI_PROVIDER_OUTPUT_BUCKET", "")',
+        '"provider-output/v1/"',
+        "await self.object_store.put_bytes(",
+        'return f"s3://{self.bucket}/{object_key}"',
+        "max_image_bytes: int = _MAX_IMAGE_BYTES",
+    )
+    require(
+        "services/asset-storage/src/lumi_asset_storage/s3.py",
+        "async def put_bytes(",
+        "async def get_bytes(",
+        "max_bytes",
+        "ChecksumSHA256",
+    )
+    require(
+        "apps/api/src/lumi_api/model_gateway_bootstrap.py",
+        "_MEDIA_PROVIDER_SECRET_SCHEMA_VERSION = 1",
+        "OpenAIImageGenerationAdapter",
+        "OpenAIImagePriceCard",
+        "media_provider_secret",
+        "provider_output_store",
+        '"max_estimated_request_usd"',
+        '"text_input_usd_per_million_tokens"',
+        '"image_input_usd_per_million_tokens"',
+        '"image_output_usd_per_million_tokens"',
+    )
+    require(
+        "apps/api/src/lumi_api/model_gateway_service.py",
+        'LUMI_MEDIA_PROVIDER_SECRET',
+        "S3ProviderOutputStore.from_env()",
+        "media_provider_secret=media_provider_secret",
+        "provider_output_store=provider_output_store",
+    )
+    require(
+        "services/model-gateway/tests/test_openai_image_adapter.py",
+        "test_",
+        "DeliveryState.ACCEPTED",
+        "asset_ref",
+    )
+    require(
+        "apps/api/tests/test_model_gateway_media_bootstrap.py",
+        "build_hosted_model_gateway_from_secret",
+        "provider_output_store",
+    )
+    require(
+        "apps/api/tests/test_provider_output_store.py",
+        "S3ProviderOutputStore",
+        "provider-output/v1/",
+    )
+    require(
+        "services/asset-storage/tests/test_s3_bytes_boundary.py",
+        "put_bytes",
+        "get_bytes",
+        "max_bytes",
+    )
+
+
 def main() -> int:
     require(
         "services/model-gateway/src/lumi_model_gateway/models.py",
@@ -230,6 +309,7 @@ def main() -> int:
         "changed_semantics_on_same_paid_identity_fails_closed",
     )
     hosted_composition_contract()
+    hosted_media_contract()
     scan_callers()
     print("NODE-22 model gateway architecture/security contract: PASS")
     return 0
