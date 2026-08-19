@@ -43,7 +43,9 @@
           "apps/api/src/lumi_api/tool_approval_control.py",
           "apps/api/src/lumi_api/tool_data_control.py",
           "apps/api/src/lumi_api/persistence/models/project.py",
-          "apps/api/src/lumi_api/persistence/models/workflow.py"
+          "apps/api/src/lumi_api/persistence/models/workflow.py",
+          "apps/api/src/lumi_api/persistence/models/asset.py",
+          "apps/api/src/lumi_api/persistence/models/design.py"
         ]
       },
       "agent-runtime": {"git_sha":"PENDING","build_recipe_ref":"PENDING","entrypoint":"PENDING","sbom_ref":"PENDING","provenance_ref":"PENDING","source_paths":[]},
