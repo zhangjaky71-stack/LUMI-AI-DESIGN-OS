@@ -12,7 +12,13 @@ from .api import ToolGatewayAPI
 from .approval_control import HttpApprovalResolver
 from .audit_control import HttpAuditSink
 from .catalog import build_p0_registry
-from .data_control import HttpToolDataClient, ProjectQueryAdapter
+from .data_control import (
+    ArtifactQueryAdapter,
+    AssetReadAdapter,
+    HttpToolDataClient,
+    MediaInspectAdapter,
+    ProjectQueryAdapter,
+)
 from .errors import (
     ToolAmbiguousSideEffectError,
     ToolApprovalControlUnavailableError,
@@ -254,6 +260,9 @@ def _build_hosted_adapters() -> dict[str, ToolAdapter]:
     """
     data_client = HttpToolDataClient.from_env()
     return {
+        "asset.read@1.0.0": AssetReadAdapter(data_client),
+        "artifact.query@1.0.0": ArtifactQueryAdapter(data_client),
+        "media.inspect@1.0.0": MediaInspectAdapter(data_client),
         "project.query@1.0.0": ProjectQueryAdapter(data_client),
         "web.fetch@1.0.0": SafeWebFetchAdapter(PinnedStdlibHTTPTransport()),
         "sandbox.execute@1.0.0": SandboxExecuteAdapter(HttpSandboxExecutor.from_env()),
