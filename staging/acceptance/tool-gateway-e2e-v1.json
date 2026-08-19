@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "contract_id": "lumi-staging-tool-gateway-p0-e2e-v1",
+  "environment": "staging",
+  "release_identity": {
+    "git_sha": "PENDING",
+    "version": "PENDING",
+    "tool_gateway_image": "PENDING",
+    "agent_runtime_image": "PENDING",
+    "api_image": "PENDING"
+  },
+  "data_policy": {
+    "synthetic_only": true,
+    "production_customer_data_used": false,
+    "secrets_recorded_in_evidence": false
+  },
+  "readiness": {
+    "status": "PENDING",
+    "adapter_count": 0,
+    "runtime_binding_count": 0,
+    "missing_adapters": ["PENDING"],
+    "missing_runtime_bindings": ["PENDING"],
+    "probe_ref": "PENDING"
+  },
+  "calls": {
+    "web.search": {
+      "status": "PENDING",
+      "tool_call_id": "PENDING",
+      "trace_id": "PENDING",
+      "caller_service": "PENDING",
+      "resolved_version": "PENDING",
+      "audit_event_id": "PENDING",
+      "provider": "PENDING",
+      "provider_host": "PENDING",
+      "result_count": 0,
+      "evidence_ref": "PENDING"
+    },
+    "web.fetch": {
+      "status": "PENDING",
+      "tool_call_id": "PENDING",
+      "trace_id": "PENDING",
+      "caller_service": "PENDING",
+      "resolved_version": "PENDING",
+      "audit_event_id": "PENDING",
+      "http_status": 0,
+      "content_type": "PENDING",
+      "evidence_ref": "PENDING"
+    },
+    "project.query": {
+      "status": "PENDING",
+      "tool_call_id": "PENDING",
+      "trace_id": "PENDING",
+      "caller_service": "PENDING",
+      "resolved_version": "PENDING",
+      "audit_event_id": "PENDING",
+      "project_id": "PENDING",
+      "evidence_ref": "PENDING"
+    },
+    "asset.read": {
+      "status": "PENDING",
+      "tool_call_id": "PENDING",
+      "trace_id": "PENDING",
+      "caller_service": "PENDING",
+      "resolved_version": "PENDING",
+      "audit_event_id": "PENDING",
+      "asset_ref": "PENDING",
+      "storage_location_exposed": "PENDING",
+      "evidence_ref": "PENDING"
+    },
+    "artifact.query": {
+      "status": "PENDING",
+      "tool_call_id": "PENDING",
+      "trace_id": "PENDING",
+      "caller_service": "PENDING",
+      "resolved_version": "PENDING",
+      "audit_event_id": "PENDING",
+      "artifact_ref": "PENDING",
+      "storage_location_exposed": "PENDING",
+      "evidence_ref": "PENDING"
+    },
+    "media.inspect": {
+      "status": "PENDING",
+      "tool_call_id": "PENDING",
+      "trace_id": "PENDING",
+      "caller_service": "PENDING",
+      "resolved_version": "PENDING",
+      "audit_event_id": "PENDING",
+      "asset_ref": "PENDING",
+      "storage_location_exposed": "PENDING",
+      "evidence_ref": "PENDING"
+    },
+    "asset.write-derived": {
+      "status": "PENDING",
+      "tool_call_id": "PENDING",
+      "trace_id": "PENDING",
+      "caller_service": "PENDING",
+      "resolved_version": "PENDING",
+      "audit_event_id": "PENDING",
+      "operation_id": "PENDING",
+      "idempotency_key_hash": "PENDING",
+      "asset_ref": "PENDING",
+      "source_asset_id": "PENDING",
+      "artifact_ref": "PENDING",
+      "rights_inherited": "PENDING",
+      "evidence_ref": "PENDING"
+    },
+    "sandbox.execute": {
+      "status": "PENDING",
+      "tool_call_id": "PENDING",
+      "trace_id": "PENDING",
+      "caller_service": "PENDING",
+      "resolved_version": "PENDING",
+      "audit_event_id": "PENDING",
+      "exit_code": -1,
+      "network_policy": "PENDING",
+      "evidence_ref": "PENDING"
+    }
+  },
+  "idempotent_replay": {
+    "status": "PENDING",
+    "tool": "asset.write-derived",
+    "first_tool_call_id": "PENDING",
+    "replay_tool_call_id": "PENDING",
+    "operation_id": "PENDING",
+    "idempotency_key_hash": "PENDING",
+    "first_asset_ref": "PENDING",
+    "replay_asset_ref": "PENDING",
+    "replayed": "PENDING",
+    "adapter_invocation_count": 0,
+    "duplicate_derived_asset_count": -1,
+    "evidence_ref": "PENDING"
+  },
+  "result_offload": {
+    "status": "PENDING",
+    "tool": "PENDING",
+    "tool_call_id": "PENDING",
+    "inline_limit_bytes": 0,
+    "serialized_result_bytes": 0,
+    "inline_data_present": "PENDING",
+    "result_ref": "PENDING",
+    "sha256": "PENDING",
+    "object_head_verified": "PENDING",
+    "public_url_returned": "PENDING",
+    "evidence_ref": "PENDING"
+  },
+  "durable_audit": {
+    "status": "PENDING",
+    "expected_call_count": 0,
+    "persisted_call_count": 0,
+    "missing_tool_calls": ["PENDING"],
+    "cross_tenant_rows": -1,
+    "secret_material_present": "PENDING",
+    "evidence_ref": "PENDING"
+  },
+  "provider_search": {
+    "status": "PENDING",
+    "provider": "brave",
+    "provider_host": "api.search.brave.com",
+    "live_request_observed": "PENDING",
+    "provider_http_status": 0,
+    "result_count": 0,
+    "redirect_followed": "PENDING",
+    "credential_material_present": "PENDING",
+    "evidence_ref": "PENDING"
+  },
+  "verdict": "PENDING",
+  "captured_at": "PENDING"
+}
