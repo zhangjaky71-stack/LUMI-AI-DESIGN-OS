@@ -30,7 +30,7 @@ from .providers import (
     mark_model_gateway_bound,
 )
 from .registry import DeepAgentRegistry
-from .runtime_factory import BoundedDeepAgentRuntimeFactory
+from .runtime_factory import BoundedDeepAgentRuntimeFactory, HostedDeepAgentRuntimeFactory
 from .tooling import BoundToolDefinition, LumiToolGatewayProvider
 
 __all__ = [
@@ -51,6 +51,7 @@ __all__ = [
     "DeepSubagentDefinition",
     "DelegationLimits",
     "DelegationUsage",
+    "HostedDeepAgentRuntimeFactory",
     "HttpProfileModelProvider",
     "LumiToolGatewayProvider",
     "ModelGatewayChatModel",
