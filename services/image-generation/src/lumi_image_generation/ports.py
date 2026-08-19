@@ -59,7 +59,7 @@ class PendingInvocationRecord:
 
 
 class ReferenceAuthorizationPort(Protocol):
-    def authorize(
+    async def authorize(
         self,
         spec: ImageGenerationSpec,
         references: tuple[ImageReference, ...],
