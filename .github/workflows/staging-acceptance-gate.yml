@@ -49,6 +49,8 @@ jobs:
         run: python3 scripts/validate_tool_audit_provenance.py --self-test
       - name: Drill canonical Tool Gateway approval provenance validator
         run: python3 scripts/validate_tool_approval_provenance.py --self-test
+      - name: Drill canonical Tool Gateway data provenance validator
+        run: python3 scripts/validate_tool_data_provenance.py --self-test
       - name: Drill canonical Tool Gateway result-offload provenance validator
         run: python3 scripts/validate_tool_result_offload_provenance.py --self-test
       - name: Python syntax
@@ -62,6 +64,7 @@ jobs:
             scripts/validate_side_effect_control_provenance.py \
             scripts/validate_tool_audit_provenance.py \
             scripts/validate_tool_approval_provenance.py \
+            scripts/validate_tool_data_provenance.py \
             scripts/validate_tool_result_offload_provenance.py \
             scripts/validate_uv_workspace_lock.py
       - name: JSON contract syntax
@@ -163,6 +166,10 @@ jobs:
       - name: Require canonical Tool Gateway approval API provenance
         run: >-
           python3 scripts/validate_tool_approval_provenance.py
+          --evidence "$LUMI_STAGING_EVIDENCE_PATH"
+      - name: Require canonical Tool Gateway data provenance
+        run: >-
+          python3 scripts/validate_tool_data_provenance.py
           --evidence "$LUMI_STAGING_EVIDENCE_PATH"
       - name: Require canonical Tool Gateway result-offload provenance
         run: >-
