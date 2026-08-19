@@ -56,12 +56,6 @@ def _uuid(value: Any, label: str) -> str:
         raise DBEvidenceError(f"{label} must be a UUID") from exc
 
 
-def _required_string(value: Any, label: str, *, max_length: int = 4096) -> str:
-    if not isinstance(value, str) or not value or len(value) > max_length or "\x00" in value:
-        raise DBEvidenceError(f"{label} is required")
-    return value
-
-
 def _table_identifier(value: str) -> str:
     if not _IDENTIFIER.fullmatch(value):
         raise DBEvidenceError(f"unsafe database table identifier: {value}")
@@ -101,6 +95,13 @@ def _replay_call_id(probe: dict[str, Any]) -> str:
     if not isinstance(replay, dict):
         raise DBEvidenceError("probe idempotent_replay is missing")
     return _uuid(replay.get("replay_tool_call_id"), "idempotent_replay.replay_tool_call_id")
+
+
+def _offload_call_id(probe: dict[str, Any]) -> str:
+    offload = probe.get("result_offload")
+    if not isinstance(offload, dict):
+        raise DBEvidenceError("probe result_offload is missing")
+    return _uuid(offload.get("tool_call_id"), "result_offload.tool_call_id")
 
 
 async def _schema_columns(connection: Any) -> dict[str, set[str]]:
@@ -158,6 +159,16 @@ def _uuid_in_clause(prefix: str, values: list[str]) -> tuple[str, dict[str, str]
     return ", ".join(markers), params
 
 
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, dict):
+        return {str(key): _json_safe(child) for key, child in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(child) for child in value]
+    return str(value)
+
+
 async def _audit_evidence(
     connection: Any,
     *,
@@ -166,11 +177,14 @@ async def _audit_evidence(
     organization_id: str,
     call_ids: dict[str, str],
     replay_call_id: str,
+    offload_call_id: str,
 ) -> dict[str, Any]:
-    ids = [*call_ids.values(), replay_call_id]
+    ids = [*call_ids.values(), replay_call_id, offload_call_id]
+    if len(set(ids)) != 10:
+        raise DBEvidenceError("P0 probe must expose 10 distinct Tool Gateway call IDs")
     markers, params = _uuid_in_clause("audit_call", ids)
     params["organization_id"] = organization_id
-    selected = [name for name in ("id", "tool_call_id", "organization_id") if name in columns]
+    selected = ["id", "tool_call_id", "organization_id", "created_at"]
     for optional in (
         "tool_name",
         "tool_key",
@@ -185,11 +199,15 @@ async def _audit_evidence(
         if optional in columns and optional not in selected:
             selected.append(optional)
     projection = ", ".join(selected)
-    query = text(
-        f"SELECT {projection} FROM {table} "
-        f"WHERE tool_call_id IN ({markers}) ORDER BY created_at NULLS LAST, id"
-    )
-    rows = (await connection.execute(query, params)).mappings().all()
+    rows = (
+        await connection.execute(
+            text(
+                f"SELECT {projection} FROM {table} "
+                f"WHERE tool_call_id IN ({markers}) ORDER BY created_at, id"
+            ),
+            params,
+        )
+    ).mappings().all()
     seen = {
         str(row["tool_call_id"])
         for row in rows
@@ -198,14 +216,21 @@ async def _audit_evidence(
     missing = [tool for tool, call_id in call_ids.items() if call_id not in seen]
     if replay_call_id not in seen:
         missing.append("asset.write-derived:replay")
+    if offload_call_id not in seen:
+        missing.append("sandbox.execute:offload")
 
-    cross_query = text(
-        f"SELECT COUNT(*) AS count FROM {table} "
-        f"WHERE tool_call_id IN ({markers}) "
-        "AND organization_id <> CAST(:organization_id AS uuid)"
+    cross_count = int(
+        (
+            await connection.execute(
+                text(
+                    f"SELECT COUNT(*) FROM {table} "
+                    f"WHERE tool_call_id IN ({markers}) "
+                    "AND organization_id <> CAST(:organization_id AS uuid)"
+                ),
+                params,
+            )
+        ).scalar_one()
     )
-    cross_count = int((await connection.execute(cross_query, params)).scalar_one())
-
     sensitive_values = [
         value
         for value in (
@@ -220,7 +245,6 @@ async def _audit_evidence(
         sort_keys=True,
         default=str,
     )
-    secret_material_present = any(value in serialized_rows for value in sensitive_values)
     event_ids = {
         str(row["tool_call_id"]): str(row.get("id") or "")
         for row in rows
@@ -232,19 +256,9 @@ async def _audit_evidence(
         "persisted_call_count": len(rows),
         "missing_tool_calls": missing,
         "cross_tenant_rows": cross_count,
-        "secret_material_present": secret_material_present,
+        "secret_material_present": any(value in serialized_rows for value in sensitive_values),
         "event_ids_by_tool_call_id": event_ids,
     }
-
-
-def _json_safe(value: Any) -> Any:
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
-    if isinstance(value, dict):
-        return {str(key): _json_safe(child) for key, child in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_safe(child) for child in value]
-    return str(value)
 
 
 async def _idempotency_evidence(
@@ -267,11 +281,10 @@ async def _idempotency_evidence(
             "side_effect_attempted",
             "result_json",
             "error_json",
+            "created_at",
         )
         if name in columns
     ]
-    if not projection_names:
-        raise DBEvidenceError("idempotency table has no usable evidence columns")
     projection = ", ".join(projection_names)
     row = (
         await connection.execute(
@@ -279,12 +292,9 @@ async def _idempotency_evidence(
                 f"SELECT {projection} FROM {table} "
                 "WHERE organization_id = CAST(:organization_id AS uuid) "
                 "AND idempotency_key = :idempotency_key "
-                "ORDER BY created_at DESC NULLS LAST LIMIT 1"
+                "ORDER BY created_at DESC LIMIT 1"
             ),
-            {
-                "organization_id": organization_id,
-                "idempotency_key": idempotency_key,
-            },
+            {"organization_id": organization_id, "idempotency_key": idempotency_key},
         )
     ).mappings().first()
     if row is None:
@@ -331,7 +341,6 @@ async def _derived_assets(
             },
         )
     ).mappings().all()
-    ids = [str(row["id"]) for row in rows]
     first_rows = [
         row
         for row in rows
@@ -346,7 +355,7 @@ async def _derived_assets(
     return {
         "derived_asset_id": derived_id,
         "derived_asset_ref": f"asset://{derived_id}",
-        "matching_asset_ids": ids,
+        "matching_asset_ids": [str(row["id"]) for row in rows],
         "adapter_invocation_count": len(first_rows),
         "duplicate_derived_asset_count": max(0, len(rows) - 1),
     }
@@ -376,14 +385,13 @@ async def _rights_evidence(
     derived_asset_id: str,
 ) -> dict[str, Any]:
     fields = ", ".join(_RIGHTS_FIELDS)
-    query = text(
-        f"SELECT asset_id, {fields} FROM asset_rights "
-        "WHERE organization_id = CAST(:organization_id AS uuid) "
-        "AND asset_id IN (CAST(:source_asset_id AS uuid), CAST(:derived_asset_id AS uuid))"
-    )
     rows = (
         await connection.execute(
-            query,
+            text(
+                f"SELECT asset_id, {fields} FROM asset_rights "
+                "WHERE organization_id = CAST(:organization_id AS uuid) "
+                "AND asset_id IN (CAST(:source_asset_id AS uuid), CAST(:derived_asset_id AS uuid))"
+            ),
             {
                 "organization_id": organization_id,
                 "source_asset_id": source_asset_id,
@@ -409,6 +417,7 @@ async def collect(probe: dict[str, Any], *, idempotency_key: str) -> dict[str, A
     scope = _probe_scope(probe)
     call_ids = _tool_calls(probe)
     replay_call_id = _replay_call_id(probe)
+    offload_call_id = _offload_call_id(probe)
     first_write_call_id = call_ids["asset.write-derived"]
 
     engine = create_engine()
@@ -417,13 +426,13 @@ async def collect(probe: dict[str, Any], *, idempotency_key: str) -> dict[str, A
             schema = await _schema_columns(connection)
             audit_table, audit_columns = _discover_table(
                 schema,
-                required={"organization_id", "tool_call_id"},
+                required={"id", "created_at", "organization_id", "tool_call_id"},
                 preferred_names=("tool_audit_events", "tool_audits", "audit_events"),
                 label="Tool audit",
             )
             idempotency_table, idempotency_columns = _discover_table(
                 schema,
-                required={"organization_id", "idempotency_key"},
+                required={"id", "created_at", "organization_id", "idempotency_key"},
                 preferred_names=("idempotency_operations", "idempotency_operation"),
                 label="idempotency operation",
             )
@@ -439,6 +448,7 @@ async def collect(probe: dict[str, Any], *, idempotency_key: str) -> dict[str, A
                 organization_id=scope["organization_id"],
                 call_ids=call_ids,
                 replay_call_id=replay_call_id,
+                offload_call_id=offload_call_id,
             )
             idempotency = await _idempotency_evidence(
                 connection,
@@ -468,6 +478,7 @@ async def collect(probe: dict[str, Any], *, idempotency_key: str) -> dict[str, A
         "scope": {**scope, "project_id": task_project_id},
         "tool_call_ids": call_ids,
         "replay_tool_call_id": replay_call_id,
+        "offload_tool_call_id": offload_call_id,
         "audit": audit,
         "idempotency": idempotency,
         "derived_asset": derived,
