@@ -20,6 +20,7 @@ locals {
     "internal/sandbox-runtime",
     "internal/side-effect-control",
     "internal/tool-audit",
+    "internal/tool-approval",
   ])
 }
 
