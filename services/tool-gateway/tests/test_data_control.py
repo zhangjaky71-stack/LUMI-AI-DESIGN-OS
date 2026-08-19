@@ -66,7 +66,7 @@ class ToolDataControlTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_project_adapter_returns_canonical_summary(self) -> None:
         client = _CapturingClient()
-        definition = build_p0_registry().get("project.query", "1.0.0")
+        definition = build_p0_registry().resolve("project.query", "1.0.0")
         result = await ProjectQueryAdapter(client).invoke(definition, _request())
 
         self.assertEqual(result.data["name"], "Canonical Project")
@@ -79,7 +79,7 @@ class ToolDataControlTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client.calls, [])
 
     def test_catalog_rejects_legacy_project_id_and_unknown_query(self) -> None:
-        definition = build_p0_registry().get("project.query", "1.0.0")
+        definition = build_p0_registry().resolve("project.query", "1.0.0")
         validator = SchemaValidator()
         validator.validate_input(definition.input_schema, {"query": "project.summary"})
         with self.assertRaises(ToolInputValidationError):
