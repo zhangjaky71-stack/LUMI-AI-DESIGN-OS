@@ -67,6 +67,7 @@ def evaluate(
     snapshot: dict[str, Any],
     migration: dict[str, Any],
     runtime: dict[str, Any],
+    rollout: dict[str, Any],
     smoke: dict[str, Any],
     rollback: dict[str, Any],
     refs: list[dict[str, str]],
@@ -113,6 +114,31 @@ def evaluate(
             for item in services
         ):
             blockers.append("runtime identity contains non-steady or mismatched service")
+
+    check_passed(rollout, label="rollout-evidence", blockers=blockers, deployment_id=deployment_id)
+    if rc(rollout) != manifest_rc:
+        blockers.append("rollout evidence RC mismatch")
+    expected_rollout = manifest.get("rollout")
+    if not isinstance(expected_rollout, dict):
+        blockers.append("manifest rollout object missing")
+    else:
+        if rollout.get("strategy") != "CANARY":
+            blockers.append("live public API deployment strategy is not CANARY")
+        if rollout.get("canary_percent") != expected_rollout.get("public_api_canary_percent"):
+            blockers.append("live canary percentage does not match manifest")
+        if rollout.get("bake_time_minutes") != expected_rollout.get("public_api_canary_bake_minutes"):
+            blockers.append("live canary bake time does not match manifest")
+        if rollout.get("canary_bake_time_minutes") != expected_rollout.get("public_api_canary_bake_minutes"):
+            blockers.append("live canary configuration bake time does not match manifest")
+        if rollout.get("alarms_enabled") is not True or rollout.get("alarms_rollback") is not True:
+            blockers.append("live canary alarms are not enabled with rollback")
+        if not rollout.get("alternate_target_group_arn") or not rollout.get("production_listener_rule"):
+            blockers.append("live canary blue/green routing evidence is incomplete")
+        alarms = rollout.get("alarms")
+        if not isinstance(alarms, list) or len(alarms) < 2:
+            blockers.append("live canary alarm evidence must contain at least two alarms")
+        elif any(not isinstance(item, dict) or item.get("state") == "ALARM" for item in alarms):
+            blockers.append("live canary alarm evidence contains ALARM/invalid state")
 
     check_passed(smoke, label="production-smoke", blockers=blockers)
     candidate = manifest.get("release_candidate")
@@ -162,6 +188,7 @@ def main() -> int:
     parser.add_argument("--predeploy-snapshot", required=True)
     parser.add_argument("--migration", required=True)
     parser.add_argument("--runtime-identity", required=True)
+    parser.add_argument("--rollout-evidence", required=True)
     parser.add_argument("--smoke", required=True)
     parser.add_argument("--rollback-rehearsal", required=True)
     parser.add_argument("--output", required=True)
@@ -172,6 +199,7 @@ def main() -> int:
         Path(args.predeploy_snapshot),
         Path(args.migration),
         Path(args.runtime_identity),
+        Path(args.rollout_evidence),
         Path(args.smoke),
         Path(args.rollback_rehearsal),
     ]
@@ -184,6 +212,7 @@ def main() -> int:
             load_json(paths[3]),
             load_json(paths[4]),
             load_json(paths[5]),
+            load_json(paths[6]),
             [freeze(path) for path in paths],
         )
     except (OSError, json.JSONDecodeError, ProductionDecisionError) as exc:
