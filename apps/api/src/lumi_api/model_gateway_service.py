@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 import asyncpg
@@ -29,7 +30,7 @@ from lumi_model_gateway.http_transport import (
 from .model_gateway_bootstrap import build_hosted_model_gateway_from_secret
 
 _INVOKE_PATH = "/internal/v1/models/invoke"
-_ALLOWED_CALLERS = frozenset({"api", "agent-runtime", "worker-media"})
+_ALLOWED_CALLERS = frozenset({"agent-runtime", "worker-media"})
 _MAX_BODY_BYTES = 2 * 1024 * 1024
 
 
@@ -196,7 +197,7 @@ async def _database_ready(database_dsn: str) -> tuple[bool, str]:
             return False, "provider_cost_guard_missing"
         if not bool(guard["enabled"]) or not bool(guard["fail_closed"]):
             return False, "provider_cost_guard_not_fail_closed"
-        if float(guard["daily_cap_usd"]) > 100.0:
+        if Decimal(guard["daily_cap_usd"]) > Decimal("100.00000000"):
             return False, "provider_cost_guard_cap_invalid"
         return True, "ok"
     except Exception:
