@@ -5,19 +5,10 @@ import copy
 import importlib.util
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
-DECISION_PATH = ROOT / "scripts" / "production-recovery-decision.py"
-
-
-def load_decision() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("lumi_production_recovery_decision", DECISION_PATH)
-    if spec is None or spec.loader is None:
-        raise SystemExit("unable to import production recovery decision")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+DECISION = ROOT / "scripts/production-recovery-decision.py"
 
 
 def require(condition: bool, message: str) -> None:
@@ -25,60 +16,59 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(f"production recovery contract invalid: {message}")
 
 
-def manifest() -> dict[str, Any]:
+def load_decision() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("lumi_recovery_decision", DECISION)
+    require(spec is not None and spec.loader is not None, "cannot import recovery decision")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def fixtures() -> list[dict[str, Any]]:
+    rc = {
+        "git_sha": "b" * 40,
+        "version": "1.0.0-rc.1",
+        "migration_head": "0020_generation_operation_identity",
+    }
     digest = "sha256:" + "a" * 64
-    return {
+    images = {
+        name: f"123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/lumi-{name}@{digest}"
+        for name in (
+            "api",
+            "agent-runtime",
+            "model-gateway",
+            "tool-gateway",
+            "worker-media",
+            "sandbox-runtime",
+        )
+    }
+    manifest = {
         "schema_version": 1,
         "deployment_id": "prod-recovery-contract-001",
         "environment": "production",
-        "release_candidate": {
-            "git_sha": "b" * 40,
-            "version": "1.0.0-rc.1",
-            "migration_head": "0020_generation_operation_identity",
-        },
+        "release_candidate": copy.deepcopy(rc),
         "aws": {"region": "ap-northeast-1"},
-        "images": {
-            name: f"123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/lumi-{name}@{digest}"
-            for name in (
-                "api",
-                "agent-runtime",
-                "model-gateway",
-                "tool-gateway",
-                "worker-media",
-                "sandbox-runtime",
-            )
-        },
+        "images": images,
         "recovery": {
             "database_pitr_max_rpo_minutes": 5,
             "database_pitr_max_rto_minutes": 60,
             "object_version_recovery_required": True,
         },
     }
-
-
-def baseline(m: dict[str, Any]) -> dict[str, Any]:
-    return {
+    baseline = {
         "schema_version": 1,
-        "deployment_id": m["deployment_id"],
-        "release_candidate": copy.deepcopy(m["release_candidate"]),
+        "deployment_id": manifest["deployment_id"],
+        "release_candidate": copy.deepcopy(rc),
         "passed": True,
         "services": [
-            {
-                "service_name": name,
-                "image": image,
-                "image_matches": True,
-                "steady": True,
-            }
-            for name, image in m["images"].items()
+            {"service_name": name, "image": image, "image_matches": True, "steady": True}
+            for name, image in images.items()
         ],
     }
-
-
-def rds(m: dict[str, Any]) -> dict[str, Any]:
-    return {
+    rds = {
         "schema_version": 1,
-        "deployment_id": m["deployment_id"],
-        "release_candidate": copy.deepcopy(m["release_candidate"]),
+        "deployment_id": manifest["deployment_id"],
+        "release_candidate": copy.deepcopy(rc),
         "source_instance_id": "lumi-production-postgres",
         "recovery_instance_id": "lumi-dr-contract-001",
         "target_publicly_accessible": False,
@@ -87,14 +77,11 @@ def rds(m: dict[str, Any]) -> dict[str, Any]:
         "observed_rto_minutes": 42.0,
         "passed": True,
     }
-
-
-def database_verify(m: dict[str, Any], r: dict[str, Any]) -> dict[str, Any]:
-    return {
+    db = {
         "schema_version": 1,
-        "release_candidate": copy.deepcopy(m["release_candidate"]),
-        "source_instance_id": r["source_instance_id"],
-        "recovery_instance_id": r["recovery_instance_id"],
+        "release_candidate": copy.deepcopy(rc),
+        "source_instance_id": rds["source_instance_id"],
+        "recovery_instance_id": rds["recovery_instance_id"],
         "target_isolated": True,
         "transaction_read_only": True,
         "invariants": {"alembic_expected_head": 0, "tenant_parent_match": 0},
@@ -102,27 +89,24 @@ def database_verify(m: dict[str, Any], r: dict[str, Any]) -> dict[str, Any]:
         "passed": True,
     }
 
+    def pair(purpose: str) -> dict[str, Any]:
+        checksum = ("c" if purpose == "assets" else "d") * 64
+        return {
+            "purpose": purpose,
+            "source_region": "ap-northeast-1",
+            "destination_region": "ap-southeast-1",
+            "source_replication_status": "COMPLETED",
+            "destination_replication_status": "REPLICA",
+            "rtc_minutes": 15,
+            "replication_lag_seconds": 120,
+            "expected_sha256": checksum,
+            "destination_sha256": checksum,
+            "passed": True,
+        }
 
-def pair(purpose: str) -> dict[str, Any]:
-    checksum = "c" * 64 if purpose == "assets" else "d" * 64
-    return {
-        "purpose": purpose,
-        "source_region": "ap-northeast-1",
-        "destination_region": "ap-southeast-1",
-        "source_replication_status": "COMPLETED",
-        "destination_replication_status": "REPLICA",
-        "rtc_minutes": 15,
-        "replication_lag_seconds": 120,
-        "expected_sha256": checksum,
-        "destination_sha256": checksum,
-        "passed": True,
-    }
-
-
-def object_recovery(m: dict[str, Any]) -> dict[str, Any]:
-    return {
+    obj = {
         "schema_version": 1,
-        "deployment_id": m["deployment_id"],
+        "deployment_id": manifest["deployment_id"],
         "versioning": "Enabled",
         "expected_sha256": "e" * 64,
         "corrupt_sha256": "f" * 64,
@@ -133,7 +117,7 @@ def object_recovery(m: dict[str, Any]) -> dict[str, Any]:
         "replica_cleanup_complete": True,
         "cross_region": {
             "schema_version": 1,
-            "deployment_id": m["deployment_id"],
+            "deployment_id": manifest["deployment_id"],
             "source_region": "ap-northeast-1",
             "destination_region": "ap-southeast-1",
             "rtc_minutes": 15,
@@ -144,88 +128,82 @@ def object_recovery(m: dict[str, Any]) -> dict[str, Any]:
         },
         "passed": True,
     }
-
-
-def cleanup(m: dict[str, Any]) -> dict[str, Any]:
-    return {
+    cleanup = {
         "schema_version": 1,
-        "deployment_id": m["deployment_id"],
+        "deployment_id": manifest["deployment_id"],
         "recovery_instance_deleted": True,
         "database_evidence_object_deleted": True,
         "passed": True,
     }
+    return [manifest, baseline, rds, db, obj, cleanup]
 
 
-def evaluate(module: ModuleType, fixtures: tuple[dict[str, Any], ...]) -> dict[str, Any]:
-    m, b, r, db, obj, clean = fixtures
-    return module.evaluate(m, b, r, db, obj, clean, refs=[{"path": "reports/contract.json", "sha256": "0" * 64}])
+def evaluate(module: ModuleType, values: list[dict[str, Any]]) -> dict[str, Any]:
+    return module.evaluate(
+        *values,
+        refs=[{"path": "reports/contract.json", "sha256": "0" * 64}],
+    )
 
 
-def fresh() -> tuple[dict[str, Any], ...]:
-    m = manifest()
-    r = rds(m)
-    return m, baseline(m), r, database_verify(m, r), object_recovery(m), cleanup(m)
+def must_block(module: ModuleType, mutate: Callable[[list[dict[str, Any]]], None], label: str) -> None:
+    values = fixtures()
+    mutate(values)
+    require(evaluate(module, values)["passed"] is False, f"{label} must block")
 
 
-def must_block(module: ModuleType, mutate: Any, label: str) -> None:
-    fixtures = fresh()
-    mutate(fixtures)
-    require(evaluate(module, fixtures)["passed"] is False, f"{label} must block")
-
-
-def validate_source_contract() -> None:
-    object_dr = (ROOT / "infra/iac/environments/production/core/object-dr.tf").read_text(encoding="utf-8")
-    object_dr_vars = (ROOT / "infra/iac/environments/production/core/variables.tf").read_text(encoding="utf-8")
-    object_dr_outputs = (ROOT / "infra/iac/environments/production/core/outputs.tf").read_text(encoding="utf-8")
-    version_drill = (ROOT / "scripts/production-object-recovery-drill.sh").read_text(encoding="utf-8")
-    cross_drill = (ROOT / "scripts/production-object-cross-region-drill.sh").read_text(encoding="utf-8")
-    replica_cleanup = (ROOT / "scripts/cleanup-production-object-dr-replicas.sh").read_text(encoding="utf-8")
-    db_verify = (ROOT / "scripts/production-recovery-db-verify.py").read_text(encoding="utf-8")
+def source_contract() -> None:
+    object_dr = (ROOT / "infra/iac/environments/production/core/object-dr.tf").read_text()
+    variables = (ROOT / "infra/iac/environments/production/core/variables.tf").read_text()
+    outputs = (ROOT / "infra/iac/environments/production/core/outputs.tf").read_text()
+    version_drill = (ROOT / "scripts/production-object-recovery-drill.sh").read_text()
+    cross_drill = (ROOT / "scripts/production-object-cross-region-drill.sh").read_text()
+    cleanup = (ROOT / "scripts/cleanup-production-object-dr-replicas.sh").read_text()
+    db_verify = (ROOT / "scripts/production-recovery-db-verify.py").read_text()
 
     for token in (
-        'local.object_dr_purposes = toset(["assets", "exports"])',
+        'object_dr_purposes = toset(["assets", "exports"])',
         'resource "aws_s3_bucket_replication_configuration" "object_dr"',
+        'delete_marker_replication',
         'status = "Disabled"',
         'sse_kms_encrypted_objects',
         'replication_time',
-        'minutes = 15',
         'metrics',
+        'minutes = 15',
     ):
         require(token in object_dr, f"cross-region IaC missing {token!r}")
-    require('default = "ap-southeast-1"' in object_dr_vars, "launch DR region pin missing")
-    require("var.object_dr_region != var.region" in object_dr_vars, "DR region distinctness validation missing")
-    require('output "object_dr_bucket_names"' in object_dr_outputs, "DR bucket output missing")
-    require('output "object_dr_region"' in object_dr_outputs, "DR region output missing")
-    require("ReplicationStatus" in cross_drill and '"REPLICA"' in cross_drill, "live replica-status probe missing")
-    require("replication_lag_seconds" in cross_drill and "900" in cross_drill, "15-minute live lag gate missing")
-    require("cleanup-production-object-dr-replicas.sh" in version_drill, "version drill does not clean replicas")
-    require("COMPLETED" in replica_cleanup, "replica cleanup does not wait for completed replication")
-    require("SET TRANSACTION READ ONLY" in db_verify, "DB verifier read-only transaction missing")
-    require('"error": str(exc)' not in db_verify, "DB verifier may serialize exception details")
+    require('default = "ap-southeast-1"' in variables, "launch DR region pin missing")
+    require("var.object_dr_region != var.region" in variables, "DR region distinctness missing")
+    require('output "object_dr_bucket_names"' in outputs, "DR bucket output missing")
+    require('output "object_dr_region"' in outputs, "DR region output missing")
+    require("ReplicationStatus" in cross_drill and '"REPLICA"' in cross_drill, "live replica status gate missing")
+    require("replication_lag_seconds" in cross_drill and "900" in cross_drill, "live RTC lag gate missing")
+    require("cleanup-production-object-dr-replicas.sh" in version_drill, "version drill replica cleanup missing")
+    require("replica_cleanup_complete:true" in version_drill, "version drill cleanup evidence missing")
+    require("COMPLETED" in cleanup and "_node73-drill/" in cleanup, "replica cleanup fail-closed scope missing")
+    require("SET TRANSACTION READ ONLY" in db_verify, "DB read-only transaction missing")
+    require('"error": str(exc)' not in db_verify, "DB verifier may leak exception context")
 
 
 def main() -> int:
     module = load_decision()
-    validate_source_contract()
-
-    clean = fresh()
-    require(evaluate(module, clean)["passed"] is True, "clean production recovery fixture must pass")
+    source_contract()
+    require(evaluate(module, fixtures())["passed"] is True, "clean recovery fixture must pass")
 
     must_block(module, lambda f: f[2].__setitem__("observed_rpo_minutes", 5.01), "RPO > 5m")
     must_block(module, lambda f: f[2].__setitem__("observed_rto_minutes", 60.01), "RTO > 60m")
-    must_block(module, lambda f: f[2].__setitem__("recovery_instance_id", f[2]["source_instance_id"]), "same RDS source/restore")
+    must_block(module, lambda f: f[2].__setitem__("recovery_instance_id", f[2]["source_instance_id"]), "source=restore")
     must_block(module, lambda f: f[2].__setitem__("target_publicly_accessible", True), "public restored RDS")
     must_block(module, lambda f: f[3]["invariants"].__setitem__("tenant_parent_match", 1), "DB invariant violation")
-    must_block(module, lambda f: f[3].__setitem__("transaction_read_only", False), "writable recovery verifier")
-    must_block(module, lambda f: f[4].__setitem__("restored_sha256", "0" * 64), "version restore checksum mismatch")
+    must_block(module, lambda f: f[3].__setitem__("transaction_read_only", False), "writable verifier")
+    must_block(module, lambda f: f[4].__setitem__("restored_sha256", "0" * 64), "version checksum mismatch")
     must_block(module, lambda f: f[4].__setitem__("replica_cleanup_complete", False), "replica cleanup incomplete")
-    must_block(module, lambda f: f[4]["cross_region"].__setitem__("destination_region", "ap-northeast-1"), "same-region DR destination")
-    must_block(module, lambda f: f[4]["cross_region"].__setitem__("pairs", [pair("assets")]), "missing exports CRR")
-    must_block(module, lambda f: f[4]["cross_region"]["pairs"][0].__setitem__("replication_lag_seconds", 901), "CRR lag > 15m")
+    must_block(module, lambda f: f[4]["cross_region"].__setitem__("destination_region", "ap-northeast-1"), "same-region DR")
+    must_block(module, lambda f: f[4]["cross_region"].__setitem__("pairs", f[4]["cross_region"]["pairs"][:1]), "missing exports CRR")
+    must_block(module, lambda f: f[4]["cross_region"]["pairs"][0].__setitem__("replication_lag_seconds", 901), "CRR lag >15m")
     must_block(module, lambda f: f[4]["cross_region"]["pairs"][0].__setitem__("destination_replication_status", "PENDING"), "destination not REPLICA")
     must_block(module, lambda f: f[4]["cross_region"]["pairs"][0].__setitem__("destination_sha256", "1" * 64), "CRR checksum mismatch")
-    must_block(module, lambda f: f[5].__setitem__("recovery_instance_deleted", False), "temporary RDS cleanup incomplete")
-    must_block(module, lambda f: f[1]["services"][0].__setitem__("image_matches", False), "baseline runtime image mismatch")
+    must_block(module, lambda f: f[5].__setitem__("recovery_instance_deleted", False), "temporary RDS cleanup")
+    must_block(module, lambda f: f[1]["services"][0].__setitem__("image_matches", False), "baseline runtime mismatch")
 
     print("production recovery contract: PASS")
     return 0
