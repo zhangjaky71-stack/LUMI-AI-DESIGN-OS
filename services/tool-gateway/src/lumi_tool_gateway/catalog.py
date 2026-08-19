@@ -102,17 +102,29 @@ def p0_tool_definitions() -> tuple[ToolDefinition, ...]:
         ToolDefinition(
             name="project.query",
             version="1.0.0",
-            description="Execute a tenant-scoped domain query; unrestricted SQL is not exposed.",
+            description="Read the canonical summary for the project bound to the current Task.",
             input_schema={
                 "type": "object",
                 "required": ["query"],
                 "properties": {
-                    "query": {"type": "string", "minLength": 1, "maxLength": 128},
-                    "parameters": _OBJECT,
+                    "query": {
+                        "type": "string",
+                        "enum": ["project.summary"],
+                    }
                 },
                 "additionalProperties": False,
             },
-            output_schema=_OBJECT,
+            output_schema={
+                "type": "object",
+                "required": ["project_id", "name", "status", "summary"],
+                "properties": {
+                    "project_id": {"type": "string"},
+                    "name": {"type": "string"},
+                    "status": {"type": "string"},
+                    "summary": _OBJECT,
+                },
+                "additionalProperties": False,
+            },
             risk=ToolRisk.READ_INTERNAL,
             idempotency=ToolIdempotency.NOT_REQUIRED,
             permissions=frozenset({"tool.project.query"}),
