@@ -33,6 +33,10 @@ locals {
     LUMI_SANDBOX_RUNTIME_URL = "http://sandbox-runtime.${local.environment}.lumi.internal:8080"
   }
 
+  side_effect_control_environment = {
+    LUMI_SIDE_EFFECT_CONTROL_URL = "http://api.${local.environment}.lumi.internal:8000"
+  }
+
   services = {
     api = {
       image             = var.api_image
@@ -46,11 +50,12 @@ locals {
       health_check_path = "/health/ready"
       environment = merge(local.common_environment, { LUMI_ROLE = "api" })
       secret_arns = {
-        LUMI_DATABASE_URL           = local.secret_arns["database/app"]
-        LUMI_REDIS_URL              = local.secret_arns["redis/url"]
-        LUMI_RABBITMQ_URL           = local.secret_arns["rabbitmq/url"]
-        LUMI_BILLING_WEBHOOK_SECRET = local.secret_arns["billing/webhook"]
-        LUMI_AUTH_SIGNING_SECRET    = local.secret_arns["auth/signing"]
+        LUMI_DATABASE_URL                    = local.secret_arns["database/app"]
+        LUMI_REDIS_URL                       = local.secret_arns["redis/url"]
+        LUMI_RABBITMQ_URL                    = local.secret_arns["rabbitmq/url"]
+        LUMI_BILLING_WEBHOOK_SECRET          = local.secret_arns["billing/webhook"]
+        LUMI_AUTH_SIGNING_SECRET             = local.secret_arns["auth/signing"]
+        LUMI_SIDE_EFFECT_CONTROL_AUTH_SECRET = local.secret_arns["internal/side-effect-control"]
       }
       s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["exports"]]
       autoscale_metric_name  = "ApiConcurrentRequests"
@@ -120,13 +125,15 @@ locals {
       environment = merge(
         local.common_environment,
         local.sandbox_runtime_environment,
+        local.side_effect_control_environment,
         { LUMI_ROLE = "tool-gateway" },
       )
       secret_arns = {
-        LUMI_DATABASE_URL                 = local.secret_arns["database/app"]
-        LUMI_AUTH_SIGNING_SECRET          = local.secret_arns["auth/signing"]
-        LUMI_TOOL_GATEWAY_AUTH_SECRET     = local.secret_arns["internal/tool-gateway"]
-        LUMI_SANDBOX_RUNTIME_AUTH_SECRET  = local.secret_arns["internal/sandbox-runtime"]
+        LUMI_DATABASE_URL                    = local.secret_arns["database/app"]
+        LUMI_AUTH_SIGNING_SECRET             = local.secret_arns["auth/signing"]
+        LUMI_TOOL_GATEWAY_AUTH_SECRET        = local.secret_arns["internal/tool-gateway"]
+        LUMI_SANDBOX_RUNTIME_AUTH_SECRET     = local.secret_arns["internal/sandbox-runtime"]
+        LUMI_SIDE_EFFECT_CONTROL_AUTH_SECRET = local.secret_arns["internal/side-effect-control"]
       }
       s3_bucket_arns         = []
       autoscale_metric_name  = "ToolGatewayInflight"
@@ -170,9 +177,9 @@ locals {
       container_port = 8080
       environment = merge(local.common_environment, { LUMI_ROLE = "sandbox-runtime" })
       secret_arns = {
-        LUMI_REDIS_URL                    = local.secret_arns["redis/url"]
-        LUMI_RABBITMQ_URL                 = local.secret_arns["rabbitmq/url"]
-        LUMI_SANDBOX_RUNTIME_AUTH_SECRET  = local.secret_arns["internal/sandbox-runtime"]
+        LUMI_REDIS_URL                   = local.secret_arns["redis/url"]
+        LUMI_RABBITMQ_URL                = local.secret_arns["rabbitmq/url"]
+        LUMI_SANDBOX_RUNTIME_AUTH_SECRET = local.secret_arns["internal/sandbox-runtime"]
       }
       s3_bucket_arns         = [local.bucket_arns["sandbox"]]
       autoscale_metric_name  = "SandboxQueueBacklog"
