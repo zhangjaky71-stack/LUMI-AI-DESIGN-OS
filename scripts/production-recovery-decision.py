@@ -199,6 +199,8 @@ def evaluate(
         blockers.append("object recovery drill cleanup is incomplete")
     if object_recovery.get("replica_cleanup_complete") is not True:
         blockers.append("object version recovery replica cleanup is incomplete")
+    if object_recovery.get("database_evidence_versions_cleaned") is not True:
+        blockers.append("database recovery evidence data-version cleanup is incomplete")
     if object_recovery.get("expected_sha256") != object_recovery.get("restored_sha256"):
         blockers.append("object recovery restored checksum mismatch")
     if object_recovery.get("expected_sha256") == object_recovery.get("corrupt_sha256"):
