@@ -22,6 +22,7 @@ REQUIRED_TOOL_GATEWAY_SOURCES = frozenset(
         "services/tool-gateway/src/lumi_tool_gateway/service.py",
         "services/tool-gateway/src/lumi_tool_gateway/data_control.py",
         "services/tool-gateway/src/lumi_tool_gateway/catalog.py",
+        "services/tool-gateway/src/lumi_tool_gateway/schema.py",
         "services/tool-gateway/src/lumi_tool_gateway/http_transport.py",
     }
 )
@@ -98,6 +99,11 @@ def validate_source_chain() -> None:
         '@router.post("/asset/read")',
         '@router.post("/artifact/query")',
         '@router.post("/media/inspect")',
+        '@router.post("/asset/write-derived")',
+        'source_asset.status != "ready"',
+        "AssetRights(",
+        '"derived_by": "tool:asset.write-derived:1.0.0"',
+        "async with self._session_factory() as session, session.begin()",
         "hmac.compare_digest",
     ):
         if fragment not in api_control:
@@ -134,8 +140,11 @@ def validate_source_chain() -> None:
         'service="tool-gateway"',
         "class ProjectQueryAdapter",
         "class AssetReadAdapter",
+        "class AssetWriteDerivedAdapter",
         "class ArtifactQueryAdapter",
         "class MediaInspectAdapter",
+        '"tool_call_id": str(request.tool_call_id)',
+        "side_effect_ref=asset_ref",
         'resource_refs=(f"asset://',
         'resource_refs=(f"artifact://',
     ):
@@ -155,13 +164,29 @@ def validate_source_chain() -> None:
         'name="project.query"',
         '"enum": ["project.summary"]',
         'name="asset.read"',
+        'name="asset.write-derived"',
         'name="artifact.query"',
         'name="media.inspect"',
+        '"pattern": _ARTIFACT_REF_PATTERN',
+        'idempotency=ToolIdempotency.REQUIRED',
         '"additionalProperties": False',
     ):
         if fragment not in catalog:
             raise ToolDataProvenanceError(
                 f"Tool Gateway data catalog is missing boundary: {fragment}"
+            )
+
+    schema = (ROOT / "services/tool-gateway/src/lumi_tool_gateway/schema.py").read_text(
+        encoding="utf-8"
+    )
+    for fragment in (
+        'pattern = schema.get("pattern")',
+        "re.search(pattern, value)",
+        "string pattern mismatch",
+    ):
+        if fragment not in schema:
+            raise ToolDataProvenanceError(
+                f"Tool Gateway schema gate is missing pattern boundary: {fragment}"
             )
 
     hosted_service = (
@@ -171,6 +196,7 @@ def validate_source_chain() -> None:
         "HttpToolDataClient.from_env()",
         '"project.query@1.0.0": ProjectQueryAdapter(data_client)',
         '"asset.read@1.0.0": AssetReadAdapter(data_client)',
+        '"asset.write-derived@1.0.0": AssetWriteDerivedAdapter(data_client)',
         '"artifact.query@1.0.0": ArtifactQueryAdapter(data_client)',
         '"media.inspect@1.0.0": MediaInspectAdapter(data_client)',
         "ToolDataControlUnavailableError",
