@@ -22,7 +22,7 @@ class StaticReferenceAuthorizer:
     def __init__(self, references: Mapping[tuple[str, str], AuthorizedReference]) -> None:
         self.references = dict(references)
 
-    async def authorize(
+    def authorize(
         self,
         spec: ImageGenerationSpec,
         references: tuple[ImageReference, ...],
