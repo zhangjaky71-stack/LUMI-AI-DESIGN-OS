@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import threading
-from dataclasses import dataclass
+import asyncio
+from dataclasses import dataclass, field
 from typing import Any
+from uuid import uuid4
 
 _SECRET_TOKENS = (
     "password",
@@ -29,6 +30,7 @@ class ToolAuditRecord:
     status: str
     trace_id: str | None
     arguments: dict[str, Any]
+    event_id: str = field(default_factory=lambda: str(uuid4()))
     replayed: bool = False
     side_effect_operation_id: str | None = None
     approval_id: str | None = None
@@ -38,15 +40,15 @@ class ToolAuditRecord:
 class MemoryAuditSink:
     def __init__(self) -> None:
         self.records: list[ToolAuditRecord] = []
-        self._lock = threading.Lock()
+        self._lock = asyncio.Lock()
 
-    def record(self, event: ToolAuditRecord) -> None:
-        with self._lock:
+    async def record(self, event: ToolAuditRecord) -> None:
+        async with self._lock:
             self.records.append(event)
 
 
 class NullAuditSink:
-    def record(self, event: ToolAuditRecord) -> None:
+    async def record(self, event: ToolAuditRecord) -> None:
         del event
 
 
