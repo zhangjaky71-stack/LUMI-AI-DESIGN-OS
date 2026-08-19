@@ -14,7 +14,15 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from lumi_api.persistence.models import Project, Task
+from lumi_api.persistence.models import (
+    Artifact,
+    ArtifactFile,
+    ArtifactVersion,
+    Asset,
+    AssetFile,
+    Project,
+    Task,
+)
 
 _MAX_BODY_BYTES = 512 * 1024
 _MAX_SKEW_SECONDS = 90
@@ -40,18 +48,15 @@ class ToolDataStore:
         if query != _PROJECT_SUMMARY_QUERY:
             raise ValueError("TOOL_DATA_PROJECT_QUERY_UNSUPPORTED")
         async with self._session_factory() as session:
-            task = await session.scalar(
-                select(Task).where(
-                    Task.id == task_id,
-                    Task.organization_id == organization_id,
-                    Task.agent_run_id == agent_run_id,
-                )
+            project_id = await self._task_project_id(
+                session,
+                organization_id=organization_id,
+                agent_run_id=agent_run_id,
+                task_id=task_id,
             )
-            if task is None:
-                raise KeyError("TOOL_DATA_TASK_NOT_FOUND_OR_FORBIDDEN")
             project = await session.scalar(
                 select(Project).where(
-                    Project.id == task.project_id,
+                    Project.id == project_id,
                     Project.organization_id == organization_id,
                     Project.deleted_at.is_(None),
                 )
@@ -64,6 +69,178 @@ class ToolDataStore:
                 "status": project.status,
                 "summary": dict(project.brief_json),
             }
+
+    async def read_asset(
+        self,
+        *,
+        organization_id: UUID,
+        agent_run_id: UUID,
+        task_id: UUID,
+        asset_id: UUID,
+    ) -> dict[str, Any]:
+        async with self._session_factory() as session:
+            project_id = await self._task_project_id(
+                session,
+                organization_id=organization_id,
+                agent_run_id=agent_run_id,
+                task_id=task_id,
+            )
+            asset = await session.scalar(
+                select(Asset).where(
+                    Asset.id == asset_id,
+                    Asset.organization_id == organization_id,
+                    Asset.project_id == project_id,
+                    Asset.deleted_at.is_(None),
+                )
+            )
+            if asset is None:
+                raise KeyError("TOOL_DATA_ASSET_NOT_FOUND_OR_FORBIDDEN")
+            files = (
+                await session.scalars(
+                    select(AssetFile)
+                    .where(
+                        AssetFile.organization_id == organization_id,
+                        AssetFile.asset_id == asset_id,
+                    )
+                    .order_by(AssetFile.variant.asc())
+                )
+            ).all()
+            return self._asset_payload(asset, files)
+
+    async def inspect_media(
+        self,
+        *,
+        organization_id: UUID,
+        agent_run_id: UUID,
+        task_id: UUID,
+        asset_id: UUID,
+    ) -> dict[str, Any]:
+        asset = await self.read_asset(
+            organization_id=organization_id,
+            agent_run_id=agent_run_id,
+            task_id=task_id,
+            asset_id=asset_id,
+        )
+        return {
+            "asset_id": asset["asset_id"],
+            "kind": asset["kind"],
+            "status": asset["status"],
+            "files": asset["files"],
+            "metadata": asset["metadata"],
+        }
+
+    async def query_artifact(
+        self,
+        *,
+        organization_id: UUID,
+        agent_run_id: UUID,
+        task_id: UUID,
+        artifact_id: UUID,
+    ) -> dict[str, Any]:
+        async with self._session_factory() as session:
+            project_id = await self._task_project_id(
+                session,
+                organization_id=organization_id,
+                agent_run_id=agent_run_id,
+                task_id=task_id,
+            )
+            artifact = await session.scalar(
+                select(Artifact).where(
+                    Artifact.id == artifact_id,
+                    Artifact.organization_id == organization_id,
+                    Artifact.project_id == project_id,
+                )
+            )
+            if artifact is None:
+                raise KeyError("TOOL_DATA_ARTIFACT_NOT_FOUND_OR_FORBIDDEN")
+            version = await session.scalar(
+                select(ArtifactVersion)
+                .where(
+                    ArtifactVersion.organization_id == organization_id,
+                    ArtifactVersion.project_id == project_id,
+                    ArtifactVersion.artifact_id == artifact_id,
+                )
+                .order_by(ArtifactVersion.version_number.desc())
+                .limit(1)
+            )
+            version_payload: dict[str, Any] | None = None
+            if version is not None:
+                files = (
+                    await session.scalars(
+                        select(ArtifactFile)
+                        .where(
+                            ArtifactFile.organization_id == organization_id,
+                            ArtifactFile.artifact_version_id == version.id,
+                        )
+                        .order_by(ArtifactFile.format.asc())
+                    )
+                ).all()
+                version_payload = {
+                    "version_id": str(version.id),
+                    "version_number": version.version_number,
+                    "status": version.status,
+                    "content_hash": version.content_hash,
+                    "quality_score": version.quality_score,
+                    "metadata": dict(version.metadata_json),
+                    "files": [
+                        {
+                            "format": item.format,
+                            "mime_type": item.mime_type,
+                            "checksum_sha256": item.checksum_sha256,
+                        }
+                        for item in files
+                    ],
+                }
+            return {
+                "artifact_id": str(artifact.id),
+                "project_id": str(artifact.project_id),
+                "kind": artifact.kind,
+                "title": artifact.title,
+                "metadata": dict(artifact.metadata_json),
+                "latest_version": version_payload,
+            }
+
+    @staticmethod
+    async def _task_project_id(
+        session: AsyncSession,
+        *,
+        organization_id: UUID,
+        agent_run_id: UUID,
+        task_id: UUID,
+    ) -> UUID:
+        task = await session.scalar(
+            select(Task).where(
+                Task.id == task_id,
+                Task.organization_id == organization_id,
+                Task.agent_run_id == agent_run_id,
+            )
+        )
+        if task is None:
+            raise KeyError("TOOL_DATA_TASK_NOT_FOUND_OR_FORBIDDEN")
+        return task.project_id
+
+    @staticmethod
+    def _asset_payload(asset: Asset, files: list[AssetFile]) -> dict[str, Any]:
+        return {
+            "asset_id": str(asset.id),
+            "project_id": str(asset.project_id),
+            "kind": asset.kind,
+            "source": asset.source,
+            "name": asset.original_name,
+            "status": asset.status,
+            "metadata": dict(asset.metadata_json),
+            "files": [
+                {
+                    "variant": item.variant,
+                    "mime_type": item.mime_type,
+                    "byte_size": item.byte_size,
+                    "width": item.width,
+                    "height": item.height,
+                    "checksum_sha256": item.checksum_sha256,
+                }
+                for item in files
+            ],
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,7 +289,69 @@ def create_tool_data_control_router(runtime: ToolDataControlRuntime) -> APIRoute
             )
         return JSONResponse(status_code=200, content=result)
 
+    @router.post("/asset/read")
+    async def asset_read(request: Request) -> JSONResponse:
+        payload_or_error = await _authenticated_json(request, runtime.auth_secret)
+        if isinstance(payload_or_error, JSONResponse):
+            return payload_or_error
+        payload = payload_or_error
+        return await _resource_response(
+            runtime.store.read_asset,
+            payload,
+            resource_key="asset_id",
+        )
+
+    @router.post("/artifact/query")
+    async def artifact_query(request: Request) -> JSONResponse:
+        payload_or_error = await _authenticated_json(request, runtime.auth_secret)
+        if isinstance(payload_or_error, JSONResponse):
+            return payload_or_error
+        payload = payload_or_error
+        return await _resource_response(
+            runtime.store.query_artifact,
+            payload,
+            resource_key="artifact_id",
+        )
+
+    @router.post("/media/inspect")
+    async def media_inspect(request: Request) -> JSONResponse:
+        payload_or_error = await _authenticated_json(request, runtime.auth_secret)
+        if isinstance(payload_or_error, JSONResponse):
+            return payload_or_error
+        payload = payload_or_error
+        return await _resource_response(
+            runtime.store.inspect_media,
+            payload,
+            resource_key="asset_id",
+        )
+
     return router
+
+
+async def _resource_response(
+    operation: Any,
+    payload: dict[str, Any],
+    *,
+    resource_key: str,
+) -> JSONResponse:
+    try:
+        result = await operation(
+            organization_id=UUID(_required_string(payload, "organization_id", 36)),
+            agent_run_id=UUID(_required_string(payload, "agent_run_id", 36)),
+            task_id=UUID(_required_string(payload, "task_id", 36)),
+            **{resource_key: UUID(_required_string(payload, resource_key, 36))},
+        )
+    except ValueError as exc:
+        return _error(422, "TOOL_DATA_QUERY_INVALID", str(exc))
+    except KeyError as exc:
+        return _error(404, "TOOL_DATA_NOT_FOUND_OR_FORBIDDEN", str(exc))
+    except Exception:
+        return _error(
+            503,
+            "TOOL_DATA_CONTROL_UNAVAILABLE",
+            "canonical Tool Data control plane is unavailable",
+        )
+    return JSONResponse(status_code=200, content=result)
 
 
 async def _authenticated_json(request: Request, secret: str) -> dict[str, Any] | JSONResponse:
