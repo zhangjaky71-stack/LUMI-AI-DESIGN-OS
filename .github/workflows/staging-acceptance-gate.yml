@@ -39,12 +39,15 @@ jobs:
           python-version: "3.12"
       - name: Validate staging acceptance contract
         run: python3 scripts/validate_staging_acceptance_contract.py
+      - name: Drill canonical media-generation E2E evidence validator
+        run: python3 scripts/validate_media_generation_e2e_evidence.py --self-test
       - name: Python syntax
         run: |
           python3 -m py_compile \
             scripts/staging-acceptance-gate.py \
             scripts/staging-preflight.py \
             scripts/validate_staging_acceptance_contract.py \
+            scripts/validate_media_generation_e2e_evidence.py \
             scripts/validate_uv_workspace_lock.py
       - name: JSON contract syntax
         run: |
@@ -55,6 +58,7 @@ jobs:
               Path('staging/acceptance/manifest-v1.json'),
               Path('staging/acceptance/environment-parity-v1.json'),
               Path('staging/acceptance/evidence-template.json'),
+              Path('staging/acceptance/media-generation-e2e-v1.json'),
           ]:
               json.loads(path.read_text(encoding='utf-8'))
               print(path)
@@ -132,6 +136,10 @@ jobs:
               raise SystemExit('evidence_path does not exist')
           print(target.relative_to(workspace))
           PY
+      - name: Require structured canonical media-generation E2E evidence
+        run: >-
+          python3 scripts/validate_media_generation_e2e_evidence.py
+          --evidence "$LUMI_STAGING_EVIDENCE_PATH"
       - name: Evaluate completed staging evidence
         run: |
           mkdir -p reports/staging-acceptance/runtime
