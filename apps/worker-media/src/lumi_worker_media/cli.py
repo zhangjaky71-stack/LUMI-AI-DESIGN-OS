@@ -25,9 +25,9 @@ def main() -> int:
     replay.add_argument("--id", required=True)
     args = parser.parse_args()
 
-    broker_url = os.getenv("RABBITMQ_URL")
+    broker_url = os.getenv("LUMI_RABBITMQ_URL") or os.getenv("RABBITMQ_URL")
     if not broker_url:
-        raise SystemExit("RABBITMQ_URL is required")
+        raise SystemExit("LUMI_RABBITMQ_URL/RABBITMQ_URL is required")
     if args.command == "declare-topology":
         with Connection(broker_url) as connection:
             declare_topology(connection, domain_consumers=tuple(args.consumer))
@@ -160,9 +160,9 @@ def _publish_job_replay(
 
 
 def _database_dsn() -> str:
-    value = os.getenv("DATABASE_URL")
+    value = os.getenv("LUMI_DATABASE_URL") or os.getenv("DATABASE_URL")
     if not value:
-        raise SystemExit("DATABASE_URL is required")
+        raise SystemExit("LUMI_DATABASE_URL/DATABASE_URL is required")
     if value.startswith("postgresql+asyncpg://"):
         return "postgresql://" + value[len("postgresql+asyncpg://") :]
     if value.startswith("postgresql://"):
