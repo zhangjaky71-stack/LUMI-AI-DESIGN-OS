@@ -25,6 +25,10 @@ locals {
     LUMI_MODEL_GATEWAY_URL = "http://model-gateway.${local.environment}.lumi.internal:8080"
   }
 
+  tool_gateway_environment = {
+    LUMI_TOOL_GATEWAY_URL = "http://tool-gateway.${local.environment}.lumi.internal:8080"
+  }
+
   services = {
     api = {
       image             = var.api_image
@@ -59,6 +63,7 @@ locals {
       environment = merge(
         local.common_environment,
         local.model_gateway_environment,
+        local.tool_gateway_environment,
         { LUMI_ROLE = "agent-runtime" },
       )
       secret_arns = {
@@ -66,6 +71,7 @@ locals {
         LUMI_REDIS_URL                 = local.secret_arns["redis/url"]
         LUMI_RABBITMQ_URL              = local.secret_arns["rabbitmq/url"]
         LUMI_MODEL_GATEWAY_AUTH_SECRET = local.secret_arns["internal/model-gateway"]
+        LUMI_TOOL_GATEWAY_AUTH_SECRET  = local.secret_arns["internal/tool-gateway"]
       }
       s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["sandbox"]]
       autoscale_metric_name  = "AgentPendingRuns"
@@ -100,16 +106,18 @@ locals {
     }
 
     tool-gateway = {
-      image         = var.tool_gateway_image
-      cpu           = 2048
-      memory        = 4096
-      desired_count = 3
-      min_capacity  = 3
-      max_capacity  = 12
+      image          = var.tool_gateway_image
+      cpu            = 2048
+      memory         = 4096
+      desired_count  = 3
+      min_capacity   = 3
+      max_capacity   = 12
+      container_port = 8080
       environment = merge(local.common_environment, { LUMI_ROLE = "tool-gateway" })
       secret_arns = {
-        LUMI_DATABASE_URL        = local.secret_arns["database/app"]
-        LUMI_AUTH_SIGNING_SECRET = local.secret_arns["auth/signing"]
+        LUMI_DATABASE_URL             = local.secret_arns["database/app"]
+        LUMI_AUTH_SIGNING_SECRET      = local.secret_arns["auth/signing"]
+        LUMI_TOOL_GATEWAY_AUTH_SECRET = local.secret_arns["internal/tool-gateway"]
       }
       s3_bucket_arns         = []
       autoscale_metric_name  = "ToolGatewayInflight"

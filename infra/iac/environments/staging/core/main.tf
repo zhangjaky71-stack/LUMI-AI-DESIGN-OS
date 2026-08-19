@@ -16,6 +16,7 @@ locals {
     "billing/webhook",
     "auth/signing",
     "internal/model-gateway",
+    "internal/tool-gateway",
   ])
 }
 
