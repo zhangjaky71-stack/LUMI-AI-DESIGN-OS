@@ -33,7 +33,7 @@ class ToolGatewayHttpTransportTests(unittest.TestCase):
             actor_agent="design-agent",
             name="project.query",
             version="1.0.0",
-            arguments={"query": "project.summary", "parameters": {"limit": 3}},
+            arguments={"query": "project.summary"},
             purpose="Summarize project state for the active design task.",
             permission_context=ToolPermissionContext(
                 organization_id=organization_id,
