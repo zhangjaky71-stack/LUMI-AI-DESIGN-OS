@@ -266,7 +266,7 @@ support/admin/on-call
 
 Source Terraform is not Production evidence.
 
-For the image-generation path specifically, the accepted Worker Media image provenance must include the executable Celery/task runtime, NODE-46 domain package, private Model Gateway adapter, versioned generation codec, canonical Postgres repository, reference/cost/outbox/storage ports, canonical artifact adapter, Hosted composition root and bounded S3 implementation. A worker-media digest without those source bindings is not acceptable evidence.
+For the image-generation path specifically, the accepted Worker Media image provenance must include the executable Celery/task runtime, Worker Media Docker build recipe and production CLI entrypoint, NODE-46 domain package, private Model Gateway adapter, versioned generation codec, canonical Postgres repository, reference/cost/outbox/storage ports, canonical artifact adapter, Hosted composition root and bounded S3 implementation. A worker-media digest without those source bindings is not acceptable evidence.
 
 ## 14. Freeze acceptance evidence
 
@@ -359,19 +359,29 @@ The code-addressable image-generation release path is now materially stronger th
 - `image.transform` no longer returns an accepted-only placeholder; it enters the canonical TaskJobStore and Hosted NODE-46 runtime.
 - the Hosted runtime reads the versioned generation spec from canonical `tasks.type/input_json`, validates org/project/task/operation scope, resolves reference rights fail-closed, and composes the private Model Gateway, bounded S3 staging fetch, durable `generated/v1` storage, canonical `generations`, artifact/provenance rows, NODE-27 cost observation and outbox events;
 - paid Provider retries remain under NODE-20 operation identities, while transient private-Gateway/S3 failures propagate through the same RUNNING generation and only missing variants are resumed;
+- durable S3 storage now separates known permanent auth/config/bucket rejection from transient 408/409/425/429/5xx, SlowDown, timeout and throttling classes so permanent misconfiguration cannot enter an unbounded retry loop;
+- Worker Media now has an explicit production Dockerfile and bounded Celery CLI entrypoint; the image recipe uses Python 3.12, a frozen all-workspace no-dev install and non-root UID/GID 10001;
+- NODE-46 CI contains a Worker Media image smoke job that must build the real Dockerfile, import the packaged entrypoint and start the container long enough to prove process liveness;
 - Worker Media does not write a second provider-cost ledger;
-- NODE-46 CI/static contracts cover the Hosted chain, and NODE-71 now requires both Model Gateway and Worker Media image source provenance with per-required-path negative drills.
+- NODE-46 CI/static contracts cover the Hosted chain, and NODE-71 now requires both Model Gateway and Worker Media source provenance, including Worker Media Dockerfile/CLI, with per-required-path negative drills.
 
 These are source/contract closures, not deployment proof. Final acceptance remains blocked by at least:
 
 - canonical `uv.lock` regeneration and successful `uv sync --all-packages --frozen`;
 - successful trusted PostgreSQL migration/ORM-drift/NODE-20/NODE-27/NODE-46 integration execution;
+- successful Worker Media and Model Gateway production-image build/start proof in a trusted runnable environment;
 - real six-runtime image build/start/promotion evidence with immutable digests, SBOM and provenance;
 - proof that the deployed Worker Media image contains and executes the required image-generation sources and can reach the private Model Gateway/S3/DB boundaries;
 - Production-like Staging, Production smoke/canary/rollback and DR evidence;
 - remaining NODE-68～72 runtime/cloud evidence requirements.
 
-The latest sampled GitHub-hosted Image Generation, Staging Acceptance and Final Product Acceptance jobs still fail before any step executes (`steps=null`, `logs_url=null`) with downstream jobs skipped. They therefore provide neither code-failure diagnostics nor PASS evidence.
+Latest sampled GitHub-hosted evidence at branch head `f6f1bc78c9b7435c7e06c1a657f2a694b66a9c23` remains pre-execution failure:
+
+- Image Generation run `32214468443`: `image-generation-contract` job `95953274132` failed with `steps=null`, `logs_url=null`; `image-generation-quality`, `worker-media-image-smoke`, integration and benchmark jobs were skipped.
+- Staging Acceptance Gate run `32214468381`: `canonical-lock-gate` job `95953274056` and `source-contract` job `95953274092` failed with `steps=null`, `logs_url=null`; remote preflight and acceptance decision were skipped.
+- Final Product Acceptance Gate run `32214468413`: `source-contract` job `95953274023` and `canonical-lock-gate` job `95953274174` failed with `steps=null`, `logs_url=null`; final decision was skipped.
+
+No checkout, Python, `uv`, Docker build, pytest, PostgreSQL, Terraform or application command is evidenced as having run in those sampled jobs. They therefore provide neither code-failure diagnostics nor PASS evidence.
 
 Therefore this runbook's current final outcome remains intentionally:
 
