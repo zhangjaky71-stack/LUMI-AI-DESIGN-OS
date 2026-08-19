@@ -5,6 +5,9 @@ on:
     paths:
       - "apps/api/Dockerfile"
       - "apps/api/src/lumi_api/cli.py"
+      - "apps/api/src/lumi_api/product_app.py"
+      - "apps/api/src/lumi_api/idempotency/**"
+      - "apps/api/src/lumi_api/tool_side_effect_control.py"
       - "apps/agent-runtime/Dockerfile"
       - "apps/agent-runtime/pyproject.toml"
       - "apps/agent-runtime/src/lumi_agent_runtime/runtime_*.py"
@@ -24,6 +27,8 @@ on:
       - "infra/iac/environments/production/core/**"
       - "infra/iac/environments/production/app/**"
       - "scripts/validate_runtime_image_closure.py"
+      - "scripts/validate_side_effect_control_provenance.py"
+      - ".github/workflows/staging-acceptance-gate.yml"
       - ".github/workflows/runtime-image-closure-contract.yml"
   workflow_dispatch:
 
@@ -44,9 +49,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m compileall -q scripts/validate_runtime_image_closure.py
+          python -m compileall -q \
+            scripts/validate_runtime_image_closure.py \
+            scripts/validate_side_effect_control_provenance.py
           for path in \
             apps/api/src/lumi_api/cli.py \
+            apps/api/src/lumi_api/product_app.py \
+            apps/api/src/lumi_api/tool_side_effect_control.py \
             apps/agent-runtime/src/lumi_agent_runtime/runtime_cli.py \
             apps/agent-runtime/src/lumi_agent_runtime/runtime_service.py \
             apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/runtime_factory.py \
@@ -54,6 +63,7 @@ jobs:
             services/tool-gateway/src/lumi_tool_gateway/service.py \
             services/tool-gateway/src/lumi_tool_gateway/http_transport.py \
             services/tool-gateway/src/lumi_tool_gateway/sandbox_transport.py \
+            services/tool-gateway/src/lumi_tool_gateway/side_effect_control.py \
             apps/worker-media/src/lumi_worker_media/worker_cli.py \
             services/sandbox-runtime/src/lumi_sandbox_runtime/cli.py \
             services/sandbox-runtime/src/lumi_sandbox_runtime/service.py; do
@@ -62,3 +72,6 @@ jobs:
 
       - name: Require all six runtimes to have real frozen production image closure
         run: python scripts/validate_runtime_image_closure.py
+
+      - name: Require canonical Tool Gateway side-effect provenance chain
+        run: python scripts/validate_side_effect_control_provenance.py --self-test
