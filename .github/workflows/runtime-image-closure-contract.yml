@@ -22,6 +22,7 @@ on:
       - "services/sandbox-runtime/Dockerfile"
       - "services/sandbox-runtime/pyproject.toml"
       - "services/sandbox-runtime/src/lumi_sandbox_runtime/**"
+      - "infra/iac/modules/platform-app/**"
       - "infra/iac/environments/staging/core/**"
       - "infra/iac/environments/staging/app/**"
       - "infra/iac/environments/production/core/**"
