@@ -17,6 +17,7 @@ from lumi_model_gateway import (
     PaidInvocationGuardRequiredError,
     ProviderInvocationError,
 )
+from lumi_model_gateway.estimate_transport import encode_route_candidate
 from lumi_model_gateway.http_transport import (
     AUTH_SERVICE_HEADER,
     AUTH_SIGNATURE_HEADER,
@@ -26,11 +27,13 @@ from lumi_model_gateway.http_transport import (
     encode_model_result,
     verify_internal_request,
 )
+from lumi_model_gateway.models import ModelRequest
 
 from .model_gateway_bootstrap import build_hosted_model_gateway_from_secret
 from .provider_output_store import S3ProviderOutputStore
 
 _INVOKE_PATH = "/internal/v1/models/invoke"
+_ESTIMATE_PATH = "/internal/v1/models/estimate"
 _ALLOWED_CALLERS = frozenset({"agent-runtime", "worker-media"})
 _MAX_BODY_BYTES = 2 * 1024 * 1024
 
@@ -98,57 +101,32 @@ def create_model_gateway_app(runtime: ModelGatewayServiceRuntime) -> FastAPI:
     async def version() -> dict[str, Any]:
         return _health_payload(runtime, status="ok")
 
+    @app.post(_ESTIMATE_PATH, tags=["internal"])
+    async def estimate(request: Request) -> JSONResponse:
+        decoded = await _decode_internal_model_request(request, runtime)
+        if isinstance(decoded, JSONResponse):
+            return decoded
+        try:
+            candidate = await runtime.api.estimate(decoded)
+        except NoRouteError as exc:
+            return _error(503, exc.code, str(exc))
+        except ModelGatewayError as exc:
+            return _error(503, exc.code, str(exc))
+        except Exception:
+            return _error(
+                500,
+                "MODEL_GATEWAY_ESTIMATE_INTERNAL_ERROR",
+                "internal model gateway estimate failure",
+            )
+        return JSONResponse(status_code=200, content=encode_route_candidate(candidate))
+
     @app.post(_INVOKE_PATH, tags=["internal"])
     async def invoke(request: Request) -> JSONResponse:
-        content_length = request.headers.get("content-length")
-        if content_length is not None:
-            try:
-                parsed_length = int(content_length)
-            except ValueError:
-                return _error(
-                    400,
-                    "MODEL_GATEWAY_CONTENT_LENGTH_INVALID",
-                    "invalid content length",
-                )
-            if parsed_length < 0 or parsed_length > _MAX_BODY_BYTES:
-                return _error(
-                    413,
-                    "MODEL_GATEWAY_REQUEST_TOO_LARGE",
-                    "request body is too large",
-                )
-        body = await request.body()
-        if len(body) > _MAX_BODY_BYTES:
-            return _error(
-                413,
-                "MODEL_GATEWAY_REQUEST_TOO_LARGE",
-                "request body is too large",
-            )
+        decoded = await _decode_internal_model_request(request, runtime)
+        if isinstance(decoded, JSONResponse):
+            return decoded
         try:
-            verify_internal_request(
-                secret=runtime.auth_secret,
-                allowed_services=_ALLOWED_CALLERS,
-                method=request.method,
-                path=request.url.path,
-                body=body,
-                service=request.headers.get(AUTH_SERVICE_HEADER),
-                timestamp=request.headers.get(AUTH_TIMESTAMP_HEADER),
-                signature=request.headers.get(AUTH_SIGNATURE_HEADER),
-            )
-        except InternalModelGatewayAuthError as exc:
-            return _error(
-                401,
-                str(exc),
-                "internal model gateway authentication failed",
-            )
-        try:
-            payload = json.loads(body.decode("utf-8"))
-            if not isinstance(payload, dict):
-                raise ValueError("MODEL_GATEWAY_HTTP_REQUEST_OBJECT_REQUIRED")
-            model_request = decode_model_request(payload)
-        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-            return _error(422, "MODEL_GATEWAY_REQUEST_INVALID", str(exc))
-        try:
-            result = await runtime.api.invoke(model_request)
+            result = await runtime.api.invoke(decoded)
         except BudgetExceededError as exc:
             return _error(402, exc.code, str(exc))
         except NoRouteError as exc:
@@ -183,6 +161,59 @@ def create_model_gateway_app(runtime: ModelGatewayServiceRuntime) -> FastAPI:
         return JSONResponse(status_code=200, content=encode_model_result(result))
 
     return app
+
+
+async def _decode_internal_model_request(
+    request: Request,
+    runtime: ModelGatewayServiceRuntime,
+) -> ModelRequest | JSONResponse:
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            parsed_length = int(content_length)
+        except ValueError:
+            return _error(
+                400,
+                "MODEL_GATEWAY_CONTENT_LENGTH_INVALID",
+                "invalid content length",
+            )
+        if parsed_length < 0 or parsed_length > _MAX_BODY_BYTES:
+            return _error(
+                413,
+                "MODEL_GATEWAY_REQUEST_TOO_LARGE",
+                "request body is too large",
+            )
+    body = await request.body()
+    if len(body) > _MAX_BODY_BYTES:
+        return _error(
+            413,
+            "MODEL_GATEWAY_REQUEST_TOO_LARGE",
+            "request body is too large",
+        )
+    try:
+        verify_internal_request(
+            secret=runtime.auth_secret,
+            allowed_services=_ALLOWED_CALLERS,
+            method=request.method,
+            path=request.url.path,
+            body=body,
+            service=request.headers.get(AUTH_SERVICE_HEADER),
+            timestamp=request.headers.get(AUTH_TIMESTAMP_HEADER),
+            signature=request.headers.get(AUTH_SIGNATURE_HEADER),
+        )
+    except InternalModelGatewayAuthError as exc:
+        return _error(
+            401,
+            str(exc),
+            "internal model gateway authentication failed",
+        )
+    try:
+        payload = json.loads(body.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("MODEL_GATEWAY_HTTP_REQUEST_OBJECT_REQUIRED")
+        return decode_model_request(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        return _error(422, "MODEL_GATEWAY_REQUEST_INVALID", str(exc))
 
 
 def _health_payload(runtime: ModelGatewayServiceRuntime, *, status: str) -> dict[str, Any]:
