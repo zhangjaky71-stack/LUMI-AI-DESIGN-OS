@@ -1,0 +1,64 @@
+name: Tool Gateway Audit Provenance
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/product_app.py"
+      - "apps/api/src/lumi_api/tool_audit_control.py"
+      - "apps/api/src/lumi_api/persistence/models/platform.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/audit.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/audit_control.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/gateway.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/service.py"
+      - "infra/iac/modules/platform-app/internal-path-deny.tf"
+      - "infra/iac/environments/staging/core/main.tf"
+      - "infra/iac/environments/staging/app/main.tf"
+      - "infra/iac/environments/production/core/main.tf"
+      - "infra/iac/environments/production/app/main.tf"
+      - "scripts/validate_tool_audit_provenance.py"
+      - ".github/workflows/tool-audit-provenance.yml"
+  workflow_dispatch:
+    inputs:
+      evidence_path:
+        description: "Optional staging acceptance evidence JSON below reports/staging-acceptance/"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  audit-provenance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile durable audit provenance validator
+        run: python -m py_compile scripts/validate_tool_audit_provenance.py
+      - name: Require source and IaC audit provenance chain
+        run: python scripts/validate_tool_audit_provenance.py --self-test
+      - name: Validate supplied acceptance evidence
+        if: github.event_name == 'workflow_dispatch' && inputs.evidence_path != ''
+        env:
+          EVIDENCE_PATH: ${{ inputs.evidence_path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path.cwd().resolve()
+          allowed = (root / "reports" / "staging-acceptance").resolve()
+          target = (root / os.environ["EVIDENCE_PATH"]).resolve()
+          try:
+              target.relative_to(allowed)
+          except ValueError as exc:
+              raise SystemExit("evidence_path escapes reports/staging-acceptance/") from exc
+          if target.suffix != ".json" or not target.is_file():
+              raise SystemExit("evidence_path must be an existing JSON file")
+          print(target.relative_to(root))
+          PY
+          python scripts/validate_tool_audit_provenance.py --evidence "$EVIDENCE_PATH"
