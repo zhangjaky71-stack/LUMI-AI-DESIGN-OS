@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "contract_id": "lumi-media-generation-e2e-v1",
+  "scenario_id": "E2E-03",
+  "required_status": "PASS",
+  "job_contract": {
+    "job_kind": "image.transform",
+    "outbox_event_name": "job.dispatch.requested",
+    "task_name": "lumi.jobs.image.transform",
+    "queue": "lumi.media.image"
+  },
+  "required_terminal_state": {
+    "task_status": "succeeded",
+    "generation_status": "succeeded"
+  },
+  "required_evidence_stages": [
+    "api_request",
+    "generation_row",
+    "task_row",
+    "outbox_dispatch",
+    "worker_execution",
+    "artifact",
+    "provenance"
+  ]
+}
