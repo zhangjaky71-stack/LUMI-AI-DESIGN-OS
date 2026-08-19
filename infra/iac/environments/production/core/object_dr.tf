@@ -14,7 +14,7 @@ locals {
 }
 
 resource "aws_kms_key" "object_dr" {
-  provider                = aws.dr
+  provider                = aws.object_dr
   description             = "${local.project}-${local.environment} cross-region object recovery encryption"
   enable_key_rotation     = true
   deletion_window_in_days = 30
@@ -22,13 +22,13 @@ resource "aws_kms_key" "object_dr" {
 }
 
 resource "aws_kms_alias" "object_dr" {
-  provider      = aws.dr
+  provider      = aws.object_dr
   name          = "alias/${local.project}-${local.environment}-object-dr"
   target_key_id = aws_kms_key.object_dr.key_id
 }
 
 resource "aws_s3_bucket" "object_dr" {
-  provider = aws.dr
+  provider = aws.object_dr
   for_each = local.object_dr_bucket_names
 
   bucket        = each.value
@@ -41,7 +41,7 @@ resource "aws_s3_bucket" "object_dr" {
 }
 
 resource "aws_s3_bucket_ownership_controls" "object_dr" {
-  provider = aws.dr
+  provider = aws.object_dr
   for_each = aws_s3_bucket.object_dr
 
   bucket = each.value.id
@@ -51,7 +51,7 @@ resource "aws_s3_bucket_ownership_controls" "object_dr" {
 }
 
 resource "aws_s3_bucket_public_access_block" "object_dr" {
-  provider = aws.dr
+  provider = aws.object_dr
   for_each = aws_s3_bucket.object_dr
 
   bucket                  = each.value.id
@@ -62,7 +62,7 @@ resource "aws_s3_bucket_public_access_block" "object_dr" {
 }
 
 resource "aws_s3_bucket_versioning" "object_dr" {
-  provider = aws.dr
+  provider = aws.object_dr
   for_each = aws_s3_bucket.object_dr
 
   bucket = each.value.id
@@ -72,7 +72,7 @@ resource "aws_s3_bucket_versioning" "object_dr" {
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "object_dr" {
-  provider = aws.dr
+  provider = aws.object_dr
   for_each = aws_s3_bucket.object_dr
 
   bucket = each.value.id
@@ -86,7 +86,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "object_dr" {
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "object_dr" {
-  provider = aws.dr
+  provider = aws.object_dr
   for_each = aws_s3_bucket.object_dr
 
   bucket = each.value.id
@@ -117,7 +117,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "object_dr" {
 }
 
 data "aws_iam_policy_document" "object_dr_tls_only" {
-  provider = aws.dr
+  provider = aws.object_dr
   for_each = aws_s3_bucket.object_dr
 
   statement {
@@ -141,7 +141,7 @@ data "aws_iam_policy_document" "object_dr_tls_only" {
 }
 
 resource "aws_s3_bucket_policy" "object_dr_tls_only" {
-  provider = aws.dr
+  provider = aws.object_dr
   for_each = aws_s3_bucket.object_dr
 
   bucket = each.value.id
