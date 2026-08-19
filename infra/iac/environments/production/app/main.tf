@@ -45,6 +45,10 @@ locals {
     LUMI_TOOL_APPROVAL_URL = "http://api.${local.environment}.lumi.internal:8000"
   }
 
+  tool_data_environment = {
+    LUMI_TOOL_DATA_URL = "http://api.${local.environment}.lumi.internal:8000"
+  }
+
   services = {
     api = {
       image             = var.api_image
@@ -66,6 +70,7 @@ locals {
         LUMI_SIDE_EFFECT_CONTROL_AUTH_SECRET = local.secret_arns["internal/side-effect-control"]
         LUMI_TOOL_AUDIT_AUTH_SECRET          = local.secret_arns["internal/tool-audit"]
         LUMI_TOOL_APPROVAL_AUTH_SECRET       = local.secret_arns["internal/tool-approval"]
+        LUMI_TOOL_DATA_AUTH_SECRET           = local.secret_arns["internal/tool-data"]
       }
       s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["exports"]]
       autoscale_metric_name  = "ApiConcurrentRequests"
@@ -138,6 +143,7 @@ locals {
         local.side_effect_control_environment,
         local.tool_audit_environment,
         local.tool_approval_environment,
+        local.tool_data_environment,
         {
           LUMI_ROLE               = "tool-gateway"
           LUMI_TOOL_RESULT_BUCKET = local.bucket_names["exports"]
@@ -152,6 +158,7 @@ locals {
         LUMI_SIDE_EFFECT_CONTROL_AUTH_SECRET = local.secret_arns["internal/side-effect-control"]
         LUMI_TOOL_AUDIT_AUTH_SECRET          = local.secret_arns["internal/tool-audit"]
         LUMI_TOOL_APPROVAL_AUTH_SECRET       = local.secret_arns["internal/tool-approval"]
+        LUMI_TOOL_DATA_AUTH_SECRET           = local.secret_arns["internal/tool-data"]
       }
       s3_bucket_arns         = [local.bucket_arns["exports"]]
       autoscale_metric_name  = "ToolGatewayInflight"
@@ -212,7 +219,7 @@ module "platform_app" {
   project                               = local.project
   environment                           = local.environment
   vpc_id                                = local.core.vpc_id
-  public_subnet_ids                      = local.core.public_subnet_ids
+  public_subnet_ids                     = local.core.public_subnet_ids
   private_subnet_ids                     = local.core.private_subnet_ids
   app_security_group_id                  = local.core.app_security_group_id
   app_internet_egress_security_group_id = local.core.app_internet_egress_security_group_id
