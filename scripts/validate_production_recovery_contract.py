@@ -115,6 +115,7 @@ def fixtures() -> list[dict[str, Any]]:
         "restored_version_id": "v3",
         "cleanup_complete": True,
         "replica_cleanup_complete": True,
+        "database_evidence_versions_cleaned": True,
         "cross_region": {
             "schema_version": 1,
             "deployment_id": manifest["deployment_id"],
@@ -179,6 +180,7 @@ def source_contract() -> None:
     require("replication_lag_seconds" in cross_drill and "900" in cross_drill, "live RTC lag gate missing")
     require("cleanup-production-object-dr-replicas.sh" in version_drill, "version drill replica cleanup missing")
     require("replica_cleanup_complete:true" in version_drill, "version drill cleanup evidence missing")
+    require("database_evidence_versions_cleaned:true" in version_drill, "DB evidence version cleanup evidence missing")
     require("COMPLETED" in cleanup and "_node73-drill/" in cleanup, "replica cleanup fail-closed scope missing")
     require("SET TRANSACTION READ ONLY" in db_verify, "DB read-only transaction missing")
     require('"error": str(exc)' not in db_verify, "DB verifier may leak exception context")
@@ -197,6 +199,7 @@ def main() -> int:
     must_block(module, lambda f: f[3].__setitem__("transaction_read_only", False), "writable verifier")
     must_block(module, lambda f: f[4].__setitem__("restored_sha256", "0" * 64), "version checksum mismatch")
     must_block(module, lambda f: f[4].__setitem__("replica_cleanup_complete", False), "replica cleanup incomplete")
+    must_block(module, lambda f: f[4].__setitem__("database_evidence_versions_cleaned", False), "DB evidence cleanup incomplete")
     must_block(module, lambda f: f[4]["cross_region"].__setitem__("destination_region", "ap-northeast-1"), "same-region DR")
     must_block(module, lambda f: f[4]["cross_region"].__setitem__("pairs", f[4]["cross_region"]["pairs"][:1]), "missing exports CRR")
     must_block(module, lambda f: f[4]["cross_region"]["pairs"][0].__setitem__("replication_lag_seconds", 901), "CRR lag >15m")
