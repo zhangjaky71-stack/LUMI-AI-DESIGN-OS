@@ -245,6 +245,13 @@ def validate_python_contract() -> None:
     ):
         require(marker in worker_runtime, f"hosted image composition missing {marker}")
     require(
+        "_ClassifyingS3ObjectStore" in worker_runtime
+        and "_TRANSIENT_S3_HTTP_STATUSES" in worker_runtime
+        and "_PERMANENT_S3_ERROR_CODES" in worker_runtime
+        and "GENERATION_STORAGE_S3_REJECTED" in worker_runtime,
+        "hosted durable S3 transient/permanent retry boundary missing",
+    )
+    require(
         "SELECT type, input_json" in worker_runtime and "SELECT task_type" not in worker_runtime,
         "hosted image runtime must read canonical tasks.type",
     )
