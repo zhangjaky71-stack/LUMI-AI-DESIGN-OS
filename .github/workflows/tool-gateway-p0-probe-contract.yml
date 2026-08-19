@@ -1,0 +1,85 @@
+name: Tool Gateway P0 Probe Contract
+
+on:
+  pull_request:
+    paths:
+      - "scripts/probe_tool_gateway_p0_from_agent_runtime.py"
+      - "scripts/run_tool_gateway_p0_probe_ecs.py"
+      - "scripts/validate_tool_gateway_e2e_evidence.py"
+      - "staging/acceptance/tool-gateway-e2e-v1.json"
+      - "staging/acceptance/TOOL-GATEWAY-P0-E2E-RUNBOOK.md"
+      - ".github/workflows/tool-gateway-p0-probe-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe-source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile probe and evidence sources
+        run: |
+          python3 -m py_compile \
+            scripts/probe_tool_gateway_p0_from_agent_runtime.py \
+            scripts/run_tool_gateway_p0_probe_ecs.py \
+            scripts/validate_tool_gateway_e2e_evidence.py
+      - name: Validate Tool Gateway E2E template JSON
+        run: python3 -m json.tool staging/acceptance/tool-gateway-e2e-v1.json >/dev/null
+      - name: Drill fail-closed E2E evidence validator
+        run: python3 scripts/validate_tool_gateway_e2e_evidence.py --self-test
+      - name: Require Agent Runtime and private ECS execution boundary
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          probe = Path(
+              "scripts/probe_tool_gateway_p0_from_agent_runtime.py"
+          ).read_text(encoding="utf-8")
+          launcher = Path(
+              "scripts/run_tool_gateway_p0_probe_ecs.py"
+          ).read_text(encoding="utf-8")
+
+          probe_required = (
+              'service="agent-runtime"',
+              '"asset.write-derived"',
+              '"sandbox.execute"',
+              "'x' * 70000",
+              '"same_asset_ref"',
+              '"s3ref://"',
+          )
+          for marker in probe_required:
+              if marker not in probe:
+                  raise SystemExit(f"Agent Runtime P0 probe missing marker: {marker}")
+
+          launcher_required = (
+              '_CLUSTER = "lumi-staging-cluster"',
+              '_TASK_FAMILY = "lumi-staging-agent-runtime"',
+              '_CONTAINER = "agent-runtime"',
+              '"assignPublicIp": "DISABLED"',
+              '"lumi-staging-app-internet-egress"',
+              'startedBy="node73-tool-gateway-p0-e2e"',
+              'scripts/probe_tool_gateway_p0_from_agent_runtime.py',
+          )
+          for marker in launcher_required:
+              if marker not in launcher:
+                  raise SystemExit(f"ECS P0 probe launcher missing marker: {marker}")
+
+          forbidden = (
+              'boto3.client("secretsmanager"',
+              "get_secret_value",
+              "assignPublicIp\": \"ENABLED",
+              "LUMI_BRAVE_SEARCH_API_KEY",
+              "LUMI_TOOL_DATA_AUTH_SECRET",
+              "LUMI_SIDE_EFFECT_CONTROL_AUTH_SECRET",
+          )
+          for marker in forbidden:
+              if marker in launcher:
+                  raise SystemExit(f"ECS probe launcher contains forbidden marker: {marker}")
+          print("Agent Runtime P0 probe source boundary: PASS")
+          PY
