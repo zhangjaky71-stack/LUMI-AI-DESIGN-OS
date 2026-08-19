@@ -4,7 +4,13 @@ from uuid import uuid4
 
 import pytest
 
-from lumi_domain.job_dispatch import JobMessage, validate_job_payload
+from lumi_domain.job_dispatch import (
+    IMAGE_TRANSFORM_QUEUE,
+    IMAGE_TRANSFORM_TASK_NAME,
+    JobDispatch,
+    JobMessage,
+    validate_job_payload,
+)
 
 
 def _payload() -> dict[str, str | None]:
@@ -58,3 +64,36 @@ def test_job_payload_rejects_binary_and_secret_fields() -> None:
 def test_job_payload_rejects_message_larger_than_64_kib() -> None:
     with pytest.raises(ValueError, match="JOB_MESSAGE_TOO_LARGE"):
         validate_job_payload({"trace_id": "x" * (64 * 1024)})
+
+
+def test_job_dispatch_round_trips_one_positional_message_and_empty_kwargs() -> None:
+    message = JobMessage.from_mapping(_payload())
+    dispatch = JobDispatch(
+        task_name=IMAGE_TRANSFORM_TASK_NAME,
+        queue=IMAGE_TRANSFORM_QUEUE,
+        message=message,
+    )
+
+    payload = dispatch.as_outbox_payload()
+    assert payload == {
+        "task_name": "lumi.jobs.image.transform",
+        "queue": "lumi.media.image",
+        "args": [message.as_dict()],
+        "kwargs": {},
+    }
+    assert JobDispatch.from_outbox_payload(payload) == dispatch
+
+
+def test_job_dispatch_rejects_extra_fields_and_nonempty_kwargs() -> None:
+    dispatch = JobDispatch(
+        task_name=IMAGE_TRANSFORM_TASK_NAME,
+        queue=IMAGE_TRANSFORM_QUEUE,
+        message=JobMessage.from_mapping(_payload()),
+    )
+    payload = dispatch.as_outbox_payload()
+
+    with pytest.raises(ValueError, match="JOB_DISPATCH_UNKNOWN_FIELDS:prompt"):
+        JobDispatch.from_outbox_payload({**payload, "prompt": "forbidden"})
+
+    with pytest.raises(ValueError, match="JOB_DISPATCH_KWARGS_FORBIDDEN"):
+        JobDispatch.from_outbox_payload({**payload, "kwargs": {"prompt": "forbidden"}})
