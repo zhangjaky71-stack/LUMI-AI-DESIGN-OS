@@ -17,11 +17,15 @@ on:
       - "apps/api/src/lumi_api/tool_side_effect_control.py"
       - "apps/api/src/lumi_api/tool_audit_control.py"
       - "apps/api/src/lumi_api/tool_approval_control.py"
+      - "apps/api/src/lumi_api/tool_data_control.py"
       - "apps/api/src/lumi_api/media_dispatch.py"
       - "apps/api/src/lumi_api/persistence/**"
       - "apps/api/tests/test_tool_side_effect_control.py"
       - "apps/api/tests/test_tool_audit_control.py"
       - "apps/api/tests/test_tool_approval_control.py"
+      - "apps/api/tests/test_tool_data_control.py"
+      - "apps/api/tests/integration/test_tool_data_control_postgres.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/data_control.py"
       - "services/domain/src/lumi_domain/job_dispatch.py"
       - "services/image-generation/src/lumi_image_generation/model.py"
       - "services/image-generation/src/lumi_image_generation/spec_codec.py"
@@ -31,6 +35,7 @@ on:
       - "scripts/validate_side_effect_control_provenance.py"
       - "scripts/validate_tool_audit_provenance.py"
       - "scripts/validate_tool_approval_provenance.py"
+      - "scripts/validate_tool_data_provenance.py"
       - "scripts/validate_api_provenance_source_manifest.py"
       - "staging/acceptance/**"
       - "uv.lock"
@@ -73,13 +78,16 @@ jobs:
           scripts/validate_side_effect_control_provenance.py
           scripts/validate_tool_audit_provenance.py
           scripts/validate_tool_approval_provenance.py
+          scripts/validate_tool_data_provenance.py
           scripts/validate_api_provenance_source_manifest.py
           apps/api/src/lumi_api/tool_side_effect_control.py
           apps/api/src/lumi_api/tool_audit_control.py
           apps/api/src/lumi_api/tool_approval_control.py
+          apps/api/src/lumi_api/tool_data_control.py
           apps/api/tests/test_tool_side_effect_control.py
           apps/api/tests/test_tool_audit_control.py
           apps/api/tests/test_tool_approval_control.py
+          apps/api/tests/test_tool_data_control.py
 
       - name: Drill NODE-71 API provenance source contract
         run: python scripts/validate_staging_acceptance_contract.py
@@ -92,6 +100,7 @@ jobs:
           python scripts/validate_side_effect_control_provenance.py --self-test
           python scripts/validate_tool_audit_provenance.py --self-test
           python scripts/validate_tool_approval_provenance.py --self-test
+          python scripts/validate_tool_data_provenance.py --self-test
 
       - name: Build canonical API image from frozen workspace
         run: docker build --file apps/api/Dockerfile --tag lumi-api:node71 .
@@ -131,6 +140,7 @@ jobs:
             -e LUMI_SIDE_EFFECT_CONTROL_AUTH_SECRET=$(printf 's%.0s' {1..64}) \
             -e LUMI_TOOL_AUDIT_AUTH_SECRET=$(printf 'a%.0s' {1..64}) \
             -e LUMI_TOOL_APPROVAL_AUTH_SECRET=$(printf 'p%.0s' {1..64}) \
+            -e LUMI_TOOL_DATA_AUTH_SECRET=$(printf 'd%.0s' {1..64}) \
             -e S3_BUCKET=lumi-contract \
             -e S3_ENDPOINT_URL=http://127.0.0.1:9000 \
             -e S3_ACCESS_KEY_ID=contract \
