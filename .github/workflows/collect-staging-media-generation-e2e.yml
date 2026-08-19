@@ -24,6 +24,7 @@ permissions:
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   TF_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+  EXPECTED_API_IMAGE: ${{ vars.API_IMAGE_DIGEST }}
   RELEASE_GIT_SHA: ${{ inputs.release_git_sha }}
   COLLECT_ACK: ${{ inputs.collect_ack }}
   COLLECT_TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
@@ -46,6 +47,7 @@ jobs:
           [[ "$COLLECT_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]]
           test "$COLLECT_TIMEOUT_SECONDS" -ge 60
           test "$COLLECT_TIMEOUT_SECONDS" -le 1800
+          [[ "$EXPECTED_API_IMAGE" =~ @sha256:[0-9a-f]{64}$ ]]
 
       - uses: hashicorp/setup-terraform@v4.0.1
         with:
@@ -79,7 +81,7 @@ jobs:
           evidence_key="acceptance/node73/e2e-03/${RELEASE_GIT_SHA}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
           printf 'EVIDENCE_BUCKET=%s\nEVIDENCE_KEY=%s\n' "$bucket" "$evidence_key" >> "$GITHUB_ENV"
 
-      - name: Resolve deployed API service task and network identity
+      - name: Resolve deployed API service task network and immutable image identity
         shell: bash
         run: |
           set -euo pipefail
@@ -96,8 +98,32 @@ jobs:
           test "$task_definition" != "null"
           jq -e '.awsvpcConfiguration.subnets | length > 0' <<<"$network_configuration" >/dev/null
           jq -e '.awsvpcConfiguration.securityGroups | length > 0' <<<"$network_configuration" >/dev/null
-          printf 'ECS_CLUSTER=%s\nAPI_TASK_DEFINITION=%s\n' "$cluster" "$task_definition" >> "$GITHUB_ENV"
+
+          aws ecs describe-task-definition \
+            --task-definition "$task_definition" \
+            --output json > /tmp/api-task-definition.json
+          deployed_image="$(jq -r '.taskDefinition.containerDefinitions[] | select(.name == "api") | .image' /tmp/api-task-definition.json)"
+          test -n "$deployed_image"
+          test "$deployed_image" != "null"
+          [[ "$deployed_image" =~ @sha256:[0-9a-f]{64}$ ]]
+          test "$deployed_image" = "$EXPECTED_API_IMAGE"
+
+          printf 'ECS_CLUSTER=%s\nAPI_TASK_DEFINITION=%s\nDEPLOYED_API_IMAGE=%s\n' \
+            "$cluster" "$task_definition" "$deployed_image" >> "$GITHUB_ENV"
           printf '%s' "$network_configuration" > /tmp/api-network.json
+          mkdir -p reports/staging-acceptance/runtime
+          jq -n \
+            --arg release_git_sha "$RELEASE_GIT_SHA" \
+            --arg task_definition "$task_definition" \
+            --arg image "$deployed_image" \
+            --arg cluster "$cluster" \
+            '{
+              release_git_sha: $release_git_sha,
+              cluster: $cluster,
+              task_definition: $task_definition,
+              api_image: $image,
+              image_is_immutable: ($image | test("@sha256:[0-9a-f]{64}$"))
+            }' > reports/staging-acceptance/runtime/media-e2e-runtime-identity.json
 
       - name: Launch one-shot collector inside the deployed API trust boundary
         shell: bash
@@ -129,7 +155,7 @@ jobs:
             --cluster "$ECS_CLUSTER" \
             --launch-type FARGATE \
             --task-definition "$API_TASK_DEFINITION" \
-            --network-configuration "file:///tmp/api-network.json" \
+            --network-configuration "$(cat /tmp/api-network.json)" \
             --overrides "file:///tmp/collector-overrides.json" \
             --started-by "node73-e2e-${GITHUB_RUN_ID}" \
             --output json > /tmp/run-task.json
@@ -139,7 +165,6 @@ jobs:
           test -n "$task_arn"
           test "$task_arn" != "null"
           printf 'ECS_TASK_ARN=%s\n' "$task_arn" >> "$GITHUB_ENV"
-          mkdir -p reports/staging-acceptance/runtime
           cp /tmp/run-task.json reports/staging-acceptance/runtime/media-e2e-run-task.json
 
       - name: Require collector task exit zero
@@ -183,6 +208,9 @@ jobs:
             > reports/staging-acceptance/runtime/media-generation-e2e-validation.json
           jq -e --arg sha "$RELEASE_GIT_SHA" '.status == "PASS" and .release_git_sha == $sha' \
             reports/staging-acceptance/runtime/media-generation-e2e-validation.json >/dev/null
+          jq -e --arg sha "$RELEASE_GIT_SHA" --arg image "$DEPLOYED_API_IMAGE" \
+            '.release_git_sha == $sha and .api_image == $image and .image_is_immutable == true' \
+            reports/staging-acceptance/runtime/media-e2e-runtime-identity.json >/dev/null
           sha256sum reports/staging-acceptance/runtime/media-generation-e2e.json \
             > reports/staging-acceptance/runtime/media-generation-e2e.sha256
 
