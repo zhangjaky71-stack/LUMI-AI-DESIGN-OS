@@ -8,6 +8,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 STAGING_WORKFLOW = ROOT / ".github" / "workflows" / "staging-acceptance-gate.yml"
+PUBLIC_ALB_DENY = ROOT / "infra" / "iac" / "modules" / "platform-app" / "internal-path-deny.tf"
 REQUIRED_API_SOURCES = frozenset(
     {
         "apps/api/src/lumi_api/product_app.py",
@@ -72,6 +73,20 @@ def validate_source_chain() -> None:
         if fragment not in control_source:
             raise SideEffectProvenanceError(
                 f"private side-effect control source is missing boundary: {fragment}"
+            )
+
+    if not PUBLIC_ALB_DENY.is_file():
+        raise SideEffectProvenanceError("public ALB internal-path denial contract is missing")
+    alb_source = PUBLIC_ALB_DENY.read_text(encoding="utf-8")
+    for fragment in (
+        'priority     = 1',
+        'type = "fixed-response"',
+        'status_code  = "404"',
+        'values = ["/internal", "/internal/*"]',
+    ):
+        if fragment not in alb_source:
+            raise SideEffectProvenanceError(
+                f"public ALB internal-path denial is missing boundary: {fragment}"
             )
 
     workflow = STAGING_WORKFLOW.read_text(encoding="utf-8")
