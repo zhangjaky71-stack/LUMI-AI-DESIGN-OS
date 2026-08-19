@@ -42,6 +42,7 @@ jobs:
           python3 scripts/validate_side_effect_control_provenance.py --self-test
           python3 scripts/validate_tool_audit_provenance.py --self-test
           python3 scripts/validate_tool_approval_provenance.py --self-test
+          python3 scripts/validate_tool_data_provenance.py --self-test
           python3 scripts/validate_tool_result_offload_provenance.py --self-test
       - name: Validate JSON and Python syntax
         run: |
@@ -62,6 +63,7 @@ jobs:
             scripts/validate_side_effect_control_provenance.py \
             scripts/validate_tool_audit_provenance.py \
             scripts/validate_tool_approval_provenance.py \
+            scripts/validate_tool_data_provenance.py \
             scripts/validate_tool_result_offload_provenance.py \
             scripts/validate_uv_workspace_lock.py
 
