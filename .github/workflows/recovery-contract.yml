@@ -20,14 +20,25 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Recovery fail-closed contract
-        run: python3 scripts/validate_recovery_contract.py
+      - name: Recovery fail-closed contracts
+        run: |
+          python3 scripts/validate_recovery_contract.py
+          python3 scripts/validate_production_recovery_contract.py
+      - name: Python syntax
+        run: |
+          python3 -m py_compile \
+            scripts/production-recovery-db-verify.py \
+            scripts/production-recovery-decision.py \
+            scripts/validate_production_recovery_contract.py
       - name: Shell syntax
         run: |
           bash -n \
             scripts/recovery-postgres-drill \
             scripts/recovery-db-verify \
             scripts/recovery-workload-report \
+            scripts/production-object-recovery-drill.sh \
+            scripts/production-object-cross-region-drill.sh \
+            scripts/cleanup-production-object-dr-replicas.sh \
             infra/docker/postgres-recovery/backup.sh \
             infra/docker/postgres-recovery/primary-entrypoint.sh \
             infra/docker/postgres-recovery/restore-entrypoint.sh
