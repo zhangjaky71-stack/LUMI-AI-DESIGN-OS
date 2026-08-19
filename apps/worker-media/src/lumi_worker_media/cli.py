@@ -9,6 +9,7 @@ import asyncpg
 from kombu import Connection, Producer
 
 from .event_runtime import KombuDomainPublisher, OutboxDispatcher
+from .job_dispatch_runtime import CeleryJobPublisher, MediaJobOutboxDispatcher
 from .topology import DOMAIN_EXCHANGE, declare_topology
 
 
@@ -66,10 +67,15 @@ async def _dispatch_outbox(
     watch: bool,
     interval: float,
 ) -> None:
-    dispatcher = OutboxDispatcher(dsn, KombuDomainPublisher(broker_url))
+    domain_dispatcher = OutboxDispatcher(dsn, KombuDomainPublisher(broker_url))
+    job_dispatcher = MediaJobOutboxDispatcher(dsn, CeleryJobPublisher())
     while True:
-        published = await dispatcher.dispatch_batch(limit=limit)
-        print(f"published={published}")
+        job_published = await job_dispatcher.dispatch_batch(limit=limit)
+        domain_published = await domain_dispatcher.dispatch_batch(limit=limit)
+        published = job_published + domain_published
+        print(
+            f"published={published} jobs={job_published} domain={domain_published}"
+        )
         if not watch:
             return
         if published == 0:
