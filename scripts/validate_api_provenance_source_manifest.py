@@ -16,6 +16,7 @@ CONTRACT_MODULES = {
     "side-effect": ROOT / "scripts/validate_side_effect_control_provenance.py",
     "audit": ROOT / "scripts/validate_tool_audit_provenance.py",
     "approval": ROOT / "scripts/validate_tool_approval_provenance.py",
+    "tool-data": ROOT / "scripts/validate_tool_data_provenance.py",
 }
 
 
