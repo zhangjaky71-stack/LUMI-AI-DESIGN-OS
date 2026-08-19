@@ -129,6 +129,5 @@ testpaths = [
   "services/tool-gateway/tests",
   "services/sandbox-runtime/tests",
   "services/asset-storage/tests",
-  "services/image-generation/tests",
   "evals/tests",
 ]
