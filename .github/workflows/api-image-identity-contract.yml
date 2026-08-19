@@ -15,9 +15,13 @@ on:
       - "apps/api/src/lumi_api/generations/**"
       - "apps/api/src/lumi_api/idempotency/**"
       - "apps/api/src/lumi_api/tool_side_effect_control.py"
+      - "apps/api/src/lumi_api/tool_audit_control.py"
+      - "apps/api/src/lumi_api/tool_approval_control.py"
       - "apps/api/src/lumi_api/media_dispatch.py"
       - "apps/api/src/lumi_api/persistence/**"
       - "apps/api/tests/test_tool_side_effect_control.py"
+      - "apps/api/tests/test_tool_audit_control.py"
+      - "apps/api/tests/test_tool_approval_control.py"
       - "services/domain/src/lumi_domain/job_dispatch.py"
       - "services/image-generation/src/lumi_image_generation/model.py"
       - "services/image-generation/src/lumi_image_generation/spec_codec.py"
@@ -25,6 +29,9 @@ on:
       - "scripts/staging-acceptance-gate.py"
       - "scripts/validate_staging_acceptance_contract.py"
       - "scripts/validate_side_effect_control_provenance.py"
+      - "scripts/validate_tool_audit_provenance.py"
+      - "scripts/validate_tool_approval_provenance.py"
+      - "scripts/validate_api_provenance_source_manifest.py"
       - "staging/acceptance/**"
       - "uv.lock"
       - ".github/workflows/api-image-identity-contract.yml"
@@ -58,20 +65,33 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Compile NODE-71 acceptance contracts and private NODE-20 control
+      - name: Compile NODE-71 acceptance contracts and private Tool Gateway controls
         run: >-
           python -m compileall -q
           scripts/staging-acceptance-gate.py
           scripts/validate_staging_acceptance_contract.py
           scripts/validate_side_effect_control_provenance.py
+          scripts/validate_tool_audit_provenance.py
+          scripts/validate_tool_approval_provenance.py
+          scripts/validate_api_provenance_source_manifest.py
           apps/api/src/lumi_api/tool_side_effect_control.py
+          apps/api/src/lumi_api/tool_audit_control.py
+          apps/api/src/lumi_api/tool_approval_control.py
           apps/api/tests/test_tool_side_effect_control.py
+          apps/api/tests/test_tool_audit_control.py
+          apps/api/tests/test_tool_approval_control.py
 
       - name: Drill NODE-71 API provenance source contract
         run: python scripts/validate_staging_acceptance_contract.py
 
-      - name: Drill private Tool Gateway side-effect provenance contract
-        run: python scripts/validate_side_effect_control_provenance.py --self-test
+      - name: Require one canonical API provenance source union
+        run: python scripts/validate_api_provenance_source_manifest.py
+
+      - name: Drill private Tool Gateway control provenance contracts
+        run: |
+          python scripts/validate_side_effect_control_provenance.py --self-test
+          python scripts/validate_tool_audit_provenance.py --self-test
+          python scripts/validate_tool_approval_provenance.py --self-test
 
       - name: Build canonical API image from frozen workspace
         run: docker build --file apps/api/Dockerfile --tag lumi-api:node71 .
@@ -92,13 +112,25 @@ jobs:
             lumi-api:node71 \
             alembic -c apps/api/alembic.ini upgrade head
 
-      - name: Start canonical product control plane
+      - name: Require accepted API image ORM-to-migration parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -e MIGRATION_DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/lumi_api_contract \
+            lumi-api:node71 \
+            alembic -c apps/api/alembic.ini check
+
+      - name: Start canonical product control plane with all private controls mounted
         shell: bash
         run: |
           set -euo pipefail
           docker run --detach --name lumi-api-node71 --network host \
             -e LUMI_ENV=test \
             -e DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/lumi_api_contract \
+            -e LUMI_SIDE_EFFECT_CONTROL_AUTH_SECRET=$(printf 's%.0s' {1..64}) \
+            -e LUMI_TOOL_AUDIT_AUTH_SECRET=$(printf 'a%.0s' {1..64}) \
+            -e LUMI_TOOL_APPROVAL_AUTH_SECRET=$(printf 'p%.0s' {1..64}) \
             -e S3_BUCKET=lumi-contract \
             -e S3_ENDPOINT_URL=http://127.0.0.1:9000 \
             -e S3_ACCESS_KEY_ID=contract \
