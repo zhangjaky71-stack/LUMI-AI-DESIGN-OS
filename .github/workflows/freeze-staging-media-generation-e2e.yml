@@ -95,9 +95,10 @@ jobs:
           one /tmp/lumi-staging-media-e2e media-generation-e2e-validation.json /tmp/frozen-media-e2e/validation.json
           one /tmp/lumi-staging-media-e2e media-generation-e2e-head.json /tmp/frozen-media-e2e/s3-head.json
           one /tmp/lumi-staging-media-e2e media-generation-e2e.sha256 /tmp/frozen-media-e2e/evidence.sha256
+          one /tmp/lumi-staging-media-e2e media-e2e-runtime-identity.json /tmp/frozen-media-e2e/runtime-identity.json
           cp /tmp/collector-run.json /tmp/frozen-media-e2e/source-run.json
 
-      - name: Revalidate frozen evidence and source run identity
+      - name: Revalidate frozen evidence source run and runtime identity
         shell: bash
         run: |
           set -euo pipefail
@@ -120,6 +121,8 @@ jobs:
             /tmp/frozen-media-e2e/s3-head.json >/dev/null
           jq -e --arg sha "$RC_SHA" '.head_sha == $sha and .name == "Collect Staging Media Generation E2E" and .event == "workflow_dispatch" and .conclusion == "success"' \
             /tmp/frozen-media-e2e/source-run.json >/dev/null
+          jq -e --arg sha "$RC_SHA" '.release_git_sha == $sha and .image_is_immutable == true and (.api_image | test("@sha256:[0-9a-f]{64}$"))' \
+            /tmp/frozen-media-e2e/runtime-identity.json >/dev/null
 
       - name: Preserve immutable RC evidence boundary
         shell: bash
