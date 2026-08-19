@@ -16,6 +16,11 @@ ROLE_ARN = re.compile(r"^arn:aws(?:-[a-z]+)?:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@
 CERT_ARN = re.compile(r"^arn:aws(?:-[a-z]+)?:acm:[a-z0-9-]+:[0-9]{12}:certificate/[A-Za-z0-9-]+$")
 READY_EXTERNAL = {"READY", "DISABLED_BY_RELEASE_SCOPE"}
 MAX_DAILY_PROVIDER_SPEND_USD = 100.0
+EXPECTED_RECOVERY_POLICY = {
+    "database_pitr_max_rpo_minutes": 5,
+    "database_pitr_max_rto_minutes": 60,
+    "object_version_recovery_required": True,
+}
 
 
 class DeploymentGateError(RuntimeError):
@@ -93,6 +98,16 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
         blockers.append("rollout object missing")
     else:
         require(rollout == expected_rollout, "rollout must match the versioned NODE-72 ECS canary/rolling policy", blockers)
+
+    recovery = manifest.get("recovery")
+    if not isinstance(recovery, dict):
+        blockers.append("recovery object missing")
+    else:
+        require(
+            recovery == EXPECTED_RECOVERY_POLICY,
+            "recovery must match the versioned NODE-72 launch RPO/RTO/object-recovery policy",
+            blockers,
+        )
 
     limits = manifest.get("first_day_limits")
     required_limits = {
@@ -192,6 +207,7 @@ def evaluate(manifest: dict[str, Any], decision: dict[str, Any], acceptance_path
         "aws": manifest.get("aws", {}),
         "images": manifest.get("images", {}),
         "rollout": manifest.get("rollout", {}),
+        "recovery": manifest.get("recovery", {}),
         "staging_acceptance_decision_id": decision.get("decision_id"),
         "passed": not blockers,
         "blockers": sorted(set(blockers)),
