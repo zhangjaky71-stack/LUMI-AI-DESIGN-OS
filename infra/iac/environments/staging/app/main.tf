@@ -159,6 +159,7 @@ locals {
         LUMI_TOOL_AUDIT_AUTH_SECRET          = local.secret_arns["internal/tool-audit"]
         LUMI_TOOL_APPROVAL_AUTH_SECRET       = local.secret_arns["internal/tool-approval"]
         LUMI_TOOL_DATA_AUTH_SECRET           = local.secret_arns["internal/tool-data"]
+        LUMI_BRAVE_SEARCH_API_KEY            = local.secret_arns["providers/search"]
       }
       s3_bucket_arns         = [local.bucket_arns["exports"]]
       autoscale_metric_name  = "ToolGatewayInflight"
