@@ -1,0 +1,124 @@
+name: Freeze Security Release Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: "Production manifest under reports/production-deployments/<deployment-id>/manifest.json"
+        required: true
+        type: string
+      security_run_id:
+        description: "Successful Security Release Gate workflow_dispatch run ID for the exact RC"
+        required: true
+        type: string
+      freeze_ack:
+        description: "FREEZE_SECURITY_RELEASE:<deployment-id>"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  MANIFEST_INPUT: ${{ inputs.manifest_path }}
+  SECURITY_RUN_ID: ${{ inputs.security_run_id }}
+  FREEZE_ACK: ${{ inputs.freeze_ack }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  freeze:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Resolve exact Production manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path.cwd().resolve()
+          allowed = (root / 'reports' / 'production-deployments').resolve()
+          manifest = (root / os.environ['MANIFEST_INPUT']).resolve()
+          try:
+              manifest.relative_to(allowed)
+          except ValueError as exc:
+              raise SystemExit('manifest escapes reports/production-deployments') from exc
+          if manifest.name != 'manifest.json' or not manifest.is_file():
+              raise SystemExit('manifest must be an existing manifest.json')
+          payload = json.loads(manifest.read_text())
+          deployment_id = payload.get('deployment_id')
+          rc_sha = (payload.get('release_candidate') or {}).get('git_sha')
+          if manifest.parent.name != deployment_id:
+              raise SystemExit('manifest parent directory must equal deployment_id')
+          if not isinstance(rc_sha, str) or len(rc_sha) != 40:
+              raise SystemExit('manifest RC SHA must be SHA40')
+          evidence = root / 'reports' / 'security-release' / deployment_id
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'MANIFEST_PATH={manifest.relative_to(root).as_posix()}\n')
+              fh.write(f'DEPLOYMENT_ID={deployment_id}\n')
+              fh.write(f'RC_SHA={rc_sha.lower()}\n')
+              fh.write(f'SECURITY_DIR={evidence.relative_to(root).as_posix()}\n')
+          PY
+          [[ "$SECURITY_RUN_ID" =~ ^[0-9]+$ ]]
+          test "$FREEZE_ACK" = "FREEZE_SECURITY_RELEASE:${DEPLOYMENT_ID}"
+      - name: Fetch exact-RC source run and executed jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$SECURITY_DIR"
+          mkdir -p "$SECURITY_DIR/evidence"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SECURITY_RUN_ID}" > "$SECURITY_DIR/evidence/workflow-run.json"
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${SECURITY_RUN_ID}/jobs?per_page=100" \
+            --slurp \
+            | jq '{total_count:([.[].jobs[]] | length), jobs:[.[].jobs[]]}' \
+            > "$SECURITY_DIR/evidence/jobs.json"
+          test "$(jq -r '.repository.full_name' "$SECURITY_DIR/evidence/workflow-run.json")" = "$GITHUB_REPOSITORY"
+          test "$(jq -r '.name' "$SECURITY_DIR/evidence/workflow-run.json")" = "Security Release Gate"
+          test "$(jq -r '.event' "$SECURITY_DIR/evidence/workflow-run.json")" = "workflow_dispatch"
+          test "$(jq -r '.head_sha' "$SECURITY_DIR/evidence/workflow-run.json")" = "$RC_SHA"
+          test "$(jq -r '.status' "$SECURITY_DIR/evidence/workflow-run.json")" = "completed"
+          test "$(jq -r '.conclusion' "$SECURITY_DIR/evidence/workflow-run.json")" = "success"
+      - name: Recompute canonical security decision from frozen run metadata
+        run: |
+          python3 scripts/security-release-decision.py \
+            --manifest "$MANIFEST_PATH" \
+            --run "$SECURITY_DIR/evidence/workflow-run.json" \
+            --jobs "$SECURITY_DIR/evidence/jobs.json" \
+            --output "$SECURITY_DIR/decision.json"
+          test "$(jq -r '.passed' "$SECURITY_DIR/decision.json")" = true
+      - name: Refuse changes outside the security evidence boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed < <({ git diff --name-only; git ls-files --others --exclude-standard; } | sort -u)
+          [[ ${#changed[@]} -gt 0 ]] || { echo "security evidence already frozen"; exit 0; }
+          prefix="${SECURITY_DIR}/"
+          for path in "${changed[@]}"; do
+            [[ "$path" == "$prefix"* ]] || { echo "unexpected change outside security evidence boundary: $path" >&2; exit 66; }
+          done
+      - name: Commit only validated security evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "lumi-release-evidence-bot"
+          git config user.email "lumi-release-evidence-bot@users.noreply.github.com"
+          git add -- "$SECURITY_DIR"
+          if git diff --cached --quiet; then
+            echo "validated security evidence already frozen"
+            exit 0
+          fi
+          while IFS= read -r path; do
+            [[ "$path" == "${SECURITY_DIR}/"* ]] || { echo "unexpected staged path: $path" >&2; exit 66; }
+          done < <(git diff --cached --name-only)
+          git commit -m "release: freeze security evidence ${DEPLOYMENT_ID}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
