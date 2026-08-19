@@ -11,7 +11,7 @@
   },
   "required_terminal_state": {
     "task_status": "succeeded",
-    "generation_status": "succeeded"
+    "generation_status": "completed"
   },
   "required_evidence_stages": [
     "api_request",
