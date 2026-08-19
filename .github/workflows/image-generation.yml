@@ -28,7 +28,11 @@ on:
       - "apps/worker-media/tests/integration/test_image_generation_repository_postgres.py"
       - "apps/worker-media/pyproject.toml"
       - "apps/api/alembic/**"
+      - "apps/api/src/lumi_api/api/v1/contracts.py"
+      - "apps/api/src/lumi_api/generations/**"
+      - "apps/api/src/lumi_api/media_dispatch.py"
       - "apps/api/src/lumi_api/persistence/models/workflow.py"
+      - "apps/api/tests/integration/test_generation_control_plane_postgres.py"
       - "packages/design-constraints/**"
       - "db/migrations/0001_artifact_engine.sql"
       - "db/migrations/0005_image_generation.sql"
@@ -75,6 +79,8 @@ jobs:
           apps/worker-media/tests/test_image_task_entrypoint.py
           apps/worker-media/tests/test_worker_cli.py
           apps/worker-media/tests/integration/test_image_generation_repository_postgres.py
+          apps/api/src/lumi_api/generations/service.py
+          apps/api/tests/integration/test_generation_control_plane_postgres.py
           scripts/validate_image_generation.py
           scripts/benchmark_image_generation.py
       - name: Validate NODE-46 architecture contract
@@ -131,6 +137,8 @@ jobs:
           apps/worker-media/tests/test_image_task_entrypoint.py
           apps/worker-media/tests/test_worker_cli.py
           apps/worker-media/tests/integration/test_image_generation_repository_postgres.py
+          apps/api/src/lumi_api/generations/service.py
+          apps/api/tests/integration/test_generation_control_plane_postgres.py
           scripts/validate_image_generation.py
           scripts/benchmark_image_generation.py
       - name: Pyright gate
@@ -220,6 +228,11 @@ jobs:
           services/model-gateway/tests
           services/artifact-history/tests
           services/asset-intelligence/tests
+          -q
+      - name: Canonical product producer to image.transform dispatch acceptance
+        run: >-
+          uv run pytest
+          apps/api/tests/integration/test_generation_control_plane_postgres.py
           -q
       - name: Canonical NODE-46 Postgres repository acceptance
         run: >-
