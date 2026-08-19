@@ -12,10 +12,12 @@ from .api import ToolGatewayAPI
 from .approval_control import HttpApprovalResolver
 from .audit_control import HttpAuditSink
 from .catalog import build_p0_registry
+from .data_control import HttpToolDataClient, ProjectQueryAdapter
 from .errors import (
     ToolAmbiguousSideEffectError,
     ToolApprovalControlUnavailableError,
     ToolAuditUnavailableError,
+    ToolDataControlUnavailableError,
     ToolDisabledError,
     ToolGatewayError,
     ToolIdempotencyConflictError,
@@ -173,6 +175,7 @@ def create_tool_gateway_app(runtime: ToolGatewayServiceRuntime) -> FastAPI:
             ToolAmbiguousSideEffectError,
             ToolApprovalControlUnavailableError,
             ToolAuditUnavailableError,
+            ToolDataControlUnavailableError,
             ToolResultOffloadUnavailableError,
             ToolSideEffectControlUnavailableError,
         ) as exc:
@@ -249,7 +252,9 @@ def _build_hosted_adapters() -> dict[str, ToolAdapter]:
     Only adapters backed by real downstream runtime boundaries may be registered here.
     Missing tools keep readiness blocked; no placeholder/no-op adapters are permitted.
     """
+    data_client = HttpToolDataClient.from_env()
     return {
+        "project.query@1.0.0": ProjectQueryAdapter(data_client),
         "web.fetch@1.0.0": SafeWebFetchAdapter(PinnedStdlibHTTPTransport()),
         "sandbox.execute@1.0.0": SandboxExecuteAdapter(HttpSandboxExecutor.from_env()),
     }
