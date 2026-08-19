@@ -86,6 +86,9 @@ def main() -> int:
     network = text("infra/iac/modules/network/main.tf")
     compute = text("infra/iac/modules/compute/main.tf")
     data = text("infra/iac/modules/data/main.tf")
+    data_outputs = text("infra/iac/modules/data/outputs.tf")
+    platform_core_outputs = text("infra/iac/modules/platform-core/outputs.tf")
+    production_core_outputs = text("infra/iac/environments/production/core/outputs.tf")
     storage = text("infra/iac/modules/storage/main.tf")
     secrets = text("infra/iac/modules/secrets/main.tf")
     migration = text("infra/iac/modules/migration-runner/main.tf")
@@ -96,6 +99,7 @@ def main() -> int:
     alembic_env = text("apps/api/alembic/env.py")
     production_workflow = text(".github/workflows/deploy-production.yml")
     ecs_evidence = text("scripts/capture-ecs-deployment-state.sh")
+    snapshot_script = text("scripts/create-predeploy-rds-snapshot.sh")
 
     require("assign_public_ip = false" in compute, "ECS services must not receive public IPs")
     require("internal           = false" in compute, "public ALB contract missing")
@@ -126,6 +130,32 @@ def main() -> int:
     require("length(var.availability_zones) == 3" in production_core_vars, "production must require three availability zones")
     require("capture-ecs-deployment-state.sh" in production_workflow, "production workflow must archive ECS steady-state evidence")
     require("running_count == .desired_count" in ecs_evidence and "pending_count == 0" in ecs_evidence, "ECS evidence script must verify counts")
+
+    # Pre-deployment snapshot and isolated recovery automation depend on these
+    # identifiers. Keep the full data -> platform-core -> environment output chain
+    # explicit so a release cannot reference an output Terraform never exported.
+    for output_name in (
+        "postgres_instance_id",
+        "postgres_backup_retention_days",
+        "postgres_db_subnet_group_name",
+        "postgres_security_group_id",
+    ):
+        require(
+            f'output "{output_name}"' in data_outputs,
+            f"data module must export {output_name}",
+        )
+        require(
+            f'output "{output_name}"' in platform_core_outputs,
+            f"platform-core must propagate {output_name}",
+        )
+        require(
+            f'output "{output_name}"' in production_core_outputs,
+            f"production core must expose {output_name}",
+        )
+    require(
+        "postgres_instance_id" in snapshot_script and "postgres_backup_retention_days" in snapshot_script,
+        "predeploy snapshot must consume explicit RDS safety outputs",
+    )
 
     # Provider credentials are a security and financial control boundary. Only
     # Model Gateway may hold them, and it must also have the canonical NODE-27
