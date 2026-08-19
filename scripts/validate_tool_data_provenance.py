@@ -13,6 +13,8 @@ REQUIRED_API_SOURCES = frozenset(
         "apps/api/src/lumi_api/tool_data_control.py",
         "apps/api/src/lumi_api/persistence/models/project.py",
         "apps/api/src/lumi_api/persistence/models/workflow.py",
+        "apps/api/src/lumi_api/persistence/models/asset.py",
+        "apps/api/src/lumi_api/persistence/models/design.py",
     }
 )
 REQUIRED_TOOL_GATEWAY_SOURCES = frozenset(
@@ -38,10 +40,7 @@ class ToolDataProvenanceError(RuntimeError):
     pass
 
 
-def _source_paths(
-    payload: dict[str, Any],
-    service: str,
-) -> set[str]:
+def _source_paths(payload: dict[str, Any], service: str) -> set[str]:
     image_set = payload.get("container_image_set")
     if not isinstance(image_set, dict):
         raise ToolDataProvenanceError("container_image_set is missing")
@@ -91,16 +90,24 @@ def validate_source_chain() -> None:
     for fragment in (
         'frozenset({"tool-gateway"})',
         '"project.summary"',
-        "select(Task).where(",
         "Task.organization_id == organization_id",
         "Task.agent_run_id == agent_run_id",
-        "Project.id == task.project_id",
-        "Project.organization_id == organization_id",
+        "Project.id == project_id",
+        "Asset.project_id == project_id",
+        "Artifact.project_id == project_id",
+        '@router.post("/asset/read")',
+        '@router.post("/artifact/query")',
+        '@router.post("/media/inspect")',
         "hmac.compare_digest",
     ):
         if fragment not in api_control:
             raise ToolDataProvenanceError(
                 f"canonical Tool Data control is missing boundary: {fragment}"
+            )
+    for forbidden in ("item.bucket", "item.object_key", "generate_presigned_url"):
+        if forbidden in api_control:
+            raise ToolDataProvenanceError(
+                f"canonical Tool Data read path leaks storage location: {forbidden}"
             )
 
     product_app = (ROOT / "apps/api/src/lumi_api/product_app.py").read_text(
@@ -125,8 +132,12 @@ def validate_source_chain() -> None:
         'os.getenv("LUMI_TOOL_DATA_URL"',
         'os.getenv("LUMI_TOOL_DATA_AUTH_SECRET"',
         'service="tool-gateway"',
-        '"query": query',
         "class ProjectQueryAdapter",
+        "class AssetReadAdapter",
+        "class ArtifactQueryAdapter",
+        "class MediaInspectAdapter",
+        'resource_refs=(f"asset://',
+        'resource_refs=(f"artifact://',
     ):
         if fragment not in gateway_client:
             raise ToolDataProvenanceError(
@@ -143,11 +154,14 @@ def validate_source_chain() -> None:
     for fragment in (
         'name="project.query"',
         '"enum": ["project.summary"]',
+        'name="asset.read"',
+        'name="artifact.query"',
+        'name="media.inspect"',
         '"additionalProperties": False',
     ):
         if fragment not in catalog:
             raise ToolDataProvenanceError(
-                f"Tool Gateway project query catalog is missing boundary: {fragment}"
+                f"Tool Gateway data catalog is missing boundary: {fragment}"
             )
 
     hosted_service = (
@@ -156,6 +170,9 @@ def validate_source_chain() -> None:
     for fragment in (
         "HttpToolDataClient.from_env()",
         '"project.query@1.0.0": ProjectQueryAdapter(data_client)',
+        '"asset.read@1.0.0": AssetReadAdapter(data_client)',
+        '"artifact.query@1.0.0": ArtifactQueryAdapter(data_client)',
+        '"media.inspect@1.0.0": MediaInspectAdapter(data_client)',
         "ToolDataControlUnavailableError",
     ):
         if fragment not in hosted_service:
