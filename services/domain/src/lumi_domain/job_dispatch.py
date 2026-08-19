@@ -9,6 +9,11 @@ MAX_JOB_MESSAGE_BYTES = 64 * 1024
 JOB_DISPATCH_EVENT_NAME = "job.dispatch.requested"
 JOB_DISPATCH_SCHEMA_VERSION = 1
 
+IMAGE_TRANSFORM_JOB_KIND = "image.transform"
+IMAGE_TRANSFORM_TASK_NAME = "lumi.jobs.image.transform"
+IMAGE_TRANSFORM_QUEUE = "lumi.media.image"
+IMAGE_TRANSFORM_ROUTING_KEY = "image.transform"
+
 
 @dataclass(frozen=True, slots=True)
 class JobMessage:
