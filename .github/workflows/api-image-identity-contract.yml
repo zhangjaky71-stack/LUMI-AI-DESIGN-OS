@@ -1,0 +1,138 @@
+name: API Image Identity Contract
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/Dockerfile"
+      - "apps/api/pyproject.toml"
+      - "apps/api/alembic/**"
+      - "apps/api/src/lumi_api/cli.py"
+      - "apps/api/src/lumi_api/product_app.py"
+      - "apps/api/src/lumi_api/generations/**"
+      - "apps/api/src/lumi_api/media_dispatch.py"
+      - "scripts/staging-acceptance-gate.py"
+      - "scripts/validate_staging_acceptance_contract.py"
+      - "staging/acceptance/**"
+      - "uv.lock"
+      - ".github/workflows/api-image-identity-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  api-image-identity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: lumi_api_contract
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d lumi_api_contract"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Compile NODE-71 acceptance contracts
+        run: >-
+          python -m compileall -q
+          scripts/staging-acceptance-gate.py
+          scripts/validate_staging_acceptance_contract.py
+
+      - name: Drill NODE-71 API provenance source contract
+        run: python scripts/validate_staging_acceptance_contract.py
+
+      - name: Build canonical API image from frozen workspace
+        run: docker build --file apps/api/Dockerfile --tag lumi-api:node71 .
+
+      - name: Verify immutable runtime identity properties
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(docker image inspect lumi-api:node71 --format '{{.Config.User}}')" = "10001:10001"
+          test "$(docker image inspect lumi-api:node71 --format '{{json .Config.Cmd}}')" = '["lumi-api"]'
+
+      - name: Run migrations from the accepted API image shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -e MIGRATION_DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/lumi_api_contract \
+            lumi-api:node71 \
+            alembic -c apps/api/alembic.ini upgrade head
+
+      - name: Start canonical product control plane
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --name lumi-api-node71 --network host \
+            -e LUMI_ENV=test \
+            -e DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/lumi_api_contract \
+            -e S3_BUCKET=lumi-contract \
+            -e S3_ENDPOINT_URL=http://127.0.0.1:9000 \
+            -e S3_ACCESS_KEY_ID=contract \
+            -e S3_SECRET_ACCESS_KEY=contract \
+            -e S3_FORCE_PATH_STYLE=true \
+            -e AWS_EC2_METADATA_DISABLED=true \
+            lumi-api:node71
+
+      - name: Prove liveness and PostgreSQL readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if ! docker ps --format '{{.Names}}' | grep -qx lumi-api-node71; then
+              docker logs lumi-api-node71
+              exit 1
+            fi
+            if curl --fail --silent --show-error http://127.0.0.1:8000/health/live >/tmp/live.json \
+              && curl --fail --silent --show-error http://127.0.0.1:8000/health/ready >/tmp/ready.json; then
+              python - <<'PY'
+          import json
+          from pathlib import Path
+
+          for name in ("live", "ready"):
+              payload = json.loads(Path(f"/tmp/{name}.json").read_text())
+              assert payload["service"] == "api", payload
+              assert payload["status"] == "ok", payload
+          PY
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs lumi-api-node71
+          exit 1
+
+      - name: Capture API image diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p reports/api-image-identity
+          docker image inspect lumi-api:node71 > reports/api-image-identity/image-inspect.json 2>&1 || true
+          docker inspect lumi-api-node71 > reports/api-image-identity/container-inspect.json 2>&1 || true
+          docker logs lumi-api-node71 > reports/api-image-identity/container.log 2>&1 || true
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: api-image-identity-${{ github.run_id }}
+          path: reports/api-image-identity
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: docker rm --force lumi-api-node71 >/dev/null 2>&1 || true
