@@ -8,6 +8,9 @@ on:
       - "apps/api/src/lumi_api/product_app.py"
       - "apps/api/src/lumi_api/idempotency/**"
       - "apps/api/src/lumi_api/tool_side_effect_control.py"
+      - "apps/api/src/lumi_api/tool_audit_control.py"
+      - "apps/api/src/lumi_api/tool_approval_control.py"
+      - "apps/api/alembic/versions/0021_tool_approval_scope.py"
       - "apps/agent-runtime/Dockerfile"
       - "apps/agent-runtime/pyproject.toml"
       - "apps/agent-runtime/src/lumi_agent_runtime/runtime_*.py"
@@ -17,18 +20,25 @@ on:
       - "services/tool-gateway/Dockerfile"
       - "services/tool-gateway/pyproject.toml"
       - "services/tool-gateway/src/lumi_tool_gateway/**"
+      - "services/asset-storage/src/lumi_asset_storage/s3.py"
       - "apps/worker-media/Dockerfile"
       - "apps/worker-media/src/lumi_worker_media/**"
       - "services/sandbox-runtime/Dockerfile"
       - "services/sandbox-runtime/pyproject.toml"
       - "services/sandbox-runtime/src/lumi_sandbox_runtime/**"
       - "infra/iac/modules/platform-app/**"
+      - "infra/iac/modules/storage/**"
+      - "infra/iac/modules/compute/**"
       - "infra/iac/environments/staging/core/**"
       - "infra/iac/environments/staging/app/**"
       - "infra/iac/environments/production/core/**"
       - "infra/iac/environments/production/app/**"
+      - "staging/acceptance/evidence-template.json"
       - "scripts/validate_runtime_image_closure.py"
       - "scripts/validate_side_effect_control_provenance.py"
+      - "scripts/validate_tool_audit_provenance.py"
+      - "scripts/validate_tool_approval_provenance.py"
+      - "scripts/validate_tool_result_offload_provenance.py"
       - ".github/workflows/staging-acceptance-gate.yml"
       - ".github/workflows/runtime-image-closure-contract.yml"
   workflow_dispatch:
@@ -52,11 +62,16 @@ jobs:
           set -euo pipefail
           python -m compileall -q \
             scripts/validate_runtime_image_closure.py \
-            scripts/validate_side_effect_control_provenance.py
+            scripts/validate_side_effect_control_provenance.py \
+            scripts/validate_tool_audit_provenance.py \
+            scripts/validate_tool_approval_provenance.py \
+            scripts/validate_tool_result_offload_provenance.py
           for path in \
             apps/api/src/lumi_api/cli.py \
             apps/api/src/lumi_api/product_app.py \
             apps/api/src/lumi_api/tool_side_effect_control.py \
+            apps/api/src/lumi_api/tool_audit_control.py \
+            apps/api/src/lumi_api/tool_approval_control.py \
             apps/agent-runtime/src/lumi_agent_runtime/runtime_cli.py \
             apps/agent-runtime/src/lumi_agent_runtime/runtime_service.py \
             apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/runtime_factory.py \
@@ -65,6 +80,9 @@ jobs:
             services/tool-gateway/src/lumi_tool_gateway/http_transport.py \
             services/tool-gateway/src/lumi_tool_gateway/sandbox_transport.py \
             services/tool-gateway/src/lumi_tool_gateway/side_effect_control.py \
+            services/tool-gateway/src/lumi_tool_gateway/audit_control.py \
+            services/tool-gateway/src/lumi_tool_gateway/approval_control.py \
+            services/tool-gateway/src/lumi_tool_gateway/result_offload.py \
             apps/worker-media/src/lumi_worker_media/worker_cli.py \
             services/sandbox-runtime/src/lumi_sandbox_runtime/cli.py \
             services/sandbox-runtime/src/lumi_sandbox_runtime/service.py; do
@@ -74,5 +92,9 @@ jobs:
       - name: Require all six runtimes to have real frozen production image closure
         run: python scripts/validate_runtime_image_closure.py
 
-      - name: Require canonical Tool Gateway side-effect provenance chain
-        run: python scripts/validate_side_effect_control_provenance.py --self-test
+      - name: Require canonical Tool Gateway production binding provenance
+        run: |
+          python scripts/validate_side_effect_control_provenance.py --self-test
+          python scripts/validate_tool_audit_provenance.py --self-test
+          python scripts/validate_tool_approval_provenance.py --self-test
+          python scripts/validate_tool_result_offload_provenance.py --self-test
