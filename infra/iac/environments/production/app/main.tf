@@ -8,11 +8,12 @@ data "terraform_remote_state" "core" {
 }
 
 locals {
-  project     = "lumi"
-  environment = "production"
-  core        = data.terraform_remote_state.core.outputs
-  secret_arns = local.core.secret_arns
-  bucket_arns = local.core.bucket_arns
+  project      = "lumi"
+  environment  = "production"
+  core         = data.terraform_remote_state.core.outputs
+  secret_arns  = local.core.secret_arns
+  bucket_arns  = local.core.bucket_arns
+  bucket_names = local.core.bucket_names
 
   common_environment = {
     LUMI_ENV               = local.environment
@@ -79,14 +80,21 @@ locals {
       min_capacity   = 3
       max_capacity   = 12
       container_port = 8080
-      environment = merge(local.common_environment, { LUMI_ROLE = "model-gateway" })
+      environment = merge(
+        local.common_environment,
+        {
+          LUMI_ROLE                   = "model-gateway"
+          LUMI_PROVIDER_OUTPUT_BUCKET = local.bucket_names["assets"]
+          LUMI_S3_REGION              = var.region
+        },
+      )
       secret_arns = {
         LUMI_DATABASE_URL              = local.secret_arns["database/app"]
         LUMI_MODEL_PROVIDER_SECRET     = local.secret_arns["providers/model"]
         LUMI_MEDIA_PROVIDER_SECRET     = local.secret_arns["providers/media"]
         LUMI_MODEL_GATEWAY_AUTH_SECRET = local.secret_arns["internal/model-gateway"]
       }
-      s3_bucket_arns         = []
+      s3_bucket_arns         = [local.bucket_arns["assets"]]
       autoscale_metric_name  = "ModelGatewayInflight"
       autoscale_target_value = 50
     }
@@ -118,9 +126,14 @@ locals {
       environment = merge(
         local.common_environment,
         local.model_gateway_environment,
-        { LUMI_ROLE = "worker-media" },
+        {
+          LUMI_ROLE      = "worker-media"
+          LUMI_S3_BUCKET = local.bucket_names["assets"]
+          LUMI_S3_REGION = var.region
+        },
       )
       secret_arns = {
+        LUMI_DATABASE_URL              = local.secret_arns["database/app"]
         LUMI_REDIS_URL                 = local.secret_arns["redis/url"]
         LUMI_RABBITMQ_URL              = local.secret_arns["rabbitmq/url"]
         LUMI_MODEL_GATEWAY_AUTH_SECRET = local.secret_arns["internal/model-gateway"]
