@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import unittest
-from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import uuid4
 
@@ -22,7 +21,6 @@ class _FakeSideEffectControlClient:
         self.claim_payload = dict(claim)
         self.calls: list[tuple[str, str | None]] = []
         self.fail_succeed = False
-        self.fail_ambiguous = False
 
     async def claim(
         self,
@@ -58,8 +56,6 @@ class _FakeSideEffectControlClient:
     ) -> None:
         del reason
         self.calls.append((f"ambiguous:{operation_id}", lease_owner))
-        if self.fail_ambiguous:
-            raise RuntimeError("durable ambiguity unavailable")
 
 
 def _context() -> ToolSideEffectContext:
@@ -181,11 +177,14 @@ class RemoteSideEffectGuardTests(unittest.IsolatedAsyncioTestCase):
             await guard.execute(_context(), fail_after_attempt)
 
         names = [name for name, _ in client.calls]
-        self.assertEqual(names[:3], [
-            "claim",
-            f"attempt:{operation_id}",
-            f"ambiguous:{operation_id}",
-        ])
+        self.assertEqual(
+            names[:3],
+            [
+                "claim",
+                f"attempt:{operation_id}",
+                f"ambiguous:{operation_id}",
+            ],
+        )
         self.assertNotIn(f"succeed:{operation_id}", names)
 
     async def test_success_commit_failure_never_returns_success_or_reexecutes(self) -> None:
