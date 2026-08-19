@@ -135,6 +135,11 @@ def _safety_bundle(
     return replace(validation, findings=validation.findings + (finding,))
 
 
+def _raise_if_retryable(exc: Exception) -> None:
+    if getattr(exc, "retryable", False) is True:
+        raise exc
+
+
 class ImageGenerationPipeline:
     def __init__(
         self,
@@ -164,57 +169,69 @@ class ImageGenerationPipeline:
             spec.organization_id,
             spec.operation_id,
         )
-        if existing is not None:
-            if existing.semantic_hash != spec.semantic_hash:
-                raise OperationSemanticConflict("GENERATION_OPERATION_SEMANTIC_CONFLICT")
+        if existing is not None and existing.semantic_hash != spec.semantic_hash:
+            raise OperationSemanticConflict("GENERATION_OPERATION_SEMANTIC_CONFLICT")
+        if existing is not None and existing.status != "RUNNING":
             return existing
 
         _validate_reference_roles(spec)
         authorized = self.references.authorize(spec, spec.references)
         prompt = compile_prompt(spec)
         generation_id = _generation_id(spec)
-        representative = _request(
-            spec=spec,
-            prompt=prompt,
-            references=authorized,
-            generation_id=generation_id,
-            variant_index=1,
-            budget_limit_usd=spec.budget_limit_usd,
-        )
-        estimate = await self.gateway.estimate(representative)
-        decision = choose_variants(spec, estimated_cost_per_variant_usd=estimate.amount_usd)
 
-        job = GenerationJob(
-            generation_id=generation_id,
-            organization_id=spec.organization_id,
-            project_id=spec.project_id,
-            task_id=spec.task_id,
-            operation_id=spec.operation_id,
-            semantic_hash=spec.semantic_hash,
-            status="RUNNING",
-            prompt_hash=prompt.prompt_hash,
-            variant_decision=decision,
-            candidates=(),
-            created_at=created_at,
-        )
-        await self.repository.save_spec(spec)
-        await self.repository.save(job)
-        await self.events.emit(
-            "generation.started",
-            organization_id=spec.organization_id,
-            generation_id=generation_id,
-            payload={
-                "operation_id": spec.operation_id,
-                "mode": spec.mode,
-                "prompt_hash": prompt.prompt_hash,
-                "requested_variants": decision.requested_count,
-                "selected_variants": decision.selected_count,
-                "variant_decision_reasons": decision.reason_codes,
-            },
-        )
+        if existing is None:
+            representative = _request(
+                spec=spec,
+                prompt=prompt,
+                references=authorized,
+                generation_id=generation_id,
+                variant_index=1,
+                budget_limit_usd=spec.budget_limit_usd,
+            )
+            estimate = await self.gateway.estimate(representative)
+            decision = choose_variants(spec, estimated_cost_per_variant_usd=estimate.amount_usd)
+            job = GenerationJob(
+                generation_id=generation_id,
+                organization_id=spec.organization_id,
+                project_id=spec.project_id,
+                task_id=spec.task_id,
+                operation_id=spec.operation_id,
+                semantic_hash=spec.semantic_hash,
+                status="RUNNING",
+                prompt_hash=prompt.prompt_hash,
+                variant_decision=decision,
+                candidates=(),
+                created_at=created_at,
+            )
+            await self.repository.save_spec(spec)
+            await self.repository.save(job)
+            await self.events.emit(
+                "generation.started",
+                organization_id=spec.organization_id,
+                generation_id=generation_id,
+                payload={
+                    "operation_id": spec.operation_id,
+                    "mode": spec.mode,
+                    "prompt_hash": prompt.prompt_hash,
+                    "requested_variants": decision.requested_count,
+                    "selected_variants": decision.selected_count,
+                    "variant_decision_reasons": decision.reason_codes,
+                },
+            )
+        else:
+            job = existing
+            generation_id = job.generation_id
+            decision = job.variant_decision
+            if generation_id != _generation_id(spec):
+                raise OperationSemanticConflict("GENERATION_OPERATION_REBOUND_FORBIDDEN")
+            if job.prompt_hash != prompt.prompt_hash:
+                raise OperationSemanticConflict("GENERATION_PROMPT_HASH_CONFLICT")
 
         per_variant_budget = spec.budget_limit_usd / Decimal(decision.selected_count)
+        completed_variant_indexes = {candidate.variant_index for candidate in job.candidates}
         for variant_index in range(1, decision.selected_count + 1):
+            if variant_index in completed_variant_indexes:
+                continue
             candidate_id = _candidate_id(generation_id, variant_index)
             request = _request(
                 spec=spec,
@@ -227,6 +244,7 @@ class ImageGenerationPipeline:
             try:
                 result = await self.gateway.invoke(request)
             except Exception as exc:
+                _raise_if_retryable(exc)
                 candidate = GenerationCandidate(
                     candidate_id=candidate_id,
                     generation_id=generation_id,
@@ -347,6 +365,7 @@ class ImageGenerationPipeline:
                     pending_result=pending.result,
                 )
             except Exception as exc:
+                _raise_if_retryable(exc)
                 deferred = replace(
                     candidate,
                     status="PROVIDER_PENDING",
@@ -450,6 +469,7 @@ class ImageGenerationPipeline:
                 image=image,
             )
         except Exception as exc:
+            _raise_if_retryable(exc)
             return GenerationCandidate(
                 candidate_id=candidate_id,
                 generation_id=request.generation_id,
@@ -528,6 +548,7 @@ class ImageGenerationPipeline:
                 validation=validation,
             )
         except Exception as exc:
+            _raise_if_retryable(exc)
             return GenerationCandidate(
                 candidate_id=candidate_id,
                 generation_id=request.generation_id,
