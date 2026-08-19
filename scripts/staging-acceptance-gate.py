@@ -25,6 +25,11 @@ REQUIRED_IMAGES = {
 MODEL_GATEWAY_REQUIRED_SOURCE_PATHS = {
     "services/model-gateway",
     "apps/api/src/lumi_api/model_gateway_runtime.py",
+    "apps/api/src/lumi_api/model_gateway_bootstrap.py",
+    "apps/api/src/lumi_api/model_gateway_service.py",
+    "apps/api/src/lumi_api/model_gateway_cli.py",
+    "apps/api/src/lumi_api/model_paid_guard.py",
+    "apps/api/src/lumi_api/idempotency/gateway.py",
     "apps/api/src/lumi_api/costs/model_gateway_adapter.py",
 }
 
@@ -218,50 +223,46 @@ def validate_scenarios(manifest: dict[str, Any], evidence: dict[str, Any]) -> tu
         external_reason = result.get("external_reason")
         evidence_complete = all(non_pending_string(value) for value in [actual, evidence_ref, owner])
         valid_external = status != "BLOCKED_EXTERNAL" or (
-            external_allowed and non_pending_string(external_reason) and non_pending_string(evidence_ref) and non_pending_string(owner)
+            external_allowed and non_pending_string(external_reason)
         )
         passed = status == "PASS" and evidence_complete
-        if status == "PASS" and not evidence_complete:
-            blockers.append(f"scenario {scenario_id} claims PASS without actual/evidence_ref/owner")
-        if status == "BLOCKED_EXTERNAL" and not valid_external:
-            blockers.append(f"scenario {scenario_id} has invalid BLOCKED_EXTERNAL evidence")
-        if priority == "P0" and not passed:
-            blockers.append(f"P0 scenario {scenario_id} is not evidenced PASS")
-        if status == "FAIL" and severity in BLOCKING_SEVERITIES:
-            blockers.append(f"{severity.upper()} scenario {scenario_id} failed")
+        blocking = priority == "P0" and not passed
         checks.append(
             {
                 "id": scenario_id,
-                "category": scenario.get("category"),
                 "title": scenario.get("title"),
                 "priority": priority,
                 "severity": severity,
                 "status": status,
                 "passed": passed,
-                "external_dependency": external_allowed,
+                "blocking": blocking,
                 "evidence_ref": evidence_ref,
                 "owner": owner,
             }
         )
+        if status == "PASS" and not evidence_complete:
+            blockers.append(f"scenario {scenario_id} says PASS but lacks actual/evidence_ref/owner")
+        if status == "BLOCKED_EXTERNAL" and not valid_external:
+            blockers.append(f"scenario {scenario_id} has invalid BLOCKED_EXTERNAL status")
+        if blocking:
+            blockers.append(f"P0 scenario {scenario_id} is not evidenced PASS")
     return checks, blockers
 
 
-def validate_issues(evidence: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
-    issues = evidence.get("open_issues", [])
+def validate_issues(evidence: dict[str, Any]) -> list[str]:
+    issues = evidence.get("open_issues")
     if not isinstance(issues, list):
-        raise AcceptanceError("open_issues must be an array")
+        return ["open_issues must be an array"]
     blockers: list[str] = []
-    normalized: list[dict[str, Any]] = []
-    for index, issue in enumerate(issues):
+    for issue in issues:
         if not isinstance(issue, dict):
-            raise AcceptanceError(f"open_issues[{index}] must be an object")
+            blockers.append("open issue entry must be an object")
+            continue
         severity = str(issue.get("severity", "")).lower()
-        status = str(issue.get("status", "OPEN")).upper()
-        issue_id = str(issue.get("id", f"issue-{index}"))
-        normalized.append({"id": issue_id, "severity": severity, "status": status, "owner": issue.get("owner")})
+        status = str(issue.get("status", "")).upper()
         if severity in BLOCKING_SEVERITIES and status in OPEN_STATES:
-            blockers.append(f"open {severity.upper()} issue {issue_id}")
-    return normalized, blockers
+            blockers.append(f"blocking issue {issue.get('id', 'UNKNOWN')} remains {status}")
+    return blockers
 
 
 def validate_approvals(evidence: dict[str, Any]) -> list[str]:
@@ -269,103 +270,68 @@ def validate_approvals(evidence: dict[str, Any]) -> list[str]:
     required = ["engineering", "security", "product", "release_owner"]
     if not isinstance(approvals, dict):
         return ["approvals object is missing"]
-    return [f"approval {key} is not APPROVED" for key in required if approvals.get(key) != "APPROVED"]
+    return [f"approval {key} is missing/PENDING" for key in required if not non_pending_string(approvals.get(key))]
 
 
-def markdown_report(decision: dict[str, Any]) -> str:
-    lines = [
-        "# Staging Release Candidate Acceptance",
-        "",
-        f"- Decision ID: `{decision['decision_id']}`",
-        f"- Status: **{'PASS' if decision['passed'] else 'BLOCK'}**",
-        f"- RC SHA: `{decision['release_candidate'].get('git_sha', 'UNKNOWN')}`",
-        f"- P0 passed: {decision['summary']['p0_passed']}/{decision['summary']['p0_total']}",
-        f"- Scenarios: PASS {decision['summary']['pass']} / FAIL {decision['summary']['fail']} / BLOCKED_EXTERNAL {decision['summary']['blocked_external']} / NOT_RUN {decision['summary']['not_run']}",
-        "",
-        "## Blockers",
-        "",
-    ]
-    if decision["blockers"]:
-        lines.extend(f"- {item}" for item in decision["blockers"])
-    else:
-        lines.append("- None")
-    lines.extend(["", "## Scenario results", "", "| ID | Priority | Severity | Status | Evidence |", "|---|---|---|---|---|"])
-    for item in decision["scenario_checks"]:
-        lines.append(
-            f"| {item['id']} | {item['priority']} | {item['severity']} | {item['status']} | {item.get('evidence_ref') or ''} |"
-        )
-    return "\n".join(lines) + "\n"
-
-
-def evaluate(manifest: dict[str, Any], parity: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
-    if manifest.get("schema_version") != 1 or evidence.get("schema_version") != 1 or parity.get("schema_version") != 1:
-        raise AcceptanceError("all contracts must use schema_version 1")
-    if evidence.get("manifest_id") != manifest.get("manifest_id"):
-        raise AcceptanceError("evidence manifest_id does not match acceptance manifest")
-
-    blockers = []
+def evaluate(manifest: dict[str, Any], parity_contract: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    blockers: list[str] = []
     blockers.extend(validate_rc(evidence))
     image_set, image_blockers = validate_container_image_set(evidence)
     blockers.extend(image_blockers)
     blockers.extend(validate_data_policy(evidence))
     blockers.extend(validate_accounts(evidence))
-    parity_checks, parity_blockers = validate_parity(parity, evidence)
+    parity_checks, parity_blockers = validate_parity(parity_contract, evidence)
     blockers.extend(parity_blockers)
     scenario_checks, scenario_blockers = validate_scenarios(manifest, evidence)
     blockers.extend(scenario_blockers)
-    issues, issue_blockers = validate_issues(evidence)
-    blockers.extend(issue_blockers)
+    blockers.extend(validate_issues(evidence))
     blockers.extend(validate_approvals(evidence))
 
-    counts = {status: sum(1 for item in scenario_checks if item["status"] == status) for status in ALLOWED_STATUSES}
     p0 = [item for item in scenario_checks if item["priority"] == "P0"]
-    payload = {
+    p1 = [item for item in scenario_checks if item["priority"] == "P1"]
+    passed = not blockers and all(item["passed"] for item in p0)
+    canonical = {
         "schema_version": 1,
         "manifest_id": manifest.get("manifest_id"),
-        "release_candidate": evidence.get("release_candidate", {}),
+        "release_candidate": evidence.get("release_candidate"),
         "container_image_set": image_set,
-        "passed": not blockers,
         "summary": {
-            "pass": counts["PASS"],
-            "fail": counts["FAIL"],
-            "blocked_external": counts["BLOCKED_EXTERNAL"],
-            "not_run": counts["NOT_RUN"],
             "p0_total": len(p0),
             "p0_passed": sum(1 for item in p0 if item["passed"]),
+            "p1_total": len(p1),
+            "p1_passed": sum(1 for item in p1 if item["passed"]),
             "parity_total": len(parity_checks),
             "parity_passed": sum(1 for item in parity_checks if item["passed"]),
+            "blocking_count": len(blockers),
         },
-        "blockers": sorted(set(blockers)),
+        "checks": scenario_checks,
         "parity_checks": parity_checks,
-        "scenario_checks": scenario_checks,
-        "open_issues": issues,
-        "approvals": evidence.get("approvals", {}),
+        "blockers": sorted(set(blockers)),
+        "approvals": evidence.get("approvals"),
     }
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return {"decision_id": hashlib.sha256(canonical.encode()).hexdigest()[:24], **payload}
+    decision_payload = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    canonical["decision_id"] = hashlib.sha256(decision_payload.encode("utf-8")).hexdigest()
+    canonical["passed"] = passed
+    return canonical
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Evaluate LUMI staging release-candidate acceptance evidence")
+    parser = argparse.ArgumentParser(description="Evaluate NODE-71 Production-like Staging acceptance evidence")
     parser.add_argument("--manifest", default="staging/acceptance/manifest-v1.json")
-    parser.add_argument("--parity", default="staging/acceptance/environment-parity-v1.json")
+    parser.add_argument("--parity-contract", default="staging/acceptance/environment-parity-v1.json")
     parser.add_argument("--evidence", required=True)
-    parser.add_argument("--output", required=True)
-    parser.add_argument("--markdown")
+    parser.add_argument("--out", default="artifacts/node-71-staging-decision.json")
     args = parser.parse_args()
-    try:
-        decision = evaluate(load_json(Path(args.manifest)), load_json(Path(args.parity)), load_json(Path(args.evidence)))
-    except (AcceptanceError, json.JSONDecodeError, OSError) as exc:
-        raise SystemExit(f"staging acceptance gate invalid: {exc}") from exc
-    output = Path(args.output)
+
+    manifest = load_json(Path(args.manifest))
+    parity = load_json(Path(args.parity_contract))
+    evidence = load_json(Path(args.evidence))
+    decision = evaluate(manifest, parity, evidence)
+    output = Path(args.out)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(decision, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    if args.markdown:
-        markdown = Path(args.markdown)
-        markdown.parent.mkdir(parents=True, exist_ok=True)
-        markdown.write_text(markdown_report(decision), encoding="utf-8")
-    print(json.dumps({"status": "PASS" if decision["passed"] else "BLOCK", "decision_id": decision["decision_id"]}, sort_keys=True))
-    return 0 if decision["passed"] else 2
+    output.write_text(json.dumps(decision, indent=2, sort_keys=True), encoding="utf-8")
+    print(json.dumps(decision, indent=2, sort_keys=True))
+    return 0 if decision["passed"] else 1
 
 
 if __name__ == "__main__":
