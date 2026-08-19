@@ -37,6 +37,10 @@ class ToolDataControlUnavailableError(ToolGatewayError):
     code = "TOOL_DATA_CONTROL_UNAVAILABLE"
 
 
+class ToolWebSearchUnavailableError(ToolGatewayError):
+    code = "TOOL_WEB_SEARCH_UNAVAILABLE"
+
+
 class ToolInputValidationError(ToolGatewayError):
     code = "TOOL_INPUT_SCHEMA_INVALID"
 
