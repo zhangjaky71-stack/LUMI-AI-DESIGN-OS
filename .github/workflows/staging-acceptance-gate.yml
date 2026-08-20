@@ -27,7 +27,6 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 concurrency:
   group: staging-acceptance-${{ github.event.pull_request.number || github.ref }}
@@ -152,6 +151,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.evidence_path != '' && inputs.runtime_image_set_run_id != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
     env:
       LUMI_STAGING_EVIDENCE_PATH: ${{ inputs.evidence_path }}
       LUMI_RUNTIME_IMAGE_SET_RUN_ID: ${{ inputs.runtime_image_set_run_id }}
