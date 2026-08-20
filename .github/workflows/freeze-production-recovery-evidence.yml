@@ -124,7 +124,7 @@ jobs:
           run-id: ${{ inputs.dr_run_id }}
           path: /tmp/lumi-production-dr
 
-      - name: Materialize exact raw evidence and recompute canonical recovery decision
+      - name: Materialize exact raw evidence and recompute canonical frozen recovery decision
         shell: bash
         run: |
           set -euo pipefail
@@ -135,6 +135,9 @@ jobs:
             test "$(find /tmp/lumi-production-dr -maxdepth 1 -type f -name "$name" | wc -l)" -eq 1
           done
           test "$(find /tmp/lumi-production-dr -maxdepth 1 -type f | wc -l)" -eq 6
+          jq -e --arg deployment "$DEPLOYMENT_ID" --arg rc "$RC_SHA" \
+            '.passed == true and .deployment_id == $deployment and .release_candidate.git_sha == $rc and (.decision_id | type == "string" and length == 64)' \
+            /tmp/lumi-production-dr/decision.json >/dev/null
           cp /tmp/lumi-production-dr/baseline-runtime.json "$RECOVERY_DIR/evidence/baseline-runtime.json"
           cp /tmp/lumi-production-dr/rds-restore.json "$RECOVERY_DIR/evidence/rds-restore.json"
           cp /tmp/lumi-production-dr/database-verify.json "$RECOVERY_DIR/evidence/database-verify.json"
@@ -152,10 +155,6 @@ jobs:
           test "$(jq -r '.passed' "$RECOVERY_DIR/decision.json")" = true
           test "$(jq -r '.deployment_id' "$RECOVERY_DIR/decision.json")" = "$DEPLOYMENT_ID"
           test "$(jq -r '.release_candidate.git_sha' "$RECOVERY_DIR/decision.json")" = "$RC_SHA"
-          cmp -s "$RECOVERY_DIR/decision.json" /tmp/lumi-production-dr/decision.json || {
-            echo "freeze-time recovery decision differs from producer decision" >&2
-            exit 65
-          }
 
       - name: Validate frozen recovery bundle contract
         shell: bash
