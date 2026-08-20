@@ -82,6 +82,7 @@ def run_self_tests(modules: dict[str, ModuleType]) -> None:
     require(governance_apply.get("status") == "PASS", "branch-protection applicator self-test did not PASS")
     require(governance_apply.get("preflight_guard") == "EVIDENCE_HEAD_EXACT", "branch-protection Evidence Head guard drift")
     require(governance_apply.get("evidence_head_lock") == "READ_ONLY", "branch-protection Evidence Head lock drift")
+    require(governance_apply.get("evidence_head_first") is True, "branch-protection must lock Evidence Head before base branch")
     require(
         modules["approval_feasibility"].EXPECTED_PR_AUTHOR
         in results["approval_feasibility"]["clean"]["excluded_logins"],
@@ -166,6 +167,8 @@ def validate_canonical_sources() -> None:
         'product_release["approvals"] = dict(authorization_result["approval_statuses"])',
         '"repository_governance_policy": {',
         '"release_authorization_request": {',
+        '"evidence_head_locked": governance_result.get("evidence_head_locked")',
+        '"evidence_head_lock_policy_bound": governance_result.get("evidence_head_lock_policy_bound")',
         '"status_check_policy_bound": governance_result.get("status_check_policy_bound")',
         '"kind": "LUMI_FINAL_ACCEPTANCE_DECISION_V2"',
     ))
