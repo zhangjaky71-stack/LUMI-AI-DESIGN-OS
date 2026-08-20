@@ -185,7 +185,11 @@ jobs:
       - name: Run Hosted video PostgreSQL acceptance
         env:
           PYTHONPATH: apps/worker-media/src:services/video-generation/src:services/domain/src
-        run: uv run pytest apps/worker-media/tests/integration/test_video_hosted_postgres.py -q
+        run: >-
+          uv run pytest
+          apps/worker-media/tests/integration/test_video_hosted_postgres.py
+          apps/worker-media/tests/integration/test_video_runtime_privileges_postgres.py
+          -q
       - name: Run video / Model Gateway / Artifact regressions
         env:
           PYTHONPATH: services/video-generation/src:services/model-gateway/src:services/artifact-history/src:services/identity-engine/src:services/brand-rules/src:services/domain/src
