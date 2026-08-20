@@ -43,6 +43,14 @@ def load_json(path: Path) -> dict[str, Any]:
     return payload
 
 
+def protection_application_order(policy: Mapping[str, Any]) -> list[str]:
+    evidence_branch = policy.get("evidence_head_branch")
+    release_branches = policy.get("release_branches")
+    require(isinstance(evidence_branch, str) and bool(evidence_branch), "normalized Evidence Head branch missing")
+    require(isinstance(release_branches, list) and evidence_branch in release_branches, "normalized release branch set missing Evidence Head")
+    return [evidence_branch] + [branch for branch in release_branches if branch != evidence_branch]
+
+
 def render_protection_body(policy: Mapping[str, Any], *, branch: str) -> dict[str, Any]:
     checks = policy.get("required_status_checks")
     require(isinstance(checks, Mapping), "normalized policy required_status_checks missing")
@@ -150,9 +158,21 @@ def apply(
         "release-closure-p0 moved after dispatch; refusing to apply branch protection to a different Evidence Head",
     )
 
+    application_order = protection_application_order(policy)
     applied: list[dict[str, Any]] = []
     request_bodies: dict[str, dict[str, Any]] = {}
-    for branch in policy["release_branches"]:
+    for branch in application_order:
+        if branch == evidence_branch:
+            try:
+                just_in_time = capture_module._fetch_branch(repository, branch, token=token)
+            except capture_module.BranchProtectionError as exc:
+                raise BranchProtectionApplyError(f"just-in-time Evidence Head lookup failed: {exc}") from exc
+            commit = just_in_time.get("commit")
+            sha = commit.get("sha") if isinstance(commit, Mapping) else None
+            require(
+                isinstance(sha, str) and sha.lower() == evidence_head_sha.lower(),
+                "Evidence Head moved immediately before lock; refusing to lock a different commit",
+            )
         body = render_protection_body(policy, branch=branch)
         request_bodies[branch] = body
         response = put_json(
@@ -189,6 +209,7 @@ def apply(
         "repository": repository,
         "evidence_head_sha": evidence_head_sha.lower(),
         "preflight_heads": preflight_heads,
+        "application_order": application_order,
         "policy": policy,
         "request_bodies": request_bodies,
         "applied": applied,
@@ -217,6 +238,8 @@ def self_test() -> dict[str, Any]:
     }
     policy_module = load_module(POLICY_VALIDATOR, "lumi_release_governance_apply_selftest")
     normalized = policy_module.validate_policy(policy)
+    order = protection_application_order(normalized)
+    require(order == ["release-closure-p0", "node-73-final-acceptance-release"], "Evidence Head must be protected/locked before base branch")
     base_body = render_protection_body(normalized, branch="node-73-final-acceptance-release")
     head_body = render_protection_body(normalized, branch="release-closure-p0")
     require(base_body["required_status_checks"] == {"strict": True, "contexts": ["node73-final-contract-gate"]}, "canonical required check payload drift")
@@ -235,8 +258,10 @@ def self_test() -> dict[str, Any]:
             "node-73-final-acceptance-release": base_body,
             "release-closure-p0": head_body,
         },
+        "application_order": order,
         "preflight_guard": "EVIDENCE_HEAD_EXACT",
         "evidence_head_lock": "READ_ONLY",
+        "evidence_head_first": True,
         "negative_network_calls": 0,
     }
 
