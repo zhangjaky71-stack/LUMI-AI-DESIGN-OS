@@ -73,6 +73,7 @@ jobs:
           python3 -m json.tool staging/acceptance/api-provenance-sources-v1.json >/dev/null
           python3 -m py_compile \
             scripts/final-acceptance-gate.py \
+            scripts/final-acceptance-decision.py \
             scripts/create-final-acceptance-evidence.py \
             scripts/final-acceptance-assembler.py \
             scripts/validate_final_acceptance_package.py \
@@ -129,7 +130,7 @@ jobs:
   final-decision:
     if: github.event_name == 'workflow_dispatch' && inputs.release_manifest_path != '' && inputs.acceptance_evidence_path != ''
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: read
@@ -169,33 +170,16 @@ jobs:
           PY
       - name: Require canonical assembled and frozen package
         run: python3 scripts/validate_final_acceptance_package.py --release "$FINAL_RELEASE"
-      - name: Re-verify live strong repository governance for frozen RC
+      - name: Evaluate canonical final decision with live release controls
         shell: bash
         env:
           RELEASE_GOVERNANCE_TOKEN: ${{ secrets.RELEASE_GOVERNANCE_TOKEN }}
-        run: |
-          set -euo pipefail
-          test -n "$RELEASE_GOVERNANCE_TOKEN"
-          rc_sha="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["release_candidate"]["git_sha"])' "$FINAL_RELEASE")"
-          mkdir -p reports/final-acceptance/runtime
-          python3 scripts/capture_release_branch_protection.py \
-            --repository "$GITHUB_REPOSITORY" \
-            --expected-release-sha "$rc_sha" \
-            --output reports/final-acceptance/runtime/repository-governance-live.json
-      - name: Re-verify live GitHub release authorization for frozen RC
-        shell: bash
-        env:
           RELEASE_APPROVAL_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          test -n "$RELEASE_GOVERNANCE_TOKEN"
           test -n "$RELEASE_APPROVAL_TOKEN"
-          authorization_path="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["release_authorization"]["path"])' "$FINAL_RELEASE")"
-          python3 scripts/capture_release_authorization.py \
-            --verify-report "$authorization_path" \
-            --live-output reports/final-acceptance/runtime/release-authorization-live.json
-      - name: Evaluate final product acceptance
-        run: |
-          python3 scripts/final-acceptance-gate.py \
+          python3 scripts/final-acceptance-decision.py \
             --release "$FINAL_RELEASE" \
             --evidence "$FINAL_EVIDENCE" \
             --output "$FINAL_OUTPUT"
@@ -203,10 +187,7 @@ jobs:
         if: always()
         with:
           name: final-acceptance-${{ github.run_id }}
-          path: |
-            reports/final-acceptance/**/final-decision.json
-            reports/final-acceptance/runtime/repository-governance-live.json
-            reports/final-acceptance/runtime/release-authorization-live.json
+          path: reports/final-acceptance/**
           if-no-files-found: error
           retention-days: 180
 
