@@ -86,7 +86,11 @@ def validate_assemble() -> None:
 def validate_governance_apply() -> None:
     source = text(GOVERNANCE_APPLY)
     require_top_read_only(source, "NODE-73 branch-protection applicator")
+    header = top(source)
     apply_job = job_block(source, "apply-protection", None)
+    require("workflow_dispatch:" in header, "branch-protection applicator must retain future manual dispatch")
+    require("pull_request:\n    types: [labeled]" in header, "branch-protection applicator must support the current PR label bootstrap")
+    require("EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}" in header, "branch-protection applicator must resolve exact PR-head/dispatch Evidence Head")
     require("environment: production" in apply_job, "branch-protection mutation must remain behind the production environment")
     require(
         "permissions:\n      contents: read\n" in apply_job,
@@ -101,12 +105,22 @@ def validate_governance_apply() -> None:
         "pull-requests: write",
     ):
         require(forbidden not in apply_job, f"branch-protection applicator has unrelated GitHub permission: {forbidden}")
-    require("github.ref == 'refs/heads/release-closure-p0'" in apply_job, "branch-protection applicator must be Evidence-Head branch only")
-    require("APPLY_NODE73_RELEASE_PROTECTION" in apply_job, "branch-protection applicator must require explicit typed confirmation")
-    require('ref: ${{ github.sha }}' in apply_job, "branch-protection applicator must checkout exact dispatch SHA")
+    for marker in (
+        "github.ref == 'refs/heads/release-closure-p0'",
+        "inputs.confirm == 'APPLY_NODE73_RELEASE_PROTECTION'",
+        "github.event.label.name == 'node73-apply-protection'",
+        "github.event.pull_request.number == 135",
+        "github.event.pull_request.base.ref == 'node-73-final-acceptance-release'",
+        "github.event.pull_request.head.ref == 'release-closure-p0'",
+        "github.event.pull_request.head.repo.full_name == github.repository",
+    ):
+        require(marker in apply_job, f"branch-protection applicator missing bootstrap constraint: {marker}")
+    require('ref: ${{ env.EVIDENCE_HEAD_SHA }}' in apply_job, "branch-protection applicator must checkout exact resolved Evidence Head")
+    require('test "$(git rev-parse HEAD)" = "$EVIDENCE_HEAD_SHA"' in apply_job, "branch-protection applicator must verify exact Evidence Head checkout")
     require("persist-credentials: false" in apply_job, "branch-protection applicator checkout must not persist GITHUB_TOKEN credentials")
+    require('--confirm "APPLY_NODE73_RELEASE_PROTECTION"' in apply_job, "branch-protection applicator must pass the canonical typed confirmation to the mutation script")
     require(source.count("${{ secrets.RELEASE_GOVERNANCE_ADMIN_TOKEN }}") == 1, "Administration-write token must be injected into exactly one step")
-    require("RELEASE_GOVERNANCE_ADMIN_TOKEN:" not in top(source), "Administration-write token must never be workflow-scoped")
+    require("RELEASE_GOVERNANCE_ADMIN_TOKEN:" not in header, "Administration-write token must never be workflow-scoped")
     require("apply_release_branch_protection.py" in apply_job, "branch-protection applicator must use the canonical policy-driven script")
 
 
