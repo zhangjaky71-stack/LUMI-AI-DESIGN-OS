@@ -7,7 +7,8 @@
     "version": "PENDING",
     "migration_head": "PENDING",
     "staging_acceptance_decision_id": "PENDING",
-    "staging_acceptance_path": "PENDING"
+    "staging_acceptance_run_id": "PENDING",
+    "staging_acceptance_path": "reports/production-deployments/runtime/node71/decision.json"
   },
   "aws": {
     "account_id": "PENDING",
