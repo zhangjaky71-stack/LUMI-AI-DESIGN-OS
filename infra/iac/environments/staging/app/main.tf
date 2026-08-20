@@ -204,6 +204,32 @@ locals {
       autoscale_target_value = 5
     }
 
+    outbox-dispatcher = {
+      image         = var.worker_media_image
+      cpu           = 512
+      memory        = 1024
+      desired_count = 1
+      min_capacity  = 1
+      max_capacity  = 2
+      command = [
+        "python",
+        "-m",
+        "lumi_worker_media.cli",
+        "dispatch-outbox",
+        "--watch",
+        "--interval",
+        "1",
+      ]
+      environment = merge(local.common_environment, { LUMI_ROLE = "outbox-dispatcher" })
+      secret_arns = {
+        LUMI_DATABASE_URL = local.secret_arns["database/app"]
+        LUMI_RABBITMQ_URL = local.secret_arns["rabbitmq/url"]
+      }
+      s3_bucket_arns         = []
+      autoscale_metric_name  = "OutboxPendingEvents"
+      autoscale_target_value = 100
+    }
+
     sandbox-runtime = {
       image          = var.sandbox_runtime_image
       cpu            = 1024
