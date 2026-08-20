@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "registry": "ghcr.io",
+  "package_base": "lumi-ai-design-os",
+  "runtimes": {
+    "api": {
+      "dockerfile": "apps/api/Dockerfile",
+      "entrypoint": "lumi-api",
+      "source_paths": [
+        "apps/api/Dockerfile",
+        "apps/api/pyproject.toml",
+        "apps/api/alembic.ini",
+        "apps/api/alembic/versions/0020_generation_operation_identity.py",
+        "apps/api/alembic/versions/0021_tool_approval_scope.py",
+        "apps/api/src/lumi_api/cli.py",
+        "apps/api/src/lumi_api/product_app.py",
+        "apps/api/src/lumi_api/generations/gateway.py",
+        "apps/api/src/lumi_api/generations/service.py",
+        "apps/api/src/lumi_api/media_dispatch.py",
+        "apps/api/src/lumi_api/tool_side_effect_control.py",
+        "apps/api/src/lumi_api/idempotency/gateway.py",
+        "apps/api/src/lumi_api/tool_audit_control.py",
+        "apps/api/src/lumi_api/persistence/models/platform.py",
+        "apps/api/src/lumi_api/tool_approval_control.py",
+        "apps/api/src/lumi_api/tool_data_control.py",
+        "apps/api/src/lumi_api/persistence/models/project.py",
+        "apps/api/src/lumi_api/persistence/models/workflow.py",
+        "apps/api/src/lumi_api/persistence/models/asset.py",
+        "apps/api/src/lumi_api/persistence/models/design.py"
+      ]
+    },
+    "agent-runtime": {
+      "dockerfile": "apps/agent-runtime/Dockerfile",
+      "entrypoint": "lumi-agent-runtime",
+      "source_paths": [
+        "apps/agent-runtime/Dockerfile",
+        "apps/agent-runtime/pyproject.toml",
+        "apps/agent-runtime/src/lumi_agent_runtime/runtime_cli.py",
+        "apps/agent-runtime/src/lumi_agent_runtime/runtime_service.py",
+        "apps/agent-runtime/src/lumi_agent_runtime/control_plane/production_adapters.py",
+        "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime"
+      ]
+    },
+    "model-gateway": {
+      "dockerfile": "services/model-gateway/Dockerfile",
+      "entrypoint": "python -m lumi_api.model_gateway_cli",
+      "source_paths": [
+        "services/model-gateway",
+        "services/model-gateway/Dockerfile",
+        "services/model-gateway/src/lumi_model_gateway/openai_image_adapter.py",
+        "services/asset-storage/src/lumi_asset_storage/s3.py",
+        "apps/api/src/lumi_api/model_gateway_runtime.py",
+        "apps/api/src/lumi_api/model_gateway_bootstrap.py",
+        "apps/api/src/lumi_api/model_gateway_service.py",
+        "apps/api/src/lumi_api/model_gateway_cli.py",
+        "apps/api/src/lumi_api/model_paid_guard.py",
+        "apps/api/src/lumi_api/provider_output_store.py",
+        "apps/api/src/lumi_api/idempotency/gateway.py",
+        "apps/api/src/lumi_api/costs/model_gateway_adapter.py"
+      ]
+    },
+    "tool-gateway": {
+      "dockerfile": "services/tool-gateway/Dockerfile",
+      "entrypoint": "lumi-tool-gateway",
+      "source_paths": [
+        "services/tool-gateway/Dockerfile",
+        "services/tool-gateway/pyproject.toml",
+        "services/tool-gateway/src/lumi_tool_gateway/cli.py",
+        "services/tool-gateway/src/lumi_tool_gateway/service.py",
+        "services/tool-gateway/src/lumi_tool_gateway/api.py",
+        "services/tool-gateway/src/lumi_tool_gateway/gateway.py",
+        "services/tool-gateway/src/lumi_tool_gateway/http_transport.py",
+        "services/tool-gateway/src/lumi_tool_gateway/sandbox_transport.py",
+        "services/tool-gateway/src/lumi_tool_gateway/side_effect_control.py",
+        "services/tool-gateway/src/lumi_tool_gateway/audit_control.py",
+        "services/tool-gateway/src/lumi_tool_gateway/approval_control.py",
+        "services/tool-gateway/src/lumi_tool_gateway/result_offload.py",
+        "services/tool-gateway/src/lumi_tool_gateway/data_control.py",
+        "services/tool-gateway/src/lumi_tool_gateway/catalog.py",
+        "services/tool-gateway/src/lumi_tool_gateway/schema.py",
+        "services/asset-storage/src/lumi_asset_storage/s3.py"
+      ]
+    },
+    "worker-media": {
+      "dockerfile": "apps/worker-media/Dockerfile",
+      "entrypoint": "python -m lumi_worker_media.worker_cli",
+      "source_paths": [
+        "services/image-generation",
+        "services/asset-storage/src/lumi_asset_storage/s3.py",
+        "apps/worker-media/Dockerfile",
+        "apps/worker-media/pyproject.toml",
+        "apps/worker-media/src/lumi_worker_media/app.py",
+        "apps/worker-media/src/lumi_worker_media/job_runtime.py",
+        "apps/worker-media/src/lumi_worker_media/worker_cli.py",
+        "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py",
+        "apps/worker-media/src/lumi_worker_media/image_generation_codec.py",
+        "apps/worker-media/src/lumi_worker_media/image_generation_repository.py",
+        "apps/worker-media/src/lumi_worker_media/image_generation_ports.py",
+        "apps/worker-media/src/lumi_worker_media/image_generation_artifacts.py",
+        "apps/worker-media/src/lumi_worker_media/image_generation_runtime.py"
+      ]
+    },
+    "sandbox-runtime": {
+      "dockerfile": "services/sandbox-runtime/Dockerfile",
+      "entrypoint": "lumi-sandbox-runtime",
+      "source_paths": [
+        "services/sandbox-runtime/Dockerfile",
+        "services/sandbox-runtime/pyproject.toml",
+        "services/sandbox-runtime/src/lumi_sandbox_runtime/cli.py",
+        "services/sandbox-runtime/src/lumi_sandbox_runtime/service.py",
+        "services/sandbox-runtime/src/lumi_sandbox_runtime/ports.py",
+        "services/sandbox-runtime/src/lumi_sandbox_runtime/security.py",
+        "services/sandbox-runtime/src/lumi_sandbox_runtime/ecs_backend.py",
+        "services/sandbox-runtime/src/lumi_sandbox_runtime/ecs_discovery.py",
+        "services/sandbox-runtime/src/lumi_sandbox_runtime/child_cli.py"
+      ]
+    }
+  }
+}
