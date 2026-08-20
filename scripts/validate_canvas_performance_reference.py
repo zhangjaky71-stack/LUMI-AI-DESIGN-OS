@@ -68,6 +68,7 @@ def validate(reference: dict, profile: dict, package: dict) -> None:
     args = set(runtime.get("launch_args", []))
     require("--use-angle=swiftshader" in args, "reference must force the SwiftShader software path")
     require("--disable-features=Vulkan" in args, "reference must disable Vulkan drift")
+    require("--enable-precise-memory-info" in args, "reference must expose precise Chromium heap telemetry")
     require(runtime.get("viewport") == {"width": 1440, "height": 900}, "reference viewport drift")
     require(runtime.get("device_scale_factor") == 1, "reference device scale factor drift")
     require(runtime.get("timezone_id") == "UTC", "reference timezone must be UTC")
@@ -125,6 +126,10 @@ def negative_drills(reference: dict, profile: dict, package: dict) -> int:
     mutations.append(("cpu-throttle-drift", changed_ref, profile, package))
 
     changed_ref = copy.deepcopy(reference)
+    changed_ref["browser_runtime"]["launch_args"].remove("--enable-precise-memory-info")
+    mutations.append(("precise-memory-disabled", changed_ref, profile, package))
+
+    changed_ref = copy.deepcopy(reference)
     changed_ref["evidence_required"].remove("webgl_renderer")
     mutations.append(("missing-runtime-provenance", changed_ref, profile, package))
 
@@ -149,7 +154,7 @@ def main() -> int:
     package = load(PACKAGE)
     validate(reference, profile, package)
     blocked = negative_drills(reference, profile, package)
-    require(blocked == 7, "all seven canvas reference negative drills must block")
+    require(blocked == 8, "all eight canvas reference negative drills must block")
     print(f"[canvas-performance-reference] PASS: frozen F reference validated; negative_drills={blocked}")
     return 0
 
