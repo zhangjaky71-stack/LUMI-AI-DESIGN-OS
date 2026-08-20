@@ -9,8 +9,8 @@ from types import ModuleType
 from typing import Any, Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
-POLICY_VALIDATOR = ROOT / "scripts" / "validate_release_governance_policy.py"
-BRANCH_VALIDATOR = ROOT / "scripts" / "capture_release_branch_protection.py"
+POLICY_VALIDATOR = ROOT / "scripts/validate_release_governance_policy.py"
+BRANCH_VALIDATOR = ROOT / "scripts/capture_release_branch_protection.py"
 
 
 class LiveGovernanceV2Error(RuntimeError):
@@ -61,10 +61,13 @@ def validate_live_report(
     require(isinstance(required_contexts_raw, list) and bool(required_contexts_raw), "normalized required status contexts missing")
     required_contexts = {str(value) for value in required_contexts_raw}
     allow_additional = required_checks.get("allow_additional_contexts") is True
+    evidence_branch = policy.get("evidence_head_branch")
+    require(isinstance(evidence_branch, str) and bool(evidence_branch), "normalized evidence head branch missing")
 
     branches = report.get("branches")
     require(isinstance(branches, list), "live governance branches missing")
     branch_contexts: dict[str, list[str]] = {}
+    branch_lock_state: dict[str, bool] = {}
     expected_branches = set(policy.get("release_branches", []))
     for item in branches:
         require(isinstance(item, Mapping), "live governance branch entry invalid")
@@ -85,13 +88,33 @@ def validate_live_report(
             require(observed == required_contexts, f"live branch {name} has unapproved additional required status contexts")
         branch_contexts[name] = sorted(observed)
 
+        lock_branch = protection.get("lock_branch")
+        allow_fork_syncing = protection.get("allow_fork_syncing")
+        require(isinstance(lock_branch, bool), f"live branch-lock state missing for {name}")
+        require(isinstance(allow_fork_syncing, bool), f"live fork-sync state missing for {name}")
+        if name == evidence_branch:
+            require(policy.get("require_evidence_head_locked") is True, "frozen policy does not require Evidence Head lock")
+            require(lock_branch is True, "Evidence Head branch must be locked read-only before Final Decision")
+            require(allow_fork_syncing is False, "locked Evidence Head branch must not allow fork syncing")
+        else:
+            require(
+                policy.get("require_non_evidence_release_branches_unlocked") is True,
+                "frozen policy does not preserve non-Evidence release branch writability",
+            )
+            require(lock_branch is False, f"non-Evidence release branch must remain unlocked: {name}")
+        branch_lock_state[name] = lock_branch
+
     require(set(branch_contexts) == expected_branches, "live governance did not validate every policy release branch")
+    require(set(branch_lock_state) == expected_branches, "live governance did not validate lock state for every release branch")
     return {
         **base,
         "policy_kind": policy.get("kind"),
         "required_status_contexts": sorted(required_contexts),
         "branch_status_contexts": branch_contexts,
+        "branch_lock_state": branch_lock_state,
+        "evidence_head_locked": branch_lock_state[evidence_branch],
         "status_check_policy_bound": True,
+        "evidence_head_lock_policy_bound": True,
     }
 
 
@@ -110,10 +133,12 @@ def _policy() -> dict[str, Any]:
         },
         "require_live_reverification": True,
         "require_evidence_head_equals_execution_sha": True,
+        "require_evidence_head_locked": True,
+        "require_non_evidence_release_branches_unlocked": True,
     }
 
 
-def _profile(contexts: list[str]) -> dict[str, Any]:
+def _profile(contexts: list[str], *, locked: bool, allow_fork_syncing: bool = False) -> dict[str, Any]:
     return {
         "profile": "LUMI_RELEASE_PROTECTION_PROFILE_V1",
         "required_status_checks": {"strict": True, "contexts": contexts, "count": len(contexts)},
@@ -130,6 +155,8 @@ def _profile(contexts: list[str]) -> dict[str, Any]:
         "allow_force_pushes": False,
         "allow_deletions": False,
         "required_signatures": False,
+        "lock_branch": locked,
+        "allow_fork_syncing": allow_fork_syncing,
     }
 
 
@@ -147,13 +174,13 @@ def self_test() -> dict[str, Any]:
                 "name": "node-73-final-acceptance-release",
                 "protected": True,
                 "head_sha": "a" * 40,
-                "protection": _profile([canonical, "extra-security-check"]),
+                "protection": _profile([canonical, "extra-security-check"], locked=False),
             },
             {
                 "name": "release-closure-p0",
                 "protected": True,
                 "head_sha": evidence,
-                "protection": _profile([canonical]),
+                "protection": _profile([canonical], locked=True),
             },
         ],
     }
@@ -164,8 +191,8 @@ def self_test() -> dict[str, Any]:
         expected_evidence_head_sha=evidence,
     )
     require(clean.get("status_check_policy_bound") is True, "clean live governance fixture did not bind policy")
+    require(clean.get("evidence_head_locked") is True, "clean live governance fixture did not bind Evidence Head lock")
 
-    blocked = 0
     mutations: list[tuple[dict[str, Any], dict[str, Any], str]] = []
     missing_base = json.loads(json.dumps(report))
     missing_base["branches"][0]["protection"]["required_status_checks"] = {"strict": True, "contexts": ["other"], "count": 1}
@@ -177,7 +204,17 @@ def self_test() -> dict[str, Any]:
     weak_policy["required_status_checks"]["required_contexts"] = ["other"]
     mutations.append((report, weak_policy, evidence))
     mutations.append((report, _policy(), "c" * 40))
+    unlocked_head = json.loads(json.dumps(report))
+    unlocked_head["branches"][1]["protection"]["lock_branch"] = False
+    mutations.append((unlocked_head, _policy(), evidence))
+    locked_base = json.loads(json.dumps(report))
+    locked_base["branches"][0]["protection"]["lock_branch"] = True
+    mutations.append((locked_base, _policy(), evidence))
+    fork_sync_head = json.loads(json.dumps(report))
+    fork_sync_head["branches"][1]["protection"]["allow_fork_syncing"] = True
+    mutations.append((fork_sync_head, _policy(), evidence))
 
+    blocked = 0
     for index, (candidate_report, candidate_policy, candidate_sha) in enumerate(mutations, start=1):
         try:
             validate_live_report(
