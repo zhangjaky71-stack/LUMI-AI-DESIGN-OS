@@ -9,7 +9,7 @@ import pytest
 
 from lumi_domain.performance_events import PerformanceStage, PerformanceTelemetryContext
 from lumi_worker_media.job_runtime import TaskJobStore
-from lumi_worker_media.queue_contracts import JobMessage
+from lumi_worker_media.queue_contracts import JobMessage, JobState
 
 
 class FakeConnection:
@@ -72,6 +72,7 @@ def test_first_claim_emits_enqueue_from_durable_task_lifecycle(
             "attempt_count": 1,
             "created_at": created_at,
             "started_at": started_at,
+            "prior_status": JobState.PENDING.value,
         }
     )
 
@@ -97,7 +98,9 @@ def test_first_claim_emits_enqueue_from_durable_task_lifecycle(
     assert event["attempt"] == 1
     assert event["completed_at_unix_ns"] - event["started_at_unix_ns"] == 1_250_000_000
     query, args = connection.fetchrow_calls[0]
-    assert "RETURNING attempt_count, created_at, started_at" in query
+    assert "candidate.prior_status" in query
+    assert "status = 'waiting_external'" in query
+    assert "THEN 0 ELSE 1 END" in query
     assert args == (message.job_id, message.organization_id, message.project_id)
 
 
@@ -110,6 +113,7 @@ def test_retry_claim_does_not_double_count_enqueue_latency(
             "attempt_count": 2,
             "created_at": now - timedelta(seconds=4),
             "started_at": now - timedelta(seconds=3),
+            "prior_status": JobState.RETRYING.value,
         }
     )
 
@@ -128,6 +132,37 @@ def test_retry_claim_does_not_double_count_enqueue_latency(
     assert connection.closed is True
 
 
+def test_external_wake_does_not_increment_attempt_or_emit_enqueue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime(2026, 8, 20, 10, 0, tzinfo=UTC)
+    connection = FakeConnection(
+        {
+            "attempt_count": 1,
+            "created_at": now - timedelta(minutes=2),
+            "started_at": now - timedelta(minutes=2),
+            "prior_status": JobState.WAITING_EXTERNAL.value,
+        }
+    )
+
+    async def fake_connect(dsn: str) -> FakeConnection:
+        del dsn
+        return connection
+
+    monkeypatch.setattr("lumi_worker_media.job_runtime.asyncpg.connect", fake_connect)
+    events: list[dict[str, Any]] = []
+    _patch_telemetry(monkeypatch, events)
+
+    attempt = asyncio.run(TaskJobStore("postgresql://test").claim(_message()))
+
+    assert attempt == 1
+    assert events == []
+    query = connection.fetchrow_calls[0][0]
+    assert "status = 'waiting_external'" in query
+    assert "retry_not_before IS NULL" in query
+    assert "THEN 0 ELSE 1 END" in query
+
+
 def test_enqueue_lifecycle_rejects_naive_database_timestamp(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -136,6 +171,7 @@ def test_enqueue_lifecycle_rejects_naive_database_timestamp(
             "attempt_count": 1,
             "created_at": datetime(2026, 8, 20, 10, 0),
             "started_at": datetime(2026, 8, 20, 10, 0, tzinfo=UTC),
+            "prior_status": JobState.PENDING.value,
         }
     )
 
