@@ -65,16 +65,24 @@ def validate_source_run(run: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def freeze(*, artifact_id: str, rc_sha: str, validation: Mapping[str, Any], source_run: Mapping[str, Any], raw_evidence: Mapping[str, Any]) -> dict[str, Any]:
+def freeze(
+    *,
+    artifact_id: str,
+    rc_sha: str,
+    validation: Mapping[str, Any],
+    source_run: Mapping[str, Any],
+    raw_evidence: Mapping[str, Any],
+    raw_evidence_sha256: str,
+) -> dict[str, Any]:
     require(bool(artifact_id.strip()), "artifact id is required")
     require(all(ord(char) >= 32 and ord(char) != 127 for char in artifact_id), "artifact id contains control characters")
     require(isinstance(rc_sha, str) and bool(SHA40.fullmatch(rc_sha)), "RC SHA must be lowercase SHA40")
     require(validation.get("status") == "PASS", "freeze input validation must PASS")
     require(validation.get("release_git_sha") == rc_sha, "validation release Git SHA mismatch")
+    require(bool(re.fullmatch(r"[0-9a-f]{64}", raw_evidence_sha256)), "raw evidence SHA-256 is invalid")
     raw_rc = raw_evidence.get("release_candidate")
     require(isinstance(raw_rc, Mapping) and raw_rc.get("git_sha") == rc_sha, "raw evidence release Git SHA mismatch")
     producer = validate_source_run(source_run)
-    raw_bytes = (json.dumps(raw_evidence, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
     return {
         "schema_version": 1,
         "kind": KIND,
@@ -85,7 +93,7 @@ def freeze(*, artifact_id: str, rc_sha: str, validation: Mapping[str, Any], sour
         "producer": producer,
         "payload": {
             "validation": dict(validation),
-            "raw_evidence_sha256": hashlib.sha256(raw_bytes).hexdigest(),
+            "raw_evidence_sha256": raw_evidence_sha256,
             "raw_evidence": dict(raw_evidence),
         },
     }
@@ -102,12 +110,14 @@ def main() -> int:
     parser.add_argument("--catalog-output", type=Path, required=True)
     args = parser.parse_args()
     try:
+        raw_bytes = args.raw_evidence.read_bytes()
         wrapper = freeze(
             artifact_id=args.artifact_id,
             rc_sha=args.rc_sha,
             validation=load(args.validation, "validation"),
             source_run=load(args.source_run, "source run"),
             raw_evidence=load(args.raw_evidence, "raw evidence"),
+            raw_evidence_sha256=hashlib.sha256(raw_bytes).hexdigest(),
         )
         output = args.output.resolve()
         root = Path.cwd().resolve()
@@ -131,7 +141,7 @@ def main() -> int:
         args.catalog_output.write_text(json.dumps(catalog, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         print(json.dumps({"status": "PASS", "artifact_id": args.artifact_id, "sha256": sha}, sort_keys=True))
         return 0
-    except FreezeError as exc:
+    except (FreezeError, OSError) as exc:
         raise SystemExit(f"staging evidence freeze blocked: {exc}") from exc
 
 
