@@ -26,6 +26,7 @@ jobs:
           python3 scripts/validate_canvas_performance_reference.py
           python3 scripts/validate_browser_performance_producer.py
           python3 scripts/validate_performance_stage_event_contract.py
+          python3 scripts/validate_capacity_autoscaling_contract.py --self-test
           python3 scripts/self_test_performance_ai_latency.py
       - name: Python syntax
         run: >-
@@ -34,6 +35,7 @@ jobs:
           scripts/validate_canvas_performance_reference.py
           scripts/validate_browser_performance_producer.py
           scripts/validate_performance_stage_event_contract.py
+          scripts/validate_capacity_autoscaling_contract.py
           scripts/derive_performance_ai_latency.py
           scripts/self_test_performance_ai_latency.py
           scripts/perf-mock-provider.py
