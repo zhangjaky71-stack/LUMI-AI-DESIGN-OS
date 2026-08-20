@@ -418,6 +418,20 @@ resource "aws_ecs_service" "service" {
     content {
       strategy             = "CANARY"
       bake_time_in_minutes = var.public_canary_bake_time_minutes
+
+      canary_configuration {
+        canary_percent              = var.public_canary_percent
+        canary_bake_time_in_minutes = var.public_canary_bake_time_minutes
+      }
+
+      alarms {
+        alarm_names = [
+          aws_cloudwatch_metric_alarm.public_canary_5xx[each.key].alarm_name,
+          aws_cloudwatch_metric_alarm.public_canary_unhealthy[each.key].alarm_name,
+        ]
+        enable   = true
+        rollback = true
+      }
     }
   }
 
@@ -427,16 +441,72 @@ resource "aws_ecs_service" "service" {
     assign_public_ip = false
   }
 
+  service_registries {
+    registry_arn = aws_service_discovery_service.this[each.key].arn
+  }
+
   dynamic "load_balancer" {
     for_each = each.value.publicly_routed ? [1] : []
     content {
       target_group_arn = aws_lb_target_group.public[each.key].arn
       container_name   = each.key
       container_port   = each.value.container_port
+
+      advanced_configuration {
+        alternate_target_group_arn = aws_lb_target_group.public_alternate[each.key].arn
+        production_listener_rule   = aws_lb_listener_rule.public[each.key].arn
+        role_arn                   = aws_iam_role.ecs_load_balancer.arn
+      }
     }
   }
 
-  depends_on = [aws_lb_listener_rule.public]
+  depends_on = [
+    aws_lb_listener_rule.public,
+    aws_iam_role_policy_attachment.ecs_load_balancer,
+  ]
+
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
 
   tags = local.tags
+}
+
+resource "aws_appautoscaling_target" "service" {
+  for_each = var.services
+
+  max_capacity       = each.value.max_capacity
+  min_capacity       = each.value.min_capacity
+  resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.service[each.key].name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+}
+
+# LUMI emits queue/backlog/concurrency-aware custom metrics from NODE-67/69.
+# This intentionally avoids CPU-only autoscaling for Agent/Media/SSE workloads.
+resource "aws_appautoscaling_policy" "service_custom_metric" {
+  for_each = var.services
+
+  name               = "${local.name}-${each.key}-custom-metric"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.service[each.key].resource_id
+  scalable_dimension = aws_appautoscaling_target.service[each.key].scalable_dimension
+  service_namespace  = aws_appautoscaling_target.service[each.key].service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    target_value       = each.value.autoscale_target_value
+    scale_in_cooldown  = 180
+    scale_out_cooldown = 60
+
+    customized_metric_specification {
+      metric_name = each.value.autoscale_metric_name
+      namespace   = "LUMI/Capacity"
+      statistic   = "Average"
+
+      dimensions {
+        name  = "Service"
+        value = each.key
+      }
+    }
+  }
 }
