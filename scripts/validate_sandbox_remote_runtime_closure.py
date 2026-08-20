@@ -36,6 +36,8 @@ def validate() -> None:
     discovery = _read("services/sandbox-runtime/src/lumi_sandbox_runtime/ecs_discovery.py")
     backend = _read("services/sandbox-runtime/src/lumi_sandbox_runtime/ecs_backend.py")
     child = _read("services/sandbox-runtime/src/lumi_sandbox_runtime/child_cli.py")
+    models = _read("services/sandbox-runtime/src/lumi_sandbox_runtime/models.py")
+    exchange_tests = _read("services/sandbox-runtime/tests/test_exchange_file_runtime.py")
     pyproject = _read("services/sandbox-runtime/pyproject.toml")
     dockerfile = _read("services/sandbox-runtime/Dockerfile")
     terraform = _read("infra/iac/modules/compute/sandbox_child.tf")
@@ -76,6 +78,8 @@ def validate() -> None:
             '"LUMI_SANDBOX_RESULT_KEY"',
             'f"sandbox-log://{sandbox_id}/{operation_id}"',
             '"sandbox-exchange/v1/',
+            "exchange_inputs",
+            "exchange_outputs",
         ),
         "sandbox remote backend",
     )
@@ -85,6 +89,17 @@ def validate() -> None:
         "sandbox remote backend",
     )
     _require(
+        models,
+        (
+            "class ExchangeInputFile",
+            "class ExchangeOutputFile",
+            '"sandbox-exchange/v1/"',
+            "EXCHANGE_KEY_DUPLICATE",
+            "EXCHANGE_PATH_INVALID",
+        ),
+        "sandbox exchange manifest contract",
+    )
+    _require(
         child,
         (
             "subprocess.run(",
@@ -92,8 +107,23 @@ def validate() -> None:
             '"HOME": str(work)',
             '"TMPDIR": str(work)',
             'prefix = "sandbox-exchange/v1/"',
+            "download_file(",
+            "upload_file(",
+            "EXCHANGE_INPUT_CHECKSUM_MISMATCH",
+            '"sha256": digest',
         ),
         "sandbox isolated child",
+    )
+    _require(
+        exchange_tests,
+        (
+            "test_contract_rejects_escape_duplicate_and_noncanonical_keys",
+            "test_child_streams_exchange_input_and_output_with_sha256",
+            "test_child_rejects_input_checksum_mismatch_before_process_execution",
+            "test_failed_process_never_uploads_declared_output",
+            "run.assert_not_called()",
+        ),
+        "sandbox exchange executable coverage",
     )
     _require(
         pyproject,
@@ -106,6 +136,7 @@ def validate() -> None:
     _require(
         dockerfile,
         (
+            "apt-get install -y --no-install-recommends ffmpeg",
             "uv sync --all-packages --frozen --no-dev",
             "USER 10001:10001",
             'CMD ["lumi-sandbox-runtime"]',
