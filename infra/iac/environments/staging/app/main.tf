@@ -97,12 +97,12 @@ locals {
         { LUMI_ROLE = "agent-runtime" },
       )
       secret_arns = {
-        LUMI_DATABASE_URL                = local.secret_arns["database/app"]
-        LUMI_REDIS_URL                   = local.secret_arns["redis/url"]
-        LUMI_RABBITMQ_URL                = local.secret_arns["rabbitmq/url"]
-        LUMI_MODEL_GATEWAY_AUTH_SECRET   = local.secret_arns["internal/model-gateway"]
-        LUMI_TOOL_GATEWAY_AUTH_SECRET    = local.secret_arns["internal/tool-gateway"]
-        LUMI_AGENT_CONTROL_AUTH_SECRET   = local.secret_arns["internal/agent-control"]
+        LUMI_DATABASE_URL              = local.secret_arns["database/app"]
+        LUMI_REDIS_URL                 = local.secret_arns["redis/url"]
+        LUMI_RABBITMQ_URL              = local.secret_arns["rabbitmq/url"]
+        LUMI_MODEL_GATEWAY_AUTH_SECRET = local.secret_arns["internal/model-gateway"]
+        LUMI_TOOL_GATEWAY_AUTH_SECRET  = local.secret_arns["internal/tool-gateway"]
+        LUMI_AGENT_CONTROL_AUTH_SECRET = local.secret_arns["internal/agent-control"]
       }
       s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["sandbox"]]
       autoscale_metric_name  = "AgentPendingRuns"
@@ -175,27 +175,30 @@ locals {
 
     worker-media = {
       image         = var.worker_media_image
-      cpu            = 2048
-      memory         = 4096
-      desired_count  = 2
-      min_capacity   = 2
-      max_capacity   = 12
+      cpu           = 2048
+      memory        = 4096
+      desired_count = 2
+      min_capacity  = 2
+      max_capacity  = 12
       environment = merge(
         local.common_environment,
         local.model_gateway_environment,
+        local.sandbox_runtime_environment,
         {
-          LUMI_ROLE      = "worker-media"
-          LUMI_S3_BUCKET = local.bucket_names["assets"]
-          LUMI_S3_REGION = var.region
+          LUMI_ROLE                    = "worker-media"
+          LUMI_S3_BUCKET               = local.bucket_names["assets"]
+          LUMI_S3_REGION               = var.region
+          LUMI_SANDBOX_EXCHANGE_BUCKET = local.bucket_names["sandbox"]
         },
       )
       secret_arns = {
-        LUMI_DATABASE_URL              = local.secret_arns["database/app"]
-        LUMI_REDIS_URL                 = local.secret_arns["redis/url"]
-        LUMI_RABBITMQ_URL              = local.secret_arns["rabbitmq/url"]
-        LUMI_MODEL_GATEWAY_AUTH_SECRET = local.secret_arns["internal/model-gateway"]
+        LUMI_DATABASE_URL                = local.secret_arns["database/app"]
+        LUMI_REDIS_URL                   = local.secret_arns["redis/url"]
+        LUMI_RABBITMQ_URL                = local.secret_arns["rabbitmq/url"]
+        LUMI_MODEL_GATEWAY_AUTH_SECRET   = local.secret_arns["internal/model-gateway"]
+        LUMI_SANDBOX_RUNTIME_AUTH_SECRET = local.secret_arns["internal/sandbox-runtime"]
       }
-      s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["exports"]]
+      s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["exports"], local.bucket_arns["sandbox"]]
       autoscale_metric_name  = "MediaQueueBacklog"
       autoscale_target_value = 5
     }
@@ -228,7 +231,7 @@ module "platform_app" {
   environment                           = local.environment
   vpc_id                                = local.core.vpc_id
   public_subnet_ids                     = local.core.public_subnet_ids
-  private_subnet_ids                     = local.core.private_subnet_ids
+  private_subnet_ids                    = local.core.private_subnet_ids
   app_security_group_id                  = local.core.app_security_group_id
   app_internet_egress_security_group_id = local.core.app_internet_egress_security_group_id
   sandbox_egress_security_group_id       = local.core.sandbox_egress_security_group_id
