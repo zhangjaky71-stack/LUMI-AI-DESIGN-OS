@@ -73,6 +73,7 @@ from .project import (
 )
 from .queue_runtime import DeadLetterRecord
 from .task_graph import TaskAttemptRecord, TaskGraphInstance
+from .video_generation import VideoGenerationJob, VideoProviderJob
 from .workflow import (
     AgentRun,
     AgentRunStep,
@@ -153,6 +154,8 @@ __all__ = [
     "UsageCounter",
     "UsageLedger",
     "User",
+    "VideoGenerationJob",
+    "VideoProviderJob",
     "Workspace",
     "WorkspaceMember",
 ]
