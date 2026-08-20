@@ -102,8 +102,27 @@ class ECSRemoteSandboxBackend:
             "organization_id": str(spec.organization_id),
             "agent_run_id": str(spec.agent_run_id),
             "command": list(request.command),
+            "cwd": request.cwd,
             "timeout_seconds": request.timeout_seconds or spec.timeout_seconds,
             "max_output_bytes": spec.max_output_bytes,
+            "exchange_inputs": [
+                {
+                    "exchange_key": item.exchange_key,
+                    "path": item.path,
+                    "max_bytes": item.max_bytes,
+                    "expected_sha256": item.expected_sha256,
+                }
+                for item in request.exchange_inputs
+            ],
+            "exchange_outputs": [
+                {
+                    "exchange_key": item.exchange_key,
+                    "path": item.path,
+                    "max_bytes": item.max_bytes,
+                    "content_type": item.content_type,
+                }
+                for item in request.exchange_outputs
+            ],
         }
         encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
         if len(encoded) > 128 * 1024:
@@ -121,6 +140,7 @@ class ECSRemoteSandboxBackend:
             task_arn = self._start_child(request_key=request_key, result_key=result_key)
             self._wait_child(task_arn, timeout_seconds=payload["timeout_seconds"])
             result = self._read_result(result_key, sandbox_id=sandbox_id)
+            self._validate_exchange_outputs(result, request)
             with self._lock:
                 if sandbox_id in self._sandboxes:
                     self._sandboxes[sandbox_id] = _SandboxRecord(spec, SandboxState.IDLE)
@@ -139,10 +159,11 @@ class ECSRemoteSandboxBackend:
                     self._sandboxes[sandbox_id] = _SandboxRecord(spec, SandboxState.FAILED)
             raise ECSRemoteSandboxError("SANDBOX_REMOTE_EXECUTION_FAILED") from exc
         finally:
-            try:
-                self._s3.delete_object(Bucket=self._bucket, Key=request_key)
-            except (BotoCoreError, ClientError):
-                pass
+            for key in (request_key, result_key):
+                try:
+                    self._s3.delete_object(Bucket=self._bucket, Key=key)
+                except (BotoCoreError, ClientError):
+                    pass
 
     def _start_child(self, *, request_key: str, result_key: str) -> str:
         response = self._ecs.run_task(
@@ -224,7 +245,49 @@ class ECSRemoteSandboxBackend:
             raise ECSRemoteSandboxError("SANDBOX_REMOTE_RESULT_EXIT_INVALID")
         if isinstance(duration_ms, bool) or not isinstance(duration_ms, int) or duration_ms < 0:
             raise ECSRemoteSandboxError("SANDBOX_REMOTE_RESULT_DURATION_INVALID")
+        outputs = payload.get("exchange_outputs", [])
+        if not isinstance(outputs, list) or len(outputs) > 16:
+            raise ECSRemoteSandboxError("SANDBOX_REMOTE_RESULT_OUTPUTS_INVALID")
         return payload
+
+    def _validate_exchange_outputs(self, result: dict[str, Any], request: ExecRequest) -> None:
+        raw_outputs = result.get("exchange_outputs", [])
+        if result["exit_code"] != 0:
+            if raw_outputs:
+                raise ECSRemoteSandboxError("SANDBOX_REMOTE_FAILED_EXEC_HAS_OUTPUTS")
+            return
+        if len(raw_outputs) != len(request.exchange_outputs):
+            raise ECSRemoteSandboxError("SANDBOX_REMOTE_RESULT_OUTPUT_COUNT_MISMATCH")
+        expected = {(item.exchange_key, item.path): item for item in request.exchange_outputs}
+        seen: set[tuple[str, str]] = set()
+        for raw in raw_outputs:
+            if not isinstance(raw, dict):
+                raise ECSRemoteSandboxError("SANDBOX_REMOTE_RESULT_OUTPUT_INVALID")
+            key = raw.get("exchange_key")
+            path = raw.get("path")
+            identity = (key, path)
+            item = expected.get(identity)
+            if item is None or identity in seen:
+                raise ECSRemoteSandboxError("SANDBOX_REMOTE_RESULT_OUTPUT_IDENTITY_INVALID")
+            seen.add(identity)
+            size = raw.get("size_bytes")
+            sha256 = raw.get("sha256")
+            content_type = raw.get("content_type")
+            if (
+                isinstance(size, bool)
+                or not isinstance(size, int)
+                or size <= 0
+                or size > item.max_bytes
+            ):
+                raise ECSRemoteSandboxError("SANDBOX_REMOTE_RESULT_OUTPUT_SIZE_INVALID")
+            if (
+                not isinstance(sha256, str)
+                or len(sha256) != 64
+                or any(character not in "0123456789abcdef" for character in sha256)
+            ):
+                raise ECSRemoteSandboxError("SANDBOX_REMOTE_RESULT_OUTPUT_SHA256_INVALID")
+            if content_type != item.content_type:
+                raise ECSRemoteSandboxError("SANDBOX_REMOTE_RESULT_OUTPUT_CONTENT_TYPE_MISMATCH")
 
     def read_file(self, sandbox_id: UUID, path: str, *, max_bytes: int | None = None) -> bytes:
         del sandbox_id, path, max_bytes
