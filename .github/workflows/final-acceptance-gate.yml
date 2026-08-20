@@ -61,6 +61,7 @@ jobs:
         run: |
           python3 -m json.tool final/acceptance/manifest-v1.json >/dev/null
           python3 -m json.tool final/acceptance/repository-governance-policy-template.json >/dev/null
+          python3 -m json.tool final/acceptance/release-manifest-v2-template.json >/dev/null
           python3 -m json.tool final/acceptance/release-approval-policy-v2-template.json >/dev/null
           python3 -m json.tool final/acceptance/release-authorization-request-v2-template.json >/dev/null
           python3 -m json.tool final/acceptance/upstream-decision-template.json >/dev/null
@@ -74,6 +75,7 @@ jobs:
             scripts/create-final-acceptance-evidence.py \
             scripts/final-acceptance-assembler-v2.py \
             scripts/validate_final_acceptance_package_v2.py \
+            scripts/validate_final_acceptance_v2_package_contract.py \
             scripts/validate_finalization_identity_v2.py \
             scripts/validate_finalization_v2_contract.py \
             scripts/validate_release_governance_policy.py \
@@ -125,7 +127,8 @@ jobs:
         run: uv sync --all-packages --frozen
 
   final-decision:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release-closure-p0' && inputs.release_manifest_path != '' && inputs.acceptance_evidence_path != ''
+    needs: [source-contract, canonical-lock-gate]
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release-closure-p0' && inputs.release_manifest_path != '' && inputs.acceptance_evidence_path != '' && needs.source-contract.result == 'success' && needs.canonical-lock-gate.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
