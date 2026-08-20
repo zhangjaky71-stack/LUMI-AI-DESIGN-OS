@@ -129,32 +129,40 @@ Before any mutation it live-reads both branch heads and refuses to continue unle
 
 It requires a fine-grained `RELEASE_GOVERNANCE_ADMIN_TOKEN` with repository Administration **write** permission. Final Decision uses a separate Administration **read** token and does not receive the write credential.
 
-### Current-PR bootstrap path
+### Secret boundary for the current PR
 
-A brand-new `workflow_dispatch` workflow is not usable until that workflow file exists on the default branch. To avoid that bootstrap dependency for PR #135, `.github/workflows/configure-release-branch-protection.yml` also supports:
+A brand-new `workflow_dispatch` workflow is not usable until that workflow file exists on the default branch. It is **not acceptable** to solve that bootstrap problem by injecting an Administration-write PAT into code controlled by the unprotected PR branch.
+
+Therefore `.github/workflows/configure-release-branch-protection.yml` has two deliberately separate paths:
 
 ```text
-pull_request activity = labeled
-label = node73-apply-protection
+pull_request:labeled -> PR preflight only, no Administration secret, no mutation
+workflow_dispatch     -> privileged mutation, production environment, Admin-write secret
+```
+
+Current-PR preflight is tightly bounded to:
+
+```text
+label = node73-protection-preflight
 PR number = 135
 base = node-73-final-acceptance-release
 head = release-closure-p0
 head repository = zhangjaky71-stack/LUMI-AI-DESIGN-OS
+checkout = github.event.pull_request.head.sha
 ```
 
-The job additionally requires the `production` environment and checks out `github.event.pull_request.head.sha`, not the PR merge SHA.
+The PR preflight validates the policy/applicator contracts only. It cannot apply branch protection and does not receive `RELEASE_GOVERNANCE_ADMIN_TOKEN`.
 
-Do **not** add the label until:
+Actual mutation remains one of these external actions:
 
 ```text
-Evidence Head is final
-canonical lock/source checks can run successfully
-RELEASE_GOVERNANCE_ADMIN_TOKEN is configured
-production environment approval is available
-node73-final-contract-gate is the intended required context
+1. after this workflow exists on the default branch, use workflow_dispatch from exact Evidence Head with the protected production environment; or
+2. an authorized repository administrator applies the frozen policy directly using equivalent GitHub branch-protection settings/API.
 ```
 
-The workflow uploads `branch-protection-apply.json` as a runtime artifact. Do not commit that live report back into the Evidence Head.
+Do not expose the Administration-write token to PR-controlled code merely to automate the bootstrap.
+
+The successful mutation path uploads `branch-protection-apply.json` as a runtime artifact. Do not commit that live report back into the Evidence Head.
 
 ## 8. Obtain Evidence-Head-bound human approvals
 
@@ -225,6 +233,7 @@ Production-like Staging evidence
 Production smoke/canary/rollback/DR evidence
 strong protection actually applied to both release refs
 Administration-read/write governance credentials as scoped above
+safe external/default-branch execution of Administration-write protection mutation
 real role principals other than PR author
 at least three distinct Evidence-Head human APPROVED reviews
 ```
