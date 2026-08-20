@@ -1,0 +1,43 @@
+name: Sandbox Remote Runtime Closure
+
+on:
+  pull_request:
+    paths:
+      - "services/sandbox-runtime/**"
+      - "infra/iac/modules/compute/sandbox_child.tf"
+      - "infra/iac/modules/network/sandbox_ecs_endpoint.tf"
+      - "scripts/validate_sandbox_remote_runtime_closure.py"
+      - ".github/workflows/sandbox-remote-runtime-closure.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile remote sandbox runtime sources
+        run: |
+          python3 -m py_compile \
+            services/sandbox-runtime/src/lumi_sandbox_runtime/child_cli.py \
+            services/sandbox-runtime/src/lumi_sandbox_runtime/ecs_backend.py \
+            services/sandbox-runtime/src/lumi_sandbox_runtime/ecs_discovery.py \
+            services/sandbox-runtime/src/lumi_sandbox_runtime/hosted_service.py \
+            services/sandbox-runtime/src/lumi_sandbox_runtime/cli.py \
+            scripts/validate_sandbox_remote_runtime_closure.py
+      - name: Drill fail-closed source contract
+        run: python3 scripts/validate_sandbox_remote_runtime_closure.py --self-test
+      - name: Require remote Fargate sandbox closure
+        run: python3 scripts/validate_sandbox_remote_runtime_closure.py
+      - uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+      - name: Format-check sandbox IaC
+        run: terraform fmt -check infra/iac/modules/compute/sandbox_child.tf infra/iac/modules/network/sandbox_ecs_endpoint.tf
