@@ -74,6 +74,7 @@
     ]
   },
   "release_critical_workflows": [
+    ".github/workflows/assemble-final-acceptance.yml",
     ".github/workflows/build-runtime-image-set.yml",
     ".github/workflows/regenerate-uv-lock.yml",
     ".github/workflows/runtime-image-closure-contract.yml",
