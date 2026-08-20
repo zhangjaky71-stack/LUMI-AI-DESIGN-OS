@@ -13,6 +13,12 @@ OUTBOX_CLI = ROOT / "apps/worker-media/src/lumi_worker_media/cli.py"
 JOB_DISPATCH_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py"
 COMPUTE_IAC = ROOT / "infra/iac/modules/compute/main.tf"
 RUNTIME_MANIFEST = ROOT / "production/runtime-images/manifest-v1.json"
+PRODUCTION_RUNTIME_CAPTURE = ROOT / "scripts/capture-production-runtime-identity.sh"
+PRODUCTION_DEPLOYMENT_DECISION = ROOT / "scripts/production-deployment-decision.py"
+PRODUCTION_ROLLBACK_DECISION = ROOT / "scripts/production-rollback-rehearsal-decision.py"
+PRODUCTION_RECOVERY_DECISION = ROOT / "scripts/production-recovery-decision.py"
+PRODUCTION_READINESS_CONTRACT = ROOT / "scripts/validate_production_readiness_contract.py"
+PRODUCTION_RECOVERY_CONTRACT = ROOT / "scripts/validate_production_recovery_contract.py"
 API_POSTGRES_TEST = ROOT / "apps/api/tests/integration/test_video_generation_control_plane_postgres.py"
 OUTBOX_POSTGRES_TEST = ROOT / "apps/api/tests/integration/test_video_outbox_dispatch_postgres.py"
 PUBLIC_SYNC_TEST = ROOT / "apps/worker-media/tests/integration/test_video_public_generation_sync_postgres.py"
@@ -156,6 +162,81 @@ def validate_runtime_provenance() -> None:
     }
     require(not (required_api - api_sources), "api runtime provenance omits Hosted video producer sources")
     require(not (required_worker - worker_sources), "worker runtime provenance omits outbox/video sources")
+
+
+def validate_production_service_identity() -> None:
+    capture = read(PRODUCTION_RUNTIME_CAPTURE)
+    deployment = read(PRODUCTION_DEPLOYMENT_DECISION)
+    rollback = read(PRODUCTION_ROLLBACK_DECISION)
+    recovery = read(PRODUCTION_RECOVERY_DECISION)
+    readiness = read(PRODUCTION_READINESS_CONTRACT)
+    recovery_contract = read(PRODUCTION_RECOVERY_CONTRACT)
+
+    require_markers(
+        capture,
+        (
+            'EXPECTED_IMAGE_KEYS=\'["agent-runtime","api","model-gateway","sandbox-runtime","tool-gateway","worker-media"]\'',
+            'EXPECTED_SERVICES=\'["agent-runtime","api","model-gateway","outbox-dispatcher","sandbox-runtime","tool-gateway","worker-media"]\'',
+            "expected exactly seven ECS services",
+            'IMAGE_KEY="worker-media"',
+            "image_key:$image_key",
+            "canonical six-image/seven-service contract",
+        ),
+        "production runtime identity capture",
+    )
+    forbid_markers(
+        capture,
+        (
+            "expected exactly six ECS services",
+            "canonical six-runtime contract",
+        ),
+        "production runtime identity capture",
+    )
+
+    for source, label in (
+        (deployment, "production deployment decision"),
+        (rollback, "production rollback decision"),
+        (recovery, "production recovery decision"),
+    ):
+        require_markers(
+            source,
+            (
+                '"outbox-dispatcher": "worker-media"',
+                '"worker-media": "worker-media"',
+                "RUNTIME_SERVICE_IMAGE_KEY",
+                "exactly seven services",
+                "service-to-image-key mapping",
+            ),
+            label,
+        )
+        forbid_markers(
+            source,
+            (
+                "exactly six services",
+                "len(services) != 6",
+            ),
+            label,
+        )
+
+    require_markers(
+        readiness,
+        (
+            '"outbox-dispatcher": "worker-media"',
+            "dispatcher_rollforward_image_swap_blocked",
+            "dispatcher_production_image_key_swap_blocked",
+            "expected exactly seven ECS services",
+        ),
+        "production readiness executable contract",
+    )
+    require_markers(
+        recovery_contract,
+        (
+            '"outbox-dispatcher": "worker-media"',
+            "dispatcher image identity mismatch",
+            "exactly seven services",
+        ),
+        "production recovery executable contract",
+    )
 
 
 def main() -> None:
@@ -325,10 +406,12 @@ def main() -> None:
 
     validate_outbox_deployment()
     validate_runtime_provenance()
+    validate_production_service_identity()
     print(
         "PASS: Hosted video generation has a canonical API producer, durable outbox "
         "publisher, always-on restricted dispatcher deployment, PostgreSQL acceptance, "
-        "six-image provenance binding, and provider-neutral public state sync"
+        "six-image/seven-service release evidence binding, six-image provenance binding, "
+        "and provider-neutral public state sync"
     )
 
 
