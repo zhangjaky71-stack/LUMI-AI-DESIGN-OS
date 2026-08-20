@@ -20,9 +20,14 @@ on:
         description: "Path under reports/staging-acceptance/ to completed evidence JSON"
         required: false
         type: string
+      runtime_image_set_run_id:
+        description: "GitHub Actions run id that produced the frozen six-runtime RC image set"
+        required: false
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: staging-acceptance-${{ github.event.pull_request.number || github.ref }}
@@ -41,6 +46,10 @@ jobs:
         run: python3 scripts/validate_staging_acceptance_contract.py
       - name: Require one canonical API provenance source union
         run: python3 scripts/validate_api_provenance_source_manifest.py
+      - name: Drill frozen runtime-image build binding
+        run: python3 scripts/validate_staging_runtime_image_binding.py --self-test
+      - name: Require frozen runtime-image workflow anti-regression contract
+        run: python3 scripts/validate_staging_runtime_image_workflow_contract.py
       - name: Drill canonical media-generation E2E evidence validator
         run: python3 scripts/validate_media_generation_e2e_evidence.py --self-test
       - name: Drill canonical Tool Gateway side-effect provenance validator
@@ -60,6 +69,8 @@ jobs:
             scripts/staging-preflight.py \
             scripts/validate_staging_acceptance_contract.py \
             scripts/validate_api_provenance_source_manifest.py \
+            scripts/validate_staging_runtime_image_binding.py \
+            scripts/validate_staging_runtime_image_workflow_contract.py \
             scripts/validate_media_generation_e2e_evidence.py \
             scripts/validate_side_effect_control_provenance.py \
             scripts/validate_tool_audit_provenance.py \
@@ -73,6 +84,7 @@ jobs:
           import json
           from pathlib import Path
           for path in [
+              Path('production/runtime-images/manifest-v1.json'),
               Path('staging/acceptance/manifest-v1.json'),
               Path('staging/acceptance/environment-parity-v1.json'),
               Path('staging/acceptance/evidence-template.json'),
@@ -130,22 +142,32 @@ jobs:
           path: reports/staging-acceptance/runtime/preflight.json
 
   acceptance-decision:
-    if: github.event_name == 'workflow_dispatch' && inputs.evidence_path != ''
+    if: github.event_name == 'workflow_dispatch' && inputs.evidence_path != '' && inputs.runtime_image_set_run_id != ''
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       LUMI_STAGING_EVIDENCE_PATH: ${{ inputs.evidence_path }}
+      LUMI_RUNTIME_IMAGE_SET_RUN_ID: ${{ inputs.runtime_image_set_run_id }}
+      RUNTIME_IMAGE_SET_DIR: reports/staging-acceptance/runtime/runtime-image-set
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Validate evidence path
+      - name: Validate evidence path and resolve exact runtime-image artifact identity
+        id: runtime_image_binding
+        shell: bash
         run: |
+          set -euo pipefail
           python3 - <<'PY'
+          import json
           import os
           from pathlib import Path
+
           raw = os.environ['LUMI_STAGING_EVIDENCE_PATH']
+          run_id = os.environ['LUMI_RUNTIME_IMAGE_SET_RUN_ID']
+          if not run_id.isdecimal() or int(run_id) <= 0:
+              raise SystemExit('runtime_image_set_run_id must be a positive decimal GitHub Actions run id')
           workspace = Path.cwd().resolve()
           root = (workspace / 'reports' / 'staging-acceptance').resolve()
           target = (workspace / raw).resolve()
@@ -153,8 +175,42 @@ jobs:
               raise SystemExit('evidence_path must resolve to a JSON file below reports/staging-acceptance/')
           if not target.is_file():
               raise SystemExit('evidence_path does not exist')
+          payload = json.loads(target.read_text(encoding='utf-8'))
+          rc = payload.get('release_candidate')
+          if not isinstance(rc, dict):
+              raise SystemExit('release_candidate is missing from staging evidence')
+          rc_sha = rc.get('git_sha')
+          if not isinstance(rc_sha, str) or len(rc_sha) != 40 or any(c not in '0123456789abcdefABCDEF' for c in rc_sha):
+              raise SystemExit('staging evidence RC SHA is invalid')
+          rc_sha = rc_sha.lower()
+          artifact_name = f'runtime-image-set-{rc_sha}'
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f'rc_sha={rc_sha}\n')
+              fh.write(f'artifact_name={artifact_name}\n')
           print(target.relative_to(workspace))
+          print(artifact_name)
           PY
+      - name: Download frozen runtime-image set from exact build run
+        uses: actions/download-artifact@v8
+        with:
+          name: runtime-image-set-${{ steps.runtime_image_binding.outputs.rc_sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.runtime_image_set_run_id }}
+          path: ${{ env.RUNTIME_IMAGE_SET_DIR }}
+      - name: Require one exact frozen container-image-set artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$RUNTIME_IMAGE_SET_DIR/container-image-set.json"
+          test "$(find "$RUNTIME_IMAGE_SET_DIR" -maxdepth 1 -type f -name 'container-image-set.json' | wc -l)" -eq 1
+          python3 -m json.tool "$RUNTIME_IMAGE_SET_DIR/container-image-set.json" >/dev/null
+      - name: Bind NODE-71 evidence to the exact six-runtime build artifact
+        run: >-
+          python3 scripts/validate_staging_runtime_image_binding.py
+          --evidence "$LUMI_STAGING_EVIDENCE_PATH"
+          --image-set "$RUNTIME_IMAGE_SET_DIR/container-image-set.json"
+          --expected-run-id "$LUMI_RUNTIME_IMAGE_SET_RUN_ID"
       - name: Require canonical Tool Gateway side-effect API provenance
         run: >-
           python3 scripts/validate_side_effect_control_provenance.py
