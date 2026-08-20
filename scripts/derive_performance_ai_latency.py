@@ -5,6 +5,7 @@ import argparse
 import json
 import math
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -47,6 +48,19 @@ REQUIRED_EVENT_FIELDS = frozenset(
         "duration_ms",
         "outcome",
         "attempt",
+    }
+)
+UI_SAMPLE_FIELDS = frozenset(
+    {
+        "schema_version",
+        "event_id",
+        "run_id",
+        "task_id",
+        "event_type",
+        "source_created_at",
+        "source_created_at_unix_ms",
+        "painted_at_unix_ms",
+        "duration_ms",
     }
 )
 
@@ -123,6 +137,47 @@ def validate_event(event: object) -> dict[str, Any]:
     return event
 
 
+def _iso_unix_ms(value: str) -> int:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        block("UI_SAMPLE_SOURCE_ISO_INVALID")
+        raise AssertionError("unreachable") from exc
+    if parsed.tzinfo is None:
+        block("UI_SAMPLE_SOURCE_TIMEZONE_REQUIRED")
+    return int(parsed.timestamp() * 1000)
+
+
+def validate_ui_sample(sample: object) -> dict[str, Any]:
+    if not isinstance(sample, dict):
+        block("UI_SAMPLE_OBJECT_REQUIRED")
+    missing = UI_SAMPLE_FIELDS - set(sample)
+    unknown = set(sample) - UI_SAMPLE_FIELDS
+    if missing:
+        block(f"UI_SAMPLE_FIELDS_MISSING:{','.join(sorted(missing))}")
+    if unknown:
+        block(f"UI_SAMPLE_FIELDS_UNKNOWN:{','.join(sorted(unknown))}")
+    if sample.get("schema_version") != 1:
+        block("UI_SAMPLE_SCHEMA_VERSION")
+    if sample.get("event_type") != "artifact.created":
+        block("UI_SAMPLE_EVENT_TYPE_INVALID")
+    for field in ("event_id", "run_id", "task_id", "source_created_at"):
+        if not isinstance(sample.get(field), str) or not sample[field]:
+            block(f"UI_SAMPLE_{field.upper()}_INVALID")
+    source_ms = sample.get("source_created_at_unix_ms")
+    painted_ms = sample.get("painted_at_unix_ms")
+    if isinstance(source_ms, bool) or not isinstance(source_ms, int) or source_ms < 0:
+        block("UI_SAMPLE_SOURCE_MS_INVALID")
+    if isinstance(painted_ms, bool) or not isinstance(painted_ms, int) or painted_ms < source_ms:
+        block("UI_SAMPLE_PAINTED_MS_INVALID")
+    if abs(_iso_unix_ms(sample["source_created_at"]) - source_ms) > 1:
+        block("UI_SAMPLE_SOURCE_ISO_MISMATCH")
+    duration = _number(sample.get("duration_ms"), name="UI_SAMPLE_DURATION")
+    if not math.isclose(duration, float(painted_ms - source_ms), rel_tol=0.0, abs_tol=0.001):
+        block("UI_SAMPLE_DURATION_TIMESTAMP_MISMATCH")
+    return sample
+
+
 def percentile(values: Iterable[float], fraction: float) -> float:
     ordered = sorted(values)
     if not ordered:
@@ -131,7 +186,12 @@ def percentile(values: Iterable[float], fraction: float) -> float:
     return ordered[index]
 
 
-def derive(events: list[object], *, profile_id: str) -> dict[str, Any]:
+def derive(
+    events: list[object],
+    *,
+    profile_id: str,
+    ui_samples: list[object] | None = None,
+) -> dict[str, Any]:
     profile = load_profile(profile_id)
     required = required_stages(profile)
     if not required:
@@ -167,6 +227,20 @@ def derive(events: list[object], *, profile_id: str) -> dict[str, Any]:
         by_task[task_id][event["stage"]] += float(event["duration_ms"])
         outcome_by_task[task_id].add(event["outcome"])
 
+    validated_ui = [validate_ui_sample(value) for value in (ui_samples or [])]
+    if validated_ui and any("ui_propagation" in stage_totals for stage_totals in by_task.values()):
+        block("DUPLICATE_UI_PROPAGATION_SOURCES")
+    seen_ui_event_ids: set[str] = set()
+    for sample in validated_ui:
+        event_id = sample["event_id"]
+        if event_id in seen_ui_event_ids:
+            block(f"UI_SAMPLE_EVENT_DUPLICATE:{event_id}")
+        seen_ui_event_ids.add(event_id)
+        task_id = sample["task_id"]
+        if task_id not in operation_by_task:
+            block(f"UI_SAMPLE_TASK_WITHOUT_BACKEND_IDENTITY:{task_id}")
+        by_task[task_id]["ui_propagation"] += float(sample["duration_ms"])
+
     task_rows: list[dict[str, Any]] = []
     for task_id in sorted(by_task):
         stage_totals = by_task[task_id]
@@ -175,7 +249,9 @@ def derive(events: list[object], *, profile_id: str) -> dict[str, Any]:
             block(f"TASK_REQUIRED_STAGE_MISSING:{task_id}:{','.join(missing)}")
         if "error" in outcome_by_task[task_id]:
             block(f"TASK_STAGE_ERROR_PRESENT:{task_id}")
-        platform_overhead = sum(stage_totals.get(stage, 0.0) for stage in NON_PROVIDER_STAGES)
+        platform_overhead = sum(
+            stage_totals[stage] for stage in NON_PROVIDER_STAGES if stage in stage_totals
+        )
         task_rows.append(
             {
                 "task_id": task_id,
@@ -207,12 +283,14 @@ def derive(events: list[object], *, profile_id: str) -> dict[str, Any]:
         "profile_id": profile_id,
         "source_rc_sha": source_rc_sha,
         "task_count": len(task_rows),
+        "ui_sample_count": len(validated_ui),
         "required_raw_stages": list(required),
         "formula": {
-            "platform_overhead_ms": "sum(enqueue,routing,download,postprocess,validation,artifact_persist,ui_propagation)",
+            "platform_overhead_ms": "sum(observed enqueue,routing,download,postprocess,validation,artifact_persist,ui_propagation)",
             "provider_excluded": True,
             "missing_required_stage_policy": "BLOCK",
             "raw_platform_overhead_policy": "FORBIDDEN",
+            "browser_ui_identity_join": "task_id -> backend operation_id",
         },
         "stage_summary": stage_summary,
         "provider_summary": (
@@ -250,9 +328,15 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("events_jsonl", type=Path)
     parser.add_argument("--profile-id", required=True, choices=list("ABCDEFG"))
+    parser.add_argument("--ui-samples-jsonl", type=Path)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    result = derive(read_jsonl(args.events_jsonl), profile_id=args.profile_id)
+    ui_samples = read_jsonl(args.ui_samples_jsonl) if args.ui_samples_jsonl else None
+    result = derive(
+        read_jsonl(args.events_jsonl),
+        profile_id=args.profile_id,
+        ui_samples=ui_samples,
+    )
     rendered = json.dumps(result, indent=2, sort_keys=True) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
