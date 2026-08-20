@@ -6,7 +6,7 @@ import json
 import os
 import re
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -419,14 +419,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     fixture_task = _wait_task(ecs, fixture_arn)
     fixture_exit, fixture_reason = _container_exit(fixture_task, "api")
+    if fixture_exit != 0:
+        raise StagingE2EError(f"API fixture task exited {fixture_exit}: {fixture_reason}")
     fixture_markers, fixture_log_count = _read_markers(
         logs,
         runtimes["api"],
         fixture_arn,
         {"fixture": _FIXTURE_MARKER},
     )
-    if fixture_exit != 0:
-        raise StagingE2EError(f"API fixture task exited {fixture_exit}: {fixture_reason}")
     fixture = fixture_markers["fixture"]
     scope = _fixture_scope(fixture)
 
@@ -447,6 +447,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     agent_task = _wait_task(ecs, agent_arn)
     agent_exit, agent_reason = _container_exit(agent_task, "agent-runtime")
+    if agent_exit != 0:
+        raise StagingE2EError(
+            f"Agent Runtime Tool Gateway evidence task exited {agent_exit}: {agent_reason}"
+        )
     agent_markers, agent_log_count = _read_markers(
         logs,
         runtimes["agent-runtime"],
@@ -457,10 +461,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "readiness": _READINESS_MARKER,
         },
     )
-    if agent_exit != 0:
-        raise StagingE2EError(
-            f"Agent Runtime Tool Gateway evidence task exited {agent_exit}: {agent_reason}"
-        )
 
     _write(args.fixture_output, fixture)
     _write(args.probe_output, agent_markers["probe"])
