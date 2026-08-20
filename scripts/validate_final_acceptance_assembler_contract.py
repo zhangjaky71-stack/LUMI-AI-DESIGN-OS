@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ASSEMBLER_PATH = ROOT / "scripts/final-acceptance-assembler.py"
 PACKAGE_VALIDATOR_PATH = ROOT / "scripts/validate_final_acceptance_package.py"
 GOVERNANCE_VALIDATOR_PATH = ROOT / "scripts/capture_release_branch_protection.py"
+AUTHORIZATION_VALIDATOR_PATH = ROOT / "scripts/capture_release_authorization.py"
 FIXTURE_RELEASE_ID = "_node73-assembler-contract"
 FIXTURE_ROOT = ROOT / "reports" / "final-acceptance" / FIXTURE_RELEASE_ID
 PROD_ROOT = ROOT / "reports" / "production-deployments" / FIXTURE_RELEASE_ID
@@ -49,9 +50,105 @@ def clean_dirs() -> None:
             shutil.rmtree(path)
 
 
+def build_authorization_fixture(
+    authorization_validator: ModuleType,
+    *,
+    rc: dict[str, str],
+) -> Path:
+    source = FIXTURE_ROOT / "source"
+    policy_path = source / "approval-policy.json"
+    policy = {
+        "schema_version": 1,
+        "kind": authorization_validator.POLICY_KIND,
+        "repository": authorization_validator.EXPECTED_REPOSITORY,
+        "pull_request": authorization_validator.EXPECTED_PR,
+        "base_ref": authorization_validator.EXPECTED_BASE_REF,
+        "head_ref": authorization_validator.EXPECTED_HEAD_REF,
+        "minimum_distinct_actors": 3,
+        "roles": {
+            "product": {"allowed_logins": ["alice"]},
+            "engineering": {"allowed_logins": ["bob"]},
+            "security": {"allowed_logins": ["carol"]},
+            "operations": {"allowed_logins": ["alice", "dave"]},
+            "release_owner": {"allowed_logins": ["dave"]},
+        },
+        "separation_of_duties": [["engineering", "security"], ["security", "release_owner"]],
+        "require_human_reviewers": True,
+        "require_exact_rc_review_commit": True,
+    }
+    write(policy_path, policy)
+
+    handoff = {
+        "on_call_owner": "platform-on-call",
+        "support_owner": "support-owner",
+        "incident_commander_rotation": "incident-rotation",
+        "first_day_watch_owner": "release-owner",
+        "quality_cost_review_owner": "ai-ops-owner",
+        "security_dependency_review_owner": "security-owner",
+        "dr_drill_owner": "reliability-owner",
+        "capacity_review_owner": "platform-owner",
+    }
+    request_path = source / "authorization-request.json"
+    request = {
+        "schema_version": 1,
+        "kind": authorization_validator.REQUEST_KIND,
+        "release_id": FIXTURE_RELEASE_ID,
+        "release_candidate": copy.deepcopy(rc),
+        "repository": authorization_validator.EXPECTED_REPOSITORY,
+        "pull_request": authorization_validator.EXPECTED_PR,
+        "approval_policy": authorization_validator._frozen(policy_path),
+        "operational_handoff": handoff,
+    }
+    write(request_path, request)
+    normalized_request, normalized_policy_path, normalized_policy = authorization_validator.validate_request(request)
+
+    pr = {
+        "number": authorization_validator.EXPECTED_PR,
+        "state": "open",
+        "html_url": (
+            f"https://github.com/{authorization_validator.EXPECTED_REPOSITORY}"
+            f"/pull/{authorization_validator.EXPECTED_PR}"
+        ),
+        "user": {"login": "pr-author"},
+        "head": {
+            "ref": authorization_validator.EXPECTED_HEAD_REF,
+            "sha": rc["git_sha"],
+            "repo": {"full_name": authorization_validator.EXPECTED_REPOSITORY},
+        },
+        "base": {"ref": authorization_validator.EXPECTED_BASE_REF},
+    }
+    reviews: list[dict[str, Any]] = []
+    for index, actor in enumerate(("alice", "bob", "carol", "dave"), start=1):
+        reviews.append(
+            {
+                "id": index,
+                "state": "APPROVED",
+                "html_url": (
+                    f"https://github.com/{authorization_validator.EXPECTED_REPOSITORY}"
+                    f"/pull/{authorization_validator.EXPECTED_PR}#pullrequestreview-{index}"
+                ),
+                "commit_id": rc["git_sha"],
+                "submitted_at": f"2026-08-20T00:0{index}:00Z",
+                "user": {"login": actor},
+            }
+        )
+    authorization = authorization_validator.build_authorization(
+        request_path,
+        normalized_request,
+        normalized_policy_path,
+        normalized_policy,
+        pr,
+        reviews,
+    )
+    authorization_path = source / "release-authorization.json"
+    write(authorization_path, authorization)
+    return authorization_path
+
+
 def base_fixture(
     assembler: ModuleType,
     governance_validator: ModuleType,
+    authorization_validator: ModuleType,
 ) -> tuple[argparse.Namespace, dict[str, Path], Path, Path]:
     matrix = json.loads((ROOT / "final/acceptance/manifest-v1.json").read_text(encoding="utf-8"))
     require(len(matrix.get("scenarios", [])) == 46, "canonical matrix must contain 46 scenarios")
@@ -119,34 +216,7 @@ def base_fixture(
         )
         upstream_paths[name] = path
 
-    authorization = FIXTURE_ROOT / "source" / "release-authorization.json"
-    write(
-        authorization,
-        {
-            "schema_version": 1,
-            "authorization_id": "auth-contract-001",
-            "authorized_at": "2026-08-19T00:00:00Z",
-            "release_id": FIXTURE_RELEASE_ID,
-            "release_candidate": copy.deepcopy(rc),
-            "approvals": {
-                "product": "APPROVED",
-                "engineering": "APPROVED",
-                "security": "APPROVED",
-                "operations": "APPROVED",
-                "release_owner": "APPROVED",
-            },
-            "operational_handoff": {
-                "on_call_owner": "platform-on-call",
-                "support_owner": "support-owner",
-                "incident_commander_rotation": "incident-rotation",
-                "first_day_watch_owner": "release-owner",
-                "quality_cost_review_owner": "ai-ops-owner",
-                "security_dependency_review_owner": "security-owner",
-                "dr_drill_owner": "reliability-owner",
-                "capacity_review_owner": "platform-owner",
-            },
-        },
-    )
+    authorization = build_authorization_fixture(authorization_validator, rc=rc)
 
     scenario_results = FIXTURE_ROOT / "source" / "scenario-results.json"
     write(
@@ -187,11 +257,16 @@ def base_fixture(
 def expect_block(
     assembler: ModuleType,
     governance_validator: ModuleType,
+    authorization_validator: ModuleType,
     mutate: Callable[[argparse.Namespace, dict[str, Path], Path, Path], None],
     label: str,
 ) -> None:
     clean_dirs()
-    args, upstream, authorization, scenarios = base_fixture(assembler, governance_validator)
+    args, upstream, authorization, scenarios = base_fixture(
+        assembler,
+        governance_validator,
+        authorization_validator,
+    )
     mutate(args, upstream, authorization, scenarios)
     try:
         assembler.assemble(args)
@@ -204,9 +279,14 @@ def main() -> int:
     assembler = load_module(ASSEMBLER_PATH, "lumi_final_assembler")
     package = load_module(PACKAGE_VALIDATOR_PATH, "lumi_final_package_validator")
     governance_validator = load_module(GOVERNANCE_VALIDATOR_PATH, "lumi_governance_validator")
+    authorization_validator = load_module(AUTHORIZATION_VALIDATOR_PATH, "lumi_authorization_validator")
     clean_dirs()
     try:
-        args, upstream, authorization, scenarios = base_fixture(assembler, governance_validator)
+        args, upstream, authorization, scenarios = base_fixture(
+            assembler,
+            governance_validator,
+            authorization_validator,
+        )
         release_path, evidence_path = assembler.assemble(args)
         require(release_path.name == "release.json", "assembler internal release filename changed unexpectedly")
         canonical_release = release_path.with_name("release-manifest.json")
@@ -214,6 +294,7 @@ def main() -> int:
         validated = package.validate(canonical_release)
         require(validated["status"] == "PASS", "clean assembled package must validate")
         require("repository_governance_sha256" in validated, "clean package must freeze repository governance")
+        require("authorization_sha256" in validated, "clean package must freeze provenance-backed authorization")
         require(evidence_path.is_file(), "clean acceptance evidence missing")
 
         def cross_rc(_args: argparse.Namespace, paths: dict[str, Path], _auth: Path, _scenarios: Path) -> None:
@@ -221,28 +302,44 @@ def main() -> int:
             payload["release_candidate"]["git_sha"] = "b" * 40
             write(paths["security"], payload)
 
-        expect_block(assembler, governance_validator, cross_rc, "cross-RC Security decision")
+        expect_block(assembler, governance_validator, authorization_validator, cross_rc, "cross-RC Security decision")
 
         def missing_scenario(_args: argparse.Namespace, _paths: dict[str, Path], _auth: Path, scenarios_path: Path) -> None:
             payload = json.loads(scenarios_path.read_text(encoding="utf-8"))
             payload["items"].pop()
             write(scenarios_path, payload)
 
-        expect_block(assembler, governance_validator, missing_scenario, "missing scenario")
+        expect_block(assembler, governance_validator, authorization_validator, missing_scenario, "missing scenario")
 
         def pass_without_evidence(_args: argparse.Namespace, _paths: dict[str, Path], _auth: Path, scenarios_path: Path) -> None:
             payload = json.loads(scenarios_path.read_text(encoding="utf-8"))
             payload["items"][0]["evidence_refs"] = []
             write(scenarios_path, payload)
 
-        expect_block(assembler, governance_validator, pass_without_evidence, "PASS without evidence")
+        expect_block(assembler, governance_validator, authorization_validator, pass_without_evidence, "PASS without evidence")
 
-        def missing_approval(_args: argparse.Namespace, _paths: dict[str, Path], auth_path: Path, _scenarios: Path) -> None:
+        def approval_actor_swap(_args: argparse.Namespace, _paths: dict[str, Path], auth_path: Path, _scenarios: Path) -> None:
             payload = json.loads(auth_path.read_text(encoding="utf-8"))
-            payload["approvals"]["security"] = "PENDING"
+            payload["approvals"]["security"]["actor"] = "alice"
             write(auth_path, payload)
 
-        expect_block(assembler, governance_validator, missing_approval, "non-approved authorization")
+        expect_block(assembler, governance_validator, authorization_validator, approval_actor_swap, "authorization actor swap")
+
+        def approval_commit_swap(_args: argparse.Namespace, _paths: dict[str, Path], auth_path: Path, _scenarios: Path) -> None:
+            payload = json.loads(auth_path.read_text(encoding="utf-8"))
+            payload["approvals"]["engineering"]["commit_id"] = "b" * 40
+            write(auth_path, payload)
+
+        expect_block(assembler, governance_validator, authorization_validator, approval_commit_swap, "authorization RC commit swap")
+
+        def approval_policy_tamper(_args: argparse.Namespace, _paths: dict[str, Path], auth_path: Path, _scenarios: Path) -> None:
+            payload = json.loads(auth_path.read_text(encoding="utf-8"))
+            policy_path = ROOT / payload["approval_policy"]["path"]
+            policy = json.loads(policy_path.read_text(encoding="utf-8"))
+            policy["minimum_distinct_actors"] = 1
+            write(policy_path, policy)
+
+        expect_block(assembler, governance_validator, authorization_validator, approval_policy_tamper, "authorization policy hash tamper")
 
         def unprotected_branch(args: argparse.Namespace, _paths: dict[str, Path], _auth: Path, _scenarios: Path) -> None:
             path = ROOT / args.repository_governance
@@ -251,7 +348,7 @@ def main() -> int:
             payload["status"] = "BLOCKED_EXTERNAL"
             write(path, payload)
 
-        expect_block(assembler, governance_validator, unprotected_branch, "unprotected release branch")
+        expect_block(assembler, governance_validator, authorization_validator, unprotected_branch, "unprotected release branch")
 
         def governance_repo_swap(args: argparse.Namespace, _paths: dict[str, Path], _auth: Path, _scenarios: Path) -> None:
             path = ROOT / args.repository_governance
@@ -259,7 +356,7 @@ def main() -> int:
             payload["repository"] = "example/other"
             write(path, payload)
 
-        expect_block(assembler, governance_validator, governance_repo_swap, "repository governance repo swap")
+        expect_block(assembler, governance_validator, authorization_validator, governance_repo_swap, "repository governance repo swap")
 
         def governance_head_swap(args: argparse.Namespace, _paths: dict[str, Path], _auth: Path, _scenarios: Path) -> None:
             path = ROOT / args.repository_governance
@@ -267,7 +364,7 @@ def main() -> int:
             payload["branches"][1]["head_sha"] = "c" * 40
             write(path, payload)
 
-        expect_block(assembler, governance_validator, governance_head_swap, "repository governance RC head swap")
+        expect_block(assembler, governance_validator, authorization_validator, governance_head_swap, "repository governance RC head swap")
 
         def governance_force_push(args: argparse.Namespace, _paths: dict[str, Path], _auth: Path, _scenarios: Path) -> None:
             path = ROOT / args.repository_governance
@@ -275,7 +372,7 @@ def main() -> int:
             payload["branches"][0]["protection"]["allow_force_pushes"] = True
             write(path, payload)
 
-        expect_block(assembler, governance_validator, governance_force_push, "unsafe force-push protection profile")
+        expect_block(assembler, governance_validator, authorization_validator, governance_force_push, "unsafe force-push protection profile")
 
         print("final acceptance assembler contract: PASS")
         return 0
