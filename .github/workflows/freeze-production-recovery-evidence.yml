@@ -1,0 +1,31 @@
+name: Freeze Production Recovery Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: "Current manifest under reports/production-deployments/<deployment-id>/manifest.json"
+        required: true
+        type: string
+      dr_run_id:
+        description: "Successful Production DR Rehearsal workflow run ID"
+        required: true
+        type: string
+      freeze_ack:
+        description: "FREEZE_PRODUCTION_RECOVERY:<deployment-id>"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  default-branch-registry-only:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Refuse default-branch execution
+        shell: bash
+        run: |
+          echo "This workflow on main is a fail-closed dispatch discovery stub."
+          echo "Run the canonical release workflow with ref=release-closure-p0."
+          exit 64
