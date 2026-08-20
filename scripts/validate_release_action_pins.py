@@ -28,6 +28,22 @@ def _load_module(path: Path, name: str) -> ModuleType:
     return module
 
 
+def _workflow_list(policy: dict[str, Any], key: str, *, required: bool) -> list[str]:
+    value = policy.get(key)
+    if value is None and not required:
+        return []
+    if not isinstance(value, list) or (required and not value):
+        raise ReleaseActionPinError(f"{key} must be a non-empty list")
+    if len(value) != len(set(value)):
+        raise ReleaseActionPinError(f"{key} contains duplicates")
+    normalized: list[str] = []
+    for relative in value:
+        if not isinstance(relative, str) or not relative.startswith(".github/workflows/"):
+            raise ReleaseActionPinError(f"invalid workflow path in {key}: {relative!r}")
+        normalized.append(relative)
+    return normalized
+
+
 def _load_policy() -> dict[str, Any]:
     try:
         policy = json.loads(PINS_PATH.read_text(encoding="utf-8"))
@@ -38,13 +54,12 @@ def _load_policy() -> dict[str, Any]:
     if policy.get("schema_version") != 1 or policy.get("policy") != "LUMI_RELEASE_ACTION_PINS_V1":
         raise ReleaseActionPinError("release action pin policy schema/kind mismatch")
     actions = policy.get("actions")
-    workflows = policy.get("release_critical_workflows")
+    critical = _workflow_list(policy, "release_critical_workflows", required=True)
+    evidence = _workflow_list(policy, "release_evidence_workflows", required=False)
+    if set(critical) & set(evidence):
+        raise ReleaseActionPinError("release critical/evidence workflow lists must be disjoint")
     if not isinstance(actions, dict) or not actions:
         raise ReleaseActionPinError("release action pin policy actions map is missing")
-    if not isinstance(workflows, list) or not workflows:
-        raise ReleaseActionPinError("release-critical workflow list is missing")
-    if len(workflows) != len(set(workflows)):
-        raise ReleaseActionPinError("release-critical workflow list contains duplicates")
     for action, releases in actions.items():
         if not isinstance(action, str) or action.count("/") != 1:
             raise ReleaseActionPinError(f"invalid action repository key: {action!r}")
@@ -63,6 +78,8 @@ def _load_policy() -> dict[str, Any]:
             if sha in seen_shas:
                 raise ReleaseActionPinError(f"action {action} repeats approved SHA {sha}")
             seen_shas.add(sha)
+    policy["release_critical_workflows"] = critical
+    policy["release_evidence_workflows"] = evidence
     return policy
 
 
@@ -125,7 +142,7 @@ def validate_workflow_text(*, policy: dict[str, Any], workflow: str, text: str) 
         if result is not None:
             external += 1
     if external == 0:
-        raise ReleaseActionPinError(f"{workflow}: release-critical workflow has no external action steps")
+        raise ReleaseActionPinError(f"{workflow}: governed workflow has no external action steps")
     return external
 
 
@@ -163,21 +180,24 @@ def _validate_dispatch_registry() -> None:
         raise ReleaseActionPinError("default-branch dispatch registry must cover exactly nine release-critical workflows")
 
 
-def main() -> int:
-    policy = _load_policy()
-    workflows = policy["release_critical_workflows"]
+def _validate_workflow_set(policy: dict[str, Any], workflows: list[str]) -> dict[str, int]:
     totals: dict[str, int] = {}
     for relative in workflows:
-        if not isinstance(relative, str) or not relative.startswith(".github/workflows/"):
-            raise ReleaseActionPinError(f"invalid release-critical workflow path: {relative!r}")
         path = ROOT / relative
         if not path.is_file():
-            raise ReleaseActionPinError(f"release-critical workflow is missing: {relative}")
+            raise ReleaseActionPinError(f"governed workflow is missing: {relative}")
         totals[relative] = validate_workflow_text(
             policy=policy,
             workflow=relative,
             text=path.read_text(encoding="utf-8"),
         )
+    return totals
+
+
+def main() -> int:
+    policy = _load_policy()
+    critical = _validate_workflow_set(policy, policy["release_critical_workflows"])
+    evidence = _validate_workflow_set(policy, policy["release_evidence_workflows"])
     _negative_drills(policy)
     _validate_dispatch_registry()
     print(
@@ -185,10 +205,12 @@ def main() -> int:
             {
                 "status": "PASS",
                 "policy": policy["policy"],
-                "workflow_count": len(totals),
-                "external_action_steps": sum(totals.values()),
+                "release_critical_workflow_count": len(critical),
+                "release_evidence_workflow_count": len(evidence),
+                "external_action_steps": sum(critical.values()) + sum(evidence.values()),
                 "dispatch_registry_bound": True,
-                "workflows": totals,
+                "release_critical_workflows": critical,
+                "release_evidence_workflows": evidence,
                 "negative_drills": {
                     "floating_tag_blocked": True,
                     "short_sha_blocked": True,
