@@ -14,6 +14,7 @@ IDENTITY_V2 = ROOT / "scripts" / "validate_finalization_identity_v2.py"
 ASSEMBLER_V2 = ROOT / "scripts" / "final-acceptance-assembler-v2.py"
 PACKAGE_V2 = ROOT / "scripts" / "validate_final_acceptance_package_v2.py"
 DECISION_V2 = ROOT / "scripts" / "final-acceptance-decision-v2.py"
+FINAL_WORKFLOW = ROOT / ".github" / "workflows" / "final-acceptance-gate.yml"
 POLICY_TEMPLATE = ROOT / "final" / "acceptance" / "release-approval-policy-v2-template.json"
 REQUEST_TEMPLATE = ROOT / "final" / "acceptance" / "release-authorization-request-v2-template.json"
 GOVERNANCE_TEMPLATE = ROOT / "final" / "acceptance" / "repository-governance-policy-template.json"
@@ -114,6 +115,25 @@ def main() -> int:
         '"source_rc_ancestor_of_evidence_head"',
         '"kind": "LUMI_FINAL_ACCEPTANCE_DECISION_V2"',
     ))
+
+    require_markers(FINAL_WORKFLOW, (
+        "github.ref == 'refs/heads/release-closure-p0'",
+        'ref: ${{ github.sha }}',
+        'fetch-depth: 0',
+        "release.name != 'release-manifest-v2.json'",
+        "output = release.parent / 'final-decision-v2.json'",
+        'python3 scripts/validate_final_acceptance_package_v2.py --release "$FINAL_RELEASE"',
+        'python3 scripts/final-acceptance-decision-v2.py',
+        'name: final-acceptance-v2-${{ github.run_id }}',
+    ))
+    workflow = FINAL_WORKFLOW.read_text(encoding="utf-8")
+    final_start = workflow.find("  final-decision:\n")
+    final_end = workflow.find("  contract-gate:\n", final_start)
+    require(final_start >= 0 and final_end > final_start, "Final Acceptance final-decision job block missing")
+    final_block = workflow[final_start:final_end]
+    require("scripts/final-acceptance-decision.py" not in final_block, "canonical final-decision job must not invoke V1 decision")
+    require("scripts/validate_final_acceptance_package.py" not in final_block, "canonical final-decision job must not invoke V1 package validator")
+    require("release-manifest.json" not in final_block, "canonical final-decision job must not accept V1 release manifest filename")
 
     print("NODE-73 Finalization Identity V2 source contract: PASS")
     return 0
