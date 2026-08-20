@@ -43,11 +43,23 @@ def load_json(path: Path) -> dict[str, Any]:
     return payload
 
 
-def render_protection_body(policy: Mapping[str, Any]) -> dict[str, Any]:
+def render_protection_body(policy: Mapping[str, Any], *, branch: str) -> dict[str, Any]:
     checks = policy.get("required_status_checks")
     require(isinstance(checks, Mapping), "normalized policy required_status_checks missing")
     contexts = checks.get("required_contexts")
     require(isinstance(contexts, list) and bool(contexts), "normalized policy required status contexts missing")
+    evidence_branch = policy.get("evidence_head_branch")
+    require(isinstance(evidence_branch, str) and bool(evidence_branch), "normalized Evidence Head branch missing")
+    release_branches = policy.get("release_branches")
+    require(isinstance(release_branches, list) and branch in release_branches, f"branch is outside governance policy: {branch}")
+    lock_branch = branch == evidence_branch
+    if lock_branch:
+        require(policy.get("require_evidence_head_locked") is True, "policy does not authorize Evidence Head branch locking")
+    else:
+        require(
+            policy.get("require_non_evidence_release_branches_unlocked") is True,
+            "policy does not require non-Evidence release branch to remain unlocked",
+        )
     return {
         "required_status_checks": {
             "strict": True,
@@ -66,7 +78,7 @@ def render_protection_body(policy: Mapping[str, Any]) -> dict[str, Any]:
         "allow_deletions": False,
         "block_creations": False,
         "required_conversation_resolution": True,
-        "lock_branch": False,
+        "lock_branch": lock_branch,
         "allow_fork_syncing": False,
     }
 
@@ -121,7 +133,6 @@ def apply(
         policy = policy_module.validate_policy(load_json(policy_path))
     except policy_module.GovernancePolicyError as exc:
         raise BranchProtectionApplyError(f"governance policy invalid: {exc}") from exc
-    body = render_protection_body(policy)
 
     preflight_heads: dict[str, str] = {}
     for branch in policy["release_branches"]:
@@ -140,7 +151,10 @@ def apply(
     )
 
     applied: list[dict[str, Any]] = []
+    request_bodies: dict[str, dict[str, Any]] = {}
     for branch in policy["release_branches"]:
+        body = render_protection_body(policy, branch=branch)
+        request_bodies[branch] = body
         response = put_json(
             f"https://api.github.com/repos/{repository}/branches/{branch}/protection",
             token=token,
@@ -149,9 +163,12 @@ def apply(
         applied.append(
             {
                 "branch": branch,
+                "requested_lock_branch": body["lock_branch"],
                 "required_status_checks": response.get("required_status_checks"),
                 "enforce_admins": response.get("enforce_admins"),
                 "required_pull_request_reviews": response.get("required_pull_request_reviews"),
+                "lock_branch": response.get("lock_branch"),
+                "allow_fork_syncing": response.get("allow_fork_syncing"),
             }
         )
 
@@ -173,7 +190,7 @@ def apply(
         "evidence_head_sha": evidence_head_sha.lower(),
         "preflight_heads": preflight_heads,
         "policy": policy,
-        "request_body": body,
+        "request_bodies": request_bodies,
         "applied": applied,
         "live_report": live_report,
         "live_validation": live_result,
@@ -195,18 +212,33 @@ def self_test() -> dict[str, Any]:
         },
         "require_live_reverification": True,
         "require_evidence_head_equals_execution_sha": True,
+        "require_evidence_head_locked": True,
+        "require_non_evidence_release_branches_unlocked": True,
     }
     policy_module = load_module(POLICY_VALIDATOR, "lumi_release_governance_apply_selftest")
     normalized = policy_module.validate_policy(policy)
-    body = render_protection_body(normalized)
-    require(body["required_status_checks"] == {"strict": True, "contexts": ["node73-final-contract-gate"]}, "canonical required check payload drift")
-    require(body["enforce_admins"] is True, "admin enforcement must be enabled")
-    require(body["allow_force_pushes"] is False and body["allow_deletions"] is False, "unsafe branch mutations must remain disabled")
-    reviews = body["required_pull_request_reviews"]
+    base_body = render_protection_body(normalized, branch="node-73-final-acceptance-release")
+    head_body = render_protection_body(normalized, branch="release-closure-p0")
+    require(base_body["required_status_checks"] == {"strict": True, "contexts": ["node73-final-contract-gate"]}, "canonical required check payload drift")
+    require(base_body["enforce_admins"] is True and head_body["enforce_admins"] is True, "admin enforcement must be enabled")
+    require(base_body["allow_force_pushes"] is False and base_body["allow_deletions"] is False, "unsafe branch mutations must remain disabled")
+    require(base_body["lock_branch"] is False, "base release branch must remain unlocked")
+    require(head_body["lock_branch"] is True, "Evidence Head branch must be locked read-only")
+    require(head_body["allow_fork_syncing"] is False, "Evidence Head branch must not allow fork syncing")
+    reviews = base_body["required_pull_request_reviews"]
     require(reviews["dismiss_stale_reviews"] is True, "stale review dismissal must remain enabled")
     require(reviews["require_last_push_approval"] is True, "last-push approval must remain enabled")
     require(reviews["required_approving_review_count"] >= 1, "at least one protected-branch approval must be required")
-    return {"status": "PASS", "request_body": body, "preflight_guard": "EVIDENCE_HEAD_EXACT", "negative_network_calls": 0}
+    return {
+        "status": "PASS",
+        "request_bodies": {
+            "node-73-final-acceptance-release": base_body,
+            "release-closure-p0": head_body,
+        },
+        "preflight_guard": "EVIDENCE_HEAD_EXACT",
+        "evidence_head_lock": "READ_ONLY",
+        "negative_network_calls": 0,
+    }
 
 
 def main() -> int:
