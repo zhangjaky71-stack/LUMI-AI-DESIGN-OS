@@ -53,6 +53,10 @@ def images(seed: str) -> dict[str, str]:
     }
 
 
+def service_capacity(service: str) -> int:
+    return 2 if service == "outbox-dispatcher" else 3
+
+
 def manifest(*, deployment_id: str, version: str, sha: str, image_seed: str) -> dict[str, Any]:
     return {
         "schema_version": 1,
@@ -107,9 +111,11 @@ def runtime(value: dict[str, Any]) -> dict[str, Any]:
                 "image_matches": True,
                 "status": "ACTIVE",
                 "rollout_state": "COMPLETED",
-                "desired_count": 3,
-                "running_count": 3,
+                "expected_desired_count": service_capacity(service),
+                "desired_count": service_capacity(service),
+                "running_count": service_capacity(service),
                 "pending_count": 0,
+                "capacity_matches": True,
                 "steady": True,
             }
             for service, image_key in SERVICE_IMAGE_KEY.items()
@@ -244,6 +250,30 @@ def main() -> int:
         is False,
         "outbox dispatcher must remain bound to worker-media image during roll-forward",
     )
+    wrong_dispatcher_capacity = copy.deepcopy(restored_runtime)
+    dispatcher = next(
+        item
+        for item in wrong_dispatcher_capacity["services"]
+        if item["service_name"] == "outbox-dispatcher"
+    )
+    dispatcher["desired_count"] = dispatcher["expected_desired_count"] + 1
+    dispatcher["running_count"] = dispatcher["desired_count"]
+    dispatcher["capacity_matches"] = True
+    dispatcher["steady"] = True
+    require(
+        rollback_decision.evaluate(
+            current,
+            previous,
+            previous_path,
+            previous_runtime,
+            previous_smoke,
+            wrong_dispatcher_capacity,
+            restored_smoke,
+            [],
+        )["passed"]
+        is False,
+        "roll-forward must reject dispatcher capacity drift even if booleans are forged true",
+    )
     wrong_previous_version = copy.deepcopy(previous_smoke)
     wrong_previous_version["results"]["/version"]["version"] = "wrong"
     require(
@@ -315,6 +345,32 @@ def main() -> int:
         )["passed"]
         is False,
         "production decision must block dispatcher image-key substitution",
+    )
+
+    bad_runtime_capacity = copy.deepcopy(restored_runtime)
+    dispatcher = next(
+        item
+        for item in bad_runtime_capacity["services"]
+        if item["service_name"] == "outbox-dispatcher"
+    )
+    dispatcher["desired_count"] = dispatcher["expected_desired_count"] + 1
+    dispatcher["running_count"] = dispatcher["desired_count"]
+    dispatcher["capacity_matches"] = True
+    dispatcher["steady"] = True
+    require(
+        deployment_decision.evaluate(
+            current,
+            deployment_gate,
+            snapshot,
+            migration,
+            bad_runtime_capacity,
+            live_rollout,
+            restored_smoke,
+            rehearsal,
+            [],
+        )["passed"]
+        is False,
+        "production decision must block Terraform capacity drift even if evidence booleans are forged true",
     )
 
     bad_rollout = copy.deepcopy(live_rollout)
@@ -398,6 +454,10 @@ def main() -> int:
     require("describe-task-definition" in identity_script, "runtime identity must inspect task definitions")
     require("expected exactly seven ECS services" in identity_script, "runtime identity must require seven services")
     require('IMAGE_KEY="worker-media"' in identity_script, "dispatcher must map to worker-media image identity")
+    require("service_desired_counts" in identity_script, "runtime identity must read Terraform desired counts")
+    require("expected_desired_count" in identity_script, "runtime identity must freeze expected desired count")
+    require("capacity_matches" in identity_script, "runtime identity must freeze capacity match")
+    require("_capacity_row_valid" in deployment_source, "production decision must recompute runtime capacity validity")
     require("outbox-dispatcher" in deployment_source, "production decision must bind dispatcher identity")
     require("outbox-dispatcher" in rollback_source, "rollback decision must bind dispatcher identity")
     require("deploymentConfiguration" in rollout_script, "rollout evidence must read live ECS deployment config")
@@ -419,13 +479,16 @@ def main() -> int:
                     "mutable_rollback_image_blocked": True,
                     "wrong_rollforward_image_blocked": True,
                     "dispatcher_rollforward_image_swap_blocked": True,
+                    "dispatcher_rollforward_capacity_drift_blocked": True,
                     "wrong_previous_smoke_version_blocked": True,
                     "dispatcher_production_image_key_swap_blocked": True,
+                    "dispatcher_production_capacity_drift_blocked": True,
                     "canary_100_percent_blocked": True,
                     "alarm_state_blocked": True,
                     "failed_migration_blocked": True,
                     "rollback_without_rollforward_blocked": True,
                     "runtime_identity_source_bound": True,
+                    "runtime_capacity_source_bound": True,
                     "live_canary_source_bound": True,
                     "protected_rehearsal_source_bound": True,
                     "frozen_evidence_source_bound": True,
