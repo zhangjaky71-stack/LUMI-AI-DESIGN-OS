@@ -25,6 +25,17 @@ PHANTOM_METRICS = (
     "OutboxPendingEvents",
     "SandboxQueueBacklog",
 )
+OUTPUT_PATHS = (
+    "infra/iac/modules/compute/outputs.tf",
+    "infra/iac/modules/platform-app/outputs.tf",
+    "infra/iac/environments/staging/app/outputs.tf",
+    "infra/iac/environments/production/app/outputs.tf",
+)
+DECISION_PATHS = (
+    "scripts/production-deployment-decision.py",
+    "scripts/production-rollback-rehearsal-decision.py",
+    "scripts/production-recovery-decision.py",
+)
 
 
 class ContractError(RuntimeError):
@@ -130,12 +141,57 @@ def validate_module_contract() -> None:
     )
 
 
+def validate_capacity_evidence_chain() -> None:
+    for path in OUTPUT_PATHS:
+        source = read(path)
+        require("service_desired_counts" in source, f"{path} must propagate static desired counts")
+
+    capture = read("scripts/capture-production-runtime-identity.sh")
+    for marker in (
+        "terraform -chdir=\"$APP_DIR\" output -json service_desired_counts",
+        "Terraform expected capacity set does not match canonical seven-service contract",
+        'EXPECTED_DESIRED="$(jq -r --arg name "$service"',
+        "CAPACITY_MATCHED=false",
+        'if [[ "$DESIRED" -eq "$EXPECTED_DESIRED" ]]',
+        "expected_desired_count:$expected_desired_count",
+        "capacity_matches:$capacity_matches",
+    ):
+        require(marker in capture, f"runtime capacity capture missing marker {marker!r}")
+
+    for path in DECISION_PATHS:
+        source = read(path)
+        for marker in (
+            "def _capacity_row_valid(",
+            'item.get("expected_desired_count")',
+            'item.get("desired_count")',
+            'item.get("capacity_matches") is True',
+        ):
+            require(marker in source, f"{path} missing frozen capacity validation marker {marker!r}")
+
+    readiness = read("scripts/validate_production_readiness_contract.py")
+    recovery = read("scripts/validate_production_recovery_contract.py")
+    for marker in (
+        "dispatcher_rollforward_capacity_drift_blocked",
+        "dispatcher_production_capacity_drift_blocked",
+        "runtime_capacity_source_bound",
+    ):
+        require(marker in readiness, f"production readiness capacity drill missing {marker!r}")
+    require(
+        "dispatcher capacity identity mismatch" in recovery,
+        "production recovery capacity negative drill missing",
+    )
+
+
 def validate_node69_release_state() -> None:
     node = read("docs/nodes/NODE-69-PERFORMANCE-SCALABILITY.md")
     plan = read("docs/performance/NODE-69-CAPACITY-PLAN.md")
     require("Status: SOURCE IMPLEMENTED / RELEASE BLOCKED" in node, "NODE-69 must remain release blocked")
     require("PENDING load evidence" in plan, "NODE-69 capacity plan must retain pending measured capacity")
     require("PENDING" in plan and "production-like Profile G" in plan, "NODE-69 measured release evidence is not explicit")
+    require(
+        "autoscaling_enabled = false" in plan and "Dynamic target tracking must remain disabled" in plan,
+        "NODE-69 plan must explicitly keep dynamic autoscaling fail-closed",
+    )
 
 
 def validate_repo() -> None:
@@ -143,6 +199,7 @@ def validate_repo() -> None:
     for environment in ENVIRONMENTS:
         source = read(f"infra/iac/environments/{environment}/app/main.tf")
         validate_environment_text(source, environment=environment)
+    validate_capacity_evidence_chain()
     validate_node69_release_state()
 
 
