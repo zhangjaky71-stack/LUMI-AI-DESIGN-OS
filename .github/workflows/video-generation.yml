@@ -53,24 +53,19 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile NODE-48 hosted production contract
-        run: >-
-          python -m compileall -q
-          services/video-generation/src
-          services/video-generation/tests
-          apps/worker-media/src/lumi_worker_media/app.py
-          apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py
-          apps/worker-media/src/lumi_worker_media/video_generation_runtime.py
-          apps/worker-media/src/lumi_worker_media/video_generation_repository.py
-          apps/worker-media/src/lumi_worker_media/video_generation_artifacts.py
-          apps/worker-media/src/lumi_worker_media/video_generation_ports.py
-          apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py
-          apps/worker-media/tests/test_video_gateway_runtime.py
-          apps/worker-media/tests/test_video_sandbox_runtime.py
-          apps/api/src/lumi_api/provider_output_store.py
-          apps/api/tests/test_provider_output_store.py
-          scripts/validate_video_generation.py
-          scripts/validate_video_worker_hosted_binding.py
-          scripts/benchmark_video_generation.py
+        shell: bash
+        run: |
+          python -m compileall -q \
+            services/video-generation/src \
+            services/video-generation/tests \
+            apps/worker-media/src/lumi_worker_media/app.py \
+            apps/worker-media/src/lumi_worker_media/video_*.py \
+            apps/worker-media/tests/test_video_*.py \
+            apps/api/src/lumi_api/provider_output_store.py \
+            apps/api/tests/test_provider_output_store.py \
+            scripts/validate_video_generation.py \
+            scripts/validate_video_worker_hosted_binding.py \
+            scripts/benchmark_video_generation.py
       - name: Validate NODE-48 architecture contract
         env:
           PYTHONPATH: services/video-generation/src:services/model-gateway/src:services/artifact-history/src
@@ -98,45 +93,30 @@ jobs:
         env:
           PYTHONPATH: services/video-generation/src:services/model-gateway/src:services/artifact-history/src:services/identity-engine/src:services/brand-rules/src
         run: uv run pytest services/video-generation/tests -q
-      - name: Run Hosted Worker video boundary tests
-        run: >-
-          uv run pytest
-          apps/worker-media/tests/test_video_gateway_runtime.py
-          apps/worker-media/tests/test_video_sandbox_runtime.py
-          apps/worker-media/tests/test_video_job_dispatch_runtime.py
-          apps/api/tests/test_provider_output_store.py
-          -q
+      - name: Run all Hosted Worker video boundary tests
+        shell: bash
+        run: uv run pytest apps/worker-media/tests/test_video_*.py apps/api/tests/test_provider_output_store.py -q
       - name: Ruff correctness gate
-        run: >-
-          uv run ruff check --ignore E501
-          services/video-generation/src
-          services/video-generation/tests
-          apps/worker-media/src/lumi_worker_media/app.py
-          apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py
-          apps/worker-media/src/lumi_worker_media/video_generation_runtime.py
-          apps/worker-media/src/lumi_worker_media/video_generation_repository.py
-          apps/worker-media/src/lumi_worker_media/video_generation_artifacts.py
-          apps/worker-media/src/lumi_worker_media/video_generation_ports.py
-          apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py
-          apps/worker-media/tests/test_video_gateway_runtime.py
-          apps/worker-media/tests/test_video_sandbox_runtime.py
-          apps/api/src/lumi_api/provider_output_store.py
-          apps/api/tests/test_provider_output_store.py
-          scripts/validate_video_generation.py
-          scripts/validate_video_worker_hosted_binding.py
-          scripts/benchmark_video_generation.py
+        shell: bash
+        run: |
+          uv run ruff check --ignore E501 \
+            services/video-generation/src \
+            services/video-generation/tests \
+            apps/worker-media/src/lumi_worker_media/app.py \
+            apps/worker-media/src/lumi_worker_media/video_*.py \
+            apps/worker-media/tests/test_video_*.py \
+            apps/api/src/lumi_api/provider_output_store.py \
+            apps/api/tests/test_provider_output_store.py \
+            scripts/validate_video_generation.py \
+            scripts/validate_video_worker_hosted_binding.py \
+            scripts/benchmark_video_generation.py
       - name: Pyright runtime gate
+        shell: bash
         run: |
           uv run pyright -p services/video-generation/pyrightconfig.json
           uv run pyright \
-            apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py \
-            apps/worker-media/src/lumi_worker_media/video_generation_runtime.py \
-            apps/worker-media/src/lumi_worker_media/video_generation_repository.py \
-            apps/worker-media/src/lumi_worker_media/video_generation_artifacts.py \
-            apps/worker-media/src/lumi_worker_media/video_generation_ports.py \
-            apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py \
-            apps/worker-media/tests/test_video_gateway_runtime.py \
-            apps/worker-media/tests/test_video_sandbox_runtime.py
+            apps/worker-media/src/lumi_worker_media/video_*.py \
+            apps/worker-media/tests/test_video_*.py
 
   worker-media-video-smoke:
     needs: video-generation-quality
