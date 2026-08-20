@@ -29,8 +29,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
       - name: Validate final acceptance contracts
@@ -48,6 +48,7 @@ jobs:
           python3 scripts/validate_node71_decision_artifact.py --self-test
           python3 scripts/validate_production_node71_workflow_contract.py
           python3 scripts/validate_production_deployment_contract.py
+          python3 scripts/validate_release_action_pins.py
           python3 scripts/validate_side_effect_control_provenance.py --self-test
           python3 scripts/validate_tool_audit_provenance.py --self-test
           python3 scripts/validate_tool_approval_provenance.py --self-test
@@ -60,6 +61,7 @@ jobs:
           python3 -m json.tool final/acceptance/upstream-decision-template.json >/dev/null
           python3 -m json.tool production/runtime-images/manifest-v1.json >/dev/null
           python3 -m json.tool production/deployment/manifest-template.json >/dev/null
+          python3 -m json.tool production/release-actions/pins-v1.json >/dev/null
           python3 -m json.tool staging/acceptance/api-provenance-sources-v1.json >/dev/null
           python3 -m py_compile \
             scripts/final-acceptance-gate.py \
@@ -81,6 +83,7 @@ jobs:
             scripts/validate_production_node71_workflow_contract.py \
             scripts/production-deployment-gate.py \
             scripts/validate_production_deployment_contract.py \
+            scripts/validate_release_action_pins.py \
             scripts/validate_side_effect_control_provenance.py \
             scripts/validate_tool_audit_provenance.py \
             scripts/validate_tool_approval_provenance.py \
@@ -92,13 +95,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
       - name: Require exact workspace membership in uv.lock
         run: python3 scripts/validate_uv_workspace_lock.py
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.11.28"
           enable-cache: true
@@ -113,8 +116,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
       - name: Resolve and constrain frozen acceptance paths
@@ -154,7 +157,7 @@ jobs:
             --release "$FINAL_RELEASE" \
             --evidence "$FINAL_EVIDENCE" \
             --output "$FINAL_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: final-acceptance-${{ github.run_id }}
