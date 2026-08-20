@@ -29,7 +29,7 @@ variable "public_canary_bake_time_minutes" {
 }
 
 variable "services" {
-  description = "Production deployment units. Exactly one service must be publicly_routed."
+  description = "Production deployment units. Exactly one service must be publicly_routed. Dynamic autoscaling is opt-in only after a measured capacity signal and production emitter exist."
   type = map(object({
     image                    = string
     cpu                      = number
@@ -44,8 +44,9 @@ variable "services" {
     environment              = optional(map(string), {})
     secret_arns              = optional(map(string), {})
     s3_bucket_arns           = optional(list(string), [])
-    autoscale_metric_name    = string
-    autoscale_target_value   = number
+    autoscaling_enabled      = optional(bool, false)
+    autoscale_metric_name    = optional(string, "")
+    autoscale_target_value   = optional(number, 0)
   }))
 
   validation {
@@ -61,10 +62,26 @@ variable "services" {
       service.min_capacity >= 1 &&
       service.max_capacity >= service.min_capacity &&
       service.desired_count >= service.min_capacity &&
-      service.desired_count <= service.max_capacity &&
-      service.autoscale_target_value > 0
+      service.desired_count <= service.max_capacity
     ])
-    error_message = "Service images must be immutable digests and capacity/metric values must be valid."
+    error_message = "Service images must be immutable digests and capacity values must be valid."
+  }
+
+  validation {
+    condition = alltrue([
+      for _, service in var.services :
+      service.autoscaling_enabled ? (
+        service.max_capacity > service.min_capacity &&
+        length(trimspace(service.autoscale_metric_name)) > 0 &&
+        service.autoscale_target_value > 0
+      ) : (
+        service.desired_count == service.min_capacity &&
+        service.desired_count == service.max_capacity &&
+        service.autoscale_metric_name == "" &&
+        service.autoscale_target_value == 0
+      )
+    ])
+    error_message = "Autoscaling-enabled services require scale-out headroom plus a measured metric/target; disabled services must be exact static capacity and carry no phantom metric."
   }
 
   validation {
