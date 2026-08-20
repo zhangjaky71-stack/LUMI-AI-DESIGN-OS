@@ -55,10 +55,12 @@ jobs:
       worker_media_image: ${{ steps.release.outputs.worker_media_image }}
       sandbox_runtime_image: ${{ steps.release.outputs.sandbox_runtime_image }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
+      - name: Require immutable release action supply chain
+        run: python3 scripts/validate_release_action_pins.py
       - name: Resolve manifest and exact NODE-71 artifact identity
         shell: bash
         run: |
@@ -99,7 +101,7 @@ jobs:
               fh.write(f'ACCEPTANCE_PROVENANCE_PATH={provenance.relative_to(root).as_posix()}\n')
           PY
       - name: Download exact NODE-71 staging acceptance artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: staging-acceptance-decision
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -152,7 +154,7 @@ jobs:
           emit tool_gateway_image "$(jq -r '.images["tool-gateway"]' "$MANIFEST_PATH")"
           emit worker_media_image "$(jq -r '.images["worker-media"]' "$MANIFEST_PATH")"
           emit sandbox_runtime_image "$(jq -r '.images["sandbox-runtime"]' "$MANIFEST_PATH")"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: production-deployment-gate-${{ github.run_id }}
           path: reports/production-deployments/runtime/deployment-gate.json
@@ -192,11 +194,11 @@ jobs:
       TF_VAR_worker_media_image: ${{ needs.release-gate.outputs.worker_media_image }}
       TF_VAR_sandbox_runtime_image: ${{ needs.release-gate.outputs.sandbox_runtime_image }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
-      - uses: hashicorp/setup-terraform@v4.0.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: "1.14.6"
           terraform_wrapper: false
@@ -209,7 +211,7 @@ jobs:
           test -n "$TF_STATE_BUCKET"
           test -n "$ENVIRONMENT_DEPLOY_ROLE_ARN"
           test "$ENVIRONMENT_DEPLOY_ROLE_ARN" = "$MANIFEST_ROLE_ARN"
-      - uses: aws-actions/configure-aws-credentials@v6.2.3
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           aws-region: ${{ needs.release-gate.outputs.region }}
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
@@ -324,7 +326,7 @@ jobs:
             --output reports/production-deployments/runtime/production-smoke.json
       - name: Archive runtime evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: production-deployment-${{ needs.release-gate.outputs.deployment_id }}-${{ github.run_id }}
           path: reports/production-deployments/runtime/
