@@ -76,6 +76,7 @@ def validate_workflow() -> None:
         "python3 scripts/validate_uv_workspace_lock.py",
         "uv lock --check",
         "uv sync --all-packages --frozen",
+        "python3 scripts/validate_release_action_pins.py",
         "python3 scripts/validate_runtime_image_closure.py",
         "python3 scripts/runtime_image_set.py validate-manifest",
         PINNED_ACTIONS["checkout"],
@@ -92,6 +93,12 @@ def validate_workflow() -> None:
     ):
         _require(marker in text, f"runtime image build workflow missing: {marker}")
 
+    pin_pos = text.find("python3 scripts/validate_release_action_pins.py")
+    registry_login_pos = text.find(PINNED_ACTIONS["login"])
+    _require(
+        pin_pos >= 0 and registry_login_pos >= 0 and pin_pos < registry_login_pos,
+        "release action pin self-check must run before registry login/package writes",
+    )
     _require("latest" not in text.casefold(), "runtime image build workflow must not publish a latest tag")
     _require(text.count("provenance: mode=max") == 6, "all six images require max provenance")
     _require(text.count("sbom: true") == 6, "all six images require SBOM attestation")
