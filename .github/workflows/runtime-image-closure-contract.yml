@@ -6,12 +6,17 @@ on:
       - "apps/api/Dockerfile"
       - "apps/api/src/lumi_api/cli.py"
       - "apps/api/src/lumi_api/product_app.py"
+      - "apps/api/src/lumi_api/generations/gateway.py"
+      - "apps/api/src/lumi_api/generations/video_service.py"
+      - "apps/api/src/lumi_api/media_dispatch.py"
+      - "apps/api/src/lumi_api/persistence/models/video_generation.py"
       - "apps/api/src/lumi_api/idempotency/**"
       - "apps/api/src/lumi_api/tool_side_effect_control.py"
       - "apps/api/src/lumi_api/tool_audit_control.py"
       - "apps/api/src/lumi_api/tool_approval_control.py"
       - "apps/api/src/lumi_api/tool_data_control.py"
       - "apps/api/alembic/versions/0021_tool_approval_scope.py"
+      - "apps/api/alembic/versions/0023_video_generation_runtime.py"
       - "apps/agent-runtime/Dockerfile"
       - "apps/agent-runtime/pyproject.toml"
       - "apps/agent-runtime/src/lumi_agent_runtime/runtime_*.py"
@@ -22,8 +27,10 @@ on:
       - "services/tool-gateway/pyproject.toml"
       - "services/tool-gateway/src/lumi_tool_gateway/**"
       - "services/asset-storage/src/lumi_asset_storage/s3.py"
+      - "services/video-generation/**"
       - "apps/worker-media/Dockerfile"
       - "apps/worker-media/src/lumi_worker_media/**"
+      - "apps/worker-media/tests/integration/test_video_*.py"
       - "services/sandbox-runtime/Dockerfile"
       - "services/sandbox-runtime/pyproject.toml"
       - "services/sandbox-runtime/src/lumi_sandbox_runtime/**"
@@ -36,6 +43,7 @@ on:
       - "infra/iac/environments/production/app/**"
       - "production/runtime-images/**"
       - "production/release-actions/**"
+      - "staging/acceptance/api-provenance-sources-v1.json"
       - "staging/acceptance/evidence-template.json"
       - "scripts/runtime_image_set.py"
       - "scripts/verify_runtime_image_attestations.py"
@@ -45,6 +53,8 @@ on:
       - "scripts/validate_runtime_image_build_pipeline.py"
       - "scripts/validate_runtime_image_set_contract.py"
       - "scripts/validate_runtime_image_closure.py"
+      - "scripts/validate_api_provenance_source_manifest.py"
+      - "scripts/validate_video_generation_producer_binding.py"
       - "scripts/validate_side_effect_control_provenance.py"
       - "scripts/validate_tool_audit_provenance.py"
       - "scripts/validate_tool_approval_provenance.py"
@@ -52,6 +62,7 @@ on:
       - "scripts/validate_tool_result_offload_provenance.py"
       - ".github/workflows/build-runtime-image-set.yml"
       - ".github/workflows/regenerate-uv-lock.yml"
+      - ".github/workflows/video-generation.yml"
       - ".github/workflows/staging-acceptance-gate.yml"
       - ".github/workflows/production-iac-contract.yml"
       - ".github/workflows/deploy-production.yml"
@@ -85,6 +96,8 @@ jobs:
             scripts/validate_runtime_image_build_pipeline.py \
             scripts/validate_runtime_image_set_contract.py \
             scripts/validate_runtime_image_closure.py \
+            scripts/validate_api_provenance_source_manifest.py \
+            scripts/validate_video_generation_producer_binding.py \
             scripts/validate_side_effect_control_provenance.py \
             scripts/validate_tool_audit_provenance.py \
             scripts/validate_tool_approval_provenance.py \
@@ -93,6 +106,9 @@ jobs:
           for path in \
             apps/api/src/lumi_api/cli.py \
             apps/api/src/lumi_api/product_app.py \
+            apps/api/src/lumi_api/generations/gateway.py \
+            apps/api/src/lumi_api/generations/video_service.py \
+            apps/api/src/lumi_api/media_dispatch.py \
             apps/api/src/lumi_api/tool_side_effect_control.py \
             apps/api/src/lumi_api/tool_audit_control.py \
             apps/api/src/lumi_api/tool_approval_control.py \
@@ -111,6 +127,9 @@ jobs:
             services/tool-gateway/src/lumi_tool_gateway/approval_control.py \
             services/tool-gateway/src/lumi_tool_gateway/result_offload.py \
             apps/worker-media/src/lumi_worker_media/worker_cli.py \
+            apps/worker-media/src/lumi_worker_media/cli.py \
+            apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py \
+            apps/worker-media/src/lumi_worker_media/video_generation_runtime.py \
             services/sandbox-runtime/src/lumi_sandbox_runtime/cli.py \
             services/sandbox-runtime/src/lumi_sandbox_runtime/service.py; do
             python -m compileall -q "$path"
@@ -123,6 +142,8 @@ jobs:
           python scripts/verify_runtime_image_attestations.py --self-test
           python scripts/validate_runtime_image_build_pipeline.py
           python scripts/validate_runtime_image_set_contract.py
+          python scripts/validate_api_provenance_source_manifest.py
+          python scripts/validate_video_generation_producer_binding.py
           python scripts/validate_release_action_pins.py
           python scripts/validate_release_workflow_permissions.py
           python scripts/validate_uv_lock_regeneration_contract.py
