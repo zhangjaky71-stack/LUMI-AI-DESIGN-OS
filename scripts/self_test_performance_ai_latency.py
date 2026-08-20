@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import UTC, datetime
 
 from derive_performance_ai_latency import derive
 
 SHA = "a" * 40
 RUN_ID = "node69-ai-latency-selftest"
+SOURCE_ISO = "2026-08-20T10:00:00.000Z"
+SOURCE_MS = int(datetime(2026, 8, 20, 10, 0, tzinfo=UTC).timestamp() * 1000)
 
 
 def event(
@@ -36,6 +39,20 @@ def event(
     }
 
 
+def ui_sample(*, task: str, event_id: str, duration_ms: int) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "event_id": event_id,
+        "run_id": "agent-run-selftest",
+        "task_id": task,
+        "event_type": "artifact.created",
+        "source_created_at": SOURCE_ISO,
+        "source_created_at_unix_ms": SOURCE_MS,
+        "painted_at_unix_ms": SOURCE_MS + duration_ms,
+        "duration_ms": duration_ms,
+    }
+
+
 def c_events() -> list[dict[str, object]]:
     values: list[dict[str, object]] = []
     for task, operation, base in (("task-1", "op-1", 10.0), ("task-2", "op-2", 20.0)):
@@ -50,9 +67,15 @@ def c_events() -> list[dict[str, object]]:
     return values
 
 
-def expect_block(events: list[dict[str, object]], profile: str, marker: str) -> None:
+def expect_block(
+    events: list[dict[str, object]],
+    profile: str,
+    marker: str,
+    *,
+    ui_samples: list[dict[str, object]] | None = None,
+) -> None:
     try:
-        derive(events, profile_id=profile)
+        derive(events, profile_id=profile, ui_samples=ui_samples)
     except ValueError as exc:
         if marker not in str(exc):
             raise AssertionError(f"expected {marker}, got {exc}") from exc
@@ -74,13 +97,52 @@ def main() -> int:
     assert result["formula"]["provider_excluded"] is True
     assert result["formula"]["missing_required_stage_policy"] == "BLOCK"
 
+    backend_without_ui = [value for value in values if value["stage"] != "ui_propagation"]
+    browser_samples = [
+        ui_sample(task="task-1", event_id="run:artifact:1", duration_ms=12),
+        ui_sample(task="task-2", event_id="run:artifact:2", duration_ms=22),
+    ]
+    joined = derive(backend_without_ui, profile_id="C", ui_samples=browser_samples)
+    joined_tasks = {row["task_id"]: row for row in joined["tasks"]}
+    assert joined["ui_sample_count"] == 2
+    assert joined_tasks["task-1"]["operation_id"] == "op-1"
+    assert joined_tasks["task-1"]["stage_totals_ms"]["ui_propagation"] == 12.0
+    assert joined_tasks["task-1"]["platform_overhead_ms"] == 33.0
+    assert joined["formula"]["browser_ui_identity_join"] == "task_id -> backend operation_id"
+
+    expect_block(
+        values,
+        "C",
+        "DUPLICATE_UI_PROPAGATION_SOURCES",
+        ui_samples=browser_samples,
+    )
+    expect_block(
+        backend_without_ui,
+        "C",
+        "UI_SAMPLE_TASK_WITHOUT_BACKEND_IDENTITY:task-orphan",
+        ui_samples=[ui_sample(task="task-orphan", event_id="run:artifact:orphan", duration_ms=9)],
+    )
+    expect_block(
+        backend_without_ui,
+        "C",
+        "UI_SAMPLE_EVENT_DUPLICATE:run:artifact:duplicate",
+        ui_samples=[
+            ui_sample(task="task-1", event_id="run:artifact:duplicate", duration_ms=12),
+            ui_sample(task="task-2", event_id="run:artifact:duplicate", duration_ms=22),
+        ],
+    )
+
     raw_overhead = deepcopy(values)
     raw_overhead.append(
         event(task="task-1", operation="op-1", stage="platform_overhead", duration_ms=999.0)
     )
     expect_block(raw_overhead, "C", "RAW_PLATFORM_OVERHEAD_FORBIDDEN")
 
-    missing_ui = [value for value in values if not (value["task_id"] == "task-1" and value["stage"] == "ui_propagation")]
+    missing_ui = [
+        value
+        for value in values
+        if not (value["task_id"] == "task-1" and value["stage"] == "ui_propagation")
+    ]
     expect_block(missing_ui, "C", "TASK_REQUIRED_STAGE_MISSING:task-1:ui_propagation")
 
     mixed_provenance = deepcopy(values)
@@ -103,7 +165,8 @@ def main() -> int:
 
     print(
         "PASS: AI latency derivation self-test "
-        "(provider excluded; raw overhead forbidden; missing stages/provenance/identity drift block)"
+        "(browser UI joined by task; provider excluded; raw overhead forbidden; "
+        "missing stages/provenance/identity drift block)"
     )
     return 0
 
