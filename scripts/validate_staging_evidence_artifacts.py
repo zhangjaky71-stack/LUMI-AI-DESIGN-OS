@@ -15,7 +15,7 @@ ARTIFACT_KIND = "LUMI_STAGING_EVIDENCE_ARTIFACT_V1"
 ALLOWED_ROOT = Path("reports/staging-acceptance/evidence")
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
-SAFE_REF = re.compile(r"^[A-Za-z0-9._:-]+$")
+MAX_REF_LENGTH = 2048
 
 
 class StagingEvidenceArtifactError(RuntimeError):
@@ -44,6 +44,14 @@ def non_pending_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip()) and value.strip().upper() != "PENDING"
 
 
+def logical_ref(value: object, *, label: str) -> str:
+    require(non_pending_string(value), f"{label} is missing/PENDING")
+    ref = str(value).strip()
+    require(len(ref) <= MAX_REF_LENGTH, f"{label} exceeds {MAX_REF_LENGTH} characters")
+    require(all(ord(char) >= 32 and ord(char) != 127 for char in ref), f"{label} contains control characters")
+    return ref
+
+
 def normalize_rc_sha(evidence: Mapping[str, Any]) -> str:
     rc = evidence.get("release_candidate")
     require(isinstance(rc, Mapping), "release_candidate object is missing")
@@ -59,10 +67,7 @@ def _collect_pass_refs(container: object, *, label: str) -> dict[str, list[str]]
         require(isinstance(item_id, str) and bool(item_id), f"{label} contains invalid id")
         if not isinstance(raw, Mapping) or raw.get("status") != "PASS":
             continue
-        ref = raw.get("evidence_ref")
-        require(non_pending_string(ref), f"PASS {label} {item_id} must include evidence_ref")
-        ref_text = str(ref)
-        require(bool(SAFE_REF.fullmatch(ref_text)), f"PASS {label} {item_id} evidence_ref has unsafe format")
+        ref_text = logical_ref(raw.get("evidence_ref"), label=f"PASS {label} {item_id} evidence_ref")
         refs.setdefault(ref_text, []).append(f"{label}:{item_id}")
     return refs
 
@@ -195,7 +200,10 @@ def self_test() -> dict[str, Any]:
         artifact_root = root / ALLOWED_ROOT
         artifact_root.mkdir(parents=True)
         rc_sha = "a" * 40
-        refs = ["artifact:parity:PARITY-DB", "artifact:scenario:ENV-02"]
+        refs = [
+            "reports/staging-acceptance/evidence/parity-db.json#PARITY-DB",
+            f"https://github.com/{EXPECTED_REPOSITORY}/actions/runs/102#artifact=env-02",
+        ]
         catalog: dict[str, Any] = {}
         for index, ref in enumerate(refs, start=101):
             path = artifact_root / f"artifact-{index}.json"
@@ -269,6 +277,10 @@ def self_test() -> dict[str, Any]:
             "rc_git_sha": rc_sha,
         }
         mutations.append(bad_producer)
+
+        control_ref = json.loads(json.dumps(clean))
+        control_ref["scenario_results"]["ENV-02"]["evidence_ref"] = "bad\nref"
+        mutations.append(control_ref)
 
         for index, mutation in enumerate(mutations, start=1):
             try:
