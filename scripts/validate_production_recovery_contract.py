@@ -9,6 +9,23 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 DECISION = ROOT / "scripts/production-recovery-decision.py"
+IMAGE_KEYS = (
+    "api",
+    "agent-runtime",
+    "model-gateway",
+    "tool-gateway",
+    "worker-media",
+    "sandbox-runtime",
+)
+SERVICE_IMAGE_KEY = {
+    "api": "api",
+    "agent-runtime": "agent-runtime",
+    "model-gateway": "model-gateway",
+    "tool-gateway": "tool-gateway",
+    "worker-media": "worker-media",
+    "outbox-dispatcher": "worker-media",
+    "sandbox-runtime": "sandbox-runtime",
+}
 
 
 def require(condition: bool, message: str) -> None:
@@ -33,14 +50,7 @@ def fixtures() -> list[dict[str, Any]]:
     digest = "sha256:" + "a" * 64
     images = {
         name: f"123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/lumi-{name}@{digest}"
-        for name in (
-            "api",
-            "agent-runtime",
-            "model-gateway",
-            "tool-gateway",
-            "worker-media",
-            "sandbox-runtime",
-        )
+        for name in IMAGE_KEYS
     }
     manifest = {
         "schema_version": 1,
@@ -61,8 +71,15 @@ def fixtures() -> list[dict[str, Any]]:
         "release_candidate": copy.deepcopy(rc),
         "passed": True,
         "services": [
-            {"service_name": name, "image": image, "image_matches": True, "steady": True}
-            for name, image in images.items()
+            {
+                "service_name": service,
+                "image_key": image_key,
+                "image": images[image_key],
+                "expected_image": images[image_key],
+                "image_matches": True,
+                "steady": True,
+            }
+            for service, image_key in SERVICE_IMAGE_KEY.items()
         ],
     }
     rds = {
@@ -165,6 +182,7 @@ def source_contract() -> None:
     cleanup = (ROOT / "scripts/cleanup-production-object-dr-replicas.sh").read_text()
     db_verify = (ROOT / "scripts/production-recovery-db-verify.py").read_text()
     dr_workflow = (ROOT / ".github/workflows/production-dr-rehearsal.yml").read_text()
+    decision = DECISION.read_text()
 
     for token in (
         'object_dr_purposes = toset(["assets", "exports"])',
@@ -189,6 +207,8 @@ def source_contract() -> None:
     require("COMPLETED" in cleanup and "_node73-drill/" in cleanup, "replica cleanup fail-closed scope missing")
     require("SET TRANSACTION READ ONLY" in db_verify, "DB read-only transaction missing")
     require('"error": str(exc)' not in db_verify, "DB verifier may leak exception context")
+    require("outbox-dispatcher" in decision, "recovery decision must bind dispatcher runtime identity")
+    require("exactly seven services" in decision, "recovery decision must require seven runtime services")
 
     forbidden_unversioned_delete = 'aws s3api delete-object --bucket "$EXPORTS_BUCKET" --key "$DB_EVIDENCE_KEY"'
     require(
@@ -232,6 +252,17 @@ def main() -> int:
     must_block(module, lambda f: f[5].__setitem__("source_region", "ap-southeast-1"), "cleanup source region mismatch")
     must_block(module, lambda f: f[5].__setitem__("recovery_region", "ap-northeast-1"), "cleanup recovery region mismatch")
     must_block(module, lambda f: f[1]["services"][0].__setitem__("image_matches", False), "baseline runtime mismatch")
+
+    def swap_dispatcher(values: list[dict[str, Any]]) -> None:
+        dispatcher = next(
+            item
+            for item in values[1]["services"]
+            if item["service_name"] == "outbox-dispatcher"
+        )
+        dispatcher["image"] = values[0]["images"]["api"]
+        dispatcher["image_matches"] = False
+
+    must_block(module, swap_dispatcher, "dispatcher image identity mismatch")
 
     print("production recovery contract: PASS")
     return 0
