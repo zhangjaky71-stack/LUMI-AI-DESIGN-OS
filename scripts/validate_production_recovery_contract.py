@@ -41,6 +41,10 @@ def load_decision() -> ModuleType:
     return module
 
 
+def service_capacity(service: str) -> int:
+    return 2 if service == "outbox-dispatcher" else 3
+
+
 def fixtures() -> list[dict[str, Any]]:
     rc = {
         "git_sha": "b" * 40,
@@ -77,6 +81,10 @@ def fixtures() -> list[dict[str, Any]]:
                 "image": images[image_key],
                 "expected_image": images[image_key],
                 "image_matches": True,
+                "expected_desired_count": service_capacity(service),
+                "desired_count": service_capacity(service),
+                "running_count": service_capacity(service),
+                "capacity_matches": True,
                 "steady": True,
             }
             for service, image_key in SERVICE_IMAGE_KEY.items()
@@ -209,6 +217,9 @@ def source_contract() -> None:
     require('"error": str(exc)' not in db_verify, "DB verifier may leak exception context")
     require("outbox-dispatcher" in decision, "recovery decision must bind dispatcher runtime identity")
     require("exactly seven services" in decision, "recovery decision must require seven runtime services")
+    require("_capacity_row_valid" in decision, "recovery decision must recompute runtime capacity validity")
+    require("expected_desired_count" in decision, "recovery decision must require expected runtime capacity")
+    require("capacity_matches" in decision, "recovery decision must require capacity match evidence")
 
     forbidden_unversioned_delete = 'aws s3api delete-object --bucket "$EXPORTS_BUCKET" --key "$DB_EVIDENCE_KEY"'
     require(
@@ -263,6 +274,19 @@ def main() -> int:
         dispatcher["image_matches"] = False
 
     must_block(module, swap_dispatcher, "dispatcher image identity mismatch")
+
+    def drift_dispatcher_capacity(values: list[dict[str, Any]]) -> None:
+        dispatcher = next(
+            item
+            for item in values[1]["services"]
+            if item["service_name"] == "outbox-dispatcher"
+        )
+        dispatcher["desired_count"] = dispatcher["expected_desired_count"] + 1
+        dispatcher["running_count"] = dispatcher["desired_count"]
+        dispatcher["capacity_matches"] = True
+        dispatcher["steady"] = True
+
+    must_block(module, drift_dispatcher_capacity, "dispatcher capacity identity mismatch")
 
     print("production recovery contract: PASS")
     return 0
