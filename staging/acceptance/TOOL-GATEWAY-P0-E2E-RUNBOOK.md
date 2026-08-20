@@ -2,69 +2,93 @@
 
 Status: **release-blocking evidence procedure** for NODE-73.
 
-This runbook does not grant PASS by itself. It defines how to collect the independent evidence consumed by `scripts/validate_tool_gateway_e2e_evidence.py`.
+This runbook does not grant PASS by itself. It defines the synthetic, exact-RC evidence chain consumed by the Tool Gateway E2E validator and Staging Acceptance.
 
-## 1. Non-negotiable release identity
+## 1. Release identity is non-negotiable
 
-Run the probe only after the staging release candidate is frozen.
+Collect only against a frozen Production-like Staging release candidate.
 
-Capture before any tool call:
+The evidence chain must bind:
 
 - full 40-character Git SHA;
-- release version returned by the deployed control plane;
 - digest-pinned API image;
 - digest-pinned Agent Runtime image;
 - digest-pinned Tool Gateway image;
-- the same `container_image_set_ref` used by Staging Acceptance.
+- digest-pinned Sandbox Runtime image;
+- the canonical parent `container_image_set` used by Staging Acceptance.
 
-Do not accept mutable tags such as `latest`, branch names, or semver tags without an image digest.
+Mutable tags are not evidence.
 
-The final Tool Gateway E2E evidence must bind these identities to the parent staging evidence. The validator rejects evidence from another SHA, version, API image, Agent Runtime image, or Tool Gateway image.
+`scripts/run_tool_gateway_p0_staging_e2e_ecs.py` records the **actually deployed** task-definition images. It does not claim that those images are the RC merely because the caller supplied an RC SHA. `scripts/validate_tool_gateway_p0_runtime_identity.py` must later join the runtime identity to the canonical parent staging evidence and require exact SHA/image equality.
 
-## 2. Data and identity boundary
+## 2. Synthetic-only fixture
 
-Use synthetic staging data only. Production customer data is forbidden.
+Production customer data is forbidden.
 
-Prepare or select one synthetic organization/project containing:
-
-- one ready source Asset with an AssetRights row;
-- one Artifact in the same project;
-- one AgentRun in the same organization/project;
-- one Task bound to that AgentRun/project.
-
-The Task is the canonical project-scope anchor. Tool arguments must not be allowed to choose another `project_id`.
-
-Never place raw secret values in evidence. Record only secret resource identity or redacted deployment metadata when needed.
-
-## 3. Run the Agent Runtime P0 probe
-
-The probe is `scripts/probe_tool_gateway_p0_from_agent_runtime.py`.
-
-Run it **inside the deployed Agent Runtime execution identity**, for example as a one-off task based on the exact accepted Agent Runtime task definition/image. Do not run it from a developer laptop and do not inject the Tool Gateway secret into an unrelated runtime.
-
-Required environment:
+The canonical fixture materializer is:
 
 ```text
-LUMI_TOOL_GATEWAY_URL
-LUMI_TOOL_GATEWAY_AUTH_SECRET
-LUMI_PROBE_ORGANIZATION_ID
-LUMI_PROBE_AGENT_RUN_ID
-LUMI_PROBE_TASK_ID
-LUMI_PROBE_SOURCE_ASSET_ID
-LUMI_PROBE_ARTIFACT_ID
-LUMI_PROBE_DERIVED_IDEMPOTENCY_KEY
+python -m lumi_api.tool_gateway_staging_fixture
 ```
 
-Optional environment:
+It runs as a one-shot task derived from the deployed API service and reuses the canonical synthetic seed organization/project. It deterministically materializes and collision-checks:
+
+- one AgentRun;
+- one Task bound to the AgentRun/project;
+- one ready source Asset;
+- complete source AssetRights allowing derived creation;
+- one Artifact in the same project.
+
+The materializer uses a PostgreSQL advisory lock and fails closed if a deterministic fixture ID already exists with different identity-bearing fields.
+
+Fixture resource IDs are stable. **NODE-20 idempotency keys are not stable.** Every evidence collection creates a fresh run-scoped idempotency key so the run can independently prove first execution plus replay without reusing a previous acceptance operation.
+
+## 3. One canonical staging launcher
+
+Use:
 
 ```text
-LUMI_PROBE_SEARCH_QUERY
-LUMI_PROBE_FETCH_URL
-LUMI_PROBE_TRACE_PREFIX
-LUMI_PROBE_OUTPUT
+scripts/run_tool_gateway_p0_staging_e2e_ecs.py
 ```
 
-The probe invokes exactly these P0 tools:
+The launcher discovers the deployed ECS services directly from `lumi-staging-cluster`:
+
+1. `api`
+2. `agent-runtime`
+3. `tool-gateway`
+4. `sandbox-runtime`
+
+For each service it reuses the deployed service's exact task definition and `awsvpc` network configuration. It requires:
+
+- active ECS service;
+- digest-pinned deployed image;
+- private subnets;
+- declared security groups;
+- `assignPublicIp=DISABLED`;
+- canonical `awslogs` configuration.
+
+It does not retrieve Secrets Manager values and does not pass product secrets through ECS overrides. The one-shot API and Agent Runtime tasks inherit the same task-definition secret bindings as their deployed services.
+
+Execution order:
+
+1. API one-shot materializes the synthetic fixture.
+2. Launcher reads only the sanitized fixture marker from API CloudWatch logs.
+3. Launcher creates a fresh run-scoped NODE-20 key and trace prefix.
+4. Agent Runtime one-shot executes the P0 probe.
+5. The same Agent Runtime one-shot independently collects PostgreSQL audit/idempotency/rights evidence and Tool Gateway readiness.
+6. The launcher records the four deployed runtime identities and sanitized ECS task metadata.
+
+GitHub itself does not query the staging application database and does not receive internal HMAC secrets.
+
+## 4. Probe semantics: 8 P0 tools + 2 independent follow-up calls
+
+The raw Agent Runtime probe is:
+
+```text
+scripts/probe_tool_gateway_p0_from_agent_runtime.py
+```
+
+The first eight calls are exactly:
 
 1. `web.search@1.0.0`
 2. `web.fetch@1.0.0`
@@ -73,17 +97,59 @@ The probe invokes exactly these P0 tools:
 5. `artifact.query@1.0.0`
 6. `media.inspect@1.0.0`
 7. `asset.write-derived@1.0.0`
-8. `sandbox.execute@1.0.0`
+8. `sandbox.execute@1.0.0` — normal small-output execution
 
-It then repeats `asset.write-derived` with the same idempotency key and equivalent arguments.
+The probe then makes two additional calls with distinct `tool_call_id` values:
 
-The sandbox probe intentionally emits more than the P0 inline result limit so the Tool Gateway result-offloader must return an internal `s3ref://...#sha256=...` rather than inline data.
+9. `asset.write-derived@1.0.0` replay using the same idempotency key and equivalent arguments;
+10. a **separate** oversized `sandbox.execute@1.0.0` call dedicated to result-offload proof.
 
-The probe output is **raw call evidence**, not the final PASS artifact.
+Therefore the durable audit evidence requires **10 distinct tool-call IDs**. The normal sandbox call proves execution semantics; the oversized sandbox call proves result-offload semantics. They must never be collapsed into one call.
 
-## 4. Independently prove readiness
+## 5. Real oversized-result semantics
 
-Capture `/health/ready` from the exact Tool Gateway RC before the probe.
+Tool Gateway intentionally does **not** replace an oversized result with `data=null`.
+
+For an oversized output, the real runtime does all of the following:
+
+- serializes the complete canonical result;
+- stores the complete result in the private exports bucket;
+- returns `full_result_ref=s3ref://...#sha256=...`;
+- returns `truncated=true`;
+- keeps a **bounded inline preview** in `ToolResult.data` so the Agent retains limited context without receiving the full payload.
+
+The raw probe therefore legitimately reports:
+
+```text
+inline_data_present = true
+truncated = true
+full_result_ref = s3ref://...
+```
+
+`scripts/validate_tool_gateway_p0_offload_probe.py` validates the real semantics and requires:
+
+```text
+inline_preview_present = true
+inline_preview_bytes <= 64 KiB
+full_payload_inline_present = false
+serialized S3 result bytes > 64 KiB
+```
+
+The legacy v1 final evidence field `inline_data_present=false` is retained only as a compatibility meaning of **"the complete payload is not inline"**. `scripts/assemble_tool_gateway_p0_e2e_evidence_v2.py` first validates the untouched raw probe, then creates a compatibility view for the legacy assembler and emits explicit v2 fields:
+
+```text
+semantics_version = 2
+truncated = true
+inline_preview_present = true
+inline_preview_bytes = <measured>
+full_payload_inline_present = false
+```
+
+Do not alter the raw probe to hide the preview.
+
+## 6. Independently prove readiness
+
+`scripts/collect_tool_gateway_p0_readiness.py` calls the exact private deployed Tool Gateway `/health/ready` endpoint from the Agent Runtime trust boundary.
 
 Required values:
 
@@ -98,21 +164,25 @@ Required values:
 }
 ```
 
-Store the unmodified response in the release evidence bundle and reference it from `readiness.probe_ref`.
+A health-only process with missing production adapters cannot pass.
 
-## 5. Independently prove NODE-20 replay
+## 7. Independently prove NODE-20 replay and durable state
 
-Do not rely only on the second HTTP response saying `replayed=true`.
+`scripts/collect_tool_gateway_p0_db_evidence.py` reads the canonical PostgreSQL state from inside the staging application trust boundary.
 
-From PostgreSQL, collect the canonical side-effect operation for the write tool and prove:
+It must prove:
 
-- the first and replay call resolve to the same operation identity/idempotency key hash;
+- all 10 expected tool calls have durable audit events;
+- the first write and replay resolve through canonical NODE-20 state;
+- replay returns the same derived `asset://<uuid>`;
 - the adapter was invoked once;
-- replay returned the same `asset://<uuid>`;
-- exactly one derived Asset exists for the accepted operation;
-- no duplicate derived Asset was materialized.
+- exactly one derived Asset exists;
+- no duplicate derived Asset exists;
+- derived rights exactly inherit the source rights fields;
+- no cross-tenant audit rows are admitted;
+- secret material is absent from persisted evidence.
 
-The final evidence requires:
+Required replay invariants include:
 
 ```text
 adapter_invocation_count = 1
@@ -121,106 +191,165 @@ replayed = true
 first_asset_ref == replay_asset_ref
 ```
 
-## 6. Independently prove derived Asset rights
+## 8. Independently prove private S3 offload
 
-Read the source AssetRights and derived AssetRights rows from PostgreSQL.
+`scripts/verify_tool_gateway_p0_offload_s3.py` runs under the release-evidence AWS role, not under Agent Runtime.
 
-The derived Asset must inherit the canonical rights fields from the source Asset. The source Asset and Artifact must both belong to the Task project.
+It parses the exact `s3ref://...#sha256=...` from the raw offload call and uses S3 metadata/control-plane APIs only. It proves:
 
-Record `rights_inherited=true` only after comparing the persisted rows. Do not infer it from request metadata.
+- the object exists in the canonical staging exports bucket;
+- object length exceeds the 64 KiB inline threshold;
+- SHA-256 metadata agrees with the result ref;
+- content type is `application/json`;
+- KMS encryption is enabled;
+- PublicAccessBlock is fully enabled;
+- ownership is `BucketOwnerEnforced`;
+- bucket policy status is non-public;
+- lifecycle expiration is enabled;
+- no public or presigned URL is returned.
 
-## 7. Independently prove durable audit
+The evidence collector must not download the offloaded payload just to prove it exists.
 
-Query the canonical durable Tool audit store by the probe tool-call IDs/trace IDs.
+## 9. Live Brave search evidence
 
-Required evidence:
+A unit test is not live provider evidence.
 
-- every first-call P0 tool has a persisted audit row;
-- the replay call is represented according to the canonical audit contract;
-- no expected tool-call ID is missing;
-- no cross-tenant audit row is returned for the probe scope;
-- raw provider/API/internal secrets are absent from persisted audit material.
+`scripts/derive_tool_gateway_p0_search_evidence.py` joins:
 
-The final evidence must report an exact expected/persisted count and an empty `missing_tool_calls` array.
+- the successful exact-RC `web.search` probe result;
+- the digest-pinned Tool Gateway image from parent staging evidence;
+- required Tool Gateway source provenance for the fixed Brave backend and no-redirect transport.
 
-## 8. Independently prove S3 offload
+The final evidence requires:
 
-Take the `s3ref://...#sha256=...` returned by the oversized sandbox result and parse the private bucket/key/hash.
-
-Using an authorized release-evidence role, perform `HeadObject` against that exact object and prove:
-
-- object exists in the accepted exports bucket;
-- object length exceeds the tool inline threshold;
-- SHA-256 metadata/checksum agrees with the result ref;
-- the object is not represented by a public or presigned URL in the tool result;
-- the object is covered by the staging KMS/PublicAccessBlock/TLS-only storage boundary.
-
-The Agent Runtime probe itself should not be granted extra exports-bucket permission just to make this check convenient. Keep the object-store check independent.
-
-## 9. Independently prove live Brave search
-
-A successful parser/unit test is not live provider evidence.
-
-For the `web.search` call, prove from the deployed request/result and release logs/metrics that:
-
-- provider is Brave;
-- provider host is `api.search.brave.com`;
-- an actual provider request occurred during the probe window;
-- provider returned HTTP 200;
-- at least one normalized search result was returned;
-- no redirect was followed;
-- provider credential material is absent from evidence/log output.
+```text
+provider = brave
+provider_host = api.search.brave.com
+provider_http_status = 200
+result_count > 0
+redirect_followed = false
+credential_material_present = false
+```
 
 Never store `LUMI_BRAVE_SEARCH_API_KEY` or `X-Subscription-Token` in evidence.
 
-## 10. Prove scoped reads do not disclose storage location
+## 10. Scoped reads must not expose storage internals
 
-For `asset.read`, `artifact.query`, and `media.inspect`, inspect the returned JSON and record:
+For `asset.read`, `artifact.query`, and `media.inspect`, the assembled evidence must prove:
 
 ```text
 storage_location_exposed = false
 ```
 
-The response must not expose raw S3 bucket names, object keys, provider credentials, or presigned URLs. Resource identity should be represented through canonical internal refs such as `asset://...` and `artifact://...`.
+Responses must not disclose raw bucket names, object keys, provider credentials, or presigned URLs. Canonical internal refs such as `asset://...` and `artifact://...` are allowed.
 
-## 11. Assemble the final Tool Gateway E2E object
+## 11. Collection workflow: evidence only, never PASS
 
-Use `staging/acceptance/tool-gateway-e2e-v1.json` as the schema/template, replacing every `PENDING` value with measured evidence.
+Run the workflow:
 
-The final object may be stored standalone for review, but Staging Acceptance must embed the complete object at:
+```text
+Collect Staging Tool Gateway P0 E2E
+```
+
+It is `workflow_dispatch`-only and requires:
+
+```text
+release_git_sha = <exact 40-char RC SHA>
+collect_ack = COLLECT_TOOL_GATEWAY_P0
+```
+
+It performs:
+
+- exact checkout SHA assertion;
+- AWS OIDC staging role assumption;
+- synthetic API fixture one-shot;
+- Agent Runtime probe + DB + readiness one-shot;
+- independent S3 offload verification;
+- raw preview/offload semantic validation;
+- evidence checksums.
+
+Its status file is deliberately:
+
+```text
+COLLECTED_NOT_ACCEPTED
+```
+
+A successful collector run is **not** Staging PASS because it has not yet proved that the deployed runtime digests equal the canonical parent RC image set.
+
+## 12. Freeze/assemble workflow: exact-RC join
+
+Run the workflow:
+
+```text
+Freeze Staging Tool Gateway P0 E2E
+```
+
+It requires:
+
+- exact RC SHA;
+- successful collector workflow run ID;
+- canonical parent staging evidence path below `reports/staging-acceptance/`;
+- acknowledgement `FREEZE_STAGING_TOOL_GATEWAY_P0:<rc-sha>`.
+
+The freezer revalidates the source workflow identity and exact `head_sha`, downloads exactly one copy of each independent evidence file, and then requires:
+
+1. raw offload semantics pass again;
+2. runtime SHA equals parent staging RC SHA;
+3. deployed API digest equals parent API digest;
+4. deployed Agent Runtime digest equals parent Agent Runtime digest;
+5. deployed Tool Gateway digest equals parent Tool Gateway digest;
+6. deployed Sandbox Runtime digest equals parent Sandbox Runtime digest;
+7. all four services used private deployed network identities;
+8. Brave evidence derives from the exact-RC probe plus canonical provenance;
+9. v2 Tool Gateway evidence assembly passes the legacy contract plus explicit preview semantics.
+
+The immutable package is frozen under:
+
+```text
+reports/staging-acceptance/<rc-sha>/tool-gateway-p0-e2e/
+```
+
+An existing non-identical package for the same RC SHA is never overwritten.
+
+## 13. Final validation and Staging Acceptance
+
+The standalone Tool Gateway evidence is still validated by:
+
+```bash
+python3 scripts/validate_tool_gateway_e2e_evidence.py \
+  --evidence reports/staging-acceptance/<rc-sha>/tool-gateway-p0-e2e/tool-gateway-e2e.json
+```
+
+The freeze package also contains a merged staging evidence candidate with the Tool Gateway object embedded at:
 
 ```text
 tool_gateway_e2e
 ```
 
-inside the full staging evidence JSON.
+That merged file must then pass the normal Staging Acceptance decision chain. Tool Gateway P0 evidence does not waive:
 
-Do not paste the template placeholder into a release evidence file and call it complete. The validator recursively rejects any remaining `PENDING` value.
-
-## 12. Validate before release decision
-
-Standalone validation:
-
-```bash
-python3 scripts/validate_tool_gateway_e2e_evidence.py \
-  --evidence reports/staging-acceptance/runtime/tool-gateway-e2e.json
-```
-
-Full Staging Acceptance validation must use the full staging evidence file. This additionally proves the Tool Gateway E2E SHA/version/API/Agent Runtime/Tool Gateway images exactly match the parent RC evidence.
-
-A structural PASS does not waive the normal Staging Acceptance, frozen dependency graph, image provenance, migration, security, rollback, DR, or production-readiness gates.
+- canonical frozen dependency graph;
+- six-image build/SBOM/provenance gates;
+- PostgreSQL migrations and ORM drift checks;
+- Terraform plan/apply and live network probes;
+- media-generation E2E;
+- rollback/DR/security/performance/AI regression gates;
+- production smoke/canary evidence.
 
 ## Release rule
 
-If any of the following is missing, NODE-73 stays BLOCKED:
+Keep NODE-73 **BLOCKED** if any of these is missing:
 
-- frozen dependency graph;
-- exact RC identities;
-- 8/8 Tool Gateway readiness;
-- all 8 P0 calls;
-- live Brave search;
-- same-result NODE-20 replay;
+- exact RC runtime identity join;
+- synthetic-only fixture proof;
+- 8/8 readiness;
+- all 8 P0 first calls;
+- independent write replay call;
+- independent oversized sandbox offload call;
+- 10/10 durable audit events;
+- live Brave search evidence;
 - inherited rights;
-- durable audit;
-- private S3 offload HEAD verification;
-- exact evidence-to-RC identity binding.
+- private S3 `HeadObject`/bucket-control evidence;
+- bounded preview + durable full-result proof;
+- immutable frozen evidence package;
+- full Staging Acceptance PASS.
