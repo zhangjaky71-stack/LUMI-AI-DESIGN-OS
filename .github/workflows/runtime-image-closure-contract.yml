@@ -34,13 +34,17 @@ on:
       - "infra/iac/environments/staging/app/**"
       - "infra/iac/environments/production/core/**"
       - "infra/iac/environments/production/app/**"
+      - "production/runtime-images/**"
       - "staging/acceptance/evidence-template.json"
+      - "scripts/runtime_image_set.py"
+      - "scripts/validate_runtime_image_build_pipeline.py"
       - "scripts/validate_runtime_image_closure.py"
       - "scripts/validate_side_effect_control_provenance.py"
       - "scripts/validate_tool_audit_provenance.py"
       - "scripts/validate_tool_approval_provenance.py"
       - "scripts/validate_tool_data_provenance.py"
       - "scripts/validate_tool_result_offload_provenance.py"
+      - ".github/workflows/build-runtime-image-set.yml"
       - ".github/workflows/staging-acceptance-gate.yml"
       - ".github/workflows/runtime-image-closure-contract.yml"
   workflow_dispatch:
@@ -63,6 +67,8 @@ jobs:
         run: |
           set -euo pipefail
           python -m compileall -q \
+            scripts/runtime_image_set.py \
+            scripts/validate_runtime_image_build_pipeline.py \
             scripts/validate_runtime_image_closure.py \
             scripts/validate_side_effect_control_provenance.py \
             scripts/validate_tool_audit_provenance.py \
@@ -96,7 +102,10 @@ jobs:
           done
 
       - name: Require all six runtimes to have real frozen production image closure
-        run: python scripts/validate_runtime_image_closure.py
+        run: |
+          python scripts/validate_runtime_image_closure.py
+          python scripts/runtime_image_set.py validate-manifest
+          python scripts/validate_runtime_image_build_pipeline.py
 
       - name: Require canonical Tool Gateway production binding provenance
         run: |
