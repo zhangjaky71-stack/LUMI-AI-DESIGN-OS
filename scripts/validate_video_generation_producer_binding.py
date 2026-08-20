@@ -29,6 +29,11 @@ REQUIRED_RUNTIME_IMAGES = {
     "worker-media",
     "sandbox-runtime",
 }
+API_REQUIRED_SOURCE_PATHS = {
+    "apps/api/alembic/versions/0023_video_generation_runtime.py",
+    "apps/api/src/lumi_api/generations/video_service.py",
+    "apps/api/src/lumi_api/persistence/models/video_generation.py",
+}
 
 
 def require(condition: bool, message: str) -> None:
@@ -136,12 +141,7 @@ def validate_runtime_provenance() -> None:
     require(isinstance(api, dict) and isinstance(worker, dict), "api/worker runtime provenance missing")
     api_sources = set(api.get("source_paths") or [])
     worker_sources = set(worker.get("source_paths") or [])
-    required_api = {
-        "apps/api/alembic/versions/0023_video_generation_runtime.py",
-        "apps/api/src/lumi_api/generations/video_service.py",
-        "apps/api/src/lumi_api/media_dispatch.py",
-        "apps/api/src/lumi_api/persistence/models/video_generation.py",
-    }
+    required_api = API_REQUIRED_SOURCE_PATHS | {"apps/api/src/lumi_api/media_dispatch.py"}
     required_worker = {
         "services/video-generation",
         "apps/worker-media/src/lumi_worker_media/cli.py",
