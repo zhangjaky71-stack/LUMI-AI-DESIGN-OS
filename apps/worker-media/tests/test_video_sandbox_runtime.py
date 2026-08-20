@@ -119,7 +119,7 @@ def _runtime(store: _FakeStore) -> _FakeSandboxRuntime:
     )
 
 
-def test_typed_ffmpeg_uses_exchange_bucket_and_promotes_final_video() -> None:
+def test_exchange_manifest_and_promotion_use_server_side_copy() -> None:
     store = _FakeStore()
     asset_bucket = "lumi-assets"
     exchange_bucket = "lumi-sandbox"
@@ -176,7 +176,7 @@ def test_typed_ffmpeg_uses_exchange_bucket_and_promotes_final_video() -> None:
     assert not any(bucket == exchange_bucket for bucket, _ in store.objects)
 
 
-def test_input_stage_checksum_mismatch_fails_before_sandbox_http() -> None:
+def test_input_stage_checksum_mismatch_fails_closed() -> None:
     store = _CorruptingStageStore()
     source_key = "generated/video/v1/org/project/source/clip.mp4"
     store.seed("lumi-assets", source_key, b"source-mp4" * 32, "video/mp4")
