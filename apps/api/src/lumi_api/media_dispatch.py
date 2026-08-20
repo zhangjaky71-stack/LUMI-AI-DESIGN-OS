@@ -9,15 +9,20 @@ from lumi_domain.job_dispatch import (
     IMAGE_TRANSFORM_TASK_NAME,
     JOB_DISPATCH_EVENT_NAME,
     JOB_DISPATCH_SCHEMA_VERSION,
+    VIDEO_RENDER_JOB_KIND,
+    VIDEO_RENDER_QUEUE,
+    VIDEO_RENDER_TASK_NAME,
     JobDispatch,
     JobMessage,
 )
-from lumi_image_generation.spec_codec import decode_spec
+from lumi_image_generation.spec_codec import decode_spec as decode_image_spec
+from lumi_video_generation.spec_codec import decode_spec as decode_video_spec
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .persistence.models import Generation, OutboxEvent, Task
 
 IMAGE_TASK_INPUT_SCHEMA_VERSION = 1
+VIDEO_TASK_INPUT_SCHEMA_VERSION = 1
 MEDIA_DISPATCH_EVENT_NAME = JOB_DISPATCH_EVENT_NAME
 MEDIA_DISPATCH_SCHEMA_VERSION = JOB_DISPATCH_SCHEMA_VERSION
 CanonicalMediaDispatch = JobDispatch
@@ -57,8 +62,8 @@ def build_image_transform_dispatch(
         task_input.get("image_generation_spec"),
         "MEDIA_DISPATCH_TASK_SPEC_MISSING",
     )
-    task_spec = decode_spec(raw_spec)
-    generation_spec = decode_spec(
+    task_spec = decode_image_spec(raw_spec)
+    generation_spec = decode_image_spec(
         _object(generation.request_json, "MEDIA_DISPATCH_GENERATION_SPEC_MISSING")
     )
     if task_spec.semantic_hash != generation_spec.semantic_hash:
@@ -87,6 +92,51 @@ def build_image_transform_dispatch(
     return dispatch
 
 
+def build_video_render_dispatch(
+    *,
+    task: Task,
+    trace_id: str | None,
+) -> JobDispatch:
+    task_id = _uuid(task.id, "VIDEO_DISPATCH_TASK_ID_REQUIRED")
+    organization_id = _uuid(task.organization_id, "VIDEO_DISPATCH_ORGANIZATION_ID_REQUIRED")
+    project_id = _uuid(task.project_id, "VIDEO_DISPATCH_PROJECT_ID_REQUIRED")
+    if task.type != VIDEO_RENDER_JOB_KIND:
+        raise ValueError("VIDEO_DISPATCH_TASK_TYPE_MISMATCH")
+
+    task_input = _object(task.input_json, "VIDEO_DISPATCH_TASK_INPUT_INVALID")
+    expected_fields = {"schema_version", "job_kind", "video_generation_spec"}
+    if set(task_input) != expected_fields:
+        raise ValueError("VIDEO_DISPATCH_TASK_INPUT_FIELDS_INVALID")
+    if task_input.get("schema_version") != VIDEO_TASK_INPUT_SCHEMA_VERSION:
+        raise ValueError("VIDEO_DISPATCH_TASK_INPUT_SCHEMA_UNSUPPORTED")
+    if task_input.get("job_kind") != VIDEO_RENDER_JOB_KIND:
+        raise ValueError("VIDEO_DISPATCH_TASK_INPUT_KIND_MISMATCH")
+    spec = decode_video_spec(
+        _object(task_input.get("video_generation_spec"), "VIDEO_DISPATCH_TASK_SPEC_MISSING")
+    )
+    if UUID(spec.organization_id) != organization_id:
+        raise ValueError("VIDEO_DISPATCH_SPEC_ORGANIZATION_MISMATCH")
+    if UUID(spec.project_id) != project_id:
+        raise ValueError("VIDEO_DISPATCH_SPEC_PROJECT_MISMATCH")
+    if UUID(spec.task_id) != task_id:
+        raise ValueError("VIDEO_DISPATCH_SPEC_TASK_MISMATCH")
+    operation_id = UUID(spec.operation_id)
+
+    dispatch = JobDispatch(
+        task_name=VIDEO_RENDER_TASK_NAME,
+        queue=VIDEO_RENDER_QUEUE,
+        message=JobMessage(
+            job_id=task_id,
+            organization_id=organization_id,
+            project_id=project_id,
+            operation_id=operation_id,
+            trace_id=trace_id,
+        ),
+    )
+    dispatch.as_outbox_payload()
+    return dispatch
+
+
 def stage_image_transform_dispatch(
     session: AsyncSession,
     *,
@@ -94,18 +144,45 @@ def stage_image_transform_dispatch(
     generation: Generation,
     trace_id: str | None,
 ) -> OutboxEvent:
-    """Stage the canonical dispatch in the caller's transaction; never touch the broker."""
+    """Stage the canonical image dispatch in the caller's transaction."""
 
-    dispatch = build_image_transform_dispatch(
-        task=task,
-        generation=generation,
-        trace_id=trace_id,
+    return _stage_dispatch(
+        session,
+        dispatch=build_image_transform_dispatch(
+            task=task,
+            generation=generation,
+            trace_id=trace_id,
+        ),
+        namespace="image-transform",
     )
+
+
+def stage_video_render_dispatch(
+    session: AsyncSession,
+    *,
+    task: Task,
+    trace_id: str | None,
+) -> OutboxEvent:
+    """Stage the canonical video dispatch in the caller's transaction."""
+
+    return _stage_dispatch(
+        session,
+        dispatch=build_video_render_dispatch(task=task, trace_id=trace_id),
+        namespace="video-render",
+    )
+
+
+def _stage_dispatch(
+    session: AsyncSession,
+    *,
+    dispatch: JobDispatch,
+    namespace: str,
+) -> OutboxEvent:
     operation_id = dispatch.message.operation_id
     if operation_id is None:
         raise ValueError("MEDIA_DISPATCH_OPERATION_REQUIRED")
     event = OutboxEvent(
-        id=_dispatch_event_id(operation_id, dispatch.message.job_id),
+        id=_dispatch_event_id(operation_id, dispatch.message.job_id, namespace=namespace),
         organization_id=dispatch.message.organization_id,
         event_name=MEDIA_DISPATCH_EVENT_NAME,
         aggregate_type="task",
@@ -118,8 +195,10 @@ def stage_image_transform_dispatch(
     return event
 
 
-def _dispatch_event_id(operation_id: UUID, task_id: UUID) -> UUID:
-    return uuid5(operation_id, f"lumi:image-transform-dispatch:{task_id}")
+def _dispatch_event_id(operation_id: UUID, task_id: UUID, *, namespace: str) -> UUID:
+    if namespace not in {"image-transform", "video-render"}:
+        raise ValueError("MEDIA_DISPATCH_NAMESPACE_INVALID")
+    return uuid5(operation_id, f"lumi:{namespace}-dispatch:{task_id}")
 
 
 def _object(value: object, error: str) -> dict[str, Any]:
