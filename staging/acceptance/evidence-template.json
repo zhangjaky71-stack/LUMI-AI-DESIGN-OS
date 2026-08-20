@@ -90,6 +90,7 @@
     "provider_sandbox": "PENDING",
     "production_candidate_quality_sample": "PENDING"
   },
+  "evidence_artifacts": {},
   "environment_parity": {},
   "scenario_results": {},
   "open_issues": [],
