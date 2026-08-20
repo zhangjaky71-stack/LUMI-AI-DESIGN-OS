@@ -5,10 +5,10 @@ import argparse
 import copy
 import importlib.util
 import json
-import tempfile
 from pathlib import Path
 from types import ModuleType
 from typing import Any
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 STAGING_GATE = ROOT / "scripts" / "staging-acceptance-gate.py"
@@ -46,9 +46,24 @@ def _load_gate() -> ModuleType:
     return module
 
 
+def _validate_run_id(value: str) -> str:
+    if not value.isdecimal() or int(value) <= 0:
+        raise BindingError("runtime image build run id must be a positive decimal GitHub Actions run id")
+    return value
+
+
+def _run_id_from_url(build_run_url: str) -> str:
+    parsed = urlsplit(build_run_url)
+    if parsed.scheme != "https" or parsed.hostname != "github.com" or parsed.query or parsed.fragment:
+        raise BindingError("runtime image build_run_url must be a canonical github.com HTTPS run URL")
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) != 5 or parts[2:4] != ["actions", "runs"]:
+        raise BindingError("runtime image build_run_url must use /<owner>/<repo>/actions/runs/<id>")
+    return _validate_run_id(parts[4])
+
+
 def expected_image_set_ref(*, build_run_url: str, git_sha: str) -> str:
-    if not build_run_url.startswith("https://github.com/"):
-        raise BindingError("runtime image build_run_url must be a GitHub HTTPS URL")
+    _run_id_from_url(build_run_url)
     if len(git_sha) != 40 or any(char not in "0123456789abcdef" for char in git_sha.lower()):
         raise BindingError("runtime image git_sha must be an exact hexadecimal SHA")
     return (
@@ -57,7 +72,12 @@ def expected_image_set_ref(*, build_run_url: str, git_sha: str) -> str:
     )
 
 
-def validate_binding(evidence: dict[str, Any], frozen: dict[str, Any]) -> dict[str, Any]:
+def validate_binding(
+    evidence: dict[str, Any],
+    frozen: dict[str, Any],
+    *,
+    expected_run_id: str | None = None,
+) -> dict[str, Any]:
     if frozen.get("schema_version") != 1 or frozen.get("kind") != "LUMI_RUNTIME_IMAGE_SET_V1":
         raise BindingError("frozen runtime image set schema/kind mismatch")
     evidence_rc = evidence.get("release_candidate")
@@ -75,6 +95,9 @@ def validate_binding(evidence: dict[str, Any], frozen: dict[str, Any]) -> dict[s
     build_run_url = frozen.get("build_run_url")
     if not isinstance(build_run_url, str):
         raise BindingError("frozen runtime image set build_run_url missing")
+    build_run_id = _run_id_from_url(build_run_url)
+    if expected_run_id is not None and build_run_id != _validate_run_id(expected_run_id):
+        raise BindingError("downloaded runtime image set does not originate from requested build run id")
     expected_ref = expected_image_set_ref(build_run_url=build_run_url, git_sha=evidence_sha)
     if evidence_rc.get("container_image_set_ref") != expected_ref:
         raise BindingError("release_candidate.container_image_set_ref does not bind the frozen build artifact")
@@ -104,6 +127,7 @@ def validate_binding(evidence: dict[str, Any], frozen: dict[str, Any]) -> dict[s
         "status": "PASS",
         "git_sha": evidence_sha.lower(),
         "version": evidence_rc.get("version"),
+        "build_run_id": build_run_id,
         "container_image_set_ref": expected_ref,
         "runtime_count": 6,
     }
@@ -154,9 +178,15 @@ def _fixture() -> tuple[dict[str, Any], dict[str, Any]]:
     return evidence, frozen
 
 
-def _must_block(evidence: dict[str, Any], frozen: dict[str, Any], label: str) -> None:
+def _must_block(
+    evidence: dict[str, Any],
+    frozen: dict[str, Any],
+    label: str,
+    *,
+    expected_run_id: str | None = "123",
+) -> None:
     try:
-        validate_binding(evidence, frozen)
+        validate_binding(evidence, frozen, expected_run_id=expected_run_id)
     except BindingError:
         return
     raise BindingError(f"negative drill did not block: {label}")
@@ -164,7 +194,7 @@ def _must_block(evidence: dict[str, Any], frozen: dict[str, Any], label: str) ->
 
 def self_test() -> dict[str, Any]:
     evidence, frozen = _fixture()
-    clean = validate_binding(evidence, frozen)
+    clean = validate_binding(evidence, frozen, expected_run_id="123")
 
     digest_swap = copy.deepcopy(evidence)
     digest_swap["container_image_set"]["images"]["api"] = (
@@ -190,6 +220,16 @@ def self_test() -> dict[str, Any]:
     )
     _must_block(provenance_swap, frozen, "provenance swap")
 
+    _must_block(evidence, frozen, "requested run id swap", expected_run_id="999")
+
+    build_run_swap = copy.deepcopy(frozen)
+    build_run_swap["build_run_url"] = "https://github.com/example/lumi/actions/runs/999"
+    _must_block(evidence, build_run_swap, "frozen build run URL swap")
+
+    malformed_run_url = copy.deepcopy(frozen)
+    malformed_run_url["build_run_url"] = "https://github.com/example/lumi/actions/runs/123?x=1"
+    _must_block(evidence, malformed_run_url, "non-canonical build run URL")
+
     return {
         "status": "PASS",
         "clean": clean,
@@ -199,6 +239,9 @@ def self_test() -> dict[str, Any]:
             "rc_version_swap_blocked",
             "artifact_ref_swap_blocked",
             "provenance_swap_blocked",
+            "requested_run_id_swap_blocked",
+            "frozen_build_run_url_swap_blocked",
+            "noncanonical_build_run_url_blocked",
         ],
     }
 
@@ -207,15 +250,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Bind NODE-71 evidence to one frozen runtime image build")
     parser.add_argument("--evidence", type=Path)
     parser.add_argument("--image-set", type=Path)
+    parser.add_argument("--expected-run-id")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
 
     if args.self_test:
         print(json.dumps(self_test(), indent=2, sort_keys=True))
         return 0
-    if args.evidence is None or args.image_set is None:
-        raise BindingError("--evidence and --image-set are required unless --self-test is used")
-    result = validate_binding(_load_json(args.evidence), _load_json(args.image_set))
+    if args.evidence is None or args.image_set is None or args.expected_run_id is None:
+        raise BindingError(
+            "--evidence, --image-set and --expected-run-id are required unless --self-test is used"
+        )
+    result = validate_binding(
+        _load_json(args.evidence),
+        _load_json(args.image_set),
+        expected_run_id=args.expected_run_id,
+    )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
