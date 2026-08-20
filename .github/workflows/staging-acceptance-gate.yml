@@ -38,11 +38,16 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
       - name: Validate staging acceptance contract
         run: python3 scripts/validate_staging_acceptance_contract.py
+      - name: Drill immutable staging evidence artifact binding
+        run: python3 scripts/validate_staging_evidence_artifacts.py --self-test
       - name: Require one canonical API provenance source union
         run: python3 scripts/validate_api_provenance_source_manifest.py
       - name: Drill frozen runtime-image build binding
@@ -71,6 +76,7 @@ jobs:
             scripts/staging-acceptance-gate.py \
             scripts/staging-preflight.py \
             scripts/validate_staging_acceptance_contract.py \
+            scripts/validate_staging_evidence_artifacts.py \
             scripts/validate_api_provenance_source_manifest.py \
             scripts/validate_staging_runtime_image_binding.py \
             scripts/validate_staging_runtime_image_workflow_contract.py \
@@ -106,6 +112,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
@@ -132,6 +141,9 @@ jobs:
       LUMI_STAGING_ENV_ACK: staging
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
@@ -160,6 +172,9 @@ jobs:
       RUNTIME_IMAGE_SET_DIR: reports/staging-acceptance/runtime/runtime-image-set
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
@@ -199,6 +214,11 @@ jobs:
           print(target.relative_to(workspace))
           print(artifact_name)
           PY
+      - name: Bind every PASS claim to immutable staging evidence artifact bytes
+        run: >-
+          python3 scripts/validate_staging_evidence_artifacts.py
+          --evidence "$LUMI_STAGING_EVIDENCE_PATH"
+          --output reports/staging-acceptance/runtime/evidence-artifact-binding.json
       - name: Download frozen runtime-image set from exact build run
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
