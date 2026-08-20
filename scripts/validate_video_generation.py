@@ -16,10 +16,13 @@ SANDBOX = ROOT / "services/video-generation/src/lumi_video_generation/media_sand
 OUTPUT = ROOT / "services/video-generation/src/lumi_video_generation/output_adapter.py"
 ARTIFACT = ROOT / "services/video-generation/src/lumi_video_generation/artifact_adapter.py"
 REPOSITORY = ROOT / "services/video-generation/src/lumi_video_generation/repository.py"
+PERFORMANCE = ROOT / "services/video-generation/src/lumi_video_generation/performance_ports.py"
+PROJECT = ROOT / "services/video-generation/pyproject.toml"
 MIGRATION = ROOT / "db/migrations/0007_video_generation.sql"
 TESTS = ROOT / "services/video-generation/tests/test_video_generation.py"
 OUTPUT_TESTS = ROOT / "services/video-generation/tests/test_video_output_adapter.py"
 ROUTING_TESTS = ROOT / "services/video-generation/tests/test_video_routing_and_sandbox.py"
+PERFORMANCE_TESTS = ROOT / "services/video-generation/tests/test_performance_ports.py"
 PROVIDER_REPORT = ROOT / "reports/nodes/NODE-48/provider-benchmark.md"
 
 EXPECTED_MODES = {"TEXT_TO_VIDEO", "IMAGE_TO_VIDEO", "STORYBOARD_MULTI_SHOT"}
@@ -45,9 +48,12 @@ def main() -> None:
     output = OUTPUT.read_text(encoding="utf-8")
     artifact = ARTIFACT.read_text(encoding="utf-8")
     repository = REPOSITORY.read_text(encoding="utf-8")
+    performance = PERFORMANCE.read_text(encoding="utf-8")
+    project = PROJECT.read_text(encoding="utf-8")
     tests = TESTS.read_text(encoding="utf-8")
     output_tests = OUTPUT_TESTS.read_text(encoding="utf-8")
     routing_tests = ROUTING_TESTS.read_text(encoding="utf-8")
+    performance_tests = PERFORMANCE_TESTS.read_text(encoding="utf-8")
     sql = MIGRATION.read_text(encoding="utf-8")
     provider_report = PROVIDER_REPORT.read_text(encoding="utf-8")
 
@@ -75,6 +81,13 @@ def main() -> None:
     require('type="VIDEO"' in artifact and 'type="COMPOSED_FROM"' in artifact, "video Artifact lineage missing")
     require("provenance.paid_operation_id" in artifact, "shot attempt artifact identity must bind paid operation")
     require("Decimal" in model and "float" in model, "Decimal validation contract missing")
+
+    require("lumi-domain" in project, "video package must depend on canonical performance domain")
+    require("class TimedMediaSandbox" in performance, "real video postprocess timing adapter missing")
+    require("PerformanceStage.POSTPROCESS" in performance, "FFmpeg composition must emit postprocess stage")
+    require("measure_performance_stage" in performance, "postprocess timing must use canonical stage runtime")
+    require("self.inner.render(timeline)" in performance, "postprocess timing must wrap real media render")
+    require("MemoryMediaSandbox" not in performance, "performance producer must not wrap a synthetic sandbox")
 
     required_sql = (
         "video_generation_jobs",
@@ -108,9 +121,17 @@ def main() -> None:
     require("test_provider_url_stops_at_staging" in output_tests, "staged output regression missing")
     require("test_request_provider_exclusion_routes_retry_to_second_provider" in routing_tests, "provider retry exclusion regression missing")
     require("test_multi_track_audio_is_compiled" in routing_tests, "multi-track audio regression missing")
+    for token in (
+        "test_timed_media_sandbox_records_real_postprocess",
+        "test_timed_media_sandbox_records_error_and_preserves_exception",
+        "test_timed_media_sandbox_is_noop_when_telemetry_disabled",
+        "PerformanceStage.POSTPROCESS",
+        "PerformanceOutcome.ERROR",
+    ):
+        require(token in performance_tests, f"missing postprocess telemetry regression: {token}")
 
     require("PENDING" in provider_report and "no live provider score" in provider_report.casefold(), "live provider benchmark honesty gate missing")
-    print("NODE-48 video generation architecture contract: OK")
+    print("NODE-48 video generation architecture contract: OK (Hosted Worker binding is gated separately)")
 
 
 if __name__ == "__main__":
