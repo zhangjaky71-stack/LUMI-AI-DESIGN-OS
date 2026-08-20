@@ -13,6 +13,7 @@ dependencies = [
   "lumi-image-generation",
   "lumi-model-gateway",
   "lumi-project-core",
+  "lumi-video-generation",
   "pgvector==0.5.0",
   "pydantic-settings==2.14.2",
   "sqlalchemy[asyncio]==2.0.51",
