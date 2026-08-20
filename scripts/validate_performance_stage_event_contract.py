@@ -196,8 +196,6 @@ def validate_ui_propagation_producer() -> None:
         "event.message.created_at",
         "PERFORMANCE_UI_PROPAGATION_SOURCE_TIMESTAMP_INVALID",
         "PERFORMANCE_UI_PROPAGATION_CLOCK_REVERSAL",
-        "requestFrame(() => {",
-        "requestFrame(() => {",
         "painted_at_unix_ms",
         "duration_ms: paintedAtUnixMs - sourceCreatedAtUnixMs",
     ):
@@ -243,30 +241,38 @@ def validate_ui_propagation_producer() -> None:
 def validate_platform_overhead_derivation() -> None:
     source = DERIVER.read_text(encoding="utf-8")
     for marker in (
-        '"platform_overhead":',
+        'stage == "platform_overhead"',
         "RAW_PLATFORM_OVERHEAD_FORBIDDEN",
         "TASK_REQUIRED_STAGE_MISSING",
         "TASK_OPERATION_IDENTITY_DRIFT",
         "MIXED_PROVENANCE",
+        "UI_SAMPLE_TASK_WITHOUT_BACKEND_IDENTITY",
+        "UI_SAMPLE_EVENT_DUPLICATE",
+        "DUPLICATE_UI_PROPAGATION_SOURCES",
         '"provider_excluded": True',
         '"missing_required_stage_policy": "BLOCK"',
         '"raw_platform_overhead_policy": "FORBIDDEN"',
-        '"platform_overhead_ms": "sum(enqueue,routing,download,postprocess,validation,artifact_persist,ui_propagation)"',
-        "platform_overhead = sum(stage_totals.get(stage, 0.0) for stage in NON_PROVIDER_STAGES)",
+        '"browser_ui_identity_join": "task_id -> backend operation_id"',
+        '"platform_overhead_ms": "sum(observed enqueue,routing,download,postprocess,validation,artifact_persist,ui_propagation)"',
+        "stage_totals[stage] for stage in NON_PROVIDER_STAGES if stage in stage_totals",
+        'parser.add_argument("--ui-samples-jsonl", type=Path)',
     ):
         require(marker in source, f"platform overhead derivation lost marker: {marker}")
-    require(
-        '"provider"' not in source.split("NON_PROVIDER_STAGES = (", 1)[1].split(")", 1)[0],
-        "provider must not enter platform overhead sum",
-    )
+    non_provider = source.split("NON_PROVIDER_STAGES = (", 1)[1].split(")", 1)[0]
+    require('"provider"' not in non_provider, "provider must not enter platform overhead sum")
+    require("get(stage, 0.0)" not in source, "platform overhead must not impute absent stages as zero")
 
     tests = DERIVER_TEST.read_text(encoding="utf-8")
     for marker in (
+        "DUPLICATE_UI_PROPAGATION_SOURCES",
+        "UI_SAMPLE_TASK_WITHOUT_BACKEND_IDENTITY:task-orphan",
+        "UI_SAMPLE_EVENT_DUPLICATE:run:artifact:duplicate",
         "RAW_PLATFORM_OVERHEAD_FORBIDDEN",
         "TASK_REQUIRED_STAGE_MISSING:task-1:ui_propagation",
         "MIXED_PROVENANCE",
         "TASK_OPERATION_IDENTITY_DRIFT:task-1",
         "TASK_REQUIRED_STAGE_MISSING:task-d:postprocess",
+        'joined["formula"]["browser_ui_identity_join"] == "task_id -> backend operation_id"',
         'result["formula"]["provider_excluded"] is True',
     ):
         require(marker in tests, f"platform overhead self-test lost marker: {marker}")
@@ -377,7 +383,7 @@ def main() -> None:
     print(
         "PASS: performance stage telemetry source contract "
         f"({len(STAGES)} canonical stages; enqueue + browser UI producers gated; "
-        "platform overhead derived fail-closed; "
+        "browser UI joined to backend identity; platform overhead derived fail-closed; "
         f"{drills} negative drills; runtime evidence not implied)"
     )
 
