@@ -38,6 +38,7 @@ def clean_manifest(acceptance_path: str) -> dict[str, Any]:
             "version": "1.0.0-rc.1",
             "migration_head": "20260815_001",
             "staging_acceptance_decision_id": "acceptance-contract-001",
+            "staging_acceptance_run_id": "123",
             "staging_acceptance_path": acceptance_path,
         },
         "aws": {
@@ -123,11 +124,20 @@ def clean_decision(images: dict[str, str]) -> dict[str, Any]:
 
 def main() -> int:
     gate = load_gate()
-    acceptance_path = Path("reports/staging-acceptance/contract/decision.json")
+    acceptance_path = Path(gate.CANONICAL_STAGING_ACCEPTANCE_PATH)
     clean = clean_manifest(acceptance_path.as_posix())
     decision = clean_decision(clean["images"])
 
     template = json.loads(MANIFEST_TEMPLATE_PATH.read_text(encoding="utf-8"))
+    require(
+        template["release_candidate"]["staging_acceptance_run_id"] == "PENDING",
+        "production manifest template must require explicit NODE-71 run identity",
+    )
+    require(
+        template["release_candidate"]["staging_acceptance_path"]
+        == gate.CANONICAL_STAGING_ACCEPTANCE_PATH.as_posix(),
+        "production manifest template must use the canonical downloaded NODE-71 decision path",
+    )
     require(
         template["first_day_limits"]["daily_provider_spend_usd"] == 100,
         "production manifest template must encode the $100 provider hard stop",
@@ -142,8 +152,41 @@ def main() -> int:
         "production manifest template must encode the canonical launch recovery policy",
     )
 
+    gate_source = GATE_PATH.read_text(encoding="utf-8")
+    for marker in (
+        'parser.add_argument("--acceptance-provenance", required=True)',
+        'parser.add_argument("--acceptance-run-id", required=True)',
+        'parser.add_argument("--repository", required=True)',
+        "_validate_node71_artifact(",
+        "production manifest staging_acceptance_run_id differs from requested NODE-71 run",
+    ):
+        require(marker in gate_source, f"production gate missing NODE-71 artifact binding marker: {marker}")
+
     result = gate.evaluate(clean, decision, acceptance_path)
     require(result["passed"] is True, "clean contract fixture must pass")
+
+    invalid_run_id = copy.deepcopy(clean)
+    invalid_run_id["release_candidate"]["staging_acceptance_run_id"] = "PENDING"
+    require(
+        gate.evaluate(invalid_run_id, decision, acceptance_path)["passed"] is False,
+        "missing NODE-71 run id must block",
+    )
+
+    run_id_zero = copy.deepcopy(clean)
+    run_id_zero["release_candidate"]["staging_acceptance_run_id"] = "0"
+    require(
+        gate.evaluate(run_id_zero, decision, acceptance_path)["passed"] is False,
+        "zero NODE-71 run id must block",
+    )
+
+    path_swap = copy.deepcopy(clean)
+    path_swap["release_candidate"]["staging_acceptance_path"] = (
+        "reports/staging-acceptance/manual/decision.json"
+    )
+    require(
+        gate.evaluate(path_swap, decision, acceptance_path)["passed"] is False,
+        "manual NODE-71 decision path must block",
+    )
 
     not_accepted = copy.deepcopy(decision)
     not_accepted["passed"] = False
@@ -246,6 +289,10 @@ def main() -> int:
                 "status": "PASS",
                 "clean_gate_id": result["gate_id"],
                 "drills": {
+                    "node71_run_id_missing_blocked": True,
+                    "node71_run_id_zero_blocked": True,
+                    "manual_node71_path_blocked": True,
+                    "node71_artifact_cli_binding_required": True,
                     "node71_not_passed_blocked": True,
                     "accepted_sha_swap_blocked": True,
                     "migration_swap_blocked": True,
@@ -258,8 +305,8 @@ def main() -> int:
                     "provider_spend_above_100_blocked": True,
                     "db_rollback_unproven_blocked": True,
                     "external_pending_blocked": True,
-                    "missing_approval_blocked": True,
-                },
+                    "missing_approval_blocked": True
+                }
             },
             indent=2,
             sort_keys=True,
