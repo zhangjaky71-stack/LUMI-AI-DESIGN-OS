@@ -93,8 +93,10 @@ jobs:
         run: uv sync --all-packages --frozen
 
       - name: Verify release Python contracts compile under regenerated lock
+        env:
+          PYTHONPYCACHEPREFIX: ${{ runner.temp }}/node73-compileall-pycache
         run: >-
-          uv run python -m compileall -q
+          uv run --frozen python -m compileall -q
           scripts/validate_release_action_pins.py
           scripts/validate_uv_lock_regeneration_contract.py
           scripts/validate_uv_workspace_lock.py
@@ -105,6 +107,22 @@ jobs:
           apps/api/src/lumi_api/product_app.py
           apps/api/src/lumi_api/generations
           apps/api/src/lumi_api/media_dispatch.py
+
+      - name: Require no post-resolver workspace mutation outside uv.lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git ls-files --others --exclude-standard)"
+          mapfile -t changed < <(git diff --name-only)
+          if [ "${#changed[@]}" -gt 1 ]; then
+            printf 'unexpected post-resolver path: %s\n' "${changed[@]}" >&2
+            exit 1
+          fi
+          if [ "${#changed[@]}" -eq 1 ] && [ "${changed[0]}" != "uv.lock" ]; then
+            printf 'unexpected post-resolver path: %s\n' "${changed[0]}" >&2
+            exit 1
+          fi
+          git diff --check -- uv.lock
 
       - name: Freeze regenerated lock identity
         id: lock_meta
