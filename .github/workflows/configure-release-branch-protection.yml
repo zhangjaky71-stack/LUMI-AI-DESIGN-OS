@@ -1,0 +1,23 @@
+name: Configure Release Branch Protection
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type APPLY_NODE73_RELEASE_PROTECTION to apply strong protection to both NODE-73 release refs"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  default-branch-registry-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Refuse default-branch execution
+        run: |
+          echo "This file is a workflow_dispatch registry stub only." >&2
+          echo "Run this workflow with ref=release-closure-p0 so GitHub uses the hardened release-ref workflow definition." >&2
+          exit 64
