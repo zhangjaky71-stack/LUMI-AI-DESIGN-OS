@@ -175,11 +175,11 @@ locals {
 
     worker-media = {
       image         = var.worker_media_image
-      cpu            = 4096
-      memory         = 8192
-      desired_count  = 3
-      min_capacity   = 3
-      max_capacity   = 24
+      cpu           = 4096
+      memory        = 8192
+      desired_count = 3
+      min_capacity  = 3
+      max_capacity  = 24
       environment = merge(
         local.common_environment,
         local.model_gateway_environment,
@@ -202,6 +202,32 @@ locals {
       s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["exports"], local.bucket_arns["sandbox"]]
       autoscale_metric_name  = "MediaQueueBacklog"
       autoscale_target_value = 4
+    }
+
+    outbox-dispatcher = {
+      image         = var.worker_media_image
+      cpu           = 1024
+      memory        = 2048
+      desired_count = 2
+      min_capacity  = 2
+      max_capacity  = 4
+      command = [
+        "python",
+        "-m",
+        "lumi_worker_media.cli",
+        "dispatch-outbox",
+        "--watch",
+        "--interval",
+        "1",
+      ]
+      environment = merge(local.common_environment, { LUMI_ROLE = "outbox-dispatcher" })
+      secret_arns = {
+        LUMI_DATABASE_URL = local.secret_arns["database/app"]
+        LUMI_RABBITMQ_URL = local.secret_arns["rabbitmq/url"]
+      }
+      s3_bucket_arns         = []
+      autoscale_metric_name  = "OutboxPendingEvents"
+      autoscale_target_value = 100
     }
 
     sandbox-runtime = {
