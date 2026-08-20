@@ -14,6 +14,7 @@ VIDEO_PORTS = ROOT / "apps/worker-media/src/lumi_worker_media/video_generation_p
 VIDEO_SANDBOX = ROOT / "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py"
 VIDEO_CODEC = ROOT / "apps/worker-media/src/lumi_worker_media/video_generation_codec.py"
 VIDEO_GATEWAY_TEST = ROOT / "apps/worker-media/tests/test_video_gateway_runtime.py"
+VIDEO_PORTS_TEST = ROOT / "apps/worker-media/tests/test_video_generation_ports.py"
 VIDEO_SANDBOX_TEST = ROOT / "apps/worker-media/tests/test_video_sandbox_runtime.py"
 PROVIDER_OUTPUT = ROOT / "apps/api/src/lumi_api/provider_output_store.py"
 PROVIDER_OUTPUT_TEST = ROOT / "apps/api/tests/test_provider_output_store.py"
@@ -120,6 +121,7 @@ def main() -> None:
         VIDEO_SANDBOX,
         VIDEO_CODEC,
         VIDEO_GATEWAY_TEST,
+        VIDEO_PORTS_TEST,
         VIDEO_SANDBOX_TEST,
         PROVIDER_OUTPUT,
         PROVIDER_OUTPUT_TEST,
@@ -140,6 +142,7 @@ def main() -> None:
     sandbox = VIDEO_SANDBOX.read_text(encoding="utf-8")
     codec = VIDEO_CODEC.read_text(encoding="utf-8")
     gateway_test = VIDEO_GATEWAY_TEST.read_text(encoding="utf-8")
+    ports_test = VIDEO_PORTS_TEST.read_text(encoding="utf-8")
     sandbox_test = VIDEO_SANDBOX_TEST.read_text(encoding="utf-8")
     provider_output = PROVIDER_OUTPUT.read_text(encoding="utf-8")
     provider_output_test = PROVIDER_OUTPUT_TEST.read_text(encoding="utf-8")
@@ -157,7 +160,8 @@ def main() -> None:
             "_execute_video_generation_job",
             "execute_job(",
             'name="lumi.jobs.video.render"',
-            "JobState.WAITING_EXTERNAL",
+            "JobState.RETRYING",
+            "JobState.FAILED",
         ),
         "worker video.render lifecycle",
     )
@@ -240,6 +244,15 @@ def main() -> None:
         "hosted video ports",
     )
     require_markers(
+        ports_test,
+        (
+            "test_provider_output_is_probed_in_exchange_then_promoted_by_server_side_copy",
+            "test_provider_output_wrong_bucket_fails_before_s3",
+            "test_durable_promotion_checksum_drift_fails_closed",
+        ),
+        "hosted video ports executable coverage",
+    )
+    require_markers(
         sandbox,
         (
             "class SandboxExchangeMediaRuntime",
@@ -257,6 +270,7 @@ def main() -> None:
         (
             "test_exchange_manifest_and_promotion_use_server_side_copy",
             "test_input_stage_checksum_mismatch_fails_closed",
+            "test_sandbox_bridge_rejects_network_enabled_invocation",
         ),
         "worker sandbox exchange executable coverage",
     )
@@ -293,10 +307,11 @@ def main() -> None:
         workflow,
         (
             "scripts/validate_video_worker_hosted_binding.py",
-            "apps/worker-media/tests/test_video_gateway_runtime.py",
-            "apps/worker-media/tests/test_video_sandbox_runtime.py",
+            "apps/worker-media/src/lumi_worker_media/video_*.py",
+            "apps/worker-media/tests/test_video_*.py",
             "apps/api/tests/test_provider_output_store.py",
             "uv sync --all-packages --frozen",
+            "historical parallel NODE-48 tables are absent",
         ),
         "video generation workflow",
     )
