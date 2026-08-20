@@ -38,6 +38,7 @@ jobs:
           python3 scripts/validate_final_acceptance_contract.py
           python3 scripts/validate_security_release_decision_contract.py
           python3 scripts/validate_final_acceptance_assembler_contract.py
+          python3 scripts/validate_repository_governance_contract.py
           python3 scripts/validate_api_provenance_source_manifest.py
           python3 scripts/validate_image_generation_producer_contract.py
           python3 scripts/runtime_image_set.py validate-manifest
@@ -71,6 +72,8 @@ jobs:
             scripts/create-final-acceptance-evidence.py \
             scripts/final-acceptance-assembler.py \
             scripts/validate_final_acceptance_package.py \
+            scripts/capture_release_branch_protection.py \
+            scripts/validate_repository_governance_contract.py \
             scripts/security-release-decision.py \
             scripts/validate_security_release_decision_contract.py \
             scripts/validate_final_acceptance_assembler_contract.py \
