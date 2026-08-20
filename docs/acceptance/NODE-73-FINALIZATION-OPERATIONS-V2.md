@@ -2,7 +2,7 @@
 
 Status: **CANONICAL OPERATIONAL ADDENDUM — FINAL ACCEPTANCE STILL BLOCKED**
 
-This document is the operational companion to `NODE-73-FINALIZATION-IDENTITY-V2.md` and supersedes any older NODE-73 instruction that implies live branch-protection or approval results should be committed back into the Evidence Head.
+This document is the operational companion to `NODE-73-FINALIZATION-IDENTITY-V2.md`. It supersedes older NODE-73 instructions that conflate Source RC with Evidence Head, commit live controls back into the branch, or execute release logic from the default branch.
 
 ## 1. Non-cyclic identities
 
@@ -17,9 +17,7 @@ Final Decision must prove Source RC is a Git ancestor of Evidence Head. They nor
 
 ## 2. Before Evidence Head freeze
 
-Complete all source-changing remediation first, including the canonical `uv.lock` regeneration. Never hand-edit `uv.lock`.
-
-Do not enable final strong protection while more source/package commits are still required.
+Complete all source-changing remediation first, including canonical `uv.lock` regeneration. Never hand-edit `uv.lock`.
 
 Required order:
 
@@ -34,7 +32,9 @@ Required order:
 8. select the resulting release-closure-p0 commit as Evidence Head
 ```
 
-## 3. Prepare approval policy and request without hand-editing hashes
+Do not enable final strong protection while more source/package commits are required.
+
+## 3. Prepare approval policy and authorization request
 
 Canonical generator:
 
@@ -42,148 +42,224 @@ Canonical generator:
 scripts/prepare_release_authorization_request_v2.py
 ```
 
-It derives Source RC identity from the real Production deployment manifest and generates:
+It derives Source RC identity from the Production deployment manifest and generates:
 
 ```text
 reports/final-acceptance/<release-id>/pre-final/approval-policy-v2.json
 reports/final-acceptance/<release-id>/pre-final/authorization-request-v2.json
 ```
 
-The generator computes the approval-policy SHA-256 automatically and validates the resulting request against the canonical V2 authorization validator.
+It computes the approval-policy SHA-256 and validates the request. Role inputs must be real GitHub logins; do not invent principals.
 
-Role login inputs accept comma-separated real GitHub logins. Do not invent placeholder users.
-
-The package validator rejects an approval policy unless it can statically satisfy:
+The package validator requires the principal policy to be statically satisfiable:
 
 ```text
 minimum distinct actors >= 3
 PR #135 author excluded
-Engineering actor != Security actor
-Security actor != Release Owner actor
-all five roles assignable from configured allowlists
+Engineering != Security
+Security != Release Owner
+all five roles assignable
 ```
 
-PR #135 author exclusion is modeled statically and is revalidated live against GitHub at Final Decision.
-
-If real principals are unavailable, keep authorization blocked. Do not weaken the policy.
+If real principals are unavailable, authorization remains blocked.
 
 ## 4. Assemble the committed V2 package
 
-Use `.github/workflows/assemble-final-acceptance.yml` or the canonical V2 assembler directly.
+Use `.github/workflows/assemble-final-acceptance.yml` or `scripts/final-acceptance-assembler-v2.py`.
 
-The committed package must contain only pre-final material:
+The committed package contains pre-final material only:
 
 ```text
 Source RC identity
 Production/upstream/scenario evidence
 repository-governance policy
-approval policy reference through authorization request
+release-authorization request
 operational handoff
 approvals = PENDING for all five roles
 ```
 
-It must not contain live branch-protection reports, live approval results or final-decision artifacts.
+Do not commit live branch-protection reports, live reviews, live registry reports, or final-decision artifacts.
 
 ## 5. Freeze Evidence Head
 
-After the package and every non-live source/evidence file are final, commit them to `release-closure-p0`.
-
-Record:
+After every non-live source/evidence file is final, commit them to `release-closure-p0` and record:
 
 ```text
 evidence_head_sha = exact release-closure-p0 HEAD
 ```
 
-Any source commit after this point creates a new Evidence Head and invalidates all Evidence-Head-bound human approvals.
+Any later push creates a new Evidence Head and invalidates Evidence-Head-bound human approvals.
 
-## 6. Require the unique final status check
+## 6. Canonical required status check
 
-Canonical required status context:
+Required status context:
 
 ```text
 node73-final-contract-gate
 ```
 
-The governance policy requires this exact context. Generic or unrelated successful checks cannot satisfy NODE-73 governance.
+The governance policy requires this exact context. Generic or unrelated checks cannot satisfy NODE-73 governance.
 
-The Final Product Acceptance workflow checks out exact `github.sha` in source-contract, canonical-lock-gate and final-decision. The `node73-final-contract-gate` job summarizes source-contract + canonical-lock-gate and must succeed before final-decision may run.
+Final Product Acceptance checks out exact `github.sha` in `source-contract`, `canonical-lock-gate`, and `final-decision`. Final Decision cannot start until:
 
-Additional stronger required checks are allowed, but this canonical context cannot be removed.
+```text
+source-contract == success
+canonical-lock-gate == success
+node73-final-contract-gate == success
+```
 
-## 7. Default-branch dispatch registry and strong protection
+## 7. Default-branch dispatch registry
 
-GitHub only accepts `workflow_dispatch` when the workflow path exists on the repository default branch. NODE-73 now has a dedicated default-branch dispatch registry on `main` for every release-critical workflow listed in `production/release-actions/pins-v1.json`.
+GitHub requires a `workflow_dispatch` path to exist on the default branch. NODE-73 therefore registers every release-critical workflow path on `main`.
 
-Registry policy:
+Policy:
 
 ```text
 production/release-actions/default-branch-dispatch-registry-v1.json
 ```
 
-Registry/source validator:
+Static validator:
 
 ```text
 scripts/validate_release_dispatch_registry_contract.py
 ```
 
-`validate_release_action_pins.py` invokes the registry contract, so release-critical workflow coverage and Action-pin coverage remain one gate.
+### 7.1 `main` is discovery-only
 
-### 7.1 Registry-only workflows
+All nine release-critical workflow paths on `main` are fail-closed registry stubs:
 
-For eight release-critical workflows, `main` contains a fail-closed discovery stub only. The stub has `workflow_dispatch`, `contents: read`, and an explicit failing `default-branch-registry-only` job.
+```text
+workflow_dispatch
+contents: read
+no environment
+no secrets
+no external action uses
+no write/OIDC/package/attestation capability
+default-branch-registry-only
+exit 64
+```
 
-To execute real release logic, select/dispatch:
+No NODE-73 release mutation logic is allowed on `main`.
+
+A run of the `main` stub that exits 64 is expected fail-closed behavior and is **not** product/release evidence.
+
+### 7.2 Always dispatch the release ref
+
+For real NODE-73 execution, explicitly select:
 
 ```text
 ref = release-closure-p0
 ```
 
-GitHub then uses the workflow version at that ref. Never treat a default-branch registry stub run as release evidence.
+GitHub then executes the hardened workflow definition from that ref.
 
-### 7.2 Canonical uv.lock bootstrap
-
-`regenerate-uv-lock.yml` is intentionally not a stub. The `main` and `release-closure-p0` copies are the same canonical two-phase workflow.
-
-Run it with:
+This applies to:
 
 ```text
+regenerate-uv-lock
+build-runtime-image-set
+runtime-image-closure-contract
+staging-acceptance-gate
+production-iac-contract
+deploy-production
+assemble-final-acceptance
+configure-release-branch-protection
+final-acceptance-gate
+```
+
+### 7.3 Canonical uv.lock regeneration
+
+The real `regenerate-uv-lock.yml` exists only as hardened execution logic on `release-closure-p0`.
+
+Dispatch it with:
+
+```text
+ref = release-closure-p0
 expected_sha = exact current release-closure-p0 SHA
 confirm = REGENERATE_NODE73_UV_LOCK
 ```
 
-The resolver phase is `contents: read` only and performs `uv lock`, workspace validation, `uv lock --check` and `uv sync --all-packages --frozen`.
+Resolver phase:
 
-Only the second job receives `contents: write`; it does not execute the resolver, `uv sync`, or release-branch Python scripts. It consumes the same-run `uv.lock` artifact, verifies its SHA-256, rechecks the remote branch head, stages only `uv.lock`, and performs a non-force push.
+```text
+contents: read
+exact SHA checkout
+persist-credentials: false
+Python 3.12
+uv 0.11.28
+uv lock
+only uv.lock may change
+validate workspace membership
+uv lock --check
+uv sync --all-packages --frozen
+freeze uv.lock SHA-256
+upload same-run artifact
+```
 
-A no-change canonical lock run succeeds without creating an empty commit.
+Write phase:
 
-### 7.3 Branch protection mutation
+```text
+needs successful resolver phase
+contents: write
+exact SHA checkout
+persist-credentials: false
+download same-run uv.lock artifact
+verify SHA-256
+verify only uv.lock differs
+no resolver
+no uv sync
+no release-branch Python execution
+re-fetch release-closure-p0
+require remote head == expected SHA
+stage only uv.lock
+non-force push
+```
 
-Canonical policy-driven applicator:
+If `uv.lock` is already canonical, no empty commit is created.
+
+### 7.4 Live registry verification
+
+Final Decision runs:
+
+```text
+scripts/validate_live_default_branch_dispatch_registry.py
+```
+
+using the ephemeral read-only GitHub token.
+
+It live-fetches `main` and requires all nine paths to remain fail-closed. For each workflow it also requires the `workflow_dispatch.inputs` schema on `main` to exactly match the hardened Evidence-Head workflow.
+
+Runtime report:
+
+```text
+reports/final-acceptance/<release-id>/runtime-v2/default-branch-dispatch-registry-live.json
+```
+
+The outer Final Decision hash-binds both this live report and the committed registry policy.
+
+## 8. Apply strong branch protection after Evidence Head is stable
+
+Canonical applicator:
 
 ```text
 scripts/apply_release_branch_protection.py
 ```
 
-It applies the same strong profile to:
+It applies the frozen profile to:
 
 ```text
 node-73-final-acceptance-release
 release-closure-p0
 ```
 
-Before any mutation it live-reads both branch heads and refuses to continue unless `release-closure-p0` still equals the selected Evidence Head.
+Before mutation it live-reads branch heads and refuses to continue unless `release-closure-p0` still equals the selected Evidence Head.
 
-The `configure-release-branch-protection.yml` workflow is now discoverable through the default-branch registry, so the earlier “workflow is absent from default branch” bootstrap blocker is closed.
-
-The privileged mutation path remains deliberately separate from the PR preflight:
+The workflow is split by trust boundary:
 
 ```text
-pull_request:labeled -> PR preflight only, no Administration secret, no mutation
+pull_request:labeled -> PR preflight only, no Admin secret, no mutation
 workflow_dispatch     -> privileged mutation, production environment, Admin-write secret
 ```
-
-The PR preflight stays bounded to PR #135 / exact base-head/repository identity and cannot receive `RELEASE_GOVERNANCE_ADMIN_TOKEN`.
 
 Actual mutation requires:
 
@@ -194,23 +270,27 @@ production environment approval
 RELEASE_GOVERNANCE_ADMIN_TOKEN with repository Administration write
 ```
 
-Final Decision uses a separate Administration-read `RELEASE_GOVERNANCE_TOKEN`; it never receives the write credential.
+Final Decision uses separate Administration-read `RELEASE_GOVERNANCE_TOKEN`; it never receives the write credential.
 
-The successful mutation path uploads `branch-protection-apply.json` as runtime evidence. Do not commit that live report back into the Evidence Head.
-
-## 8. Obtain Evidence-Head-bound human approvals
+## 9. Obtain Evidence-Head-bound human approvals
 
 After Evidence Head is final and protection is enabled, real configured principals review PR #135.
 
-At least three distinct non-author humans must satisfy the five roles and separation-of-duties policy. Review `commit_id` must equal Evidence Head.
+Requirements:
 
-A new push invalidates the Evidence Head and requires fresh reviews.
+```text
+>= 3 distinct non-author humans
+all five roles covered
+Engineering != Security
+Security != Release Owner
+review commit_id == Evidence Head
+```
 
-Do not convert review comments or issue comments into approval evidence. Canonical authorization consumes submitted GitHub PR reviews only.
+A new push requires fresh reviews. Comments are not approval evidence; only submitted GitHub PR reviews count.
 
-## 9. Run Final Product Acceptance
+## 10. Run Final Product Acceptance
 
-Dispatch the existing `Final Product Acceptance Gate` workflow with:
+Dispatch:
 
 ```text
 ref = release-closure-p0
@@ -218,46 +298,37 @@ release_manifest_path = reports/final-acceptance/<release-id>/release-manifest-v
 acceptance_evidence_path = reports/final-acceptance/<release-id>/acceptance-evidence.json
 ```
 
-The final-decision job cannot run until:
-
-```text
-source-contract == success
-canonical-lock-gate == success
-node73-final-contract-gate == success
-```
-
-It then:
+Final Decision then:
 
 ```text
 validates the V2 package
-reads the frozen governance policy
-captures strong branch protection live
-requires both branches to include node73-final-contract-gate
-captures GitHub reviews live
-binds reviews to Evidence Head
+captures/validates live branch protection
+captures/validates live main dispatch registry
+captures Evidence-Head GitHub reviews
 proves Source RC ancestor of Evidence Head
-projects APPROVED statuses in memory only
+projects APPROVED states in memory only
 runs the stable 46-scenario product gate
-hash-binds package/evidence/matrix/policy/request/live reports/execution identity
+hash-binds package/evidence/matrix/policies/live controls/execution identity
 writes final-decision-v2.json
 ```
 
-## 10. Runtime artifacts are terminal evidence
+## 11. Runtime artifacts are terminal evidence
 
-These are runtime-only:
+Runtime-only artifacts include:
 
 ```text
 branch-protection-apply.json
 repository-governance-live.json
+default-branch-dispatch-registry-live.json
 release-authorization-live.json
 final-decision-v2.json
 ```
 
-Upload them as Actions artifacts. Do not commit them into `release-closure-p0`.
+Archive them as Actions artifacts. Never commit them back into `release-closure-p0`.
 
-## 11. Current external blockers
+## 12. Current external blockers
 
-At the current NODE-73 checkpoint, source closure does not imply acceptance. At minimum the following still require real external execution/configuration:
+Source closure does not imply acceptance. Mandatory real work still includes:
 
 ```text
 actual canonical uv.lock regeneration and frozen all-workspace PASS
@@ -267,14 +338,15 @@ real six-runtime build/start/promotion/attestation evidence
 Production-like Staging evidence
 Production smoke/canary/rollback/DR evidence
 strong protection actually applied to both release refs
-Administration-read/write governance credentials and production-environment approval
+Administration-read/write governance credentials + production environment approval
 real role principals other than PR author
-at least three distinct Evidence-Head human APPROVED reviews
+>= 3 distinct Evidence-Head APPROVED reviews
+successful live default-branch registry capture
 final-decision-v2 accepted=true
 ```
 
-Default-branch workflow discoverability is no longer listed as a blocker.
+Default-branch workflow discoverability is no longer a blocker.
 
-Until all mandatory evidence is real and the V2 outer decision returns `accepted=true`:
+Until all mandatory evidence is real:
 
 # KEEP NODE-73 FINAL ACCEPTANCE BLOCKED
