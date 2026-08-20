@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "production" / "runtime-images" / "manifest-v1.json"
 WORKFLOW = ROOT / ".github" / "workflows" / "build-runtime-image-set.yml"
+ATTESTATION_VERIFIER = ROOT / "scripts" / "verify_runtime_image_attestations.py"
 EXPECTED = {
     "api": "apps/api/Dockerfile",
     "agent-runtime": "apps/agent-runtime/Dockerfile",
@@ -63,6 +64,44 @@ def _block(text: str, start_marker: str, next_marker: str | None) -> str:
     if end < 0:
         raise PipelineContractError(f"workflow block {start_marker} missing terminator {next_marker}")
     return text[start:end]
+
+
+def validate_attestation_verifier() -> None:
+    text = ATTESTATION_VERIFIER.read_text(encoding="utf-8")
+    for marker in (
+        'RELEASE_SOURCE_REF = "refs/heads/release-closure-p0"',
+        'SIGNER_WORKFLOW_PATH = ".github/workflows/build-runtime-image-set.yml"',
+        'env.get("GITHUB_SHA", "").lower()',
+        'env.get("GITHUB_REF", "")',
+        'env.get("GITHUB_WORKFLOW_REF", "")',
+        '"--signer-workflow"',
+        '"--source-digest"',
+        '"--source-ref"',
+        '"--deny-self-hosted-runners"',
+        '"github_attestation_policy"',
+        '"signer_workflow": policy.signer_workflow',
+        '"source_digest": policy.source_digest',
+        '"source_ref": policy.source_ref',
+        '"workflow_ref": policy.workflow_ref',
+        '"deny_self_hosted_runners": policy.deny_self_hosted_runners',
+        "bad_identity_envs = [",
+    ):
+        _require(marker in text, f"runtime attestation verifier missing signer/source identity marker: {marker}")
+
+    command_start = text.find('"gh",\n            "attestation",\n            "verify"')
+    signer_pos = text.find('"--signer-workflow"', command_start)
+    digest_pos = text.find('"--source-digest"', command_start)
+    ref_pos = text.find('"--source-ref"', command_start)
+    hosted_pos = text.find('"--deny-self-hosted-runners"', command_start)
+    _require(
+        command_start >= 0
+        and command_start < signer_pos < digest_pos < ref_pos < hosted_pos,
+        "GitHub attestation verification must enforce signer workflow, source digest/ref, and hosted runner identity",
+    )
+    _require(
+        "policy = resolve_github_attestation_policy(args.repository, os.environ)" in text,
+        "live verifier must derive signer/source identity from immutable GitHub Actions environment",
+    )
 
 
 def validate_workflow() -> None:
@@ -199,8 +238,9 @@ def validate_workflow() -> None:
 
 def main() -> int:
     _load_manifest()
+    validate_attestation_verifier()
     validate_workflow()
-    print("Six-runtime RC image build/attestation/freeze pipeline contract: PASS")
+    print("Six-runtime RC image signer/source attestation/freeze pipeline contract: PASS")
     return 0
 
 
