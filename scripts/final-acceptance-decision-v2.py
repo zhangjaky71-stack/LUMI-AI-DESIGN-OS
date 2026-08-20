@@ -16,6 +16,8 @@ PRODUCT_GATE = ROOT / "scripts" / "final-acceptance-gate.py"
 PACKAGE_V2 = ROOT / "scripts" / "validate_final_acceptance_package_v2.py"
 GOVERNANCE = ROOT / "scripts" / "capture_release_branch_protection.py"
 GOVERNANCE_BINDER_V2 = ROOT / "scripts" / "validate_live_release_governance_v2.py"
+ENVIRONMENT_LIVE = ROOT / "scripts" / "validate_live_release_environment_v1.py"
+ENVIRONMENT_POLICY = ROOT / "final" / "acceptance" / "release-environment-policy-template.json"
 DISPATCH_REGISTRY_LIVE = ROOT / "scripts" / "validate_live_default_branch_dispatch_registry.py"
 DISPATCH_REGISTRY_POLICY = ROOT / "production" / "release-actions" / "default-branch-dispatch-registry-v1.json"
 AUTHORIZATION_V2 = ROOT / "scripts" / "capture_release_authorization_v2.py"
@@ -88,6 +90,7 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
     package = load_module(PACKAGE_V2, "lumi_final_package_v2")
     governance = load_module(GOVERNANCE, "lumi_release_governance_capture_v2")
     governance_binder = load_module(GOVERNANCE_BINDER_V2, "lumi_release_governance_policy_binding_v2")
+    environment = load_module(ENVIRONMENT_LIVE, "lumi_release_environment_live_v1")
     dispatch_registry = load_module(DISPATCH_REGISTRY_LIVE, "lumi_live_default_branch_dispatch_registry_v2")
     authorization = load_module(AUTHORIZATION_V2, "lumi_release_authorization_live_v2")
     identity = load_module(IDENTITY_V2, "lumi_finalization_identity_v2_runtime")
@@ -130,6 +133,7 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
 
     runtime_dir = output_path.parent / "runtime-v2"
     governance_path = runtime_dir / "repository-governance-live.json"
+    environment_path = runtime_dir / "production-environment-live.json"
     dispatch_registry_path = runtime_dir / "default-branch-dispatch-registry-live.json"
     authorization_path = runtime_dir / "release-authorization-live.json"
 
@@ -147,6 +151,12 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
         raise FinalDecisionV2Error(f"live repository governance blocked: {exc}") from exc
 
     approval_token = require_token("RELEASE_APPROVAL_TOKEN")
+    try:
+        environment_report = environment.capture(EXPECTED_REPOSITORY, token=approval_token)
+    except environment.ReleaseEnvironmentError as exc:
+        raise FinalDecisionV2Error(f"live production environment governance blocked: {exc}") from exc
+    write_json(environment_path, environment_report)
+
     try:
         dispatch_registry_report = dispatch_registry.capture(EXPECTED_REPOSITORY, token=approval_token)
     except dispatch_registry.LiveDispatchRegistryError as exc:
@@ -200,6 +210,18 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
             "evidence_head_locked": governance_result.get("evidence_head_locked"),
             "evidence_head_lock_policy_bound": governance_result.get("evidence_head_lock_policy_bound"),
             "status_check_policy_bound": governance_result.get("status_check_policy_bound"),
+        },
+        "production_environment": {
+            "path": repo_relative(environment_path),
+            "sha256": sha256(environment_path),
+            "kind": environment_report.get("kind"),
+            "status": environment_report.get("status"),
+            "environment": environment_report.get("environment"),
+            "required_reviewer_count": environment_report.get("required_reviewer_count"),
+            "required_reviewers": environment_report.get("required_reviewers"),
+            "prevent_self_review": environment_report.get("prevent_self_review"),
+            "deployment_branch_policy": environment_report.get("deployment_branch_policy"),
+            "environment_policy_bound": environment_report.get("environment_policy_bound"),
         },
         "default_branch_dispatch_registry": {
             "path": repo_relative(dispatch_registry_path),
@@ -259,6 +281,10 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
             "repository_governance_policy": {
                 "path": repo_relative(governance_policy_path),
                 "sha256": sha256(governance_policy_path),
+            },
+            "release_environment_policy": {
+                "path": repo_relative(ENVIRONMENT_POLICY),
+                "sha256": sha256(ENVIRONMENT_POLICY),
             },
             "release_authorization_request": {
                 "path": repo_relative(request_path),
