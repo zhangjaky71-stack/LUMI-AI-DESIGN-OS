@@ -28,7 +28,6 @@ on:
 permissions:
   contents: read
   actions: read
-  id-token: write
 
 env:
   OPERATION: ${{ inputs.operation }}
@@ -165,6 +164,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     environment: production
+    permissions:
+      contents: read
+      id-token: write
     env:
       AWS_REGION: ${{ needs.release-gate.outputs.region }}
       DEPLOYMENT_ID: ${{ needs.release-gate.outputs.deployment_id }}
