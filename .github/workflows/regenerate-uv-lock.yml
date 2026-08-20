@@ -16,11 +16,12 @@ permissions:
   contents: read
 
 jobs:
-  registry-only:
+  default-branch-registry-only:
     runs-on: ubuntu-24.04
+    timeout-minutes: 2
     steps:
-      - name: Default-branch registry only
+      - name: Refuse default-branch execution
         run: |
-          echo "This default-branch file only registers workflow_dispatch."
-          echo "Dispatch this workflow with ref=release-closure-p0 so GitHub executes the hardened workflow from that exact ref."
-          exit 1
+          echo "This file is a workflow_dispatch registry stub only." >&2
+          echo "Run this workflow with ref=release-closure-p0 so GitHub uses the hardened release-ref workflow definition." >&2
+          exit 64
