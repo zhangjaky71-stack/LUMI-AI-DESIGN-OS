@@ -4,10 +4,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+SHA40 = re.compile(r"^[0-9a-f]{40}$")
 UPSTREAM = {
     "security",
     "recovery",
@@ -27,6 +29,13 @@ HANDOFF_KEYS = {
     "dr_drill_owner",
     "capacity_review_owner",
 }
+EXPECTED_REPOSITORY = "zhangjaky71-stack/LUMI-AI-DESIGN-OS"
+REPOSITORY_GOVERNANCE_KIND = "LUMI_RELEASE_BRANCH_PROTECTION_V1"
+REQUIRED_RELEASE_BRANCHES = {
+    "node-73-final-acceptance-release",
+    "release-closure-p0",
+}
+RELEASE_HEAD_BRANCH = "release-closure-p0"
 
 
 class PackageError(RuntimeError):
@@ -74,6 +83,42 @@ def rc(payload: dict[str, Any]) -> tuple[Any, Any, Any]:
     return value.get("git_sha"), value.get("version"), value.get("migration_head")
 
 
+def validate_repository_governance(
+    release: dict[str, Any],
+    *,
+    expected_release_sha: str,
+) -> Path:
+    path = verify_ref(release.get("repository_governance"), label="repository_governance")
+    report = load(path)
+    if report.get("schema_version") != 1 or report.get("kind") != REPOSITORY_GOVERNANCE_KIND:
+        raise PackageError("repository governance schema/kind mismatch")
+    if report.get("status") != "PASS":
+        raise PackageError("repository governance is not PASS")
+    if report.get("repository") != EXPECTED_REPOSITORY:
+        raise PackageError("repository governance repository mismatch")
+    branches = report.get("branches")
+    if not isinstance(branches, list) or len(branches) != len(REQUIRED_RELEASE_BRANCHES):
+        raise PackageError("repository governance must contain exactly two release branches")
+    by_name: dict[str, dict[str, Any]] = {}
+    for item in branches:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+            raise PackageError("repository governance contains invalid branch entry")
+        name = item["name"]
+        if name not in REQUIRED_RELEASE_BRANCHES or name in by_name:
+            raise PackageError(f"repository governance branch invalid/duplicate: {name}")
+        if item.get("protected") is not True:
+            raise PackageError(f"required release branch is not protected: {name}")
+        head_sha = item.get("head_sha")
+        if not isinstance(head_sha, str) or not SHA40.fullmatch(head_sha.lower()):
+            raise PackageError(f"repository governance head SHA invalid: {name}")
+        by_name[name] = item
+    if set(by_name) != REQUIRED_RELEASE_BRANCHES:
+        raise PackageError("repository governance branch set mismatch")
+    if by_name[RELEASE_HEAD_BRANCH]["head_sha"].lower() != expected_release_sha.lower():
+        raise PackageError("protected release-closure-p0 head does not equal final RC SHA")
+    return path
+
+
 def validate(release_path: Path) -> dict[str, Any]:
     release = load(release_path)
     release_id = release.get("release_id")
@@ -82,6 +127,9 @@ def validate(release_path: Path) -> dict[str, Any]:
         raise PackageError("release package schema/release_id invalid")
     if any(value is None or value == "PENDING" for value in expected_rc):
         raise PackageError("release package RC identity incomplete")
+    release_sha = expected_rc[0]
+    if not isinstance(release_sha, str) or not SHA40.fullmatch(release_sha.lower()):
+        raise PackageError("release package RC git_sha must be exact SHA40")
 
     assembly = release.get("assembly")
     if not isinstance(assembly, dict) or assembly.get("schema_version") != 1:
@@ -92,6 +140,11 @@ def validate(release_path: Path) -> dict[str, Any]:
     scenario_path = verify_ref(assembly.get("scenario_results"), label="assembly.scenario_results")
     if matrix_path.resolve() != (ROOT / "final/acceptance/manifest-v1.json").resolve():
         raise PackageError("release package does not use canonical final acceptance matrix")
+
+    governance_path = validate_repository_governance(
+        release,
+        expected_release_sha=release_sha,
+    )
 
     authorization_path = verify_ref(release.get("release_authorization"), label="release_authorization")
     authorization = load(authorization_path)
@@ -144,6 +197,7 @@ def validate(release_path: Path) -> dict[str, Any]:
         "release_id": release_id,
         "release_candidate": release.get("release_candidate"),
         "upstream_decisions": upstream_decisions,
+        "repository_governance_sha256": digest(governance_path),
         "authorization_sha256": digest(authorization_path),
         "scenario_results_sha256": digest(scenario_path),
         "acceptance_evidence_sha256": digest(evidence_path),
