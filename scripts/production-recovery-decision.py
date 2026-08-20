@@ -77,6 +77,22 @@ def _expected_service_images(images: object, blockers: list[str]) -> dict[str, s
     }
 
 
+def _capacity_row_valid(item: object) -> bool:
+    if not isinstance(item, dict):
+        return False
+    expected = item.get("expected_desired_count")
+    desired = item.get("desired_count")
+    return (
+        isinstance(expected, int)
+        and not isinstance(expected, bool)
+        and expected > 0
+        and isinstance(desired, int)
+        and not isinstance(desired, bool)
+        and desired == expected
+        and item.get("capacity_matches") is True
+    )
+
+
 def validate_cross_region_object_recovery(
     evidence: Any,
     *,
@@ -183,10 +199,13 @@ def evaluate(
             not isinstance(item, dict)
             or item.get("expected_image") != expected_service_images.get(item.get("service_name"))
             or item.get("image_matches") is not True
+            or not _capacity_row_valid(item)
             or item.get("steady") is not True
             for item in services
         ):
-            blockers.append("baseline production runtime is not fully steady")
+            blockers.append(
+                "baseline production runtime is not fully steady or Terraform-capacity-matched"
+            )
 
     if rds_restore.get("schema_version") != 1 or rds_restore.get("passed") is not True:
         blockers.append("RDS PITR rehearsal is not passed=true")
