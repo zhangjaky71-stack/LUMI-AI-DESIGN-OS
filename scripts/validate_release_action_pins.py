@@ -1,19 +1,31 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 PINS_PATH = ROOT / "production" / "release-actions" / "pins-v1.json"
+DISPATCH_REGISTRY_CONTRACT = ROOT / "scripts" / "validate_release_dispatch_registry_contract.py"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 USES_LINE = re.compile(r"^\s*-\s+uses:\s+([^\s#]+)(?:\s+#\s*(\S+))?\s*$")
 
 
 class ReleaseActionPinError(RuntimeError):
     pass
+
+
+def _load_module(path: Path, name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ReleaseActionPinError(f"unable to import {path.relative_to(ROOT)}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _load_policy() -> dict[str, Any]:
@@ -137,6 +149,20 @@ def _negative_drills(policy: dict[str, Any]) -> None:
         raise ReleaseActionPinError(f"negative release-action pin drill {index} did not block")
 
 
+def _validate_dispatch_registry() -> None:
+    module = _load_module(DISPATCH_REGISTRY_CONTRACT, "lumi_release_dispatch_registry_contract")
+    try:
+        result = module.normalize_registry(module.load_json(module.REGISTRY), module.load_json(module.PINS))
+        module.validate_local_release_workflows(result)
+        self_result = module.self_test()
+    except module.DispatchRegistryContractError as exc:
+        raise ReleaseActionPinError(f"default-branch dispatch registry contract failed: {exc}") from exc
+    if self_result.get("status") != "PASS" or self_result.get("negative_drills") != 5:
+        raise ReleaseActionPinError("default-branch dispatch registry self-test drift")
+    if result.get("workflow_count") != 9:
+        raise ReleaseActionPinError("default-branch dispatch registry must cover exactly nine release-critical workflows")
+
+
 def main() -> int:
     policy = _load_policy()
     workflows = policy["release_critical_workflows"]
@@ -153,6 +179,7 @@ def main() -> int:
             text=path.read_text(encoding="utf-8"),
         )
     _negative_drills(policy)
+    _validate_dispatch_registry()
     print(
         json.dumps(
             {
@@ -160,6 +187,7 @@ def main() -> int:
                 "policy": policy["policy"],
                 "workflow_count": len(totals),
                 "external_action_steps": sum(totals.values()),
+                "dispatch_registry_bound": True,
                 "workflows": totals,
                 "negative_drills": {
                     "floating_tag_blocked": True,
