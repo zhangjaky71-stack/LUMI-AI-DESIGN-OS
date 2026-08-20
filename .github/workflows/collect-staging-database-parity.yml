@@ -122,7 +122,7 @@ jobs:
           test -n "$log_prefix"
 
           aws ecs describe-services --cluster lumi-staging-cluster --services api --output json > /tmp/api-service.json
-          jq -e '.failures | length == 0 and .services | length == 1' /tmp/api-service.json >/dev/null
+          jq -e '((.failures | length) == 0) and ((.services | length) == 1)' /tmp/api-service.json >/dev/null
           api_task="$(jq -r '.services[0].taskDefinition' /tmp/api-service.json)"
           aws ecs describe-task-definition --task-definition "$api_task" --output json > /tmp/api-task-definition.json
           api_image="$(jq -r '.taskDefinition.containerDefinitions[] | select(.name == "api") | .image' /tmp/api-task-definition.json)"
@@ -151,7 +151,7 @@ jobs:
             --overrides file:///tmp/db-parity-overrides.json \
             --started-by "node73-db-parity-${GITHUB_RUN_ID}" \
             --output json > /tmp/db-parity-run-task.json
-          jq -e '.failures | length == 0 and .tasks | length == 1' /tmp/db-parity-run-task.json >/dev/null
+          jq -e '((.failures | length) == 0) and ((.tasks | length) == 1)' /tmp/db-parity-run-task.json >/dev/null
           task_arn="$(jq -r '.tasks[0].taskArn' /tmp/db-parity-run-task.json)"
           test -n "$task_arn"
           printf 'ECS_TASK_ARN=%s\n' "$task_arn" >> "$GITHUB_ENV"
