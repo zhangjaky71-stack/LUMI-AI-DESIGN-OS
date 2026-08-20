@@ -3,14 +3,17 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import re
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+GOVERNANCE_VALIDATOR = ROOT / "scripts" / "capture_release_branch_protection.py"
 FINAL_STATUSES = {"PASS", "FAIL", "BLOCKED_EXTERNAL", "DEFERRED_NON_CRITICAL"}
 UPSTREAM_GATES = (
     "security",
@@ -32,12 +35,6 @@ HANDOFF_KEYS = {
     "capacity_review_owner",
 }
 EXPECTED_REPOSITORY = "zhangjaky71-stack/LUMI-AI-DESIGN-OS"
-REPOSITORY_GOVERNANCE_KIND = "LUMI_RELEASE_BRANCH_PROTECTION_V1"
-REQUIRED_RELEASE_BRANCHES = {
-    "node-73-final-acceptance-release",
-    "release-closure-p0",
-}
-RELEASE_HEAD_BRANCH = "release-closure-p0"
 
 
 class AssemblyError(RuntimeError):
@@ -49,6 +46,15 @@ def load_json(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise AssemblyError(f"{path} must contain a JSON object")
     return payload
+
+
+def load_governance_validator() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("lumi_release_branch_protection", GOVERNANCE_VALIDATOR)
+    if spec is None or spec.loader is None:
+        raise AssemblyError("unable to load canonical release branch protection validator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def present(value: Any) -> bool:
@@ -139,32 +145,15 @@ def validate_repository_governance(
     expected_release_sha: str,
 ) -> dict[str, str]:
     report = load_json(path)
-    if report.get("schema_version") != 1 or report.get("kind") != REPOSITORY_GOVERNANCE_KIND:
-        raise AssemblyError("repository governance schema/kind mismatch")
-    if report.get("status") != "PASS":
-        raise AssemblyError("repository governance is not PASS")
-    if report.get("repository") != EXPECTED_REPOSITORY:
-        raise AssemblyError("repository governance repository mismatch")
-    branches = report.get("branches")
-    if not isinstance(branches, list) or len(branches) != len(REQUIRED_RELEASE_BRANCHES):
-        raise AssemblyError("repository governance must contain exactly two release branches")
-    by_name: dict[str, dict[str, Any]] = {}
-    for item in branches:
-        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
-            raise AssemblyError("repository governance contains invalid branch entry")
-        name = item["name"]
-        if name not in REQUIRED_RELEASE_BRANCHES or name in by_name:
-            raise AssemblyError(f"repository governance branch invalid/duplicate: {name}")
-        if item.get("protected") is not True:
-            raise AssemblyError(f"required release branch is not protected: {name}")
-        head_sha = item.get("head_sha")
-        if not isinstance(head_sha, str) or not SHA40.fullmatch(head_sha.lower()):
-            raise AssemblyError(f"repository governance head SHA invalid: {name}")
-        by_name[name] = item
-    if set(by_name) != REQUIRED_RELEASE_BRANCHES:
-        raise AssemblyError("repository governance branch set mismatch")
-    if by_name[RELEASE_HEAD_BRANCH]["head_sha"].lower() != expected_release_sha.lower():
-        raise AssemblyError("protected release-closure-p0 head does not equal final RC SHA")
+    validator = load_governance_validator()
+    try:
+        validator.validate_report(
+            report,
+            expected_repository=EXPECTED_REPOSITORY,
+            expected_release_sha=expected_release_sha,
+        )
+    except validator.BranchProtectionError as exc:
+        raise AssemblyError(f"repository governance invalid: {exc}") from exc
     return frozen(path)
 
 
