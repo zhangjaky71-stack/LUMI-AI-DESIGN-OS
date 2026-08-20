@@ -52,3 +52,17 @@ jobs:
           terraform_wrapper: false
       - name: Format-check sandbox IaC
         run: terraform fmt -check infra/iac/modules/compute/sandbox_child.tf infra/iac/modules/network/sandbox_ecs_endpoint.tf
+
+  sandbox-image-smoke:
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build frozen Sandbox Runtime image
+        run: docker build -f services/sandbox-runtime/Dockerfile -t lumi-sandbox-runtime:${{ github.sha }} .
+      - name: Verify FFmpeg and child runtime are packaged
+        shell: bash
+        run: |
+          docker run --rm --entrypoint sh lumi-sandbox-runtime:${{ github.sha }} -c 'ffmpeg -version >/dev/null && ffprobe -version >/dev/null'
+          docker run --rm --entrypoint python lumi-sandbox-runtime:${{ github.sha }} -c 'from lumi_sandbox_runtime.child_cli import _execute; from lumi_sandbox_runtime.models import ExchangeInputFile, ExchangeOutputFile; print("sandbox-child-imports-ok")'
