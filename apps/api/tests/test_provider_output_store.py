@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import tempfile
 import unittest
+from pathlib import Path
 from uuid import uuid4
 
 from lumi_model_gateway import Capability, ModelRequest
@@ -14,9 +18,14 @@ from lumi_api.provider_output_store import (
 class FakeObjectStore:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
+        self.file_calls: list[dict[str, object]] = []
 
     async def put_bytes(self, **kwargs: object) -> object:
         self.calls.append(dict(kwargs))
+        return object()
+
+    async def upload_from_path(self, **kwargs: object) -> object:
+        self.file_calls.append(dict(kwargs))
         return object()
 
 
@@ -58,6 +67,59 @@ class ProviderOutputStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call["max_bytes"], 100 * 1024 * 1024)
         self.assertEqual(call["content_type"], "image/png")
         self.assertEqual(call["metadata"]["lumi-kind"], "provider-output")
+
+    async def test_async_video_path_uses_existing_s3_checksum_contract(self) -> None:
+        object_store = FakeObjectStore()
+        store = S3ProviderOutputStore(  # type: ignore[arg-type]
+            object_store=object_store,
+            bucket="lumi-assets-test",
+        )
+        payload = b"fake-mp4-payload"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "provider.mp4"
+            path.write_bytes(payload)
+            ref = await store.store_async_path(
+                provider="openai",
+                model="sora-2",
+                provider_request_id="video_job_123",
+                path=path,
+                content_type="video/mp4",
+                extension="mp4",
+                max_bytes=1024,
+            )
+
+        digest = hashlib.sha256(payload).hexdigest()
+        expected_b64 = base64.b64encode(bytes.fromhex(digest)).decode("ascii")
+        self.assertTrue(ref.startswith("s3://lumi-assets-test/provider-output/v1/async/"))
+        self.assertTrue(ref.endswith(f"/{digest}.mp4"))
+        self.assertEqual(len(object_store.file_calls), 1)
+        call = object_store.file_calls[0]
+        self.assertEqual(call["content_type"], "video/mp4")
+        self.assertEqual(call["checksum_sha256_b64"], expected_b64)
+        self.assertIsInstance(call["path"], str)
+        self.assertNotIn("max_bytes", call)
+        self.assertNotIn("metadata", call)
+
+    async def test_video_path_size_bound_fails_before_s3_upload(self) -> None:
+        object_store = FakeObjectStore()
+        store = S3ProviderOutputStore(  # type: ignore[arg-type]
+            object_store=object_store,
+            bucket="lumi-assets-test",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "provider.mp4"
+            path.write_bytes(b"12345")
+            with self.assertRaises(ProviderOutputStoreError):
+                await store.store_async_path(
+                    provider="openai",
+                    model="sora-2",
+                    provider_request_id="video_job_123",
+                    path=path,
+                    content_type="video/mp4",
+                    extension="mp4",
+                    max_bytes=4,
+                )
+        self.assertEqual(object_store.file_calls, [])
 
     async def test_non_image_media_is_rejected_before_object_store(self) -> None:
         object_store = FakeObjectStore()
