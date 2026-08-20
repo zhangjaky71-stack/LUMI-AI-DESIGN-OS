@@ -1,0 +1,101 @@
+name: Tool Gateway P0 Staging Evidence Workflow Contract
+
+on:
+  pull_request:
+    paths:
+      - "scripts/validate_tool_gateway_p0_runtime_identity.py"
+      - "scripts/validate_tool_gateway_p0_offload_probe.py"
+      - "scripts/assemble_tool_gateway_p0_e2e_evidence_v2.py"
+      - "scripts/run_tool_gateway_p0_staging_e2e_ecs.py"
+      - ".github/workflows/collect-staging-tool-gateway-p0-e2e.yml"
+      - ".github/workflows/freeze-staging-tool-gateway-p0-e2e.yml"
+      - ".github/workflows/tool-gateway-p0-staging-evidence-workflow-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workflow-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile exact-RC evidence join tools
+        run: |
+          python3 -m py_compile \
+            scripts/validate_tool_gateway_p0_runtime_identity.py \
+            scripts/validate_tool_gateway_p0_offload_probe.py \
+            scripts/assemble_tool_gateway_p0_e2e_evidence_v2.py \
+            scripts/run_tool_gateway_p0_staging_e2e_ecs.py
+          python3 scripts/validate_tool_gateway_p0_runtime_identity.py --self-test
+          python3 scripts/validate_tool_gateway_p0_offload_probe.py --self-test
+      - name: Require collection and freeze remain explicit exact-RC operations
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          collector = Path(
+              ".github/workflows/collect-staging-tool-gateway-p0-e2e.yml"
+          ).read_text(encoding="utf-8")
+          freezer = Path(
+              ".github/workflows/freeze-staging-tool-gateway-p0-e2e.yml"
+          ).read_text(encoding="utf-8")
+          runtime = Path(
+              "scripts/validate_tool_gateway_p0_runtime_identity.py"
+          ).read_text(encoding="utf-8")
+
+          for label, source in (("collector", collector), ("freezer", freezer)):
+              if "workflow_dispatch:" not in source:
+                  raise SystemExit(f"{label} must remain workflow_dispatch-only")
+              for forbidden_trigger in ("pull_request:", "push:", "schedule:"):
+                  if forbidden_trigger in source:
+                      raise SystemExit(f"{label} has forbidden trigger: {forbidden_trigger}")
+
+          for marker in (
+              "COLLECT_TOOL_GATEWAY_P0",
+              'status: "COLLECTED_NOT_ACCEPTED"',
+              "run_tool_gateway_p0_staging_e2e_ecs.py",
+              "verify_tool_gateway_p0_offload_s3.py",
+              "validate_tool_gateway_p0_offload_probe.py",
+              "configure-aws-credentials@v6.2.3",
+              "AWS_DEPLOY_ROLE_ARN",
+          ):
+              if marker not in collector:
+                  raise SystemExit(f"collector workflow missing boundary: {marker}")
+
+          for marker in (
+              "FREEZE_STAGING_TOOL_GATEWAY_P0:${RC_SHA}",
+              "Collect Staging Tool Gateway P0 E2E",
+              "validate_tool_gateway_p0_runtime_identity.py",
+              "derive_tool_gateway_p0_search_evidence.py",
+              "assemble_tool_gateway_p0_e2e_evidence_v2.py",
+              "staging-evidence-with-tool-gateway.json",
+              "refusing to overwrite non-identical Tool Gateway P0 evidence",
+          ):
+              if marker not in freezer:
+                  raise SystemExit(f"freeze workflow missing boundary: {marker}")
+
+          for marker in (
+              'runtime.get("release_git_sha") == git_sha',
+              'actual == expected',
+              'row.get("assign_public_ip") == "DISABLED"',
+              '"api", "agent-runtime", "tool-gateway", "sandbox-runtime"',
+          ):
+              if marker not in runtime:
+                  raise SystemExit(f"runtime identity join missing boundary: {marker}")
+
+          combined = collector + "\n" + freezer
+          for forbidden in (
+              "get_secret_value",
+              'boto3.client("secretsmanager"',
+              "generate_presigned_url",
+          ):
+              if forbidden in combined:
+                  raise SystemExit(f"staging evidence workflow contains forbidden access: {forbidden}")
+
+          print("Tool Gateway P0 staging evidence workflow contract: PASS")
+          PY
