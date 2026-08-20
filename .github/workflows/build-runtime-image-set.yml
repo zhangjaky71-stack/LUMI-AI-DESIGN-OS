@@ -328,6 +328,7 @@ jobs:
             --git-sha "$GITHUB_SHA" \
             --version "$version" \
             --build-run-url "$BUILD_RUN_URL" \
+            --attestation-report "${root}/attestation-verification.json" \
             --out "${root}/container-image-set.json"
           python3 -m json.tool "${root}/container-image-set.json" >/dev/null
 
