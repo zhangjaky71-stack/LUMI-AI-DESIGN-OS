@@ -13,8 +13,10 @@ AUTH_V2 = ROOT / "scripts" / "capture_release_authorization_v2.py"
 IDENTITY_V2 = ROOT / "scripts" / "validate_finalization_identity_v2.py"
 ASSEMBLER_V2 = ROOT / "scripts" / "final-acceptance-assembler-v2.py"
 PACKAGE_V2 = ROOT / "scripts" / "validate_final_acceptance_package_v2.py"
+PACKAGE_CONTRACT = ROOT / "scripts" / "validate_final_acceptance_v2_package_contract.py"
 DECISION_V2 = ROOT / "scripts" / "final-acceptance-decision-v2.py"
 FINAL_WORKFLOW = ROOT / ".github" / "workflows" / "final-acceptance-gate.yml"
+RELEASE_TEMPLATE = ROOT / "final" / "acceptance" / "release-manifest-v2-template.json"
 POLICY_TEMPLATE = ROOT / "final" / "acceptance" / "release-approval-policy-v2-template.json"
 REQUEST_TEMPLATE = ROOT / "final" / "acceptance" / "release-authorization-request-v2-template.json"
 GOVERNANCE_TEMPLATE = ROOT / "final" / "acceptance" / "repository-governance-policy-template.json"
@@ -48,12 +50,21 @@ def main() -> int:
     governance = load_module(GOVERNANCE_POLICY, "lumi_governance_policy_contract_v2")
     auth = load_module(AUTH_V2, "lumi_authorization_contract_v2")
     identity = load_module(IDENTITY_V2, "lumi_identity_contract_v2")
+    package_contract = load_module(PACKAGE_CONTRACT, "lumi_package_contract_v2")
     governance_test: dict[str, Any] = governance.self_test()
     auth_test: dict[str, Any] = auth.self_test()
     identity_test: dict[str, Any] = identity.self_test()
     require(governance_test.get("status") == "PASS" and governance_test.get("negative_drills") == 6, "governance policy V2 self-test drift")
     require(auth_test.get("status") == "PASS" and auth_test.get("negative_drills") == 6, "authorization V2 self-test drift")
     require(identity_test.get("status") == "PASS" and identity_test.get("negative_drills") == 7, "finalization identity V2 self-test drift")
+    require(package_contract.main() == 0, "V2 assembler/package execution contract did not PASS")
+
+    release_template = json.loads(RELEASE_TEMPLATE.read_text(encoding="utf-8"))
+    require(release_template.get("schema_version") == 2 and release_template.get("kind") == "LUMI_FINAL_ACCEPTANCE_PACKAGE_V2", "release manifest V2 template mismatch")
+    require(release_template.get("repository_governance_policy") == {"path": "PENDING", "sha256": "PENDING"}, "release template must freeze governance policy")
+    require(release_template.get("release_authorization_request") == {"path": "PENDING", "sha256": "PENDING"}, "release template must freeze authorization request")
+    require(all(value == "PENDING" for value in release_template.get("approvals", {}).values()), "release template approvals must remain PENDING")
+    require("release_authorization" not in release_template and "repository_governance" not in release_template, "release template must not contain live reports")
 
     policy = json.loads(POLICY_TEMPLATE.read_text(encoding="utf-8"))
     require(policy.get("kind") == auth.POLICY_KIND and policy.get("schema_version") == 2, "approval policy V2 template mismatch")
