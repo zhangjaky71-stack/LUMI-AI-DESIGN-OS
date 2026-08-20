@@ -31,6 +31,13 @@ HANDOFF_KEYS = {
     "dr_drill_owner",
     "capacity_review_owner",
 }
+EXPECTED_REPOSITORY = "zhangjaky71-stack/LUMI-AI-DESIGN-OS"
+REPOSITORY_GOVERNANCE_KIND = "LUMI_RELEASE_BRANCH_PROTECTION_V1"
+REQUIRED_RELEASE_BRANCHES = {
+    "node-73-final-acceptance-release",
+    "release-closure-p0",
+}
+RELEASE_HEAD_BRANCH = "release-closure-p0"
 
 
 class AssemblyError(RuntimeError):
@@ -124,6 +131,41 @@ def validate_production_manifest(path: Path) -> tuple[dict[str, Any], tuple[str,
     if not isinstance(edge, dict) or not present(edge.get("domain")):
         raise AssemblyError("production manifest edge.domain missing")
     return manifest, (git_sha.lower(), str(version), str(migration_head))
+
+
+def validate_repository_governance(
+    path: Path,
+    *,
+    expected_release_sha: str,
+) -> dict[str, str]:
+    report = load_json(path)
+    if report.get("schema_version") != 1 or report.get("kind") != REPOSITORY_GOVERNANCE_KIND:
+        raise AssemblyError("repository governance schema/kind mismatch")
+    if report.get("status") != "PASS":
+        raise AssemblyError("repository governance is not PASS")
+    if report.get("repository") != EXPECTED_REPOSITORY:
+        raise AssemblyError("repository governance repository mismatch")
+    branches = report.get("branches")
+    if not isinstance(branches, list) or len(branches) != len(REQUIRED_RELEASE_BRANCHES):
+        raise AssemblyError("repository governance must contain exactly two release branches")
+    by_name: dict[str, dict[str, Any]] = {}
+    for item in branches:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+            raise AssemblyError("repository governance contains invalid branch entry")
+        name = item["name"]
+        if name not in REQUIRED_RELEASE_BRANCHES or name in by_name:
+            raise AssemblyError(f"repository governance branch invalid/duplicate: {name}")
+        if item.get("protected") is not True:
+            raise AssemblyError(f"required release branch is not protected: {name}")
+        head_sha = item.get("head_sha")
+        if not isinstance(head_sha, str) or not SHA40.fullmatch(head_sha.lower()):
+            raise AssemblyError(f"repository governance head SHA invalid: {name}")
+        by_name[name] = item
+    if set(by_name) != REQUIRED_RELEASE_BRANCHES:
+        raise AssemblyError("repository governance branch set mismatch")
+    if by_name[RELEASE_HEAD_BRANCH]["head_sha"].lower() != expected_release_sha.lower():
+        raise AssemblyError("protected release-closure-p0 head does not equal final RC SHA")
+    return frozen(path)
 
 
 def validate_upstream(
@@ -272,10 +314,15 @@ def normalize_scenarios(
 def assemble(args: argparse.Namespace) -> tuple[Path, Path]:
     matrix_path = repo_file(args.matrix, prefixes=("final/acceptance/",))
     production_path = repo_file(args.production_manifest, prefixes=("reports/production-deployments/",))
+    governance_path = repo_file(args.repository_governance, prefixes=("reports/repository-governance/",))
     authorization_path = repo_file(args.authorization, prefixes=("reports/final-acceptance/",))
     scenario_path = repo_file(args.scenario_results, prefixes=("reports/final-acceptance/",))
     matrix = load_json(matrix_path)
     production, expected_rc = validate_production_manifest(production_path)
+    repository_governance = validate_repository_governance(
+        governance_path,
+        expected_release_sha=expected_rc[0],
+    )
     release_id = args.release_id
     if not present(release_id) or not re.fullmatch(r"[A-Za-z0-9._-]+", release_id):
         raise AssemblyError("release_id must be a concrete safe identifier")
@@ -342,6 +389,7 @@ def assemble(args: argparse.Namespace) -> tuple[Path, Path]:
             "deployment_manifest_path": repo_relative(production_path),
             "deployment_manifest_sha256": sha256(production_path),
         },
+        "repository_governance": repository_governance,
         "upstream_gates": upstream,
         "acceptance_evidence": frozen(evidence_path),
         "release_authorization": frozen(authorization_path),
@@ -364,6 +412,7 @@ def main() -> int:
     parser.add_argument("--matrix", default="final/acceptance/manifest-v1.json")
     parser.add_argument("--release-id", required=True)
     parser.add_argument("--production-manifest", required=True)
+    parser.add_argument("--repository-governance", required=True)
     parser.add_argument("--security", required=True)
     parser.add_argument("--recovery", required=True)
     parser.add_argument("--performance", required=True)
