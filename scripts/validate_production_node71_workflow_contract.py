@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "deploy-production.yml"
 MANIFEST = ROOT / "production" / "deployment" / "manifest-template.json"
 CANONICAL_PATH = "reports/production-deployments/runtime/node71/decision.json"
+DOWNLOAD_ACTION = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1"
 
 
 class WorkflowContractError(RuntimeError):
@@ -41,12 +42,13 @@ def main() -> int:
         'description: "Exact Staging Acceptance Gate run id that produced the NODE-71 decision artifact"',
         "actions: read",
         "STAGING_ACCEPTANCE_RUN_ID: ${{ inputs.staging_acceptance_run_id }}",
-        "actions/download-artifact@v8",
+        DOWNLOAD_ACTION,
         "name: staging-acceptance-decision",
         "github-token: ${{ secrets.GITHUB_TOKEN }}",
         "repository: ${{ github.repository }}",
         "run-id: ${{ inputs.staging_acceptance_run_id }}",
         "scripts/validate_node71_decision_artifact.py",
+        "python3 scripts/validate_release_action_pins.py",
         '--acceptance-provenance "$ACCEPTANCE_PROVENANCE_PATH"',
         '--acceptance-run-id "$STAGING_ACCEPTANCE_RUN_ID"',
         '--repository "${{ github.repository }}"',
@@ -68,18 +70,24 @@ def main() -> int:
         and "test -f \"$ACCEPTANCE_PROVENANCE_PATH\"" in release,
         "release-gate must require decision/provenance pair",
     )
+    require(
+        "validate_release_action_pins.py" in release,
+        "release-gate must fail closed on release action supply-chain drift",
+    )
 
-    download_pos = release.find("actions/download-artifact@v8")
+    pin_pos = release.find("validate_release_action_pins.py")
+    download_pos = release.find(DOWNLOAD_ACTION)
     provenance_pos = release.find("validate_node71_decision_artifact.py")
     deployment_gate_pos = release.find("production-deployment-gate.py")
     export_pos = release.find("Export immutable release metadata")
     require(
-        download_pos >= 0
+        pin_pos >= 0
+        and download_pos >= 0
         and provenance_pos >= 0
         and deployment_gate_pos >= 0
         and export_pos >= 0
-        and download_pos < provenance_pos < deployment_gate_pos < export_pos,
-        "NODE-71 artifact download/provenance/deployment gate must precede release metadata export",
+        and pin_pos < download_pos < provenance_pos < deployment_gate_pos < export_pos,
+        "action pin gate and NODE-71 artifact/provenance/deployment gates must precede release metadata export",
     )
 
     require(
