@@ -8,6 +8,23 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+RUNTIME_IMAGE_KEYS = {
+    "api",
+    "agent-runtime",
+    "model-gateway",
+    "tool-gateway",
+    "worker-media",
+    "sandbox-runtime",
+}
+RUNTIME_SERVICE_IMAGE_KEY = {
+    "api": "api",
+    "agent-runtime": "agent-runtime",
+    "model-gateway": "model-gateway",
+    "tool-gateway": "tool-gateway",
+    "worker-media": "worker-media",
+    "outbox-dispatcher": "worker-media",
+    "sandbox-runtime": "sandbox-runtime",
+}
 
 
 class ProductionDecisionError(RuntimeError):
@@ -61,6 +78,16 @@ def check_passed(
         blockers.append(f"{label} deployment_id mismatch")
 
 
+def _expected_service_images(images: object, blockers: list[str]) -> dict[str, str]:
+    if not isinstance(images, dict) or set(images) != RUNTIME_IMAGE_KEYS:
+        blockers.append("deployment manifest must contain exactly six canonical runtime images")
+        return {}
+    return {
+        service: str(images[image_key])
+        for service, image_key in RUNTIME_SERVICE_IMAGE_KEY.items()
+    }
+
+
 def evaluate(
     manifest: dict[str, Any],
     deployment_gate: dict[str, Any],
@@ -96,19 +123,29 @@ def evaluate(
     if rc(runtime) != manifest_rc:
         blockers.append("runtime identity RC mismatch")
     services = runtime.get("services")
-    images = manifest.get("images")
-    if not isinstance(services, list) or len(services) != 6 or not isinstance(images, dict):
-        blockers.append("runtime identity must contain exactly six services")
+    expected_service_images = _expected_service_images(manifest.get("images"), blockers)
+    if not isinstance(services, list) or len(services) != len(RUNTIME_SERVICE_IMAGE_KEY):
+        blockers.append("runtime identity must contain exactly seven services")
     else:
-        observed = {
+        observed_images = {
             item.get("service_name"): item.get("image")
             for item in services
             if isinstance(item, dict) and isinstance(item.get("service_name"), str)
         }
-        if observed != images:
-            blockers.append("deployed runtime images do not exactly equal accepted deployment manifest")
+        observed_image_keys = {
+            item.get("service_name"): item.get("image_key")
+            for item in services
+            if isinstance(item, dict) and isinstance(item.get("service_name"), str)
+        }
+        if observed_images != expected_service_images:
+            blockers.append(
+                "deployed seven-service runtime images do not match the accepted six-image mapping"
+            )
+        if observed_image_keys != RUNTIME_SERVICE_IMAGE_KEY:
+            blockers.append("runtime identity service-to-image-key mapping is not canonical")
         if any(
             not isinstance(item, dict)
+            or item.get("expected_image") != expected_service_images.get(item.get("service_name"))
             or item.get("image_matches") is not True
             or item.get("steady") is not True
             for item in services
