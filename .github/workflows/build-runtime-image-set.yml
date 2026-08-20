@@ -23,16 +23,16 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
 
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.11.28"
           enable-cache: true
@@ -63,18 +63,18 @@ jobs:
           echo "IMAGE_BASE=${REGISTRY}/${repository}" >> "$GITHUB_ENV"
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Build and push API
         id: build_api
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: apps/api/Dockerfile
@@ -88,7 +88,7 @@ jobs:
 
       - name: Attest API image
         id: attest_api
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE_BASE }}-api
           subject-digest: ${{ steps.build_api.outputs.digest }}
@@ -96,7 +96,7 @@ jobs:
 
       - name: Build and push Agent Runtime
         id: build_agent_runtime
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: apps/agent-runtime/Dockerfile
@@ -110,7 +110,7 @@ jobs:
 
       - name: Attest Agent Runtime image
         id: attest_agent_runtime
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE_BASE }}-agent-runtime
           subject-digest: ${{ steps.build_agent_runtime.outputs.digest }}
@@ -118,7 +118,7 @@ jobs:
 
       - name: Build and push Model Gateway
         id: build_model_gateway
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: services/model-gateway/Dockerfile
@@ -132,7 +132,7 @@ jobs:
 
       - name: Attest Model Gateway image
         id: attest_model_gateway
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE_BASE }}-model-gateway
           subject-digest: ${{ steps.build_model_gateway.outputs.digest }}
@@ -140,7 +140,7 @@ jobs:
 
       - name: Build and push Tool Gateway
         id: build_tool_gateway
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: services/tool-gateway/Dockerfile
@@ -154,7 +154,7 @@ jobs:
 
       - name: Attest Tool Gateway image
         id: attest_tool_gateway
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE_BASE }}-tool-gateway
           subject-digest: ${{ steps.build_tool_gateway.outputs.digest }}
@@ -162,7 +162,7 @@ jobs:
 
       - name: Build and push Worker Media
         id: build_worker_media
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: apps/worker-media/Dockerfile
@@ -176,7 +176,7 @@ jobs:
 
       - name: Attest Worker Media image
         id: attest_worker_media
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE_BASE }}-worker-media
           subject-digest: ${{ steps.build_worker_media.outputs.digest }}
@@ -184,7 +184,7 @@ jobs:
 
       - name: Build and push Sandbox Runtime
         id: build_sandbox_runtime
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: services/sandbox-runtime/Dockerfile
@@ -198,7 +198,7 @@ jobs:
 
       - name: Attest Sandbox Runtime image
         id: attest_sandbox_runtime
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE_BASE }}-sandbox-runtime
           subject-digest: ${{ steps.build_sandbox_runtime.outputs.digest }}
@@ -300,7 +300,7 @@ jobs:
           python3 -m json.tool "${root}/container-image-set.json" >/dev/null
 
       - name: Upload frozen six-runtime RC image set
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: runtime-image-set-${{ github.sha }}
           path: reports/runtime-image-sets/${{ github.sha }}
