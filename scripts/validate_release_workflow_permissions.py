@@ -142,12 +142,33 @@ def validate_build() -> None:
 
 def validate_lock() -> None:
     source = text(LOCK)
+    require_top_read_only(source, "NODE-73 canonical uv-lock regeneration")
     header = top(source)
-    require("permissions:\n  contents: write\n" in header, "uv-lock workflow needs exactly contents:write")
-    for forbidden in ("actions: write", "packages: write", "attestations: write", "id-token: write"):
-        require(forbidden not in header, f"uv-lock workflow has unrelated write capability: {forbidden}")
-    require("git add -- uv.lock" in source, "uv-lock workflow must retain narrow file mutation")
-    require("git push --force" not in source.casefold(), "uv-lock workflow must not force-push")
+    require("workflow_dispatch:" in header, "uv-lock workflow must be manual-dispatch only")
+    require("REGENERATE_NODE73_UV_LOCK" in header, "uv-lock workflow must require typed confirmation")
+    require("expected_sha:" in header, "uv-lock workflow must require exact target SHA")
+
+    regenerate = job_block(source, "regenerate-lock", "commit-lock")
+    commit = job_block(source, "commit-lock", None)
+
+    require("permissions:\n      contents: read\n" in regenerate, "uv resolver phase must be read-only")
+    for forbidden in ("contents: write", "actions: write", "packages: write", "attestations: write", "id-token: write", "pull-requests: write"):
+        require(forbidden not in regenerate, f"uv resolver phase has write capability: {forbidden}")
+    require("GITHUB_TOKEN" not in regenerate, "uv resolver/project-code phase must not receive GitHub write token")
+    require("uv lock" in regenerate and "uv sync --all-packages --frozen" in regenerate, "read-only phase must perform canonical resolver/frozen sync")
+    require("actions/upload-artifact@" in regenerate, "read-only phase must freeze regenerated uv.lock as a same-run artifact")
+
+    require("needs: [regenerate-lock]" in commit, "uv-lock commit phase must depend on successful resolver phase")
+    require("needs.regenerate-lock.outputs.changed == 'true'" in commit, "uv-lock commit phase must skip idempotent no-change runs")
+    require("permissions:\n      contents: write\n" in commit, "only uv-lock commit phase may receive contents:write")
+    for forbidden in ("actions: write", "packages: write", "attestations: write", "id-token: write", "pull-requests: write"):
+        require(forbidden not in commit, f"uv-lock commit phase has unrelated capability: {forbidden}")
+    require("actions/download-artifact@" in commit, "uv-lock commit phase must consume the exact same-run artifact")
+    require("uv lock" not in commit and "uv sync" not in commit, "write-capable uv-lock phase must never resolve/install project dependencies")
+    require("python3 scripts/" not in commit, "write-capable uv-lock phase must not execute release-branch Python scripts")
+    require(commit.count("GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}") == 1, "uv-lock write token must be injected into exactly one fixed mutation step")
+    require("git add -- uv.lock" in commit and "git push --force" not in commit.casefold(), "uv-lock mutation must remain narrow and non-force")
+    require('test "$(git rev-parse "origin/${TARGET_REF}")" = "$EXPECTED_SHA"' in commit, "uv-lock mutation must fail closed if release branch moved")
 
 
 def validate_staging() -> None:
@@ -187,7 +208,7 @@ def validate_final() -> None:
     lock_gate = job_block(source, "canonical-lock-gate", "final-decision")
     final_decision = job_block(source, "final-decision", "contract-gate")
     for label, block in (("source-contract", source_contract), ("canonical-lock-gate", lock_gate)):
-        require("pull-requests: read" not in block, f"Final Acceptance {label} must not receive PR review access")
+        require("pull-requests: read" not in block, f"NODE-73 Final Acceptance {label} may not receive PR read permission")
     require("permissions:\n      contents: read\n      pull-requests: read\n" in final_decision, "only final-decision may receive pull-requests:read")
     for forbidden in ("contents: write", "pull-requests: write", "actions: write", "packages: write", "attestations: write", "id-token: write"):
         require(forbidden not in final_decision, f"Final Acceptance final-decision has unnecessary write capability: {forbidden}")
