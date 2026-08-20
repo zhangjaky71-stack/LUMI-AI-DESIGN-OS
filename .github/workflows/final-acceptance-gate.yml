@@ -30,6 +30,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require exact source-contract execution SHA
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
@@ -79,6 +84,7 @@ jobs:
             scripts/validate_finalization_identity_v2.py \
             scripts/validate_finalization_v2_contract.py \
             scripts/validate_release_governance_policy.py \
+            scripts/validate_live_release_governance_v2.py \
             scripts/capture_release_branch_protection.py \
             scripts/capture_release_authorization_v2.py \
             scripts/security-release-decision.py \
@@ -111,6 +117,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require exact canonical-lock execution SHA
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
@@ -139,6 +150,9 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+          persist-credentials: false
+      - name: Require exact final-decision Evidence Head checkout
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
@@ -195,6 +209,7 @@ jobs:
           retention-days: 180
 
   contract-gate:
+    name: node73-final-contract-gate
     if: always()
     needs: [source-contract, canonical-lock-gate]
     runs-on: ubuntu-24.04
