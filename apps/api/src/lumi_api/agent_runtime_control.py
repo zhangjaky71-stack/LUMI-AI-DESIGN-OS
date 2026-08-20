@@ -11,13 +11,13 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from lumi_api.idempotency.contracts import ClaimDecision, IdempotencyContext, SideEffectResult
+from lumi_api.idempotency.contracts import IdempotencyContext, SideEffectResult
 from lumi_api.idempotency.gateway import IdempotencyError, SideEffectGateway
-from lumi_api.persistence.models import Approval, OutboxEvent
+from lumi_api.persistence.models import AgentRun, Approval, OutboxEvent
 
 _MAX_BODY_BYTES = 2 * 1024 * 1024
 _MAX_SKEW_SECONDS = 90
@@ -54,6 +54,24 @@ def build_agent_runtime_control_runtime(
 
 def create_agent_runtime_control_router(runtime: AgentRuntimeControlRuntime) -> APIRouter:
     router = APIRouter(prefix="/internal/v1/agent-control", tags=["internal-agent-control"])
+
+    @router.post("/probe")
+    async def probe(request: Request) -> JSONResponse:
+        payload_or_error = await _authenticated_json(request, runtime.auth_secret)
+        if isinstance(payload_or_error, JSONResponse):
+            return payload_or_error
+        if payload_or_error:
+            return _error(422, "AGENT_CONTROL_PROBE_BODY_INVALID", "probe body must be empty")
+        try:
+            async with runtime.session_factory() as session:
+                await session.execute(text("SELECT 1"))
+        except Exception:
+            return _error(
+                503,
+                "AGENT_CONTROL_PERSISTENCE_UNAVAILABLE",
+                "canonical persistence is unavailable",
+            )
+        return JSONResponse(status_code=200, content={"status": "ok", "schema_version": 1})
 
     @router.post("/operations/claim")
     async def claim_operation(request: Request) -> JSONResponse:
@@ -250,6 +268,19 @@ def create_agent_runtime_control_router(runtime: AgentRuntimeControlRuntime) -> 
                 "trace_id": _optional_string(payload.get("trace_id"), 128),
             }
             async with runtime.session_factory() as session:
+                run = await session.scalar(
+                    select(AgentRun).where(
+                        AgentRun.id == agent_run_id,
+                        AgentRun.organization_id == organization_id,
+                        AgentRun.project_id == project_id,
+                    )
+                )
+                if run is None or run.graph_version != event_payload["graph_version"]:
+                    return _error(
+                        409,
+                        "AGENT_CONTROL_EVENT_SCOPE_MISMATCH",
+                        "event does not match canonical AgentRun scope",
+                    )
                 statement = (
                     insert(OutboxEvent)
                     .values(
