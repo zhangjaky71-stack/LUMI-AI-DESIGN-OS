@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PRODUCT_GATE = ROOT / "scripts" / "final-acceptance-gate.py"
 PACKAGE_V2 = ROOT / "scripts" / "validate_final_acceptance_package_v2.py"
 GOVERNANCE = ROOT / "scripts" / "capture_release_branch_protection.py"
+GOVERNANCE_BINDER_V2 = ROOT / "scripts" / "validate_live_release_governance_v2.py"
 AUTHORIZATION_V2 = ROOT / "scripts" / "capture_release_authorization_v2.py"
 IDENTITY_V2 = ROOT / "scripts" / "validate_finalization_identity_v2.py"
 EXPECTED_REPOSITORY = "zhangjaky71-stack/LUMI-AI-DESIGN-OS"
@@ -83,7 +84,8 @@ def require_execution_context() -> str:
 def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, output_path: Path) -> dict[str, Any]:
     product_gate = load_module(PRODUCT_GATE, "lumi_final_product_gate_v2")
     package = load_module(PACKAGE_V2, "lumi_final_package_v2")
-    governance = load_module(GOVERNANCE, "lumi_release_governance_live_v2")
+    governance = load_module(GOVERNANCE, "lumi_release_governance_capture_v2")
+    governance_binder = load_module(GOVERNANCE_BINDER_V2, "lumi_release_governance_policy_binding_v2")
     authorization = load_module(AUTHORIZATION_V2, "lumi_release_authorization_live_v2")
     identity = load_module(IDENTITY_V2, "lumi_finalization_identity_v2_runtime")
 
@@ -106,6 +108,23 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
     source_rc_sha = rc["git_sha"].lower()
     evidence_head_sha = require_execution_context()
 
+    governance_spec = release.get("repository_governance_policy")
+    if not isinstance(governance_spec, dict) or not isinstance(governance_spec.get("path"), str):
+        raise FinalDecisionV2Error("repository_governance_policy frozen path is missing")
+    governance_policy_path = product_gate.canonical_repo_path(
+        governance_spec["path"],
+        allowed_prefixes=("final/acceptance/", "reports/final-acceptance/"),
+    )
+    governance_policy = product_gate.load_json(governance_policy_path)
+
+    auth_spec = release.get("release_authorization_request")
+    if not isinstance(auth_spec, dict) or not isinstance(auth_spec.get("path"), str):
+        raise FinalDecisionV2Error("release_authorization_request frozen path is missing")
+    request_path = product_gate.canonical_repo_path(
+        auth_spec["path"],
+        allowed_prefixes=("reports/final-acceptance/",),
+    )
+
     runtime_dir = output_path.parent / "runtime-v2"
     governance_path = runtime_dir / "repository-governance-live.json"
     authorization_path = runtime_dir / "release-authorization-live.json"
@@ -114,18 +133,15 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
     governance_report = governance.capture(EXPECTED_REPOSITORY, token=governance_token)
     write_json(governance_path, governance_report)
     try:
-        governance_result = governance.validate_report(
+        governance_result = governance_binder.validate_live_report(
             governance_report,
+            governance_policy,
             expected_repository=EXPECTED_REPOSITORY,
-            expected_release_sha=evidence_head_sha,
+            expected_evidence_head_sha=evidence_head_sha,
         )
-    except governance.BranchProtectionError as exc:
+    except governance_binder.LiveGovernanceV2Error as exc:
         raise FinalDecisionV2Error(f"live repository governance blocked: {exc}") from exc
 
-    auth_spec = release.get("release_authorization_request")
-    if not isinstance(auth_spec, dict) or not isinstance(auth_spec.get("path"), str):
-        raise FinalDecisionV2Error("release_authorization_request frozen path is missing")
-    request_path = product_gate.canonical_repo_path(auth_spec["path"], allowed_prefixes=("reports/final-acceptance/",))
     approval_token = require_token("RELEASE_APPROVAL_TOKEN")
     try:
         authorization_report = authorization.capture(
@@ -168,6 +184,9 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
             "status": governance_result.get("status"),
             "protection_profile": governance_result.get("protection_profile"),
             "evidence_head_sha": governance_result.get("release_head_sha"),
+            "required_status_contexts": governance_result.get("required_status_contexts"),
+            "branch_status_contexts": governance_result.get("branch_status_contexts"),
+            "status_check_policy_bound": governance_result.get("status_check_policy_bound"),
         },
         "release_authorization": {
             "path": repo_relative(authorization_path),
@@ -203,6 +222,14 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
             "release_manifest": {"path": repo_relative(release_path), "sha256": sha256(release_path)},
             "acceptance_evidence": {"path": repo_relative(evidence_path), "sha256": sha256(evidence_path)},
             "acceptance_matrix": {"path": repo_relative(matrix_path), "sha256": sha256(matrix_path)},
+            "repository_governance_policy": {
+                "path": repo_relative(governance_policy_path),
+                "sha256": sha256(governance_policy_path),
+            },
+            "release_authorization_request": {
+                "path": repo_relative(request_path),
+                "sha256": sha256(request_path),
+            },
         },
         "execution_identity": execution_identity,
         "live_release_controls": live_controls,
@@ -229,7 +256,20 @@ def main() -> int:
         result = evaluate(matrix_path=matrix_path, release_path=release_path, evidence_path=evidence_path, output_path=output_path)
     except (OSError, json.JSONDecodeError, FinalDecisionV2Error, product_gate.FinalAcceptanceError) as exc:
         raise SystemExit(f"final acceptance decision V2 blocked: {exc}") from exc
-    print(json.dumps({"accepted": result["accepted"], "decision_id": result["decision_id"], "product_decision_id": result["product_decision_id"], "source_rc_sha": result["source_rc_sha"], "evidence_head_sha": result["evidence_head_sha"], "headline": result["headline"]}, ensure_ascii=False, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "accepted": result["accepted"],
+                "decision_id": result["decision_id"],
+                "product_decision_id": result["product_decision_id"],
+                "source_rc_sha": result["source_rc_sha"],
+                "evidence_head_sha": result["evidence_head_sha"],
+                "headline": result["headline"],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
     return 0 if result["accepted"] else 2
 
 
