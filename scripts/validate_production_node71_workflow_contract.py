@@ -40,7 +40,6 @@ def main() -> int:
     for marker in (
         "staging_acceptance_run_id:",
         'description: "Exact Staging Acceptance Gate run id that produced the NODE-71 decision artifact"',
-        "actions: read",
         "STAGING_ACCEPTANCE_RUN_ID: ${{ inputs.staging_acceptance_run_id }}",
         DOWNLOAD_ACTION,
         "name: staging-acceptance-decision",
@@ -56,7 +55,17 @@ def main() -> int:
     ):
         require(marker in text, f"production workflow missing NODE-71 binding marker: {marker}")
 
+    header = text[: text.find("jobs:\n")]
+    require(
+        "permissions:\n  contents: read\n  actions: read\n" in header,
+        "production deploy workflow must default to read-only contents/actions permissions",
+    )
+    require("id-token: write" not in header, "production OIDC must not be granted at workflow scope")
+    for forbidden in ("contents: write", "actions: write", "packages: write", "attestations: write"):
+        require(forbidden not in header, f"production deploy workflow top-level permission is too broad: {forbidden}")
+
     release = _job_block(text, "release-gate", "production")
+    production = _job_block(text, "production", None)
     require(
         "production manifest staging_acceptance_run_id differs from requested run id" in release,
         "release-gate must bind manifest NODE-71 run id to requested run",
@@ -74,6 +83,17 @@ def main() -> int:
         "validate_release_action_pins.py" in release,
         "release-gate must fail closed on release action supply-chain drift",
     )
+    require("id-token: write" not in release, "release-gate must not be able to mint OIDC tokens")
+    require("aws-actions/configure-aws-credentials@" not in release, "release-gate must not assume the production AWS role")
+
+    require("needs: [release-gate]" in production, "production mutation job must depend on release-gate")
+    require("environment: production" in production, "OIDC-capable job must remain behind the production environment")
+    require(
+        "permissions:\n      contents: read\n      id-token: write\n" in production,
+        "OIDC permission must be scoped only to the production mutation job",
+    )
+    require("actions: read" not in production, "production mutation job must not receive cross-run Actions read permission")
+    require("aws-actions/configure-aws-credentials@" in production, "production OIDC boundary must contain the AWS role-assumption action")
 
     pin_pos = release.find("validate_release_action_pins.py")
     download_pos = release.find(DOWNLOAD_ACTION)
@@ -99,7 +119,7 @@ def main() -> int:
         "production manifest must fix the canonical downloaded NODE-71 path",
     )
 
-    print("NODE-72 exact NODE-71 decision artifact workflow contract: PASS")
+    print("NODE-72 exact NODE-71 artifact and scoped production OIDC workflow contract: PASS")
     return 0
 
 
