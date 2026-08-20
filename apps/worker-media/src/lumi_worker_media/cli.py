@@ -9,6 +9,7 @@ import asyncpg
 from kombu import Connection, Producer
 
 from .event_runtime import KombuDomainPublisher, OutboxDispatcher
+from .external_wait_runtime import MediaExternalWaitWakeScheduler
 from .job_dispatch_runtime import CeleryJobPublisher, MediaJobOutboxDispatcher
 from .topology import DOMAIN_EXCHANGE, declare_topology
 
@@ -67,12 +68,18 @@ async def _dispatch_outbox(
     watch: bool,
     interval: float,
 ) -> None:
+    wake_scheduler = MediaExternalWaitWakeScheduler(dsn)
     domain_dispatcher = OutboxDispatcher(dsn, KombuDomainPublisher(broker_url))
     job_dispatcher = MediaJobOutboxDispatcher(dsn, CeleryJobPublisher())
     while True:
+        wakes = 0
         job_published = 0
         domain_published = 0
         failures: list[tuple[str, Exception]] = []
+        try:
+            wakes = len(await wake_scheduler.stage_due_batch(limit=limit))
+        except Exception as exc:
+            failures.append(("external-wake", exc))
         try:
             job_published = await job_dispatcher.dispatch_batch(limit=limit)
         except Exception as exc:
@@ -83,13 +90,16 @@ async def _dispatch_outbox(
             failures.append(("domain", exc))
 
         published = job_published + domain_published
-        print(f"published={published} jobs={job_published} domain={domain_published}")
+        print(
+            f"published={published} jobs={job_published} domain={domain_published} "
+            f"external_wakes={wakes}"
+        )
         if failures:
             channels = ",".join(name for name, _ in failures)
             raise RuntimeError(f"OUTBOX_DISPATCH_FAILED:{channels}") from failures[0][1]
         if not watch:
             return
-        if published == 0:
+        if published == 0 and wakes == 0:
             await asyncio.sleep(interval)
 
 
