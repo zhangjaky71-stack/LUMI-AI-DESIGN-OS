@@ -26,6 +26,7 @@ jobs:
           python3 scripts/validate_canvas_performance_reference.py
           python3 scripts/validate_browser_performance_producer.py
           python3 scripts/validate_performance_stage_event_contract.py
+          python3 scripts/self_test_performance_ai_latency.py
       - name: Python syntax
         run: >-
           python3 -m py_compile
@@ -33,6 +34,8 @@ jobs:
           scripts/validate_canvas_performance_reference.py
           scripts/validate_browser_performance_producer.py
           scripts/validate_performance_stage_event_contract.py
+          scripts/derive_performance_ai_latency.py
+          scripts/self_test_performance_ai_latency.py
           scripts/perf-mock-provider.py
           scripts/perf-http-load.py
           scripts/perf-evaluate.py
