@@ -1,0 +1,39 @@
+name: Staging Acceptance Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Production-like staging API base URL (https://...)"
+        required: false
+        type: string
+      expected_version:
+        description: "Exact RC version expected from /version"
+        required: false
+        type: string
+      host_ack:
+        description: "Exact staging hostname acknowledgement"
+        required: false
+        type: string
+      evidence_path:
+        description: "Path under reports/staging-acceptance/ to completed evidence JSON"
+        required: false
+        type: string
+      runtime_image_set_run_id:
+        description: "GitHub Actions run id that produced the frozen six-runtime RC image set"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  default-branch-registry-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Refuse default-branch execution
+        run: |
+          echo "This file is a workflow_dispatch registry stub only." >&2
+          echo "Run this workflow with ref=release-closure-p0 so GitHub uses the hardened release-ref workflow definition." >&2
+          exit 64
