@@ -45,6 +45,8 @@ def main() -> int:
         "python3 scripts/validate_node71_decision_artifact.py --self-test",
         "python3 scripts/validate_release_action_pins.py",
         "scripts/validate_staging_evidence_artifacts.py",
+        "--require-live-producers",
+        "STAGING_EVIDENCE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
         "scripts/validate_staging_runtime_image_binding.py",
         "scripts/validate_staging_runtime_image_workflow_contract.py",
         "scripts/validate_node71_decision_artifact.py",
@@ -70,6 +72,10 @@ def main() -> int:
         text.count("persist-credentials: false") == 4,
         "all four NODE-71 checkouts must disable persisted GitHub credentials",
     )
+    require(
+        text.count("STAGING_EVIDENCE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}") == 1,
+        "staging evidence Actions token must be injected exactly once",
+    )
 
     template = json.loads(EVIDENCE_TEMPLATE.read_text(encoding="utf-8"))
     require(isinstance(template, dict), "staging evidence template must be a JSON object")
@@ -85,6 +91,7 @@ def main() -> int:
     )
     for forbidden in ("actions: read", "id-token: write", "contents: write", "actions: write", "packages: write", "attestations: write"):
         require(forbidden not in header, f"NODE-71 top-level permission is too broad: {forbidden}")
+    require("STAGING_EVIDENCE_GITHUB_TOKEN" not in header, "staging evidence Actions token must not be workflow-scoped")
 
     source = _job_block(text, "source-contract", "canonical-lock-gate")
     lock_gate = _job_block(text, "canonical-lock-gate", "remote-read-only-preflight")
@@ -92,9 +99,18 @@ def main() -> int:
     acceptance = _job_block(text, "acceptance-decision", "contract-gate")
     for label, block in (("source-contract", source), ("canonical-lock-gate", lock_gate), ("remote-read-only-preflight", preflight)):
         require("actions: read" not in block, f"NODE-71 {label} must not receive cross-run Actions read permission")
+        require("STAGING_EVIDENCE_GITHUB_TOKEN" not in block, f"NODE-71 {label} must not receive staging evidence Actions token")
     require(
         "permissions:\n      contents: read\n      actions: read\n" in acceptance,
         "NODE-71 acceptance-decision must be the only job with actions:read",
+    )
+    require(
+        "STAGING_EVIDENCE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}" in acceptance,
+        "only acceptance-decision may receive the ephemeral token for live producer verification",
+    )
+    require(
+        "--require-live-producers" in acceptance,
+        "acceptance-decision must live-verify every staging evidence producer run",
     )
 
     require(
@@ -135,7 +151,7 @@ def main() -> int:
         and binding_pos >= 0
         and gate_pos >= 0
         and evidence_binding_pos < download_pos < binding_pos < gate_pos,
-        "generic evidence artifact binding, exact image artifact binding, and NODE-71 decision must execute in fail-closed order",
+        "generic evidence artifact/live producer binding, exact image artifact binding, and NODE-71 decision must execute in fail-closed order",
     )
     require(
         gate_pos < provenance_pos < self_verify_pos < upload_pos,
@@ -148,7 +164,7 @@ def main() -> int:
 
     require(
         "validate_staging_evidence_artifacts.py --self-test" in source,
-        "source-contract must execute generic staging evidence artifact negative drills",
+        "source-contract must execute generic staging evidence artifact/live producer negative drills",
     )
     require(
         "validate_staging_runtime_image_binding.py --self-test" in source,
@@ -167,7 +183,7 @@ def main() -> int:
         "source-contract must fail closed on release action supply-chain drift",
     )
 
-    print("NODE-71 immutable evidence, runtime-image, decision artifact, exact-SHA checkout, and scoped permission workflow contract: PASS")
+    print("NODE-71 immutable evidence/live producers, runtime-image, decision artifact, exact-SHA checkout, and scoped permission workflow contract: PASS")
     return 0
 
 
