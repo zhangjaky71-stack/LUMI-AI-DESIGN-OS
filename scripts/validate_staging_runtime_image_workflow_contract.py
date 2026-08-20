@@ -63,17 +63,25 @@ def main() -> int:
         "acceptance-decision must validate the run id before artifact download",
     )
     require(
-        "artifact_name=runtime-image-set-${rc_sha}" in acceptance,
+        "artifact_name = f'runtime-image-set-{rc_sha}'" in acceptance,
         "artifact name must be derived from the evidence RC SHA",
+    )
+    require(
+        "fh.write(f'artifact_name={artifact_name}\\n')" in acceptance,
+        "derived artifact name must be exported as a step output",
     )
     require(
         "test \"$(find \"$RUNTIME_IMAGE_SET_DIR\" -maxdepth 1 -type f -name 'container-image-set.json' | wc -l)\" -eq 1" in acceptance,
         "downloaded runtime image artifact must contain exactly one top-level container-image-set.json",
     )
 
+    download_pos = acceptance.find("actions/download-artifact@v8")
     binding_pos = acceptance.find("validate_staging_runtime_image_binding.py")
     gate_pos = acceptance.find("staging-acceptance-gate.py")
-    require(binding_pos >= 0 and gate_pos >= 0 and binding_pos < gate_pos, "image-set binding must run before NODE-71 decision")
+    require(
+        download_pos >= 0 and binding_pos >= 0 and gate_pos >= 0 and download_pos < binding_pos < gate_pos,
+        "exact artifact download and binding must run before NODE-71 decision",
+    )
 
     source = _job_block(text, "source-contract", "canonical-lock-gate")
     require(
