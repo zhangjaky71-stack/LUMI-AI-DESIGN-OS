@@ -33,17 +33,24 @@ jobs:
       region: ${{ steps.release.outputs.region }}
       role_arn: ${{ steps.release.outputs.role_arn }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
-      - name: Resolve exact manifest and immutable recovery policy
+      - name: Resolve exact manifest and V2 Source-RC/Evidence-Head identity
         shell: bash
         run: |
           set -euo pipefail
+          test "$GITHUB_REF_NAME" = "release-closure-p0"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python3 - <<'PY'
           import json
           import os
+          import re
           from pathlib import Path
 
           root = Path.cwd().resolve()
@@ -68,13 +75,13 @@ jobs:
               raise SystemExit('manifest does not carry canonical Production recovery policy')
           rc = payload.get('release_candidate') or {}
           git_sha = rc.get('git_sha')
-          if not isinstance(git_sha, str) or len(git_sha) != 40:
-              raise SystemExit('manifest RC SHA must be SHA40')
-          if os.popen('git rev-parse HEAD').read().strip() != git_sha:
-              raise SystemExit('DR rehearsal workflow HEAD must equal manifest RC SHA')
+          if not isinstance(git_sha, str) or re.fullmatch(r'[0-9a-f]{40}', git_sha) is None:
+              raise SystemExit('manifest Source RC SHA must be lowercase SHA40')
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
               fh.write(f'MANIFEST_PATH={manifest.relative_to(root).as_posix()}\n')
+              fh.write(f'SOURCE_RC_SHA={git_sha}\n')
           PY
+          git merge-base --is-ancestor "$SOURCE_RC_SHA" "$GITHUB_SHA"
       - name: Require explicit recovery acknowledgement
         run: test "$RECOVERY_ACK" = "REHEARSE_PRODUCTION_DR:$(jq -r '.deployment_id' "$MANIFEST_PATH")"
       - name: Export immutable recovery metadata
@@ -106,24 +113,30 @@ jobs:
       MANIFEST_PATH: ${{ inputs.manifest_path }}
       TF_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
-      - uses: hashicorp/setup-terraform@v4.0.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: "1.14.6"
           terraform_wrapper: false
-      - name: Require protected Production role
+      - name: Require protected Production role and V2 identity ancestry
         shell: bash
         env:
           ENVIRONMENT_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
         run: |
           set -euo pipefail
+          test "$GITHUB_REF_NAME" = "release-closure-p0"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$RC_SHA" "$GITHUB_SHA"
           test -n "$TF_STATE_BUCKET"
           test "$ENVIRONMENT_DEPLOY_ROLE_ARN" = "$MANIFEST_ROLE_ARN"
-          test "$(git rev-parse HEAD)" = "$RC_SHA"
-      - uses: aws-actions/configure-aws-credentials@v6.2.3
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           aws-region: ${{ needs.recovery-gate.outputs.region }}
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
@@ -148,7 +161,7 @@ jobs:
           init_root infra/iac/environments/production/core lumi/production/core/terraform.tfstate
           init_root infra/iac/environments/production/app lumi/production/app/terraform.tfstate
           mkdir -p reports/production-recovery/runtime
-      - name: Require current Production runtime still matches exact RC
+      - name: Require current Production runtime still matches exact Source RC
         run: |
           bash scripts/capture-production-runtime-identity.sh \
             infra/iac/environments/production/app \
@@ -400,7 +413,7 @@ jobs:
           test "$(jq -r '.passed' reports/production-recovery/runtime/decision.json)" = true
       - name: Archive Production DR evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: production-dr-${{ needs.recovery-gate.outputs.deployment_id }}-${{ github.run_id }}
           path: reports/production-recovery/runtime/
