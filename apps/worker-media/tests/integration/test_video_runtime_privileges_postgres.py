@@ -24,16 +24,16 @@ def test_video_runtime_privileges_preserve_durable_history() -> None:
         try:
             for table in ("video_generation_jobs", "video_provider_jobs"):
                 assert await connection.fetchval(
-                    "SELECT has_table_privilege(current_user, $1, 'SELECT')", table
+                    "SELECT has_table_privilege(current_user, $1::text, 'SELECT')", table
                 ) is True
                 assert await connection.fetchval(
-                    "SELECT has_table_privilege(current_user, $1, 'INSERT')", table
+                    "SELECT has_table_privilege(current_user, $1::text, 'INSERT')", table
                 ) is True
                 assert await connection.fetchval(
-                    "SELECT has_table_privilege(current_user, $1, 'UPDATE')", table
+                    "SELECT has_table_privilege(current_user, $1::text, 'UPDATE')", table
                 ) is True
                 assert await connection.fetchval(
-                    "SELECT has_table_privilege(current_user, $1, 'DELETE')", table
+                    "SELECT has_table_privilege(current_user, $1::text, 'DELETE')", table
                 ) is False
 
             assert await connection.fetchval(
