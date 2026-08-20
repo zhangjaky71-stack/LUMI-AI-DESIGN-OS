@@ -25,15 +25,20 @@ jobs:
           python3 scripts/validate_performance_contract.py
           python3 scripts/validate_canvas_performance_reference.py
           python3 scripts/validate_browser_performance_producer.py
+          python3 scripts/validate_performance_stage_event_contract.py
       - name: Python syntax
         run: >-
           python3 -m py_compile
           scripts/validate_performance_contract.py
           scripts/validate_canvas_performance_reference.py
           scripts/validate_browser_performance_producer.py
+          scripts/validate_performance_stage_event_contract.py
           scripts/perf-mock-provider.py
           scripts/perf-http-load.py
           scripts/perf-evaluate.py
+          services/domain/src/lumi_domain/performance_events.py
+          apps/worker-media/src/lumi_worker_media/performance_ports.py
+          apps/worker-media/src/lumi_worker_media/image_generation_runtime.py
       - name: Shell syntax
         run: bash -n scripts/perf-db-snapshot
       - name: JSON syntax
