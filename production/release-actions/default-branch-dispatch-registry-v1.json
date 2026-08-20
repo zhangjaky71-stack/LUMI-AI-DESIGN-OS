@@ -20,7 +20,7 @@
     },
     {
       "path": ".github/workflows/regenerate-uv-lock.yml",
-      "default_branch_mode": "CANONICAL_TWO_PHASE_BOOTSTRAP"
+      "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
     },
     {
       "path": ".github/workflows/runtime-image-closure-contract.yml",
