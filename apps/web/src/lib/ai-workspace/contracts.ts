@@ -1,4 +1,5 @@
 import { LumiApiError } from "@/lib/app-shell/api-client";
+import { scheduleArtifactUiPropagationAfterPaint } from "./performance-telemetry";
 import type {
   AIWorkspaceSnapshot,
   AgentRunSnapshot,
@@ -101,6 +102,15 @@ function upsertMessage(
   return upsertById(values, message, (value) => value.id);
 }
 
+function artifactTaskId(snapshot: AIWorkspaceSnapshot, event: WorkspaceEvent): string | null {
+  if (event.type !== "artifact.created") return null;
+  return (
+    snapshot.run?.tasks.find((task) =>
+      task.artifact_version_ids?.includes(event.artifact.version_id),
+    )?.task_id ?? null
+  );
+}
+
 export function applyWorkspaceEvent(
   state: WorkspaceReducerState,
   event: WorkspaceEvent,
@@ -134,6 +144,7 @@ export function applyWorkspaceEvent(
     };
   }
 
+  scheduleArtifactUiPropagationAfterPaint(event, artifactTaskId(snapshot, event));
   return {
     snapshot,
     seen_event_ids: [...state.seen_event_ids.slice(-255), event.id],
