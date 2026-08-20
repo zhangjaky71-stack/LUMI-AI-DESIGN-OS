@@ -2,7 +2,7 @@
 
 Status: **CANONICAL OPERATIONAL ADDENDUM — FINAL ACCEPTANCE STILL BLOCKED**
 
-This document is the operational companion to `NODE-73-FINALIZATION-IDENTITY-V2.md`. It supersedes older NODE-73 instructions that conflate Source RC with Evidence Head, commit live controls back into the branch, or execute release logic from the default branch.
+This document is the operational companion to `NODE-73-FINALIZATION-IDENTITY-V2.md`. It supersedes older NODE-73 instructions that conflate Source RC with Evidence Head, commit live controls back into the branch, execute release logic from the default branch, or leave the final Evidence Head writable during approval/final decision.
 
 ## 1. Non-cyclic identities
 
@@ -30,9 +30,12 @@ Required order:
 6. assemble and validate release-manifest-v2.json
 7. commit all non-live final evidence
 8. select the resulting release-closure-p0 commit as Evidence Head
+9. apply strong branch governance and lock Evidence Head read-only
+10. obtain Evidence-Head-bound human approvals
+11. run Final Product Acceptance
 ```
 
-Do not enable final strong protection while more source/package commits are required.
+Do not enable final protection/lock while more source, package, or committed evidence changes are required.
 
 ## 3. Prepare approval policy and authorization request
 
@@ -88,7 +91,25 @@ After every non-live source/evidence file is final, commit them to `release-clos
 evidence_head_sha = exact release-closure-p0 HEAD
 ```
 
-Any later push creates a new Evidence Head and invalidates Evidence-Head-bound human approvals.
+The selected Evidence Head is not considered operationally frozen merely because its SHA was recorded. Before human approval or Final Decision, repository governance must make `release-closure-p0` read-only using the canonical branch-protection applicator.
+
+Required freeze state:
+
+```text
+release-closure-p0
+  strong protection = enabled
+  head SHA = Evidence Head
+  lock_branch = true
+  allow_fork_syncing = false
+
+node-73-final-acceptance-release
+  strong protection = enabled
+  lock_branch = false
+```
+
+This preserves the merge-target branch while preventing a normal push from changing the Evidence Head during human approval or Final Decision.
+
+Any source/evidence change after selecting the Evidence Head must happen only by deliberately undoing the freeze, producing a new Evidence Head, and repeating governance plus all Evidence-Head-bound approvals. Never treat an unlocked replacement commit as the previously approved Evidence Head.
 
 ## 6. Canonical required status check
 
@@ -139,9 +160,7 @@ default-branch-registry-only
 exit 64
 ```
 
-No NODE-73 release mutation logic is allowed on `main`.
-
-A run of the `main` stub that exits 64 is expected fail-closed behavior and is **not** product/release evidence.
+No NODE-73 release mutation logic is allowed on `main`. A run of the `main` stub that exits 64 is expected fail-closed behavior and is **not** product/release evidence.
 
 ### 7.2 Always dispatch the release ref
 
@@ -215,7 +234,7 @@ stage only uv.lock
 non-force push
 ```
 
-If `uv.lock` is already canonical, no empty commit is created.
+If `uv.lock` is already canonical, no empty commit is created. Canonical lock regeneration must finish before the Evidence Head is locked.
 
 ### 7.4 Live registry verification
 
@@ -227,7 +246,7 @@ scripts/validate_live_default_branch_dispatch_registry.py
 
 using the ephemeral read-only GitHub token.
 
-It live-fetches `main` and requires all nine paths to remain fail-closed. For each workflow it also requires the `workflow_dispatch.inputs` schema on `main` to exactly match the hardened Evidence-Head workflow.
+It freezes the current `main` head SHA, fetches every registry workflow by that exact SHA, verifies the nine stubs remain fail-closed, requires every `workflow_dispatch.inputs` schema to match the hardened Evidence-Head workflow, and then re-reads `main` to prove the default branch did not move during capture.
 
 Runtime report:
 
@@ -237,7 +256,7 @@ reports/final-acceptance/<release-id>/runtime-v2/default-branch-dispatch-registr
 
 The outer Final Decision hash-binds both this live report and the committed registry policy.
 
-## 8. Apply strong branch protection after Evidence Head is stable
+## 8. Apply strong branch governance and read-only Evidence Head
 
 Canonical applicator:
 
@@ -245,16 +264,39 @@ Canonical applicator:
 scripts/apply_release_branch_protection.py
 ```
 
-It applies the frozen profile to:
+The policy is branch-specific:
 
 ```text
-node-73-final-acceptance-release
 release-closure-p0
+  canonical strong protection
+  lock_branch = true
+  allow_fork_syncing = false
+
+node-73-final-acceptance-release
+  canonical strong protection
+  lock_branch = false
+  allow_fork_syncing = false
 ```
 
-Before mutation it live-reads branch heads and refuses to continue unless `release-closure-p0` still equals the selected Evidence Head.
+The Evidence Head is locked; the merge-target release branch remains unlocked.
 
-The workflow is split by trust boundary:
+The privileged applicator executes in fail-closed order:
+
+```text
+1. read both release-branch heads
+2. require release-closure-p0 == selected Evidence Head
+3. immediately before mutation, re-read release-closure-p0
+4. require it still equals the Evidence Head
+5. apply Evidence Head protection first with lock_branch=true
+6. apply base release-branch protection with lock_branch=false
+7. capture both branches live
+8. run validate_live_release_governance_v2.py
+9. require canonical status checks + strong protection + branch-specific lock state
+```
+
+This Evidence-Head-first sequence minimizes the mutation race window and prevents a normal later push after the live governance binder succeeds.
+
+The workflow remains split by trust boundary:
 
 ```text
 pull_request:labeled -> PR preflight only, no Admin secret, no mutation
@@ -272,9 +314,19 @@ RELEASE_GOVERNANCE_ADMIN_TOKEN with repository Administration write
 
 Final Decision uses separate Administration-read `RELEASE_GOVERNANCE_TOKEN`; it never receives the write credential.
 
+A successful runtime governance report must expose at least:
+
+```text
+branch_lock_state.release-closure-p0 = true
+branch_lock_state.node-73-final-acceptance-release = false
+evidence_head_locked = true
+evidence_head_lock_policy_bound = true
+status_check_policy_bound = true
+```
+
 ## 9. Obtain Evidence-Head-bound human approvals
 
-After Evidence Head is final and protection is enabled, real configured principals review PR #135.
+Only after the Evidence Head is strongly protected, locked read-only, and live governance has been verified should real configured principals review PR #135.
 
 Requirements:
 
@@ -286,7 +338,7 @@ Security != Release Owner
 review commit_id == Evidence Head
 ```
 
-A new push requires fresh reviews. Comments are not approval evidence; only submitted GitHub PR reviews count.
+A deliberate unlock/new push means the old approval set is no longer valid for the new Evidence Head. Comments are not approval evidence; only submitted GitHub PR reviews count.
 
 ## 10. Run Final Product Acceptance
 
@@ -303,7 +355,9 @@ Final Decision then:
 ```text
 validates the V2 package
 captures/validates live branch protection
-captures/validates live main dispatch registry
+requires Evidence Head branch to remain locked read-only
+requires merge-target release branch to remain unlocked
+captures/validates exact-snapshot main dispatch registry
 captures Evidence-Head GitHub reviews
 proves Source RC ancestor of Evidence Head
 projects APPROVED states in memory only
@@ -311,6 +365,8 @@ runs the stable 46-scenario product gate
 hash-binds package/evidence/matrix/policies/live controls/execution identity
 writes final-decision-v2.json
 ```
+
+The final decision projects `branch_lock_state`, `evidence_head_locked`, and `evidence_head_lock_policy_bound` directly into `live_release_controls.repository_governance` in addition to hash-binding the full runtime governance report.
 
 ## 11. Runtime artifacts are terminal evidence
 
@@ -324,7 +380,7 @@ release-authorization-live.json
 final-decision-v2.json
 ```
 
-Archive them as Actions artifacts. Never commit them back into `release-closure-p0`.
+Archive them as Actions artifacts. Never commit them back into the locked Evidence Head.
 
 ## 12. Current external blockers
 
@@ -338,6 +394,7 @@ real six-runtime build/start/promotion/attestation evidence
 Production-like Staging evidence
 Production smoke/canary/rollback/DR evidence
 strong protection actually applied to both release refs
+release-closure-p0 Evidence Head lock actually applied and live-verified
 Administration-read/write governance credentials + production environment approval
 real role principals other than PR author
 >= 3 distinct Evidence-Head APPROVED reviews
@@ -345,7 +402,7 @@ successful live default-branch registry capture
 final-decision-v2 accepted=true
 ```
 
-Default-branch workflow discoverability is no longer a blocker.
+Default-branch workflow discoverability is no longer a blocker. Source-level Evidence Head lock support does **not** mean either release branch is currently protected or locked.
 
 Until all mandatory evidence is real:
 
