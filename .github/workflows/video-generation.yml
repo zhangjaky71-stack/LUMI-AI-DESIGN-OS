@@ -5,17 +5,38 @@ on:
     paths:
       - "services/video-generation/**"
       - "services/model-gateway/**"
+      - "services/asset-storage/**"
+      - "services/sandbox-runtime/**"
       - "services/artifact-history/**"
       - "services/identity-engine/**"
       - "services/brand-rules/**"
-      - "db/migrations/0001_artifact_engine.sql"
-      - "db/migrations/0007_video_generation.sql"
-      - "fixtures/video-generation/**"
+      - "apps/worker-media/Dockerfile"
+      - "apps/worker-media/pyproject.toml"
+      - "apps/worker-media/src/lumi_worker_media/app.py"
+      - "apps/worker-media/src/lumi_worker_media/job_runtime.py"
+      - "apps/worker-media/src/lumi_worker_media/external_wait_runtime.py"
+      - "apps/worker-media/src/lumi_worker_media/video_*.py"
+      - "apps/worker-media/tests/test_video_*.py"
+      - "apps/api/alembic/versions/0023_video_generation_runtime.py"
+      - "apps/api/src/lumi_api/provider_output_store.py"
+      - "apps/api/src/lumi_api/model_gateway_bootstrap.py"
+      - "apps/api/tests/test_provider_output_store.py"
+      - "infra/iac/environments/staging/app/main.tf"
+      - "infra/iac/environments/staging/app/variables.tf"
+      - "infra/iac/environments/staging/app/terraform.tfvars.example"
+      - "infra/iac/environments/production/app/main.tf"
+      - "infra/iac/environments/production/app/variables.tf"
+      - "infra/iac/environments/production/app/terraform.tfvars.example"
+      - "infra/iac/modules/compute/sandbox_child.tf"
       - "scripts/validate_video_generation.py"
+      - "scripts/validate_video_worker_hosted_binding.py"
       - "scripts/benchmark_video_generation.py"
+      - "fixtures/video-generation/**"
       - "docs/runtime/VIDEO-GENERATION-V1.md"
       - "docs/nodes/NODE-48-VIDEO-GENERATION.md"
       - "reports/nodes/NODE-48/**"
+      - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/video-generation.yml"
   workflow_dispatch:
 
@@ -31,17 +52,31 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Compile NODE-48 contract files
+      - name: Compile NODE-48 hosted production contract
         run: >-
           python -m compileall -q
           services/video-generation/src
           services/video-generation/tests
+          apps/worker-media/src/lumi_worker_media/app.py
+          apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py
+          apps/worker-media/src/lumi_worker_media/video_generation_runtime.py
+          apps/worker-media/src/lumi_worker_media/video_generation_repository.py
+          apps/worker-media/src/lumi_worker_media/video_generation_artifacts.py
+          apps/worker-media/src/lumi_worker_media/video_generation_ports.py
+          apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py
+          apps/worker-media/tests/test_video_gateway_runtime.py
+          apps/worker-media/tests/test_video_sandbox_runtime.py
+          apps/api/src/lumi_api/provider_output_store.py
+          apps/api/tests/test_provider_output_store.py
           scripts/validate_video_generation.py
+          scripts/validate_video_worker_hosted_binding.py
           scripts/benchmark_video_generation.py
       - name: Validate NODE-48 architecture contract
         env:
           PYTHONPATH: services/video-generation/src:services/model-gateway/src:services/artifact-history/src
         run: python scripts/validate_video_generation.py
+      - name: Validate Hosted video.render production binding
+        run: python scripts/validate_video_worker_hosted_binding.py
 
   video-generation-quality:
     needs: video-generation-contract
@@ -59,39 +94,90 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Frozen Python workspace install
         run: uv sync --all-packages --frozen
-      - name: Run NODE-48 tests
+      - name: Run NODE-48 domain tests
         env:
           PYTHONPATH: services/video-generation/src:services/model-gateway/src:services/artifact-history/src:services/identity-engine/src:services/brand-rules/src
         run: uv run pytest services/video-generation/tests -q
+      - name: Run Hosted Worker video boundary tests
+        run: >-
+          uv run pytest
+          apps/worker-media/tests/test_video_gateway_runtime.py
+          apps/worker-media/tests/test_video_sandbox_runtime.py
+          apps/worker-media/tests/test_video_job_dispatch_runtime.py
+          apps/api/tests/test_provider_output_store.py
+          -q
       - name: Ruff correctness gate
         run: >-
           uv run ruff check --ignore E501
           services/video-generation/src
           services/video-generation/tests
+          apps/worker-media/src/lumi_worker_media/app.py
+          apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py
+          apps/worker-media/src/lumi_worker_media/video_generation_runtime.py
+          apps/worker-media/src/lumi_worker_media/video_generation_repository.py
+          apps/worker-media/src/lumi_worker_media/video_generation_artifacts.py
+          apps/worker-media/src/lumi_worker_media/video_generation_ports.py
+          apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py
+          apps/worker-media/tests/test_video_gateway_runtime.py
+          apps/worker-media/tests/test_video_sandbox_runtime.py
+          apps/api/src/lumi_api/provider_output_store.py
+          apps/api/tests/test_provider_output_store.py
           scripts/validate_video_generation.py
+          scripts/validate_video_worker_hosted_binding.py
           scripts/benchmark_video_generation.py
-          services/model-gateway/src/lumi_model_gateway/routing.py
       - name: Pyright runtime gate
-        run: uv run pyright -p services/video-generation/pyrightconfig.json
+        run: |
+          uv run pyright -p services/video-generation/pyrightconfig.json
+          uv run pyright \
+            apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py \
+            apps/worker-media/src/lumi_worker_media/video_generation_runtime.py \
+            apps/worker-media/src/lumi_worker_media/video_generation_repository.py \
+            apps/worker-media/src/lumi_worker_media/video_generation_artifacts.py \
+            apps/worker-media/src/lumi_worker_media/video_generation_ports.py \
+            apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py \
+            apps/worker-media/tests/test_video_gateway_runtime.py \
+            apps/worker-media/tests/test_video_sandbox_runtime.py
+
+  worker-media-video-smoke:
+    needs: video-generation-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build frozen Worker Media image
+        run: docker build -f apps/worker-media/Dockerfile -t lumi-worker-media-video:${{ github.sha }} .
+      - name: Verify packaged Hosted video imports
+        run: >-
+          docker run --rm --entrypoint python
+          lumi-worker-media-video:${{ github.sha }}
+          -c "from lumi_worker_media.app import video_render; from lumi_worker_media.video_generation_runtime import HostedVideoGenerationRuntime; from lumi_worker_media.video_sandbox_runtime import SandboxExchangeMediaRuntime; print('hosted-video-imports-ok')"
+      - name: Start Worker Media container and assert process liveness
+        shell: bash
+        run: |
+          docker run -d --name lumi-worker-media-video-smoke lumi-worker-media-video:${{ github.sha }}
+          for attempt in $(seq 1 15); do
+            if [ "$(docker inspect -f '{{.State.Running}}' lumi-worker-media-video-smoke 2>/dev/null || true)" = "true" ]; then
+              sleep 2
+              test "$(docker inspect -f '{{.State.Running}}' lumi-worker-media-video-smoke)" = "true"
+              docker logs lumi-worker-media-video-smoke
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs lumi-worker-media-video-smoke || true
+          exit 1
+      - name: Cleanup Worker Media smoke container
+        if: always()
+        run: docker rm -f lumi-worker-media-video-smoke >/dev/null 2>&1 || true
 
   video-generation-integration:
     needs: video-generation-quality
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: lumi
-          POSTGRES_PASSWORD: lumi
-          POSTGRES_DB: lumi
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U lumi -d lumi"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+      LUMI_DB_INTEGRATION: "1"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -100,30 +186,45 @@ jobs:
       - uses: astral-sh/setup-uv@v9.0.0
         with:
           version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
       - name: Frozen Python workspace install
         run: uv sync --all-packages --frozen
+      - name: Prepare canonical local infrastructure
+        run: make infra-env
+      - name: Start canonical local dependencies
+        run: make infra-up
+      - name: Upgrade canonical Alembic schema and seed deterministic scope
+        run: |
+          make db-upgrade
+          bash scripts/db-local schema-check
+          make db-seed
       - name: Run video / Model Gateway / Artifact regressions
         env:
-          PYTHONPATH: services/video-generation/src:services/model-gateway/src:services/artifact-history/src:services/identity-engine/src:services/brand-rules/src
+          PYTHONPATH: services/video-generation/src:services/model-gateway/src:services/artifact-history/src:services/identity-engine/src:services/brand-rules/src:services/domain/src
         run: >-
           uv run pytest
           services/video-generation/tests
           services/model-gateway/tests
           services/artifact-history/tests
           -q
-      - name: Apply Artifact and Video Generation migrations
-        env:
-          PGPASSWORD: lumi
+      - name: Assert canonical Hosted video runtime tables exist
+        shell: bash
         run: |
-          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0001_artifact_engine.sql
-          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0007_video_generation.sql
-      - name: Verify NODE-48 DB contracts
-        env:
-          PGPASSWORD: lumi
+          count="$(docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml exec -T postgres \
+            psql -U lumi_migration -d lumi -Atc \
+            "select count(*) from information_schema.tables where table_schema='public' and table_name in ('video_generation_jobs','video_provider_jobs');")"
+          test "$count" = "2"
+      - name: Assert historical parallel NODE-48 tables are absent
+        shell: bash
         run: |
-          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc "select count(*) from information_schema.tables where table_name in ('video_generation_jobs','video_generation_shots','video_provider_jobs','video_generation_cost_reconciliation','video_timelines','video_generation_provenance','video_validation_findings');")" = "7"
-          psql -h 127.0.0.1 -U lumi -d lumi -Atc "select data_type from information_schema.columns where table_name='video_generation_cost_reconciliation' and column_name='amount_usd';" | grep -qx numeric
-          psql -h 127.0.0.1 -U lumi -d lumi -Atc "select count(*) from pg_indexes where indexname='video_provider_jobs_one_active_attempt_idx';" | grep -qx 1
+          count="$(docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml exec -T postgres \
+            psql -U lumi_migration -d lumi -Atc \
+            "select count(*) from information_schema.tables where table_schema='public' and table_name in ('video_generation_shots','video_generation_cost_reconciliation','video_timelines','video_generation_provenance','video_validation_findings');")"
+          test "$count" = "0"
+      - name: Cleanup
+        if: always()
+        run: CONFIRM=1 make infra-reset || true
 
   video-generation-benchmark:
     needs: video-generation-quality
