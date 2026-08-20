@@ -123,6 +123,22 @@ def apply(
         raise BranchProtectionApplyError(f"governance policy invalid: {exc}") from exc
     body = render_protection_body(policy)
 
+    preflight_heads: dict[str, str] = {}
+    for branch in policy["release_branches"]:
+        try:
+            branch_payload = capture_module._fetch_branch(repository, branch, token=token)
+        except capture_module.BranchProtectionError as exc:
+            raise BranchProtectionApplyError(f"pre-apply branch lookup failed for {branch}: {exc}") from exc
+        commit = branch_payload.get("commit")
+        sha = commit.get("sha") if isinstance(commit, Mapping) else None
+        require(isinstance(sha, str) and len(sha) == 40, f"pre-apply branch head SHA missing for {branch}")
+        preflight_heads[branch] = sha.lower()
+    evidence_branch = policy["evidence_head_branch"]
+    require(
+        preflight_heads.get(evidence_branch) == evidence_head_sha.lower(),
+        "release-closure-p0 moved after dispatch; refusing to apply branch protection to a different Evidence Head",
+    )
+
     applied: list[dict[str, Any]] = []
     for branch in policy["release_branches"]:
         response = put_json(
@@ -155,6 +171,7 @@ def apply(
         "status": "PASS",
         "repository": repository,
         "evidence_head_sha": evidence_head_sha.lower(),
+        "preflight_heads": preflight_heads,
         "policy": policy,
         "request_body": body,
         "applied": applied,
@@ -189,7 +206,7 @@ def self_test() -> dict[str, Any]:
     require(reviews["dismiss_stale_reviews"] is True, "stale review dismissal must remain enabled")
     require(reviews["require_last_push_approval"] is True, "last-push approval must remain enabled")
     require(reviews["required_approving_review_count"] >= 1, "at least one protected-branch approval must be required")
-    return {"status": "PASS", "request_body": body, "negative_network_calls": 0}
+    return {"status": "PASS", "request_body": body, "preflight_guard": "EVIDENCE_HEAD_EXACT", "negative_network_calls": 0}
 
 
 def main() -> int:
