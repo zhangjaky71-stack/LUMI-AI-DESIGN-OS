@@ -110,7 +110,7 @@ def validate() -> None:
             "download_file(",
             "upload_file(",
             "EXCHANGE_INPUT_CHECKSUM_MISMATCH",
-            '"sha256": digest',
+            '"sha256": checksum',
         ),
         "sandbox isolated child",
     )
