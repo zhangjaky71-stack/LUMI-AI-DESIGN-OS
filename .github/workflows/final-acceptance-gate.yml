@@ -124,6 +124,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.release_manifest_path != '' && inputs.acceptance_evidence_path != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      RELEASE_GOVERNANCE_TOKEN: ${{ secrets.RELEASE_GOVERNANCE_TOKEN }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -160,6 +162,17 @@ jobs:
           PY
       - name: Require canonical assembled and frozen package
         run: python3 scripts/validate_final_acceptance_package.py --release "$FINAL_RELEASE"
+      - name: Re-verify live strong repository governance for frozen RC
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_GOVERNANCE_TOKEN"
+          rc_sha="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["release_candidate"]["git_sha"])' "$FINAL_RELEASE")"
+          mkdir -p reports/final-acceptance/runtime
+          python3 scripts/capture_release_branch_protection.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --expected-release-sha "$rc_sha" \
+            --output reports/final-acceptance/runtime/repository-governance-live.json
       - name: Evaluate final product acceptance
         run: |
           python3 scripts/final-acceptance-gate.py \
@@ -170,7 +183,9 @@ jobs:
         if: always()
         with:
           name: final-acceptance-${{ github.run_id }}
-          path: reports/final-acceptance/**/final-decision.json
+          path: |
+            reports/final-acceptance/**/final-decision.json
+            reports/final-acceptance/runtime/repository-governance-live.json
           if-no-files-found: error
           retention-days: 180
 
