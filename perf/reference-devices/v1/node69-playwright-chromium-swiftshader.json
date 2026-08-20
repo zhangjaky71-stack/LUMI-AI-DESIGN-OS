@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "id": "node69-playwright-chromium-swiftshader-v1",
+  "purpose": "NODE-69 browser-canvas release regression reference",
+  "automation": {
+    "framework": "@playwright/test",
+    "version": "1.61.1",
+    "browser": "chromium",
+    "headless": true,
+    "workers": 1,
+    "retries": 0
+  },
+  "browser_runtime": {
+    "launch_args": [
+      "--use-angle=swiftshader",
+      "--disable-features=Vulkan"
+    ],
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "device_scale_factor": 1,
+    "color_scheme": "light",
+    "locale": "en-US",
+    "timezone_id": "UTC"
+  },
+  "cpu": {
+    "devtools_emulation": "Emulation.setCPUThrottlingRate",
+    "rate": 4
+  },
+  "runner": {
+    "os": "ubuntu-24.04",
+    "architecture": "x64",
+    "physical_hardware_is_identity": false,
+    "capture_runtime_hardware_metadata": true
+  },
+  "network": {
+    "release_target": "production_like_staging",
+    "external_cdn_allowed_during_measurement": false,
+    "loopback_results_are_release_evidence": false
+  },
+  "evidence_required": [
+    "source_rc_sha",
+    "evidence_head_sha",
+    "base_url",
+    "playwright_version",
+    "browser_version",
+    "user_agent",
+    "os",
+    "architecture",
+    "cpu_model",
+    "logical_cpu_count",
+    "memory_total_bytes",
+    "webgl_vendor",
+    "webgl_renderer",
+    "viewport",
+    "device_scale_factor",
+    "cpu_throttle_rate",
+    "started_at",
+    "finished_at"
+  ],
+  "notes": [
+    "This is a reproducible software-rendered regression reference, not workstation GPU certification.",
+    "Release evidence must execute against Production-like Staging and must not depend on external CDN resources during the measured interval.",
+    "Physical runner hardware is captured as provenance but is not part of the canonical reference identity."
+  ]
+}
