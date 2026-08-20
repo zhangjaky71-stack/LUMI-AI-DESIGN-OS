@@ -47,6 +47,18 @@ def repo_relative(path: Path) -> str:
         raise FinalDecisionError(f"path escapes repository: {path}") from exc
 
 
+def resolve_output(raw: str) -> Path:
+    path = (ROOT / raw).resolve()
+    allowed = (ROOT / "reports" / "final-acceptance").resolve()
+    try:
+        path.relative_to(allowed)
+    except ValueError as exc:
+        raise FinalDecisionError("final decision output must stay below reports/final-acceptance/") from exc
+    if path.name != "final-decision.json":
+        raise FinalDecisionError("final decision output filename must be final-decision.json")
+    return path
+
+
 def require_token(name: str) -> str:
     value = os.environ.get(name, "")
     if not value.strip():
@@ -191,10 +203,7 @@ def main() -> int:
             args.evidence,
             allowed_prefixes=("reports/final-acceptance/",),
         )
-        output_path = product_gate.canonical_repo_path(
-            args.output,
-            allowed_prefixes=("reports/final-acceptance/",),
-        )
+        output_path = resolve_output(args.output)
         result = evaluate(
             matrix_path=matrix_path,
             release_path=release_path,
