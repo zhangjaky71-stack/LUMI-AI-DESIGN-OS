@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "staging-acceptance-gate.yml"
+EVIDENCE_TEMPLATE = ROOT / "staging" / "acceptance" / "evidence-template.json"
 DOWNLOAD_ACTION = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1"
 UPLOAD_ACTION = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2"
 
@@ -37,13 +39,16 @@ def main() -> int:
     for marker in (
         "runtime_image_set_run_id:",
         'description: "GitHub Actions run id that produced the frozen six-runtime RC image set"',
+        "python3 scripts/validate_staging_evidence_artifacts.py --self-test",
         "python3 scripts/validate_staging_runtime_image_binding.py --self-test",
         "python3 scripts/validate_staging_runtime_image_workflow_contract.py",
         "python3 scripts/validate_node71_decision_artifact.py --self-test",
         "python3 scripts/validate_release_action_pins.py",
+        "scripts/validate_staging_evidence_artifacts.py",
         "scripts/validate_staging_runtime_image_binding.py",
         "scripts/validate_staging_runtime_image_workflow_contract.py",
         "scripts/validate_node71_decision_artifact.py",
+        "--output reports/staging-acceptance/runtime/evidence-artifact-binding.json",
         DOWNLOAD_ACTION,
         UPLOAD_ACTION,
         "github-token: ${{ secrets.GITHUB_TOKEN }}",
@@ -55,7 +60,23 @@ def main() -> int:
         '--expected-run-id "${{ github.run_id }}"',
         '--expected-repository "${{ github.repository }}"',
     ):
-        require(marker in text, f"staging workflow missing runtime-image/decision binding marker: {marker}")
+        require(marker in text, f"staging workflow missing evidence/runtime-image/decision binding marker: {marker}")
+
+    require(
+        text.count('ref: ${{ github.sha }}') == 4,
+        "all four NODE-71 code-consuming jobs must checkout exact github.sha",
+    )
+    require(
+        text.count("persist-credentials: false") == 4,
+        "all four NODE-71 checkouts must disable persisted GitHub credentials",
+    )
+
+    template = json.loads(EVIDENCE_TEMPLATE.read_text(encoding="utf-8"))
+    require(isinstance(template, dict), "staging evidence template must be a JSON object")
+    require(
+        template.get("evidence_artifacts") == {},
+        "staging evidence template must expose an empty fail-closed evidence_artifacts catalog",
+    )
 
     header = text[: text.find("jobs:\n")]
     require(
@@ -101,6 +122,7 @@ def main() -> int:
         "downloaded runtime image artifact must contain exactly one top-level container-image-set.json",
     )
 
+    evidence_binding_pos = acceptance.find("validate_staging_evidence_artifacts.py")
     download_pos = acceptance.find(DOWNLOAD_ACTION)
     binding_pos = acceptance.find("validate_staging_runtime_image_binding.py")
     gate_pos = acceptance.find("staging-acceptance-gate.py")
@@ -108,14 +130,26 @@ def main() -> int:
     self_verify_pos = acceptance.find("Self-verify NODE-71 decision provenance before archive")
     upload_pos = acceptance.find(UPLOAD_ACTION)
     require(
-        download_pos >= 0 and binding_pos >= 0 and gate_pos >= 0 and download_pos < binding_pos < gate_pos,
-        "exact runtime-image artifact download and binding must run before NODE-71 decision",
+        evidence_binding_pos >= 0
+        and download_pos >= 0
+        and binding_pos >= 0
+        and gate_pos >= 0
+        and evidence_binding_pos < download_pos < binding_pos < gate_pos,
+        "generic evidence artifact binding, exact image artifact binding, and NODE-71 decision must execute in fail-closed order",
     )
     require(
         gate_pos < provenance_pos < self_verify_pos < upload_pos,
         "NODE-71 decision provenance capture/self-verification must occur after decision and before archive",
     )
+    require(
+        "path: reports/staging-acceptance/runtime/" in acceptance,
+        "NODE-71 archive must retain evidence-artifact binding report with decision artifacts",
+    )
 
+    require(
+        "validate_staging_evidence_artifacts.py --self-test" in source,
+        "source-contract must execute generic staging evidence artifact negative drills",
+    )
     require(
         "validate_staging_runtime_image_binding.py --self-test" in source,
         "source-contract must execute runtime image binding negative drills",
@@ -133,12 +167,12 @@ def main() -> int:
         "source-contract must fail closed on release action supply-chain drift",
     )
 
-    print("NODE-71 frozen runtime-image, decision artifact, and scoped permission workflow contract: PASS")
+    print("NODE-71 immutable evidence, runtime-image, decision artifact, exact-SHA checkout, and scoped permission workflow contract: PASS")
     return 0
 
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except WorkflowContractError as exc:
+    except (WorkflowContractError, OSError, json.JSONDecodeError) as exc:
         raise SystemExit(f"staging runtime image workflow contract failed: {exc}") from exc
