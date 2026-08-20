@@ -17,6 +17,7 @@ FIXTURE_RELEASE_ID = "_node73-assembler-contract"
 FIXTURE_ROOT = ROOT / "reports" / "final-acceptance" / FIXTURE_RELEASE_ID
 PROD_ROOT = ROOT / "reports" / "production-deployments" / FIXTURE_RELEASE_ID
 UPSTREAM_ROOT = ROOT / "reports" / "final-upstream-contract" / FIXTURE_RELEASE_ID
+GOVERNANCE_ROOT = ROOT / "reports" / "repository-governance" / FIXTURE_RELEASE_ID
 
 
 def require(condition: bool, message: str) -> None:
@@ -42,7 +43,7 @@ def rel(path: Path) -> str:
 
 
 def clean_dirs() -> None:
-    for path in (FIXTURE_ROOT, PROD_ROOT, UPSTREAM_ROOT):
+    for path in (FIXTURE_ROOT, PROD_ROOT, UPSTREAM_ROOT, GOVERNANCE_ROOT):
         if path.exists():
             shutil.rmtree(path)
 
@@ -68,6 +69,29 @@ def base_fixture(assembler: ModuleType) -> tuple[argparse.Namespace, dict[str, P
             "environment": "production",
             "release_candidate": copy.deepcopy(rc),
             "edge": {"domain": "contract.example.invalid"},
+        },
+    )
+
+    governance = GOVERNANCE_ROOT / "branch-protection.json"
+    write(
+        governance,
+        {
+            "schema_version": 1,
+            "kind": "LUMI_RELEASE_BRANCH_PROTECTION_V1",
+            "status": "PASS",
+            "repository": "zhangjaky71-stack/LUMI-AI-DESIGN-OS",
+            "branches": [
+                {
+                    "name": "node-73-final-acceptance-release",
+                    "protected": True,
+                    "head_sha": "b" * 40,
+                },
+                {
+                    "name": "release-closure-p0",
+                    "protected": True,
+                    "head_sha": rc["git_sha"],
+                },
+            ],
         },
     )
 
@@ -140,6 +164,7 @@ def base_fixture(assembler: ModuleType) -> tuple[argparse.Namespace, dict[str, P
         matrix="final/acceptance/manifest-v1.json",
         release_id=FIXTURE_RELEASE_ID,
         production_manifest=rel(production),
+        repository_governance=rel(governance),
         security=rel(upstream_paths["security"]),
         recovery=rel(upstream_paths["recovery"]),
         performance=rel(upstream_paths["performance"]),
@@ -179,6 +204,7 @@ def main() -> int:
         release_path.replace(canonical_release)
         validated = package.validate(canonical_release)
         require(validated["status"] == "PASS", "clean assembled package must validate")
+        require("repository_governance_sha256" in validated, "clean package must freeze repository governance")
         require(evidence_path.is_file(), "clean acceptance evidence missing")
 
         def cross_rc(_args: argparse.Namespace, paths: dict[str, Path], _auth: Path, _scenarios: Path) -> None:
@@ -208,6 +234,31 @@ def main() -> int:
             write(auth_path, payload)
 
         expect_block(assembler, missing_approval, "non-approved authorization")
+
+        def unprotected_branch(args: argparse.Namespace, _paths: dict[str, Path], _auth: Path, _scenarios: Path) -> None:
+            path = ROOT / args.repository_governance
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload["branches"][1]["protected"] = False
+            payload["status"] = "BLOCKED_EXTERNAL"
+            write(path, payload)
+
+        expect_block(assembler, unprotected_branch, "unprotected release branch")
+
+        def governance_repo_swap(args: argparse.Namespace, _paths: dict[str, Path], _auth: Path, _scenarios: Path) -> None:
+            path = ROOT / args.repository_governance
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload["repository"] = "example/other"
+            write(path, payload)
+
+        expect_block(assembler, governance_repo_swap, "repository governance repo swap")
+
+        def governance_head_swap(args: argparse.Namespace, _paths: dict[str, Path], _auth: Path, _scenarios: Path) -> None:
+            path = ROOT / args.repository_governance
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload["branches"][1]["head_sha"] = "c" * 40
+            write(path, payload)
+
+        expect_block(assembler, governance_head_swap, "repository governance RC head swap")
 
         print("final acceptance assembler contract: PASS")
         return 0
