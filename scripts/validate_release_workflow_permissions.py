@@ -156,6 +156,8 @@ def validate_lock() -> None:
         require(forbidden not in regenerate, f"uv resolver phase has write capability: {forbidden}")
     require("GITHUB_TOKEN" not in regenerate, "uv resolver/project-code phase must not receive GitHub write token")
     require("uv lock" in regenerate and "uv sync --all-packages --frozen" in regenerate, "read-only phase must perform canonical resolver/frozen sync")
+    require("uv run --frozen python -m compileall -q" in regenerate, "post-resolver compile verification must remain frozen")
+    require("git ls-files --others --exclude-standard" in regenerate, "resolver phase must reject post-verification untracked files")
     require("actions/upload-artifact@" in regenerate, "read-only phase must freeze regenerated uv.lock as a same-run artifact")
 
     require("needs: [regenerate-lock]" in commit, "uv-lock commit phase must depend on successful resolver phase")
@@ -203,16 +205,22 @@ def validate_final() -> None:
     source = text(FINAL)
     require_top_read_only(source, "Final Product Acceptance")
     header = top(source)
-    require("pull-requests: read" not in header, "Final Acceptance must not grant PR review access at workflow scope")
+    require("pull-requests: read" not in header and "actions: read" not in header, "Final Acceptance must not grant final live-read permissions at workflow scope")
     source_contract = job_block(source, "source-contract", "canonical-lock-gate")
     lock_gate = job_block(source, "canonical-lock-gate", "final-decision")
     final_decision = job_block(source, "final-decision", "contract-gate")
     for label, block in (("source-contract", source_contract), ("canonical-lock-gate", lock_gate)):
-        require("pull-requests: read" not in block, f"NODE-73 Final Acceptance {label} may not receive PR read permission")
-    require("permissions:\n      contents: read\n      pull-requests: read\n" in final_decision, "only final-decision may receive pull-requests:read")
+        require("pull-requests: read" not in block and "actions: read" not in block, f"NODE-73 Final Acceptance {label} may not receive final live-read permissions")
+    require("environment: production" in final_decision, "Final Acceptance governance-read secret must remain production-environment protected")
+    require(
+        "permissions:\n      contents: read\n      actions: read\n      pull-requests: read\n" in final_decision,
+        "only final-decision may receive scoped Actions/PR read permissions",
+    )
     for forbidden in ("contents: write", "pull-requests: write", "actions: write", "packages: write", "attestations: write", "id-token: write"):
         require(forbidden not in final_decision, f"Final Acceptance final-decision has unnecessary write capability: {forbidden}")
-    require('RELEASE_APPROVAL_TOKEN: ${{ secrets.GITHUB_TOKEN }}' in final_decision, "Final Acceptance must use ephemeral GITHUB_TOKEN for live PR review verification")
+    require('RELEASE_APPROVAL_TOKEN: ${{ secrets.GITHUB_TOKEN }}' in final_decision, "Final Acceptance must use ephemeral GITHUB_TOKEN for live PR/environment verification")
+    require('RELEASE_GOVERNANCE_TOKEN: ${{ secrets.RELEASE_GOVERNANCE_TOKEN }}' in final_decision, "Final Acceptance must inject Administration-read governance secret only in final-decision")
+    require(source.count("${{ secrets.RELEASE_GOVERNANCE_TOKEN }}") == 1, "Administration-read governance secret must be injected exactly once")
     require("RELEASE_APPROVAL_TOKEN:" not in header + source_contract + lock_gate, "approval token must not escape final-decision")
 
 
