@@ -182,6 +182,19 @@ def validate_canonical_sources() -> None:
     require("scripts/final-acceptance-decision-v2.py" in final, "Final workflow must use V2 outer decision")
     require("scripts/final-acceptance-decision.py" not in final, "Final workflow must not invoke V1 outer decision")
 
+    final_decision_start = final.find("  final-decision:\n")
+    contract_gate_start = final.find("  contract-gate:\n", final_decision_start + 1)
+    require(final_decision_start >= 0 and contract_gate_start > final_decision_start, "Final workflow final-decision job boundary is invalid")
+    final_decision_job = final[final_decision_start:contract_gate_start]
+    governance_secret = "${{ secrets.RELEASE_GOVERNANCE_TOKEN }}"
+    require("environment: production" in final_decision_job, "Administration-read Final Decision must remain production-environment protected")
+    require(governance_secret in final_decision_job, "Final Decision is missing Administration-read governance secret")
+    require(final.count(governance_secret) == 1, "Administration-read governance secret must be injected exactly once")
+    require(
+        "RELEASE_GOVERNANCE_TOKEN:" not in final[:final_decision_start] + final[contract_gate_start:],
+        "Administration-read governance token must not escape final-decision job",
+    )
+
     governance_workflow = GOVERNANCE_WORKFLOW.read_text(encoding="utf-8")
     preflight_start = governance_workflow.find("  pr-preflight:\n")
     apply_start = governance_workflow.find("  apply-protection:\n")
