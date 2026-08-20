@@ -16,8 +16,8 @@ on:
         description: "Completed manifest under reports/production-deployments/<deployment-id>/manifest.json"
         required: true
         type: string
-      acceptance_decision_path:
-        description: "NODE-71 passed decision under reports/staging-acceptance/.../decision.json"
+      staging_acceptance_run_id:
+        description: "Exact Staging Acceptance Gate run id that produced the NODE-71 decision artifact"
         required: true
         type: string
       deploy_ack:
@@ -27,18 +27,19 @@ on:
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 env:
   OPERATION: ${{ inputs.operation }}
   MANIFEST_PATH_INPUT: ${{ inputs.manifest_path }}
-  ACCEPTANCE_PATH_INPUT: ${{ inputs.acceptance_decision_path }}
+  STAGING_ACCEPTANCE_RUN_ID: ${{ inputs.staging_acceptance_run_id }}
   DEPLOY_ACK: ${{ inputs.deploy_ack }}
 
 jobs:
   release-gate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     outputs:
       deployment_id: ${{ steps.release.outputs.deployment_id }}
       version: ${{ steps.release.outputs.version }}
@@ -58,38 +59,79 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Resolve and constrain evidence paths
+      - name: Resolve manifest and exact NODE-71 artifact identity
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
+          import json
           import os
           from pathlib import Path
 
+          run_id = os.environ['STAGING_ACCEPTANCE_RUN_ID']
+          if not run_id.isdecimal() or int(run_id) <= 0:
+              raise SystemExit('staging_acceptance_run_id must be a positive decimal GitHub Actions run id')
           root = Path.cwd().resolve()
           manifest = (root / os.environ['MANIFEST_PATH_INPUT']).resolve()
-          acceptance = (root / os.environ['ACCEPTANCE_PATH_INPUT']).resolve()
           prod_root = (root / 'reports/production-deployments').resolve()
-          staging_root = (root / 'reports/staging-acceptance').resolve()
           try:
               manifest.relative_to(prod_root)
-              acceptance.relative_to(staging_root)
           except ValueError as exc:
-              raise SystemExit('deployment/acceptance evidence path escapes its allowed archive root') from exc
-          if manifest.name != 'manifest.json' or acceptance.name != 'decision.json':
-              raise SystemExit('manifest must be manifest.json and staging acceptance must be decision.json')
-          if not manifest.is_file() or not acceptance.is_file():
-              raise SystemExit('required deployment evidence file is missing')
+              raise SystemExit('deployment manifest path escapes reports/production-deployments/') from exc
+          if manifest.name != 'manifest.json' or not manifest.is_file():
+              raise SystemExit('production manifest must be an existing manifest.json')
+          payload = json.loads(manifest.read_text(encoding='utf-8'))
+          rc = payload.get('release_candidate')
+          if not isinstance(rc, dict):
+              raise SystemExit('production manifest release_candidate is missing')
+          if rc.get('staging_acceptance_run_id') != run_id:
+              raise SystemExit('production manifest staging_acceptance_run_id differs from requested run id')
+          canonical_path = 'reports/production-deployments/runtime/node71/decision.json'
+          if rc.get('staging_acceptance_path') != canonical_path:
+              raise SystemExit('production manifest staging_acceptance_path must use canonical downloaded NODE-71 path')
+          node71_dir = root / 'reports' / 'production-deployments' / 'runtime' / 'node71'
+          acceptance = node71_dir / 'decision.json'
+          provenance = node71_dir / 'decision-provenance.json'
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
               fh.write(f'MANIFEST_PATH={manifest.relative_to(root).as_posix()}\n')
+              fh.write(f'NODE71_DIR={node71_dir.relative_to(root).as_posix()}\n')
               fh.write(f'ACCEPTANCE_PATH={acceptance.relative_to(root).as_posix()}\n')
+              fh.write(f'ACCEPTANCE_PROVENANCE_PATH={provenance.relative_to(root).as_posix()}\n')
           PY
+      - name: Download exact NODE-71 staging acceptance artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: staging-acceptance-decision
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.staging_acceptance_run_id }}
+          path: reports/production-deployments/runtime/node71
+      - name: Require one NODE-71 decision and provenance pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$ACCEPTANCE_PATH"
+          test -f "$ACCEPTANCE_PROVENANCE_PATH"
+          test "$(find "$NODE71_DIR" -maxdepth 1 -type f -name 'decision.json' | wc -l)" -eq 1
+          test "$(find "$NODE71_DIR" -maxdepth 1 -type f -name 'decision-provenance.json' | wc -l)" -eq 1
+          python3 -m json.tool "$ACCEPTANCE_PATH" >/dev/null
+          python3 -m json.tool "$ACCEPTANCE_PROVENANCE_PATH" >/dev/null
+      - name: Verify NODE-71 decision workflow provenance
+        run: >-
+          python3 scripts/validate_node71_decision_artifact.py
+          --decision "$ACCEPTANCE_PATH"
+          --provenance "$ACCEPTANCE_PROVENANCE_PATH"
+          --expected-run-id "$STAGING_ACCEPTANCE_RUN_ID"
+          --expected-repository "${{ github.repository }}"
       - name: Require exact NODE-71 accepted release candidate
         run: |
           mkdir -p reports/production-deployments/runtime
           python3 scripts/production-deployment-gate.py \
             --manifest "$MANIFEST_PATH" \
             --acceptance-decision "$ACCEPTANCE_PATH" \
+            --acceptance-provenance "$ACCEPTANCE_PROVENANCE_PATH" \
+            --acceptance-run-id "$STAGING_ACCEPTANCE_RUN_ID" \
+            --repository "${{ github.repository }}" \
             --output reports/production-deployments/runtime/deployment-gate.json
       - name: Export immutable release metadata
         id: release
