@@ -13,6 +13,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 GOVERNANCE_VALIDATOR = ROOT / "scripts" / "capture_release_branch_protection.py"
+AUTHORIZATION_VALIDATOR = ROOT / "scripts" / "capture_release_authorization.py"
 UPSTREAM = {
     "security",
     "recovery",
@@ -20,17 +21,6 @@ UPSTREAM = {
     "ai_regression",
     "staging_acceptance",
     "production_deployment",
-}
-APPROVAL_KEYS = {"product", "engineering", "security", "operations", "release_owner"}
-HANDOFF_KEYS = {
-    "on_call_owner",
-    "support_owner",
-    "incident_commander_rotation",
-    "first_day_watch_owner",
-    "quality_cost_review_owner",
-    "security_dependency_review_owner",
-    "dr_drill_owner",
-    "capacity_review_owner",
 }
 EXPECTED_REPOSITORY = "zhangjaky71-stack/LUMI-AI-DESIGN-OS"
 
@@ -46,10 +36,10 @@ def load(path: Path) -> dict[str, Any]:
     return payload
 
 
-def load_governance_validator() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("lumi_release_branch_protection", GOVERNANCE_VALIDATOR)
+def load_validator(path: Path, name: str, *, label: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise PackageError("unable to load canonical release branch protection validator")
+        raise PackageError(f"unable to load canonical {label} validator")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -96,7 +86,11 @@ def validate_repository_governance(
 ) -> Path:
     path = verify_ref(release.get("repository_governance"), label="repository_governance")
     report = load(path)
-    validator = load_governance_validator()
+    validator = load_validator(
+        GOVERNANCE_VALIDATOR,
+        "lumi_release_branch_protection",
+        label="release branch protection",
+    )
     try:
         validator.validate_report(
             report,
@@ -105,6 +99,36 @@ def validate_repository_governance(
         )
     except validator.BranchProtectionError as exc:
         raise PackageError(f"repository governance invalid: {exc}") from exc
+    return path
+
+
+def validate_release_authorization(
+    release: dict[str, Any],
+    *,
+    release_id: str,
+    expected_rc: tuple[Any, Any, Any],
+) -> Path:
+    path = verify_ref(release.get("release_authorization"), label="release_authorization")
+    report = load(path)
+    validator = load_validator(
+        AUTHORIZATION_VALIDATOR,
+        "lumi_release_authorization",
+        label="release authorization",
+    )
+    try:
+        validated = validator.validate_authorization_report(
+            report,
+            expected_release_id=release_id,
+            expected_rc=expected_rc,
+        )
+    except validator.ReleaseAuthorizationError as exc:
+        raise PackageError(f"release authorization invalid: {exc}") from exc
+    approvals = validated.get("approval_statuses")
+    handoff = validated.get("operational_handoff")
+    if release.get("approvals") != approvals:
+        raise PackageError("release approval statuses differ from validated GitHub authorization")
+    if release.get("operational_handoff") != handoff:
+        raise PackageError("release operational handoff differs from validated authorization request")
     return path
 
 
@@ -134,23 +158,11 @@ def validate(release_path: Path) -> dict[str, Any]:
         release,
         expected_release_sha=release_sha,
     )
-
-    authorization_path = verify_ref(release.get("release_authorization"), label="release_authorization")
-    authorization = load(authorization_path)
-    if authorization.get("schema_version") != 1 or authorization.get("release_id") != release_id:
-        raise PackageError("release authorization schema/release_id mismatch")
-    if rc(authorization) != expected_rc:
-        raise PackageError("release authorization RC identity mismatch")
-    approvals = authorization.get("approvals")
-    handoff = authorization.get("operational_handoff")
-    if not isinstance(approvals, dict) or set(approvals) != APPROVAL_KEYS or any(v != "APPROVED" for v in approvals.values()):
-        raise PackageError("release authorization approvals are incomplete")
-    if release.get("approvals") != approvals:
-        raise PackageError("release approvals were modified after authorization")
-    if not isinstance(handoff, dict) or set(handoff) != HANDOFF_KEYS or any(not isinstance(v, str) or not v or v.upper() == "PENDING" for v in handoff.values()):
-        raise PackageError("release authorization operational handoff is incomplete")
-    if release.get("operational_handoff") != handoff:
-        raise PackageError("release operational handoff was modified after authorization")
+    authorization_path = validate_release_authorization(
+        release,
+        release_id=release_id,
+        expected_rc=expected_rc,
+    )
 
     upstream = release.get("upstream_gates")
     if not isinstance(upstream, dict) or set(upstream) != UPSTREAM:
