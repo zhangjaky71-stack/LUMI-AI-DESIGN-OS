@@ -16,6 +16,8 @@ PRODUCT_GATE = ROOT / "scripts" / "final-acceptance-gate.py"
 PACKAGE_V2 = ROOT / "scripts" / "validate_final_acceptance_package_v2.py"
 GOVERNANCE = ROOT / "scripts" / "capture_release_branch_protection.py"
 GOVERNANCE_BINDER_V2 = ROOT / "scripts" / "validate_live_release_governance_v2.py"
+DISPATCH_REGISTRY_LIVE = ROOT / "scripts" / "validate_live_default_branch_dispatch_registry.py"
+DISPATCH_REGISTRY_POLICY = ROOT / "production" / "release-actions" / "default-branch-dispatch-registry-v1.json"
 AUTHORIZATION_V2 = ROOT / "scripts" / "capture_release_authorization_v2.py"
 IDENTITY_V2 = ROOT / "scripts" / "validate_finalization_identity_v2.py"
 EXPECTED_REPOSITORY = "zhangjaky71-stack/LUMI-AI-DESIGN-OS"
@@ -86,6 +88,7 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
     package = load_module(PACKAGE_V2, "lumi_final_package_v2")
     governance = load_module(GOVERNANCE, "lumi_release_governance_capture_v2")
     governance_binder = load_module(GOVERNANCE_BINDER_V2, "lumi_release_governance_policy_binding_v2")
+    dispatch_registry = load_module(DISPATCH_REGISTRY_LIVE, "lumi_live_default_branch_dispatch_registry_v2")
     authorization = load_module(AUTHORIZATION_V2, "lumi_release_authorization_live_v2")
     identity = load_module(IDENTITY_V2, "lumi_finalization_identity_v2_runtime")
 
@@ -127,6 +130,7 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
 
     runtime_dir = output_path.parent / "runtime-v2"
     governance_path = runtime_dir / "repository-governance-live.json"
+    dispatch_registry_path = runtime_dir / "default-branch-dispatch-registry-live.json"
     authorization_path = runtime_dir / "release-authorization-live.json"
 
     governance_token = require_token("RELEASE_GOVERNANCE_TOKEN")
@@ -143,6 +147,12 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
         raise FinalDecisionV2Error(f"live repository governance blocked: {exc}") from exc
 
     approval_token = require_token("RELEASE_APPROVAL_TOKEN")
+    try:
+        dispatch_registry_report = dispatch_registry.capture(EXPECTED_REPOSITORY, token=approval_token)
+    except dispatch_registry.LiveDispatchRegistryError as exc:
+        raise FinalDecisionV2Error(f"live default-branch dispatch registry blocked: {exc}") from exc
+    write_json(dispatch_registry_path, dispatch_registry_report)
+
     try:
         authorization_report = authorization.capture(
             request_path,
@@ -188,6 +198,21 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
             "branch_status_contexts": governance_result.get("branch_status_contexts"),
             "status_check_policy_bound": governance_result.get("status_check_policy_bound"),
         },
+        "default_branch_dispatch_registry": {
+            "path": repo_relative(dispatch_registry_path),
+            "sha256": sha256(dispatch_registry_path),
+            "kind": dispatch_registry_report.get("kind"),
+            "status": dispatch_registry_report.get("status"),
+            "default_branch": dispatch_registry_report.get("default_branch"),
+            "default_branch_head_sha": dispatch_registry_report.get("default_branch_head_sha"),
+            "workflow_count": dispatch_registry_report.get("workflow_count"),
+            "all_default_branch_workflows_fail_closed": dispatch_registry_report.get(
+                "all_default_branch_workflows_fail_closed"
+            ),
+            "dispatch_input_schemas_bound_to_evidence_head": dispatch_registry_report.get(
+                "dispatch_input_schemas_bound_to_evidence_head"
+            ),
+        },
         "release_authorization": {
             "path": repo_relative(authorization_path),
             "sha256": sha256(authorization_path),
@@ -229,6 +254,10 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
             "release_authorization_request": {
                 "path": repo_relative(request_path),
                 "sha256": sha256(request_path),
+            },
+            "default_branch_dispatch_registry_policy": {
+                "path": repo_relative(DISPATCH_REGISTRY_POLICY),
+                "sha256": sha256(DISPATCH_REGISTRY_POLICY),
             },
         },
         "execution_identity": execution_identity,
