@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PROBE = ROOT / "apps/api/src/lumi_api/staging_database_parity_probe.py"
 VALIDATOR = ROOT / "scripts/validate_staging_database_parity_evidence.py"
 FREEZER = ROOT / "scripts/freeze_staging_evidence_artifact.py"
+MERGER = ROOT / "scripts/merge_staging_database_parity_evidence.py"
 COLLECTOR = ROOT / ".github/workflows/collect-staging-database-parity.yml"
 FREEZE = ROOT / ".github/workflows/freeze-staging-database-parity.yml"
 SHA40 = "a" * 40
@@ -61,10 +62,11 @@ def validate_probe() -> None:
     require("boto3" not in text and "put_object" not in text, "database parity probe must not acquire evidence-storage write capability")
 
 
-def validate_validator_and_freezer() -> None:
+def validate_validator_freezer_and_merger() -> None:
     result = subprocess.run([sys.executable, str(VALIDATOR), "--self-test"], cwd=ROOT, check=False, capture_output=True, text=True)
     require(result.returncode == 0, "database parity evidence validator self-test failed")
     require(json.loads(result.stdout) == {"negative_drills": 8, "status": "PASS"}, "database parity evidence negative drill contract drifted")
+
     freezer = load_module(FREEZER, "lumi_staging_evidence_freezer")
     source_run = {
         "repository": "zhangjaky71-stack/LUMI-AI-DESIGN-OS",
@@ -92,6 +94,13 @@ def validate_validator_and_freezer() -> None:
         pass
     else:
         raise ContractError("generic freezer accepted a failed collector run")
+
+    merge_result = subprocess.run([sys.executable, str(MERGER), "--self-test"], cwd=ROOT, check=False, capture_output=True, text=True)
+    require(merge_result.returncode == 0, f"database parity merger self-test failed: {merge_result.stderr.strip()}")
+    merge_payload = json.loads(merge_result.stdout)
+    require(merge_payload.get("status") == "PASS", "database parity merger self-test did not PASS")
+    require(merge_payload.get("negative_drills") == 5, "database parity merger negative drill count drifted")
+    require(merge_payload.get("scenario_results_unchanged") is True, "database parity merger scenario isolation drifted")
 
 
 def validate_collector() -> None:
@@ -161,13 +170,13 @@ def validate_freeze_workflow() -> None:
 
 
 def main() -> int:
-    for path in (PROBE, VALIDATOR, FREEZER, COLLECTOR, FREEZE):
+    for path in (PROBE, VALIDATOR, FREEZER, MERGER, COLLECTOR, FREEZE):
         require(path.is_file(), f"required database parity producer source is missing: {path.relative_to(ROOT)}")
     validate_probe()
-    validate_validator_and_freezer()
+    validate_validator_freezer_and_merger()
     validate_collector()
     validate_freeze_workflow()
-    print(json.dumps({"status": "PASS", "database_parity_negative_drills": 8, "collector_private_fargate": True, "freeze_two_phase": True}, sort_keys=True))
+    print(json.dumps({"status": "PASS", "database_parity_negative_drills": 8, "database_parity_merge_negative_drills": 5, "database_parity_parity_only": True, "collector_private_fargate": True, "freeze_two_phase": True}, sort_keys=True))
     return 0
 
 
