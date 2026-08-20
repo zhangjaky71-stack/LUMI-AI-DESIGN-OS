@@ -1,5 +1,7 @@
 {
   "schema_version": 1,
+  "kind": "LUMI_RELEASE_AUTHORIZATION_V1",
+  "status": "PENDING",
   "authorization_id": "PENDING",
   "authorized_at": "PENDING",
   "release_id": "PENDING",
@@ -8,12 +10,66 @@
     "version": "PENDING",
     "migration_head": "PENDING"
   },
+  "repository": "zhangjaky71-stack/LUMI-AI-DESIGN-OS",
+  "pull_request": {
+    "number": 135,
+    "url": "PENDING",
+    "state": "PENDING",
+    "base_ref": "node-73-final-acceptance-release",
+    "head_ref": "release-closure-p0",
+    "head_sha": "PENDING",
+    "author": "PENDING"
+  },
+  "request_ref": {
+    "path": "PENDING",
+    "sha256": "PENDING"
+  },
+  "approval_policy": {
+    "path": "PENDING",
+    "sha256": "PENDING"
+  },
+  "distinct_approver_count": 0,
   "approvals": {
-    "product": "PENDING",
-    "engineering": "PENDING",
-    "security": "PENDING",
-    "operations": "PENDING",
-    "release_owner": "PENDING"
+    "product": {
+      "status": "PENDING",
+      "actor": "PENDING",
+      "review_id": 0,
+      "review_url": "PENDING",
+      "commit_id": "PENDING",
+      "submitted_at": "PENDING"
+    },
+    "engineering": {
+      "status": "PENDING",
+      "actor": "PENDING",
+      "review_id": 0,
+      "review_url": "PENDING",
+      "commit_id": "PENDING",
+      "submitted_at": "PENDING"
+    },
+    "security": {
+      "status": "PENDING",
+      "actor": "PENDING",
+      "review_id": 0,
+      "review_url": "PENDING",
+      "commit_id": "PENDING",
+      "submitted_at": "PENDING"
+    },
+    "operations": {
+      "status": "PENDING",
+      "actor": "PENDING",
+      "review_id": 0,
+      "review_url": "PENDING",
+      "commit_id": "PENDING",
+      "submitted_at": "PENDING"
+    },
+    "release_owner": {
+      "status": "PENDING",
+      "actor": "PENDING",
+      "review_id": 0,
+      "review_url": "PENDING",
+      "commit_id": "PENDING",
+      "submitted_at": "PENDING"
+    }
   },
   "operational_handoff": {
     "on_call_owner": "PENDING",
