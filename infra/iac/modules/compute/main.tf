@@ -8,6 +8,9 @@ locals {
   public_services = {
     for name, service in var.services : name => service if service.publicly_routed
   }
+  autoscaled_services = {
+    for name, service in var.services : name => service if service.autoscaling_enabled
+  }
   services_with_secrets = {
     for name, service in var.services : name => service if length(service.secret_arns) > 0
   }
@@ -473,7 +476,7 @@ resource "aws_ecs_service" "service" {
 }
 
 resource "aws_appautoscaling_target" "service" {
-  for_each = var.services
+  for_each = local.autoscaled_services
 
   max_capacity       = each.value.max_capacity
   min_capacity       = each.value.min_capacity
@@ -482,10 +485,12 @@ resource "aws_appautoscaling_target" "service" {
   service_namespace  = "ecs"
 }
 
-# LUMI emits queue/backlog/concurrency-aware custom metrics from NODE-67/69.
-# This intentionally avoids CPU-only autoscaling for Agent/Media/SSE workloads.
+# Dynamic target tracking is opt-in only after NODE-69 has both a measured
+# capacity signal and a production emitter for the declared LUMI/Capacity metric.
+# Unmeasured services remain fixed-capacity rather than silently scaling on a
+# custom metric that may not exist.
 resource "aws_appautoscaling_policy" "service_custom_metric" {
-  for_each = var.services
+  for_each = local.autoscaled_services
 
   name               = "${local.name}-${each.key}-custom-metric"
   policy_type        = "TargetTrackingScaling"
