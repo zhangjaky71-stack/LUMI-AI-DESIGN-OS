@@ -13,7 +13,8 @@
   "browser_runtime": {
     "launch_args": [
       "--use-angle=swiftshader",
-      "--disable-features=Vulkan"
+      "--disable-features=Vulkan",
+      "--enable-precise-memory-info"
     ],
     "viewport": {
       "width": 1440,
