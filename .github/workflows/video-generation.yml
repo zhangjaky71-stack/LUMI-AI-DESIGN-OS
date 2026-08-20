@@ -19,8 +19,13 @@ on:
       - "apps/worker-media/tests/test_video_*.py"
       - "apps/worker-media/tests/integration/test_video_*.py"
       - "apps/api/alembic/versions/0023_video_generation_runtime.py"
+      - "apps/api/pyproject.toml"
+      - "apps/api/src/lumi_api/generations/gateway.py"
+      - "apps/api/src/lumi_api/generations/video_service.py"
+      - "apps/api/src/lumi_api/media_dispatch.py"
       - "apps/api/src/lumi_api/provider_output_store.py"
       - "apps/api/src/lumi_api/model_gateway_bootstrap.py"
+      - "apps/api/tests/integration/test_video_generation_control_plane_postgres.py"
       - "apps/api/tests/test_provider_output_store.py"
       - "infra/iac/environments/staging/app/main.tf"
       - "infra/iac/environments/staging/app/variables.tf"
@@ -30,6 +35,7 @@ on:
       - "infra/iac/environments/production/app/terraform.tfvars.example"
       - "infra/iac/modules/compute/sandbox_child.tf"
       - "scripts/validate_video_generation.py"
+      - "scripts/validate_video_generation_producer_binding.py"
       - "scripts/validate_video_worker_hosted_binding.py"
       - "scripts/benchmark_video_generation.py"
       - "fixtures/video-generation/**"
@@ -63,15 +69,22 @@ jobs:
             apps/worker-media/src/lumi_worker_media/video_*.py \
             apps/worker-media/tests/test_video_*.py \
             apps/worker-media/tests/integration/test_video_*.py \
+            apps/api/src/lumi_api/generations/gateway.py \
+            apps/api/src/lumi_api/generations/video_service.py \
+            apps/api/src/lumi_api/media_dispatch.py \
             apps/api/src/lumi_api/provider_output_store.py \
+            apps/api/tests/integration/test_video_generation_control_plane_postgres.py \
             apps/api/tests/test_provider_output_store.py \
             scripts/validate_video_generation.py \
+            scripts/validate_video_generation_producer_binding.py \
             scripts/validate_video_worker_hosted_binding.py \
             scripts/benchmark_video_generation.py
       - name: Validate NODE-48 architecture contract
         env:
           PYTHONPATH: services/video-generation/src:services/model-gateway/src:services/artifact-history/src
         run: python scripts/validate_video_generation.py
+      - name: Validate Hosted video generation producer binding
+        run: python scripts/validate_video_generation_producer_binding.py
       - name: Validate Hosted video.render production binding
         run: python scripts/validate_video_worker_hosted_binding.py
 
@@ -108,9 +121,14 @@ jobs:
             apps/worker-media/src/lumi_worker_media/video_*.py \
             apps/worker-media/tests/test_video_*.py \
             apps/worker-media/tests/integration/test_video_*.py \
+            apps/api/src/lumi_api/generations/gateway.py \
+            apps/api/src/lumi_api/generations/video_service.py \
+            apps/api/src/lumi_api/media_dispatch.py \
             apps/api/src/lumi_api/provider_output_store.py \
+            apps/api/tests/integration/test_video_generation_control_plane_postgres.py \
             apps/api/tests/test_provider_output_store.py \
             scripts/validate_video_generation.py \
+            scripts/validate_video_generation_producer_binding.py \
             scripts/validate_video_worker_hosted_binding.py \
             scripts/benchmark_video_generation.py
       - name: Pyright runtime gate
@@ -182,6 +200,10 @@ jobs:
           make db-upgrade
           bash scripts/db-local schema-check
           make db-seed
+      - name: Run Video Generation API PostgreSQL producer acceptance
+        env:
+          PYTHONPATH: apps/api/src:services/video-generation/src:services/domain/src
+        run: uv run pytest apps/api/tests/integration/test_video_generation_control_plane_postgres.py -q
       - name: Run Hosted video PostgreSQL acceptance
         env:
           PYTHONPATH: apps/worker-media/src:services/video-generation/src:services/domain/src
@@ -189,6 +211,7 @@ jobs:
           uv run pytest
           apps/worker-media/tests/integration/test_video_hosted_postgres.py
           apps/worker-media/tests/integration/test_video_runtime_privileges_postgres.py
+          apps/worker-media/tests/integration/test_video_public_generation_sync_postgres.py
           -q
       - name: Run video / Model Gateway / Artifact regressions
         env:
