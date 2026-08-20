@@ -1,0 +1,126 @@
+name: Tool Gateway P0 Staging ECS Contract
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/tool_gateway_staging_fixture.py"
+      - "scripts/probe_tool_gateway_p0_from_agent_runtime.py"
+      - "scripts/collect_tool_gateway_p0_db_evidence.py"
+      - "scripts/collect_tool_gateway_p0_readiness.py"
+      - "scripts/verify_tool_gateway_p0_offload_s3.py"
+      - "scripts/validate_tool_gateway_p0_offload_probe.py"
+      - "scripts/assemble_tool_gateway_p0_e2e_evidence.py"
+      - "scripts/assemble_tool_gateway_p0_e2e_evidence_v2.py"
+      - "scripts/run_tool_gateway_p0_staging_e2e_ecs.py"
+      - ".github/workflows/tool-gateway-p0-staging-ecs-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile staging evidence sources
+        run: |
+          python3 -m py_compile \
+            apps/api/src/lumi_api/tool_gateway_staging_fixture.py \
+            scripts/probe_tool_gateway_p0_from_agent_runtime.py \
+            scripts/collect_tool_gateway_p0_db_evidence.py \
+            scripts/collect_tool_gateway_p0_readiness.py \
+            scripts/verify_tool_gateway_p0_offload_s3.py \
+            scripts/validate_tool_gateway_p0_offload_probe.py \
+            scripts/assemble_tool_gateway_p0_e2e_evidence_v2.py \
+            scripts/run_tool_gateway_p0_staging_e2e_ecs.py
+      - name: Drill real Tool Gateway offload preview semantics
+        run: python3 scripts/validate_tool_gateway_p0_offload_probe.py --self-test
+      - name: Require synthetic fixture to ECS evidence boundary
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          fixture = Path(
+              "apps/api/src/lumi_api/tool_gateway_staging_fixture.py"
+          ).read_text(encoding="utf-8")
+          launcher = Path(
+              "scripts/run_tool_gateway_p0_staging_e2e_ecs.py"
+          ).read_text(encoding="utf-8")
+          probe = Path(
+              "scripts/probe_tool_gateway_p0_from_agent_runtime.py"
+          ).read_text(encoding="utf-8")
+          offload = Path(
+              "scripts/validate_tool_gateway_p0_offload_probe.py"
+          ).read_text(encoding="utf-8")
+          assembler = Path(
+              "scripts/assemble_tool_gateway_p0_e2e_evidence_v2.py"
+          ).read_text(encoding="utf-8")
+
+          for marker in (
+              "pg_advisory_xact_lock",
+              "synthetic_only=True",
+              'status": "ready"',
+              "AssetRights",
+              "LUMI_TOOL_GATEWAY_P0_FIXTURE_JSON=",
+          ):
+              if marker not in fixture:
+                  raise SystemExit(f"staging fixture missing boundary: {marker}")
+
+          for marker in (
+              'for name in ("api", "agent-runtime", "tool-gateway", "sandbox-runtime")',
+              "describe_services(",
+              'awsvpc.get("assignPublicIp") != "DISABLED"',
+              "python\", \"-m\", \"lumi_api.tool_gateway_staging_fixture",
+              "uuid4().hex",
+              "node73-tool-gateway-p0-",
+              "scripts/probe_tool_gateway_p0_from_agent_runtime.py",
+              "scripts/collect_tool_gateway_p0_db_evidence.py",
+              "scripts/collect_tool_gateway_p0_readiness.py",
+          ):
+              if marker not in launcher:
+                  raise SystemExit(f"staging ECS launcher missing boundary: {marker}")
+
+          for marker in (
+              'offload_result.get("full_result_ref")',
+              'offload_result.get("truncated") is not True',
+              '"inline_data_present": offload_result.get("data") is not None',
+          ):
+              if marker not in probe:
+                  raise SystemExit(f"Agent Runtime probe missing offload boundary: {marker}")
+
+          for marker in (
+              'offload.get("inline_data_present") is True',
+              'result.get("full_result_ref") == result_ref',
+              "preview_bytes <= _INLINE_LIMIT_BYTES",
+              "preview_bytes < serialized_result_bytes",
+          ):
+              if marker not in offload:
+                  raise SystemExit(f"offload semantic validator missing: {marker}")
+
+          for marker in (
+              "validate_payload(probe, s3=s3)",
+              '"inline_preview_present": True',
+              '"full_payload_inline_present": False',
+              'compatibility_offload["inline_data_present"] = False',
+          ):
+              if marker not in assembler:
+                  raise SystemExit(f"v2 evidence assembler missing: {marker}")
+
+          combined = "\n".join((launcher, probe, offload, assembler))
+          for forbidden in (
+              "get_secret_value",
+              'boto3.client("secretsmanager"',
+              "generate_presigned_url",
+              "sleep infinity",
+              "tail -f /dev/null",
+          ):
+              if forbidden in combined:
+                  raise SystemExit(f"staging evidence chain contains forbidden marker: {forbidden}")
+
+          print("Tool Gateway P0 synthetic ECS evidence source contract: PASS")
+          PY
