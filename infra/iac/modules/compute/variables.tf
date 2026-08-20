@@ -29,7 +29,7 @@ variable "public_canary_bake_time_minutes" {
 }
 
 variable "services" {
-  description = "Production deployment units. Exactly one service must be publicly_routed. Dynamic autoscaling is opt-in only after a measured capacity signal and production emitter exist."
+  description = "Production deployment units. Exactly one service must be publicly_routed. Dynamic autoscaling remains release-blocked until NODE-69 has measured capacity plus a production metric emitter."
   type = map(object({
     image                    = string
     cpu                      = number
@@ -70,18 +70,13 @@ variable "services" {
   validation {
     condition = alltrue([
       for _, service in var.services :
-      service.autoscaling_enabled ? (
-        service.max_capacity > service.min_capacity &&
-        length(trimspace(service.autoscale_metric_name)) > 0 &&
-        service.autoscale_target_value > 0
-      ) : (
-        service.desired_count == service.min_capacity &&
-        service.desired_count == service.max_capacity &&
-        service.autoscale_metric_name == "" &&
-        service.autoscale_target_value == 0
-      )
+      service.autoscaling_enabled == false &&
+      service.desired_count == service.min_capacity &&
+      service.desired_count == service.max_capacity &&
+      service.autoscale_metric_name == "" &&
+      service.autoscale_target_value == 0
     ])
-    error_message = "Autoscaling-enabled services require scale-out headroom plus a measured metric/target; disabled services must be exact static capacity and carry no phantom metric."
+    error_message = "NODE-69 capacity is not measured yet: every release service must remain exact static capacity with autoscaling disabled and no phantom LUMI/Capacity metric."
   }
 
   validation {
