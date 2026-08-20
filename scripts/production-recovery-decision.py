@@ -13,6 +13,23 @@ EXPECTED_POLICY = {
     "database_pitr_max_rto_minutes": 60,
     "object_version_recovery_required": True,
 }
+RUNTIME_IMAGE_KEYS = {
+    "api",
+    "agent-runtime",
+    "model-gateway",
+    "tool-gateway",
+    "worker-media",
+    "sandbox-runtime",
+}
+RUNTIME_SERVICE_IMAGE_KEY = {
+    "api": "api",
+    "agent-runtime": "agent-runtime",
+    "model-gateway": "model-gateway",
+    "tool-gateway": "tool-gateway",
+    "worker-media": "worker-media",
+    "outbox-dispatcher": "worker-media",
+    "sandbox-runtime": "sandbox-runtime",
+}
 
 
 class RecoveryDecisionError(RuntimeError):
@@ -48,6 +65,16 @@ def rc(payload: dict[str, Any]) -> tuple[Any, Any, Any]:
     if not isinstance(value, dict):
         return None, None, None
     return value.get("git_sha"), value.get("version"), value.get("migration_head")
+
+
+def _expected_service_images(images: object, blockers: list[str]) -> dict[str, str]:
+    if not isinstance(images, dict) or set(images) != RUNTIME_IMAGE_KEYS:
+        blockers.append("production manifest must contain exactly six canonical runtime images")
+        return {}
+    return {
+        service: str(images[image_key])
+        for service, image_key in RUNTIME_SERVICE_IMAGE_KEY.items()
+    }
 
 
 def validate_cross_region_object_recovery(
@@ -132,19 +159,29 @@ def evaluate(
     if rc(baseline_runtime) != manifest_rc:
         blockers.append("baseline production runtime RC mismatch")
     services = baseline_runtime.get("services")
-    images = manifest.get("images")
-    if not isinstance(services, list) or len(services) != 6 or not isinstance(images, dict):
-        blockers.append("baseline production runtime must contain exactly six services")
+    expected_service_images = _expected_service_images(manifest.get("images"), blockers)
+    if not isinstance(services, list) or len(services) != len(RUNTIME_SERVICE_IMAGE_KEY):
+        blockers.append("baseline production runtime must contain exactly seven services")
     else:
-        observed = {
+        observed_images = {
             item.get("service_name"): item.get("image")
             for item in services
             if isinstance(item, dict) and isinstance(item.get("service_name"), str)
         }
-        if observed != images:
-            blockers.append("baseline production runtime images do not equal manifest")
+        observed_image_keys = {
+            item.get("service_name"): item.get("image_key")
+            for item in services
+            if isinstance(item, dict) and isinstance(item.get("service_name"), str)
+        }
+        if observed_images != expected_service_images:
+            blockers.append(
+                "baseline production seven-service image mapping does not equal manifest"
+            )
+        if observed_image_keys != RUNTIME_SERVICE_IMAGE_KEY:
+            blockers.append("baseline production service-to-image-key mapping is not canonical")
         if any(
             not isinstance(item, dict)
+            or item.get("expected_image") != expected_service_images.get(item.get("service_name"))
             or item.get("image_matches") is not True
             or item.get("steady") is not True
             for item in services
