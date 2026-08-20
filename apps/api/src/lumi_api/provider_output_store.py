@@ -4,16 +4,19 @@ import hashlib
 import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from lumi_asset_storage.s3 import S3ObjectStore
 from lumi_model_gateway import ModelRequest
 
 _MAX_IMAGE_BYTES = 100 * 1024 * 1024
-_ALLOWED_MEDIA = {
+_MAX_VIDEO_BYTES = 4 * 1024 * 1024 * 1024
+_ALLOWED_IMAGE_MEDIA = {
     ("image/png", "png"),
     ("image/jpeg", "jpeg"),
     ("image/webp", "webp"),
 }
+_ALLOWED_FILE_MEDIA = {("video/mp4", "mp4")}
 _BUCKET = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 
 
@@ -26,12 +29,15 @@ class S3ProviderOutputStore:
     object_store: S3ObjectStore
     bucket: str
     max_image_bytes: int = _MAX_IMAGE_BYTES
+    max_video_bytes: int = _MAX_VIDEO_BYTES
 
     def __post_init__(self) -> None:
         if not _BUCKET.fullmatch(self.bucket):
             raise ProviderOutputStoreError("provider output bucket is invalid")
         if not 1 <= self.max_image_bytes <= _MAX_IMAGE_BYTES:
             raise ProviderOutputStoreError("provider output image byte limit is invalid")
+        if not 1 <= self.max_video_bytes <= _MAX_VIDEO_BYTES:
+            raise ProviderOutputStoreError("provider output video byte limit is invalid")
 
     @classmethod
     def from_env(cls) -> S3ProviderOutputStore:
@@ -66,16 +72,16 @@ class S3ProviderOutputStore:
         extension: str,
     ) -> str:
         normalized_extension = extension.strip().lower()
-        if (content_type, normalized_extension) not in _ALLOWED_MEDIA:
-            raise ProviderOutputStoreError("provider output media type is not allowed")
-        if not provider or len(provider) > 100 or "\x00" in provider:
-            raise ProviderOutputStoreError("provider output provider identity is invalid")
-        if not model or len(model) > 255 or "\x00" in model:
-            raise ProviderOutputStoreError("provider output model identity is invalid")
+        if (content_type, normalized_extension) not in _ALLOWED_IMAGE_MEDIA:
+            raise ProviderOutputStoreError(
+                "provider output byte media type is not allowed"
+            )
+        _validate_identity(provider=provider, model=model)
         digest = hashlib.sha256(data).hexdigest()
-        object_key = (
-            "provider-output/v1/"
-            f"{request.organization_id}/{request.operation_id}/{digest}.{normalized_extension}"
+        object_key = _object_key(
+            request=request,
+            digest=digest,
+            extension=normalized_extension,
         )
         await self.object_store.put_bytes(
             bucket=self.bucket,
@@ -83,14 +89,102 @@ class S3ProviderOutputStore:
             data=data,
             content_type=content_type,
             max_bytes=self.max_image_bytes,
-            metadata={
-                "lumi-kind": "provider-output",
-                "lumi-provider": _metadata_value(provider, 100),
-                "lumi-model": _metadata_value(model, 255),
-                "lumi-operation-id": str(request.operation_id),
-            },
+            metadata=_metadata(
+                request=request,
+                provider=provider,
+                model=model,
+            ),
         )
         return f"s3://{self.bucket}/{object_key}"
+
+    async def store_path(
+        self,
+        *,
+        request: ModelRequest,
+        provider: str,
+        model: str,
+        path: Path,
+        content_type: str,
+        extension: str,
+        max_bytes: int,
+    ) -> str:
+        normalized_extension = extension.strip().lower()
+        if (content_type, normalized_extension) not in _ALLOWED_FILE_MEDIA:
+            raise ProviderOutputStoreError(
+                "provider output file media type is not allowed"
+            )
+        if not 1 <= max_bytes <= self.max_video_bytes:
+            raise ProviderOutputStoreError("provider output file byte limit is invalid")
+        if not path.is_file():
+            raise ProviderOutputStoreError("provider output file is missing")
+        size = path.stat().st_size
+        if size <= 0 or size > max_bytes:
+            raise ProviderOutputStoreError("provider output file size is invalid")
+        _validate_identity(provider=provider, model=model)
+        digest = _sha256_path(path, max_bytes=max_bytes)
+        object_key = _object_key(
+            request=request,
+            digest=digest,
+            extension=normalized_extension,
+        )
+        await self.object_store.upload_from_path(
+            bucket=self.bucket,
+            object_key=object_key,
+            path=path,
+            content_type=content_type,
+            max_bytes=max_bytes,
+            metadata=_metadata(
+                request=request,
+                provider=provider,
+                model=model,
+            ),
+        )
+        return f"s3://{self.bucket}/{object_key}"
+
+
+def _object_key(*, request: ModelRequest, digest: str, extension: str) -> str:
+    return (
+        "provider-output/v1/"
+        f"{request.organization_id}/{request.operation_id}/{digest}.{extension}"
+    )
+
+
+def _metadata(
+    *,
+    request: ModelRequest,
+    provider: str,
+    model: str,
+) -> dict[str, str]:
+    return {
+        "lumi-kind": "provider-output",
+        "lumi-provider": _metadata_value(provider, 100),
+        "lumi-model": _metadata_value(model, 255),
+        "lumi-operation-id": str(request.operation_id),
+    }
+
+
+def _validate_identity(*, provider: str, model: str) -> None:
+    if not provider or len(provider) > 100 or "\x00" in provider:
+        raise ProviderOutputStoreError("provider output provider identity is invalid")
+    if not model or len(model) > 255 or "\x00" in model:
+        raise ProviderOutputStoreError("provider output model identity is invalid")
+
+
+def _sha256_path(path: Path, *, max_bytes: int) -> str:
+    digest = hashlib.sha256()
+    seen = 0
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            seen += len(chunk)
+            if seen > max_bytes:
+                raise ProviderOutputStoreError("provider output file exceeds byte limit")
+            digest.update(chunk)
+    if seen <= 0:
+        raise ProviderOutputStoreError("provider output file is empty")
+    return digest.hexdigest()
 
 
 def _metadata_value(value: str, max_length: int) -> str:
