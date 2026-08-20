@@ -14,7 +14,6 @@ EXPECTED_REPOSITORY = "zhangjaky71-stack/LUMI-AI-DESIGN-OS"
 EXPECTED_DEFAULT_BRANCH = "main"
 EXPECTED_RELEASE_REF = "release-closure-p0"
 STUB_MODE = "FAIL_CLOSED_REGISTRY_STUB"
-LOCK_MODE = "CANONICAL_TWO_PHASE_BOOTSTRAP"
 LOCK_PATH = ".github/workflows/regenerate-uv-lock.yml"
 
 
@@ -56,47 +55,54 @@ def normalize_registry(payload: Mapping[str, Any], pins: Mapping[str, Any]) -> d
         require(isinstance(item, Mapping), "dispatch registry workflow entry must be an object")
         path = item.get("path")
         mode = item.get("default_branch_mode")
-        require(isinstance(path, str) and path.startswith(".github/workflows/") and path.endswith((".yml", ".yaml")), "invalid dispatch registry workflow path")
+        require(
+            isinstance(path, str)
+            and path.startswith(".github/workflows/")
+            and path.endswith((".yml", ".yaml")),
+            "invalid dispatch registry workflow path",
+        )
         require(path not in normalized, f"duplicate dispatch registry workflow path: {path}")
-        require(mode in {STUB_MODE, LOCK_MODE}, f"invalid default_branch_mode for {path}: {mode}")
-        normalized[path] = str(mode)
+        require(mode == STUB_MODE, f"all default-branch release registry entries must be fail-closed stubs: {path}")
+        normalized[path] = STUB_MODE
 
-    require(set(normalized) == set(release_critical), "dispatch registry must exactly cover release-critical workflows from pins-v1.json")
-    require(normalized.get(LOCK_PATH) == LOCK_MODE, "canonical uv-lock workflow must use two-phase default-branch bootstrap mode")
-    require(sum(mode == LOCK_MODE for mode in normalized.values()) == 1, "exactly one workflow may use canonical two-phase bootstrap mode")
-    for path, mode in normalized.items():
-        if path != LOCK_PATH:
-            require(mode == STUB_MODE, f"non-lock release workflow must use fail-closed registry stub mode: {path}")
+    require(
+        set(normalized) == set(release_critical),
+        "dispatch registry must exactly cover release-critical workflows from pins-v1.json",
+    )
+    require(LOCK_PATH in normalized, "canonical uv-lock workflow missing from dispatch registry")
 
     return {
         "status": "PASS",
         "workflow_count": len(normalized),
         "release_critical_paths": sorted(normalized),
-        "lock_path": LOCK_PATH,
         "modes": dict(sorted(normalized.items())),
     }
 
 
 def validate_local_release_workflows(result: Mapping[str, Any]) -> None:
     paths = result.get("release_critical_paths")
-    modes = result.get("modes")
-    require(isinstance(paths, list) and isinstance(modes, Mapping), "normalized dispatch registry result malformed")
+    require(isinstance(paths, list), "normalized dispatch registry result malformed")
     for raw in paths:
         require(isinstance(raw, str), "normalized dispatch registry path must be a string")
         path = ROOT / raw
         require(path.is_file(), f"release-ref workflow missing: {raw}")
         source = path.read_text(encoding="utf-8")
         require("workflow_dispatch:" in source, f"release-critical workflow lost workflow_dispatch: {raw}")
-        require("default-branch-registry-only" not in source, f"release-ref workflow must not be a default-branch registry stub: {raw}")
-        if modes.get(raw) == LOCK_MODE:
-            for marker in (
-                "  regenerate-lock:\n",
-                "  commit-lock:\n",
-                "permissions:\n  contents: read\n",
-                "permissions:\n      contents: write\n",
-                "REGENERATE_NODE73_UV_LOCK",
-            ):
-                require(marker in source, f"canonical uv-lock bootstrap missing marker {marker!r}")
+        require("  registry-only:\n" not in source, f"release-ref workflow must not be a default-branch registry stub: {raw}")
+        require("Default-branch registry only" not in source, f"release-ref workflow must not contain registry-only execution text: {raw}")
+
+    lock_source = (ROOT / LOCK_PATH).read_text(encoding="utf-8")
+    for marker in (
+        "  regenerate-lock:\n",
+        "  commit-lock:\n",
+        "permissions:\n  contents: read\n",
+        "permissions:\n      contents: write\n",
+        "REGENERATE_NODE73_UV_LOCK",
+        "uv lock\n",
+        "uv sync --all-packages --frozen",
+        "git add -- uv.lock",
+    ):
+        require(marker in lock_source, f"release-ref canonical uv-lock workflow missing hardened marker {marker!r}")
 
 
 def self_test() -> dict[str, Any]:
@@ -116,7 +122,7 @@ def self_test() -> dict[str, Any]:
         "registry_behavior": "DEFAULT_BRANCH_DISCOVERY_ONLY_RELEASE_REF_EXECUTION",
         "workflows": [
             {"path": ".github/workflows/a.yml", "default_branch_mode": STUB_MODE},
-            {"path": LOCK_PATH, "default_branch_mode": LOCK_MODE},
+            {"path": LOCK_PATH, "default_branch_mode": STUB_MODE},
             {"path": ".github/workflows/b.yml", "default_branch_mode": STUB_MODE},
         ],
     }
@@ -130,15 +136,15 @@ def self_test() -> dict[str, Any]:
     duplicate = deepcopy(clean)
     duplicate["workflows"].append(deepcopy(duplicate["workflows"][0]))
     mutations.append(duplicate)
-    wrong_lock_mode = deepcopy(clean)
-    wrong_lock_mode["workflows"][1]["default_branch_mode"] = STUB_MODE
-    mutations.append(wrong_lock_mode)
-    second_full = deepcopy(clean)
-    second_full["workflows"][0]["default_branch_mode"] = LOCK_MODE
-    mutations.append(second_full)
+    privileged_mode = deepcopy(clean)
+    privileged_mode["workflows"][1]["default_branch_mode"] = "CANONICAL_TWO_PHASE_BOOTSTRAP"
+    mutations.append(privileged_mode)
     wrong_branch = deepcopy(clean)
     wrong_branch["default_branch"] = "release-closure-p0"
     mutations.append(wrong_branch)
+    wrong_release_ref = deepcopy(clean)
+    wrong_release_ref["release_ref"] = "main"
+    mutations.append(wrong_release_ref)
 
     blocked = 0
     for index, mutation in enumerate(mutations, start=1):
@@ -153,7 +159,10 @@ def self_test() -> dict[str, Any]:
 
 def main() -> int:
     self_result = self_test()
-    require(self_result.get("status") == "PASS" and self_result.get("negative_drills") == 5, "dispatch registry self-test drift")
+    require(
+        self_result.get("status") == "PASS" and self_result.get("negative_drills") == 5,
+        "dispatch registry self-test drift",
+    )
     result = normalize_registry(load_json(REGISTRY), load_json(PINS))
     validate_local_release_workflows(result)
     print(json.dumps(result, indent=2, sort_keys=True))
