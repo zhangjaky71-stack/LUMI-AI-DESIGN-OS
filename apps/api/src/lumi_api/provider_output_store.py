@@ -18,6 +18,7 @@ _ALLOWED_IMAGE_MEDIA = {
 }
 _ALLOWED_FILE_MEDIA = {("video/mp4", "mp4")}
 _BUCKET = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
+_SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,511}$")
 
 
 class ProviderOutputStoreError(RuntimeError):
@@ -78,10 +79,9 @@ class S3ProviderOutputStore:
             )
         _validate_identity(provider=provider, model=model)
         digest = hashlib.sha256(data).hexdigest()
-        object_key = _object_key(
-            request=request,
-            digest=digest,
-            extension=normalized_extension,
+        object_key = (
+            "provider-output/v1/"
+            f"{request.organization_id}/{request.operation_id}/{digest}.{normalized_extension}"
         )
         await self.object_store.put_bytes(
             bucket=self.bucket,
@@ -89,7 +89,7 @@ class S3ProviderOutputStore:
             data=data,
             content_type=content_type,
             max_bytes=self.max_image_bytes,
-            metadata=_metadata(
+            metadata=_request_metadata(
                 request=request,
                 provider=provider,
                 model=model,
@@ -108,24 +108,19 @@ class S3ProviderOutputStore:
         extension: str,
         max_bytes: int,
     ) -> str:
-        normalized_extension = extension.strip().lower()
-        if (content_type, normalized_extension) not in _ALLOWED_FILE_MEDIA:
-            raise ProviderOutputStoreError(
-                "provider output file media type is not allowed"
-            )
-        if not 1 <= max_bytes <= self.max_video_bytes:
-            raise ProviderOutputStoreError("provider output file byte limit is invalid")
-        if not path.is_file():
-            raise ProviderOutputStoreError("provider output file is missing")
-        size = path.stat().st_size
-        if size <= 0 or size > max_bytes:
-            raise ProviderOutputStoreError("provider output file size is invalid")
+        _validate_file_input(
+            path=path,
+            content_type=content_type,
+            extension=extension,
+            max_bytes=max_bytes,
+            configured_max=self.max_video_bytes,
+        )
         _validate_identity(provider=provider, model=model)
         digest = _sha256_path(path, max_bytes=max_bytes)
-        object_key = _object_key(
-            request=request,
-            digest=digest,
-            extension=normalized_extension,
+        normalized_extension = extension.strip().lower()
+        object_key = (
+            "provider-output/v1/"
+            f"{request.organization_id}/{request.operation_id}/{digest}.{normalized_extension}"
         )
         await self.object_store.upload_from_path(
             bucket=self.bucket,
@@ -133,7 +128,7 @@ class S3ProviderOutputStore:
             path=path,
             content_type=content_type,
             max_bytes=max_bytes,
-            metadata=_metadata(
+            metadata=_request_metadata(
                 request=request,
                 provider=provider,
                 model=model,
@@ -141,15 +136,76 @@ class S3ProviderOutputStore:
         )
         return f"s3://{self.bucket}/{object_key}"
 
+    async def store_async_path(
+        self,
+        *,
+        provider: str,
+        model: str,
+        provider_request_id: str,
+        path: Path,
+        content_type: str,
+        extension: str,
+        max_bytes: int,
+    ) -> str:
+        _validate_file_input(
+            path=path,
+            content_type=content_type,
+            extension=extension,
+            max_bytes=max_bytes,
+            configured_max=self.max_video_bytes,
+        )
+        _validate_identity(provider=provider, model=model)
+        if not _SAFE_ID.fullmatch(provider_request_id):
+            raise ProviderOutputStoreError(
+                "provider output async request identity is invalid"
+            )
+        digest = _sha256_path(path, max_bytes=max_bytes)
+        normalized_extension = extension.strip().lower()
+        request_hash = hashlib.sha256(provider_request_id.encode("utf-8")).hexdigest()[:32]
+        object_key = (
+            "provider-output/v1/async/"
+            f"{_path_component(provider)}/{_path_component(model)}/{request_hash}/"
+            f"{digest}.{normalized_extension}"
+        )
+        await self.object_store.upload_from_path(
+            bucket=self.bucket,
+            object_key=object_key,
+            path=path,
+            content_type=content_type,
+            max_bytes=max_bytes,
+            metadata={
+                "lumi-kind": "provider-output",
+                "lumi-provider": _metadata_value(provider, 100),
+                "lumi-model": _metadata_value(model, 255),
+                "lumi-provider-request-id": _metadata_value(provider_request_id, 512),
+            },
+        )
+        return f"s3://{self.bucket}/{object_key}"
 
-def _object_key(*, request: ModelRequest, digest: str, extension: str) -> str:
-    return (
-        "provider-output/v1/"
-        f"{request.organization_id}/{request.operation_id}/{digest}.{extension}"
-    )
+
+def _validate_file_input(
+    *,
+    path: Path,
+    content_type: str,
+    extension: str,
+    max_bytes: int,
+    configured_max: int,
+) -> None:
+    normalized_extension = extension.strip().lower()
+    if (content_type, normalized_extension) not in _ALLOWED_FILE_MEDIA:
+        raise ProviderOutputStoreError(
+            "provider output file media type is not allowed"
+        )
+    if not 1 <= max_bytes <= configured_max:
+        raise ProviderOutputStoreError("provider output file byte limit is invalid")
+    if not path.is_file():
+        raise ProviderOutputStoreError("provider output file is missing")
+    size = path.stat().st_size
+    if size <= 0 or size > max_bytes:
+        raise ProviderOutputStoreError("provider output file size is invalid")
 
 
-def _metadata(
+def _request_metadata(
     *,
     request: ModelRequest,
     provider: str,
@@ -185,6 +241,11 @@ def _sha256_path(path: Path, *, max_bytes: int) -> str:
     if seen <= 0:
         raise ProviderOutputStoreError("provider output file is empty")
     return digest.hexdigest()
+
+
+def _path_component(value: str) -> str:
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+    return digest
 
 
 def _metadata_value(value: str, max_length: int) -> str:
