@@ -9,9 +9,10 @@ from .models import ModelRequest
 class ProviderBinaryOutputStore(Protocol):
     """Hosted storage port for provider-produced binary media.
 
-    Small images may use bounded bytes. Large video must use the file-backed path
-    so Model Gateway never materializes the complete provider video in Python heap.
-    Provider adapters return only the opaque reference produced by this port.
+    Small synchronous images may use bounded bytes. Large video uses file-backed
+    staging. Async jobs additionally have a provider-job identity path so status
+    recovery remains valid after a Model Gateway process restart, when the original
+    ModelRequest is no longer resident in memory.
     """
 
     async def store_bytes(
@@ -31,6 +32,18 @@ class ProviderBinaryOutputStore(Protocol):
         request: ModelRequest,
         provider: str,
         model: str,
+        path: Path,
+        content_type: str,
+        extension: str,
+        max_bytes: int,
+    ) -> str: ...
+
+    async def store_async_path(
+        self,
+        *,
+        provider: str,
+        model: str,
+        provider_request_id: str,
         path: Path,
         content_type: str,
         extension: str,
