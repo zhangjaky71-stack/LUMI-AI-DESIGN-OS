@@ -17,6 +17,12 @@ from lumi_model_gateway import (
     PaidInvocationGuardRequiredError,
     ProviderInvocationError,
 )
+from lumi_model_gateway.async_transport import (
+    ASYNC_CANCEL_PATH,
+    ASYNC_STATUS_PATH,
+    AsyncProviderControlRequest,
+    decode_async_control_request,
+)
 from lumi_model_gateway.estimate_transport import encode_route_candidate
 from lumi_model_gateway.http_transport import (
     AUTH_SERVICE_HEADER,
@@ -160,6 +166,52 @@ def create_model_gateway_app(runtime: ModelGatewayServiceRuntime) -> FastAPI:
             )
         return JSONResponse(status_code=200, content=encode_model_result(result))
 
+    @app.post(ASYNC_STATUS_PATH, tags=["internal"])
+    async def async_status(request: Request) -> JSONResponse:
+        decoded = await _decode_internal_async_control_request(request, runtime)
+        if isinstance(decoded, JSONResponse):
+            return decoded
+        try:
+            result = await runtime.api.get_async_status(
+                provider=decoded.provider,
+                model=decoded.model,
+                provider_request_id=decoded.provider_request_id,
+            )
+        except ProviderInvocationError as exc:
+            return _provider_control_error(exc)
+        except ModelGatewayError as exc:
+            return _error(503, exc.code, str(exc))
+        except Exception:
+            return _error(
+                500,
+                "MODEL_GATEWAY_ASYNC_STATUS_INTERNAL_ERROR",
+                "internal model gateway async status failure",
+            )
+        return JSONResponse(status_code=200, content=encode_model_result(result))
+
+    @app.post(ASYNC_CANCEL_PATH, tags=["internal"])
+    async def async_cancel(request: Request) -> JSONResponse:
+        decoded = await _decode_internal_async_control_request(request, runtime)
+        if isinstance(decoded, JSONResponse):
+            return decoded
+        try:
+            result = await runtime.api.cancel(
+                provider=decoded.provider,
+                model=decoded.model,
+                provider_request_id=decoded.provider_request_id,
+            )
+        except ProviderInvocationError as exc:
+            return _provider_control_error(exc)
+        except ModelGatewayError as exc:
+            return _error(503, exc.code, str(exc))
+        except Exception:
+            return _error(
+                500,
+                "MODEL_GATEWAY_ASYNC_CANCEL_INTERNAL_ERROR",
+                "internal model gateway async cancel failure",
+            )
+        return JSONResponse(status_code=200, content=encode_model_result(result))
+
     return app
 
 
@@ -167,6 +219,36 @@ async def _decode_internal_model_request(
     request: Request,
     runtime: ModelGatewayServiceRuntime,
 ) -> ModelRequest | JSONResponse:
+    body = await _read_verified_body(request, runtime)
+    if isinstance(body, JSONResponse):
+        return body
+    try:
+        payload = json.loads(body.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("MODEL_GATEWAY_HTTP_REQUEST_OBJECT_REQUIRED")
+        return decode_model_request(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        return _error(422, "MODEL_GATEWAY_REQUEST_INVALID", str(exc))
+
+
+async def _decode_internal_async_control_request(
+    request: Request,
+    runtime: ModelGatewayServiceRuntime,
+) -> AsyncProviderControlRequest | JSONResponse:
+    body = await _read_verified_body(request, runtime)
+    if isinstance(body, JSONResponse):
+        return body
+    try:
+        payload = json.loads(body.decode("utf-8"))
+        return decode_async_control_request(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        return _error(422, "MODEL_GATEWAY_ASYNC_REQUEST_INVALID", str(exc))
+
+
+async def _read_verified_body(
+    request: Request,
+    runtime: ModelGatewayServiceRuntime,
+) -> bytes | JSONResponse:
     content_length = request.headers.get("content-length")
     if content_length is not None:
         try:
@@ -207,13 +289,21 @@ async def _decode_internal_model_request(
             str(exc),
             "internal model gateway authentication failed",
         )
-    try:
-        payload = json.loads(body.decode("utf-8"))
-        if not isinstance(payload, dict):
-            raise ValueError("MODEL_GATEWAY_HTTP_REQUEST_OBJECT_REQUIRED")
-        return decode_model_request(payload)
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        return _error(422, "MODEL_GATEWAY_REQUEST_INVALID", str(exc))
+    return body
+
+
+def _provider_control_error(exc: ProviderInvocationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={
+            "code": exc.category.value,
+            "message": str(exc),
+            "provider": exc.provider,
+            "model": exc.model,
+            "delivery_state": exc.delivery_state.value,
+            "retry_after_seconds": exc.retry_after_seconds,
+        },
+    )
 
 
 def _health_payload(runtime: ModelGatewayServiceRuntime, *, status: str) -> dict[str, Any]:
