@@ -15,6 +15,7 @@ SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 GOVERNANCE_POLICY_VALIDATOR = ROOT / "scripts" / "validate_release_governance_policy.py"
 AUTHORIZATION_V2 = ROOT / "scripts" / "capture_release_authorization_v2.py"
+APPROVAL_POLICY_FEASIBILITY = ROOT / "scripts" / "validate_release_approval_policy_feasibility_v2.py"
 UPSTREAM = {"security", "recovery", "performance", "ai_regression", "staging_acceptance", "production_deployment"}
 APPROVAL_KEYS = {"product", "engineering", "security", "operations", "release_owner"}
 EXPECTED_KIND = "LUMI_FINAL_ACCEPTANCE_PACKAGE_V2"
@@ -108,9 +109,14 @@ def validate(release_path: Path) -> dict[str, Any]:
     authorization_path = verify_ref(release.get("release_authorization_request"), label="release_authorization_request", prefixes=("reports/final-acceptance/",))
     authorization = load_module(AUTHORIZATION_V2, "lumi_authorization_package_v2")
     try:
-        request, _policy_path, _policy = authorization.validate_request(load(authorization_path))
+        request, _policy_path, approval_policy = authorization.validate_request(load(authorization_path))
     except authorization.ReleaseAuthorizationV2Error as exc:
         raise PackageV2Error(f"release authorization request invalid: {exc}") from exc
+    feasibility = load_module(APPROVAL_POLICY_FEASIBILITY, "lumi_approval_policy_feasibility_package_v2")
+    try:
+        feasibility_result = feasibility.validate_policy(approval_policy)
+    except feasibility.ApprovalPolicyFeasibilityError as exc:
+        raise PackageV2Error(f"release approval principal policy is not satisfiable: {exc}") from exc
     if request.get("release_id") != release_id:
         raise PackageV2Error("release authorization request release_id mismatch")
     source = request.get("source_release_candidate")
@@ -175,6 +181,8 @@ def validate(release_path: Path) -> dict[str, Any]:
         "upstream_decisions": upstream_decisions,
         "governance_policy_sha256": digest(governance_path),
         "authorization_request_sha256": digest(authorization_path),
+        "approval_policy_feasible": True,
+        "approval_policy_distinct_candidate_count": feasibility_result["distinct_candidate_count"],
         "scenario_results_sha256": digest(scenario_path),
         "acceptance_evidence_sha256": digest(evidence_path),
         "approvals_state": "PENDING_LIVE_AUTHORIZATION",
