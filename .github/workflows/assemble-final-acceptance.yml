@@ -1,0 +1,59 @@
+name: Assemble Final Acceptance Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: "Immutable final release identifier"
+        required: true
+        type: string
+      production_manifest:
+        description: "Frozen Production deployment manifest path"
+        required: true
+        type: string
+      security_decision:
+        description: "Frozen Security decision path"
+        required: true
+        type: string
+      recovery_decision:
+        description: "Frozen Recovery decision path"
+        required: true
+        type: string
+      performance_decision:
+        description: "Frozen Performance decision path"
+        required: true
+        type: string
+      ai_regression_decision:
+        description: "Frozen AI Regression decision path"
+        required: true
+        type: string
+      staging_acceptance_decision:
+        description: "Frozen Staging Acceptance decision path"
+        required: true
+        type: string
+      production_deployment_decision:
+        description: "Frozen Production Deployment decision path"
+        required: true
+        type: string
+      authorization_request:
+        description: "Frozen V2 authorization request path (Source RC + approval policy + handoff; no live approvals)"
+        required: true
+        type: string
+      scenario_results:
+        description: "Frozen 46-scenario results path"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  default-branch-registry-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Refuse default-branch execution
+        run: |
+          echo "This file is a workflow_dispatch registry stub only." >&2
+          echo "Run this workflow with ref=release-closure-p0 so GitHub uses the hardened release-ref workflow definition." >&2
+          exit 64
