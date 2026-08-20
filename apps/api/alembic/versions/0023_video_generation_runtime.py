@@ -85,8 +85,11 @@ def upgrade() -> None:
         "CREATE UNIQUE INDEX uq_video_provider_jobs_active_shot "
         "ON video_provider_jobs (video_job_id, shot_id) WHERE active"
     )
+    # Recovery history is mutable only through state advancement. No production
+    # runtime needs physical DELETE; keeping DELETE revoked prevents a Worker from
+    # erasing paid-attempt recovery evidence.
     op.execute(
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON video_generation_jobs, video_provider_jobs TO lumi_app"
+        "GRANT SELECT, INSERT, UPDATE ON video_generation_jobs, video_provider_jobs TO lumi_app"
     )
 
 
