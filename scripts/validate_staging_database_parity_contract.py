@@ -62,17 +62,9 @@ def validate_probe() -> None:
 
 
 def validate_validator_and_freezer() -> None:
-    result = subprocess.run(
-        [sys.executable, str(VALIDATOR), "--self-test"],
-        cwd=ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    result = subprocess.run([sys.executable, str(VALIDATOR), "--self-test"], cwd=ROOT, check=False, capture_output=True, text=True)
     require(result.returncode == 0, "database parity evidence validator self-test failed")
-    payload = json.loads(result.stdout)
-    require(payload == {"negative_drills": 8, "status": "PASS"}, "database parity evidence negative drill contract drifted")
-
+    require(json.loads(result.stdout) == {"negative_drills": 8, "status": "PASS"}, "database parity evidence negative drill contract drifted")
     freezer = load_module(FREEZER, "lumi_staging_evidence_freezer")
     source_run = {
         "repository": "zhangjaky71-stack/LUMI-AI-DESIGN-OS",
@@ -89,27 +81,13 @@ def validate_validator_and_freezer() -> None:
     }
     validation = {"status": "PASS", "release_git_sha": SHA40}
     raw = {"release_candidate": {"git_sha": SHA40}}
-    wrapper = freezer.freeze(
-        artifact_id=f"staging-database-parity:{SHA40}",
-        rc_sha=SHA40,
-        validation=validation,
-        source_run=source_run,
-        raw_evidence=raw,
-        raw_evidence_sha256="c" * 64,
-    )
+    wrapper = freezer.freeze(artifact_id=f"staging-database-parity:{SHA40}", rc_sha=SHA40, validation=validation, source_run=source_run, raw_evidence=raw, raw_evidence_sha256="c" * 64)
     require(wrapper.get("status") == "PASS" and wrapper.get("rc_git_sha") == SHA40, "generic freezer clean fixture failed")
     require(wrapper.get("producer", {}).get("workflow_path") == ".github/workflows/collect-staging-database-parity.yml", "generic freezer lost producer workflow path")
     bad = dict(source_run)
     bad["conclusion"] = "failure"
     try:
-        freezer.freeze(
-            artifact_id=f"staging-database-parity:{SHA40}",
-            rc_sha=SHA40,
-            validation=validation,
-            source_run=bad,
-            raw_evidence=raw,
-            raw_evidence_sha256="c" * 64,
-        )
+        freezer.freeze(artifact_id=f"staging-database-parity:{SHA40}", rc_sha=SHA40, validation=validation, source_run=bad, raw_evidence=raw, raw_evidence_sha256="c" * 64)
     except Exception:
         pass
     else:
@@ -125,9 +103,11 @@ def validate_collector() -> None:
         'ref: ${{ inputs.release_git_sha }}',
         "persist-credentials: false",
         'test "$(git rev-parse HEAD)" = "$RELEASE_GIT_SHA"',
+        'STAGING_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}',
         'EXPECTED_API_IMAGE: ${{ vars.API_IMAGE_DIGEST }}',
         'EXPECTED_POSTGRES_ENGINE_VERSION: ${{ vars.POSTGRES_ENGINE_VERSION }}',
-        'EXPECTED_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}',
+        'expected_account="$(cut -d: -f5 <<<"$STAGING_DEPLOY_ROLE_ARN")"',
+        'aws sts get-caller-identity --query Account --output text',
         'lumi/staging/core/terraform.tfstate',
         'lumi/staging/migration/terraform.tfstate',
         'terraform -chdir=infra/iac/environments/staging/migration output -raw migration_task_definition_arn',
@@ -175,14 +155,7 @@ def validate_freeze_workflow() -> None:
         require(marker in text, f"database parity freeze missing marker: {marker}")
     require("--force" not in text and "git push -f" not in text, "database parity freeze must never force push")
     commit = text[text.index("  commit-freeze:\n") :]
-    for forbidden in (
-        "validate_staging_database_parity_evidence.py",
-        "freeze_staging_evidence_artifact.py",
-        "validate_staging_evidence_artifacts.py",
-        "terraform ",
-        "aws ecs",
-        "aws logs",
-    ):
+    for forbidden in ("validate_staging_database_parity_evidence.py", "freeze_staging_evidence_artifact.py", "validate_staging_evidence_artifacts.py", "terraform ", "aws ecs", "aws logs"):
         require(forbidden not in commit, f"write-capable freeze job must not execute project/runtime logic: {forbidden}")
     require(text.count('GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}') == 1, "write token must be explicitly injected exactly once")
 
