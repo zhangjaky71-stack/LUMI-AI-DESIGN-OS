@@ -43,6 +43,8 @@ jobs:
           python3 scripts/runtime_image_set.py validate-manifest
           python3 scripts/validate_runtime_image_build_pipeline.py
           python3 scripts/validate_runtime_image_set_contract.py
+          python3 scripts/validate_staging_runtime_image_binding.py --self-test
+          python3 scripts/validate_staging_runtime_image_workflow_contract.py
           python3 scripts/validate_side_effect_control_provenance.py --self-test
           python3 scripts/validate_tool_audit_provenance.py --self-test
           python3 scripts/validate_tool_approval_provenance.py --self-test
@@ -69,6 +71,8 @@ jobs:
             scripts/runtime_image_set.py \
             scripts/validate_runtime_image_build_pipeline.py \
             scripts/validate_runtime_image_set_contract.py \
+            scripts/validate_staging_runtime_image_binding.py \
+            scripts/validate_staging_runtime_image_workflow_contract.py \
             scripts/validate_side_effect_control_provenance.py \
             scripts/validate_tool_audit_provenance.py \
             scripts/validate_tool_approval_provenance.py \
