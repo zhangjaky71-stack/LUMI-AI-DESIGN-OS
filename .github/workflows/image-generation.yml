@@ -24,6 +24,7 @@ on:
       - "apps/worker-media/tests/test_image_generation_codec.py"
       - "apps/worker-media/tests/test_image_generation_ports.py"
       - "apps/worker-media/tests/test_image_task_entrypoint.py"
+      - "apps/worker-media/tests/test_job_runtime_performance.py"
       - "apps/worker-media/tests/test_worker_cli.py"
       - "apps/worker-media/tests/integration/test_image_generation_repository_postgres.py"
       - "apps/worker-media/pyproject.toml"
@@ -77,6 +78,7 @@ jobs:
           apps/worker-media/tests/test_image_generation_codec.py
           apps/worker-media/tests/test_image_generation_ports.py
           apps/worker-media/tests/test_image_task_entrypoint.py
+          apps/worker-media/tests/test_job_runtime_performance.py
           apps/worker-media/tests/test_worker_cli.py
           apps/worker-media/tests/integration/test_image_generation_repository_postgres.py
           apps/api/src/lumi_api/generations/service.py
@@ -115,6 +117,7 @@ jobs:
           apps/worker-media/tests/test_image_generation_codec.py
           apps/worker-media/tests/test_image_generation_ports.py
           apps/worker-media/tests/test_image_task_entrypoint.py
+          apps/worker-media/tests/test_job_runtime_performance.py
           apps/worker-media/tests/test_worker_cli.py
           -q
       - name: Ruff correctness gate
@@ -135,6 +138,7 @@ jobs:
           apps/worker-media/tests/test_image_generation_codec.py
           apps/worker-media/tests/test_image_generation_ports.py
           apps/worker-media/tests/test_image_task_entrypoint.py
+          apps/worker-media/tests/test_job_runtime_performance.py
           apps/worker-media/tests/test_worker_cli.py
           apps/worker-media/tests/integration/test_image_generation_repository_postgres.py
           apps/api/src/lumi_api/generations/service.py
@@ -155,6 +159,7 @@ jobs:
             apps/worker-media/tests/test_image_gateway_runtime.py \
             apps/worker-media/tests/test_image_generation_codec.py \
             apps/worker-media/tests/test_image_generation_ports.py \
+            apps/worker-media/tests/test_job_runtime_performance.py \
             apps/worker-media/tests/test_worker_cli.py \
             apps/worker-media/tests/integration/test_image_generation_repository_postgres.py
 
