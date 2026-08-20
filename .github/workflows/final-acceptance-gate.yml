@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       release_manifest_path:
-        description: "Frozen release-manifest.json under reports/final-acceptance/<release>/"
+        description: "Frozen release-manifest-v2.json under reports/final-acceptance/<release>/"
         required: false
         type: string
       acceptance_evidence_path:
@@ -37,9 +37,7 @@ jobs:
         run: |
           python3 scripts/validate_final_acceptance_contract.py
           python3 scripts/validate_security_release_decision_contract.py
-          python3 scripts/validate_final_acceptance_assembler_contract.py
-          python3 scripts/validate_repository_governance_contract.py
-          python3 scripts/validate_release_authorization_contract.py
+          python3 scripts/validate_finalization_v2_contract.py
           python3 scripts/validate_api_provenance_source_manifest.py
           python3 scripts/validate_image_generation_producer_contract.py
           python3 scripts/runtime_image_set.py validate-manifest
@@ -62,28 +60,27 @@ jobs:
       - name: Validate JSON and Python syntax
         run: |
           python3 -m json.tool final/acceptance/manifest-v1.json >/dev/null
-          python3 -m json.tool final/acceptance/release-manifest-template.json >/dev/null
+          python3 -m json.tool final/acceptance/repository-governance-policy-template.json >/dev/null
+          python3 -m json.tool final/acceptance/release-approval-policy-v2-template.json >/dev/null
+          python3 -m json.tool final/acceptance/release-authorization-request-v2-template.json >/dev/null
           python3 -m json.tool final/acceptance/upstream-decision-template.json >/dev/null
-          python3 -m json.tool final/acceptance/release-approval-policy-template.json >/dev/null
-          python3 -m json.tool final/acceptance/release-authorization-request-template.json >/dev/null
-          python3 -m json.tool final/acceptance/release-authorization-template.json >/dev/null
           python3 -m json.tool production/runtime-images/manifest-v1.json >/dev/null
           python3 -m json.tool production/deployment/manifest-template.json >/dev/null
           python3 -m json.tool production/release-actions/pins-v1.json >/dev/null
           python3 -m json.tool staging/acceptance/api-provenance-sources-v1.json >/dev/null
           python3 -m py_compile \
             scripts/final-acceptance-gate.py \
-            scripts/final-acceptance-decision.py \
+            scripts/final-acceptance-decision-v2.py \
             scripts/create-final-acceptance-evidence.py \
-            scripts/final-acceptance-assembler.py \
-            scripts/validate_final_acceptance_package.py \
+            scripts/final-acceptance-assembler-v2.py \
+            scripts/validate_final_acceptance_package_v2.py \
+            scripts/validate_finalization_identity_v2.py \
+            scripts/validate_finalization_v2_contract.py \
+            scripts/validate_release_governance_policy.py \
             scripts/capture_release_branch_protection.py \
-            scripts/validate_repository_governance_contract.py \
-            scripts/capture_release_authorization.py \
-            scripts/validate_release_authorization_contract.py \
+            scripts/capture_release_authorization_v2.py \
             scripts/security-release-decision.py \
             scripts/validate_security_release_decision_contract.py \
-            scripts/validate_final_acceptance_assembler_contract.py \
             scripts/validate_final_acceptance_contract.py \
             scripts/validate_api_provenance_source_manifest.py \
             scripts/validate_image_generation_producer_contract.py \
@@ -128,7 +125,7 @@ jobs:
         run: uv sync --all-packages --frozen
 
   final-decision:
-    if: github.event_name == 'workflow_dispatch' && inputs.release_manifest_path != '' && inputs.acceptance_evidence_path != ''
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release-closure-p0' && inputs.release_manifest_path != '' && inputs.acceptance_evidence_path != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -136,10 +133,13 @@ jobs:
       pull-requests: read
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
-      - name: Resolve and constrain frozen acceptance paths
+      - name: Resolve and constrain frozen V2 acceptance paths
         shell: bash
         run: |
           set -euo pipefail
@@ -156,21 +156,21 @@ jobs:
               evidence.relative_to(allowed)
           except ValueError as exc:
               raise SystemExit('final acceptance input escapes reports/final-acceptance/') from exc
-          if release.name != 'release-manifest.json' or evidence.name != 'acceptance-evidence.json':
-              raise SystemExit('expected release-manifest.json and acceptance-evidence.json')
+          if release.name != 'release-manifest-v2.json' or evidence.name != 'acceptance-evidence.json':
+              raise SystemExit('expected release-manifest-v2.json and acceptance-evidence.json')
           if not release.is_file() or not evidence.is_file():
-              raise SystemExit('final acceptance input file is missing')
+              raise SystemExit('final acceptance V2 input file is missing')
           if release.parent != evidence.parent:
               raise SystemExit('release manifest and acceptance evidence must be in the same release directory')
-          output = release.parent / 'final-decision.json'
+          output = release.parent / 'final-decision-v2.json'
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
               fh.write(f'FINAL_RELEASE={release.relative_to(root).as_posix()}\n')
               fh.write(f'FINAL_EVIDENCE={evidence.relative_to(root).as_posix()}\n')
               fh.write(f'FINAL_OUTPUT={output.relative_to(root).as_posix()}\n')
           PY
-      - name: Require canonical assembled and frozen package
-        run: python3 scripts/validate_final_acceptance_package.py --release "$FINAL_RELEASE"
-      - name: Evaluate canonical final decision with live release controls
+      - name: Require canonical non-cyclic V2 package
+        run: python3 scripts/validate_final_acceptance_package_v2.py --release "$FINAL_RELEASE"
+      - name: Evaluate canonical V2 final decision with live release controls
         shell: bash
         env:
           RELEASE_GOVERNANCE_TOKEN: ${{ secrets.RELEASE_GOVERNANCE_TOKEN }}
@@ -179,14 +179,14 @@ jobs:
           set -euo pipefail
           test -n "$RELEASE_GOVERNANCE_TOKEN"
           test -n "$RELEASE_APPROVAL_TOKEN"
-          python3 scripts/final-acceptance-decision.py \
+          python3 scripts/final-acceptance-decision-v2.py \
             --release "$FINAL_RELEASE" \
             --evidence "$FINAL_EVIDENCE" \
             --output "$FINAL_OUTPUT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
-          name: final-acceptance-${{ github.run_id }}
+          name: final-acceptance-v2-${{ github.run_id }}
           path: reports/final-acceptance/**
           if-no-files-found: error
           retention-days: 180
