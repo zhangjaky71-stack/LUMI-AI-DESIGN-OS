@@ -9,6 +9,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 GOVERNANCE_POLICY = ROOT / "scripts" / "validate_release_governance_policy.py"
+LIVE_GOVERNANCE_V2 = ROOT / "scripts" / "validate_live_release_governance_v2.py"
 AUTH_V2 = ROOT / "scripts" / "capture_release_authorization_v2.py"
 IDENTITY_V2 = ROOT / "scripts" / "validate_finalization_identity_v2.py"
 ASSEMBLER_V2 = ROOT / "scripts" / "final-acceptance-assembler-v2.py"
@@ -21,6 +22,7 @@ RELEASE_TEMPLATE = ROOT / "final" / "acceptance" / "release-manifest-v2-template
 POLICY_TEMPLATE = ROOT / "final" / "acceptance" / "release-approval-policy-v2-template.json"
 REQUEST_TEMPLATE = ROOT / "final" / "acceptance" / "release-authorization-request-v2-template.json"
 GOVERNANCE_TEMPLATE = ROOT / "final" / "acceptance" / "repository-governance-policy-template.json"
+CANONICAL_FINAL_CHECK = "node73-final-contract-gate"
 
 
 class FinalizationV2ContractError(RuntimeError):
@@ -49,6 +51,7 @@ def require_markers(path: Path, markers: tuple[str, ...]) -> None:
 
 def main() -> int:
     governance = load_module(GOVERNANCE_POLICY, "lumi_governance_policy_contract_v2")
+    live_governance = load_module(LIVE_GOVERNANCE_V2, "lumi_live_governance_contract_v2")
     auth = load_module(AUTH_V2, "lumi_authorization_contract_v2")
     identity = load_module(IDENTITY_V2, "lumi_identity_contract_v2")
     package_contract = load_module(PACKAGE_CONTRACT, "lumi_package_contract_v2")
@@ -57,9 +60,11 @@ def main() -> int:
         "lumi_assembler_workflow_contract_v2",
     )
     governance_test: dict[str, Any] = governance.self_test()
+    live_governance_test: dict[str, Any] = live_governance.self_test()
     auth_test: dict[str, Any] = auth.self_test()
     identity_test: dict[str, Any] = identity.self_test()
-    require(governance_test.get("status") == "PASS" and governance_test.get("negative_drills") == 6, "governance policy V2 self-test drift")
+    require(governance_test.get("status") == "PASS" and governance_test.get("negative_drills") == 10, "governance policy V2 self-test drift")
+    require(live_governance_test.get("status") == "PASS" and live_governance_test.get("negative_drills") == 4, "live governance policy binding V2 self-test drift")
     require(auth_test.get("status") == "PASS" and auth_test.get("negative_drills") == 6, "authorization V2 self-test drift")
     require(identity_test.get("status") == "PASS" and identity_test.get("negative_drills") == 7, "finalization identity V2 self-test drift")
     require(package_contract.main() == 0, "V2 assembler/package execution contract did not PASS")
@@ -85,6 +90,11 @@ def main() -> int:
     governance_template = json.loads(GOVERNANCE_TEMPLATE.read_text(encoding="utf-8"))
     require(governance_template.get("kind") == governance.KIND, "repository governance policy template kind mismatch")
     require(governance_template.get("require_live_reverification") is True, "repository governance policy must require live reverification")
+    status_checks = governance_template.get("required_status_checks")
+    require(isinstance(status_checks, dict), "repository governance policy must define required_status_checks")
+    require(status_checks.get("strict") is True, "repository governance policy status checks must be strict")
+    require(status_checks.get("required_contexts") == [CANONICAL_FINAL_CHECK], "repository governance policy must require the unique NODE-73 final check")
+    require(status_checks.get("allow_additional_contexts") is True, "repository governance policy must permit additional stronger checks")
 
     require_markers(ASSEMBLER_V2, (
         'parser.add_argument("--governance-policy", required=True)',
@@ -108,6 +118,13 @@ def main() -> int:
         '"approvals_state": "PENDING_LIVE_AUTHORIZATION"',
     ))
 
+    require_markers(LIVE_GOVERNANCE_V2, (
+        'validate_live_report(',
+        'required_contexts - observed',
+        '"status_check_policy_bound": True',
+        'expected_evidence_head_sha',
+    ))
+
     require_markers(AUTH_V2, (
         'AUTHORIZATION_KIND = "LUMI_RELEASE_AUTHORIZATION_V2"',
         '"source_release_candidate"',
@@ -119,14 +136,20 @@ def main() -> int:
 
     require_markers(DECISION_V2, (
         'PACKAGE_V2 = ROOT / "scripts" / "validate_final_acceptance_package_v2.py"',
+        'GOVERNANCE_BINDER_V2 = ROOT / "scripts" / "validate_live_release_governance_v2.py"',
         'evidence_head_sha = require_execution_context()',
         'governance.capture(EXPECTED_REPOSITORY',
-        'expected_release_sha=evidence_head_sha',
+        'governance_binder.validate_live_report(',
+        'expected_evidence_head_sha=evidence_head_sha',
         'authorization.capture(',
         'evidence_head_sha=evidence_head_sha',
         'identity.from_environment(',
         'source_rc_sha=source_rc_sha',
         'product_release["approvals"] = dict(authorization_result["approval_statuses"])',
+        '"repository_governance_policy": {',
+        '"release_authorization_request": {',
+        '"required_status_contexts": governance_result.get("required_status_contexts")',
+        '"status_check_policy_bound": governance_result.get("status_check_policy_bound")',
         '"source_rc_sha": source_rc_sha',
         '"evidence_head_sha": evidence_head_sha',
         '"source_rc_ancestor_of_evidence_head"',
@@ -138,8 +161,11 @@ def main() -> int:
         "needs.source-contract.result == 'success'",
         "needs.canonical-lock-gate.result == 'success'",
         "github.ref == 'refs/heads/release-closure-p0'",
-        'ref: ${{ github.sha }}',
         'fetch-depth: 0',
+        'name: node73-final-contract-gate',
+        'Require exact source-contract execution SHA',
+        'Require exact canonical-lock execution SHA',
+        'Require exact final-decision Evidence Head checkout',
         "release.name != 'release-manifest-v2.json'",
         "output = release.parent / 'final-decision-v2.json'",
         'python3 scripts/validate_final_acceptance_package_v2.py --release "$FINAL_RELEASE"',
@@ -147,6 +173,8 @@ def main() -> int:
         'name: final-acceptance-v2-${{ github.run_id }}',
     ))
     workflow = FINAL_WORKFLOW.read_text(encoding="utf-8")
+    require(workflow.count('ref: ${{ github.sha }}') == 3, "all three Final Acceptance checkout jobs must pin github.sha exactly")
+    require(workflow.count('persist-credentials: false') == 3, "read-only Final Acceptance checkouts must not persist credentials")
     final_start = workflow.find("  final-decision:\n")
     final_end = workflow.find("  contract-gate:\n", final_start)
     require(final_start >= 0 and final_end > final_start, "Final Acceptance final-decision job block missing")
