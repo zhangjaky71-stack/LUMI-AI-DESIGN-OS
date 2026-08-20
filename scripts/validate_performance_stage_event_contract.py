@@ -13,7 +13,13 @@ WORKER_PORTS = ROOT / "apps/worker-media/src/lumi_worker_media/performance_ports
 HOSTED_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/image_generation_runtime.py"
 JOB_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/job_runtime.py"
 JOB_RUNTIME_TEST = ROOT / "apps/worker-media/tests/test_job_runtime_performance.py"
+WEB_UI_PERF = ROOT / "apps/web/src/lib/ai-workspace/performance-telemetry.ts"
+WEB_UI_TEST = ROOT / "apps/web/src/lib/ai-workspace/performance-telemetry.test.ts"
+WORKSPACE_CONTRACT = ROOT / "apps/web/src/lib/ai-workspace/contracts.ts"
+DERIVER = ROOT / "scripts/derive_performance_ai_latency.py"
+DERIVER_TEST = ROOT / "scripts/self_test_performance_ai_latency.py"
 WORKFLOW = ROOT / ".github/workflows/performance-contract.yml"
+CI_WORKFLOW = ROOT / ".github/workflows/ci.yml"
 
 STAGES = (
     "enqueue",
@@ -136,7 +142,7 @@ def validate_worker_producers() -> None:
                 f"{class_name} lost {stage_name} timing",
             )
     require("PerformanceStage.POSTPROCESS" not in ports, "postprocess must not be fabricated by a port")
-    require("PerformanceStage.UI_PROPAGATION" not in ports, "broker/UI propagation needs lifecycle proof")
+    require("PerformanceStage.UI_PROPAGATION" not in ports, "broker/UI propagation needs browser lifecycle proof")
     require("PerformanceStage.PLATFORM_OVERHEAD" not in ports, "platform overhead must be derived")
 
     hosted = HOSTED_RUNTIME.read_text(encoding="utf-8")
@@ -182,6 +188,90 @@ def validate_enqueue_lifecycle_producer() -> None:
         require(marker in test_source, f"enqueue executable coverage lost marker: {marker}")
 
 
+def validate_ui_propagation_producer() -> None:
+    source = WEB_UI_PERF.read_text(encoding="utf-8")
+    for marker in (
+        "__LUMI_PERFORMANCE_UI_PROPAGATION_SINK__",
+        'event.type !== "artifact.created" || !taskId',
+        "event.message.created_at",
+        "PERFORMANCE_UI_PROPAGATION_SOURCE_TIMESTAMP_INVALID",
+        "PERFORMANCE_UI_PROPAGATION_CLOCK_REVERSAL",
+        "requestFrame(() => {",
+        "requestFrame(() => {",
+        "painted_at_unix_ms",
+        "duration_ms: paintedAtUnixMs - sourceCreatedAtUnixMs",
+    ):
+        require(marker in source, f"browser UI propagation producer lost marker: {marker}")
+    require(
+        source.count("requestFrame(() => {") >= 2,
+        "UI propagation must cross two browser animation frames before completion",
+    )
+    require(
+        'event.type === "artifact.created" ? event.message.created_at : null' in source,
+        "UI propagation source must be canonical artifact event time",
+    )
+
+    tests = WEB_UI_TEST.read_text(encoding="utf-8")
+    for marker in (
+        "records artifact propagation only after two rendered frames",
+        "does not fabricate propagation for uncorrelated workspace events",
+        "fails closed when the canonical timestamp is invalid",
+        "fails closed when the browser clock precedes the canonical event",
+        "duration_ms: 125",
+    ):
+        require(marker in tests, f"browser UI propagation executable coverage lost marker: {marker}")
+
+    contract = WORKSPACE_CONTRACT.read_text(encoding="utf-8")
+    for marker in (
+        'import { scheduleArtifactUiPropagationAfterPaint } from "./performance-telemetry"',
+        "function artifactTaskId(snapshot: AIWorkspaceSnapshot, event: WorkspaceEvent)",
+        "task.artifact_version_ids?.includes(event.artifact.version_id)",
+        "scheduleArtifactUiPropagationAfterPaint(event, artifactTaskId(snapshot, event))",
+    ):
+        require(marker in contract, f"canonical workspace reducer lost UI telemetry binding: {marker}")
+    schedule_index = contract.index("scheduleArtifactUiPropagationAfterPaint(event, artifactTaskId(snapshot, event))")
+    require(
+        contract.index("state.seen_event_ids.includes(event.id)") < schedule_index,
+        "duplicate-event rejection must happen before UI timing",
+    )
+    require(
+        contract.index("state.snapshot.run && state.snapshot.run.run_id !== event.run_id") < schedule_index,
+        "run-scope rejection must happen before UI timing",
+    )
+
+
+def validate_platform_overhead_derivation() -> None:
+    source = DERIVER.read_text(encoding="utf-8")
+    for marker in (
+        '"platform_overhead":',
+        "RAW_PLATFORM_OVERHEAD_FORBIDDEN",
+        "TASK_REQUIRED_STAGE_MISSING",
+        "TASK_OPERATION_IDENTITY_DRIFT",
+        "MIXED_PROVENANCE",
+        '"provider_excluded": True',
+        '"missing_required_stage_policy": "BLOCK"',
+        '"raw_platform_overhead_policy": "FORBIDDEN"',
+        '"platform_overhead_ms": "sum(enqueue,routing,download,postprocess,validation,artifact_persist,ui_propagation)"',
+        "platform_overhead = sum(stage_totals.get(stage, 0.0) for stage in NON_PROVIDER_STAGES)",
+    ):
+        require(marker in source, f"platform overhead derivation lost marker: {marker}")
+    require(
+        '"provider"' not in source.split("NON_PROVIDER_STAGES = (", 1)[1].split(")", 1)[0],
+        "provider must not enter platform overhead sum",
+    )
+
+    tests = DERIVER_TEST.read_text(encoding="utf-8")
+    for marker in (
+        "RAW_PLATFORM_OVERHEAD_FORBIDDEN",
+        "TASK_REQUIRED_STAGE_MISSING:task-1:ui_propagation",
+        "MIXED_PROVENANCE",
+        "TASK_OPERATION_IDENTITY_DRIFT:task-1",
+        "TASK_REQUIRED_STAGE_MISSING:task-d:postprocess",
+        'result["formula"]["provider_excluded"] is True',
+    ):
+        require(marker in tests, f"platform overhead self-test lost marker: {marker}")
+
+
 def validate_tests_and_workflow() -> None:
     test_source = DOMAIN_TEST.read_text(encoding="utf-8")
     for marker in (
@@ -198,8 +288,14 @@ def validate_tests_and_workflow() -> None:
         "python3 scripts/validate_performance_stage_event_contract.py" in workflow,
         "Performance Contract workflow does not execute stage validator",
     )
+    require(
+        "python3 scripts/self_test_performance_ai_latency.py" in workflow,
+        "Performance Contract workflow does not execute AI latency derivation self-test",
+    )
     for path in (
         "scripts/validate_performance_stage_event_contract.py",
+        "scripts/derive_performance_ai_latency.py",
+        "scripts/self_test_performance_ai_latency.py",
         "services/domain/src/lumi_domain/performance_events.py",
         "apps/worker-media/src/lumi_worker_media/performance_ports.py",
         "apps/worker-media/src/lumi_worker_media/image_generation_runtime.py",
@@ -207,6 +303,15 @@ def validate_tests_and_workflow() -> None:
         "apps/worker-media/tests/test_job_runtime_performance.py",
     ):
         require(path in workflow, f"Performance Contract Python syntax gate missing {path}")
+
+    ci = CI_WORKFLOW.read_text(encoding="utf-8")
+    for marker in (
+        "pnpm test",
+        "pnpm typecheck",
+        "pnpm lint",
+        "pnpm build",
+    ):
+        require(marker in ci, f"frontend executable gate missing: {marker}")
 
 
 def negative_drills() -> int:
@@ -233,6 +338,12 @@ def negative_drills() -> int:
     require(0 not in (), "numeric-default drill invalid")
     drills += 1
 
+    require("platform_overhead" in STAGES, "derived-stage drill invalid")
+    drills += 1
+
+    require("ui_propagation" in STAGES, "UI-stage drill invalid")
+    drills += 1
+
     return drills
 
 
@@ -244,7 +355,13 @@ def main() -> None:
         HOSTED_RUNTIME,
         JOB_RUNTIME,
         JOB_RUNTIME_TEST,
+        WEB_UI_PERF,
+        WEB_UI_TEST,
+        WORKSPACE_CONTRACT,
+        DERIVER,
+        DERIVER_TEST,
         WORKFLOW,
+        CI_WORKFLOW,
     ):
         require(path.is_file(), f"missing {path.relative_to(ROOT)}")
     validate_schema()
@@ -252,12 +369,15 @@ def main() -> None:
     validate_domain_runtime()
     validate_worker_producers()
     validate_enqueue_lifecycle_producer()
+    validate_ui_propagation_producer()
+    validate_platform_overhead_derivation()
     validate_tests_and_workflow()
     drills = negative_drills()
-    require(drills == 6, "negative drill count drifted")
+    require(drills == 8, "negative drill count drifted")
     print(
         "PASS: performance stage telemetry source contract "
-        f"({len(STAGES)} canonical stages; enqueue lifecycle producer + executable tests gated; "
+        f"({len(STAGES)} canonical stages; enqueue + browser UI producers gated; "
+        "platform overhead derived fail-closed; "
         f"{drills} negative drills; runtime evidence not implied)"
     )
 
