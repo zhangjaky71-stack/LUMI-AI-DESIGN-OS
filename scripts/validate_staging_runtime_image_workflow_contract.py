@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+WORKFLOW = ROOT / ".github" / "workflows" / "staging-acceptance-gate.yml"
+
+
+class WorkflowContractError(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise WorkflowContractError(message)
+
+
+def _job_block(text: str, job_name: str, next_job: str | None) -> str:
+    marker = f"  {job_name}:\n"
+    start = text.find(marker)
+    if start < 0:
+        raise WorkflowContractError(f"missing workflow job: {job_name}")
+    if next_job is None:
+        return text[start:]
+    end_marker = f"  {next_job}:\n"
+    end = text.find(end_marker, start + len(marker))
+    if end < 0:
+        raise WorkflowContractError(f"missing workflow job terminator: {next_job}")
+    return text[start:end]
+
+
+def main() -> int:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    for marker in (
+        "runtime_image_set_run_id:",
+        'description: "GitHub Actions run id that produced the frozen six-runtime RC image set"',
+        "actions: read",
+        "python3 scripts/validate_staging_runtime_image_binding.py --self-test",
+        "python3 scripts/validate_staging_runtime_image_workflow_contract.py",
+        "scripts/validate_staging_runtime_image_binding.py",
+        "scripts/validate_staging_runtime_image_workflow_contract.py",
+        "actions/download-artifact@v8",
+        "github-token: ${{ secrets.GITHUB_TOKEN }}",
+        "repository: ${{ github.repository }}",
+        "run-id: ${{ inputs.runtime_image_set_run_id }}",
+        "runtime-image-set-${{ steps.runtime_image_binding.outputs.rc_sha }}",
+        "--expected-run-id \"$LUMI_RUNTIME_IMAGE_SET_RUN_ID\"",
+    ):
+        require(marker in text, f"staging workflow missing runtime-image binding marker: {marker}")
+
+    acceptance = _job_block(text, "acceptance-decision", "contract-gate")
+    require(
+        "inputs.runtime_image_set_run_id != ''" in acceptance,
+        "acceptance-decision must require runtime_image_set_run_id",
+    )
+    require(
+        "LUMI_RUNTIME_IMAGE_SET_RUN_ID: ${{ inputs.runtime_image_set_run_id }}" in acceptance,
+        "acceptance-decision must bind the requested runtime-image build run id",
+    )
+    require(
+        "runtime_image_set_run_id must be a positive decimal GitHub Actions run id" in acceptance,
+        "acceptance-decision must validate the run id before artifact download",
+    )
+    require(
+        "artifact_name=runtime-image-set-${rc_sha}" in acceptance,
+        "artifact name must be derived from the evidence RC SHA",
+    )
+    require(
+        "test \"$(find \"$RUNTIME_IMAGE_SET_DIR\" -maxdepth 1 -type f -name 'container-image-set.json' | wc -l)\" -eq 1" in acceptance,
+        "downloaded runtime image artifact must contain exactly one top-level container-image-set.json",
+    )
+
+    binding_pos = acceptance.find("validate_staging_runtime_image_binding.py")
+    gate_pos = acceptance.find("staging-acceptance-gate.py")
+    require(binding_pos >= 0 and gate_pos >= 0 and binding_pos < gate_pos, "image-set binding must run before NODE-71 decision")
+
+    source = _job_block(text, "source-contract", "canonical-lock-gate")
+    require(
+        "validate_staging_runtime_image_binding.py --self-test" in source,
+        "source-contract must execute runtime image binding negative drills",
+    )
+    require(
+        "validate_staging_runtime_image_workflow_contract.py" in source,
+        "source-contract must execute this workflow anti-regression contract",
+    )
+
+    print("NODE-71 frozen runtime-image artifact workflow contract: PASS")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except WorkflowContractError as exc:
+        raise SystemExit(f"staging runtime image workflow contract failed: {exc}") from exc
