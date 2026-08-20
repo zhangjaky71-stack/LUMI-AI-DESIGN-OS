@@ -90,6 +90,22 @@ This is a source-level audit only. It is not presented as hosted execution PASS 
 - `3b3ed25dc9bab61914b60a260c0352382eaf285c` — Production deploy immutable Action pins and pre-download self-gate.
 - `300904fec82e27c46a01223e777e002d6b9a4df1` — NODE-72 pin-aware anti-regression contract.
 - `14627874993c89802f80b9af46e61e10cabe1ea7` — Final Acceptance pin gate integration.
+- `811f8061099d4d51d7089cfaa6e7217566a4174c` — initial immutable Action supply-chain evidence checkpoint.
+
+## Hosted CI observation
+
+Sampled code/evidence head: `811f8061099d4d51d7089cfaa6e7217566a4174c`.
+
+The release-critical PR workflows were accepted by GitHub and runs were created, but the relevant jobs again failed before an executable step was materialized:
+
+- Runtime Image Closure run `32328063266`: job `96303247731` (`runtime-image-closure`) -> `failure`, `steps=null`, `logs_url=null`.
+- Staging Acceptance run `32328063284`: jobs `96303247896` (`canonical-lock-gate`) and `96303248016` (`source-contract`) -> `failure`, `steps=null`, `logs_url=null`; dispatch-only acceptance/preflight jobs were skipped as expected for a PR run.
+- Production IaC Contract run `32328063310`: jobs `96303247880` (`source-contract`) and `96303247978` (`terraform-static`) -> `failure`, `steps=null`, `logs_url=null`.
+- Final Product Acceptance run `32328063252`: jobs `96303247762` (`canonical-lock-gate`) and `96303247927` (`source-contract`) -> `failure`, `steps=null`, `logs_url=null`; `final-decision` was skipped as expected for a PR run.
+
+No checkout, Python interpreter setup, `validate_release_action_pins.py`, `uv`, Terraform, Docker, PostgreSQL, or application command is evidenced as having executed in those jobs.
+
+Therefore these hosted red jobs are **not** interpreted as release-action pin contract failures and are **not** PASS evidence. They remain consistent with the established GitHub-hosted runner/account/scheduling/billing blocker.
 
 ## What is not claimed
 
