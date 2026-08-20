@@ -4,15 +4,15 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ASSEMBLE = ROOT / ".github" / "workflows" / "assemble-final-acceptance.yml"
-BUILD = ROOT / ".github" / "workflows" / "build-runtime-image-set.yml"
-GOVERNANCE_APPLY = ROOT / ".github" / "workflows" / "configure-release-branch-protection.yml"
-LOCK = ROOT / ".github" / "workflows" / "regenerate-uv-lock.yml"
-RUNTIME = ROOT / ".github" / "workflows" / "runtime-image-closure-contract.yml"
-STAGING = ROOT / ".github" / "workflows" / "staging-acceptance-gate.yml"
-PROD_IAC = ROOT / ".github" / "workflows" / "production-iac-contract.yml"
-DEPLOY = ROOT / ".github" / "workflows" / "deploy-production.yml"
-FINAL = ROOT / ".github" / "workflows" / "final-acceptance-gate.yml"
+ASSEMBLE = ROOT / ".github/workflows/assemble-final-acceptance.yml"
+BUILD = ROOT / ".github/workflows/build-runtime-image-set.yml"
+GOVERNANCE_APPLY = ROOT / ".github/workflows/configure-release-branch-protection.yml"
+LOCK = ROOT / ".github/workflows/regenerate-uv-lock.yml"
+RUNTIME = ROOT / ".github/workflows/runtime-image-closure-contract.yml"
+STAGING = ROOT / ".github/workflows/staging-acceptance-gate.yml"
+PROD_IAC = ROOT / ".github/workflows/production-iac-contract.yml"
+DEPLOY = ROOT / ".github/workflows/deploy-production.yml"
+FINAL = ROOT / ".github/workflows/final-acceptance-gate.yml"
 
 
 class PermissionContractError(RuntimeError):
@@ -25,29 +25,25 @@ def require(condition: bool, message: str) -> None:
 
 
 def text(path: Path) -> str:
-    if not path.is_file():
-        raise PermissionContractError(f"missing release workflow: {path.relative_to(ROOT)}")
+    require(path.is_file(), f"missing release workflow: {path.relative_to(ROOT)}")
     return path.read_text(encoding="utf-8")
+
+
+def top(source: str) -> str:
+    end = source.find("jobs:\n")
+    require(end >= 0, "workflow has no jobs section")
+    return source[:end]
 
 
 def job_block(source: str, job: str, next_job: str | None) -> str:
     marker = f"  {job}:\n"
     start = source.find(marker)
-    if start < 0:
-        raise PermissionContractError(f"missing workflow job: {job}")
+    require(start >= 0, f"missing workflow job: {job}")
     if next_job is None:
         return source[start:]
     end = source.find(f"  {next_job}:\n", start + len(marker))
-    if end < 0:
-        raise PermissionContractError(f"missing workflow job terminator: {next_job}")
+    require(end >= 0, f"missing workflow job terminator: {next_job}")
     return source[start:end]
-
-
-def top(source: str) -> str:
-    end = source.find("jobs:\n")
-    if end < 0:
-        raise PermissionContractError("workflow has no jobs section")
-    return source[:end]
 
 
 def require_top_read_only(source: str, label: str) -> None:
@@ -68,10 +64,7 @@ def validate_assemble() -> None:
     source = text(ASSEMBLE)
     require_top_read_only(source, "Final Acceptance package assembler")
     assemble = job_block(source, "assemble", None)
-    require(
-        "permissions:\n      contents: write\n" in assemble,
-        "only Final Acceptance assembler job may receive contents:write",
-    )
+    require("permissions:\n      contents: write\n" in assemble, "only Final Acceptance assembler may receive contents:write")
     for forbidden in ("actions: write", "packages: write", "attestations: write", "id-token: write", "pull-requests: write"):
         require(forbidden not in assemble, f"Final Acceptance assembler has unrelated write capability: {forbidden}")
     require("github.ref == 'refs/heads/release-closure-p0'" in assemble, "Final Acceptance assembler must be release-closure-p0-only")
@@ -79,49 +72,57 @@ def validate_assemble() -> None:
     require('git push origin "HEAD:${GITHUB_REF_NAME}"' in assemble, "Final Acceptance assembler must push only the current release branch")
     require("git push --force" not in assemble.casefold(), "Final Acceptance assembler must never force-push")
     require('test "$remote_sha" = "$GITHUB_SHA"' in assemble, "Final Acceptance assembler must fail closed if release branch moves")
-    require("final-acceptance-assembler-v2.py" in assemble, "Final Acceptance assembler must use V2 package producer")
-    require("final-acceptance-assembler.py" not in assemble, "Final Acceptance assembler must not use V1 package producer")
+    require("final-acceptance-assembler-v2.py" in assemble and "final-acceptance-assembler.py" not in assemble, "Final Acceptance assembler must be V2-only")
 
 
 def validate_governance_apply() -> None:
     source = text(GOVERNANCE_APPLY)
-    require_top_read_only(source, "NODE-73 branch-protection applicator")
+    require_top_read_only(source, "NODE-73 branch-protection workflow")
     header = top(source)
+    require("workflow_dispatch:" in header, "branch-protection workflow must retain manual mutation dispatch")
+    require("pull_request:\n    types: [labeled]" in header, "branch-protection workflow must retain unprivileged PR preflight")
+
+    preflight = job_block(source, "pr-preflight", "apply-protection")
     apply_job = job_block(source, "apply-protection", None)
-    require("workflow_dispatch:" in header, "branch-protection applicator must retain future manual dispatch")
-    require("pull_request:\n    types: [labeled]" in header, "branch-protection applicator must support the current PR label bootstrap")
-    require("EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}" in header, "branch-protection applicator must resolve exact PR-head/dispatch Evidence Head")
-    require("environment: production" in apply_job, "branch-protection mutation must remain behind the production environment")
-    require(
-        "permissions:\n      contents: read\n" in apply_job,
-        "branch-protection applicator must not receive repository write permissions through GITHUB_TOKEN",
-    )
-    for forbidden in (
-        "contents: write",
-        "actions: write",
-        "packages: write",
-        "attestations: write",
-        "id-token: write",
-        "pull-requests: write",
-    ):
-        require(forbidden not in apply_job, f"branch-protection applicator has unrelated GitHub permission: {forbidden}")
+
     for marker in (
-        "github.ref == 'refs/heads/release-closure-p0'",
-        "inputs.confirm == 'APPLY_NODE73_RELEASE_PROTECTION'",
-        "github.event.label.name == 'node73-apply-protection'",
+        "github.event_name == 'pull_request'",
+        "github.event.label.name == 'node73-protection-preflight'",
         "github.event.pull_request.number == 135",
         "github.event.pull_request.base.ref == 'node-73-final-acceptance-release'",
         "github.event.pull_request.head.ref == 'release-closure-p0'",
         "github.event.pull_request.head.repo.full_name == github.repository",
+        'EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}',
+        'ref: ${{ env.EVIDENCE_HEAD_SHA }}',
+        'test "$(git rev-parse HEAD)" = "$EVIDENCE_HEAD_SHA"',
+        "persist-credentials: false",
+        "PR preflight only: no Administration credential is available to PR-controlled code.",
     ):
-        require(marker in apply_job, f"branch-protection applicator missing bootstrap constraint: {marker}")
-    require('ref: ${{ env.EVIDENCE_HEAD_SHA }}' in apply_job, "branch-protection applicator must checkout exact resolved Evidence Head")
-    require('test "$(git rev-parse HEAD)" = "$EVIDENCE_HEAD_SHA"' in apply_job, "branch-protection applicator must verify exact Evidence Head checkout")
-    require("persist-credentials: false" in apply_job, "branch-protection applicator checkout must not persist GITHUB_TOKEN credentials")
-    require('--confirm "APPLY_NODE73_RELEASE_PROTECTION"' in apply_job, "branch-protection applicator must pass the canonical typed confirmation to the mutation script")
+        require(marker in preflight, f"PR governance preflight missing constraint: {marker}")
+    require("environment: production" not in preflight, "PR-controlled preflight must not cross the production secret boundary")
+    require("RELEASE_GOVERNANCE_ADMIN_TOKEN" not in preflight, "Administration-write token must never enter PR-controlled preflight")
+    for forbidden in ("contents: write", "actions: write", "packages: write", "attestations: write", "id-token: write", "pull-requests: write"):
+        require(forbidden not in preflight, f"PR governance preflight has write capability: {forbidden}")
+
+    for marker in (
+        "github.event_name == 'workflow_dispatch'",
+        "github.ref == 'refs/heads/release-closure-p0'",
+        "inputs.confirm == 'APPLY_NODE73_RELEASE_PROTECTION'",
+        "environment: production",
+        'EVIDENCE_HEAD_SHA: ${{ github.sha }}',
+        'ref: ${{ env.EVIDENCE_HEAD_SHA }}',
+        'test "$(git rev-parse HEAD)" = "$EVIDENCE_HEAD_SHA"',
+        "persist-credentials: false",
+        'RELEASE_GOVERNANCE_ADMIN_TOKEN: ${{ secrets.RELEASE_GOVERNANCE_ADMIN_TOKEN }}',
+        "apply_release_branch_protection.py",
+    ):
+        require(marker in apply_job, f"privileged governance mutation missing constraint: {marker}")
+    require("github.event_name == 'pull_request'" not in apply_job, "Administration-write mutation job must not accept pull_request events")
+    require("permissions:\n      contents: read\n" in apply_job, "governance mutation must not receive repository write via GITHUB_TOKEN")
+    for forbidden in ("contents: write", "actions: write", "packages: write", "attestations: write", "id-token: write", "pull-requests: write"):
+        require(forbidden not in apply_job, f"governance mutation has unrelated GitHub permission: {forbidden}")
     require(source.count("${{ secrets.RELEASE_GOVERNANCE_ADMIN_TOKEN }}") == 1, "Administration-write token must be injected into exactly one step")
     require("RELEASE_GOVERNANCE_ADMIN_TOKEN:" not in header, "Administration-write token must never be workflow-scoped")
-    require("apply_release_branch_protection.py" in apply_job, "branch-protection applicator must use the canonical policy-driven script")
 
 
 def validate_build() -> None:
@@ -136,9 +137,7 @@ def validate_build() -> None:
     for required in ("contents: read", "packages: write", "attestations: write", "id-token: write"):
         require(required in write_job, f"runtime image build job missing scoped permission: {required}")
     require("actions: write" not in write_job and "contents: write" not in write_job, "runtime image build job has unnecessary repository write permission")
-    require("docker/login-action@" not in read_gate, "read-only source-gate must not log in to registry")
-    require("docker/build-push-action@" not in read_gate, "read-only source-gate must not push images")
-    require("actions/attest@" not in read_gate, "read-only source-gate must not attest images")
+    require("docker/login-action@" not in read_gate and "docker/build-push-action@" not in read_gate and "actions/attest@" not in read_gate, "read-only image source gate must not mutate registry/attestations")
 
 
 def validate_lock() -> None:
@@ -160,10 +159,7 @@ def validate_staging() -> None:
     decision = job_block(source, "acceptance-decision", "contract-gate")
     for label, block in (("source-contract", source_contract), ("canonical-lock-gate", lock_gate), ("remote-read-only-preflight", preflight)):
         require("actions: read" not in block, f"NODE-71 {label} must not receive cross-run artifact read permission")
-    require(
-        "permissions:\n      contents: read\n      actions: read\n" in decision,
-        "only NODE-71 acceptance-decision may receive actions:read",
-    )
+    require("permissions:\n      contents: read\n      actions: read\n" in decision, "only NODE-71 acceptance-decision may receive actions:read")
     require("actions/download-artifact@" in decision, "NODE-71 artifact download must remain inside the actions:read job")
 
 
@@ -176,16 +172,10 @@ def validate_deploy() -> None:
         require(forbidden not in header, f"production deploy top-level permission too broad: {forbidden}")
     release = job_block(source, "release-gate", "production")
     production = job_block(source, "production", None)
-    require("id-token: write" not in release, "release-gate must not be able to mint OIDC tokens")
-    require("aws-actions/configure-aws-credentials@" not in release, "release-gate must not assume the production AWS role")
-    require("needs: [release-gate]" in production, "production mutation job must depend on release-gate")
-    require("environment: production" in production, "OIDC-capable production job must remain protected by the production environment")
-    require(
-        "permissions:\n      contents: read\n      id-token: write\n" in production,
-        "OIDC must be scoped only to the protected production job",
-    )
-    require("actions: read" not in production, "production mutation job does not need cross-run Actions read permission")
-    require("aws-actions/configure-aws-credentials@" in production, "production OIDC job must contain the exact AWS assume-role boundary")
+    require("id-token: write" not in release and "aws-actions/configure-aws-credentials@" not in release, "release-gate must not receive production AWS identity")
+    require("needs: [release-gate]" in production and "environment: production" in production, "production mutation must depend on protected release gate")
+    require("permissions:\n      contents: read\n      id-token: write\n" in production, "OIDC must be scoped only to protected production job")
+    require("actions: read" not in production and "aws-actions/configure-aws-credentials@" in production, "production OIDC boundary drift")
 
 
 def validate_final() -> None:
@@ -198,20 +188,11 @@ def validate_final() -> None:
     final_decision = job_block(source, "final-decision", "contract-gate")
     for label, block in (("source-contract", source_contract), ("canonical-lock-gate", lock_gate)):
         require("pull-requests: read" not in block, f"Final Acceptance {label} must not receive PR review access")
-    require(
-        "permissions:\n      contents: read\n      pull-requests: read\n" in final_decision,
-        "only Final Acceptance final-decision may receive pull-requests:read",
-    )
+    require("permissions:\n      contents: read\n      pull-requests: read\n" in final_decision, "only final-decision may receive pull-requests:read")
     for forbidden in ("contents: write", "pull-requests: write", "actions: write", "packages: write", "attestations: write", "id-token: write"):
         require(forbidden not in final_decision, f"Final Acceptance final-decision has unnecessary write capability: {forbidden}")
-    require(
-        'RELEASE_APPROVAL_TOKEN: ${{ secrets.GITHUB_TOKEN }}' in final_decision,
-        "Final Acceptance must use the ephemeral GitHub token for live PR-review verification",
-    )
-    require(
-        "RELEASE_APPROVAL_TOKEN:" not in header + source_contract + lock_gate,
-        "Final Acceptance approval token must not be exposed outside final-decision",
-    )
+    require('RELEASE_APPROVAL_TOKEN: ${{ secrets.GITHUB_TOKEN }}' in final_decision, "Final Acceptance must use ephemeral GITHUB_TOKEN for live PR review verification")
+    require("RELEASE_APPROVAL_TOKEN:" not in header + source_contract + lock_gate, "approval token must not escape final-decision")
 
 
 def main() -> int:
@@ -222,10 +203,7 @@ def main() -> int:
     validate_staging()
     validate_deploy()
     validate_final()
-    for path, label in (
-        (RUNTIME, "Runtime Image Closure"),
-        (PROD_IAC, "Production IaC Contract"),
-    ):
+    for path, label in ((RUNTIME, "Runtime Image Closure"), (PROD_IAC, "Production IaC Contract")):
         require_top_read_only(text(path), label)
     print("NODE-73 release workflow least-privilege contract: PASS")
     return 0
