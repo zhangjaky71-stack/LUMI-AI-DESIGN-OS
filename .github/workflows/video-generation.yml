@@ -42,6 +42,12 @@ on:
       - "production/runtime-images/manifest-v1.json"
       - "scripts/staging-acceptance-gate.py"
       - "staging/acceptance/api-provenance-sources-v1.json"
+      - "scripts/capture-production-runtime-identity.sh"
+      - "scripts/production-deployment-decision.py"
+      - "scripts/production-rollback-rehearsal-decision.py"
+      - "scripts/production-recovery-decision.py"
+      - "scripts/validate_production_readiness_contract.py"
+      - "scripts/validate_production_recovery_contract.py"
       - "scripts/validate_video_generation.py"
       - "scripts/validate_video_generation_producer_binding.py"
       - "scripts/validate_video_worker_hosted_binding.py"
@@ -88,10 +94,17 @@ jobs:
             apps/api/tests/integration/test_video_generation_control_plane_postgres.py \
             apps/api/tests/integration/test_video_outbox_dispatch_postgres.py \
             apps/api/tests/test_provider_output_store.py \
+            scripts/production-deployment-decision.py \
+            scripts/production-rollback-rehearsal-decision.py \
+            scripts/production-recovery-decision.py \
+            scripts/validate_production_readiness_contract.py \
+            scripts/validate_production_recovery_contract.py \
             scripts/validate_video_generation.py \
             scripts/validate_video_generation_producer_binding.py \
             scripts/validate_video_worker_hosted_binding.py \
             scripts/benchmark_video_generation.py
+      - name: Validate release identity capture shell syntax
+        run: bash -n scripts/capture-production-runtime-identity.sh
       - name: Validate NODE-48 architecture contract
         env:
           PYTHONPATH: services/video-generation/src:services/model-gateway/src:services/artifact-history/src
