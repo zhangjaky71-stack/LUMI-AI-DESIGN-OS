@@ -20,11 +20,29 @@ from .contracts import (
     GraphRunStatus,
     InterruptKind,
 )
+from .errors import (
+    GraphDisabledError,
+    GraphInterruptNotFoundError,
+    GraphNotFoundError,
+    GraphResumeDeniedError,
+    GraphRunNotFoundError,
+    GraphRunTerminalError,
+    GraphVersionConflictError,
+)
 from .resume_policy import ApprovalDecisionRecord
 
 _BASE_PATH = "/internal/v1/agent-control"
 _DEFAULT_TIMEOUT_SECONDS = 15.0
 _DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+_FINAL_CONTROL_ERRORS = (
+    GraphDisabledError,
+    GraphInterruptNotFoundError,
+    GraphNotFoundError,
+    GraphResumeDeniedError,
+    GraphRunNotFoundError,
+    GraphRunTerminalError,
+    GraphVersionConflictError,
+)
 
 
 class AgentControlUnavailableError(RuntimeError):
@@ -66,6 +84,11 @@ class HttpAgentControlClient:
             base_url=os.getenv("LUMI_AGENT_CONTROL_URL", ""),
             auth_secret=os.getenv("LUMI_AGENT_CONTROL_AUTH_SECRET", ""),
         )
+
+    async def probe(self) -> None:
+        payload = await self.post(f"{_BASE_PATH}/probe", {})
+        if payload.get("status") != "ok" or payload.get("schema_version") != 1:
+            raise AgentControlUnavailableError("private Agent control probe contract failed")
 
     async def post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         body = _json_bytes(payload)
@@ -156,16 +179,26 @@ class RemoteControlPlaneOperationGuard:
         active_lease_owner = _required_string(claim, "lease_owner")
         try:
             snapshot = await invoke()
-        except Exception:
+        except Exception as invoke_exc:
+            if isinstance(invoke_exc, _FINAL_CONTROL_ERRORS):
+                path = f"{_BASE_PATH}/operations/fail-final"
+                terminal_payload = {
+                    "ledger_operation_id": str(ledger_operation_id),
+                    "lease_owner": active_lease_owner,
+                    "error_code": getattr(invoke_exc, "code", "GRAPH_CONTROL_REJECTED"),
+                }
+            else:
+                path = f"{_BASE_PATH}/operations/ambiguous"
+                terminal_payload = {
+                    "ledger_operation_id": str(ledger_operation_id),
+                    "lease_owner": active_lease_owner,
+                    "reason": (
+                        "graph command failed after canonical claim; execution/checkpoint/event "
+                        "progress may be partially durable, so automatic re-execution is forbidden"
+                    ),
+                }
             try:
-                await self.client.post(
-                    f"{_BASE_PATH}/operations/fail-final",
-                    {
-                        "ledger_operation_id": str(ledger_operation_id),
-                        "lease_owner": active_lease_owner,
-                        "error_code": "LANGGRAPH_CONTROL_EXECUTION_FAILED",
-                    },
-                )
+                await self.client.post(path, terminal_payload)
             except Exception as commit_exc:
                 raise AgentControlUnavailableError(
                     "graph command failed and its terminal idempotency state could not be committed"
@@ -226,22 +259,26 @@ class RemoteGraphEventSink:
         self.client = client
 
     async def publish(self, event: GraphRunEvent) -> None:
-        await self.client.post(
-            f"{_BASE_PATH}/events/publish",
-            {
-                "event_type": event.event_type,
-                "organization_id": str(event.organization_id),
-                "project_id": str(event.project_id),
-                "agent_run_id": str(event.agent_run_id),
-                "thread_id": event.thread_id,
-                "graph_key": event.graph_key,
-                "graph_version": event.graph_version,
-                "checkpoint_id": event.checkpoint_id,
-                "occurred_at": event.occurred_at.isoformat(),
-                "payload": event.payload,
-                "trace_id": event.trace_id,
-            },
-        )
+        payload = {
+            "event_type": event.event_type,
+            "organization_id": str(event.organization_id),
+            "project_id": str(event.project_id),
+            "agent_run_id": str(event.agent_run_id),
+            "thread_id": event.thread_id,
+            "graph_key": event.graph_key,
+            "graph_version": event.graph_version,
+            "checkpoint_id": event.checkpoint_id,
+            "occurred_at": event.occurred_at.isoformat(),
+            "payload": event.payload,
+            "trace_id": event.trace_id,
+        }
+        for attempt in range(2):
+            try:
+                await self.client.post(f"{_BASE_PATH}/events/publish", payload)
+                return
+            except AgentControlUnavailableError:
+                if attempt == 1:
+                    raise
 
 
 def _snapshot_payload(snapshot: GraphRunSnapshot) -> dict[str, Any]:
