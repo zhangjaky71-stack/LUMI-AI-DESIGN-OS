@@ -49,6 +49,10 @@ locals {
     LUMI_TOOL_DATA_URL = "http://api.${local.environment}.lumi.internal:8000"
   }
 
+  agent_control_environment = {
+    LUMI_AGENT_CONTROL_URL = "http://api.${local.environment}.lumi.internal:8000"
+  }
+
   services = {
     api = {
       image             = var.api_image
@@ -71,6 +75,7 @@ locals {
         LUMI_TOOL_AUDIT_AUTH_SECRET          = local.secret_arns["internal/tool-audit"]
         LUMI_TOOL_APPROVAL_AUTH_SECRET       = local.secret_arns["internal/tool-approval"]
         LUMI_TOOL_DATA_AUTH_SECRET           = local.secret_arns["internal/tool-data"]
+        LUMI_AGENT_CONTROL_AUTH_SECRET       = local.secret_arns["internal/agent-control"]
       }
       s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["exports"]]
       autoscale_metric_name  = "ApiConcurrentRequests"
@@ -88,6 +93,7 @@ locals {
         local.common_environment,
         local.model_gateway_environment,
         local.tool_gateway_environment,
+        local.agent_control_environment,
         { LUMI_ROLE = "agent-runtime" },
       )
       secret_arns = {
@@ -96,6 +102,7 @@ locals {
         LUMI_RABBITMQ_URL              = local.secret_arns["rabbitmq/url"]
         LUMI_MODEL_GATEWAY_AUTH_SECRET = local.secret_arns["internal/model-gateway"]
         LUMI_TOOL_GATEWAY_AUTH_SECRET  = local.secret_arns["internal/tool-gateway"]
+        LUMI_AGENT_CONTROL_AUTH_SECRET = local.secret_arns["internal/agent-control"]
       }
       s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["sandbox"]]
       autoscale_metric_name  = "AgentPendingRuns"
