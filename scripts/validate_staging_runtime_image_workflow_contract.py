@@ -68,6 +68,8 @@ def _run_database_parity_contract() -> None:
     )
     require(payload.get("status") == "PASS", "staging database parity producer contract did not PASS")
     require(payload.get("database_parity_negative_drills") == 8, "database parity negative drill count drift")
+    require(payload.get("database_parity_merge_negative_drills") == 5, "database parity merge negative drill count drift")
+    require(payload.get("database_parity_parity_only") is True, "database parity artifact escaped parity-only scope")
     require(payload.get("collector_private_fargate") is True, "database parity collector private Fargate boundary drift")
     require(payload.get("freeze_two_phase") is True, "database parity freeze two-phase boundary drift")
 
@@ -224,7 +226,7 @@ def main() -> int:
         "source-contract must fail closed on release action supply-chain drift",
     )
 
-    print("NODE-71 immutable evidence/live producers, database parity producer, runtime-image, decision artifact, exact-SHA checkout, scoped permission, and executable negative-drill workflow contract: PASS")
+    print("NODE-71 immutable evidence/live producers, parity-only database evidence producer/merger, runtime-image, decision artifact, exact-SHA checkout, scoped permission, and executable negative-drill workflow contract: PASS")
     return 0
 
 
