@@ -51,7 +51,14 @@ def top(source: str) -> str:
 def require_top_read_only(source: str, label: str) -> None:
     header = top(source)
     require("permissions:\n  contents: read\n" in header, f"{label} must default to contents:read")
-    for forbidden in ("contents: write", "actions: write", "packages: write", "attestations: write", "id-token: write"):
+    for forbidden in (
+        "contents: write",
+        "actions: write",
+        "packages: write",
+        "attestations: write",
+        "id-token: write",
+        "pull-requests: write",
+    ):
         require(forbidden not in header, f"{label} top-level permission too broad: {forbidden}")
 
 
@@ -119,15 +126,41 @@ def validate_deploy() -> None:
     require("aws-actions/configure-aws-credentials@" in production, "production OIDC job must contain the exact AWS assume-role boundary")
 
 
+def validate_final() -> None:
+    source = text(FINAL)
+    require_top_read_only(source, "Final Product Acceptance")
+    header = top(source)
+    require("pull-requests: read" not in header, "Final Acceptance must not grant PR review access at workflow scope")
+    source_contract = job_block(source, "source-contract", "canonical-lock-gate")
+    lock_gate = job_block(source, "canonical-lock-gate", "final-decision")
+    final_decision = job_block(source, "final-decision", "contract-gate")
+    for label, block in (("source-contract", source_contract), ("canonical-lock-gate", lock_gate)):
+        require("pull-requests: read" not in block, f"Final Acceptance {label} must not receive PR review access")
+    require(
+        "permissions:\n      contents: read\n      pull-requests: read\n" in final_decision,
+        "only Final Acceptance final-decision may receive pull-requests:read",
+    )
+    for forbidden in ("contents: write", "pull-requests: write", "actions: write", "packages: write", "attestations: write", "id-token: write"):
+        require(forbidden not in final_decision, f"Final Acceptance final-decision has unnecessary write capability: {forbidden}")
+    require(
+        'RELEASE_APPROVAL_TOKEN: ${{ secrets.GITHUB_TOKEN }}' in final_decision,
+        "Final Acceptance must use the ephemeral GitHub token for live PR-review verification",
+    )
+    require(
+        "RELEASE_APPROVAL_TOKEN:" not in header + source_contract + lock_gate,
+        "Final Acceptance approval token must not be exposed outside final-decision",
+    )
+
+
 def main() -> int:
     validate_build()
     validate_lock()
     validate_staging()
     validate_deploy()
+    validate_final()
     for path, label in (
         (RUNTIME, "Runtime Image Closure"),
         (PROD_IAC, "Production IaC Contract"),
-        (FINAL, "Final Product Acceptance"),
     ):
         require_top_read_only(text(path), label)
     print("NODE-73 release workflow least-privilege contract: PASS")
