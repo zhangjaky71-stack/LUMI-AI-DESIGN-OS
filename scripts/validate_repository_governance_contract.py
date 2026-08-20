@@ -12,6 +12,7 @@ COLLECTOR = ROOT / "scripts" / "capture_release_branch_protection.py"
 ASSEMBLER = ROOT / "scripts" / "final-acceptance-assembler.py"
 PACKAGE_VALIDATOR = ROOT / "scripts" / "validate_final_acceptance_package.py"
 ASSEMBLER_CONTRACT = ROOT / "scripts" / "validate_final_acceptance_assembler_contract.py"
+FINAL_WORKFLOW = ROOT / ".github" / "workflows" / "final-acceptance-gate.yml"
 RELEASE_TEMPLATE = ROOT / "final" / "acceptance" / "release-manifest-template.json"
 
 
@@ -110,6 +111,27 @@ def main() -> int:
             'expect_block(assembler, governance_validator, governance_head_swap, "repository governance RC head swap")',
             'expect_block(assembler, governance_validator, governance_force_push, "unsafe force-push protection profile")',
         ),
+    )
+    require_markers(
+        FINAL_WORKFLOW,
+        (
+            'RELEASE_GOVERNANCE_TOKEN: ${{ secrets.RELEASE_GOVERNANCE_TOKEN }}',
+            'name: Re-verify live strong repository governance for frozen RC',
+            'test -n "$RELEASE_GOVERNANCE_TOKEN"',
+            'python3 scripts/capture_release_branch_protection.py',
+            '--repository "$GITHUB_REPOSITORY"',
+            '--expected-release-sha "$rc_sha"',
+            '--output reports/final-acceptance/runtime/repository-governance-live.json',
+            'reports/final-acceptance/runtime/repository-governance-live.json',
+        ),
+    )
+    workflow = FINAL_WORKFLOW.read_text(encoding="utf-8")
+    package_pos = workflow.find("name: Require canonical assembled and frozen package")
+    live_pos = workflow.find("name: Re-verify live strong repository governance for frozen RC")
+    decision_pos = workflow.find("name: Evaluate final product acceptance")
+    require(
+        min(package_pos, live_pos, decision_pos) >= 0 and package_pos < live_pos < decision_pos,
+        "Final Decision must validate frozen package, then live governance, then evaluate product acceptance",
     )
 
     print("NODE-73 strong live repository governance source contract: PASS")
