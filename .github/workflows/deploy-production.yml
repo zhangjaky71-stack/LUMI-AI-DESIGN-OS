@@ -1,0 +1,40 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Production operation"
+        required: true
+        type: choice
+        options:
+          - plan-core
+          - apply-core
+          - plan-release
+          - deploy-release
+      manifest_path:
+        description: "Completed manifest under reports/production-deployments/<deployment-id>/manifest.json"
+        required: true
+        type: string
+      staging_acceptance_run_id:
+        description: "Exact Staging Acceptance Gate run id that produced the NODE-71 decision artifact"
+        required: true
+        type: string
+      deploy_ack:
+        description: "For mutations: DEPLOY_PRODUCTION:<deployment-id>"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  default-branch-registry-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Refuse default-branch execution
+        run: |
+          echo "This file is a workflow_dispatch registry stub only." >&2
+          echo "Run this workflow with ref=release-closure-p0 so GitHub uses the hardened release-ref workflow definition." >&2
+          exit 64
