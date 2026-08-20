@@ -13,6 +13,7 @@ from lumi_api.persistence.models import Generation
 
 from .errors import GenerationConflict, GenerationControlPlaneError, GenerationInvalid, GenerationNotFound
 from .service import ImageGenerationControlPlane
+from .video_service import VideoGenerationControlPlane
 
 
 class GenerationRuntimeGateway:
@@ -38,12 +39,22 @@ class GenerationRuntimeGateway:
         self._require(context, "project.write")
         async with self._session_factory() as session, session.begin():
             try:
-                row = await ImageGenerationControlPlane(session).create(
-                    organization_id=context.organization_id,
-                    payload=payload,
-                    idempotency_key=idempotency_key,
-                    trace_id=context.trace_id,
-                )
+                if payload.capability == "image.generate":
+                    row = await ImageGenerationControlPlane(session).create(
+                        organization_id=context.organization_id,
+                        payload=payload,
+                        idempotency_key=idempotency_key,
+                        trace_id=context.trace_id,
+                    )
+                elif payload.capability == "video.generate":
+                    row = await VideoGenerationControlPlane(session).create(
+                        organization_id=context.organization_id,
+                        payload=payload,
+                        idempotency_key=idempotency_key,
+                        trace_id=context.trace_id,
+                    )
+                else:
+                    raise GenerationInvalid("GENERATION_CAPABILITY_UNSUPPORTED")
             except GenerationControlPlaneError as exc:
                 raise self._problem(exc) from exc
             await session.refresh(row)
@@ -57,6 +68,8 @@ class GenerationRuntimeGateway:
         self._require(context, "project.read")
         async with self._session_factory() as session, session.begin():
             try:
+                # Lookup is capability-neutral; ImageGenerationControlPlane.get only
+                # applies organization scoping to the generic generations table.
                 row = await ImageGenerationControlPlane(session).get(
                     organization_id=context.organization_id,
                     generation_id=generation_id,
