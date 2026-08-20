@@ -12,9 +12,13 @@ from lumi_api.media_dispatch import (
     IMAGE_TRANSFORM_QUEUE,
     IMAGE_TRANSFORM_TASK_NAME,
     MEDIA_DISPATCH_EVENT_NAME,
+    VIDEO_RENDER_QUEUE,
+    VIDEO_RENDER_TASK_NAME,
     CanonicalMediaDispatch,
     build_image_transform_dispatch,
+    build_video_render_dispatch,
     stage_image_transform_dispatch,
+    stage_video_render_dispatch,
 )
 from lumi_api.persistence.models import Generation, Task
 
@@ -44,7 +48,7 @@ def _fixture_models(
             operation_id=str(ids["operation"]),
         )
 
-    monkeypatch.setattr("lumi_api.media_dispatch.decode_spec", fake_decode_spec)
+    monkeypatch.setattr("lumi_api.media_dispatch.decode_image_spec", fake_decode_spec)
     task = cast(
         Task,
         SimpleNamespace(
@@ -70,6 +74,42 @@ def _fixture_models(
         ),
     )
     return task, generation, ids
+
+
+def _video_task(monkeypatch: pytest.MonkeyPatch) -> tuple[Task, dict[str, UUID]]:
+    ids = {
+        "task": uuid4(),
+        "organization": uuid4(),
+        "project": uuid4(),
+        "operation": uuid4(),
+    }
+    payload: dict[str, Any] = {"fixture": "video"}
+
+    def fake_decode_video_spec(value: dict[str, Any]) -> SimpleNamespace:
+        assert value is payload
+        return SimpleNamespace(
+            organization_id=str(ids["organization"]),
+            project_id=str(ids["project"]),
+            task_id=str(ids["task"]),
+            operation_id=str(ids["operation"]),
+        )
+
+    monkeypatch.setattr("lumi_api.media_dispatch.decode_video_spec", fake_decode_video_spec)
+    task = cast(
+        Task,
+        SimpleNamespace(
+            id=ids["task"],
+            organization_id=ids["organization"],
+            project_id=ids["project"],
+            type="video.render",
+            input_json={
+                "schema_version": 1,
+                "job_kind": "video.render",
+                "video_generation_spec": payload,
+            },
+        ),
+    )
+    return task, ids
 
 
 def test_build_dispatch_matches_worker_entrypoint_shape(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -118,6 +158,39 @@ def test_build_dispatch_fails_closed_on_cross_tenant_generation(
         build_image_transform_dispatch(task=task, generation=generation, trace_id=None)
 
 
+def test_build_video_dispatch_matches_worker_entrypoint_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task, ids = _video_task(monkeypatch)
+    dispatch = build_video_render_dispatch(task=task, trace_id="trace-video-1")
+    payload = dispatch.as_outbox_payload()
+
+    assert dispatch.task_name == VIDEO_RENDER_TASK_NAME
+    assert dispatch.queue == VIDEO_RENDER_QUEUE
+    assert payload["task_name"] == "lumi.jobs.video.render"
+    assert payload["queue"] == "lumi.media.video"
+    assert payload["kwargs"] == {}
+    assert payload["args"] == [
+        {
+            "job_id": str(ids["task"]),
+            "organization_id": str(ids["organization"]),
+            "project_id": str(ids["project"]),
+            "operation_id": str(ids["operation"]),
+            "trace_id": "trace-video-1",
+        }
+    ]
+
+
+def test_build_video_dispatch_fails_closed_on_cross_tenant_spec(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task, ids = _video_task(monkeypatch)
+    task.organization_id = uuid4()
+    with pytest.raises(ValueError, match="VIDEO_DISPATCH_SPEC_ORGANIZATION_MISMATCH"):
+        build_video_render_dispatch(task=task, trace_id=None)
+    assert task.organization_id != ids["organization"]
+
+
 def test_outbox_decoder_rejects_extra_fields_and_kwargs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -163,6 +236,40 @@ def test_stage_dispatch_only_adds_outbox_inside_callers_transaction(
     assert event.organization_id == ids["organization"]
     assert event.published_at is None
     assert event.publish_attempts == 0
+
+
+def test_stage_video_dispatch_is_deterministic_and_namespaced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task, ids = _video_task(monkeypatch)
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.added: list[object] = []
+
+        def add(self, value: object) -> None:
+            self.added.append(value)
+
+    first_session = FakeSession()
+    second_session = FakeSession()
+    first = stage_video_render_dispatch(
+        cast(AsyncSession, first_session),
+        task=task,
+        trace_id="trace-video",
+    )
+    second = stage_video_render_dispatch(
+        cast(AsyncSession, second_session),
+        task=task,
+        trace_id="trace-video",
+    )
+
+    assert first.id == second.id
+    assert first.aggregate_id == ids["task"]
+    assert first.organization_id == ids["organization"]
+    assert first.payload_json["task_name"] == VIDEO_RENDER_TASK_NAME
+    assert first.payload_json["queue"] == VIDEO_RENDER_QUEUE
+    assert first_session.added == [first]
+    assert second_session.added == [second]
 
 
 def test_api_media_dispatch_has_no_direct_broker_publisher() -> None:
