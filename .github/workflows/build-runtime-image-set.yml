@@ -1,0 +1,308 @@
+name: Build and Freeze RC Runtime Image Set
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  attestations: write
+  id-token: write
+
+concurrency:
+  group: build-runtime-image-set-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  BUILD_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  build-and-freeze:
+    if: github.ref_type == 'branch' && github.ref_name == 'release-closure-p0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Require exact clean release branch and canonical dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_TYPE" = "branch"
+          test "$GITHUB_REF_NAME" = "release-closure-p0"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+          python3 scripts/validate_uv_workspace_lock.py
+          uv lock --check
+          uv sync --all-packages --frozen
+
+      - name: Validate six-runtime source and provenance manifest
+        run: |
+          python3 scripts/validate_runtime_image_closure.py
+          python3 scripts/runtime_image_set.py validate-manifest
+
+      - name: Resolve immutable GHCR package base
+        shell: bash
+        run: |
+          set -euo pipefail
+          repository="${GITHUB_REPOSITORY,,}"
+          echo "IMAGE_BASE=${REGISTRY}/${repository}" >> "$GITHUB_ENV"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push API
+        id: build_api
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_BASE }}-api:rc-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=lumi-runtime-images
+          cache-to: type=gha,mode=max,scope=lumi-runtime-images
+
+      - name: Attest API image
+        id: attest_api
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE_BASE }}-api
+          subject-digest: ${{ steps.build_api.outputs.digest }}
+          push-to-registry: true
+
+      - name: Build and push Agent Runtime
+        id: build_agent_runtime
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/agent-runtime/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_BASE }}-agent-runtime:rc-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=lumi-runtime-images
+          cache-to: type=gha,mode=max,scope=lumi-runtime-images
+
+      - name: Attest Agent Runtime image
+        id: attest_agent_runtime
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE_BASE }}-agent-runtime
+          subject-digest: ${{ steps.build_agent_runtime.outputs.digest }}
+          push-to-registry: true
+
+      - name: Build and push Model Gateway
+        id: build_model_gateway
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: services/model-gateway/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_BASE }}-model-gateway:rc-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=lumi-runtime-images
+          cache-to: type=gha,mode=max,scope=lumi-runtime-images
+
+      - name: Attest Model Gateway image
+        id: attest_model_gateway
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE_BASE }}-model-gateway
+          subject-digest: ${{ steps.build_model_gateway.outputs.digest }}
+          push-to-registry: true
+
+      - name: Build and push Tool Gateway
+        id: build_tool_gateway
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: services/tool-gateway/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_BASE }}-tool-gateway:rc-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=lumi-runtime-images
+          cache-to: type=gha,mode=max,scope=lumi-runtime-images
+
+      - name: Attest Tool Gateway image
+        id: attest_tool_gateway
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE_BASE }}-tool-gateway
+          subject-digest: ${{ steps.build_tool_gateway.outputs.digest }}
+          push-to-registry: true
+
+      - name: Build and push Worker Media
+        id: build_worker_media
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/worker-media/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_BASE }}-worker-media:rc-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=lumi-runtime-images
+          cache-to: type=gha,mode=max,scope=lumi-runtime-images
+
+      - name: Attest Worker Media image
+        id: attest_worker_media
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE_BASE }}-worker-media
+          subject-digest: ${{ steps.build_worker_media.outputs.digest }}
+          push-to-registry: true
+
+      - name: Build and push Sandbox Runtime
+        id: build_sandbox_runtime
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: services/sandbox-runtime/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_BASE }}-sandbox-runtime:rc-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=lumi-runtime-images
+          cache-to: type=gha,mode=max,scope=lumi-runtime-images
+
+      - name: Attest Sandbox Runtime image
+        id: attest_sandbox_runtime
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE_BASE }}-sandbox-runtime
+          subject-digest: ${{ steps.build_sandbox_runtime.outputs.digest }}
+          push-to-registry: true
+
+      - name: Verify all six immutable digests are registry-resolvable
+        shell: bash
+        run: |
+          set -euo pipefail
+          refs=(
+            "${IMAGE_BASE}-api@${{ steps.build_api.outputs.digest }}"
+            "${IMAGE_BASE}-agent-runtime@${{ steps.build_agent_runtime.outputs.digest }}"
+            "${IMAGE_BASE}-model-gateway@${{ steps.build_model_gateway.outputs.digest }}"
+            "${IMAGE_BASE}-tool-gateway@${{ steps.build_tool_gateway.outputs.digest }}"
+            "${IMAGE_BASE}-worker-media@${{ steps.build_worker_media.outputs.digest }}"
+            "${IMAGE_BASE}-sandbox-runtime@${{ steps.build_sandbox_runtime.outputs.digest }}"
+          )
+          test "${#refs[@]}" -eq 6
+          for ref in "${refs[@]}"; do
+            docker buildx imagetools inspect "$ref" >/dev/null
+          done
+
+      - name: Freeze exact six-image set for NODE-71
+        shell: bash
+        env:
+          API_PROVENANCE: ${{ steps.attest_api.outputs['attestation-url'] }}
+          AGENT_PROVENANCE: ${{ steps.attest_agent_runtime.outputs['attestation-url'] }}
+          MODEL_PROVENANCE: ${{ steps.attest_model_gateway.outputs['attestation-url'] }}
+          TOOL_PROVENANCE: ${{ steps.attest_tool_gateway.outputs['attestation-url'] }}
+          WORKER_PROVENANCE: ${{ steps.attest_worker_media.outputs['attestation-url'] }}
+          SANDBOX_PROVENANCE: ${{ steps.attest_sandbox_runtime.outputs['attestation-url'] }}
+        run: |
+          set -euo pipefail
+          root="reports/runtime-image-sets/${GITHUB_SHA}"
+          fragments="${root}/fragments"
+          mkdir -p "$fragments"
+
+          python3 scripts/runtime_image_set.py fragment \
+            --service api \
+            --image "${IMAGE_BASE}-api@${{ steps.build_api.outputs.digest }}" \
+            --git-sha "$GITHUB_SHA" \
+            --sbom-ref "oci://${IMAGE_BASE}-api@${{ steps.build_api.outputs.digest }}#attestation=sbom" \
+            --provenance-ref "$API_PROVENANCE" \
+            --build-run-url "$BUILD_RUN_URL" \
+            --out "${fragments}/api.json"
+
+          python3 scripts/runtime_image_set.py fragment \
+            --service agent-runtime \
+            --image "${IMAGE_BASE}-agent-runtime@${{ steps.build_agent_runtime.outputs.digest }}" \
+            --git-sha "$GITHUB_SHA" \
+            --sbom-ref "oci://${IMAGE_BASE}-agent-runtime@${{ steps.build_agent_runtime.outputs.digest }}#attestation=sbom" \
+            --provenance-ref "$AGENT_PROVENANCE" \
+            --build-run-url "$BUILD_RUN_URL" \
+            --out "${fragments}/agent-runtime.json"
+
+          python3 scripts/runtime_image_set.py fragment \
+            --service model-gateway \
+            --image "${IMAGE_BASE}-model-gateway@${{ steps.build_model_gateway.outputs.digest }}" \
+            --git-sha "$GITHUB_SHA" \
+            --sbom-ref "oci://${IMAGE_BASE}-model-gateway@${{ steps.build_model_gateway.outputs.digest }}#attestation=sbom" \
+            --provenance-ref "$MODEL_PROVENANCE" \
+            --build-run-url "$BUILD_RUN_URL" \
+            --out "${fragments}/model-gateway.json"
+
+          python3 scripts/runtime_image_set.py fragment \
+            --service tool-gateway \
+            --image "${IMAGE_BASE}-tool-gateway@${{ steps.build_tool_gateway.outputs.digest }}" \
+            --git-sha "$GITHUB_SHA" \
+            --sbom-ref "oci://${IMAGE_BASE}-tool-gateway@${{ steps.build_tool_gateway.outputs.digest }}#attestation=sbom" \
+            --provenance-ref "$TOOL_PROVENANCE" \
+            --build-run-url "$BUILD_RUN_URL" \
+            --out "${fragments}/tool-gateway.json"
+
+          python3 scripts/runtime_image_set.py fragment \
+            --service worker-media \
+            --image "${IMAGE_BASE}-worker-media@${{ steps.build_worker_media.outputs.digest }}" \
+            --git-sha "$GITHUB_SHA" \
+            --sbom-ref "oci://${IMAGE_BASE}-worker-media@${{ steps.build_worker_media.outputs.digest }}#attestation=sbom" \
+            --provenance-ref "$WORKER_PROVENANCE" \
+            --build-run-url "$BUILD_RUN_URL" \
+            --out "${fragments}/worker-media.json"
+
+          python3 scripts/runtime_image_set.py fragment \
+            --service sandbox-runtime \
+            --image "${IMAGE_BASE}-sandbox-runtime@${{ steps.build_sandbox_runtime.outputs.digest }}" \
+            --git-sha "$GITHUB_SHA" \
+            --sbom-ref "oci://${IMAGE_BASE}-sandbox-runtime@${{ steps.build_sandbox_runtime.outputs.digest }}#attestation=sbom" \
+            --provenance-ref "$SANDBOX_PROVENANCE" \
+            --build-run-url "$BUILD_RUN_URL" \
+            --out "${fragments}/sandbox-runtime.json"
+
+          version="$(tr -d '\r\n' < VERSION)"
+          python3 scripts/runtime_image_set.py assemble \
+            --fragments-dir "$fragments" \
+            --git-sha "$GITHUB_SHA" \
+            --version "$version" \
+            --build-run-url "$BUILD_RUN_URL" \
+            --out "${root}/container-image-set.json"
+          python3 -m json.tool "${root}/container-image-set.json" >/dev/null
+
+      - name: Upload frozen six-runtime RC image set
+        uses: actions/upload-artifact@v7
+        with:
+          name: runtime-image-set-${{ github.sha }}
+          path: reports/runtime-image-sets/${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 180
