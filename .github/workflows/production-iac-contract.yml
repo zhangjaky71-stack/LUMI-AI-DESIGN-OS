@@ -30,6 +30,7 @@ jobs:
           python3 scripts/validate_production_evidence_freezer_contract.py
           python3 scripts/validate_hosted_media_runtime_contract.py
           python3 scripts/validate_release_action_pins.py
+          python3 scripts/validate_release_workflow_permissions.py
       - name: Python syntax
         run: |
           python3 -m py_compile \
@@ -45,7 +46,8 @@ jobs:
             scripts/validate_production_readiness_contract.py \
             scripts/validate_production_evidence_freezer_contract.py \
             scripts/validate_hosted_media_runtime_contract.py \
-            scripts/validate_release_action_pins.py
+            scripts/validate_release_action_pins.py \
+            scripts/validate_release_workflow_permissions.py
       - name: Shell syntax
         run: |
           bash -n scripts/check-aws-secret-versions.sh
