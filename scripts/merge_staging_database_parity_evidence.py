@@ -95,6 +95,16 @@ def validate_frozen_inputs(
     return rc_sha, artifact_id
 
 
+def _forbid_scenario_use(staging: Mapping[str, Any], artifact_id: str) -> None:
+    scenarios = staging.get("scenario_results", {})
+    require(isinstance(scenarios, Mapping), "staging scenario_results must be an object")
+    for scenario_id, raw in scenarios.items():
+        if isinstance(raw, Mapping) and raw.get("evidence_ref") == artifact_id:
+            raise MergeError(
+                f"database parity artifact is parity-only and cannot evidence scenario_results.{scenario_id}"
+            )
+
+
 def merge(
     staging: dict[str, Any],
     wrapper: dict[str, Any],
@@ -104,6 +114,7 @@ def merge(
     validation_root: Path = ROOT,
 ) -> dict[str, Any]:
     rc_sha, artifact_id = validate_frozen_inputs(staging, wrapper, catalog, wrapper_path=wrapper_path)
+    _forbid_scenario_use(staging, artifact_id)
     before_scenarios = copy.deepcopy(staging.get("scenario_results", {}))
     parity = staging.get("environment_parity")
     require(isinstance(parity, dict), "staging environment_parity must be an object")
@@ -208,12 +219,7 @@ def self_test() -> dict[str, Any]:
 
         for index, (stage, wrap, cat, path) in enumerate(mutations, start=1):
             try:
-                merged = merge(stage, wrap, cat, wrapper_path=path, validation_root=root)
-                if index == 2:
-                    # A pre-existing scenario PASS is never created by this merger, but generic binding must reject it
-                    # because the same artifact id cannot establish ENV-02 and no dedicated ENV-02 producer exists.
-                    if merged.get("scenario_results") == stage.get("scenario_results"):
-                        raise MergeError("database parity merger must reject staging evidence that pre-claims ENV-02 with its artifact")
+                merge(stage, wrap, cat, wrapper_path=path, validation_root=root)
             except Exception:
                 blocked += 1
                 continue
