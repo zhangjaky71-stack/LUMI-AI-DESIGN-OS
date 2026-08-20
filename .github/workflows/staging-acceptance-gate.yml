@@ -207,18 +207,22 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ inputs.runtime_image_set_run_id }}
           path: ${{ env.RUNTIME_IMAGE_SET_DIR }}
-      - name: Require one exact frozen container-image-set artifact
+      - name: Require exact frozen image-set and attestation report pair
         shell: bash
         run: |
           set -euo pipefail
           test -f "$RUNTIME_IMAGE_SET_DIR/container-image-set.json"
+          test -f "$RUNTIME_IMAGE_SET_DIR/attestation-verification.json"
           test "$(find "$RUNTIME_IMAGE_SET_DIR" -maxdepth 1 -type f -name 'container-image-set.json' | wc -l)" -eq 1
+          test "$(find "$RUNTIME_IMAGE_SET_DIR" -maxdepth 1 -type f -name 'attestation-verification.json' | wc -l)" -eq 1
           python3 -m json.tool "$RUNTIME_IMAGE_SET_DIR/container-image-set.json" >/dev/null
-      - name: Bind NODE-71 evidence to the exact six-runtime build artifact
+          python3 -m json.tool "$RUNTIME_IMAGE_SET_DIR/attestation-verification.json" >/dev/null
+      - name: Bind NODE-71 evidence to the exact verified six-runtime build artifact
         run: >-
           python3 scripts/validate_staging_runtime_image_binding.py
           --evidence "$LUMI_STAGING_EVIDENCE_PATH"
           --image-set "$RUNTIME_IMAGE_SET_DIR/container-image-set.json"
+          --attestation-report "$RUNTIME_IMAGE_SET_DIR/attestation-verification.json"
           --expected-run-id "$LUMI_RUNTIME_IMAGE_SET_RUN_ID"
       - name: Require canonical Tool Gateway side-effect API provenance
         run: >-
