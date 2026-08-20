@@ -10,6 +10,8 @@ from .docker_backend import (
 from .lifecycle import SandboxReaper
 from .models import (
     CollectedArtifact,
+    ExchangeInputFile,
+    ExchangeOutputFile,
     ExecRequest,
     ExecResult,
     FileEntry,
@@ -36,6 +38,8 @@ __all__ = [
     "CollectedArtifact",
     "DeepAgentSandboxTools",
     "DockerSandboxBackend",
+    "ExchangeInputFile",
+    "ExchangeOutputFile",
     "ExecRequest",
     "ExecResult",
     "FileEntry",
