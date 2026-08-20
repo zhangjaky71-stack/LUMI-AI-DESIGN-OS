@@ -10,6 +10,7 @@ from uuid import UUID
 import asyncpg
 from lumi_asset_storage.models import ObjectHead
 from lumi_asset_storage.s3 import S3ObjectStore
+from lumi_domain.performance_events import PerformanceTelemetryContext
 from lumi_image_generation.inmemory import StaticReferenceAuthorizer
 from lumi_image_generation.model import GenerationJob, ImageGenerationSpec
 from lumi_image_generation.pipeline import ImageGenerationPipeline
@@ -25,6 +26,13 @@ from .image_generation_ports import (
     S3GeneratedImageStore,
 )
 from .image_generation_repository import PostgresGenerationRepository
+from .performance_ports import (
+    TimedArtifactCandidate,
+    TimedDurableImageStore,
+    TimedGenerationValidator,
+    TimedImageModelGateway,
+    TimedProviderOutputFetcher,
+)
 from .queue_contracts import JobMessage
 
 _TASK_INPUT_SCHEMA_VERSION = 1
@@ -136,6 +144,7 @@ class HostedImageGenerationRuntime:
         )
 
     async def execute(self, message: JobMessage) -> dict[str, Any]:
+        telemetry = PerformanceTelemetryContext.from_environ()
         spec = await self._load_spec(message)
         authorized = await self.reference_resolver.authorize(spec, spec.references)
         authorizer = StaticReferenceAuthorizer(
@@ -144,11 +153,16 @@ class HostedImageGenerationRuntime:
         pipeline = ImageGenerationPipeline(
             repository=self.repository,
             references=authorizer,
-            gateway=self.gateway,
-            output_fetcher=self.output_fetcher,
-            storage=self.storage,
-            validator=CompositeGenerationValidator(),
-            artifacts=self.artifacts,
+            gateway=TimedImageModelGateway(self.gateway, telemetry),
+            output_fetcher=TimedProviderOutputFetcher(
+                self.output_fetcher,
+                telemetry,
+                operation_id=spec.operation_id,
+                task_id=spec.task_id,
+            ),
+            storage=TimedDurableImageStore(self.storage, telemetry),
+            validator=TimedGenerationValidator(CompositeGenerationValidator(), telemetry),
+            artifacts=TimedArtifactCandidate(self.artifacts, telemetry),
             costs=self.costs,
             events=self.events,
         )
