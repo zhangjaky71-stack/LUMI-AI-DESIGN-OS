@@ -49,6 +49,7 @@ jobs:
           python3 scripts/validate_uv_lock_regeneration_contract.py
           python3 scripts/validate_runtime_image_closure.py
           python3 scripts/runtime_image_set.py validate-manifest
+          python3 scripts/verify_runtime_image_attestations.py --self-test
           python3 scripts/validate_runtime_image_build_pipeline.py
           python3 scripts/validate_runtime_image_set_contract.py
 
@@ -234,22 +235,21 @@ jobs:
           subject-digest: ${{ steps.build_sandbox_runtime.outputs.digest }}
           push-to-registry: true
 
-      - name: Verify all six immutable digests are registry-resolvable
-        shell: bash
+      - name: Verify all six immutable runtime image attestations
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          refs=(
-            "${IMAGE_BASE}-api@${{ steps.build_api.outputs.digest }}"
-            "${IMAGE_BASE}-agent-runtime@${{ steps.build_agent_runtime.outputs.digest }}"
-            "${IMAGE_BASE}-model-gateway@${{ steps.build_model_gateway.outputs.digest }}"
-            "${IMAGE_BASE}-tool-gateway@${{ steps.build_tool_gateway.outputs.digest }}"
-            "${IMAGE_BASE}-worker-media@${{ steps.build_worker_media.outputs.digest }}"
-            "${IMAGE_BASE}-sandbox-runtime@${{ steps.build_sandbox_runtime.outputs.digest }}"
-          )
-          test "${#refs[@]}" -eq 6
-          for ref in "${refs[@]}"; do
-            docker buildx imagetools inspect "$ref" >/dev/null
-          done
+          root="reports/runtime-image-sets/${GITHUB_SHA}"
+          python3 scripts/verify_runtime_image_attestations.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --image "api=${IMAGE_BASE}-api@${{ steps.build_api.outputs.digest }}" \
+            --image "agent-runtime=${IMAGE_BASE}-agent-runtime@${{ steps.build_agent_runtime.outputs.digest }}" \
+            --image "model-gateway=${IMAGE_BASE}-model-gateway@${{ steps.build_model_gateway.outputs.digest }}" \
+            --image "tool-gateway=${IMAGE_BASE}-tool-gateway@${{ steps.build_tool_gateway.outputs.digest }}" \
+            --image "worker-media=${IMAGE_BASE}-worker-media@${{ steps.build_worker_media.outputs.digest }}" \
+            --image "sandbox-runtime=${IMAGE_BASE}-sandbox-runtime@${{ steps.build_sandbox_runtime.outputs.digest }}" \
+            --out "${root}/attestation-verification.json"
 
       - name: Freeze exact six-image set for NODE-71
         shell: bash
@@ -263,6 +263,8 @@ jobs:
         run: |
           set -euo pipefail
           root="reports/runtime-image-sets/${GITHUB_SHA}"
+          test -f "${root}/attestation-verification.json"
+          test "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("status"))' "${root}/attestation-verification.json")" = "PASS"
           fragments="${root}/fragments"
           mkdir -p "$fragments"
 
