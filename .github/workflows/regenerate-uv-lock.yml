@@ -31,6 +31,9 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
+      - name: Require immutable release action supply chain
+        run: python3 scripts/validate_release_action_pins.py
+
       - name: Require a clean release branch checkout
         shell: bash
         run: |
@@ -69,6 +72,7 @@ jobs:
       - name: Verify release Python contracts compile under regenerated lock
         run: >-
           uv run python -m compileall -q
+          scripts/validate_release_action_pins.py
           scripts/validate_uv_workspace_lock.py
           scripts/staging-acceptance-gate.py
           scripts/validate_staging_acceptance_contract.py
