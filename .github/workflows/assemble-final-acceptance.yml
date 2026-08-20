@@ -35,8 +35,8 @@ on:
         description: "Frozen Production Deployment decision path"
         required: true
         type: string
-      authorization:
-        description: "Frozen release authorization path"
+      authorization_request:
+        description: "Frozen V2 authorization request path (Source RC + approval policy + handoff; no live approvals)"
         required: true
         type: string
       scenario_results:
@@ -45,7 +45,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   RELEASE_ID: ${{ inputs.release_id }}
@@ -56,47 +56,80 @@ env:
   AI_REGRESSION_DECISION: ${{ inputs.ai_regression_decision }}
   STAGING_ACCEPTANCE_DECISION: ${{ inputs.staging_acceptance_decision }}
   PRODUCTION_DEPLOYMENT_DECISION: ${{ inputs.production_deployment_decision }}
-  AUTHORIZATION: ${{ inputs.authorization }}
+  AUTHORIZATION_REQUEST: ${{ inputs.authorization_request }}
   SCENARIO_RESULTS: ${{ inputs.scenario_results }}
+  GOVERNANCE_POLICY: final/acceptance/repository-governance-policy-template.json
 
 jobs:
   assemble:
+    if: github.ref == 'refs/heads/release-closure-p0'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: production
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
-      - name: Refuse unsafe release identifiers
+      - name: Refuse unsafe release identifiers and stale dispatches
+        shell: bash
         run: |
+          set -euo pipefail
           [[ "$RELEASE_ID" =~ ^[A-Za-z0-9._-]+$ ]]
           test "$RELEASE_ID" != "PENDING"
-          test ! -e "reports/final-acceptance/${RELEASE_ID}/release-manifest.json"
+          test ! -e "reports/final-acceptance/${RELEASE_ID}/release-manifest-v2.json"
           test ! -e "reports/final-acceptance/${RELEASE_ID}/acceptance-evidence.json"
-      - name: Assemble only from frozen exact-RC evidence
+          git fetch origin "${GITHUB_REF_NAME}"
+          remote_sha="$(git rev-parse "origin/${GITHUB_REF_NAME}")"
+          test "$remote_sha" = "$GITHUB_SHA" || {
+            echo "release branch moved since dispatch: expected $GITHUB_SHA got $remote_sha" >&2
+            exit 64
+          }
+      - name: Validate V2 finalization source contracts
         run: |
-          python3 scripts/final-acceptance-assembler.py \
+          python3 scripts/validate_finalization_v2_contract.py
+      - name: Assemble only from frozen Source-RC evidence and pre-final policies
+        run: |
+          python3 scripts/final-acceptance-assembler-v2.py \
             --release-id "$RELEASE_ID" \
             --production-manifest "$PRODUCTION_MANIFEST" \
+            --governance-policy "$GOVERNANCE_POLICY" \
+            --authorization-request "$AUTHORIZATION_REQUEST" \
             --security "$SECURITY_DECISION" \
             --recovery "$RECOVERY_DECISION" \
             --performance "$PERFORMANCE_DECISION" \
             --ai-regression "$AI_REGRESSION_DECISION" \
             --staging-acceptance "$STAGING_ACCEPTANCE_DECISION" \
             --production-deployment "$PRODUCTION_DEPLOYMENT_DECISION" \
-            --authorization "$AUTHORIZATION" \
             --scenario-results "$SCENARIO_RESULTS"
-          test -f "reports/final-acceptance/${RELEASE_ID}/release.json"
-          mv "reports/final-acceptance/${RELEASE_ID}/release.json" \
-             "reports/final-acceptance/${RELEASE_ID}/release-manifest.json"
-      - name: Validate assembled package without declaring Final PASS
+          test -f "reports/final-acceptance/${RELEASE_ID}/release-manifest-v2.json"
+          test -f "reports/final-acceptance/${RELEASE_ID}/acceptance-evidence.json"
+      - name: Validate assembled V2 package without declaring Final PASS
         run: |
-          python3 scripts/validate_final_acceptance_package.py \
-            --release "reports/final-acceptance/${RELEASE_ID}/release-manifest.json"
+          python3 scripts/validate_final_acceptance_package_v2.py \
+            --release "reports/final-acceptance/${RELEASE_ID}/release-manifest-v2.json"
+      - name: Require committed package to remain pre-approval and non-live
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path('reports/final-acceptance') / os.environ['RELEASE_ID'] / 'release-manifest-v2.json'
+          payload = json.loads(path.read_text(encoding='utf-8'))
+          approvals = payload.get('approvals', {})
+          if set(approvals.values()) != {'PENDING'}:
+              raise SystemExit('committed V2 package must keep every approval PENDING')
+          if 'release_authorization' in payload or 'repository_governance' in payload:
+              raise SystemExit('committed V2 package must not contain live release-control reports')
+          PY
       - name: Refuse changes outside the final package boundary
         shell: bash
         run: |
@@ -107,22 +140,30 @@ jobs:
           for path in "${changed[@]}"; do
             [[ "$path" == "$prefix"* ]] || { echo "unexpected change outside final package boundary: $path" >&2; exit 66; }
           done
-      - name: Commit only the validated package
+      - name: Commit only the validated pre-final package
         shell: bash
         run: |
           set -euo pipefail
+          git fetch origin "${GITHUB_REF_NAME}"
+          remote_sha="$(git rev-parse "origin/${GITHUB_REF_NAME}")"
+          test "$remote_sha" = "$GITHUB_SHA" || {
+            echo "release branch moved during assembly: expected $GITHUB_SHA got $remote_sha" >&2
+            exit 67
+          }
           git config user.name "lumi-release-evidence-bot"
           git config user.email "lumi-release-evidence-bot@users.noreply.github.com"
           git add -- "reports/final-acceptance/${RELEASE_ID}"
-          test ! "$(git diff --cached --name-only | wc -l)" -eq 0
+          test "$(git diff --cached --name-only | wc -l)" -gt 0
           while IFS= read -r path; do
             [[ "$path" == "reports/final-acceptance/${RELEASE_ID}/"* ]] || { echo "unexpected staged path: $path" >&2; exit 66; }
           done < <(git diff --cached --name-only)
-          git commit -m "release: assemble final acceptance ${RELEASE_ID}"
+          git commit -m "release: assemble final acceptance V2 ${RELEASE_ID}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
-      - name: Explain next mandatory gate
+      - name: Explain Evidence Head freeze and next mandatory gate
         run: |
-          echo "Package assembled only; NODE-73 is not accepted by this workflow."
-          echo "Run Final Product Acceptance Gate with:"
-          echo "  reports/final-acceptance/${RELEASE_ID}/release-manifest.json"
+          echo "V2 package assembled only; NODE-73 is not accepted by this workflow."
+          echo "The resulting branch commit becomes the Evidence Head only after all remaining non-live evidence is final."
+          echo "Do not commit live governance, live authorization, or final-decision-v2.json back to this branch."
+          echo "After strong branch protection and human reviews on the Evidence Head, run Final Product Acceptance Gate with:"
+          echo "  reports/final-acceptance/${RELEASE_ID}/release-manifest-v2.json"
           echo "  reports/final-acceptance/${RELEASE_ID}/acceptance-evidence.json"
