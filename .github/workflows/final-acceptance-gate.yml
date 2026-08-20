@@ -43,6 +43,7 @@ jobs:
           python3 scripts/validate_final_acceptance_contract.py
           python3 scripts/validate_security_release_decision_contract.py
           python3 scripts/validate_finalization_v2_contract.py
+          python3 scripts/validate_no_v1_finalization_workflow_bypass.py
           python3 scripts/validate_api_provenance_source_manifest.py
           python3 scripts/validate_image_generation_producer_contract.py
           python3 scripts/runtime_image_set.py validate-manifest
@@ -83,8 +84,10 @@ jobs:
             scripts/validate_final_acceptance_v2_package_contract.py \
             scripts/validate_finalization_identity_v2.py \
             scripts/validate_finalization_v2_contract.py \
+            scripts/validate_no_v1_finalization_workflow_bypass.py \
             scripts/validate_release_governance_policy.py \
             scripts/validate_live_release_governance_v2.py \
+            scripts/apply_release_branch_protection.py \
             scripts/capture_release_branch_protection.py \
             scripts/capture_release_authorization_v2.py \
             scripts/security-release-decision.py \
