@@ -13,6 +13,8 @@ LIVE_GOVERNANCE_V2 = ROOT / "scripts" / "validate_live_release_governance_v2.py"
 GOVERNANCE_APPLY = ROOT / "scripts" / "apply_release_branch_protection.py"
 GOVERNANCE_APPLY_WORKFLOW = ROOT / ".github" / "workflows" / "configure-release-branch-protection.yml"
 AUTH_V2 = ROOT / "scripts" / "capture_release_authorization_v2.py"
+APPROVAL_FEASIBILITY_V2 = ROOT / "scripts" / "validate_release_approval_policy_feasibility_v2.py"
+AUTH_PREP_V2 = ROOT / "scripts" / "prepare_release_authorization_request_v2.py"
 IDENTITY_V2 = ROOT / "scripts" / "validate_finalization_identity_v2.py"
 ASSEMBLER_V2 = ROOT / "scripts" / "final-acceptance-assembler-v2.py"
 PACKAGE_V2 = ROOT / "scripts" / "validate_final_acceptance_package_v2.py"
@@ -56,6 +58,8 @@ def main() -> int:
     live_governance = load_module(LIVE_GOVERNANCE_V2, "lumi_live_governance_contract_v2")
     governance_apply = load_module(GOVERNANCE_APPLY, "lumi_governance_apply_contract_v2")
     auth = load_module(AUTH_V2, "lumi_authorization_contract_v2")
+    feasibility = load_module(APPROVAL_FEASIBILITY_V2, "lumi_approval_feasibility_contract_v2")
+    auth_prep = load_module(AUTH_PREP_V2, "lumi_authorization_preparation_contract_v2")
     identity = load_module(IDENTITY_V2, "lumi_identity_contract_v2")
     package_contract = load_module(PACKAGE_CONTRACT, "lumi_package_contract_v2")
     assembler_workflow_contract = load_module(
@@ -66,11 +70,16 @@ def main() -> int:
     live_governance_test: dict[str, Any] = live_governance.self_test()
     governance_apply_test: dict[str, Any] = governance_apply.self_test()
     auth_test: dict[str, Any] = auth.self_test()
+    feasibility_test: dict[str, Any] = feasibility.self_test()
+    auth_prep_test: dict[str, Any] = auth_prep.self_test()
     identity_test: dict[str, Any] = identity.self_test()
     require(governance_test.get("status") == "PASS" and governance_test.get("negative_drills") == 10, "governance policy V2 self-test drift")
     require(live_governance_test.get("status") == "PASS" and live_governance_test.get("negative_drills") == 4, "live governance policy binding V2 self-test drift")
     require(governance_apply_test.get("status") == "PASS" and governance_apply_test.get("preflight_guard") == "EVIDENCE_HEAD_EXACT", "branch-protection applicator self-test drift")
     require(auth_test.get("status") == "PASS" and auth_test.get("negative_drills") == 6, "authorization V2 self-test drift")
+    require(feasibility_test.get("status") == "PASS" and feasibility_test.get("negative_drills") == 5, "approval policy feasibility V2 self-test drift")
+    require(feasibility.EXPECTED_PR_AUTHOR in feasibility_test["clean"]["excluded_logins"], "approval feasibility must exclude the immutable PR author")
+    require(auth_prep_test.get("status") == "PASS" and auth_prep_test.get("negative_drills") == 1, "authorization preparation V2 self-test drift")
     require(identity_test.get("status") == "PASS" and identity_test.get("negative_drills") == 7, "finalization identity V2 self-test drift")
     require(package_contract.main() == 0, "V2 assembler/package execution contract did not PASS")
     require(assembler_workflow_contract.main() == 0, "V2 assembler workflow contract did not PASS")
@@ -116,11 +125,30 @@ def main() -> int:
 
     require_markers(PACKAGE_V2, (
         'EXPECTED_KIND = "LUMI_FINAL_ACCEPTANCE_PACKAGE_V2"',
+        'APPROVAL_POLICY_FEASIBILITY = ROOT / "scripts" / "validate_release_approval_policy_feasibility_v2.py"',
         'release.get("repository_governance_policy")',
         'release.get("release_authorization_request")',
+        'feasibility.validate_policy(approval_policy)',
+        '"approval_policy_feasible": True',
         'value != "PENDING"',
         '"committed V2 package must not contain head-bound live authorization/governance reports"',
         '"approvals_state": "PENDING_LIVE_AUTHORIZATION"',
+    ))
+
+    require_markers(APPROVAL_FEASIBILITY_V2, (
+        'EXPECTED_PR_AUTHOR = "zhangjaky71-stack"',
+        'excluded = {EXPECTED_PR_AUTHOR}',
+        'feasible_assignment(',
+        '"LUMI_RELEASE_APPROVAL_POLICY_FEASIBILITY_V2"',
+        '"excluded_logins": sorted(excluded)',
+    ))
+    require_markers(AUTH_PREP_V2, (
+        'assembler.validate_production_manifest(',
+        'feasibility.validate_policy(policy)',
+        '"approval-policy-v2.json"',
+        '"authorization-request-v2.json"',
+        'auth.validate_request(request)',
+        '"LUMI_RELEASE_AUTHORIZATION_PREPARATION_V2"',
     ))
 
     require_markers(LIVE_GOVERNANCE_V2, (
@@ -140,10 +168,16 @@ def main() -> int:
         '"kind": "LUMI_RELEASE_BRANCH_PROTECTION_APPLY_V1"',
     ))
     require_markers(GOVERNANCE_APPLY_WORKFLOW, (
-        "github.ref == 'refs/heads/release-closure-p0'",
-        "inputs.confirm == 'APPLY_NODE73_RELEASE_PROTECTION'",
+        'workflow_dispatch:',
+        'pull_request:',
+        'types: [labeled]',
+        "github.event.label.name == 'node73-apply-protection'",
+        "github.event.pull_request.number == 135",
+        "github.event.pull_request.base.ref == 'node-73-final-acceptance-release'",
+        "github.event.pull_request.head.ref == 'release-closure-p0'",
+        'EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}',
         'environment: production',
-        'ref: ${{ github.sha }}',
+        'ref: ${{ env.EVIDENCE_HEAD_SHA }}',
         'persist-credentials: false',
         'RELEASE_GOVERNANCE_ADMIN_TOKEN: ${{ secrets.RELEASE_GOVERNANCE_ADMIN_TOKEN }}',
         'python3 scripts/apply_release_branch_protection.py',
@@ -192,6 +226,7 @@ def main() -> int:
         'Require exact source-contract execution SHA',
         'Require exact canonical-lock execution SHA',
         'Require exact final-decision Evidence Head checkout',
+        'python3 scripts/validate_no_v1_finalization_workflow_bypass.py',
         "release.name != 'release-manifest-v2.json'",
         "output = release.parent / 'final-decision-v2.json'",
         'python3 scripts/validate_final_acceptance_package_v2.py --release "$FINAL_RELEASE"',
