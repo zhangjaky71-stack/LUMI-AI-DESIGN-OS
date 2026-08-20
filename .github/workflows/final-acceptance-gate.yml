@@ -49,6 +49,7 @@ jobs:
           python3 scripts/validate_production_node71_workflow_contract.py
           python3 scripts/validate_production_deployment_contract.py
           python3 scripts/validate_release_action_pins.py
+          python3 scripts/validate_release_workflow_permissions.py
           python3 scripts/validate_uv_lock_regeneration_contract.py
           python3 scripts/validate_side_effect_control_provenance.py --self-test
           python3 scripts/validate_tool_audit_provenance.py --self-test
@@ -85,6 +86,7 @@ jobs:
             scripts/production-deployment-gate.py \
             scripts/validate_production_deployment_contract.py \
             scripts/validate_release_action_pins.py \
+            scripts/validate_release_workflow_permissions.py \
             scripts/validate_uv_lock_regeneration_contract.py \
             scripts/validate_side_effect_control_provenance.py \
             scripts/validate_tool_audit_provenance.py \
