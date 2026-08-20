@@ -22,6 +22,8 @@ jobs:
           python-version: "3.12"
       - name: Validate deployment and infrastructure contracts
         run: |
+          python3 scripts/validate_node71_decision_artifact.py --self-test
+          python3 scripts/validate_production_node71_workflow_contract.py
           python3 scripts/validate_production_deployment_contract.py
           python3 scripts/validate_production_iac_contract.py
           python3 scripts/validate_production_readiness_contract.py
@@ -30,6 +32,8 @@ jobs:
       - name: Python syntax
         run: |
           python3 -m py_compile \
+            scripts/validate_node71_decision_artifact.py \
+            scripts/validate_production_node71_workflow_contract.py \
             scripts/production-deployment-gate.py \
             scripts/production-deployment-decision.py \
             scripts/production-rollback-gate.py \
