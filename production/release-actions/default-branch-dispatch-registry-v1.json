@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "policy": "LUMI_RELEASE_DEFAULT_BRANCH_DISPATCH_REGISTRY_V1",
+  "repository": "zhangjaky71-stack/LUMI-AI-DESIGN-OS",
+  "default_branch": "main",
+  "release_ref": "release-closure-p0",
+  "registry_behavior": "DEFAULT_BRANCH_DISCOVERY_ONLY_RELEASE_REF_EXECUTION",
+  "workflows": [
+    {
+      "path": ".github/workflows/assemble-final-acceptance.yml",
+      "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
+    },
+    {
+      "path": ".github/workflows/build-runtime-image-set.yml",
+      "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
+    },
+    {
+      "path": ".github/workflows/configure-release-branch-protection.yml",
+      "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
+    },
+    {
+      "path": ".github/workflows/regenerate-uv-lock.yml",
+      "default_branch_mode": "CANONICAL_TWO_PHASE_BOOTSTRAP"
+    },
+    {
+      "path": ".github/workflows/runtime-image-closure-contract.yml",
+      "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
+    },
+    {
+      "path": ".github/workflows/staging-acceptance-gate.yml",
+      "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
+    },
+    {
+      "path": ".github/workflows/production-iac-contract.yml",
+      "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
+    },
+    {
+      "path": ".github/workflows/deploy-production.yml",
+      "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
+    },
+    {
+      "path": ".github/workflows/final-acceptance-gate.yml",
+      "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
+    }
+  ]
+}
