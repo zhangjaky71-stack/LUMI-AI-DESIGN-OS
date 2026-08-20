@@ -12,6 +12,9 @@ from lumi_domain.job_dispatch import (
     IMAGE_TRANSFORM_TASK_NAME,
     JOB_DISPATCH_EVENT_NAME,
     JOB_DISPATCH_SCHEMA_VERSION,
+    VIDEO_RENDER_QUEUE,
+    VIDEO_RENDER_ROUTING_KEY,
+    VIDEO_RENDER_TASK_NAME,
     JobDispatch,
 )
 
@@ -22,11 +25,17 @@ class JobPublisher(Protocol):
     def publish(self, dispatch: JobDispatch) -> None: ...
 
 
+_ROUTE_BY_TASK: dict[str, tuple[str, str]] = {
+    IMAGE_TRANSFORM_TASK_NAME: (IMAGE_TRANSFORM_QUEUE, IMAGE_TRANSFORM_ROUTING_KEY),
+    VIDEO_RENDER_TASK_NAME: (VIDEO_RENDER_QUEUE, VIDEO_RENDER_ROUTING_KEY),
+}
+
+
 class CeleryJobPublisher:
-    """Publish a validated canonical dispatch through the configured Celery app."""
+    """Publish a validated canonical media dispatch through the configured Celery app."""
 
     def publish(self, dispatch: JobDispatch) -> None:
-        _validate_image_dispatch(dispatch)
+        routing_key = _validate_media_dispatch(dispatch)
         from .app import celery_app
 
         celery_app.send_task(
@@ -35,7 +44,7 @@ class CeleryJobPublisher:
             kwargs={},
             queue=dispatch.queue,
             exchange=JOBS_EXCHANGE.name,
-            routing_key=IMAGE_TRANSFORM_ROUTING_KEY,
+            routing_key=routing_key,
             serializer="json",
             retry=True,
             retry_policy={
@@ -62,7 +71,7 @@ class MediaJobOutboxRecord:
         if self.schema_version != JOB_DISPATCH_SCHEMA_VERSION:
             raise ValueError("MEDIA_JOB_OUTBOX_SCHEMA_UNSUPPORTED")
         dispatch = JobDispatch.from_outbox_payload(self.payload)
-        _validate_image_dispatch(dispatch)
+        _validate_media_dispatch(dispatch)
         if dispatch.message.job_id != self.aggregate_id:
             raise ValueError("MEDIA_JOB_OUTBOX_AGGREGATE_ID_MISMATCH")
         if dispatch.message.organization_id != self.organization_id:
@@ -145,11 +154,14 @@ class MediaJobOutboxDispatcher:
             await connection.close()
 
 
-def _validate_image_dispatch(dispatch: JobDispatch) -> None:
-    if dispatch.task_name != IMAGE_TRANSFORM_TASK_NAME:
+def _validate_media_dispatch(dispatch: JobDispatch) -> str:
+    expected = _ROUTE_BY_TASK.get(dispatch.task_name)
+    if expected is None:
         raise ValueError("MEDIA_JOB_DISPATCH_TASK_NAME_MISMATCH")
-    if dispatch.queue != IMAGE_TRANSFORM_QUEUE:
+    expected_queue, routing_key = expected
+    if dispatch.queue != expected_queue:
         raise ValueError("MEDIA_JOB_DISPATCH_QUEUE_MISMATCH")
     if dispatch.message.operation_id is None:
         raise ValueError("MEDIA_JOB_DISPATCH_OPERATION_REQUIRED")
     dispatch.as_outbox_payload()
+    return routing_key
