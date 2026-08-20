@@ -5,6 +5,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "staging-acceptance-gate.yml"
+DOWNLOAD_ACTION = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1"
+UPLOAD_ACTION = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2"
 
 
 class WorkflowContractError(RuntimeError):
@@ -39,10 +41,12 @@ def main() -> int:
         "python3 scripts/validate_staging_runtime_image_binding.py --self-test",
         "python3 scripts/validate_staging_runtime_image_workflow_contract.py",
         "python3 scripts/validate_node71_decision_artifact.py --self-test",
+        "python3 scripts/validate_release_action_pins.py",
         "scripts/validate_staging_runtime_image_binding.py",
         "scripts/validate_staging_runtime_image_workflow_contract.py",
         "scripts/validate_node71_decision_artifact.py",
-        "actions/download-artifact@v8",
+        DOWNLOAD_ACTION,
+        UPLOAD_ACTION,
         "github-token: ${{ secrets.GITHUB_TOKEN }}",
         "repository: ${{ github.repository }}",
         "run-id: ${{ inputs.runtime_image_set_run_id }}",
@@ -80,12 +84,12 @@ def main() -> int:
         "downloaded runtime image artifact must contain exactly one top-level container-image-set.json",
     )
 
-    download_pos = acceptance.find("actions/download-artifact@v8")
+    download_pos = acceptance.find(DOWNLOAD_ACTION)
     binding_pos = acceptance.find("validate_staging_runtime_image_binding.py")
     gate_pos = acceptance.find("staging-acceptance-gate.py")
     provenance_pos = acceptance.find("--write-provenance reports/staging-acceptance/runtime/decision-provenance.json")
     self_verify_pos = acceptance.find("Self-verify NODE-71 decision provenance before archive")
-    upload_pos = acceptance.find("actions/upload-artifact@v4")
+    upload_pos = acceptance.find(UPLOAD_ACTION)
     require(
         download_pos >= 0 and binding_pos >= 0 and gate_pos >= 0 and download_pos < binding_pos < gate_pos,
         "exact runtime-image artifact download and binding must run before NODE-71 decision",
@@ -107,6 +111,10 @@ def main() -> int:
     require(
         "validate_node71_decision_artifact.py --self-test" in source,
         "source-contract must execute NODE-71 decision artifact negative drills",
+    )
+    require(
+        "validate_release_action_pins.py" in source,
+        "source-contract must fail closed on release action supply-chain drift",
     )
 
     print("NODE-71 frozen runtime-image and decision artifact workflow contract: PASS")
