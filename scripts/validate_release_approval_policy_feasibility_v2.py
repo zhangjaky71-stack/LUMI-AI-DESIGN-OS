@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTHORIZATION_V2 = ROOT / "scripts" / "capture_release_authorization_v2.py"
+EXPECTED_PR_AUTHOR = "zhangjaky71-stack"
 
 
 class ApprovalPolicyFeasibilityError(RuntimeError):
@@ -30,11 +31,22 @@ def load_auth() -> ModuleType:
     return module
 
 
-def feasible_assignment(policy: Mapping[str, Any], roles: tuple[str, ...]) -> dict[str, str] | None:
+def feasible_assignment(
+    policy: Mapping[str, Any],
+    roles: tuple[str, ...],
+    *,
+    excluded_logins: set[str],
+) -> dict[str, str] | None:
     candidates = {
-        role: list(policy["roles"][role]["allowed_logins"])
+        role: [
+            login
+            for login in policy["roles"][role]["allowed_logins"]
+            if login not in excluded_logins
+        ]
         for role in roles
     }
+    if any(not values for values in candidates.values()):
+        return None
     minimum = int(policy["minimum_distinct_actors"])
     sod = {tuple(sorted(pair)) for pair in policy["separation_of_duties"]}
     assignment: dict[str, str] = {}
@@ -67,16 +79,18 @@ def validate_policy(payload: Mapping[str, Any]) -> dict[str, Any]:
         normalized = auth.validate_policy(payload)
     except auth.ReleaseAuthorizationV2Error as exc:
         raise ApprovalPolicyFeasibilityError(f"approval policy syntax/identity invalid: {exc}") from exc
-    assignment = feasible_assignment(normalized, tuple(auth.ROLES))
+    excluded = {EXPECTED_PR_AUTHOR} if normalized.get("require_pr_author_exclusion") is True else set()
+    assignment = feasible_assignment(normalized, tuple(auth.ROLES), excluded_logins=excluded)
     require(
         assignment is not None,
-        "approval principal allowlists cannot satisfy minimum distinct actors and separation-of-duties policy",
+        "approval principal allowlists cannot satisfy minimum distinct actors, PR-author exclusion, and separation-of-duties policy",
     )
     distinct_candidates = sorted(
         {
             login
             for role in auth.ROLES
             for login in normalized["roles"][role]["allowed_logins"]
+            if login not in excluded
         }
     )
     return {
@@ -84,6 +98,7 @@ def validate_policy(payload: Mapping[str, Any]) -> dict[str, Any]:
         "kind": "LUMI_RELEASE_APPROVAL_POLICY_FEASIBILITY_V2",
         "status": "PASS",
         "minimum_distinct_actors": normalized["minimum_distinct_actors"],
+        "excluded_logins": sorted(excluded),
         "distinct_candidate_count": len(distinct_candidates),
         "distinct_candidates": distinct_candidates,
         "feasible_assignment": assignment,
@@ -121,6 +136,7 @@ def fixture() -> dict[str, Any]:
 def self_test() -> dict[str, Any]:
     clean = validate_policy(fixture())
     require(len(set(clean["feasible_assignment"].values())) >= 3, "clean fixture did not prove three distinct approvers")
+    require(EXPECTED_PR_AUTHOR in clean["excluded_logins"], "PR author exclusion was not modeled")
 
     mutations: list[dict[str, Any]] = []
     one_actor = json.loads(json.dumps(fixture()))
@@ -146,6 +162,16 @@ def self_test() -> dict[str, Any]:
     five_required_four_available = json.loads(json.dumps(fixture()))
     five_required_four_available["minimum_distinct_actors"] = 5
     mutations.append(five_required_four_available)
+
+    author_only_third_actor = json.loads(json.dumps(fixture()))
+    author_only_third_actor["roles"] = {
+        "product": {"allowed_logins": ["alice", EXPECTED_PR_AUTHOR]},
+        "engineering": {"allowed_logins": ["alice"]},
+        "security": {"allowed_logins": ["bob"]},
+        "operations": {"allowed_logins": ["alice", EXPECTED_PR_AUTHOR]},
+        "release_owner": {"allowed_logins": ["bob", EXPECTED_PR_AUTHOR]},
+    }
+    mutations.append(author_only_third_actor)
 
     blocked = 0
     for index, mutation in enumerate(mutations, start=1):
