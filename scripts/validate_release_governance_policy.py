@@ -15,6 +15,7 @@ REQUIRED_BRANCHES = {
 }
 EVIDENCE_HEAD_BRANCH = "release-closure-p0"
 PROTECTION_PROFILE = "LUMI_RELEASE_PROTECTION_PROFILE_V1"
+REQUIRED_STATUS_CONTEXTS = {"node73-final-contract-gate"}
 
 
 class GovernancePolicyError(RuntimeError):
@@ -35,6 +36,17 @@ def validate_policy(payload: Mapping[str, Any]) -> dict[str, Any]:
     require(set(branches) == REQUIRED_BRANCHES and len(set(branches)) == 2, "governance policy release branch set mismatch")
     require(payload.get("evidence_head_branch") == EVIDENCE_HEAD_BRANCH, "governance policy evidence head branch mismatch")
     require(payload.get("protection_profile") == PROTECTION_PROFILE, "governance policy strong protection profile mismatch")
+
+    status_checks = payload.get("required_status_checks")
+    require(isinstance(status_checks, Mapping), "governance policy required_status_checks must be an object")
+    require(status_checks.get("strict") is True, "governance policy required status checks must be strict")
+    contexts = status_checks.get("required_contexts")
+    require(isinstance(contexts, list) and bool(contexts), "governance policy required status contexts must be non-empty")
+    require(all(isinstance(value, str) and bool(value) for value in contexts), "governance policy status context is invalid")
+    require(len(contexts) == len(set(contexts)), "governance policy status contexts contain duplicates")
+    require(set(contexts) == REQUIRED_STATUS_CONTEXTS, "governance policy canonical required status context set mismatch")
+    require(status_checks.get("allow_additional_contexts") is True, "governance policy must allow additional stronger required checks")
+
     require(payload.get("require_live_reverification") is True, "governance policy must require live re-verification")
     require(payload.get("require_evidence_head_equals_execution_sha") is True, "governance policy must bind live branch head to execution SHA")
     return {
@@ -44,6 +56,11 @@ def validate_policy(payload: Mapping[str, Any]) -> dict[str, Any]:
         "release_branches": sorted(REQUIRED_BRANCHES),
         "evidence_head_branch": EVIDENCE_HEAD_BRANCH,
         "protection_profile": PROTECTION_PROFILE,
+        "required_status_checks": {
+            "strict": True,
+            "required_contexts": sorted(REQUIRED_STATUS_CONTEXTS),
+            "allow_additional_contexts": True,
+        },
         "require_live_reverification": True,
         "require_evidence_head_equals_execution_sha": True,
     }
@@ -57,6 +74,11 @@ def self_test() -> dict[str, Any]:
         "release_branches": sorted(REQUIRED_BRANCHES),
         "evidence_head_branch": EVIDENCE_HEAD_BRANCH,
         "protection_profile": PROTECTION_PROFILE,
+        "required_status_checks": {
+            "strict": True,
+            "required_contexts": sorted(REQUIRED_STATUS_CONTEXTS),
+            "allow_additional_contexts": True,
+        },
         "require_live_reverification": True,
         "require_evidence_head_equals_execution_sha": True,
     }
@@ -68,6 +90,10 @@ def self_test() -> dict[str, Any]:
         {**good, "protection_profile": "WEAK"},
         {**good, "require_live_reverification": False},
         {**good, "require_evidence_head_equals_execution_sha": False},
+        {**good, "required_status_checks": None},
+        {**good, "required_status_checks": {**good["required_status_checks"], "strict": False}},
+        {**good, "required_status_checks": {**good["required_status_checks"], "required_contexts": ["unrelated-check"]}},
+        {**good, "required_status_checks": {**good["required_status_checks"], "allow_additional_contexts": False}},
     ]
     blocked = 0
     for index, mutation in enumerate(mutations, start=1):
