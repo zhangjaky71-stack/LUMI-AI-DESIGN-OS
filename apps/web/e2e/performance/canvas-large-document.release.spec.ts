@@ -3,12 +3,17 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { resolve } from "node:path";
 
+import {
+  cycleNode69MultiPageHarness,
+  destroyNode69MultiPageHarness,
+  installNode69MultiPageHarness,
+  readNode69MultiPageShape,
+} from "./node69-multipage-harness";
+
 interface ProfileF {
   readonly id: "F";
   readonly duration_seconds: number;
-  readonly input: {
-    readonly reference_device: string;
-  };
+  readonly input: { readonly reference_device: string };
 }
 
 interface Budgets {
@@ -101,7 +106,7 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
           });
           observer.observe({ type, buffered: true });
         } catch {
-          // The release test fails closed later when a required metric is absent.
+          // Required telemetry is checked fail-closed after the workload.
         }
       };
 
@@ -170,7 +175,6 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
           x: number;
           y: number;
           rect(x: number, y: number, width: number, height: number): unknown;
-          fill(color: number): unknown;
         };
         Sprite: new (texture: unknown) => {
           x: number;
@@ -183,7 +187,7 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
       const pixi = (window as unknown as { PIXI?: PixiLike }).PIXI;
       if (!pixi) throw new Error("Pixi runtime unavailable for NODE-69 benchmark");
 
-      const percentile = (values: readonly number[], fraction: number): number => {
+      const percentileInPage = (values: readonly number[], fraction: number): number => {
         const sorted = [...values].sort((a, b) => a - b);
         return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)] ?? 0;
       };
@@ -193,12 +197,12 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
         const values: number[] = [];
         let previous = performance.now();
         for (let index = 0; index < frames; index += 1) {
-          await new Promise<void>((resolve) => {
+          await new Promise<void>((resolveFrame) => {
             requestAnimationFrame((now) => {
               onFrame(index);
               values.push(now - previous);
               previous = now;
-              resolve();
+              resolveFrame();
             });
           });
         }
@@ -217,8 +221,8 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
           node_count: nodeCount,
           image_heavy: imageHeavy,
           frame_count: values.length,
-          p50_frame_ms: Number(percentile(values, 0.5).toFixed(3)),
-          p95_frame_ms: Number(percentile(values, 0.95).toFixed(3)),
+          p50_frame_ms: Number(percentileInPage(values, 0.5).toFixed(3)),
+          p95_frame_ms: Number(percentileInPage(values, 0.95).toFixed(3)),
           mean_frame_ms: Number(average.toFixed(3)),
           approximate_fps: Number((1000 / Math.max(average, 0.001)).toFixed(1)),
         };
@@ -315,9 +319,15 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
       expect(metric.approximate_fps).toBeGreaterThan(0);
     }
 
+    await installNode69MultiPageHarness(page);
+    const multiPageShape = await readNode69MultiPageShape(page);
+    expect(multiPageShape).toEqual({ page_count: 4, node_count: 1000 });
+
     const zoomLatencies: number[] = [];
     const panLatencies: number[] = [];
     const interactionLatencies: number[] = [];
+    const multiPageLatencies: number[] = [];
+    const visitedPageIndexes = new Set<number>();
     const heapSamplesMb: number[] = [];
     const longSessionStarted = Date.now();
     let pageCycle = 0;
@@ -325,7 +335,7 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
       const zoomStart = Date.now();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await page.mouse.wheel(0, pageCycle % 2 === 0 ? -120 : 120);
-      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
       zoomLatencies.push(Date.now() - zoomStart);
 
       const panStart = Date.now();
@@ -333,13 +343,17 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
       await page.mouse.down({ button: "middle" });
       await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.58, { steps: 2 });
       await page.mouse.up({ button: "middle" });
-      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
       panLatencies.push(Date.now() - panStart);
 
       const interactionStart = Date.now();
       await page.mouse.click(box.x + 400, box.y + 528);
-      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
       interactionLatencies.push(Date.now() - interactionStart);
+
+      const multiPage = await cycleNode69MultiPageHarness(page);
+      visitedPageIndexes.add(multiPage.page_index);
+      multiPageLatencies.push(multiPage.latency_ms);
 
       const heapMb = await page.evaluate(() => {
         const memory = (performance as Performance & {
@@ -358,6 +372,8 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
       if (remaining > 0) await page.waitForTimeout(Math.min(5_000, remaining));
     }
     expect(pageCycle).toBeGreaterThanOrEqual(100);
+    expect([...visitedPageIndexes].sort()).toEqual([0, 1, 2, 3]);
+    await destroyNode69MultiPageHarness(page);
 
     await page.mouse.click(box.x + 400, box.y + 528);
     await page.waitForTimeout(250);
@@ -417,14 +433,8 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
         samples: heapSamplesMb.length,
       },
       load_ms: loadMs,
-      zoom_latency_ms: {
-        p95: percentile(zoomLatencies, 0.95),
-        samples: zoomLatencies.length,
-      },
-      pan_latency_ms: {
-        p95: percentile(panLatencies, 0.95),
-        samples: panLatencies.length,
-      },
+      zoom_latency_ms: { p95: percentile(zoomLatencies, 0.95), samples: zoomLatencies.length },
+      pan_latency_ms: { p95: percentile(panLatencies, 0.95), samples: panLatencies.length },
       interaction_latency_ms: {
         p95: percentile(interactionLatencies, 0.95),
         target_p95_max: budgets.latency_ms.local_interaction_p95_max,
@@ -460,7 +470,13 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
       device_scale_factor: 1,
       cpu_throttle_rate: 4,
       long_session_seconds: profile.duration_seconds,
-      multi_page_cycles: pageCycle,
+      multi_page: {
+        page_count: multiPageShape.page_count,
+        node_count: multiPageShape.node_count,
+        cycles: pageCycle,
+        visited_page_indexes: [...visitedPageIndexes].sort(),
+        cycle_latency_p95_ms: percentile(multiPageLatencies, 0.95),
+      },
       external_requests: externalRequests,
       measurements,
       started_at: startedAt,
@@ -483,7 +499,9 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
     }
     expect(result.external_requests).toEqual([]);
     expect(result.long_session_seconds).toBe(600);
-    expect(result.multi_page_cycles).toBeGreaterThanOrEqual(100);
+    expect(result.multi_page.page_count).toBe(4);
+    expect(result.multi_page.node_count).toBe(1000);
+    expect(result.multi_page.cycles).toBeGreaterThanOrEqual(100);
 
     const outputDir = resolve(process.cwd(), "perf/results/node-69-release");
     await mkdir(outputDir, { recursive: true });
