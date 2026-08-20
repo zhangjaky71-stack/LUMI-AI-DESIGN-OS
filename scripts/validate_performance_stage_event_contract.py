@@ -12,6 +12,7 @@ DOMAIN_TEST = ROOT / "services/domain/tests/test_performance_events.py"
 WORKER_PORTS = ROOT / "apps/worker-media/src/lumi_worker_media/performance_ports.py"
 HOSTED_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/image_generation_runtime.py"
 JOB_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/job_runtime.py"
+JOB_RUNTIME_TEST = ROOT / "apps/worker-media/tests/test_job_runtime_performance.py"
 WORKFLOW = ROOT / ".github/workflows/performance-contract.yml"
 
 STAGES = (
@@ -163,10 +164,22 @@ def validate_enqueue_lifecycle_producer() -> None:
         "PERFORMANCE_TIMESTAMP_MUST_BE_TIMEZONE_AWARE",
     ):
         require(marker in source, f"enqueue lifecycle producer lost marker: {marker}")
+    claim_source = source.split("async def claim", 1)[1].split("async def cancellation_requested", 1)[0]
     require(
-        "datetime.now(UTC)" not in source.split("async def claim", 1)[1].split("async def cancellation_requested", 1)[0],
+        "datetime.now(UTC)" not in claim_source,
         "enqueue duration must come from durable task lifecycle timestamps, not local wall-clock now",
     )
+
+    test_source = JOB_RUNTIME_TEST.read_text(encoding="utf-8")
+    for marker in (
+        "test_first_claim_emits_enqueue_from_durable_task_lifecycle",
+        "test_retry_claim_does_not_double_count_enqueue_latency",
+        "test_enqueue_lifecycle_rejects_naive_database_timestamp",
+        'assert event["stage"] == PerformanceStage.ENQUEUE',
+        '== 1_250_000_000',
+        "PERFORMANCE_TIMESTAMP_MUST_BE_TIMEZONE_AWARE",
+    ):
+        require(marker in test_source, f"enqueue executable coverage lost marker: {marker}")
 
 
 def validate_tests_and_workflow() -> None:
@@ -191,6 +204,7 @@ def validate_tests_and_workflow() -> None:
         "apps/worker-media/src/lumi_worker_media/performance_ports.py",
         "apps/worker-media/src/lumi_worker_media/image_generation_runtime.py",
         "apps/worker-media/src/lumi_worker_media/job_runtime.py",
+        "apps/worker-media/tests/test_job_runtime_performance.py",
     ):
         require(path in workflow, f"Performance Contract Python syntax gate missing {path}")
 
@@ -223,7 +237,15 @@ def negative_drills() -> int:
 
 
 def main() -> None:
-    for path in (DOMAIN_RUNTIME, DOMAIN_TEST, WORKER_PORTS, HOSTED_RUNTIME, JOB_RUNTIME, WORKFLOW):
+    for path in (
+        DOMAIN_RUNTIME,
+        DOMAIN_TEST,
+        WORKER_PORTS,
+        HOSTED_RUNTIME,
+        JOB_RUNTIME,
+        JOB_RUNTIME_TEST,
+        WORKFLOW,
+    ):
         require(path.is_file(), f"missing {path.relative_to(ROOT)}")
     validate_schema()
     validate_result_alignment()
@@ -235,7 +257,7 @@ def main() -> None:
     require(drills == 6, "negative drill count drifted")
     print(
         "PASS: performance stage telemetry source contract "
-        f"({len(STAGES)} canonical stages; enqueue lifecycle producer gated; "
+        f"({len(STAGES)} canonical stages; enqueue lifecycle producer + executable tests gated; "
         f"{drills} negative drills; runtime evidence not implied)"
     )
 
