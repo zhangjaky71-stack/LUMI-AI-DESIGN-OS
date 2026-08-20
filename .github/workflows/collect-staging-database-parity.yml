@@ -36,12 +36,10 @@ jobs:
           ref: ${{ inputs.release_git_sha }}
           fetch-depth: 0
           persist-credentials: false
-
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
-
-      - name: Require exact Source RC and explicit acknowledgement
+      - name: Require exact Source RC and acknowledgement
         shell: bash
         run: |
           set -euo pipefail
@@ -59,45 +57,40 @@ jobs:
           test -n "$release_version"
           printf 'EXPECTED_POSTGRES_MAJOR=%s\nRELEASE_VERSION=%s\n' "$expected_major" "$release_version" >> "$GITHUB_ENV"
           python3 scripts/validate_staging_database_parity_evidence.py --self-test
-
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: "1.14.6"
           terraform_wrapper: false
-
       - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           aws-region: ${{ vars.AWS_REGION }}
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           role-session-name: lumi-staging-db-parity-${{ github.run_id }}
-
-      - name: Verify Staging AWS account and initialize read-only Terraform state views
+      - name: Bind Staging AWS account and Terraform states
         shell: bash
         run: |
           set -euo pipefail
           test -n "$TF_STATE_BUCKET"
           expected_account="$(cut -d: -f5 <<<"$STAGING_DEPLOY_ROLE_ARN")"
           [[ "$expected_account" =~ ^[0-9]{12}$ ]]
-          actual="$(aws sts get-caller-identity --query Account --output text)"
-          test "$actual" = "$expected_account"
+          test "$(aws sts get-caller-identity --query Account --output text)" = "$expected_account"
           cat > /tmp/core-backend.hcl <<EOF
-          bucket       = "$TF_STATE_BUCKET"
-          key          = "lumi/staging/core/terraform.tfstate"
-          region       = "$AWS_REGION"
-          encrypt      = true
+          bucket = "$TF_STATE_BUCKET"
+          key = "lumi/staging/core/terraform.tfstate"
+          region = "$AWS_REGION"
+          encrypt = true
           use_lockfile = true
           EOF
           cat > /tmp/migration-backend.hcl <<EOF
-          bucket       = "$TF_STATE_BUCKET"
-          key          = "lumi/staging/migration/terraform.tfstate"
-          region       = "$AWS_REGION"
-          encrypt      = true
+          bucket = "$TF_STATE_BUCKET"
+          key = "lumi/staging/migration/terraform.tfstate"
+          region = "$AWS_REGION"
+          encrypt = true
           use_lockfile = true
           EOF
           terraform -chdir=infra/iac/environments/staging/core init -input=false -backend-config=/tmp/core-backend.hcl
           terraform -chdir=infra/iac/environments/staging/migration init -input=false -backend-config=/tmp/migration-backend.hcl
-
-      - name: Resolve canonical private migration target and deployed image identity
+      - name: Resolve private migration target and immutable image identity
         shell: bash
         run: |
           set -euo pipefail
@@ -107,21 +100,15 @@ jobs:
           security_group="$(jq -r '.security_group_id' <<<"$network")"
           subnets="$(jq -r '.private_subnet_ids | join(",")' <<<"$network")"
           db_host="$(terraform -chdir=infra/iac/environments/staging/core output -raw postgres_endpoint)"
-          for value in "$migration_task" "$cluster" "$security_group" "$subnets" "$db_host"; do
-            test -n "$value"
-            test "$value" != "null"
-          done
+          for value in "$migration_task" "$cluster" "$security_group" "$subnets" "$db_host"; do test -n "$value"; test "$value" != "null"; done
           db_host_hash="$(printf '%s' "${db_host,,}" | sed 's/\.$//' | sha256sum | awk '{print $1}')"
-
           aws ecs describe-task-definition --task-definition "$migration_task" --output json > /tmp/migration-task-definition.json
           migration_image="$(jq -r '.taskDefinition.containerDefinitions[] | select(.name == "migration") | .image' /tmp/migration-task-definition.json)"
           log_group="$(jq -r '.taskDefinition.containerDefinitions[] | select(.name == "migration") | .logConfiguration.options["awslogs-group"]' /tmp/migration-task-definition.json)"
           log_prefix="$(jq -r '.taskDefinition.containerDefinitions[] | select(.name == "migration") | .logConfiguration.options["awslogs-stream-prefix"]' /tmp/migration-task-definition.json)"
           [[ "$migration_image" =~ @sha256:[0-9a-f]{64}$ ]]
           test "$migration_image" = "$EXPECTED_API_IMAGE"
-          test -n "$log_group"
-          test -n "$log_prefix"
-
+          test -n "$log_group"; test -n "$log_prefix"
           aws ecs describe-services --cluster lumi-staging-cluster --services api --output json > /tmp/api-service.json
           jq -e '((.failures | length) == 0) and ((.services | length) == 1)' /tmp/api-service.json >/dev/null
           api_task="$(jq -r '.services[0].taskDefinition' /tmp/api-service.json)"
@@ -129,43 +116,25 @@ jobs:
           api_image="$(jq -r '.taskDefinition.containerDefinitions[] | select(.name == "api") | .image' /tmp/api-task-definition.json)"
           test "$api_image" = "$EXPECTED_API_IMAGE"
           test "$api_image" = "$migration_image"
-
-          printf 'MIGRATION_TASK_DEFINITION=%s\nECS_CLUSTER=%s\nSECURITY_GROUP=%s\nSUBNETS_CSV=%s\nDATABASE_HOST_SHA256=%s\nLOG_GROUP=%s\nLOG_PREFIX=%s\nDEPLOYED_API_IMAGE=%s\n' \
-            "$migration_task" "$cluster" "$security_group" "$subnets" "$db_host_hash" "$log_group" "$log_prefix" "$api_image" >> "$GITHUB_ENV"
-
+          printf 'MIGRATION_TASK_DEFINITION=%s\nECS_CLUSTER=%s\nSECURITY_GROUP=%s\nSUBNETS_CSV=%s\nDATABASE_HOST_SHA256=%s\nLOG_GROUP=%s\nLOG_PREFIX=%s\nDEPLOYED_API_IMAGE=%s\n' "$migration_task" "$cluster" "$security_group" "$subnets" "$db_host_hash" "$log_group" "$log_prefix" "$api_image" >> "$GITHUB_ENV"
       - name: Launch read-only database parity probe inside Staging VPC
         shell: bash
         run: |
           set -euo pipefail
-          jq -n \
-            --arg sha "$RELEASE_GIT_SHA" \
-            --arg version "$RELEASE_VERSION" \
-            --arg major "$EXPECTED_POSTGRES_MAJOR" \
-            --arg host_hash "$DATABASE_HOST_SHA256" \
-            '{containerOverrides:[{name:"migration",command:["python","-m","lumi_api.staging_database_parity_probe","--release-git-sha",$sha,"--release-version",$version,"--expected-postgres-major",$major,"--expected-host-sha256",$host_hash]}]}' \
-            > /tmp/db-parity-overrides.json
-          aws ecs run-task \
-            --cluster "$ECS_CLUSTER" \
-            --launch-type FARGATE \
-            --task-definition "$MIGRATION_TASK_DEFINITION" \
-            --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS_CSV],securityGroups=[$SECURITY_GROUP],assignPublicIp=DISABLED}" \
-            --overrides file:///tmp/db-parity-overrides.json \
-            --started-by "node73-db-parity-${GITHUB_RUN_ID}" \
-            --output json > /tmp/db-parity-run-task.json
+          jq -n --arg sha "$RELEASE_GIT_SHA" --arg version "$RELEASE_VERSION" --arg major "$EXPECTED_POSTGRES_MAJOR" --arg host_hash "$DATABASE_HOST_SHA256" '{containerOverrides:[{name:"migration",command:["python","-m","lumi_api.staging_database_parity_probe","--release-git-sha",$sha,"--release-version",$version,"--expected-postgres-major",$major,"--expected-host-sha256",$host_hash]}]}' > /tmp/db-parity-overrides.json
+          aws ecs run-task --cluster "$ECS_CLUSTER" --launch-type FARGATE --task-definition "$MIGRATION_TASK_DEFINITION" --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS_CSV],securityGroups=[$SECURITY_GROUP],assignPublicIp=DISABLED}" --overrides file:///tmp/db-parity-overrides.json --started-by "node73-db-parity-${GITHUB_RUN_ID}" --output json > /tmp/db-parity-run-task.json
           jq -e '((.failures | length) == 0) and ((.tasks | length) == 1)' /tmp/db-parity-run-task.json >/dev/null
           task_arn="$(jq -r '.tasks[0].taskArn' /tmp/db-parity-run-task.json)"
           test -n "$task_arn"
           printf 'ECS_TASK_ARN=%s\n' "$task_arn" >> "$GITHUB_ENV"
-
-      - name: Require probe exit zero and capture one structured CloudWatch evidence record
+      - name: Require exit zero and capture one structured CloudWatch record
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p reports/staging-acceptance/runtime/database-parity
           aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$ECS_TASK_ARN"
           aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$ECS_TASK_ARN" --output json > /tmp/db-parity-task-final.json
-          exit_code="$(jq -r '.tasks[0].containers[] | select(.name == "migration") | .exitCode // -1' /tmp/db-parity-task-final.json)"
-          test "$exit_code" = "0"
+          test "$(jq -r '.tasks[0].containers[] | select(.name == "migration") | .exitCode // -1' /tmp/db-parity-task-final.json)" = "0"
           task_id="${ECS_TASK_ARN##*/}"
           log_stream="${LOG_PREFIX}/migration/${task_id}"
           found=0
@@ -177,35 +146,17 @@ jobs:
             sleep 3
           done
           test "$found" = "1"
-          jq -r '.events[].message' /tmp/db-parity-logs.json \
-            | sed -n 's/^LUMI_STAGING_DB_PARITY=//p' \
-            > reports/staging-acceptance/runtime/database-parity/evidence.json
+          jq -r '.events[].message' /tmp/db-parity-logs.json | sed -n 's/^LUMI_STAGING_DB_PARITY=//p' > reports/staging-acceptance/runtime/database-parity/evidence.json
           test "$(wc -l < reports/staging-acceptance/runtime/database-parity/evidence.json)" -eq 1
           python3 -m json.tool reports/staging-acceptance/runtime/database-parity/evidence.json >/dev/null
-
-      - name: Revalidate DB evidence outside the task and bind runtime identity
+      - name: Revalidate DB evidence outside task and bind runtime identity
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/validate_staging_database_parity_evidence.py \
-            --evidence reports/staging-acceptance/runtime/database-parity/evidence.json \
-            --expected-git-sha "$RELEASE_GIT_SHA" \
-            --expected-version "$RELEASE_VERSION" \
-            --expected-postgres-major "$EXPECTED_POSTGRES_MAJOR" \
-            --expected-host-sha256 "$DATABASE_HOST_SHA256" \
-            > reports/staging-acceptance/runtime/database-parity/validation.json
+          python3 scripts/validate_staging_database_parity_evidence.py --evidence reports/staging-acceptance/runtime/database-parity/evidence.json --expected-git-sha "$RELEASE_GIT_SHA" --expected-version "$RELEASE_VERSION" --expected-postgres-major "$EXPECTED_POSTGRES_MAJOR" --expected-host-sha256 "$DATABASE_HOST_SHA256" > reports/staging-acceptance/runtime/database-parity/validation.json
           jq -e '.status == "PASS"' reports/staging-acceptance/runtime/database-parity/validation.json >/dev/null
-          jq -n \
-            --arg release_git_sha "$RELEASE_GIT_SHA" \
-            --arg image "$DEPLOYED_API_IMAGE" \
-            --arg task_definition "$MIGRATION_TASK_DEFINITION" \
-            --arg task_arn "$ECS_TASK_ARN" \
-            --arg host_sha256 "$DATABASE_HOST_SHA256" \
-            --arg postgres_major "$EXPECTED_POSTGRES_MAJOR" \
-            '{schema_version:1,environment:"staging",release_git_sha:$release_git_sha,api_image:$image,migration_task_definition:$task_definition,probe_task_arn:$task_arn,database_host_sha256:$host_sha256,expected_postgres_major:($postgres_major|tonumber),image_is_immutable:($image|test("@sha256:[0-9a-f]{64}$"))}' \
-            > reports/staging-acceptance/runtime/database-parity/runtime-identity.json
+          jq -n --arg release_git_sha "$RELEASE_GIT_SHA" --arg image "$DEPLOYED_API_IMAGE" --arg task_definition "$MIGRATION_TASK_DEFINITION" --arg task_arn "$ECS_TASK_ARN" --arg host_sha256 "$DATABASE_HOST_SHA256" --arg postgres_major "$EXPECTED_POSTGRES_MAJOR" '{schema_version:1,environment:"staging",release_git_sha:$release_git_sha,api_image:$image,migration_task_definition:$task_definition,probe_task_arn:$task_arn,database_host_sha256:$host_sha256,expected_postgres_major:($postgres_major|tonumber),image_is_immutable:($image|test("@sha256:[0-9a-f]{64}$"))}' > reports/staging-acceptance/runtime/database-parity/runtime-identity.json
           sha256sum reports/staging-acceptance/runtime/database-parity/evidence.json > reports/staging-acceptance/runtime/database-parity/evidence.sha256
-
       - name: Upload Staging database parity collector package
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
