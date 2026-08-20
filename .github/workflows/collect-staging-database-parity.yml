@@ -19,6 +19,7 @@ permissions:
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   TF_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+  STAGING_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
   EXPECTED_API_IMAGE: ${{ vars.API_IMAGE_DIGEST }}
   EXPECTED_POSTGRES_ENGINE_VERSION: ${{ vars.POSTGRES_ENGINE_VERSION }}
   RELEASE_GIT_SHA: ${{ inputs.release_git_sha }}
@@ -49,6 +50,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$RELEASE_GIT_SHA"
           test -z "$(git status --porcelain)"
           [[ "$EXPECTED_API_IMAGE" =~ @sha256:[0-9a-f]{64}$ ]]
+          [[ "$STAGING_DEPLOY_ROLE_ARN" =~ ^arn:aws:iam::[0-9]{12}:role/.+ ]]
           test -n "$EXPECTED_POSTGRES_ENGINE_VERSION"
           expected_major="${EXPECTED_POSTGRES_ENGINE_VERSION%%.*}"
           [[ "$expected_major" =~ ^[0-9]+$ ]]
@@ -71,14 +73,13 @@ jobs:
 
       - name: Verify Staging AWS account and initialize read-only Terraform state views
         shell: bash
-        env:
-          EXPECTED_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
         run: |
           set -euo pipefail
           test -n "$TF_STATE_BUCKET"
-          test -n "$EXPECTED_ACCOUNT_ID"
+          expected_account="$(cut -d: -f5 <<<"$STAGING_DEPLOY_ROLE_ARN")"
+          [[ "$expected_account" =~ ^[0-9]{12}$ ]]
           actual="$(aws sts get-caller-identity --query Account --output text)"
-          test "$actual" = "$EXPECTED_ACCOUNT_ID"
+          test "$actual" = "$expected_account"
           cat > /tmp/core-backend.hcl <<EOF
           bucket       = "$TF_STATE_BUCKET"
           key          = "lumi/staging/core/terraform.tfstate"
