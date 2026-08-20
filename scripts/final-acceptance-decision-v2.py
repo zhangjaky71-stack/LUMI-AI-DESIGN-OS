@@ -205,12 +205,18 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
             "status": dispatch_registry_report.get("status"),
             "default_branch": dispatch_registry_report.get("default_branch"),
             "default_branch_head_sha": dispatch_registry_report.get("default_branch_head_sha"),
+            "default_branch_head_stable_during_capture": dispatch_registry_report.get(
+                "default_branch_head_stable_during_capture"
+            ),
             "workflow_count": dispatch_registry_report.get("workflow_count"),
             "all_default_branch_workflows_fail_closed": dispatch_registry_report.get(
                 "all_default_branch_workflows_fail_closed"
             ),
             "dispatch_input_schemas_bound_to_evidence_head": dispatch_registry_report.get(
                 "dispatch_input_schemas_bound_to_evidence_head"
+            ),
+            "workflow_blobs_bound_to_exact_default_branch_head": dispatch_registry_report.get(
+                "workflow_blobs_bound_to_exact_default_branch_head"
             ),
         },
         "release_authorization": {
