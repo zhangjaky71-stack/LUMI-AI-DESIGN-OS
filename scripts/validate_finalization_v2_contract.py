@@ -24,6 +24,7 @@ MODULES = {
     "no_v1_bypass": ROOT / "scripts/validate_no_v1_finalization_workflow_bypass.py",
 }
 DECISION_V2 = ROOT / "scripts/final-acceptance-decision-v2.py"
+LIVE_DISPATCH_REGISTRY = ROOT / "scripts/validate_live_default_branch_dispatch_registry.py"
 PACKAGE_V2 = ROOT / "scripts/validate_final_acceptance_package_v2.py"
 ASSEMBLER_V2 = ROOT / "scripts/final-acceptance-assembler-v2.py"
 FINAL_WORKFLOW = ROOT / ".github/workflows/final-acceptance-gate.yml"
@@ -64,7 +65,7 @@ def run_self_tests(modules: dict[str, ModuleType]) -> None:
         "governance": ("negative_drills", 10),
         "live_governance": ("negative_drills", 4),
         "dispatch_registry": ("negative_drills", 5),
-        "live_dispatch_registry": ("negative_drills", 6),
+        "live_dispatch_registry": ("negative_drills", 7),
         "authorization": ("negative_drills", 6),
         "approval_feasibility": ("negative_drills", 5),
         "authorization_prep": ("negative_drills", 1),
@@ -133,6 +134,15 @@ def validate_canonical_sources() -> None:
         'feasibility.validate_policy(approval_policy)',
         '"approval_policy_feasible": True',
         '"approvals_state": "PENDING_LIVE_AUTHORIZATION"',
+    ))
+
+    markers(LIVE_DISPATCH_REGISTRY, (
+        'main_head_start = _branch_head(repository, EXPECTED_DEFAULT_BRANCH, token=token)',
+        'blob_sha, stub_text = _contents(repository, path, main_head_start, token=token)',
+        'main_head_end = _branch_head(repository, EXPECTED_DEFAULT_BRANCH, token=token)',
+        'validate_stable_snapshot(main_head_start, main_head_end)',
+        '"default_branch_head_stable_during_capture": True',
+        '"workflow_blobs_bound_to_exact_default_branch_head": True',
     ))
 
     markers(DECISION_V2, (
