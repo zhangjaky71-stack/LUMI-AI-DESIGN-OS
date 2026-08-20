@@ -17,33 +17,43 @@ on:
         type: string
 
 permissions:
-  contents: write
-  actions: read
+  contents: read
 
 env:
   MANIFEST_INPUT: ${{ inputs.manifest_path }}
   DR_RUN_ID: ${{ inputs.dr_run_id }}
   FREEZE_ACK: ${{ inputs.freeze_ack }}
-  GH_TOKEN: ${{ github.token }}
 
 jobs:
-  freeze:
+  validate-freeze:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      deployment_id: ${{ steps.identity.outputs.deployment_id }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v6
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
-      - name: Resolve manifest and immutable recovery destination
+
+      - name: Resolve manifest and V2 recovery identity
+        id: identity
         shell: bash
         run: |
           set -euo pipefail
+          test "$GITHUB_REF_NAME" = "release-closure-p0"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python3 - <<'PY'
           import json
           import os
+          import re
           from pathlib import Path
 
           root = Path.cwd().resolve()
@@ -61,60 +71,76 @@ jobs:
           git_sha = rc.get('git_sha')
           if not isinstance(deployment_id, str) or not deployment_id or manifest.parent.name != deployment_id:
               raise SystemExit('manifest path/deployment_id identity mismatch')
-          if not isinstance(git_sha, str) or len(git_sha) != 40:
-              raise SystemExit('manifest release_candidate.git_sha must be SHA40')
+          if not isinstance(git_sha, str) or re.fullmatch(r'[0-9a-f]{40}', git_sha) is None:
+              raise SystemExit('manifest release_candidate.git_sha must be lowercase SHA40')
           destination = root / 'reports' / 'production-recovery' / deployment_id
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
               fh.write(f'MANIFEST_PATH={manifest.relative_to(root).as_posix()}\n')
               fh.write(f'DEPLOYMENT_ID={deployment_id}\n')
               fh.write(f'RC_SHA={git_sha}\n')
               fh.write(f'RECOVERY_DIR={destination.relative_to(root).as_posix()}\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f'deployment_id={deployment_id}\n')
           PY
           test "$FREEZE_ACK" = "FREEZE_PRODUCTION_RECOVERY:${DEPLOYMENT_ID}"
           [[ "$DR_RUN_ID" =~ ^[0-9]+$ ]]
-      - name: Require successful exact-RC Production DR source run
+          test "$DR_RUN_ID" -gt 0
+          git merge-base --is-ancestor "$RC_SHA" "$GITHUB_SHA"
+
+      - name: Require successful V2 Production DR source run
+        id: producer
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           run="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${DR_RUN_ID}")"
           test "$(jq -r '.repository.full_name' <<<"$run")" = "$GITHUB_REPOSITORY"
           test "$(jq -r '.name' <<<"$run")" = "Production DR Rehearsal"
-          test "$(jq -r '.head_branch' <<<"$run")" = "$GITHUB_REF_NAME"
-          test "$(jq -r '.head_sha' <<<"$run")" = "$RC_SHA"
+          test "$(jq -r '.path' <<<"$run")" = ".github/workflows/production-dr-rehearsal.yml"
+          test "$(jq -r '.head_branch' <<<"$run")" = "release-closure-p0"
           test "$(jq -r '.event' <<<"$run")" = "workflow_dispatch"
           test "$(jq -r '.status' <<<"$run")" = "completed"
           test "$(jq -r '.conclusion' <<<"$run")" = "success"
-      - name: Download DR artifact into an untrusted staging directory
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf /tmp/lumi-production-dr
-          mkdir -p /tmp/lumi-production-dr
-          gh run download "$DR_RUN_ID" --repo "$GITHUB_REPOSITORY" --dir /tmp/lumi-production-dr
-      - name: Materialize exactly one copy of each required raw evidence file
+          producer_head="$(jq -r '.head_sha' <<<"$run")"
+          [[ "$producer_head" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$RC_SHA" "$producer_head"
+          git merge-base --is-ancestor "$producer_head" "$GITHUB_SHA"
+          run_attempt="$(jq -r '.run_attempt' <<<"$run")"
+          [[ "$run_attempt" =~ ^[0-9]+$ ]]
+          test "$run_attempt" -gt 0
+          expected_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${DR_RUN_ID}"
+          test "$(jq -r '.html_url' <<<"$run")" = "$expected_url"
+          jq --arg repository "$GITHUB_REPOSITORY" '{id,name,path,event,status,conclusion,head_branch,head_sha,run_attempt,created_at,updated_at,html_url,repository:$repository}' \
+            <<<"$run" > /tmp/source-run.json
+          printf 'run_attempt=%s\n' "$run_attempt" >> "$GITHUB_OUTPUT"
+
+      - name: Download exact successful Production DR artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: production-dr-${{ steps.identity.outputs.deployment_id }}-${{ inputs.dr_run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.dr_run_id }}
+          path: /tmp/lumi-production-dr
+
+      - name: Materialize exact raw evidence and recompute canonical recovery decision
         shell: bash
         run: |
           set -euo pipefail
           rm -rf "$RECOVERY_DIR"
           mkdir -p "$RECOVERY_DIR/evidence"
-          one() {
-            local name="$1" destination="$2"
-            mapfile -t matches < <(find /tmp/lumi-production-dr -type f -name "$name" -print)
-            if [[ ${#matches[@]} -ne 1 ]]; then
-              echo "expected exactly one $name in DR artifacts, found ${#matches[@]}" >&2
-              exit 65
-            fi
-            cp -- "${matches[0]}" "$destination"
-          }
-          one baseline-runtime.json "$RECOVERY_DIR/evidence/baseline-runtime.json"
-          one rds-restore.json "$RECOVERY_DIR/evidence/rds-restore.json"
-          one database-verify.json "$RECOVERY_DIR/evidence/database-verify.json"
-          one object-recovery.json "$RECOVERY_DIR/evidence/object-recovery.json"
-          one cleanup.json "$RECOVERY_DIR/evidence/cleanup.json"
-      - name: Recompute canonical recovery decision from frozen raw evidence
-        shell: bash
-        run: |
-          set -euo pipefail
+          for name in baseline-runtime.json rds-restore.json database-verify.json object-recovery.json cleanup.json decision.json; do
+            test -f "/tmp/lumi-production-dr/$name"
+            test "$(find /tmp/lumi-production-dr -maxdepth 1 -type f -name "$name" | wc -l)" -eq 1
+          done
+          test "$(find /tmp/lumi-production-dr -maxdepth 1 -type f | wc -l)" -eq 6
+          cp /tmp/lumi-production-dr/baseline-runtime.json "$RECOVERY_DIR/evidence/baseline-runtime.json"
+          cp /tmp/lumi-production-dr/rds-restore.json "$RECOVERY_DIR/evidence/rds-restore.json"
+          cp /tmp/lumi-production-dr/database-verify.json "$RECOVERY_DIR/evidence/database-verify.json"
+          cp /tmp/lumi-production-dr/object-recovery.json "$RECOVERY_DIR/evidence/object-recovery.json"
+          cp /tmp/lumi-production-dr/cleanup.json "$RECOVERY_DIR/evidence/cleanup.json"
+          cp /tmp/source-run.json "$RECOVERY_DIR/source-run.json"
           python3 scripts/production-recovery-decision.py \
             --manifest "$MANIFEST_PATH" \
             --baseline-runtime "$RECOVERY_DIR/evidence/baseline-runtime.json" \
@@ -126,33 +152,91 @@ jobs:
           test "$(jq -r '.passed' "$RECOVERY_DIR/decision.json")" = true
           test "$(jq -r '.deployment_id' "$RECOVERY_DIR/decision.json")" = "$DEPLOYMENT_ID"
           test "$(jq -r '.release_candidate.git_sha' "$RECOVERY_DIR/decision.json")" = "$RC_SHA"
-      - name: Refuse changes outside the recovery evidence boundary
+          cmp -s "$RECOVERY_DIR/decision.json" /tmp/lumi-production-dr/decision.json || {
+            echo "freeze-time recovery decision differs from producer decision" >&2
+            exit 65
+          }
+
+      - name: Validate frozen recovery bundle contract
         shell: bash
         run: |
           set -euo pipefail
-          prefix="${RECOVERY_DIR}/"
-          mapfile -t changed < <({ git diff --name-only; git ls-files --others --exclude-standard; } | sort -u)
-          [[ ${#changed[@]} -gt 0 ]] || { echo "validated recovery evidence already frozen"; exit 0; }
-          for path in "${changed[@]}"; do
-            [[ "$path" == "$prefix"* ]] || {
-              echo "refusing unexpected change outside recovery evidence boundary: $path" >&2
-              exit 66
-            }
+          python3 scripts/validate_frozen_production_recovery_evidence.py --self-test
+          python3 scripts/validate_frozen_production_recovery_evidence.py \
+            --decision "$RECOVERY_DIR/decision.json" \
+            --source-run "$RECOVERY_DIR/source-run.json" \
+            --manifest "$MANIFEST_PATH" \
+            --expected-evidence-head "$GITHUB_SHA"
+
+      - name: Upload validated immutable recovery freeze package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: production-recovery-freeze-${{ github.run_id }}
+          path: ${{ env.RECOVERY_DIR }}/
+          if-no-files-found: error
+          retention-days: 90
+
+  commit-freeze:
+    needs: [validate-freeze]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: production-recovery-freeze-${{ github.run_id }}
+          path: /tmp/production-recovery-freeze
+
+      - name: Materialize only validated recovery evidence
+        shell: bash
+        env:
+          DEPLOYMENT_ID: ${{ needs.validate-freeze.outputs.deployment_id }}
+        run: |
+          set -euo pipefail
+          test -f /tmp/production-recovery-freeze/decision.json
+          test -f /tmp/production-recovery-freeze/source-run.json
+          for name in baseline-runtime.json rds-restore.json database-verify.json object-recovery.json cleanup.json; do
+            test -f "/tmp/production-recovery-freeze/evidence/$name"
           done
-      - name: Commit only validated Production recovery evidence
+          test "$(find /tmp/production-recovery-freeze -type f | wc -l)" -eq 7
+          target="reports/production-recovery/${DEPLOYMENT_ID}"
+          if test -d "$target"; then
+            if diff -qr /tmp/production-recovery-freeze "$target" >/dev/null; then
+              echo "identical Production recovery evidence already frozen"
+              echo "FREEZE_NOOP=true" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "refusing to overwrite non-identical frozen Production recovery evidence" >&2
+            exit 66
+          fi
+          mkdir -p "$(dirname "$target")"
+          cp -R /tmp/production-recovery-freeze "$target"
+          echo "RECOVERY_TARGET=$target" >> "$GITHUB_ENV"
+          echo "FREEZE_NOOP=false" >> "$GITHUB_ENV"
+
+      - name: Commit only validated Production recovery evidence with exact-head guard
+        if: env.FREEZE_NOOP != 'true'
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          expected="$GITHUB_SHA"
+          remote="$(git ls-remote "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/heads/release-closure-p0" | awk '{print $1}')"
+          test "$remote" = "$expected"
           git config user.name "lumi-release-evidence-bot"
           git config user.email "lumi-release-evidence-bot@users.noreply.github.com"
-          git add -- "$RECOVERY_DIR"
-          if git diff --cached --quiet; then
-            echo "no recovery evidence commit required"
-            exit 0
-          fi
-          prefix="${RECOVERY_DIR}/"
+          git add -- "$RECOVERY_TARGET"
+          prefix="${RECOVERY_TARGET}/"
           while IFS= read -r path; do
-            [[ "$path" == "$prefix"* ]] || { echo "unexpected staged path: $path" >&2; exit 66; }
+            [[ "$path" == "$prefix"* ]] || { echo "unexpected staged path: $path" >&2; exit 67; }
           done < <(git diff --cached --name-only)
-          git commit -m "release: freeze production recovery evidence ${DEPLOYMENT_ID}"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          test "$(git diff --cached --name-only | wc -l)" -eq 7
+          git commit -m "release: freeze production recovery evidence ${{ needs.validate-freeze.outputs.deployment_id }}"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:release-closure-p0"
