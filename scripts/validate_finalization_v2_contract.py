@@ -157,9 +157,10 @@ def main() -> int:
     ))
 
     require_markers(FINAL_WORKFLOW, (
-        "needs: [source-contract, canonical-lock-gate]",
+        "needs: [source-contract, canonical-lock-gate, contract-gate]",
         "needs.source-contract.result == 'success'",
         "needs.canonical-lock-gate.result == 'success'",
+        "needs.contract-gate.result == 'success'",
         "github.ref == 'refs/heads/release-closure-p0'",
         'fetch-depth: 0',
         'name: node73-final-contract-gate',
@@ -175,6 +176,7 @@ def main() -> int:
     workflow = FINAL_WORKFLOW.read_text(encoding="utf-8")
     require(workflow.count('ref: ${{ github.sha }}') == 3, "all three Final Acceptance checkout jobs must pin github.sha exactly")
     require(workflow.count('persist-credentials: false') == 3, "read-only Final Acceptance checkouts must not persist credentials")
+    require(workflow.count('name: node73-final-contract-gate') == 1, "canonical final status check name must be globally unique within this workflow")
     final_start = workflow.find("  final-decision:\n")
     final_end = workflow.find("  contract-gate:\n", final_start)
     require(final_start >= 0 and final_end > final_start, "Final Acceptance final-decision job block missing")
