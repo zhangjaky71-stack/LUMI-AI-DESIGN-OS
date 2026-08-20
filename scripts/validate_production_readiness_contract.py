@@ -13,7 +13,7 @@ ROLLBACK_GATE = ROOT / "scripts" / "production-rollback-gate.py"
 ROLLBACK_DECISION = ROOT / "scripts" / "production-rollback-rehearsal-decision.py"
 DEPLOYMENT_DECISION = ROOT / "scripts" / "production-deployment-decision.py"
 
-SERVICES = [
+IMAGE_KEYS = [
     "api",
     "agent-runtime",
     "model-gateway",
@@ -21,6 +21,15 @@ SERVICES = [
     "worker-media",
     "sandbox-runtime",
 ]
+SERVICE_IMAGE_KEY = {
+    "api": "api",
+    "agent-runtime": "agent-runtime",
+    "model-gateway": "model-gateway",
+    "tool-gateway": "tool-gateway",
+    "worker-media": "worker-media",
+    "outbox-dispatcher": "worker-media",
+    "sandbox-runtime": "sandbox-runtime",
+}
 
 
 def load_module(path: Path, name: str) -> ModuleType:
@@ -40,7 +49,7 @@ def require(condition: bool, message: str) -> None:
 def images(seed: str) -> dict[str, str]:
     return {
         name: f"123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/lumi-{name}@sha256:{seed * 64}"
-        for name in SERVICES
+        for name in IMAGE_KEYS
     }
 
 
@@ -90,10 +99,11 @@ def runtime(value: dict[str, Any]) -> dict[str, Any]:
         "passed": True,
         "services": [
             {
-                "service_name": name,
-                "task_definition": f"arn:aws:ecs:task-definition/{name}:1",
-                "image": value["images"][name],
-                "expected_image": value["images"][name],
+                "service_name": service,
+                "image_key": image_key,
+                "task_definition": f"arn:aws:ecs:task-definition/{service}:1",
+                "image": value["images"][image_key],
+                "expected_image": value["images"][image_key],
                 "image_matches": True,
                 "status": "ACTIVE",
                 "rollout_state": "COMPLETED",
@@ -102,7 +112,7 @@ def runtime(value: dict[str, Any]) -> dict[str, Any]:
                 "pending_count": 0,
                 "steady": True,
             }
-            for name in SERVICES
+            for service, image_key in SERVICE_IMAGE_KEY.items()
         ],
     }
 
@@ -212,6 +222,28 @@ def main() -> int:
         is False,
         "roll-forward with wrong runtime image must block",
     )
+    wrong_dispatcher_image = copy.deepcopy(restored_runtime)
+    dispatcher = next(
+        item
+        for item in wrong_dispatcher_image["services"]
+        if item["service_name"] == "outbox-dispatcher"
+    )
+    dispatcher["image"] = current["images"]["api"]
+    dispatcher["image_matches"] = False
+    require(
+        rollback_decision.evaluate(
+            current,
+            previous,
+            previous_path,
+            previous_runtime,
+            previous_smoke,
+            wrong_dispatcher_image,
+            restored_smoke,
+            [],
+        )["passed"]
+        is False,
+        "outbox dispatcher must remain bound to worker-media image during roll-forward",
+    )
     wrong_previous_version = copy.deepcopy(previous_smoke)
     wrong_previous_version["results"]["/version"]["version"] = "wrong"
     require(
@@ -260,6 +292,30 @@ def main() -> int:
         [{"path": "fixture", "sha256": "a" * 64}],
     )
     require(final["passed"] is True, "clean production deployment decision must pass")
+
+    bad_runtime_dispatcher = copy.deepcopy(restored_runtime)
+    dispatcher = next(
+        item
+        for item in bad_runtime_dispatcher["services"]
+        if item["service_name"] == "outbox-dispatcher"
+    )
+    dispatcher["image"] = current["images"]["sandbox-runtime"]
+    dispatcher["expected_image"] = current["images"]["sandbox-runtime"]
+    require(
+        deployment_decision.evaluate(
+            current,
+            deployment_gate,
+            snapshot,
+            migration,
+            bad_runtime_dispatcher,
+            live_rollout,
+            restored_smoke,
+            rehearsal,
+            [],
+        )["passed"]
+        is False,
+        "production decision must block dispatcher image-key substitution",
+    )
 
     bad_rollout = copy.deepcopy(live_rollout)
     bad_rollout["canary_percent"] = 100
@@ -336,9 +392,14 @@ def main() -> int:
     deploy_workflow = (ROOT / ".github/workflows/deploy-production.yml").read_text()
     rollback_workflow = (ROOT / ".github/workflows/production-rollback-rehearsal.yml").read_text()
     freeze_workflow = (ROOT / ".github/workflows/freeze-production-evidence.yml").read_text()
+    deployment_source = DEPLOYMENT_DECISION.read_text()
+    rollback_source = ROLLBACK_DECISION.read_text()
 
     require("describe-task-definition" in identity_script, "runtime identity must inspect task definitions")
-    require("expected exactly six ECS services" in identity_script, "runtime identity must require six services")
+    require("expected exactly seven ECS services" in identity_script, "runtime identity must require seven services")
+    require('IMAGE_KEY="worker-media"' in identity_script, "dispatcher must map to worker-media image identity")
+    require("outbox-dispatcher" in deployment_source, "production decision must bind dispatcher identity")
+    require("outbox-dispatcher" in rollback_source, "rollback decision must bind dispatcher identity")
     require("deploymentConfiguration" in rollout_script, "rollout evidence must read live ECS deployment config")
     require("alarms.rollback" in rollout_script, "rollout evidence must require alarm rollback")
     require("capture-production-runtime-identity.sh" in deploy_workflow, "deploy workflow must capture exact image identity")
@@ -357,7 +418,9 @@ def main() -> int:
                     "unsafe_database_rollback_blocked": True,
                     "mutable_rollback_image_blocked": True,
                     "wrong_rollforward_image_blocked": True,
+                    "dispatcher_rollforward_image_swap_blocked": True,
                     "wrong_previous_smoke_version_blocked": True,
+                    "dispatcher_production_image_key_swap_blocked": True,
                     "canary_100_percent_blocked": True,
                     "alarm_state_blocked": True,
                     "failed_migration_blocked": True,
