@@ -54,19 +54,16 @@ class ExchangeContractTests(unittest.TestCase):
                 "output/../escape.mp4",
                 1024,
             )
-        item = ExchangeInputFile(
-            "sandbox-exchange/v1/org/run/in.mp4",
-            "input/a.mp4",
-            1024,
-        )
-        with self.assertRaisesRegex(ValueError, "EXCHANGE_PATH_DUPLICATE"):
+        shared_key = "sandbox-exchange/v1/org/run/shared.mp4"
+        item = ExchangeInputFile(shared_key, "input/a.mp4", 1024)
+        with self.assertRaisesRegex(ValueError, "EXCHANGE_KEY_DUPLICATE"):
             ExecRequest(
                 ("tool",),
                 exchange_inputs=(item,),
                 exchange_outputs=(
                     ExchangeOutputFile(
-                        "sandbox-exchange/v1/org/run/out.mp4",
-                        "input/a.mp4",
+                        shared_key,
+                        "output/a.mp4",
                         1024,
                     ),
                 ),
