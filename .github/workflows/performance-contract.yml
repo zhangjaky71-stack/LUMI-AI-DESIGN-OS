@@ -24,11 +24,13 @@ jobs:
         run: |
           python3 scripts/validate_performance_contract.py
           python3 scripts/validate_canvas_performance_reference.py
+          python3 scripts/validate_browser_performance_producer.py
       - name: Python syntax
         run: >-
           python3 -m py_compile
           scripts/validate_performance_contract.py
           scripts/validate_canvas_performance_reference.py
+          scripts/validate_browser_performance_producer.py
           scripts/perf-mock-provider.py
           scripts/perf-http-load.py
           scripts/perf-evaluate.py
