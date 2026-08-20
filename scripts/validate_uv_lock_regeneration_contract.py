@@ -58,6 +58,11 @@ def main() -> int:
         "python3 scripts/validate_uv_workspace_lock.py",
         "run: uv lock --check",
         "run: uv sync --all-packages --frozen",
+        "PYTHONPYCACHEPREFIX: ${{ runner.temp }}/node73-compileall-pycache",
+        "uv run --frozen python -m compileall -q",
+        "Require no post-resolver workspace mutation outside uv.lock",
+        "git ls-files --others --exclude-standard",
+        "unexpected post-resolver path",
         "sha256sum uv.lock",
         "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
     ):
@@ -65,6 +70,7 @@ def main() -> int:
     require("contents: write" not in regenerate, "resolver/project-code phase must never receive contents:write")
     require("GITHUB_TOKEN" not in regenerate, "resolver/project-code phase must not receive GitHub write token")
     require("git push" not in regenerate and "git commit" not in regenerate, "read-only resolver phase must not mutate repository refs")
+    require("uv run python" not in regenerate, "post-resolver Python execution must remain explicitly --frozen")
 
     for marker in (
         "needs: [regenerate-lock]",
@@ -98,13 +104,34 @@ def main() -> int:
 
     read_checkout = regenerate.find("ref: ${{ inputs.expected_sha }}")
     resolver = regenerate.find("run: uv lock")
+    frozen_compile = regenerate.find("uv run --frozen python -m compileall -q")
+    final_workspace_guard = regenerate.find("Require no post-resolver workspace mutation outside uv.lock")
+    freeze_identity = regenerate.find("Freeze regenerated lock identity")
     artifact = regenerate.find("actions/upload-artifact@")
     write_checkout = commit.find("ref: ${{ inputs.expected_sha }}")
     download = commit.find("actions/download-artifact@")
     remote_guard = commit.find('test "$(git rev-parse "origin/${TARGET_REF}")" = "$EXPECTED_SHA"')
     push = commit.find('push origin "HEAD:${TARGET_REF}"')
-    require(min(read_checkout, resolver, artifact, write_checkout, download, remote_guard, push) >= 0, "uv-lock two-phase ordering markers incomplete")
-    require(read_checkout < resolver < artifact, "read-only phase must bind exact SHA before resolver and artifact publication")
+    require(
+        min(
+            read_checkout,
+            resolver,
+            frozen_compile,
+            final_workspace_guard,
+            freeze_identity,
+            artifact,
+            write_checkout,
+            download,
+            remote_guard,
+            push,
+        )
+        >= 0,
+        "uv-lock two-phase ordering markers incomplete",
+    )
+    require(
+        read_checkout < resolver < frozen_compile < final_workspace_guard < freeze_identity < artifact,
+        "read-only phase must bind exact SHA, resolve once, run frozen verification, re-check workspace, then publish artifact",
+    )
     require(write_checkout < download < remote_guard < push, "write phase must bind exact SHA/artifact and re-check remote before push")
 
     print("NODE-73 canonical uv-lock two-phase bootstrap contract: PASS")
