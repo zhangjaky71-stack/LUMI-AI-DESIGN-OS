@@ -49,6 +49,11 @@ def validate_policy(payload: Mapping[str, Any]) -> dict[str, Any]:
 
     require(payload.get("require_live_reverification") is True, "governance policy must require live re-verification")
     require(payload.get("require_evidence_head_equals_execution_sha") is True, "governance policy must bind live branch head to execution SHA")
+    require(payload.get("require_evidence_head_locked") is True, "governance policy must require the Evidence Head branch to be locked read-only")
+    require(
+        payload.get("require_non_evidence_release_branches_unlocked") is True,
+        "governance policy must keep non-Evidence release branches unlocked for final merge operations",
+    )
     return {
         "schema_version": 1,
         "kind": KIND,
@@ -63,6 +68,8 @@ def validate_policy(payload: Mapping[str, Any]) -> dict[str, Any]:
         },
         "require_live_reverification": True,
         "require_evidence_head_equals_execution_sha": True,
+        "require_evidence_head_locked": True,
+        "require_non_evidence_release_branches_unlocked": True,
     }
 
 
@@ -81,6 +88,8 @@ def self_test() -> dict[str, Any]:
         },
         "require_live_reverification": True,
         "require_evidence_head_equals_execution_sha": True,
+        "require_evidence_head_locked": True,
+        "require_non_evidence_release_branches_unlocked": True,
     }
     clean = validate_policy(good)
     mutations = [
@@ -90,6 +99,8 @@ def self_test() -> dict[str, Any]:
         {**good, "protection_profile": "WEAK"},
         {**good, "require_live_reverification": False},
         {**good, "require_evidence_head_equals_execution_sha": False},
+        {**good, "require_evidence_head_locked": False},
+        {**good, "require_non_evidence_release_branches_unlocked": False},
         {**good, "required_status_checks": None},
         {**good, "required_status_checks": {**good["required_status_checks"], "strict": False}},
         {**good, "required_status_checks": {**good["required_status_checks"], "required_contexts": ["unrelated-check"]}},
