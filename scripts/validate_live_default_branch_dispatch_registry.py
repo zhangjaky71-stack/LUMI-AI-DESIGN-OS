@@ -130,6 +130,12 @@ def validate_default_stub(*, path: str, stub_text: str, release_text: str) -> di
     }
 
 
+def validate_stable_snapshot(start_sha: str, end_sha: str) -> None:
+    require(bool(SHA40.fullmatch(start_sha)), "default-branch snapshot start must be SHA40")
+    require(bool(SHA40.fullmatch(end_sha)), "default-branch snapshot end must be SHA40")
+    require(start_sha == end_sha, "default branch moved while live dispatch registry was being captured")
+
+
 def _api_json(url: str, *, token: str) -> dict[str, Any]:
     request = urllib.request.Request(
         url,
@@ -170,7 +176,7 @@ def _contents(repository: str, path: str, ref: str, *, token: str) -> tuple[str,
     blob_sha = payload.get("sha")
     content = payload.get("content")
     encoding = payload.get("encoding")
-    require(isinstance(blob_sha, str) and len(blob_sha) == 40, f"GitHub blob SHA missing for {path}")
+    require(isinstance(blob_sha, str) and bool(SHA40.fullmatch(blob_sha.lower())), f"GitHub blob SHA missing for {path}")
     require(isinstance(content, str) and encoding == "base64", f"GitHub file content is not base64 for {path}")
     try:
         raw = base64.b64decode(content, validate=False)
@@ -208,7 +214,7 @@ def capture(repository: str, *, token: str) -> dict[str, Any]:
     require(bool(token.strip()), "GitHub read token is missing")
     registry = load_json(REGISTRY_PATH)
     paths = validate_registry_policy(registry)
-    main_head = _branch_head(repository, EXPECTED_DEFAULT_BRANCH, token=token)
+    main_head_start = _branch_head(repository, EXPECTED_DEFAULT_BRANCH, token=token)
 
     workflows: list[dict[str, Any]] = []
     for path in paths:
@@ -216,7 +222,7 @@ def capture(repository: str, *, token: str) -> dict[str, Any]:
         require(release_path.is_file(), f"release-ref workflow missing from Evidence Head checkout: {path}")
         release_text = release_path.read_text(encoding="utf-8")
         require("workflow_dispatch:" in release_text, f"release-ref workflow lost workflow_dispatch: {path}")
-        blob_sha, stub_text = _contents(repository, path, EXPECTED_DEFAULT_BRANCH, token=token)
+        blob_sha, stub_text = _contents(repository, path, main_head_start, token=token)
         validation = validate_default_stub(path=path, stub_text=stub_text, release_text=release_text)
         workflows.append(
             {
@@ -227,19 +233,24 @@ def capture(repository: str, *, token: str) -> dict[str, Any]:
             }
         )
 
+    main_head_end = _branch_head(repository, EXPECTED_DEFAULT_BRANCH, token=token)
+    validate_stable_snapshot(main_head_start, main_head_end)
+
     return {
         "schema_version": 1,
         "kind": REPORT_KIND,
         "status": "PASS",
         "repository": EXPECTED_REPOSITORY,
         "default_branch": EXPECTED_DEFAULT_BRANCH,
-        "default_branch_head_sha": main_head,
+        "default_branch_head_sha": main_head_start,
+        "default_branch_head_stable_during_capture": True,
         "release_ref": EXPECTED_RELEASE_REF,
         "registry_policy_sha256": sha256_bytes(REGISTRY_PATH.read_bytes()),
         "workflow_count": len(workflows),
         "workflows": workflows,
         "all_default_branch_workflows_fail_closed": True,
         "dispatch_input_schemas_bound_to_evidence_head": True,
+        "workflow_blobs_bound_to_exact_default_branch_head": True,
     }
 
 
@@ -248,6 +259,7 @@ def self_test() -> dict[str, Any]:
     clean = """name: X\non:\n  workflow_dispatch:\n    inputs:\n      foo:\n        required: true\n        type: string\npermissions:\n  contents: read\njobs:\n  default-branch-registry-only:\n    runs-on: ubuntu-24.04\n    steps:\n      - name: Refuse default-branch execution\n        run: |\n          echo ref=release-closure-p0\n          exit 64\n"""
     result = validate_default_stub(path=".github/workflows/x.yml", stub_text=clean, release_text=release)
     require(result.get("dispatch_inputs") == ["foo"], "clean default-branch stub fixture did not PASS")
+    validate_stable_snapshot("a" * 40, "a" * 40)
 
     mutations = [
         clean.replace("foo:\n", "bar:\n", 1),
@@ -265,6 +277,14 @@ def self_test() -> dict[str, Any]:
             blocked += 1
             continue
         raise LiveDispatchRegistryError(f"negative live dispatch registry drill did not block: {index}")
+
+    try:
+        validate_stable_snapshot("a" * 40, "b" * 40)
+    except LiveDispatchRegistryError:
+        blocked += 1
+    else:
+        raise LiveDispatchRegistryError("negative live dispatch registry snapshot drift drill did not block")
+
     return {"status": "PASS", "negative_drills": blocked}
 
 
@@ -278,7 +298,7 @@ def main() -> int:
 
     try:
         test_result = self_test()
-        require(test_result.get("status") == "PASS" and test_result.get("negative_drills") == 6, "live dispatch registry self-test drift")
+        require(test_result.get("status") == "PASS" and test_result.get("negative_drills") == 7, "live dispatch registry self-test drift")
         if args.self_test:
             print(json.dumps(test_result, indent=2, sort_keys=True))
             return 0
