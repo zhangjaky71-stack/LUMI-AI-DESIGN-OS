@@ -17,6 +17,11 @@ from .video_generation_codec import (
     encode_video_task_spec,
 )
 
+_VIDEO_CAPABILITY = "video.generate"
+_PROVIDER_PENDING = "model-gateway"
+_MODEL_PENDING = "routing-pending"
+_PUBLIC_RESULT_SCHEMA_VERSION = 1
+
 
 class PostgresVideoRepository(InMemoryVideoRepository):
     """Invocation-local NODE-48 repository with durable PostgreSQL load/flush.
@@ -201,9 +206,109 @@ class PostgresVideoRepository(InMemoryVideoRepository):
                     await _upsert_provider(connection, row_id=row_id, record=record, active=False)
                 for record in active:
                     await _upsert_provider(connection, row_id=row_id, record=record, active=True)
+
+                await _sync_public_generation(connection, spec=spec, job=job)
             return job
         finally:
             await connection.close()
+
+
+async def _sync_public_generation(
+    connection: asyncpg.Connection,
+    *,
+    spec: VideoTaskSpec,
+    job: VideoJob,
+) -> None:
+    rows = await connection.fetch(
+        """
+        SELECT id, organization_id, project_id, task_id, operation_id,
+               provider, model, capability, request_json
+        FROM generations
+        WHERE organization_id=$1 AND operation_id=$2
+        ORDER BY created_at, id
+        LIMIT 2
+        FOR UPDATE
+        """,
+        UUID(spec.organization_id),
+        UUID(spec.operation_id),
+    )
+    if len(rows) > 1:
+        raise VideoOperationConflict("VIDEO_PUBLIC_GENERATION_DUPLICATE")
+    if not rows:
+        # Internal Agent/TaskGraph video jobs are allowed to omit the public API
+        # Generation control row. The canonical Task + NODE-48 snapshots still own
+        # their execution lifecycle.
+        return
+    row = rows[0]
+    if (
+        row["organization_id"] != UUID(spec.organization_id)
+        or row["project_id"] != UUID(spec.project_id)
+        or row["task_id"] != UUID(spec.task_id)
+        or row["operation_id"] != UUID(spec.operation_id)
+        or row["capability"] != _VIDEO_CAPABILITY
+    ):
+        raise RuntimeError("VIDEO_PUBLIC_GENERATION_SCOPE_CONFLICT")
+    public_spec = decode_video_task_spec(_json_object(row["request_json"]))
+    if public_spec.semantic_hash != spec.semantic_hash:
+        raise VideoOperationConflict("VIDEO_PUBLIC_GENERATION_SPEC_CONFLICT")
+
+    provider, model = _job_provider_model(
+        job,
+        fallback_provider=str(row["provider"] or _PROVIDER_PENDING),
+        fallback_model=str(row["model"] or _MODEL_PENDING),
+    )
+    await connection.execute(
+        """
+        UPDATE generations
+        SET provider=$3,
+            model=$4,
+            status=$5,
+            result_json=$6::jsonb
+        WHERE id=$1 AND organization_id=$2
+        """,
+        row["id"],
+        UUID(spec.organization_id),
+        provider,
+        model,
+        job.status.casefold(),
+        _json(_public_generation_result(job)),
+    )
+
+
+def _job_provider_model(
+    job: VideoJob,
+    *,
+    fallback_provider: str,
+    fallback_model: str,
+) -> tuple[str, str]:
+    for shot in reversed(job.shots):
+        if shot.provider and shot.model:
+            return shot.provider, shot.model
+    return fallback_provider, fallback_model
+
+
+def _public_generation_result(job: VideoJob) -> dict[str, object]:
+    return {
+        "schema_version": _PUBLIC_RESULT_SCHEMA_VERSION,
+        "video_job_id": job.video_job_id,
+        "status": job.status,
+        "estimated_cost_usd": format(job.estimated_cost_usd, "f"),
+        "actual_cost_usd": format(job.actual_cost_usd, "f"),
+        "final_artifact_version_id": job.final_artifact_version_id,
+        "error_code": job.error_code,
+        "shots": [
+            {
+                "shot_id": shot.shot_id,
+                "status": shot.status,
+                "attempt_count": shot.attempt_count,
+                "provider": shot.provider,
+                "model": shot.model,
+                "artifact_version_id": shot.clip_artifact_version_id,
+                "error_code": shot.error_code,
+            }
+            for shot in job.shots
+        ],
+    }
 
 
 async def _upsert_provider(
