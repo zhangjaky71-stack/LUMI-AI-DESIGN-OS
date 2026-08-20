@@ -15,6 +15,16 @@ EXPECTED = {
     "worker-media": "apps/worker-media/Dockerfile",
     "sandbox-runtime": "services/sandbox-runtime/Dockerfile",
 }
+PINNED_ACTIONS = {
+    "checkout": "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0",
+    "setup-python": "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0",
+    "setup-uv": "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0",
+    "login": "docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0",
+    "buildx": "docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0",
+    "build-push": "docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0",
+    "attest": "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2",
+    "upload": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1",
+}
 
 
 class PipelineContractError(RuntimeError):
@@ -68,13 +78,16 @@ def validate_workflow() -> None:
         "uv sync --all-packages --frozen",
         "python3 scripts/validate_runtime_image_closure.py",
         "python3 scripts/runtime_image_set.py validate-manifest",
-        "docker/login-action@v4",
-        "docker/setup-buildx-action@v4",
-        "docker/build-push-action@v7",
-        "actions/attest@v4",
+        PINNED_ACTIONS["checkout"],
+        PINNED_ACTIONS["setup-python"],
+        PINNED_ACTIONS["setup-uv"],
+        PINNED_ACTIONS["login"],
+        PINNED_ACTIONS["buildx"],
+        PINNED_ACTIONS["build-push"],
+        PINNED_ACTIONS["attest"],
         "docker buildx imagetools inspect",
         "python3 scripts/runtime_image_set.py assemble",
-        "actions/upload-artifact@v7",
+        PINNED_ACTIONS["upload"],
         "runtime-image-set-${{ github.sha }}",
     ):
         _require(marker in text, f"runtime image build workflow missing: {marker}")
@@ -83,6 +96,8 @@ def validate_workflow() -> None:
     _require(text.count("provenance: mode=max") == 6, "all six images require max provenance")
     _require(text.count("sbom: true") == 6, "all six images require SBOM attestation")
     _require(text.count("push-to-registry: true") == 6, "all six images require GitHub registry attestation")
+    _require(text.count(PINNED_ACTIONS["build-push"]) == 6, "all six builds must use the approved immutable build-push action")
+    _require(text.count(PINNED_ACTIONS["attest"]) == 6, "all six attestations must use the approved immutable attest action")
     _require(
         text.count("python3 scripts/runtime_image_set.py fragment") == 6,
         "all six image digests must produce freeze fragments",
