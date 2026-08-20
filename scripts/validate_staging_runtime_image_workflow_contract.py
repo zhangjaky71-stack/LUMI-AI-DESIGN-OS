@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "staging-acceptance-gate.yml"
 EVIDENCE_TEMPLATE = ROOT / "staging" / "acceptance" / "evidence-template.json"
 EVIDENCE_VALIDATOR = ROOT / "scripts" / "validate_staging_evidence_artifacts.py"
+DATABASE_PARITY_CONTRACT = ROOT / "scripts" / "validate_staging_database_parity_contract.py"
 DOWNLOAD_ACTION = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1"
 UPLOAD_ACTION = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2"
 
@@ -37,23 +38,38 @@ def _job_block(text: str, job_name: str, next_job: str | None) -> str:
     return text[start:end]
 
 
-def _run_evidence_binding_self_test() -> None:
-    result = subprocess.run(
-        [sys.executable, str(EVIDENCE_VALIDATOR), "--self-test"],
-        cwd=ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    require(result.returncode == 0, f"staging evidence artifact validator self-test failed: {result.stderr.strip()}")
+def _run_json_contract(command: list[str], *, label: str) -> dict[str, object]:
+    result = subprocess.run(command, cwd=ROOT, check=False, capture_output=True, text=True)
+    require(result.returncode == 0, f"{label} failed: {result.stderr.strip()}")
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        raise WorkflowContractError("staging evidence artifact validator self-test did not emit JSON") from exc
+        raise WorkflowContractError(f"{label} did not emit JSON") from exc
+    require(isinstance(payload, dict), f"{label} output must be a JSON object")
+    return payload
+
+
+def _run_evidence_binding_self_test() -> None:
+    payload = _run_json_contract(
+        [sys.executable, str(EVIDENCE_VALIDATOR), "--self-test"],
+        label="staging evidence artifact validator self-test",
+    )
     require(payload.get("status") == "PASS", "staging evidence artifact validator self-test did not PASS")
     require(payload.get("static_negative_drills") == 8, "staging evidence artifact static negative drill count drift")
     require(payload.get("live_negative_drills") == 8, "staging evidence artifact live negative drill count drift")
     require(payload.get("verified_artifacts") == 2, "staging evidence artifact clean fixture verification count drift")
+
+
+def _run_database_parity_contract() -> None:
+    require(DATABASE_PARITY_CONTRACT.is_file(), "staging database parity producer contract is missing")
+    payload = _run_json_contract(
+        [sys.executable, str(DATABASE_PARITY_CONTRACT)],
+        label="staging database parity producer contract",
+    )
+    require(payload.get("status") == "PASS", "staging database parity producer contract did not PASS")
+    require(payload.get("database_parity_negative_drills") == 8, "database parity negative drill count drift")
+    require(payload.get("collector_private_fargate") is True, "database parity collector private Fargate boundary drift")
+    require(payload.get("freeze_two_phase") is True, "database parity freeze two-phase boundary drift")
 
 
 def main() -> int:
@@ -87,6 +103,7 @@ def main() -> int:
         require(marker in text, f"staging workflow missing evidence/runtime-image/decision binding marker: {marker}")
 
     _run_evidence_binding_self_test()
+    _run_database_parity_contract()
 
     require(
         text.count('ref: ${{ github.sha }}') == 4,
@@ -207,7 +224,7 @@ def main() -> int:
         "source-contract must fail closed on release action supply-chain drift",
     )
 
-    print("NODE-71 immutable evidence/live producers, runtime-image, decision artifact, exact-SHA checkout, scoped permission, and executable negative-drill workflow contract: PASS")
+    print("NODE-71 immutable evidence/live producers, database parity producer, runtime-image, decision artifact, exact-SHA checkout, scoped permission, and executable negative-drill workflow contract: PASS")
     return 0
 
 
