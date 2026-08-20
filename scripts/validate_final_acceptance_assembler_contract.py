@@ -13,6 +13,7 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 ASSEMBLER_PATH = ROOT / "scripts/final-acceptance-assembler.py"
 PACKAGE_VALIDATOR_PATH = ROOT / "scripts/validate_final_acceptance_package.py"
+GOVERNANCE_VALIDATOR_PATH = ROOT / "scripts/capture_release_branch_protection.py"
 FIXTURE_RELEASE_ID = "_node73-assembler-contract"
 FIXTURE_ROOT = ROOT / "reports" / "final-acceptance" / FIXTURE_RELEASE_ID
 PROD_ROOT = ROOT / "reports" / "production-deployments" / FIXTURE_RELEASE_ID
@@ -48,7 +49,10 @@ def clean_dirs() -> None:
             shutil.rmtree(path)
 
 
-def base_fixture(assembler: ModuleType) -> tuple[argparse.Namespace, dict[str, Path], Path, Path]:
+def base_fixture(
+    assembler: ModuleType,
+    governance_validator: ModuleType,
+) -> tuple[argparse.Namespace, dict[str, Path], Path, Path]:
     matrix = json.loads((ROOT / "final/acceptance/manifest-v1.json").read_text(encoding="utf-8"))
     require(len(matrix.get("scenarios", [])) == 46, "canonical matrix must contain 46 scenarios")
     rc = {
@@ -72,12 +76,13 @@ def base_fixture(assembler: ModuleType) -> tuple[argparse.Namespace, dict[str, P
         },
     )
 
+    protection_profile = governance_validator._profile_fixture()
     governance = GOVERNANCE_ROOT / "branch-protection.json"
     write(
         governance,
         {
             "schema_version": 1,
-            "kind": "LUMI_RELEASE_BRANCH_PROTECTION_V1",
+            "kind": governance_validator.KIND,
             "status": "PASS",
             "repository": "zhangjaky71-stack/LUMI-AI-DESIGN-OS",
             "branches": [
@@ -85,11 +90,13 @@ def base_fixture(assembler: ModuleType) -> tuple[argparse.Namespace, dict[str, P
                     "name": "node-73-final-acceptance-release",
                     "protected": True,
                     "head_sha": "b" * 40,
+                    "protection": copy.deepcopy(protection_profile),
                 },
                 {
                     "name": "release-closure-p0",
                     "protected": True,
                     "head_sha": rc["git_sha"],
+                    "protection": copy.deepcopy(protection_profile),
                 },
             ],
         },
@@ -179,11 +186,12 @@ def base_fixture(assembler: ModuleType) -> tuple[argparse.Namespace, dict[str, P
 
 def expect_block(
     assembler: ModuleType,
+    governance_validator: ModuleType,
     mutate: Callable[[argparse.Namespace, dict[str, Path], Path, Path], None],
     label: str,
 ) -> None:
     clean_dirs()
-    args, upstream, authorization, scenarios = base_fixture(assembler)
+    args, upstream, authorization, scenarios = base_fixture(assembler, governance_validator)
     mutate(args, upstream, authorization, scenarios)
     try:
         assembler.assemble(args)
@@ -195,9 +203,10 @@ def expect_block(
 def main() -> int:
     assembler = load_module(ASSEMBLER_PATH, "lumi_final_assembler")
     package = load_module(PACKAGE_VALIDATOR_PATH, "lumi_final_package_validator")
+    governance_validator = load_module(GOVERNANCE_VALIDATOR_PATH, "lumi_governance_validator")
     clean_dirs()
     try:
-        args, upstream, authorization, scenarios = base_fixture(assembler)
+        args, upstream, authorization, scenarios = base_fixture(assembler, governance_validator)
         release_path, evidence_path = assembler.assemble(args)
         require(release_path.name == "release.json", "assembler internal release filename changed unexpectedly")
         canonical_release = release_path.with_name("release-manifest.json")
@@ -212,28 +221,28 @@ def main() -> int:
             payload["release_candidate"]["git_sha"] = "b" * 40
             write(paths["security"], payload)
 
-        expect_block(assembler, cross_rc, "cross-RC Security decision")
+        expect_block(assembler, governance_validator, cross_rc, "cross-RC Security decision")
 
         def missing_scenario(_args: argparse.Namespace, _paths: dict[str, Path], _auth: Path, scenarios_path: Path) -> None:
             payload = json.loads(scenarios_path.read_text(encoding="utf-8"))
             payload["items"].pop()
             write(scenarios_path, payload)
 
-        expect_block(assembler, missing_scenario, "missing scenario")
+        expect_block(assembler, governance_validator, missing_scenario, "missing scenario")
 
         def pass_without_evidence(_args: argparse.Namespace, _paths: dict[str, Path], _auth: Path, scenarios_path: Path) -> None:
             payload = json.loads(scenarios_path.read_text(encoding="utf-8"))
             payload["items"][0]["evidence_refs"] = []
             write(scenarios_path, payload)
 
-        expect_block(assembler, pass_without_evidence, "PASS without evidence")
+        expect_block(assembler, governance_validator, pass_without_evidence, "PASS without evidence")
 
         def missing_approval(_args: argparse.Namespace, _paths: dict[str, Path], auth_path: Path, _scenarios: Path) -> None:
             payload = json.loads(auth_path.read_text(encoding="utf-8"))
             payload["approvals"]["security"] = "PENDING"
             write(auth_path, payload)
 
-        expect_block(assembler, missing_approval, "non-approved authorization")
+        expect_block(assembler, governance_validator, missing_approval, "non-approved authorization")
 
         def unprotected_branch(args: argparse.Namespace, _paths: dict[str, Path], _auth: Path, _scenarios: Path) -> None:
             path = ROOT / args.repository_governance
@@ -242,7 +251,7 @@ def main() -> int:
             payload["status"] = "BLOCKED_EXTERNAL"
             write(path, payload)
 
-        expect_block(assembler, unprotected_branch, "unprotected release branch")
+        expect_block(assembler, governance_validator, unprotected_branch, "unprotected release branch")
 
         def governance_repo_swap(args: argparse.Namespace, _paths: dict[str, Path], _auth: Path, _scenarios: Path) -> None:
             path = ROOT / args.repository_governance
@@ -250,7 +259,7 @@ def main() -> int:
             payload["repository"] = "example/other"
             write(path, payload)
 
-        expect_block(assembler, governance_repo_swap, "repository governance repo swap")
+        expect_block(assembler, governance_validator, governance_repo_swap, "repository governance repo swap")
 
         def governance_head_swap(args: argparse.Namespace, _paths: dict[str, Path], _auth: Path, _scenarios: Path) -> None:
             path = ROOT / args.repository_governance
@@ -258,7 +267,15 @@ def main() -> int:
             payload["branches"][1]["head_sha"] = "c" * 40
             write(path, payload)
 
-        expect_block(assembler, governance_head_swap, "repository governance RC head swap")
+        expect_block(assembler, governance_validator, governance_head_swap, "repository governance RC head swap")
+
+        def governance_force_push(args: argparse.Namespace, _paths: dict[str, Path], _auth: Path, _scenarios: Path) -> None:
+            path = ROOT / args.repository_governance
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload["branches"][0]["protection"]["allow_force_pushes"] = True
+            write(path, payload)
+
+        expect_block(assembler, governance_validator, governance_force_push, "unsafe force-push protection profile")
 
         print("final acceptance assembler contract: PASS")
         return 0
