@@ -5,13 +5,25 @@ on:
     paths:
       - "staging/acceptance/api-provenance-sources-v1.json"
       - "staging/acceptance/evidence-template.json"
+      - "production/runtime-images/manifest-v1.json"
       - "scripts/staging-acceptance-gate.py"
       - "scripts/validate_staging_acceptance_contract.py"
+      - "scripts/validate_video_generation_producer_binding.py"
       - "scripts/validate_side_effect_control_provenance.py"
       - "scripts/validate_tool_audit_provenance.py"
       - "scripts/validate_tool_approval_provenance.py"
       - "scripts/validate_api_provenance_source_manifest.py"
       - "apps/api/**"
+      - "apps/worker-media/src/lumi_worker_media/cli.py"
+      - "apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py"
+      - "apps/worker-media/src/lumi_worker_media/event_runtime.py"
+      - "apps/worker-media/src/lumi_worker_media/external_wait_runtime.py"
+      - "apps/worker-media/src/lumi_worker_media/video_*.py"
+      - "apps/worker-media/tests/integration/test_video_*.py"
+      - "infra/iac/modules/compute/main.tf"
+      - "infra/iac/environments/staging/app/main.tf"
+      - "infra/iac/environments/production/app/main.tf"
+      - ".github/workflows/video-generation.yml"
       - ".github/workflows/api-provenance-source-manifest.yml"
   workflow_dispatch:
 
@@ -27,8 +39,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Compile provenance manifest validator
-        run: python -m compileall -q scripts/validate_api_provenance_source_manifest.py
+      - name: Compile provenance manifest and Video producer validators
+        run: >-
+          python -m compileall -q
+          scripts/validate_api_provenance_source_manifest.py
+          scripts/validate_video_generation_producer_binding.py
       - name: Require one canonical API provenance source union
         run: python scripts/validate_api_provenance_source_manifest.py
       - name: Validate manifest and template JSON syntax
