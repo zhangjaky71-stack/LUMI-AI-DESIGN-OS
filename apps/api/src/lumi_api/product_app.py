@@ -6,6 +6,10 @@ from typing import cast
 from fastapi import HTTPException
 from sqlalchemy import text
 
+from lumi_api.agent_runtime_control import (
+    build_agent_runtime_control_runtime,
+    create_agent_runtime_control_router,
+)
 from lumi_api.api.v1.services import ApiV1Gateway
 from lumi_api.asset_app import app, session_factory, settings
 from lumi_api.generations.gateway import GenerationRuntimeGateway
@@ -79,6 +83,22 @@ if _internal_controls_required or _data_secret_present:
 else:
     app.state.tool_data_control_enabled = False
 
+_agent_control_secret_present = bool(os.getenv("LUMI_AGENT_CONTROL_AUTH_SECRET", ""))
+if _internal_controls_required or _agent_control_secret_present:
+    if not settings.database_url:
+        raise RuntimeError("LUMI_DATABASE_URL_REQUIRED_FOR_AGENT_CONTROL")
+    app.include_router(
+        create_agent_runtime_control_router(
+            build_agent_runtime_control_runtime(
+                database_url=settings.database_url,
+                session_factory=session_factory,
+            )
+        )
+    )
+    app.state.agent_runtime_control_enabled = True
+else:
+    app.state.agent_runtime_control_enabled = False
+
 app.include_router(create_tool_approval_public_router(session_factory))
 
 
@@ -106,6 +126,8 @@ async def health_ready() -> dict[str, str]:
         raise HTTPException(status_code=503, detail="tool approval control plane unavailable")
     if _internal_controls_required and not app.state.tool_data_control_enabled:
         raise HTTPException(status_code=503, detail="tool data control plane unavailable")
+    if _internal_controls_required and not app.state.agent_runtime_control_enabled:
+        raise HTTPException(status_code=503, detail="Agent Runtime control plane unavailable")
     return _payload()
 
 
