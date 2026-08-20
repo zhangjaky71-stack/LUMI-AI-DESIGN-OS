@@ -18,6 +18,7 @@ class JobState(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     RETRYING = "retrying"
+    WAITING_EXTERNAL = "waiting_external"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
