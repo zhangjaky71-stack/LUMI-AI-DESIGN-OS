@@ -10,6 +10,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 GOVERNANCE_POLICY = ROOT / "scripts" / "validate_release_governance_policy.py"
 LIVE_GOVERNANCE_V2 = ROOT / "scripts" / "validate_live_release_governance_v2.py"
+GOVERNANCE_APPLY = ROOT / "scripts" / "apply_release_branch_protection.py"
+GOVERNANCE_APPLY_WORKFLOW = ROOT / ".github" / "workflows" / "configure-release-branch-protection.yml"
 AUTH_V2 = ROOT / "scripts" / "capture_release_authorization_v2.py"
 IDENTITY_V2 = ROOT / "scripts" / "validate_finalization_identity_v2.py"
 ASSEMBLER_V2 = ROOT / "scripts" / "final-acceptance-assembler-v2.py"
@@ -52,6 +54,7 @@ def require_markers(path: Path, markers: tuple[str, ...]) -> None:
 def main() -> int:
     governance = load_module(GOVERNANCE_POLICY, "lumi_governance_policy_contract_v2")
     live_governance = load_module(LIVE_GOVERNANCE_V2, "lumi_live_governance_contract_v2")
+    governance_apply = load_module(GOVERNANCE_APPLY, "lumi_governance_apply_contract_v2")
     auth = load_module(AUTH_V2, "lumi_authorization_contract_v2")
     identity = load_module(IDENTITY_V2, "lumi_identity_contract_v2")
     package_contract = load_module(PACKAGE_CONTRACT, "lumi_package_contract_v2")
@@ -61,10 +64,12 @@ def main() -> int:
     )
     governance_test: dict[str, Any] = governance.self_test()
     live_governance_test: dict[str, Any] = live_governance.self_test()
+    governance_apply_test: dict[str, Any] = governance_apply.self_test()
     auth_test: dict[str, Any] = auth.self_test()
     identity_test: dict[str, Any] = identity.self_test()
     require(governance_test.get("status") == "PASS" and governance_test.get("negative_drills") == 10, "governance policy V2 self-test drift")
     require(live_governance_test.get("status") == "PASS" and live_governance_test.get("negative_drills") == 4, "live governance policy binding V2 self-test drift")
+    require(governance_apply_test.get("status") == "PASS" and governance_apply_test.get("preflight_guard") == "EVIDENCE_HEAD_EXACT", "branch-protection applicator self-test drift")
     require(auth_test.get("status") == "PASS" and auth_test.get("negative_drills") == 6, "authorization V2 self-test drift")
     require(identity_test.get("status") == "PASS" and identity_test.get("negative_drills") == 7, "finalization identity V2 self-test drift")
     require(package_contract.main() == 0, "V2 assembler/package execution contract did not PASS")
@@ -123,6 +128,26 @@ def main() -> int:
         'required_contexts - observed',
         '"status_check_policy_bound": True',
         'expected_evidence_head_sha',
+    ))
+
+    require_markers(GOVERNANCE_APPLY, (
+        'CONFIRMATION = "APPLY_NODE73_RELEASE_PROTECTION"',
+        'capture_module._fetch_branch(',
+        'preflight_heads.get(evidence_branch) == evidence_head_sha.lower()',
+        '"allow_force_pushes": False',
+        '"allow_deletions": False',
+        'binder_module.validate_live_report(',
+        '"kind": "LUMI_RELEASE_BRANCH_PROTECTION_APPLY_V1"',
+    ))
+    require_markers(GOVERNANCE_APPLY_WORKFLOW, (
+        "github.ref == 'refs/heads/release-closure-p0'",
+        "inputs.confirm == 'APPLY_NODE73_RELEASE_PROTECTION'",
+        'environment: production',
+        'ref: ${{ github.sha }}',
+        'persist-credentials: false',
+        'RELEASE_GOVERNANCE_ADMIN_TOKEN: ${{ secrets.RELEASE_GOVERNANCE_ADMIN_TOKEN }}',
+        'python3 scripts/apply_release_branch_protection.py',
+        'name: node73-release-branch-protection-${{ github.run_id }}',
     ))
 
     require_markers(AUTH_V2, (
