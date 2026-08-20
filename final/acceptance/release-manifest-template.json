@@ -12,6 +12,10 @@
     "deployment_manifest_path": "PENDING",
     "deployment_manifest_sha256": "PENDING"
   },
+  "repository_governance": {
+    "path": "PENDING",
+    "sha256": "PENDING"
+  },
   "upstream_gates": {
     "security": {"path": "PENDING", "sha256": "PENDING"},
     "recovery": {"path": "PENDING", "sha256": "PENDING"},
