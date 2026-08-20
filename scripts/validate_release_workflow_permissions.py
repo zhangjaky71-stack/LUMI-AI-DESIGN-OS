@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+ASSEMBLE = ROOT / ".github" / "workflows" / "assemble-final-acceptance.yml"
 BUILD = ROOT / ".github" / "workflows" / "build-runtime-image-set.yml"
 LOCK = ROOT / ".github" / "workflows" / "regenerate-uv-lock.yml"
 RUNTIME = ROOT / ".github" / "workflows" / "runtime-image-closure-contract.yml"
@@ -60,6 +61,25 @@ def require_top_read_only(source: str, label: str) -> None:
         "pull-requests: write",
     ):
         require(forbidden not in header, f"{label} top-level permission too broad: {forbidden}")
+
+
+def validate_assemble() -> None:
+    source = text(ASSEMBLE)
+    require_top_read_only(source, "Final Acceptance package assembler")
+    assemble = job_block(source, "assemble", None)
+    require(
+        "permissions:\n      contents: write\n" in assemble,
+        "only Final Acceptance assembler job may receive contents:write",
+    )
+    for forbidden in ("actions: write", "packages: write", "attestations: write", "id-token: write", "pull-requests: write"):
+        require(forbidden not in assemble, f"Final Acceptance assembler has unrelated write capability: {forbidden}")
+    require("github.ref == 'refs/heads/release-closure-p0'" in assemble, "Final Acceptance assembler must be release-closure-p0-only")
+    require('ref: ${{ github.sha }}' in assemble and "fetch-depth: 0" in assemble, "Final Acceptance assembler must checkout exact dispatch SHA with full history")
+    require('git push origin "HEAD:${GITHUB_REF_NAME}"' in assemble, "Final Acceptance assembler must push only the current release branch")
+    require("git push --force" not in assemble.casefold(), "Final Acceptance assembler must never force-push")
+    require('test "$remote_sha" = "$GITHUB_SHA"' in assemble, "Final Acceptance assembler must fail closed if release branch moves")
+    require("final-acceptance-assembler-v2.py" in assemble, "Final Acceptance assembler must use V2 package producer")
+    require("final-acceptance-assembler.py" not in assemble, "Final Acceptance assembler must not use V1 package producer")
 
 
 def validate_build() -> None:
@@ -153,6 +173,7 @@ def validate_final() -> None:
 
 
 def main() -> int:
+    validate_assemble()
     validate_build()
     validate_lock()
     validate_staging()
