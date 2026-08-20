@@ -10,6 +10,7 @@ dependencies = [
   "lumi-domain",
   "lumi-image-generation",
   "lumi-model-gateway",
+  "lumi-video-generation",
   "Pillow==12.3.0",
   "pydantic-settings==2.14.2",
 ]
