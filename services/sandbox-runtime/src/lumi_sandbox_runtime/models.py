@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -63,17 +64,110 @@ class SandboxSpec:
             raise ValueError("SANDBOX_ALLOWLIST_REQUIRED")
 
 
+_EXCHANGE_KEY_PREFIX = "sandbox-exchange/v1/"
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_MAX_EXCHANGE_FILE_BYTES = 8 * 1024 * 1024 * 1024
+
+
+def _validate_exchange_key(value: str) -> None:
+    if (
+        not value.startswith(_EXCHANGE_KEY_PREFIX)
+        or len(value) > 1024
+        or "\x00" in value
+        or "\n" in value
+        or "\r" in value
+        or "//" in value
+        or "/../" in value
+        or value.endswith("/..")
+    ):
+        raise ValueError("SANDBOX_EXCHANGE_KEY_INVALID")
+
+
+def _validate_exchange_path(value: str, *, prefix: str) -> None:
+    if (
+        not value.startswith(prefix)
+        or value.startswith("/")
+        or len(value) > 512
+        or "\\" in value
+        or "\x00" in value
+        or "\n" in value
+        or "\r" in value
+        or "//" in value
+        or "/../" in value
+        or value.endswith("/..")
+        or value in {prefix.rstrip("/"), ".", ".."}
+    ):
+        raise ValueError("SANDBOX_EXCHANGE_PATH_INVALID")
+
+
+def _validate_exchange_file_limit(value: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= _MAX_EXCHANGE_FILE_BYTES:
+        raise ValueError("SANDBOX_EXCHANGE_FILE_LIMIT_INVALID")
+
+
+@dataclass(frozen=True, slots=True)
+class ExchangeInputFile:
+    exchange_key: str
+    path: str
+    max_bytes: int
+    expected_sha256: str | None = None
+
+    def __post_init__(self) -> None:
+        _validate_exchange_key(self.exchange_key)
+        _validate_exchange_path(self.path, prefix="input/")
+        _validate_exchange_file_limit(self.max_bytes)
+        if self.expected_sha256 is not None and not _SHA256.fullmatch(self.expected_sha256):
+            raise ValueError("SANDBOX_EXCHANGE_SHA256_INVALID")
+
+
+@dataclass(frozen=True, slots=True)
+class ExchangeOutputFile:
+    exchange_key: str
+    path: str
+    max_bytes: int
+    content_type: str = "application/octet-stream"
+
+    def __post_init__(self) -> None:
+        _validate_exchange_key(self.exchange_key)
+        _validate_exchange_path(self.path, prefix="output/")
+        _validate_exchange_file_limit(self.max_bytes)
+        if (
+            not self.content_type
+            or len(self.content_type) > 255
+            or "\x00" in self.content_type
+            or "\n" in self.content_type
+            or "\r" in self.content_type
+        ):
+            raise ValueError("SANDBOX_EXCHANGE_CONTENT_TYPE_INVALID")
+
+
 @dataclass(frozen=True, slots=True)
 class ExecRequest:
     command: tuple[str, ...]
     cwd: str = "work"
     timeout_seconds: int | None = None
+    exchange_inputs: tuple[ExchangeInputFile, ...] = ()
+    exchange_outputs: tuple[ExchangeOutputFile, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.command or any(not part or "\x00" in part for part in self.command):
             raise ValueError("SANDBOX_COMMAND_INVALID")
         if self.timeout_seconds is not None and not 1 <= self.timeout_seconds <= 3600:
             raise ValueError("SANDBOX_EXEC_TIMEOUT_INVALID")
+        if self.cwd not in {"work", "input", "output"}:
+            raise ValueError("SANDBOX_EXEC_CWD_INVALID")
+        if len(self.exchange_inputs) > 64 or len(self.exchange_outputs) > 16:
+            raise ValueError("SANDBOX_EXCHANGE_FILE_COUNT_INVALID")
+        paths = [item.path for item in self.exchange_inputs] + [
+            item.path for item in self.exchange_outputs
+        ]
+        if len(paths) != len(set(paths)):
+            raise ValueError("SANDBOX_EXCHANGE_PATH_DUPLICATE")
+        keys = [item.exchange_key for item in self.exchange_inputs] + [
+            item.exchange_key for item in self.exchange_outputs
+        ]
+        if len(keys) != len(set(keys)):
+            raise ValueError("SANDBOX_EXCHANGE_KEY_DUPLICATE")
 
 
 @dataclass(frozen=True, slots=True)
