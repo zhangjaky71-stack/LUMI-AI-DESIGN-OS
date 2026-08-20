@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import os
 import re
@@ -125,14 +126,9 @@ class S3ProviderOutputStore:
         await self.object_store.upload_from_path(
             bucket=self.bucket,
             object_key=object_key,
-            path=path,
+            path=str(path),
             content_type=content_type,
-            max_bytes=max_bytes,
-            metadata=_request_metadata(
-                request=request,
-                provider=provider,
-                model=model,
-            ),
+            checksum_sha256_b64=_sha256_b64(digest),
         )
         return f"s3://{self.bucket}/{object_key}"
 
@@ -170,15 +166,9 @@ class S3ProviderOutputStore:
         await self.object_store.upload_from_path(
             bucket=self.bucket,
             object_key=object_key,
-            path=path,
+            path=str(path),
             content_type=content_type,
-            max_bytes=max_bytes,
-            metadata={
-                "lumi-kind": "provider-output",
-                "lumi-provider": _metadata_value(provider, 100),
-                "lumi-model": _metadata_value(model, 255),
-                "lumi-provider-request-id": _metadata_value(provider_request_id, 512),
-            },
+            checksum_sha256_b64=_sha256_b64(digest),
         )
         return f"s3://{self.bucket}/{object_key}"
 
@@ -241,6 +231,12 @@ def _sha256_path(path: Path, *, max_bytes: int) -> str:
     if seen <= 0:
         raise ProviderOutputStoreError("provider output file is empty")
     return digest.hexdigest()
+
+
+def _sha256_b64(digest_hex: str) -> str:
+    if len(digest_hex) != 64 or any(char not in "0123456789abcdef" for char in digest_hex):
+        raise ProviderOutputStoreError("provider output checksum is invalid")
+    return base64.b64encode(bytes.fromhex(digest_hex)).decode("ascii")
 
 
 def _path_component(value: str) -> str:
