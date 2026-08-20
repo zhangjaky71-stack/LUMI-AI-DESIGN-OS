@@ -6,6 +6,10 @@ output "service_names" {
   value = { for name, service in aws_ecs_service.service : name => service.name }
 }
 
+output "service_desired_counts" {
+  value = { for name, service in var.services : name => service.desired_count }
+}
+
 output "task_role_arns" {
   value = { for name, role in aws_iam_role.task : name => role.arn }
 }
