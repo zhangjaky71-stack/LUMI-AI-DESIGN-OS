@@ -1,0 +1,256 @@
+name: Freeze Staging Tool Gateway P0 E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_git_sha:
+        description: "Exact 40-character RC Git SHA"
+        required: true
+        type: string
+      collector_run_id:
+        description: "Successful Collect Staging Tool Gateway P0 E2E workflow run ID"
+        required: true
+        type: string
+      staging_evidence_path:
+        description: "Canonical parent staging evidence JSON under reports/staging-acceptance/"
+        required: true
+        type: string
+      freeze_ack:
+        description: "Required acknowledgement: FREEZE_STAGING_TOOL_GATEWAY_P0:<rc-sha>"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  RC_SHA: ${{ inputs.release_git_sha }}
+  COLLECTOR_RUN_ID: ${{ inputs.collector_run_id }}
+  STAGING_EVIDENCE_INPUT: ${{ inputs.staging_evidence_path }}
+  FREEZE_ACK: ${{ inputs.freeze_ack }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  freeze:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Require exact RC checkout, parent evidence path, and acknowledgement
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RC_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$COLLECTOR_RUN_ID" =~ ^[0-9]+$ ]]
+          test "$FREEZE_ACK" = "FREEZE_STAGING_TOOL_GATEWAY_P0:${RC_SHA}"
+          test "$(git rev-parse HEAD)" = "$RC_SHA"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path.cwd().resolve()
+          allowed = (root / "reports" / "staging-acceptance").resolve()
+          target = (root / os.environ["STAGING_EVIDENCE_INPUT"]).resolve()
+          try:
+              target.relative_to(allowed)
+          except ValueError as exc:
+              raise SystemExit("staging_evidence_path escapes reports/staging-acceptance/") from exc
+          if target.suffix != ".json" or not target.is_file():
+              raise SystemExit("staging_evidence_path must be an existing JSON file")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+              fh.write(f"STAGING_EVIDENCE={target.relative_to(root).as_posix()}\n")
+          PY
+          destination="reports/staging-acceptance/${RC_SHA}/tool-gateway-p0-e2e"
+          printf 'DESTINATION=%s\n' "$destination" >> "$GITHUB_ENV"
+
+      - name: Require successful collector run from this branch and exact RC SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          run="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${COLLECTOR_RUN_ID}")"
+          test "$(jq -r '.repository.full_name' <<<"$run")" = "$GITHUB_REPOSITORY"
+          test "$(jq -r '.head_branch' <<<"$run")" = "$GITHUB_REF_NAME"
+          test "$(jq -r '.head_sha' <<<"$run")" = "$RC_SHA"
+          test "$(jq -r '.event' <<<"$run")" = "workflow_dispatch"
+          test "$(jq -r '.status' <<<"$run")" = "completed"
+          test "$(jq -r '.conclusion' <<<"$run")" = "success"
+          test "$(jq -r '.name' <<<"$run")" = "Collect Staging Tool Gateway P0 E2E"
+          jq '{id, name, event, status, conclusion, head_branch, head_sha, run_attempt, created_at, updated_at, html_url}' \
+            <<<"$run" > /tmp/collector-run.json
+
+      - name: Download collector artifact without trusting its directory structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/lumi-tool-p0-artifacts
+          mkdir -p /tmp/lumi-tool-p0-artifacts
+          gh run download "$COLLECTOR_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir /tmp/lumi-tool-p0-artifacts
+
+      - name: Materialize exactly one copy of every independent evidence source
+        shell: bash
+        run: |
+          set -euo pipefail
+          one() {
+            local root="$1" name="$2" destination="$3"
+            mapfile -t matches < <(find "$root" -type f -name "$name" -print)
+            if [[ ${#matches[@]} -ne 1 ]]; then
+              echo "expected exactly one $name below $root, found ${#matches[@]}" >&2
+              exit 65
+            fi
+            cp -- "${matches[0]}" "$destination"
+          }
+
+          rm -rf /tmp/frozen-tool-p0
+          mkdir -p /tmp/frozen-tool-p0
+          one /tmp/lumi-tool-p0-artifacts tool-gateway-p0-fixture.json /tmp/frozen-tool-p0/fixture.json
+          one /tmp/lumi-tool-p0-artifacts tool-gateway-p0-probe.json /tmp/frozen-tool-p0/probe.json
+          one /tmp/lumi-tool-p0-artifacts tool-gateway-p0-db-evidence.json /tmp/frozen-tool-p0/db-evidence.json
+          one /tmp/lumi-tool-p0-artifacts tool-gateway-p0-readiness.json /tmp/frozen-tool-p0/readiness.json
+          one /tmp/lumi-tool-p0-artifacts tool-gateway-p0-runtime-identity.json /tmp/frozen-tool-p0/runtime-identity.json
+          one /tmp/lumi-tool-p0-artifacts tool-gateway-p0-ecs-tasks.json /tmp/frozen-tool-p0/ecs-tasks.json
+          one /tmp/lumi-tool-p0-artifacts tool-gateway-p0-s3-evidence.json /tmp/frozen-tool-p0/s3-evidence.json
+          one /tmp/lumi-tool-p0-artifacts tool-gateway-p0-offload-validation.json /tmp/frozen-tool-p0/collector-offload-validation.json
+          one /tmp/lumi-tool-p0-artifacts tool-gateway-p0-collector.sha256 /tmp/frozen-tool-p0/collector.sha256
+          one /tmp/lumi-tool-p0-artifacts tool-gateway-p0-collector-status.json /tmp/frozen-tool-p0/collector-status.json
+          cp /tmp/collector-run.json /tmp/frozen-tool-p0/source-run.json
+
+      - name: Recompute raw offload and exact-RC runtime identity validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/validate_tool_gateway_p0_offload_probe.py --self-test
+          python3 scripts/validate_tool_gateway_p0_runtime_identity.py --self-test
+          python3 scripts/validate_tool_gateway_p0_offload_probe.py \
+            --probe /tmp/frozen-tool-p0/probe.json \
+            --s3 /tmp/frozen-tool-p0/s3-evidence.json \
+            > /tmp/frozen-tool-p0/offload-validation.json
+          python3 scripts/validate_tool_gateway_p0_runtime_identity.py \
+            --staging "$STAGING_EVIDENCE" \
+            --runtime /tmp/frozen-tool-p0/runtime-identity.json \
+            > /tmp/frozen-tool-p0/runtime-validation.json
+          jq -e --arg sha "$RC_SHA" \
+            '.status == "PASS" and .release_git_sha == $sha and .service_count == 4' \
+            /tmp/frozen-tool-p0/runtime-validation.json >/dev/null
+          jq -e \
+            '.inline_preview_present == true and .full_payload_inline_present == false and .truncated == true' \
+            /tmp/frozen-tool-p0/offload-validation.json >/dev/null
+          jq -e --arg sha "$RC_SHA" \
+            '.status == "COLLECTED_NOT_ACCEPTED" and .release_git_sha == $sha and .synthetic_only == true' \
+            /tmp/frozen-tool-p0/collector-status.json >/dev/null
+          jq -e --arg sha "$RC_SHA" \
+            '.head_sha == $sha and .name == "Collect Staging Tool Gateway P0 E2E" and .event == "workflow_dispatch" and .conclusion == "success"' \
+            /tmp/frozen-tool-p0/source-run.json >/dev/null
+
+      - name: Derive provider evidence only from exact-RC probe plus canonical provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          LUMI_PROBE_INPUT=/tmp/frozen-tool-p0/probe.json \
+          LUMI_STAGING_EVIDENCE_INPUT="$STAGING_EVIDENCE" \
+          LUMI_SEARCH_EVIDENCE_OUTPUT=/tmp/frozen-tool-p0/search-evidence.json \
+          python3 scripts/derive_tool_gateway_p0_search_evidence.py
+
+      - name: Assemble Tool Gateway P0 evidence with v2 offload semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/assemble_tool_gateway_p0_e2e_evidence_v2.py \
+            --staging "$STAGING_EVIDENCE" \
+            --probe /tmp/frozen-tool-p0/probe.json \
+            --db /tmp/frozen-tool-p0/db-evidence.json \
+            --s3 /tmp/frozen-tool-p0/s3-evidence.json \
+            --readiness /tmp/frozen-tool-p0/readiness.json \
+            --search /tmp/frozen-tool-p0/search-evidence.json \
+            --output /tmp/frozen-tool-p0/tool-gateway-e2e.json \
+            --merged-output /tmp/frozen-tool-p0/staging-evidence-with-tool-gateway.json
+          python3 scripts/validate_tool_gateway_e2e_evidence.py \
+            --evidence /tmp/frozen-tool-p0/tool-gateway-e2e.json \
+            > /tmp/frozen-tool-p0/e2e-validation.json
+          jq -e '.verdict == "PASS" and .result_offload.semantics_version == 2 and .result_offload.inline_preview_present == true and .result_offload.full_payload_inline_present == false' \
+            /tmp/frozen-tool-p0/tool-gateway-e2e.json >/dev/null
+
+      - name: Record package checksums and immutable parent evidence identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$STAGING_EVIDENCE" /tmp/frozen-tool-p0/parent-staging-evidence.json
+          sha256sum "$STAGING_EVIDENCE" | awk '{print $1}' > /tmp/frozen-tool-p0/parent-staging-evidence.sha256
+          (
+            cd /tmp/frozen-tool-p0
+            sha256sum \
+              fixture.json probe.json db-evidence.json readiness.json \
+              runtime-identity.json runtime-validation.json ecs-tasks.json \
+              s3-evidence.json offload-validation.json search-evidence.json \
+              tool-gateway-e2e.json staging-evidence-with-tool-gateway.json \
+              parent-staging-evidence.json source-run.json \
+              > package.sha256
+          )
+
+      - name: Preserve immutable exact-RC Tool Gateway evidence boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -d "$DESTINATION" ]]; then
+            if diff -qr "$DESTINATION" /tmp/frozen-tool-p0 >/dev/null; then
+              echo "identical Tool Gateway P0 evidence is already frozen"
+              printf 'FREEZE_NOOP=true\n' >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "refusing to overwrite non-identical Tool Gateway P0 evidence for $RC_SHA" >&2
+            exit 67
+          fi
+          mkdir -p "$(dirname "$DESTINATION")"
+          cp -R /tmp/frozen-tool-p0 "$DESTINATION"
+          printf 'FREEZE_NOOP=false\n' >> "$GITHUB_ENV"
+
+      - name: Refuse changes outside exact RC Tool Gateway evidence directory
+        if: env.FREEZE_NOOP != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          target_prefix="${DESTINATION}/"
+          mapfile -t changed < <({ git diff --name-only; git ls-files --others --exclude-standard; } | sort -u)
+          [[ ${#changed[@]} -gt 0 ]] || { echo "no evidence changes detected" >&2; exit 68; }
+          for path in "${changed[@]}"; do
+            [[ "$path" == "$target_prefix"* ]] || {
+              echo "refusing unexpected change outside Tool Gateway evidence boundary: $path" >&2
+              exit 69
+            }
+          done
+
+      - name: Commit only validated immutable Staging Tool Gateway evidence
+        if: env.FREEZE_NOOP != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "lumi-release-evidence-bot"
+          git config user.email "lumi-release-evidence-bot@users.noreply.github.com"
+          git add -- "$DESTINATION"
+          target_prefix="${DESTINATION}/"
+          while IFS= read -r path; do
+            [[ "$path" == "$target_prefix"* ]] || {
+              echo "unexpected staged path: $path" >&2
+              exit 70
+            }
+          done < <(git diff --cached --name-only)
+          git commit -m "release: freeze staging Tool Gateway P0 ${RC_SHA}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Upload freeze package for audit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frozen-staging-tool-gateway-p0-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/frozen-tool-p0/
+          if-no-files-found: warn
+          retention-days: 30
