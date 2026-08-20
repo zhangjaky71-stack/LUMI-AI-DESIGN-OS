@@ -50,6 +50,8 @@ jobs:
         run: python3 scripts/validate_staging_runtime_image_binding.py --self-test
       - name: Require frozen runtime-image workflow anti-regression contract
         run: python3 scripts/validate_staging_runtime_image_workflow_contract.py
+      - name: Drill NODE-71 decision artifact provenance
+        run: python3 scripts/validate_node71_decision_artifact.py --self-test
       - name: Drill canonical media-generation E2E evidence validator
         run: python3 scripts/validate_media_generation_e2e_evidence.py --self-test
       - name: Drill canonical Tool Gateway side-effect provenance validator
@@ -71,6 +73,7 @@ jobs:
             scripts/validate_api_provenance_source_manifest.py \
             scripts/validate_staging_runtime_image_binding.py \
             scripts/validate_staging_runtime_image_workflow_contract.py \
+            scripts/validate_node71_decision_artifact.py \
             scripts/validate_media_generation_e2e_evidence.py \
             scripts/validate_side_effect_control_provenance.py \
             scripts/validate_tool_audit_provenance.py \
@@ -242,6 +245,23 @@ jobs:
             --evidence "$LUMI_STAGING_EVIDENCE_PATH" \
             --output reports/staging-acceptance/runtime/decision.json \
             --markdown reports/staging-acceptance/runtime/decision.md
+      - name: Capture immutable NODE-71 decision workflow provenance
+        env:
+          NODE71_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          python3 scripts/validate_node71_decision_artifact.py
+          --decision reports/staging-acceptance/runtime/decision.json
+          --write-provenance reports/staging-acceptance/runtime/decision-provenance.json
+          --expected-run-id "${{ github.run_id }}"
+          --expected-repository "${{ github.repository }}"
+          --workflow-run-url "$NODE71_RUN_URL"
+      - name: Self-verify NODE-71 decision provenance before archive
+        run: >-
+          python3 scripts/validate_node71_decision_artifact.py
+          --decision reports/staging-acceptance/runtime/decision.json
+          --provenance reports/staging-acceptance/runtime/decision-provenance.json
+          --expected-run-id "${{ github.run_id }}"
+          --expected-repository "${{ github.repository }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
