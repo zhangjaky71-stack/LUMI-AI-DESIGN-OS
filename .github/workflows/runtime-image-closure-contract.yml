@@ -35,8 +35,10 @@ on:
       - "infra/iac/environments/production/core/**"
       - "infra/iac/environments/production/app/**"
       - "production/runtime-images/**"
+      - "production/release-actions/**"
       - "staging/acceptance/evidence-template.json"
       - "scripts/runtime_image_set.py"
+      - "scripts/validate_release_action_pins.py"
       - "scripts/validate_runtime_image_build_pipeline.py"
       - "scripts/validate_runtime_image_set_contract.py"
       - "scripts/validate_runtime_image_closure.py"
@@ -46,7 +48,11 @@ on:
       - "scripts/validate_tool_data_provenance.py"
       - "scripts/validate_tool_result_offload_provenance.py"
       - ".github/workflows/build-runtime-image-set.yml"
+      - ".github/workflows/regenerate-uv-lock.yml"
       - ".github/workflows/staging-acceptance-gate.yml"
+      - ".github/workflows/production-iac-contract.yml"
+      - ".github/workflows/deploy-production.yml"
+      - ".github/workflows/final-acceptance-gate.yml"
       - ".github/workflows/runtime-image-closure-contract.yml"
   workflow_dispatch:
 
@@ -58,8 +64,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
 
@@ -69,6 +75,7 @@ jobs:
           set -euo pipefail
           python -m compileall -q \
             scripts/runtime_image_set.py \
+            scripts/validate_release_action_pins.py \
             scripts/validate_runtime_image_build_pipeline.py \
             scripts/validate_runtime_image_set_contract.py \
             scripts/validate_runtime_image_closure.py \
@@ -109,6 +116,7 @@ jobs:
           python scripts/runtime_image_set.py validate-manifest
           python scripts/validate_runtime_image_build_pipeline.py
           python scripts/validate_runtime_image_set_contract.py
+          python scripts/validate_release_action_pins.py
 
       - name: Require canonical Tool Gateway production binding provenance
         run: |
