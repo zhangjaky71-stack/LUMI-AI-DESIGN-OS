@@ -1,5 +1,6 @@
 output "cluster_arn" { value = module.platform_app.cluster_arn }
 output "service_names" { value = module.platform_app.service_names }
+output "service_desired_counts" { value = module.platform_app.service_desired_counts }
 output "task_role_arns" { value = module.platform_app.task_role_arns }
 output "alb_arn" { value = module.platform_app.alb_arn }
 output "alb_dns_name" { value = module.platform_app.alb_dns_name }
