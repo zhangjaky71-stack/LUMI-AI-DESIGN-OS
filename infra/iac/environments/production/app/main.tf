@@ -189,6 +189,7 @@ locals {
           LUMI_S3_BUCKET               = local.bucket_names["assets"]
           LUMI_S3_REGION               = var.region
           LUMI_SANDBOX_EXCHANGE_BUCKET = local.bucket_names["sandbox"]
+          LUMI_VIDEO_MODEL_PROFILE     = var.video_model_profile
         },
       )
       secret_arns = {
