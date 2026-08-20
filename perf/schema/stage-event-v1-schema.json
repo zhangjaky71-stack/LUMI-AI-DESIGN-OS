@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lumi.invalid/perf/stage-event-v1-schema.json",
+  "title": "LUMI Performance Stage Event v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "performance_run_id",
+    "profile_id",
+    "source_rc_sha",
+    "operation_id",
+    "service",
+    "stage",
+    "started_at_unix_ns",
+    "completed_at_unix_ns",
+    "duration_ms",
+    "outcome",
+    "attempt"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "performance_run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "profile_id": {"enum": ["A", "B", "C", "D", "E", "F", "G"]},
+    "source_rc_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "operation_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "task_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 128},
+    "service": {"type": "string", "minLength": 1, "maxLength": 64},
+    "stage": {
+      "enum": [
+        "enqueue",
+        "routing",
+        "provider",
+        "download",
+        "postprocess",
+        "validation",
+        "artifact_persist",
+        "ui_propagation",
+        "platform_overhead"
+      ]
+    },
+    "started_at_unix_ns": {"type": "integer", "minimum": 0},
+    "completed_at_unix_ns": {"type": "integer", "minimum": 0},
+    "duration_ms": {"type": "number", "minimum": 0},
+    "outcome": {"enum": ["success", "error"]},
+    "attempt": {"type": "integer", "minimum": 1}
+  },
+  "additionalProperties": false
+}
