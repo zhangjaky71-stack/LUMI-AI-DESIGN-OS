@@ -4,12 +4,14 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import runpy
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 GATE_PATH = ROOT / "scripts" / "production-deployment-gate.py"
+CAPACITY_CONTRACT_PATH = ROOT / "scripts" / "validate_capacity_autoscaling_contract.py"
 MANIFEST_TEMPLATE_PATH = ROOT / "production" / "deployment" / "manifest-template.json"
 
 
@@ -123,6 +125,9 @@ def clean_decision(images: dict[str, str]) -> dict[str, Any]:
 
 
 def main() -> int:
+    require(CAPACITY_CONTRACT_PATH.is_file(), "capacity autoscaling contract missing")
+    runpy.run_path(str(CAPACITY_CONTRACT_PATH), run_name="__main__")
+
     gate = load_gate()
     acceptance_path = Path(gate.CANONICAL_STAGING_ACCEPTANCE_PATH)
     clean = clean_manifest(acceptance_path.as_posix())
@@ -305,7 +310,8 @@ def main() -> int:
                     "provider_spend_above_100_blocked": True,
                     "db_rollback_unproven_blocked": True,
                     "external_pending_blocked": True,
-                    "missing_approval_blocked": True
+                    "missing_approval_blocked": True,
+                    "unmeasured_autoscaling_blocked": True
                 }
             },
             indent=2,
