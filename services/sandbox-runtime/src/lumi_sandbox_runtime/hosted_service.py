@@ -4,7 +4,7 @@ import os
 
 from fastapi import FastAPI
 
-from .ecs_backend import ECSRemoteSandboxBackend
+from .ecs_discovery import discover_remote_backend
 from .service import HostedSandboxRuntime, create_sandbox_runtime_app
 
 
@@ -16,6 +16,6 @@ def create_runtime_app() -> FastAPI:
         HostedSandboxRuntime(
             environment=os.getenv("LUMI_ENV", os.getenv("LUMI_ENVIRONMENT", "unknown")),
             auth_secret=secret,
-            backend=ECSRemoteSandboxBackend.from_env(),
+            backend=discover_remote_backend(),
         )
     )
