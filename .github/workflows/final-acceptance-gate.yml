@@ -39,6 +39,7 @@ jobs:
           python3 scripts/validate_security_release_decision_contract.py
           python3 scripts/validate_final_acceptance_assembler_contract.py
           python3 scripts/validate_repository_governance_contract.py
+          python3 scripts/validate_release_authorization_contract.py
           python3 scripts/validate_api_provenance_source_manifest.py
           python3 scripts/validate_image_generation_producer_contract.py
           python3 scripts/runtime_image_set.py validate-manifest
@@ -63,6 +64,9 @@ jobs:
           python3 -m json.tool final/acceptance/manifest-v1.json >/dev/null
           python3 -m json.tool final/acceptance/release-manifest-template.json >/dev/null
           python3 -m json.tool final/acceptance/upstream-decision-template.json >/dev/null
+          python3 -m json.tool final/acceptance/release-approval-policy-template.json >/dev/null
+          python3 -m json.tool final/acceptance/release-authorization-request-template.json >/dev/null
+          python3 -m json.tool final/acceptance/release-authorization-template.json >/dev/null
           python3 -m json.tool production/runtime-images/manifest-v1.json >/dev/null
           python3 -m json.tool production/deployment/manifest-template.json >/dev/null
           python3 -m json.tool production/release-actions/pins-v1.json >/dev/null
@@ -74,6 +78,8 @@ jobs:
             scripts/validate_final_acceptance_package.py \
             scripts/capture_release_branch_protection.py \
             scripts/validate_repository_governance_contract.py \
+            scripts/capture_release_authorization.py \
+            scripts/validate_release_authorization_contract.py \
             scripts/security-release-decision.py \
             scripts/validate_security_release_decision_contract.py \
             scripts/validate_final_acceptance_assembler_contract.py \
@@ -124,6 +130,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.release_manifest_path != '' && inputs.acceptance_evidence_path != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -173,6 +182,17 @@ jobs:
             --repository "$GITHUB_REPOSITORY" \
             --expected-release-sha "$rc_sha" \
             --output reports/final-acceptance/runtime/repository-governance-live.json
+      - name: Re-verify live GitHub release authorization for frozen RC
+        shell: bash
+        env:
+          RELEASE_APPROVAL_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_APPROVAL_TOKEN"
+          authorization_path="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["release_authorization"]["path"])' "$FINAL_RELEASE")"
+          python3 scripts/capture_release_authorization.py \
+            --verify-report "$authorization_path" \
+            --live-output reports/final-acceptance/runtime/release-authorization-live.json
       - name: Evaluate final product acceptance
         run: |
           python3 scripts/final-acceptance-gate.py \
@@ -186,6 +206,7 @@ jobs:
           path: |
             reports/final-acceptance/**/final-decision.json
             reports/final-acceptance/runtime/repository-governance-live.json
+            reports/final-acceptance/runtime/release-authorization-live.json
           if-no-files-found: error
           retention-days: 180
 
