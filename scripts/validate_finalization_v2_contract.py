@@ -128,6 +128,9 @@ def main() -> int:
     ))
 
     require_markers(FINAL_WORKFLOW, (
+        "needs: [source-contract, canonical-lock-gate]",
+        "needs.source-contract.result == 'success'",
+        "needs.canonical-lock-gate.result == 'success'",
         "github.ref == 'refs/heads/release-closure-p0'",
         'ref: ${{ github.sha }}',
         'fetch-depth: 0',
