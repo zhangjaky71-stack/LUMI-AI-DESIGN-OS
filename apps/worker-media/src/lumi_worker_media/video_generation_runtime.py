@@ -16,6 +16,7 @@ from lumi_video_generation.performance_ports import TimedMediaSandbox
 
 from .job_runtime import ExternalWait
 from .queue_contracts import JobMessage
+from .video_cost_runtime import ScopedPostgresVideoCostObserver
 from .video_gateway_runtime import HostedVideoGateway
 from .video_generation_artifacts import PostgresVideoArtifactAdapter
 from .video_generation_codec import decode_video_task_spec
@@ -23,7 +24,6 @@ from .video_generation_ports import (
     HostedVideoMediaSandbox,
     HostedVideoOutputAdapter,
     HostedVideoValidator,
-    PostgresVideoCostObserver,
     PostgresVideoEventSink,
 )
 from .video_generation_repository import PostgresVideoRepository
@@ -115,7 +115,7 @@ class HostedVideoGenerationRuntime:
                 operation_id=spec.operation_id,
                 task_id=spec.task_id,
             ),
-            costs=PostgresVideoCostObserver(self.database_dsn),
+            costs=ScopedPostgresVideoCostObserver(self.database_dsn),
             events=PostgresVideoEventSink(self.database_dsn),
         )
 
