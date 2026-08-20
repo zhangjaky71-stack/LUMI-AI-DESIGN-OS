@@ -468,10 +468,6 @@ resource "aws_ecs_service" "service" {
     aws_iam_role_policy_attachment.ecs_load_balancer,
   ]
 
-  lifecycle {
-    ignore_changes = [desired_count]
-  }
-
   tags = local.tags
 }
 
@@ -487,8 +483,7 @@ resource "aws_appautoscaling_target" "service" {
 
 # Dynamic target tracking is opt-in only after NODE-69 has both a measured
 # capacity signal and a production emitter for the declared LUMI/Capacity metric.
-# Unmeasured services remain fixed-capacity rather than silently scaling on a
-# custom metric that may not exist.
+# The current release contract forbids enabling this path until that evidence exists.
 resource "aws_appautoscaling_policy" "service_custom_metric" {
   for_each = local.autoscaled_services
 
