@@ -8,7 +8,11 @@ from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
-from lumi_video_generation.media_sandbox import TypedFfmpegSandbox
+from lumi_video_generation.media_sandbox import (
+    FfmpegInvocation,
+    SandboxLimits,
+    TypedFfmpegSandbox,
+)
 from lumi_video_generation.model import TimelineClip, VideoOutputSpec, VideoTimeline
 from lumi_worker_media.video_sandbox_runtime import SandboxExchangeMediaRuntime
 
@@ -56,6 +60,30 @@ class _FakeStore:
         self.objects.pop((bucket, object_key), None)
 
 
+class _CorruptingStageStore(_FakeStore):
+    async def copy(
+        self,
+        *,
+        source_bucket: str,
+        source_key: str,
+        destination_bucket: str,
+        destination_key: str,
+    ) -> None:
+        await super().copy(
+            source_bucket=source_bucket,
+            source_key=source_key,
+            destination_bucket=destination_bucket,
+            destination_key=destination_key,
+        )
+        if destination_bucket == "lumi-sandbox":
+            data, content_type, _metadata = self.objects[(destination_bucket, destination_key)]
+            self.objects[(destination_bucket, destination_key)] = (
+                data,
+                content_type,
+                {"sha256": "0" * 64},
+            )
+
+
 class _FakeSandboxRuntime(SandboxExchangeMediaRuntime):
     def __init__(self, *, store: _FakeStore, **kwargs: Any) -> None:
         super().__init__(object_store=store, **kwargs)  # type: ignore[arg-type]
@@ -75,6 +103,20 @@ class _FakeSandboxRuntime(SandboxExchangeMediaRuntime):
         rendered = b"rendered-mp4" * 1024
         self.store.seed(self.exchange_bucket, key, rendered, "video/mp4")
         return {"sandbox_id": str(uuid4()), "exit_code": 0}
+
+
+def _runtime(store: _FakeStore) -> _FakeSandboxRuntime:
+    return _FakeSandboxRuntime(
+        store=store,
+        base_url="http://sandbox-runtime.test:8080",
+        auth_secret="s" * 64,
+        asset_bucket="lumi-assets",
+        exchange_bucket="lumi-sandbox",
+        organization_id=str(uuid4()),
+        project_id=str(uuid4()),
+        task_id=str(uuid4()),
+        operation_id=str(uuid4()),
+    )
 
 
 def test_typed_ffmpeg_uses_exchange_bucket_and_promotes_final_video() -> None:
@@ -134,20 +176,30 @@ def test_typed_ffmpeg_uses_exchange_bucket_and_promotes_final_video() -> None:
     assert not any(bucket == exchange_bucket for bucket, _ in store.objects)
 
 
-def test_sandbox_bridge_rejects_network_enabled_invocation() -> None:
-    from lumi_video_generation.media_sandbox import FfmpegInvocation, SandboxLimits
-
-    runtime = _FakeSandboxRuntime(
-        store=_FakeStore(),
-        base_url="http://sandbox-runtime.test:8080",
-        auth_secret="s" * 64,
-        asset_bucket="assets",
-        exchange_bucket="sandbox",
-        organization_id=str(uuid4()),
-        project_id=str(uuid4()),
-        task_id=str(uuid4()),
-        operation_id=str(uuid4()),
+def test_input_stage_checksum_mismatch_fails_before_sandbox_http() -> None:
+    store = _CorruptingStageStore()
+    source_key = "generated/video/v1/org/project/source/clip.mp4"
+    store.seed("lumi-assets", source_key, b"source-mp4" * 32, "video/mp4")
+    runtime = _runtime(store)
+    input_path = runtime.resolve_readonly(source_key)
+    output_path = runtime.allocate_output(".mp4")
+    invocation = FfmpegInvocation(
+        argv=("ffmpeg", "-i", input_path, output_path),
+        limits=SandboxLimits(network_disabled=True),
+        output_path=output_path,
     )
+    try:
+        asyncio.run(runtime.execute(invocation))
+    except RuntimeError as exc:
+        assert str(exc) == "VIDEO_SANDBOX_STAGE_CHECKSUM_MISMATCH"
+    else:
+        raise AssertionError("checksum drift must fail closed before Sandbox HTTP")
+    assert runtime.payloads == []
+    assert store.deleted
+
+
+def test_sandbox_bridge_rejects_network_enabled_invocation() -> None:
+    runtime = _runtime(_FakeStore())
     runtime.allocate_output(".mp4")
     invocation = FfmpegInvocation(
         argv=("ffmpeg", "-version"),
