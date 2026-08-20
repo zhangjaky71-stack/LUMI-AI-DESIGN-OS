@@ -11,6 +11,23 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 ROLLBACK_GATE_PATH = ROOT / "scripts" / "production-rollback-gate.py"
+RUNTIME_IMAGE_KEYS = {
+    "api",
+    "agent-runtime",
+    "model-gateway",
+    "tool-gateway",
+    "worker-media",
+    "sandbox-runtime",
+}
+RUNTIME_SERVICE_IMAGE_KEY = {
+    "api": "api",
+    "agent-runtime": "agent-runtime",
+    "model-gateway": "model-gateway",
+    "tool-gateway": "tool-gateway",
+    "worker-media": "worker-media",
+    "outbox-dispatcher": "worker-media",
+    "sandbox-runtime": "sandbox-runtime",
+}
 
 
 class RollbackDecisionError(RuntimeError):
@@ -58,6 +75,16 @@ def rc(payload: dict[str, Any], key: str = "release_candidate") -> tuple[Any, An
     return value.get("git_sha"), value.get("version"), value.get("migration_head")
 
 
+def _expected_service_images(images: object, blockers: list[str], *, label: str) -> dict[str, str]:
+    if not isinstance(images, dict) or set(images) != RUNTIME_IMAGE_KEYS:
+        blockers.append(f"{label} manifest must contain exactly six canonical runtime images")
+        return {}
+    return {
+        service: str(images[image_key])
+        for service, image_key in RUNTIME_SERVICE_IMAGE_KEY.items()
+    }
+
+
 def validate_runtime(
     runtime: dict[str, Any],
     manifest: dict[str, Any],
@@ -72,19 +99,27 @@ def validate_runtime(
     if rc(runtime) != rc(manifest):
         blockers.append(f"{label} runtime RC identity mismatch")
     services = runtime.get("services")
-    images = manifest.get("images")
-    if not isinstance(services, list) or len(services) != 6 or not isinstance(images, dict):
-        blockers.append(f"{label} runtime must contain exactly six services")
+    expected_service_images = _expected_service_images(manifest.get("images"), blockers, label=label)
+    if not isinstance(services, list) or len(services) != len(RUNTIME_SERVICE_IMAGE_KEY):
+        blockers.append(f"{label} runtime must contain exactly seven services")
         return
-    observed = {
+    observed_images = {
         item.get("service_name"): item.get("image")
         for item in services
         if isinstance(item, dict) and isinstance(item.get("service_name"), str)
     }
-    if observed != images:
-        blockers.append(f"{label} runtime image set does not equal manifest")
+    observed_image_keys = {
+        item.get("service_name"): item.get("image_key")
+        for item in services
+        if isinstance(item, dict) and isinstance(item.get("service_name"), str)
+    }
+    if observed_images != expected_service_images:
+        blockers.append(f"{label} seven-service runtime image mapping does not equal manifest")
+    if observed_image_keys != RUNTIME_SERVICE_IMAGE_KEY:
+        blockers.append(f"{label} runtime service-to-image-key mapping is not canonical")
     if any(
         not isinstance(item, dict)
+        or item.get("expected_image") != expected_service_images.get(item.get("service_name"))
         or item.get("image_matches") is not True
         or item.get("steady") is not True
         for item in services
