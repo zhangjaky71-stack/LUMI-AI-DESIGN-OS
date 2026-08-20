@@ -24,8 +24,9 @@ EXPECTED_IMAGES="$(jq -c '.images // {}' "$MANIFEST")"
   exit 65
 }
 
-EXPECTED_SERVICES='["agent-runtime","api","model-gateway","sandbox-runtime","tool-gateway","worker-media"]'
-if [[ "$(jq -c 'keys | sort' <<<"$EXPECTED_IMAGES")" != "$EXPECTED_SERVICES" ]]; then
+EXPECTED_IMAGE_KEYS='["agent-runtime","api","model-gateway","sandbox-runtime","tool-gateway","worker-media"]'
+EXPECTED_SERVICES='["agent-runtime","api","model-gateway","outbox-dispatcher","sandbox-runtime","tool-gateway","worker-media"]'
+if [[ "$(jq -c 'keys | sort' <<<"$EXPECTED_IMAGES")" != "$EXPECTED_IMAGE_KEYS" ]]; then
   echo "deployment manifest must contain exactly six runtime images" >&2
   exit 65
 fi
@@ -35,11 +36,11 @@ SERVICES_JSON="$(terraform -chdir="$APP_DIR" output -json service_names)"
 mapfile -t SERVICES < <(jq -r '.[]' <<<"$SERVICES_JSON")
 
 [[ -n "$CLUSTER_ARN" && "$CLUSTER_ARN" != "null" ]] || { echo "cluster_arn missing" >&2; exit 65; }
-[[ ${#SERVICES[@]} -eq 6 ]] || { echo "expected exactly six ECS services" >&2; exit 65; }
+[[ ${#SERVICES[@]} -eq 7 ]] || { echo "expected exactly seven ECS services" >&2; exit 65; }
 
 ACTUAL_SERVICES="$(printf '%s\n' "${SERVICES[@]}" | jq -R . | jq -sc 'sort')"
 [[ "$ACTUAL_SERVICES" == "$EXPECTED_SERVICES" ]] || {
-  echo "ECS service set does not match canonical six-runtime contract" >&2
+  echo "ECS service set does not match canonical six-image/seven-service contract" >&2
   exit 66
 }
 
@@ -55,10 +56,15 @@ for service in "${SERVICES[@]}"; do
   SERVICE_JSON="$(jq -c --arg name "$service" '.services[] | select(.serviceName == $name)' <<<"$DESCRIPTION")"
   [[ -n "$SERVICE_JSON" ]] || { echo "missing ECS service $service" >&2; exit 66; }
 
+  IMAGE_KEY="$service"
+  if [[ "$service" == "outbox-dispatcher" ]]; then
+    IMAGE_KEY="worker-media"
+  fi
+
   TASK_DEFINITION="$(jq -r '.taskDefinition' <<<"$SERVICE_JSON")"
   TASK_JSON="$(aws ecs describe-task-definition --task-definition "$TASK_DEFINITION")"
   IMAGE="$(jq -r --arg name "$service" '.taskDefinition.containerDefinitions[] | select(.name == $name) | .image // empty' <<<"$TASK_JSON")"
-  EXPECTED_IMAGE="$(jq -r --arg name "$service" '.[$name] // empty' <<<"$EXPECTED_IMAGES")"
+  EXPECTED_IMAGE="$(jq -r --arg name "$IMAGE_KEY" '.[$name] // empty' <<<"$EXPECTED_IMAGES")"
   PRIMARY="$(jq -c '[.deployments[] | select(.status == "PRIMARY")][0] // null' <<<"$SERVICE_JSON")"
   STATUS="$(jq -r '.status' <<<"$SERVICE_JSON")"
   DESIRED="$(jq -r '.desiredCount' <<<"$SERVICE_JSON")"
@@ -80,6 +86,7 @@ for service in "${SERVICES[@]}"; do
 
   ROW="$(jq -n \
     --arg service_name "$service" \
+    --arg image_key "$IMAGE_KEY" \
     --arg task_definition "$TASK_DEFINITION" \
     --arg image "$IMAGE" \
     --arg expected_image "$EXPECTED_IMAGE" \
@@ -90,7 +97,7 @@ for service in "${SERVICES[@]}"; do
     --argjson pending_count "$PENDING" \
     --argjson image_matches "$MATCHED" \
     --argjson steady "$STEADY" \
-    '{service_name:$service_name,task_definition:$task_definition,image:$image,expected_image:$expected_image,image_matches:$image_matches,status:$status,rollout_state:$rollout_state,desired_count:$desired_count,running_count:$running_count,pending_count:$pending_count,steady:$steady}')"
+    '{service_name:$service_name,image_key:$image_key,task_definition:$task_definition,image:$image,expected_image:$expected_image,image_matches:$image_matches,status:$status,rollout_state:$rollout_state,desired_count:$desired_count,running_count:$running_count,pending_count:$pending_count,steady:$steady}')"
   ROWS="$(jq -c --argjson row "$ROW" '. + [$row]' <<<"$ROWS")"
 done
 
