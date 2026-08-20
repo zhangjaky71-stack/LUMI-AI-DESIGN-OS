@@ -37,7 +37,6 @@ def main() -> int:
     for marker in (
         "runtime_image_set_run_id:",
         'description: "GitHub Actions run id that produced the frozen six-runtime RC image set"',
-        "actions: read",
         "python3 scripts/validate_staging_runtime_image_binding.py --self-test",
         "python3 scripts/validate_staging_runtime_image_workflow_contract.py",
         "python3 scripts/validate_node71_decision_artifact.py --self-test",
@@ -58,7 +57,25 @@ def main() -> int:
     ):
         require(marker in text, f"staging workflow missing runtime-image/decision binding marker: {marker}")
 
+    header = text[: text.find("jobs:\n")]
+    require(
+        "permissions:\n  contents: read\n" in header,
+        "NODE-71 workflow must default to contents:read only",
+    )
+    for forbidden in ("actions: read", "id-token: write", "contents: write", "actions: write", "packages: write", "attestations: write"):
+        require(forbidden not in header, f"NODE-71 top-level permission is too broad: {forbidden}")
+
+    source = _job_block(text, "source-contract", "canonical-lock-gate")
+    lock_gate = _job_block(text, "canonical-lock-gate", "remote-read-only-preflight")
+    preflight = _job_block(text, "remote-read-only-preflight", "acceptance-decision")
     acceptance = _job_block(text, "acceptance-decision", "contract-gate")
+    for label, block in (("source-contract", source), ("canonical-lock-gate", lock_gate), ("remote-read-only-preflight", preflight)):
+        require("actions: read" not in block, f"NODE-71 {label} must not receive cross-run Actions read permission")
+    require(
+        "permissions:\n      contents: read\n      actions: read\n" in acceptance,
+        "NODE-71 acceptance-decision must be the only job with actions:read",
+    )
+
     require(
         "inputs.runtime_image_set_run_id != ''" in acceptance,
         "acceptance-decision must require runtime_image_set_run_id",
@@ -99,7 +116,6 @@ def main() -> int:
         "NODE-71 decision provenance capture/self-verification must occur after decision and before archive",
     )
 
-    source = _job_block(text, "source-contract", "canonical-lock-gate")
     require(
         "validate_staging_runtime_image_binding.py --self-test" in source,
         "source-contract must execute runtime image binding negative drills",
@@ -117,7 +133,7 @@ def main() -> int:
         "source-contract must fail closed on release action supply-chain drift",
     )
 
-    print("NODE-71 frozen runtime-image and decision artifact workflow contract: PASS")
+    print("NODE-71 frozen runtime-image, decision artifact, and scoped permission workflow contract: PASS")
     return 0
 
 
