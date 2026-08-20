@@ -93,6 +93,17 @@ jobs:
       - name: Validate V2 finalization source contracts
         run: |
           python3 scripts/validate_finalization_v2_contract.py
+      - name: Require canonical frozen Production recovery bundle and producer provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          recovery_source_run="$(dirname "$RECOVERY_DECISION")/source-run.json"
+          python3 scripts/validate_frozen_production_recovery_evidence.py --self-test
+          python3 scripts/validate_frozen_production_recovery_evidence.py \
+            --decision "$RECOVERY_DECISION" \
+            --source-run "$recovery_source_run" \
+            --manifest "$PRODUCTION_MANIFEST" \
+            --expected-evidence-head "$GITHUB_SHA"
       - name: Assemble only from frozen Source-RC evidence and pre-final policies
         run: |
           python3 scripts/final-acceptance-assembler-v2.py \
