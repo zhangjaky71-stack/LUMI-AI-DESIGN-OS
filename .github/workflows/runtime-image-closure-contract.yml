@@ -39,6 +39,7 @@ on:
       - "staging/acceptance/evidence-template.json"
       - "scripts/runtime_image_set.py"
       - "scripts/validate_release_action_pins.py"
+      - "scripts/validate_release_workflow_permissions.py"
       - "scripts/validate_uv_lock_regeneration_contract.py"
       - "scripts/validate_runtime_image_build_pipeline.py"
       - "scripts/validate_runtime_image_set_contract.py"
@@ -77,6 +78,7 @@ jobs:
           python -m compileall -q \
             scripts/runtime_image_set.py \
             scripts/validate_release_action_pins.py \
+            scripts/validate_release_workflow_permissions.py \
             scripts/validate_uv_lock_regeneration_contract.py \
             scripts/validate_runtime_image_build_pipeline.py \
             scripts/validate_runtime_image_set_contract.py \
@@ -119,6 +121,7 @@ jobs:
           python scripts/validate_runtime_image_build_pipeline.py
           python scripts/validate_runtime_image_set_contract.py
           python scripts/validate_release_action_pins.py
+          python scripts/validate_release_workflow_permissions.py
           python scripts/validate_uv_lock_regeneration_contract.py
 
       - name: Require canonical Tool Gateway production binding provenance
