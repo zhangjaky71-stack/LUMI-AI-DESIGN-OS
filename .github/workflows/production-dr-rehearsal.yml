@@ -1,0 +1,27 @@
+name: Production DR Rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: "Current Production manifest under reports/production-deployments/<deployment-id>/manifest.json"
+        required: true
+        type: string
+      recovery_ack:
+        description: "REHEARSE_PRODUCTION_DR:<deployment-id>"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  default-branch-registry-only:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Refuse default-branch execution
+        shell: bash
+        run: |
+          echo "This workflow on main is a fail-closed dispatch discovery stub."
+          echo "Run the canonical release workflow with ref=release-closure-p0."
+          exit 64
