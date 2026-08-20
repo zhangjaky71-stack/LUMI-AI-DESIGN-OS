@@ -1,0 +1,29 @@
+name: Freeze Staging Database Parity
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_git_sha:
+        description: "Exact Source RC SHA"
+        required: true
+        type: string
+      collector_run_id:
+        description: "Successful Collect Staging Database Parity run ID"
+        required: true
+        type: string
+      freeze_ack:
+        description: "Required acknowledgement: FREEZE_STAGING_DATABASE_PARITY:<rc-sha>"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  default-branch-registry-only:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail closed on default branch registry stub
+        run: |
+          echo "Registry-only workflow. Dispatch with ref=release-closure-p0 to execute the hardened Staging freeze workflow." >&2
+          exit 64
