@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ASSEMBLE = ROOT / ".github" / "workflows" / "assemble-final-acceptance.yml"
 BUILD = ROOT / ".github" / "workflows" / "build-runtime-image-set.yml"
+GOVERNANCE_APPLY = ROOT / ".github" / "workflows" / "configure-release-branch-protection.yml"
 LOCK = ROOT / ".github" / "workflows" / "regenerate-uv-lock.yml"
 RUNTIME = ROOT / ".github" / "workflows" / "runtime-image-closure-contract.yml"
 STAGING = ROOT / ".github" / "workflows" / "staging-acceptance-gate.yml"
@@ -80,6 +81,33 @@ def validate_assemble() -> None:
     require('test "$remote_sha" = "$GITHUB_SHA"' in assemble, "Final Acceptance assembler must fail closed if release branch moves")
     require("final-acceptance-assembler-v2.py" in assemble, "Final Acceptance assembler must use V2 package producer")
     require("final-acceptance-assembler.py" not in assemble, "Final Acceptance assembler must not use V1 package producer")
+
+
+def validate_governance_apply() -> None:
+    source = text(GOVERNANCE_APPLY)
+    require_top_read_only(source, "NODE-73 branch-protection applicator")
+    apply_job = job_block(source, "apply-protection", None)
+    require("environment: production" in apply_job, "branch-protection mutation must remain behind the production environment")
+    require(
+        "permissions:\n      contents: read\n" in apply_job,
+        "branch-protection applicator must not receive repository write permissions through GITHUB_TOKEN",
+    )
+    for forbidden in (
+        "contents: write",
+        "actions: write",
+        "packages: write",
+        "attestations: write",
+        "id-token: write",
+        "pull-requests: write",
+    ):
+        require(forbidden not in apply_job, f"branch-protection applicator has unrelated GitHub permission: {forbidden}")
+    require("github.ref == 'refs/heads/release-closure-p0'" in apply_job, "branch-protection applicator must be Evidence-Head branch only")
+    require("APPLY_NODE73_RELEASE_PROTECTION" in apply_job, "branch-protection applicator must require explicit typed confirmation")
+    require('ref: ${{ github.sha }}' in apply_job, "branch-protection applicator must checkout exact dispatch SHA")
+    require("persist-credentials: false" in apply_job, "branch-protection applicator checkout must not persist GITHUB_TOKEN credentials")
+    require(source.count("${{ secrets.RELEASE_GOVERNANCE_ADMIN_TOKEN }}") == 1, "Administration-write token must be injected into exactly one step")
+    require("RELEASE_GOVERNANCE_ADMIN_TOKEN:" not in top(source), "Administration-write token must never be workflow-scoped")
+    require("apply_release_branch_protection.py" in apply_job, "branch-protection applicator must use the canonical policy-driven script")
 
 
 def validate_build() -> None:
@@ -174,6 +202,7 @@ def validate_final() -> None:
 
 def main() -> int:
     validate_assemble()
+    validate_governance_apply()
     validate_build()
     validate_lock()
     validate_staging()
