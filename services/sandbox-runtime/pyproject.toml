@@ -3,6 +3,7 @@ name = "lumi-sandbox-runtime"
 version = "0.0.0"
 requires-python = "==3.12.*"
 dependencies = [
+  "boto3>=1.42,<2",
   "fastapi==0.139.2",
   "uvicorn[standard]>=0.35,<1",
 ]
@@ -13,3 +14,4 @@ build-backend = "hatchling.build"
 
 [project.scripts]
 lumi-sandbox-runtime = "lumi_sandbox_runtime.cli:main"
+lumi-sandbox-child = "lumi_sandbox_runtime.child_cli:main"
