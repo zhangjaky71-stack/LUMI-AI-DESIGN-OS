@@ -130,6 +130,14 @@ class HostedVideoGateway:
             raise ValueError("VIDEO_HOSTED_V1_TEXT_TO_VIDEO_ONLY")
         if continuity_refs or shot.shot.source_ref is not None:
             raise ValueError("VIDEO_HOSTED_V1_REFERENCE_INPUT_UNSUPPORTED")
+        if spec.negative_prompt is not None:
+            raise ValueError("VIDEO_HOSTED_V1_NEGATIVE_PROMPT_UNSUPPORTED")
+        if spec.seed is not None:
+            raise ValueError("VIDEO_HOSTED_V1_SEED_UNSUPPORTED")
+        if shot.shot.camera_motion is not None:
+            raise ValueError("VIDEO_HOSTED_V1_CAMERA_MOTION_UNSUPPORTED")
+        if shot.shot.subject_action is not None:
+            raise ValueError("VIDEO_HOSTED_V1_SUBJECT_ACTION_UNSUPPORTED")
         request = to_model_request(
             spec,
             shot,
