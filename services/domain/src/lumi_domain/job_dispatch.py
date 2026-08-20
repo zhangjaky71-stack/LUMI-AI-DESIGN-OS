@@ -14,6 +14,11 @@ IMAGE_TRANSFORM_TASK_NAME = "lumi.jobs.image.transform"
 IMAGE_TRANSFORM_QUEUE = "lumi.media.image"
 IMAGE_TRANSFORM_ROUTING_KEY = "image.transform"
 
+VIDEO_RENDER_JOB_KIND = "video.render"
+VIDEO_RENDER_TASK_NAME = "lumi.jobs.video.render"
+VIDEO_RENDER_QUEUE = "lumi.media.video"
+VIDEO_RENDER_ROUTING_KEY = "video.render"
+
 
 @dataclass(frozen=True, slots=True)
 class JobMessage:
