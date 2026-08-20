@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
+from types import ModuleType
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "assemble-final-acceptance.yml"
 PINS = ROOT / "production" / "release-actions" / "pins-v1.json"
+RECOVERY_CONTRACT = ROOT / "scripts" / "validate_production_recovery_evidence_workflow_contract.py"
 
 
 class AssemblerWorkflowV2Error(RuntimeError):
@@ -16,6 +19,15 @@ class AssemblerWorkflowV2Error(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise AssemblerWorkflowV2Error(message)
+
+
+def load_module(path: Path, name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"unable to import {path.relative_to(ROOT)}")
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None and spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
 
 
 def main() -> int:
@@ -29,6 +41,10 @@ def main() -> int:
         "fetch-depth: 0",
         'test "$remote_sha" = "$GITHUB_SHA"',
         "python3 scripts/validate_finalization_v2_contract.py",
+        "Require canonical frozen Production recovery bundle and producer provenance",
+        "python3 scripts/validate_frozen_production_recovery_evidence.py --self-test",
+        '--decision "$RECOVERY_DECISION"',
+        '--expected-evidence-head "$GITHUB_SHA"',
         "python3 scripts/final-acceptance-assembler-v2.py",
         '--governance-policy "$GOVERNANCE_POLICY"',
         '--authorization-request "$AUTHORIZATION_REQUEST"',
@@ -67,7 +83,10 @@ def main() -> int:
         "final package assembler write permission must be scoped to assemble job",
     )
 
-    print("NODE-73 V2 final package assembler workflow contract: PASS")
+    recovery = load_module(RECOVERY_CONTRACT, "lumi_v2_recovery_evidence_workflow_contract")
+    require(recovery.main() == 0, "Production recovery evidence workflow contract did not PASS")
+
+    print("NODE-73 V2 final package assembler + Production recovery evidence workflow contract: PASS")
     return 0
 
 
