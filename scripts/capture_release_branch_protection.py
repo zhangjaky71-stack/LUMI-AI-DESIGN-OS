@@ -89,6 +89,10 @@ def normalize_protection_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
 
     signatures = payload.get("required_signatures")
     signatures_enabled = isinstance(signatures, Mapping) and signatures.get("enabled") is True
+    lock_branch = payload.get("lock_branch")
+    lock_enabled = isinstance(lock_branch, Mapping) and lock_branch.get("enabled") is True
+    allow_fork_syncing = payload.get("allow_fork_syncing")
+    fork_sync_enabled = isinstance(allow_fork_syncing, Mapping) and allow_fork_syncing.get("enabled") is True
     return {
         "profile": PROFILE,
         "required_status_checks": {
@@ -109,6 +113,8 @@ def normalize_protection_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
         "allow_force_pushes": False,
         "allow_deletions": False,
         "required_signatures": signatures_enabled,
+        "lock_branch": lock_enabled,
+        "allow_fork_syncing": fork_sync_enabled,
     }
 
 
@@ -135,6 +141,8 @@ def validate_normalized_profile(profile: Mapping[str, Any]) -> None:
     _require(profile.get("allow_force_pushes") is False, "normalized force-push policy is unsafe")
     _require(profile.get("allow_deletions") is False, "normalized branch deletion policy is unsafe")
     _require(isinstance(profile.get("required_signatures"), bool), "normalized signed-commit observation must be boolean")
+    _require(isinstance(profile.get("lock_branch"), bool), "normalized branch-lock observation must be boolean")
+    _require(isinstance(profile.get("allow_fork_syncing"), bool), "normalized fork-sync observation must be boolean")
 
 
 def validate_branch_payload(
@@ -293,6 +301,8 @@ def _profile_fixture() -> dict[str, Any]:
         "allow_force_pushes": False,
         "allow_deletions": False,
         "required_signatures": False,
+        "lock_branch": False,
+        "allow_fork_syncing": False,
     }
 
 
