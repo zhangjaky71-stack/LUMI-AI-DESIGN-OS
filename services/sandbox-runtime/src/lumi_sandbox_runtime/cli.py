@@ -14,7 +14,7 @@ def main() -> None:
     if not 1 <= port <= 65535:
         raise RuntimeError("SANDBOX_RUNTIME_PORT_INVALID")
     uvicorn.run(
-        "lumi_sandbox_runtime.service:create_runtime_app",
+        "lumi_sandbox_runtime.hosted_service:create_runtime_app",
         factory=True,
         host="0.0.0.0",
         port=port,
