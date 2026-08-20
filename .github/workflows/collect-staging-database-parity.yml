@@ -1,0 +1,25 @@
+name: Collect Staging Database Parity
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_git_sha:
+        description: "Exact Source RC SHA already deployed to Production-like Staging"
+        required: true
+        type: string
+      collect_ack:
+        description: "Required acknowledgement: COLLECT_STAGING_DATABASE_PARITY"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  default-branch-registry-only:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail closed on default branch registry stub
+        run: |
+          echo "Registry-only workflow. Dispatch with ref=release-closure-p0 to execute the hardened Staging collector." >&2
+          exit 64
