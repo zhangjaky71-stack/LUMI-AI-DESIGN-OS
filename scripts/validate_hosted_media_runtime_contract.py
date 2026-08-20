@@ -84,6 +84,30 @@ def _validate_iac(environment: str) -> None:
         'local.secret_arns["providers/media"]',
     )
 
+    dispatcher = _service_block(text, "outbox-dispatcher")
+    _require(
+        dispatcher,
+        f"{path}:outbox-dispatcher",
+        "image         = var.worker_media_image",
+        '"lumi_worker_media.cli"',
+        '"dispatch-outbox"',
+        '"--watch"',
+        'LUMI_DATABASE_URL = local.secret_arns["database/app"]',
+        'LUMI_RABBITMQ_URL = local.secret_arns["rabbitmq/url"]',
+        "s3_bucket_arns         = []",
+    )
+    _forbid(
+        dispatcher,
+        f"{path}:outbox-dispatcher",
+        "LUMI_MODEL_PROVIDER_SECRET",
+        "LUMI_MEDIA_PROVIDER_SECRET",
+        "LUMI_MODEL_GATEWAY_AUTH_SECRET",
+        "LUMI_SANDBOX_RUNTIME_AUTH_SECRET",
+        "LUMI_AUTH_SIGNING_SECRET",
+        'local.secret_arns["providers/',
+        'local.bucket_arns[',
+    )
+
     agent = _service_block(text, "agent-runtime")
     _forbid(
         agent,
@@ -121,6 +145,9 @@ def _validate_worker_source() -> None:
         cli_path,
         'os.getenv("LUMI_RABBITMQ_URL") or os.getenv("RABBITMQ_URL")',
         'os.getenv("LUMI_DATABASE_URL") or os.getenv("DATABASE_URL")',
+        'sub.add_parser("dispatch-outbox")',
+        "MediaExternalWaitWakeScheduler(dsn)",
+        "MediaJobOutboxDispatcher(dsn, CeleryJobPublisher())",
     )
 
     for path in (config_path, app_path, cli_path):
@@ -133,6 +160,15 @@ def _validate_worker_source() -> None:
             "LUMI_MODEL_PROVIDER_SECRET",
             "LUMI_MEDIA_PROVIDER_SECRET",
         )
+
+    compute_path = "infra/iac/modules/compute/main.tf"
+    compute = _read(compute_path)
+    _require(
+        compute,
+        compute_path,
+        'contains(["sandbox-runtime", "outbox-dispatcher"], name)',
+        "? [var.app_security_group_id, var.sandbox_egress_security_group_id]",
+    )
 
 
 def main() -> int:
