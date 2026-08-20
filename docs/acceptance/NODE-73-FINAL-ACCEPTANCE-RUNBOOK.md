@@ -4,7 +4,7 @@
 
 ## 1. Purpose
 
-This runbook is the final Go/No-Go procedure for LUMI AI Design OS. It does not replace NODE-66～72; it freezes and re-validates their real evidence together with the product journeys, documentation and operational handoff.
+This runbook is the final Go/No-Go procedure for LUMI AI Design OS. It does not replace NODE-66～72; it freezes and re-validates their real evidence together with the product journeys, documentation, repository governance and operational handoff.
 
 The default outcome is:
 
@@ -274,18 +274,21 @@ After all scenario statuses are final, compute the SHA-256 of `acceptance-eviden
 
 Do not edit evidence after this point. Any edit requires re-freezing the release manifest and re-running the gate.
 
-## 15. Freeze upstream and Production evidence
+## 15. Freeze upstream, Production and repository-governance evidence
 
 The final release manifest must also freeze:
 
 ```text
 six upstream decision wrappers
 production deployment manifest
+repository-governance report
 ```
 
 Each file is validated again by SHA-256 at decision time.
 
-## 16. Complete operational handoff
+The repository-governance report must prove both NODE-73 release refs satisfy `LUMI_RELEASE_PROTECTION_PROFILE_V1` and that protected `release-closure-p0` still points to the exact final RC SHA. The manual Final Product Acceptance workflow re-queries GitHub live before evaluating the product decision.
+
+## 16. Complete operational handoff and GitHub-backed release authorization
 
 Assign and record:
 
@@ -298,7 +301,7 @@ Assign and record:
 - DR drill owner;
 - capacity review owner.
 
-Required approvals:
+Required approval roles remain:
 
 ```text
 Product
@@ -308,9 +311,91 @@ Operations
 Release Owner
 ```
 
-All must be `APPROVED`.
+However, manually typing five `APPROVED` strings is **not** valid release evidence.
+
+### 16.1 Configure the approval identity policy
+
+Copy `final/acceptance/release-approval-policy-template.json` into the release evidence area and replace every `PENDING` role principal with real GitHub login allowlists.
+
+The canonical policy requires:
+
+```text
+repository = zhangjaky71-stack/LUMI-AI-DESIGN-OS
+PR = #135
+base = node-73-final-acceptance-release
+head = release-closure-p0
+minimum distinct human approvers >= 3
+Engineering approver != Security approver
+Security approver != Release Owner approver
+bots forbidden
+review commit == exact final RC SHA
+```
+
+Do not invent role principals. If the organization has not assigned a real person/login to a role, authorization remains blocked.
+
+### 16.2 Freeze the authorization request
+
+Create `reports/final-acceptance/<release-id>/authorization-request.json` from `final/acceptance/release-authorization-request-template.json` and freeze the configured approval policy by `path + sha256`.
+
+The request also freezes the complete operational handoff and exact RC identity.
+
+### 16.3 Obtain real GitHub approvals
+
+The role principals must submit actual GitHub **APPROVED** reviews on PR #135 after the final RC SHA is selected.
+
+Only the latest decisive review from each actor counts. A review is rejected when it is:
+
+- by the PR author;
+- by a bot;
+- not `APPROVED`;
+- attached to an older commit;
+- superseded by a later decisive `CHANGES_REQUESTED` or dismissed review;
+- outside the role's configured login allowlist.
+
+### 16.4 Capture provenance-backed authorization
+
+Run:
+
+```bash
+python3 scripts/capture_release_authorization.py \
+  --request reports/final-acceptance/<release-id>/authorization-request.json \
+  --output reports/final-acceptance/<release-id>/release-authorization.json
+```
+
+The resulting `LUMI_RELEASE_AUTHORIZATION_V1` records, per role:
+
+```text
+actor GitHub login
+review id
+review URL
+exact RC commit id
+submitted_at
+```
+
+It also freezes the request and policy by SHA-256 and proves the minimum distinct-actor and separation-of-duties rules.
+
+The canonical assembler and final package validator re-validate this structure. Only after successful provenance validation do they emit the simple five-role `APPROVED` status map consumed by `final-acceptance-gate.py`.
+
+### 16.5 Live approval re-verification
+
+The manual Final Product Acceptance workflow gives only `final-decision` the read-only `pull-requests: read` permission. A short-lived `GITHUB_TOKEN` is exposed only to the live-authorization step, which verifies that:
+
+- PR #135 is still open on the expected base/head refs;
+- PR head still equals the frozen RC SHA;
+- every frozen review still exists;
+- every review actor still matches;
+- every review is still `APPROVED` for the exact RC;
+- each frozen approval is still that actor's latest decisive review.
+
+The live result is archived as `release-authorization-live.json` before the product acceptance decision runs.
+
+At the current checkpoint, PR #135 has **zero submitted reviews** and the role-principal policy template is intentionally `PENDING`. Therefore Final Approval Provenance is currently **BLOCKED_EXTERNAL**, not PASS.
 
 ## 17. Run the final gate
+
+The recommended release path is the manual `Final Product Acceptance Gate` workflow, because it performs both live repository-governance and live GitHub-review re-verification before the product decision.
+
+The underlying deterministic product gate remains:
 
 ```bash
 python3 scripts/final-acceptance-gate.py \
@@ -319,7 +404,7 @@ python3 scripts/final-acceptance-gate.py \
   --output reports/final-acceptance/<release-id>/final-decision.json
 ```
 
-Or run the manual `Final Product Acceptance Gate` workflow against the two frozen files.
+Do not treat a standalone invocation of this last command as full release authorization; the canonical package and live governance/approval checks must already have passed.
 
 ## 18. Decision handling
 
@@ -329,9 +414,9 @@ If the gate exits non-zero or reports blockers:
 NOT ACCEPTED — SEE BLOCKING GAPS
 ```
 
-Keep the release out of final acceptance. Fix or explicitly re-scope the actual blocker; do not edit the matrix or delete a scenario to make the report green.
+Keep the release out of final acceptance. Fix or explicitly re-scope the actual blocker; do not edit the matrix, fabricate approvals or delete a scenario to make the report green.
 
-Only when the machine decision returns `accepted=true` may the release headline be:
+Only when the machine decision returns `accepted=true` after the full release workflow may the release headline be:
 
 ```text
 LUMI AI DESIGN OS — PRODUCT ACCEPTED
@@ -354,34 +439,31 @@ Final acceptance is the start of governed operations, not permission to stop val
 
 ## 20. Current project state
 
-The code-addressable image-generation release path is now materially stronger than the earlier source baseline:
+The code-addressable image-generation and release-trust path is now materially stronger than the earlier source baseline:
 
-- `image.transform` no longer returns an accepted-only placeholder; it enters the canonical TaskJobStore and Hosted NODE-46 runtime.
-- the Hosted runtime reads the versioned generation spec from canonical `tasks.type/input_json`, validates org/project/task/operation scope, resolves reference rights fail-closed, and composes the private Model Gateway, bounded S3 staging fetch, durable `generated/v1` storage, canonical `generations`, artifact/provenance rows, NODE-27 cost observation and outbox events;
-- paid Provider retries remain under NODE-20 operation identities, while transient private-Gateway/S3 failures propagate through the same RUNNING generation and only missing variants are resumed;
-- durable S3 storage now separates known permanent auth/config/bucket rejection from transient 408/409/425/429/5xx, SlowDown, timeout and throttling classes so permanent misconfiguration cannot enter an unbounded retry loop;
-- Worker Media now has an explicit production Dockerfile and bounded Celery CLI entrypoint; the image recipe uses Python 3.12, a frozen all-workspace no-dev install and non-root UID/GID 10001;
-- NODE-46 CI contains a Worker Media image smoke job that must build the real Dockerfile, import the packaged entrypoint and start the container long enough to prove process liveness;
-- Worker Media does not write a second provider-cost ledger;
-- NODE-46 CI/static contracts cover the Hosted chain, and NODE-71 now requires both Model Gateway and Worker Media source provenance, including Worker Media Dockerfile/CLI, with per-required-path negative drills.
+- `image.transform` no longer returns an accepted-only placeholder; it enters the canonical TaskJobStore and Hosted NODE-46 runtime;
+- Worker Media and Model Gateway have concrete production image/source closure and private provider boundaries;
+- six-runtime release Actions are pinned to immutable commit SHAs and use scoped workflow permissions;
+- RC image attestations are verified against the canonical signer workflow, exact source SHA/ref, GitHub-hosted runner identity, BuildKit SLSA provenance and SPDX SBOM;
+- `attestation-verification.json` is SHA-256-bound into the frozen runtime-image set and re-validated by NODE-71;
+- canonical `uv.lock` regeneration is bound to one dispatch SHA and fails if the release branch moves;
+- Final Acceptance requires a frozen strong repository-governance report and re-verifies GitHub protection live;
+- Final Acceptance now requires provenance-backed GitHub PR approvals rather than unauthenticated `APPROVED` strings.
 
-These are source/contract closures, not deployment proof. Final acceptance remains blocked by at least:
+These are source/contract closures, not deployment or human-approval proof. Final acceptance remains blocked by at least:
 
 - canonical `uv.lock` regeneration and successful `uv sync --all-packages --frozen`;
 - successful trusted PostgreSQL migration/ORM-drift/NODE-20/NODE-27/NODE-46 integration execution;
 - successful Worker Media and Model Gateway production-image build/start proof in a trusted runnable environment;
-- real six-runtime image build/start/promotion evidence with immutable digests, SBOM and provenance;
-- proof that the deployed Worker Media image contains and executes the required image-generation sources and can reach the private Model Gateway/S3/DB boundaries;
+- real six-runtime image build/start/promotion and live attestation evidence;
 - Production-like Staging, Production smoke/canary/rollback and DR evidence;
-- remaining NODE-68～72 runtime/cloud evidence requirements.
+- remaining NODE-68～72 runtime/cloud evidence requirements;
+- strong protection/ruleset configuration for both NODE-73 release refs (currently GitHub reports `protected=false`);
+- a usable Administration-read `RELEASE_GOVERNANCE_TOKEN` for live detailed protection verification;
+- configured real GitHub role principals for Product/Engineering/Security/Operations/Release Owner;
+- at least three distinct human exact-RC APPROVED reviews satisfying the role/SoD policy (currently PR #135 has zero submitted reviews).
 
-Latest sampled GitHub-hosted evidence at branch head `f6f1bc78c9b7435c7e06c1a657f2a694b66a9c23` remains pre-execution failure:
-
-- Image Generation run `32214468443`: `image-generation-contract` job `95953274132` failed with `steps=null`, `logs_url=null`; `image-generation-quality`, `worker-media-image-smoke`, integration and benchmark jobs were skipped.
-- Staging Acceptance Gate run `32214468381`: `canonical-lock-gate` job `95953274056` and `source-contract` job `95953274092` failed with `steps=null`, `logs_url=null`; remote preflight and acceptance decision were skipped.
-- Final Product Acceptance Gate run `32214468413`: `source-contract` job `95953274023` and `canonical-lock-gate` job `95953274174` failed with `steps=null`, `logs_url=null`; final decision was skipped.
-
-No checkout, Python, `uv`, Docker build, pytest, PostgreSQL, Terraform or application command is evidenced as having run in those sampled jobs. They therefore provide neither code-failure diagnostics nor PASS evidence.
+Latest sampled GitHub-hosted release-critical jobs continue to exhibit the established pre-execution failure mode: failed jobs have `steps=null` and `logs_url=null`, so no checkout, Python, `uv`, Docker, pytest, PostgreSQL, Terraform or application command is evidenced as having run. Those red jobs therefore provide neither code-failure diagnostics nor PASS evidence.
 
 Therefore this runbook's current final outcome remains intentionally:
 
