@@ -12,14 +12,20 @@ from uuid import UUID
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from .models import ExecRequest, NetworkPolicy, SandboxSpec
+from .models import (
+    ExchangeInputFile,
+    ExchangeOutputFile,
+    ExecRequest,
+    NetworkPolicy,
+    SandboxSpec,
+)
 from .ports import SandboxBackend
 
 _AUTH_SERVICE_HEADER = "X-Lumi-Service"
 _AUTH_TIMESTAMP_HEADER = "X-Lumi-Timestamp"
 _AUTH_SIGNATURE_HEADER = "X-Lumi-Signature"
 _EXECUTE_PATH = "/internal/v1/sandbox/execute"
-_ALLOWED_CALLERS = frozenset({"tool-gateway"})
+_ALLOWED_CALLERS = frozenset({"tool-gateway", "worker-media"})
 _MAX_SKEW_SECONDS = 90
 _MAX_BODY_BYTES = 64 * 1024
 
@@ -82,9 +88,10 @@ def create_sandbox_runtime_app(runtime: HostedSandboxRuntime) -> FastAPI:
 
     @app.post(_EXECUTE_PATH, tags=["internal"])
     async def execute(request: Request) -> JSONResponse:
-        body_or_error = await _authenticated_body(request, runtime.auth_secret)
-        if isinstance(body_or_error, JSONResponse):
-            return body_or_error
+        authenticated = await _authenticated_body(request, runtime.auth_secret)
+        if isinstance(authenticated, JSONResponse):
+            return authenticated
+        caller, body = authenticated
         if runtime.backend is None:
             return _error(
                 503,
@@ -92,7 +99,7 @@ def create_sandbox_runtime_app(runtime: HostedSandboxRuntime) -> FastAPI:
                 "production sandbox provider is not configured",
             )
         try:
-            payload = json.loads(body_or_error.decode("utf-8"))
+            payload = json.loads(body.decode("utf-8"))
             if not isinstance(payload, dict):
                 raise ValueError("SANDBOX_REQUEST_OBJECT_REQUIRED")
             organization_id = UUID(_required_string(payload, "organization_id"))
@@ -108,13 +115,26 @@ def create_sandbox_runtime_app(runtime: HostedSandboxRuntime) -> FastAPI:
             timeout_raw = payload.get("timeout_seconds", 120)
             if isinstance(timeout_raw, bool) or not isinstance(timeout_raw, int):
                 raise ValueError("SANDBOX_EXEC_TIMEOUT_INVALID")
+            exchange_inputs = _parse_exchange_inputs(payload.get("exchange_inputs", []))
+            exchange_outputs = _parse_exchange_outputs(payload.get("exchange_outputs", []))
+            if caller != "worker-media" and (exchange_inputs or exchange_outputs):
+                return _error(
+                    403,
+                    "SANDBOX_EXCHANGE_CALLER_FORBIDDEN",
+                    "exchange file execution is restricted to worker-media",
+                )
             spec = SandboxSpec(
                 organization_id=organization_id,
                 agent_run_id=agent_run_id,
                 timeout_seconds=timeout_raw,
                 network_policy=NetworkPolicy.NONE,
             )
-            exec_request = ExecRequest(tuple(command_raw), timeout_seconds=timeout_raw)
+            exec_request = ExecRequest(
+                tuple(command_raw),
+                timeout_seconds=timeout_raw,
+                exchange_inputs=exchange_inputs,
+                exchange_outputs=exchange_outputs,
+            )
         except (ValueError, TypeError) as exc:
             return _error(422, "SANDBOX_REQUEST_INVALID", str(exc))
 
@@ -141,7 +161,47 @@ def create_sandbox_runtime_app(runtime: HostedSandboxRuntime) -> FastAPI:
     return app
 
 
-async def _authenticated_body(request: Request, secret: str) -> bytes | JSONResponse:
+def _parse_exchange_inputs(value: Any) -> tuple[ExchangeInputFile, ...]:
+    if not isinstance(value, list) or len(value) > 64:
+        raise ValueError("SANDBOX_EXCHANGE_INPUTS_INVALID")
+    parsed: list[ExchangeInputFile] = []
+    for raw in value:
+        if not isinstance(raw, dict):
+            raise ValueError("SANDBOX_EXCHANGE_INPUT_INVALID")
+        parsed.append(
+            ExchangeInputFile(
+                exchange_key=_required_string(raw, "exchange_key"),
+                path=_required_string(raw, "path"),
+                max_bytes=_required_int(raw, "max_bytes"),
+                expected_sha256=_optional_string(raw.get("expected_sha256")),
+            )
+        )
+    return tuple(parsed)
+
+
+def _parse_exchange_outputs(value: Any) -> tuple[ExchangeOutputFile, ...]:
+    if not isinstance(value, list) or len(value) > 16:
+        raise ValueError("SANDBOX_EXCHANGE_OUTPUTS_INVALID")
+    parsed: list[ExchangeOutputFile] = []
+    for raw in value:
+        if not isinstance(raw, dict):
+            raise ValueError("SANDBOX_EXCHANGE_OUTPUT_INVALID")
+        parsed.append(
+            ExchangeOutputFile(
+                exchange_key=_required_string(raw, "exchange_key"),
+                path=_required_string(raw, "path"),
+                max_bytes=_required_int(raw, "max_bytes"),
+                content_type=_optional_string(raw.get("content_type"))
+                or "application/octet-stream",
+            )
+        )
+    return tuple(parsed)
+
+
+async def _authenticated_body(
+    request: Request,
+    secret: str,
+) -> tuple[str, bytes] | JSONResponse:
     content_length = request.headers.get("content-length")
     if content_length is not None:
         try:
@@ -170,7 +230,7 @@ async def _authenticated_body(request: Request, secret: str) -> bytes | JSONResp
     expected = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(signature.lower(), expected):
         return _error(401, "SANDBOX_AUTH_SIGNATURE_INVALID", "sandbox authentication failed")
-    return body
+    return service, body
 
 
 def _auth_message(service: str, timestamp: int, method: str, path: str, body: bytes) -> bytes:
@@ -203,6 +263,21 @@ def _required_string(payload: dict[str, Any], key: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str) or not value:
         raise ValueError(f"SANDBOX_FIELD_INVALID:{key}")
+    return value
+
+
+def _required_int(payload: dict[str, Any], key: str) -> int:
+    value = payload.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"SANDBOX_FIELD_INVALID:{key}")
+    return value
+
+
+def _optional_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("SANDBOX_FIELD_INVALID:optional_string")
     return value
 
 
