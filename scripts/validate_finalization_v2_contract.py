@@ -62,8 +62,8 @@ def markers(path: Path, required: tuple[str, ...]) -> None:
 
 def run_self_tests(modules: dict[str, ModuleType]) -> None:
     expected = {
-        "governance": ("negative_drills", 10),
-        "live_governance": ("negative_drills", 4),
+        "governance": ("negative_drills", 12),
+        "live_governance": ("negative_drills", 7),
         "dispatch_registry": ("negative_drills", 5),
         "live_dispatch_registry": ("negative_drills", 7),
         "authorization": ("negative_drills", 6),
@@ -81,6 +81,7 @@ def run_self_tests(modules: dict[str, ModuleType]) -> None:
     governance_apply: dict[str, Any] = modules["governance_apply"].self_test()
     require(governance_apply.get("status") == "PASS", "branch-protection applicator self-test did not PASS")
     require(governance_apply.get("preflight_guard") == "EVIDENCE_HEAD_EXACT", "branch-protection Evidence Head guard drift")
+    require(governance_apply.get("evidence_head_lock") == "READ_ONLY", "branch-protection Evidence Head lock drift")
     require(
         modules["approval_feasibility"].EXPECTED_PR_AUTHOR
         in results["approval_feasibility"]["clean"]["excluded_logins"],
@@ -116,6 +117,11 @@ def validate_templates(modules: dict[str, ModuleType]) -> None:
     checks = normalized["required_status_checks"]
     require(checks["required_contexts"] == [CANONICAL_FINAL_CHECK], "governance policy canonical required check drift")
     require(checks["strict"] is True and checks["allow_additional_contexts"] is True, "governance status-check policy drift")
+    require(normalized["require_evidence_head_locked"] is True, "governance policy must lock Evidence Head")
+    require(
+        normalized["require_non_evidence_release_branches_unlocked"] is True,
+        "governance policy must keep merge-target release branch unlocked",
+    )
 
 
 def validate_canonical_sources() -> None:
