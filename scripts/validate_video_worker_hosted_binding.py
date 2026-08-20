@@ -18,9 +18,14 @@ VIDEO_COST_TEST = ROOT / "apps/worker-media/tests/test_video_cost_runtime.py"
 VIDEO_GATEWAY_TEST = ROOT / "apps/worker-media/tests/test_video_gateway_runtime.py"
 VIDEO_PORTS_TEST = ROOT / "apps/worker-media/tests/test_video_generation_ports.py"
 VIDEO_SANDBOX_TEST = ROOT / "apps/worker-media/tests/test_video_sandbox_runtime.py"
+VIDEO_POSTGRES_TEST = (
+    ROOT / "apps/worker-media/tests/integration/test_video_hosted_postgres.py"
+)
 PROVIDER_OUTPUT = ROOT / "apps/api/src/lumi_api/provider_output_store.py"
 PROVIDER_OUTPUT_TEST = ROOT / "apps/api/tests/test_provider_output_store.py"
-VIDEO_PERFORMANCE = ROOT / "services/video-generation/src/lumi_video_generation/performance_ports.py"
+VIDEO_PERFORMANCE = (
+    ROOT / "services/video-generation/src/lumi_video_generation/performance_ports.py"
+)
 VIDEO_WORKFLOW = ROOT / ".github/workflows/video-generation.yml"
 SANDBOX_WORKFLOW = ROOT / ".github/workflows/sandbox-remote-runtime-closure.yml"
 ENVIRONMENTS = ("staging", "production")
@@ -62,7 +67,9 @@ def validate_iac() -> None:
     for environment in ENVIRONMENTS:
         main_path = ROOT / f"infra/iac/environments/{environment}/app/main.tf"
         variables_path = ROOT / f"infra/iac/environments/{environment}/app/variables.tf"
-        tfvars_path = ROOT / f"infra/iac/environments/{environment}/app/terraform.tfvars.example"
+        tfvars_path = (
+            ROOT / f"infra/iac/environments/{environment}/app/terraform.tfvars.example"
+        )
         for path in (main_path, variables_path, tfvars_path):
             require(path.is_file(), f"missing {path.relative_to(ROOT)}")
         main = main_path.read_text(encoding="utf-8")
@@ -127,6 +134,7 @@ def main() -> None:
         VIDEO_GATEWAY_TEST,
         VIDEO_PORTS_TEST,
         VIDEO_SANDBOX_TEST,
+        VIDEO_POSTGRES_TEST,
         PROVIDER_OUTPUT,
         PROVIDER_OUTPUT_TEST,
         VIDEO_PERFORMANCE,
@@ -150,14 +158,21 @@ def main() -> None:
     gateway_test = VIDEO_GATEWAY_TEST.read_text(encoding="utf-8")
     ports_test = VIDEO_PORTS_TEST.read_text(encoding="utf-8")
     sandbox_test = VIDEO_SANDBOX_TEST.read_text(encoding="utf-8")
+    postgres_test = VIDEO_POSTGRES_TEST.read_text(encoding="utf-8")
     provider_output = PROVIDER_OUTPUT.read_text(encoding="utf-8")
     provider_output_test = PROVIDER_OUTPUT_TEST.read_text(encoding="utf-8")
     performance = VIDEO_PERFORMANCE.read_text(encoding="utf-8")
     workflow = VIDEO_WORKFLOW.read_text(encoding="utf-8")
     sandbox_workflow = SANDBOX_WORKFLOW.read_text(encoding="utf-8")
 
-    require("lumi-video-generation" in project, "Worker Media does not depend on video-generation package")
-    require("lumi-asset-storage" in project, "Worker Media does not depend on asset-storage package")
+    require(
+        "lumi-video-generation" in project,
+        "Worker Media does not depend on video-generation package",
+    )
+    require(
+        "lumi-asset-storage" in project,
+        "Worker Media does not depend on asset-storage package",
+    )
 
     require_markers(
         worker,
@@ -171,8 +186,13 @@ def main() -> None:
         ),
         "worker video.render lifecycle",
     )
-    video_block = worker.split('name="lumi.jobs.video.render"', 1)[1].split("@celery_app.task", 1)[0]
-    require('"status": "accepted"' not in video_block, "video.render still returns accepted-only placeholder")
+    video_block = worker.split('name="lumi.jobs.video.render"', 1)[1].split(
+        "@celery_app.task", 1
+    )[0]
+    require(
+        '"status": "accepted"' not in video_block,
+        "video.render still returns accepted-only placeholder",
+    )
 
     require_markers(
         hosted,
@@ -190,7 +210,7 @@ def main() -> None:
             "PerformanceTelemetryContext.from_environ()",
             "ExternalWait(",
             'wait_reason="video_provider_pending"',
-            'LUMI_VIDEO_MODEL_PROFILE',
+            "LUMI_VIDEO_MODEL_PROFILE",
         ),
         "hosted video composition root",
     )
@@ -263,20 +283,30 @@ def main() -> None:
 
     require_markers(
         repository,
-        ("class PostgresVideoRepository", "video_generation_jobs", "video_provider_jobs"),
+        (
+            "class PostgresVideoRepository",
+            "video_generation_jobs",
+            "video_provider_jobs",
+            "pg_advisory_xact_lock",
+        ),
         "durable video repository",
     )
     require_markers(
         artifact,
-        ("class PostgresVideoArtifactAdapter", "artifact_versions", "COMPOSED_FROM"),
+        (
+            "class PostgresVideoArtifactAdapter",
+            "artifact_versions",
+            "artifact_edges",
+            "COMPOSED_FROM",
+        ),
         "durable video artifact adapter",
     )
     require_markers(
         ports,
         (
             "class HostedVideoOutputAdapter",
-            'provider-output/v1/async/',
-            'sandbox-exchange/v1/',
+            "provider-output/v1/async/",
+            "sandbox-exchange/v1/",
             "class HostedVideoMediaSandbox",
             "TypedFfmpegSandbox",
             "class PostgresVideoCostObserver",
@@ -348,11 +378,32 @@ def main() -> None:
     )
 
     require_markers(
+        postgres_test,
+        (
+            "test_video_repository_round_trip_preserves_external_provider_identity",
+            "test_cost_outbox_artifact_and_external_wait_recovery_use_canonical_postgres",
+            "PostgresVideoRepository",
+            "ScopedPostgresVideoCostObserver",
+            "PostgresVideoArtifactAdapter",
+            "PostgresVideoEventSink",
+            "MediaExternalWaitWakeScheduler",
+            "TaskJobStore",
+            'assert edge["edge_type"] == "COMPOSED_FROM"',
+            "assert dispatch_count == 2",
+            "assert cost_count == 1",
+        ),
+        "Hosted video PostgreSQL executable acceptance",
+    )
+
+    require_markers(
         workflow,
         (
             "scripts/validate_video_worker_hosted_binding.py",
             "apps/worker-media/src/lumi_worker_media/video_*.py",
             "apps/worker-media/tests/test_video_*.py",
+            "apps/worker-media/tests/integration/test_video_*.py",
+            "apps/worker-media/tests/integration/test_video_hosted_postgres.py",
+            "Run Hosted video PostgreSQL acceptance",
             "apps/api/tests/test_provider_output_store.py",
             "uv sync --all-packages --frozen",
             "historical parallel NODE-48 tables are absent",
@@ -369,7 +420,10 @@ def main() -> None:
     )
 
     validate_iac()
-    print("PASS: Hosted video.render production binding is durable, tenant-scoped, isolated, checksum-bound, and CI-gated")
+    print(
+        "PASS: Hosted video.render production binding is durable, tenant-scoped, "
+        "PostgreSQL-accepted, isolated, checksum-bound, and CI-gated"
+    )
 
 
 if __name__ == "__main__":
