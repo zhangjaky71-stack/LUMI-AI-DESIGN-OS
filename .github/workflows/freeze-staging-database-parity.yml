@@ -1,0 +1,231 @@
+name: Freeze Staging Database Parity
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_git_sha:
+        description: "Exact Source RC SHA"
+        required: true
+        type: string
+      collector_run_id:
+        description: "Successful Collect Staging Database Parity run ID"
+        required: true
+        type: string
+      freeze_ack:
+        description: "Required acknowledgement: FREEZE_STAGING_DATABASE_PARITY:<rc-sha>"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate-freeze:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    env:
+      RC_SHA: ${{ inputs.release_git_sha }}
+      COLLECTOR_RUN_ID: ${{ inputs.collector_run_id }}
+      FREEZE_ACK: ${{ inputs.freeze_ack }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Require exact release evidence branch and collector provenance
+        id: collector
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "release-closure-p0"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          [[ "$RC_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$COLLECTOR_RUN_ID" =~ ^[0-9]+$ ]]
+          test "$FREEZE_ACK" = "FREEZE_STAGING_DATABASE_PARITY:${RC_SHA}"
+          git merge-base --is-ancestor "$RC_SHA" "$GITHUB_SHA"
+
+          run="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${COLLECTOR_RUN_ID}")"
+          test "$(jq -r '.repository.full_name' <<<"$run")" = "$GITHUB_REPOSITORY"
+          test "$(jq -r '.name' <<<"$run")" = "Collect Staging Database Parity"
+          test "$(jq -r '.path' <<<"$run")" = ".github/workflows/collect-staging-database-parity.yml"
+          test "$(jq -r '.event' <<<"$run")" = "workflow_dispatch"
+          test "$(jq -r '.head_branch' <<<"$run")" = "release-closure-p0"
+          test "$(jq -r '.status' <<<"$run")" = "completed"
+          test "$(jq -r '.conclusion' <<<"$run")" = "success"
+          collector_head="$(jq -r '.head_sha' <<<"$run")"
+          [[ "$collector_head" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$RC_SHA" "$collector_head"
+          git merge-base --is-ancestor "$collector_head" "$GITHUB_SHA"
+          run_attempt="$(jq -r '.run_attempt' <<<"$run")"
+          [[ "$run_attempt" =~ ^[0-9]+$ ]]
+          test "$run_attempt" -gt 0
+          jq --arg repository "$GITHUB_REPOSITORY" '{id,name,path,event,status,conclusion,head_branch,head_sha,run_attempt,created_at,updated_at,html_url,repository:$repository}' \
+            <<<"$run" > /tmp/collector-run.json
+          printf 'run_attempt=%s\n' "$run_attempt" >> "$GITHUB_OUTPUT"
+
+      - name: Download exact successful database parity collector artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: staging-database-parity-${{ inputs.collector_run_id }}-${{ steps.collector.outputs.run_attempt }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.collector_run_id }}
+          path: /tmp/staging-db-parity
+
+      - name: Require exact collector package and recompute validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in evidence.json validation.json runtime-identity.json evidence.sha256; do
+            test -f "/tmp/staging-db-parity/$name"
+            test "$(find /tmp/staging-db-parity -type f -name "$name" | wc -l)" -eq 1
+          done
+          test "$(find /tmp/staging-db-parity -maxdepth 1 -type f | wc -l)" -eq 4
+          recorded="$(awk '{print $1}' /tmp/staging-db-parity/evidence.sha256)"
+          actual="$(sha256sum /tmp/staging-db-parity/evidence.json | awk '{print $1}')"
+          test "$recorded" = "$actual"
+          release_version="$(git show "${RC_SHA}:VERSION" | tr -d '\r\n')"
+          test -n "$release_version"
+          python3 scripts/validate_staging_database_parity_evidence.py --self-test
+          python3 scripts/validate_staging_database_parity_evidence.py \
+            --evidence /tmp/staging-db-parity/evidence.json \
+            --expected-git-sha "$RC_SHA" \
+            --expected-version "$release_version" \
+            > /tmp/recomputed-validation.json
+          cmp -s /tmp/recomputed-validation.json /tmp/staging-db-parity/validation.json || {
+            echo "collector database parity validation differs from freeze-time recomputation" >&2
+            exit 65
+          }
+          jq -e --arg sha "$RC_SHA" '.status == "PASS" and .release_git_sha == $sha' /tmp/recomputed-validation.json >/dev/null
+          jq -e --arg sha "$RC_SHA" '.environment == "staging" and .release_git_sha == $sha and .image_is_immutable == true and (.api_image | test("@sha256:[0-9a-f]{64}$"))' \
+            /tmp/staging-db-parity/runtime-identity.json >/dev/null
+
+      - name: Freeze canonical evidence wrapper and catalog fragment
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_id="staging-database-parity:${RC_SHA}"
+          target_root="reports/staging-acceptance/evidence/${RC_SHA}"
+          mkdir -p "$target_root"
+          python3 scripts/freeze_staging_evidence_artifact.py \
+            --artifact-id "$artifact_id" \
+            --rc-sha "$RC_SHA" \
+            --validation /tmp/recomputed-validation.json \
+            --source-run /tmp/collector-run.json \
+            --raw-evidence /tmp/staging-db-parity/evidence.json \
+            --output "$target_root/database-parity.json" \
+            --catalog-output "$target_root/database-parity.catalog.json"
+
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          rc = os.environ['RC_SHA']
+          root = Path.cwd()
+          catalog_path = root / 'reports' / 'staging-acceptance' / 'evidence' / rc / 'database-parity.catalog.json'
+          catalog = json.loads(catalog_path.read_text(encoding='utf-8'))
+          artifact_id = f'staging-database-parity:{rc}'
+          evidence = {
+              'release_candidate': {'git_sha': rc},
+              'environment_parity': {
+                  'PARITY-DB': {'status': 'PASS', 'evidence_ref': artifact_id},
+                  'PARITY-MIGRATIONS': {'status': 'PASS', 'evidence_ref': artifact_id},
+              },
+              'scenario_results': {},
+              'evidence_artifacts': catalog,
+          }
+          path = root / 'reports' / 'staging-acceptance' / 'runtime' / 'database-parity-binding-fixture.json'
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(evidence, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          PY
+          STAGING_EVIDENCE_GITHUB_TOKEN="$GH_TOKEN" python3 scripts/validate_staging_evidence_artifacts.py \
+            --evidence reports/staging-acceptance/runtime/database-parity-binding-fixture.json \
+            --require-live-producers \
+            --output reports/staging-acceptance/runtime/database-parity-binding.json
+          jq -e '.status == "PASS" and .producer_provenance_live_verified == true and .verified_artifact_count == 1' \
+            reports/staging-acceptance/runtime/database-parity-binding.json >/dev/null
+
+      - name: Upload validated freeze package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-database-parity-freeze-${{ github.run_id }}
+          path: reports/staging-acceptance/evidence/${{ inputs.release_git_sha }}/
+          if-no-files-found: error
+          retention-days: 30
+
+  commit-freeze:
+    needs: [validate-freeze]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: staging-database-parity-freeze-${{ github.run_id }}
+          path: /tmp/staging-db-parity-freeze
+
+      - name: Materialize only the validated immutable database parity wrapper
+        shell: bash
+        env:
+          RC_SHA: ${{ inputs.release_git_sha }}
+        run: |
+          set -euo pipefail
+          test "$(find /tmp/staging-db-parity-freeze -maxdepth 1 -type f | wc -l)" -eq 2
+          test -f /tmp/staging-db-parity-freeze/database-parity.json
+          test -f /tmp/staging-db-parity-freeze/database-parity.catalog.json
+          target="reports/staging-acceptance/evidence/${RC_SHA}"
+          if test -d "$target"; then
+            if cmp -s /tmp/staging-db-parity-freeze/database-parity.json "$target/database-parity.json" \
+              && cmp -s /tmp/staging-db-parity-freeze/database-parity.catalog.json "$target/database-parity.catalog.json"; then
+              echo "identical database parity evidence already frozen"
+              echo "FREEZE_NOOP=true" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "refusing to overwrite non-identical database parity evidence for $RC_SHA" >&2
+            exit 66
+          fi
+          mkdir -p "$target"
+          cp /tmp/staging-db-parity-freeze/database-parity.json "$target/database-parity.json"
+          cp /tmp/staging-db-parity-freeze/database-parity.catalog.json "$target/database-parity.catalog.json"
+          echo "FREEZE_NOOP=false" >> "$GITHUB_ENV"
+
+      - name: Commit only validated Staging database parity evidence with exact-head guard
+        if: env.FREEZE_NOOP != 'true'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RC_SHA: ${{ inputs.release_git_sha }}
+        run: |
+          set -euo pipefail
+          expected="$GITHUB_SHA"
+          remote="$(git ls-remote "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/heads/release-closure-p0" | awk '{print $1}')"
+          test "$remote" = "$expected"
+          target="reports/staging-acceptance/evidence/${RC_SHA}"
+          git config user.name "lumi-release-evidence-bot"
+          git config user.email "lumi-release-evidence-bot@users.noreply.github.com"
+          git add -- "$target/database-parity.json" "$target/database-parity.catalog.json"
+          test "$(git diff --cached --name-only | wc -l)" -eq 2
+          while IFS= read -r path; do
+            case "$path" in
+              "$target/database-parity.json"|"$target/database-parity.catalog.json") ;;
+              *) echo "unexpected staged path: $path" >&2; exit 67 ;;
+            esac
+          done < <(git diff --cached --name-only)
+          git commit -m "release: freeze staging database parity ${RC_SHA}"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:release-closure-p0"
