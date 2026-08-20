@@ -4,16 +4,16 @@ Status: **SOURCE/CODE-ADDRESSABLE CLOSURE IMPLEMENTED; RUNTIME ACCEPTANCE BLOCKE
 
 This report records the NODE-73 final-governance execution closure after Finalization Identity V2. It does **not** declare Final Acceptance PASS and does not introduce NODE-74.
 
-## 1. Checkpoint identity
+## 1. Audited external checkpoint
 
-Source checkpoint audited before this report commit:
+Release-critical hosted execution was sampled at:
 
 ```text
 repository: zhangjaky71-stack/LUMI-AI-DESIGN-OS
 PR: #135
 base: node-73-final-acceptance-release
 head branch: release-closure-p0
-checkpoint head: 8f52b257712931f344ec1faf237ec83043b69fe8
+sampled head: 8f52b257712931f344ec1faf237ec83043b69fe8
 ```
 
 At that checkpoint:
@@ -44,9 +44,7 @@ scripts/validate_release_governance_policy.py
 .github/workflows/final-acceptance-gate.yml
 ```
 
-The policy permits additional stronger required checks, but every NODE-73 release ref must include the canonical context.
-
-This avoids a false-positive protection profile where an unrelated successful check satisfies release governance, and it avoids depending on a generic duplicated `contract-gate` display name.
+The policy permits additional stronger required checks, but every NODE-73 release ref must include the canonical context. Generic/unrelated successful checks cannot satisfy NODE-73 governance.
 
 ## 3. Frozen policy -> live GitHub protection binding
 
@@ -71,9 +69,9 @@ records required/observed contexts in final-decision-v2.json
 
 The outer decision explicitly hash-binds the frozen governance policy and authorization request in `canonical_inputs`.
 
-## 4. Exact Evidence Head execution
+## 4. Exact Evidence Head execution and final-check ordering
 
-Final Product Acceptance now performs exact commit checkout in all three code-consuming jobs:
+Final Product Acceptance checks out exact commit identity in:
 
 ```text
 source-contract
@@ -81,20 +79,7 @@ canonical-lock-gate
 final-decision
 ```
 
-Each uses:
-
-```text
-ref: ${{ github.sha }}
-persist-credentials: false
-```
-
-and verifies:
-
-```text
-git rev-parse HEAD == GITHUB_SHA
-```
-
-`final-decision` additionally uses full Git history for Source-RC ancestry proof.
+Each uses an exact SHA checkout with persisted checkout credentials disabled and verifies the checked-out HEAD.
 
 Final Decision cannot run until:
 
@@ -104,7 +89,7 @@ canonical-lock-gate == success
 node73-final-contract-gate == success
 ```
 
-This removes the prior scheduling window where Final Decision could start in parallel with the canonical required summary check.
+This removes the prior scheduling window where Final Decision could start before the canonical required summary check completed.
 
 ## 5. Policy-driven branch-protection applicator
 
@@ -115,14 +100,14 @@ scripts/apply_release_branch_protection.py
 .github/workflows/configure-release-branch-protection.yml
 ```
 
-The script applies the frozen strong policy to:
+The applicator renders the frozen policy into GitHub branch-protection settings for:
 
 ```text
 node-73-final-acceptance-release
 release-closure-p0
 ```
 
-Before any GitHub protection PUT it live-reads both branch heads and refuses to mutate if `release-closure-p0` no longer equals the selected Evidence Head.
+Before any protection mutation it live-reads both branch heads and refuses to proceed unless `release-closure-p0` still equals the selected Evidence Head.
 
 Strong controls include:
 
@@ -140,45 +125,57 @@ branch deletion disabled
 
 After mutation it captures live branch state and runs the same frozen-policy/live-protection binder used by Final Decision.
 
-Administration-write credential scope remains separate from Final Decision:
+## 6. High-privilege governance secret boundary
+
+A security review found that an earlier bootstrap design would have exposed an Administration-write PAT to a workflow controlled by the unprotected PR branch. That design was removed.
+
+The canonical workflow now deliberately separates:
 
 ```text
-mutation: RELEASE_GOVERNANCE_ADMIN_TOKEN, Administration write
-final verification: RELEASE_GOVERNANCE_TOKEN, Administration read
+pull_request:labeled -> unprivileged PR preflight only
+workflow_dispatch     -> privileged mutation only
 ```
 
-The mutation workflow itself receives only read-only `GITHUB_TOKEN` permissions and is protected by the `production` environment.
+### PR preflight
 
-## 6. Current-PR governance bootstrap
-
-A new workflow that exists only on a feature/release branch cannot rely solely on `workflow_dispatch` before the workflow is present on the default branch.
-
-To avoid that bootstrap dependency for PR #135, the governance workflow also supports a tightly bounded PR event:
+The only PR event is:
 
 ```text
-pull_request activity: labeled
-label: node73-apply-protection
-PR number: 135
-base: node-73-final-acceptance-release
-head: release-closure-p0
-head repository: same repository
+label = node73-protection-preflight
+PR number = 135
+base = node-73-final-acceptance-release
+head = release-closure-p0
+head repository = same repository
 ```
 
-For PR events the exact Evidence Head is derived from:
+It checks out `github.event.pull_request.head.sha` exactly and runs policy/applicator self-tests. It has:
 
 ```text
-github.event.pull_request.head.sha
+no production environment
+no Administration-write secret
+no repository write permission
+no branch-protection mutation
 ```
 
-rather than the PR merge commit SHA.
+### Privileged mutation
 
-The label must **not** be applied until the final Evidence Head, canonical lock/source gates, production environment approval and Administration-write secret are ready.
+Actual mutation requires:
 
-This report does not claim that the label currently exists or that the governance workflow has executed.
+```text
+workflow_dispatch
+github.ref = refs/heads/release-closure-p0
+confirm = APPLY_NODE73_RELEASE_PROTECTION
+production environment
+RELEASE_GOVERNANCE_ADMIN_TOKEN in one mutation step only
+```
+
+The mutation job rejects `pull_request` as an entry path. The GitHub `GITHUB_TOKEN` remains read-only; branch-protection mutation is performed only through the separately scoped Administration-write credential.
+
+Because a newly added `workflow_dispatch` workflow is not dispatchable until it exists on the default branch, **current PR #135 cannot safely self-bootstrap Administration-write protection through PR-controlled code**. Current NODE-73 therefore honestly retains an external administrator/default-branch bootstrap requirement instead of weakening the secret boundary.
 
 ## 7. V1 workflow bypass closure
 
-Historical V1 scripts remain in the repository for audit compatibility, but no GitHub workflow may execute them.
+Historical V1 scripts may remain for audit compatibility, but no GitHub workflow may execute them.
 
 Repository-wide scanner:
 
@@ -186,7 +183,7 @@ Repository-wide scanner:
 scripts/validate_no_v1_finalization_workflow_bypass.py
 ```
 
-It rejects workflow execution of:
+It rejects executable workflow references to:
 
 ```text
 scripts/final-acceptance-assembler.py
@@ -194,19 +191,17 @@ scripts/validate_final_acceptance_package.py
 scripts/final-acceptance-decision.py
 ```
 
-and requires the canonical V2 package producer/final decision markers. It also requires `node73-final-contract-gate` to appear exactly once across workflow job display names.
+and requires the canonical V2 package producer/final decision path. It also requires `node73-final-contract-gate` to appear exactly once across workflow display names.
 
 ## 8. Human approval feasibility is now pre-final
 
-A syntactically valid approval policy is insufficient if its allowlists cannot actually satisfy the release role model.
-
-Canonical feasibility validator:
+Canonical validator:
 
 ```text
 scripts/validate_release_approval_policy_feasibility_v2.py
 ```
 
-It statically proves that configured real GitHub principals can satisfy:
+A syntactically valid policy is rejected unless its real principal allowlists can satisfy:
 
 ```text
 all five roles
@@ -216,7 +211,7 @@ Engineering != Security
 Security != Release Owner
 ```
 
-The fixed PR #135 author `zhangjaky71-stack` is excluded from feasibility candidates and is revalidated live by the GitHub review collector.
+The fixed PR #135 author `zhangjaky71-stack` is excluded from static feasibility candidates and is revalidated live by the GitHub review collector.
 
 `validate_final_acceptance_package_v2.py` now rejects an unsatisfiable principal policy before the committed package can pass.
 
@@ -246,19 +241,23 @@ refusing overwrite
 
 No fabricated principal or handoff data is generated.
 
-## 10. Release Action supply-chain and least-privilege coverage
+## 10. Release supply-chain and least-privilege coverage
 
-The branch-protection workflow is included in:
+The branch-protection workflow is included in the release Action pin policy and release workflow permission contract.
+
+All external Actions in the governance path use approved immutable full commit SHAs.
+
+The permission contract now explicitly fails if:
 
 ```text
-production/release-actions/pins-v1.json
-scripts/validate_release_action_pins.py
-scripts/validate_release_workflow_permissions.py
+PR preflight receives RELEASE_GOVERNANCE_ADMIN_TOKEN
+PR preflight enters the production secret boundary
+PR preflight receives GitHub write permissions
+privileged mutation accepts pull_request
+Administration-write token is workflow-scoped or injected more than once
 ```
 
-All external Actions in the governance path are pinned to approved immutable full commit SHAs.
-
-The Administration-write secret is injected into exactly the mutation step; it is not workflow-scoped and is not exposed to checkout/setup/self-test steps.
+The consolidated `validate_finalization_v2_contract.py` delegates these boundaries to the dedicated permission contract instead of duplicating stale marker logic.
 
 ## 11. Canonical operational order
 
@@ -279,7 +278,7 @@ configure real approval principals + handoff
 assemble V2 package with approvals PENDING
 commit all non-live evidence
 select exact Evidence Head
-enable strong release-ref protection
+apply strong release-ref protection through a safe external/default-branch admin path
 obtain Evidence-Head-bound human reviews
 run Final Product Acceptance from exact Evidence Head
 archive live reports/final decision as Actions artifacts only
@@ -289,7 +288,7 @@ Live protection, approval and final-decision results must never be committed bac
 
 ## 12. Latest hosted execution observation
 
-Latest release-critical runs sampled for checkpoint head `8f52b257712931f344ec1faf237ec83043b69fe8`:
+Latest release-critical runs sampled for head `8f52b257712931f344ec1faf237ec83043b69fe8`:
 
 ```text
 Final Product Acceptance Gate: 32339799708
@@ -333,9 +332,7 @@ source-contract: failure, steps=null, logs_url=null
 contract-gate: failure, steps=null, logs_url=null
 ```
 
-No checkout, Python, uv, Docker, Terraform, PostgreSQL or application command is evidenced as having started in these failed jobs.
-
-Therefore these runs remain consistent with the established GitHub-hosted execution/account/scheduling blocker. They are neither product failure diagnostics nor PASS evidence. No rerun is justified while this zero-step pattern persists.
+No checkout, Python, uv, Docker, Terraform, PostgreSQL or application command is evidenced as having started. These runs remain consistent with the established GitHub-hosted execution/account/scheduling blocker and provide neither product-failure diagnostics nor PASS evidence. No rerun is justified while the zero-step pattern persists.
 
 ## 13. Remaining mandatory external work
 
@@ -349,6 +346,7 @@ real six-runtime build/start/promotion/attestation execution
 Production-like Staging acceptance
 Production smoke/canary/rollback/DR evidence
 actual strong protection applied to both NODE-73 release refs
+safe external/default-branch Administration-write protection bootstrap
 scoped Administration read/write governance credentials
 real five-role principal allowlists with >=3 usable non-author humans
 Evidence-Head-bound submitted APPROVED reviews
@@ -357,6 +355,6 @@ final-decision-v2 accepted=true
 
 ## 14. Verdict
 
-Source/code-addressable governance execution closure is materially complete, but external execution and human governance evidence are not.
+Source/code-addressable governance execution closure is materially stronger, but external execution and human governance evidence are not complete.
 
 # KEEP NODE-73 FINAL ACCEPTANCE BLOCKED
