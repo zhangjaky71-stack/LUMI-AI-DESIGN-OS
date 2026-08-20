@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "kind": "LUMI_RELEASE_GOVERNANCE_POLICY_V1",
+  "repository": "zhangjaky71-stack/LUMI-AI-DESIGN-OS",
+  "release_branches": [
+    "node-73-final-acceptance-release",
+    "release-closure-p0"
+  ],
+  "evidence_head_branch": "release-closure-p0",
+  "protection_profile": "LUMI_RELEASE_PROTECTION_PROFILE_V1",
+  "require_live_reverification": true,
+  "require_evidence_head_equals_execution_sha": true
+}
