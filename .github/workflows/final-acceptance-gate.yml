@@ -39,6 +39,7 @@ jobs:
           python3 scripts/validate_security_release_decision_contract.py
           python3 scripts/validate_final_acceptance_assembler_contract.py
           python3 scripts/validate_api_provenance_source_manifest.py
+          python3 scripts/validate_image_generation_producer_contract.py
           python3 scripts/validate_side_effect_control_provenance.py --self-test
           python3 scripts/validate_tool_audit_provenance.py --self-test
           python3 scripts/validate_tool_approval_provenance.py --self-test
@@ -60,6 +61,7 @@ jobs:
             scripts/validate_final_acceptance_assembler_contract.py \
             scripts/validate_final_acceptance_contract.py \
             scripts/validate_api_provenance_source_manifest.py \
+            scripts/validate_image_generation_producer_contract.py \
             scripts/validate_side_effect_control_provenance.py \
             scripts/validate_tool_audit_provenance.py \
             scripts/validate_tool_approval_provenance.py \
