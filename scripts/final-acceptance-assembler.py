@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 GOVERNANCE_VALIDATOR = ROOT / "scripts" / "capture_release_branch_protection.py"
+AUTHORIZATION_VALIDATOR = ROOT / "scripts" / "capture_release_authorization.py"
 FINAL_STATUSES = {"PASS", "FAIL", "BLOCKED_EXTERNAL", "DEFERRED_NON_CRITICAL"}
 UPSTREAM_GATES = (
     "security",
@@ -23,17 +24,6 @@ UPSTREAM_GATES = (
     "staging_acceptance",
     "production_deployment",
 )
-APPROVAL_KEYS = {"product", "engineering", "security", "operations", "release_owner"}
-HANDOFF_KEYS = {
-    "on_call_owner",
-    "support_owner",
-    "incident_commander_rotation",
-    "first_day_watch_owner",
-    "quality_cost_review_owner",
-    "security_dependency_review_owner",
-    "dr_drill_owner",
-    "capacity_review_owner",
-}
 EXPECTED_REPOSITORY = "zhangjaky71-stack/LUMI-AI-DESIGN-OS"
 
 
@@ -48,10 +38,10 @@ def load_json(path: Path) -> dict[str, Any]:
     return payload
 
 
-def load_governance_validator() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("lumi_release_branch_protection", GOVERNANCE_VALIDATOR)
+def load_validator(path: Path, name: str, *, label: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise AssemblyError("unable to load canonical release branch protection validator")
+        raise AssemblyError(f"unable to load canonical {label} validator")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -145,7 +135,11 @@ def validate_repository_governance(
     expected_release_sha: str,
 ) -> dict[str, str]:
     report = load_json(path)
-    validator = load_governance_validator()
+    validator = load_validator(
+        GOVERNANCE_VALIDATOR,
+        "lumi_release_branch_protection",
+        label="release branch protection",
+    )
     try:
         validator.validate_report(
             report,
@@ -187,24 +181,29 @@ def validate_authorization(
     expected_rc: tuple[str, str, str],
 ) -> tuple[dict[str, str], dict[str, str]]:
     payload = load_json(path)
-    if payload.get("schema_version") != 1:
-        raise AssemblyError("release authorization schema_version must be 1")
-    if payload.get("release_id") != release_id:
-        raise AssemblyError("release authorization release_id mismatch")
-    require_rc(payload, expected_rc, label="release authorization")
-    if not present(payload.get("authorization_id")) or not present(payload.get("authorized_at")):
-        raise AssemblyError("release authorization id/time missing")
-    approvals = payload.get("approvals")
-    if not isinstance(approvals, dict) or set(approvals) != APPROVAL_KEYS:
-        raise AssemblyError(f"authorization approvals must contain exactly {sorted(APPROVAL_KEYS)}")
-    if any(value != "APPROVED" for value in approvals.values()):
-        raise AssemblyError("all release authorization approvals must be APPROVED")
-    handoff = payload.get("operational_handoff")
-    if not isinstance(handoff, dict) or set(handoff) != HANDOFF_KEYS:
-        raise AssemblyError(f"authorization operational_handoff must contain exactly {sorted(HANDOFF_KEYS)}")
-    if any(not present(value) for value in handoff.values()):
-        raise AssemblyError("authorization operational_handoff contains missing/PENDING values")
-    return dict(approvals), {str(key): str(value) for key, value in handoff.items()}
+    validator = load_validator(
+        AUTHORIZATION_VALIDATOR,
+        "lumi_release_authorization",
+        label="release authorization",
+    )
+    try:
+        validated = validator.validate_authorization_report(
+            payload,
+            expected_release_id=release_id,
+            expected_rc=expected_rc,
+        )
+    except validator.ReleaseAuthorizationError as exc:
+        raise AssemblyError(f"release authorization invalid: {exc}") from exc
+    approvals = validated.get("approval_statuses")
+    handoff = validated.get("operational_handoff")
+    if not isinstance(approvals, dict) or any(value != "APPROVED" for value in approvals.values()):
+        raise AssemblyError("canonical release authorization did not yield all APPROVED statuses")
+    if not isinstance(handoff, dict):
+        raise AssemblyError("canonical release authorization operational handoff is missing")
+    return (
+        {str(key): str(value) for key, value in approvals.items()},
+        {str(key): str(value) for key, value in handoff.items()},
+    )
 
 
 def normalize_scenarios(
