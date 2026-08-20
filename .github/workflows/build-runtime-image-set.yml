@@ -50,8 +50,9 @@ jobs:
           uv lock --check
           uv sync --all-packages --frozen
 
-      - name: Validate six-runtime source and provenance manifest
+      - name: Validate six-runtime source, provenance, and immutable action supply chain
         run: |
+          python3 scripts/validate_release_action_pins.py
           python3 scripts/validate_runtime_image_closure.py
           python3 scripts/runtime_image_set.py validate-manifest
 
