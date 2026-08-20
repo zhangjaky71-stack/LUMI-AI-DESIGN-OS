@@ -16,5 +16,7 @@
     "allow_additional_contexts": true
   },
   "require_live_reverification": true,
-  "require_evidence_head_equals_execution_sha": true
+  "require_evidence_head_equals_execution_sha": true,
+  "require_evidence_head_locked": true,
+  "require_non_evidence_release_branches_unlocked": true
 }
