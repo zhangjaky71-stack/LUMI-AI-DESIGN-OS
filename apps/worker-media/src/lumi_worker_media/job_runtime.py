@@ -6,6 +6,11 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 import asyncpg
+from lumi_domain.performance_events import (
+    PerformanceStage,
+    PerformanceTelemetryContext,
+    emit_performance_interval,
+)
 
 from .queue_contracts import ErrorCategory, JobMessage, JobState, classify_error
 
@@ -32,6 +37,7 @@ class TaskJobStore:
         self.dsn = dsn
 
     async def claim(self, message: JobMessage) -> int | None:
+        telemetry = PerformanceTelemetryContext.from_environ()
         connection = await asyncpg.connect(self.dsn)
         try:
             row = await connection.fetchrow(
@@ -47,13 +53,27 @@ class TaskJobStore:
                   AND project_id = $3
                   AND status IN ('pending', 'retrying')
                   AND attempt_count < max_attempts
-                RETURNING attempt_count
+                RETURNING attempt_count, created_at, started_at
                 """,
                 message.job_id,
                 message.organization_id,
                 message.project_id,
             )
-            return int(row["attempt_count"]) if row else None
+            if row is None:
+                return None
+            attempt_count = int(row["attempt_count"])
+            if telemetry is not None and attempt_count == 1:
+                emit_performance_interval(
+                    telemetry,
+                    stage=PerformanceStage.ENQUEUE,
+                    service="worker-media",
+                    operation_id=str(message.operation_id or message.job_id),
+                    task_id=str(message.job_id),
+                    started_at_unix_ns=_datetime_unix_ns(row["created_at"]),
+                    completed_at_unix_ns=_datetime_unix_ns(row["started_at"]),
+                    attempt=attempt_count,
+                )
+            return attempt_count
         finally:
             await connection.close()
 
@@ -163,6 +183,14 @@ class TaskJobStore:
                 return state
         finally:
             await connection.close()
+
+
+def _datetime_unix_ns(value: datetime) -> int:
+    if value.tzinfo is None:
+        raise RuntimeError("PERFORMANCE_TIMESTAMP_MUST_BE_TIMEZONE_AWARE")
+    utc = value.astimezone(UTC)
+    seconds = int(utc.timestamp())
+    return seconds * 1_000_000_000 + utc.microsecond * 1_000
 
 
 async def execute_job(
