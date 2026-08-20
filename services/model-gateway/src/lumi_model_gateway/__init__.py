@@ -1,4 +1,10 @@
 from .api import ModelGatewayAPI
+from .async_transport import (
+    ASYNC_CANCEL_PATH,
+    ASYNC_STATUS_PATH,
+    AsyncProviderControlRequest,
+    HttpModelGatewayAsyncClient,
+)
 from .budget import RequestBudgetGuard
 from .capability_registry import (
     BenchmarkScore,
@@ -49,6 +55,7 @@ from .models import (
     Usage,
 )
 from .openai_adapter import OpenAIResponsesAdapter
+from .openai_video_adapter import OpenAIVideoGenerationAdapter, OpenAIVideoPriceCard
 from .ports import (
     BudgetGuard,
     CostTelemetrySink,
@@ -71,7 +78,10 @@ from .routing import (
 from .telemetry import MemoryCostTelemetrySink, NullCostTelemetrySink
 
 __all__ = [
+    "ASYNC_CANCEL_PATH",
+    "ASYNC_STATUS_PATH",
     "AmbiguousProviderOutcomeError",
+    "AsyncProviderControlRequest",
     "BenchmarkScore",
     "BudgetExceededError",
     "BudgetGuard",
@@ -86,6 +96,7 @@ __all__ = [
     "DeliveryState",
     "ErrorCategory",
     "EvidenceConfidence",
+    "HttpModelGatewayAsyncClient",
     "InMemoryCapabilityRegistry",
     "InMemoryProviderHealthRegistry",
     "InMemoryProviderRegistry",
@@ -105,6 +116,8 @@ __all__ = [
     "NoRouteError",
     "NullCostTelemetrySink",
     "OpenAIResponsesAdapter",
+    "OpenAIVideoGenerationAdapter",
+    "OpenAIVideoPriceCard",
     "OrganizationModelPolicy",
     "PaidInvocationGuard",
     "PaidInvocationGuardRequiredError",
