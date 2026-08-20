@@ -13,6 +13,7 @@ TEMPLATE = ROOT / "staging/acceptance/evidence-template.json"
 CONTRACT_MODULES = {
     "node71-validator": ROOT / "scripts/validate_staging_acceptance_contract.py",
     "node71-gate": ROOT / "scripts/staging-acceptance-gate.py",
+    "video-producer": ROOT / "scripts/validate_video_generation_producer_binding.py",
     "side-effect": ROOT / "scripts/validate_side_effect_control_provenance.py",
     "audit": ROOT / "scripts/validate_tool_audit_provenance.py",
     "approval": ROOT / "scripts/validate_tool_approval_provenance.py",
@@ -86,8 +87,11 @@ def validate() -> None:
             )
 
     union: set[str] = set()
+    loaded: dict[str, ModuleType] = {}
     for name, path in CONTRACT_MODULES.items():
-        module_sources = _module_required_sources(name, _load_module(name, path))
+        module = _load_module(name, path)
+        loaded[name] = module
+        module_sources = _module_required_sources(name, module)
         missing = sorted(module_sources - manifest_sources)
         if missing:
             raise ApiProvenanceSourceManifestError(
@@ -118,6 +122,11 @@ def validate() -> None:
         raise ApiProvenanceSourceManifestError(
             "staging evidence template API source_paths contains duplicates"
         )
+
+    video_producer = loaded.get("video-producer")
+    if video_producer is None or not callable(getattr(video_producer, "main", None)):
+        raise ApiProvenanceSourceManifestError("video producer release contract is not executable")
+    video_producer.main()
 
 
 def main() -> int:
