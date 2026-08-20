@@ -110,7 +110,54 @@ The Final Product Acceptance workflow checks out exact `github.sha` in source-co
 
 Additional stronger required checks are allowed, but this canonical context cannot be removed.
 
-## 7. Apply strong branch protection only after Evidence Head is stable
+## 7. Default-branch dispatch registry and strong protection
+
+GitHub only accepts `workflow_dispatch` when the workflow path exists on the repository default branch. NODE-73 now has a dedicated default-branch dispatch registry on `main` for every release-critical workflow listed in `production/release-actions/pins-v1.json`.
+
+Registry policy:
+
+```text
+production/release-actions/default-branch-dispatch-registry-v1.json
+```
+
+Registry/source validator:
+
+```text
+scripts/validate_release_dispatch_registry_contract.py
+```
+
+`validate_release_action_pins.py` invokes the registry contract, so release-critical workflow coverage and Action-pin coverage remain one gate.
+
+### 7.1 Registry-only workflows
+
+For eight release-critical workflows, `main` contains a fail-closed discovery stub only. The stub has `workflow_dispatch`, `contents: read`, and an explicit failing `default-branch-registry-only` job.
+
+To execute real release logic, select/dispatch:
+
+```text
+ref = release-closure-p0
+```
+
+GitHub then uses the workflow version at that ref. Never treat a default-branch registry stub run as release evidence.
+
+### 7.2 Canonical uv.lock bootstrap
+
+`regenerate-uv-lock.yml` is intentionally not a stub. The `main` and `release-closure-p0` copies are the same canonical two-phase workflow.
+
+Run it with:
+
+```text
+expected_sha = exact current release-closure-p0 SHA
+confirm = REGENERATE_NODE73_UV_LOCK
+```
+
+The resolver phase is `contents: read` only and performs `uv lock`, workspace validation, `uv lock --check` and `uv sync --all-packages --frozen`.
+
+Only the second job receives `contents: write`; it does not execute the resolver, `uv sync`, or release-branch Python scripts. It consumes the same-run `uv.lock` artifact, verifies its SHA-256, rechecks the remote branch head, stages only `uv.lock`, and performs a non-force push.
+
+A no-change canonical lock run succeeds without creating an empty commit.
+
+### 7.3 Branch protection mutation
 
 Canonical policy-driven applicator:
 
@@ -127,42 +174,29 @@ release-closure-p0
 
 Before any mutation it live-reads both branch heads and refuses to continue unless `release-closure-p0` still equals the selected Evidence Head.
 
-It requires a fine-grained `RELEASE_GOVERNANCE_ADMIN_TOKEN` with repository Administration **write** permission. Final Decision uses a separate Administration **read** token and does not receive the write credential.
+The `configure-release-branch-protection.yml` workflow is now discoverable through the default-branch registry, so the earlier “workflow is absent from default branch” bootstrap blocker is closed.
 
-### Secret boundary for the current PR
-
-A brand-new `workflow_dispatch` workflow is not usable until that workflow file exists on the default branch. It is **not acceptable** to solve that bootstrap problem by injecting an Administration-write PAT into code controlled by the unprotected PR branch.
-
-Therefore `.github/workflows/configure-release-branch-protection.yml` has two deliberately separate paths:
+The privileged mutation path remains deliberately separate from the PR preflight:
 
 ```text
 pull_request:labeled -> PR preflight only, no Administration secret, no mutation
 workflow_dispatch     -> privileged mutation, production environment, Admin-write secret
 ```
 
-Current-PR preflight is tightly bounded to:
+The PR preflight stays bounded to PR #135 / exact base-head/repository identity and cannot receive `RELEASE_GOVERNANCE_ADMIN_TOKEN`.
+
+Actual mutation requires:
 
 ```text
-label = node73-protection-preflight
-PR number = 135
-base = node-73-final-acceptance-release
-head = release-closure-p0
-head repository = zhangjaky71-stack/LUMI-AI-DESIGN-OS
-checkout = github.event.pull_request.head.sha
+ref = release-closure-p0
+confirm = APPLY_NODE73_RELEASE_PROTECTION
+production environment approval
+RELEASE_GOVERNANCE_ADMIN_TOKEN with repository Administration write
 ```
 
-The PR preflight validates the policy/applicator contracts only. It cannot apply branch protection and does not receive `RELEASE_GOVERNANCE_ADMIN_TOKEN`.
+Final Decision uses a separate Administration-read `RELEASE_GOVERNANCE_TOKEN`; it never receives the write credential.
 
-Actual mutation remains one of these external actions:
-
-```text
-1. after this workflow exists on the default branch, use workflow_dispatch from exact Evidence Head with the protected production environment; or
-2. an authorized repository administrator applies the frozen policy directly using equivalent GitHub branch-protection settings/API.
-```
-
-Do not expose the Administration-write token to PR-controlled code merely to automate the bootstrap.
-
-The successful mutation path uploads `branch-protection-apply.json` as a runtime artifact. Do not commit that live report back into the Evidence Head.
+The successful mutation path uploads `branch-protection-apply.json` as runtime evidence. Do not commit that live report back into the Evidence Head.
 
 ## 8. Obtain Evidence-Head-bound human approvals
 
@@ -176,9 +210,10 @@ Do not convert review comments or issue comments into approval evidence. Canonic
 
 ## 9. Run Final Product Acceptance
 
-Dispatch the existing `Final Product Acceptance Gate` workflow from exact `release-closure-p0` Evidence Head using:
+Dispatch the existing `Final Product Acceptance Gate` workflow with:
 
 ```text
+ref = release-closure-p0
 release_manifest_path = reports/final-acceptance/<release-id>/release-manifest-v2.json
 acceptance_evidence_path = reports/final-acceptance/<release-id>/acceptance-evidence.json
 ```
@@ -225,18 +260,20 @@ Upload them as Actions artifacts. Do not commit them into `release-closure-p0`.
 At the current NODE-73 checkpoint, source closure does not imply acceptance. At minimum the following still require real external execution/configuration:
 
 ```text
-canonical uv.lock regeneration
+actual canonical uv.lock regeneration and frozen all-workspace PASS
 GitHub-hosted runner execution recovery
 trusted PostgreSQL/migration/integration evidence
 real six-runtime build/start/promotion/attestation evidence
 Production-like Staging evidence
 Production smoke/canary/rollback/DR evidence
 strong protection actually applied to both release refs
-Administration-read/write governance credentials as scoped above
-safe external/default-branch execution of Administration-write protection mutation
+Administration-read/write governance credentials and production-environment approval
 real role principals other than PR author
 at least three distinct Evidence-Head human APPROVED reviews
+final-decision-v2 accepted=true
 ```
+
+Default-branch workflow discoverability is no longer listed as a blocker.
 
 Until all mandatory evidence is real and the V2 outer decision returns `accepted=true`:
 
