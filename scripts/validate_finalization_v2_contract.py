@@ -14,6 +14,7 @@ IDENTITY_V2 = ROOT / "scripts" / "validate_finalization_identity_v2.py"
 ASSEMBLER_V2 = ROOT / "scripts" / "final-acceptance-assembler-v2.py"
 PACKAGE_V2 = ROOT / "scripts" / "validate_final_acceptance_package_v2.py"
 PACKAGE_CONTRACT = ROOT / "scripts" / "validate_final_acceptance_v2_package_contract.py"
+ASSEMBLER_WORKFLOW_CONTRACT = ROOT / "scripts" / "validate_final_acceptance_assembler_workflow_v2.py"
 DECISION_V2 = ROOT / "scripts" / "final-acceptance-decision-v2.py"
 FINAL_WORKFLOW = ROOT / ".github" / "workflows" / "final-acceptance-gate.yml"
 RELEASE_TEMPLATE = ROOT / "final" / "acceptance" / "release-manifest-v2-template.json"
@@ -51,6 +52,10 @@ def main() -> int:
     auth = load_module(AUTH_V2, "lumi_authorization_contract_v2")
     identity = load_module(IDENTITY_V2, "lumi_identity_contract_v2")
     package_contract = load_module(PACKAGE_CONTRACT, "lumi_package_contract_v2")
+    assembler_workflow_contract = load_module(
+        ASSEMBLER_WORKFLOW_CONTRACT,
+        "lumi_assembler_workflow_contract_v2",
+    )
     governance_test: dict[str, Any] = governance.self_test()
     auth_test: dict[str, Any] = auth.self_test()
     identity_test: dict[str, Any] = identity.self_test()
@@ -58,6 +63,7 @@ def main() -> int:
     require(auth_test.get("status") == "PASS" and auth_test.get("negative_drills") == 6, "authorization V2 self-test drift")
     require(identity_test.get("status") == "PASS" and identity_test.get("negative_drills") == 7, "finalization identity V2 self-test drift")
     require(package_contract.main() == 0, "V2 assembler/package execution contract did not PASS")
+    require(assembler_workflow_contract.main() == 0, "V2 assembler workflow contract did not PASS")
 
     release_template = json.loads(RELEASE_TEMPLATE.read_text(encoding="utf-8"))
     require(release_template.get("schema_version") == 2 and release_template.get("kind") == "LUMI_FINAL_ACCEPTANCE_PACKAGE_V2", "release manifest V2 template mismatch")
