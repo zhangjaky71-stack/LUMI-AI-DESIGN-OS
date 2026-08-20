@@ -41,6 +41,7 @@ def assert_provider_secret_boundary(app: str, *, environment: str) -> None:
     agent = hcl_block(app, "agent-runtime = {")
     gateway = hcl_block(app, "model-gateway = {")
     media = hcl_block(app, "worker-media = {")
+    dispatcher = hcl_block(app, "outbox-dispatcher = {")
     sandbox = hcl_block(app, "sandbox-runtime = {")
     api = hcl_block(app, "api = {")
     tool = hcl_block(app, "tool-gateway = {")
@@ -50,6 +51,7 @@ def assert_provider_secret_boundary(app: str, *, environment: str) -> None:
         ("agent-runtime", agent),
         ("tool-gateway", tool),
         ("worker-media", media),
+        ("outbox-dispatcher", dispatcher),
         ("sandbox-runtime", sandbox),
     ):
         require(
@@ -69,6 +71,32 @@ def assert_provider_secret_boundary(app: str, *, environment: str) -> None:
         'LUMI_DATABASE_URL          = local.secret_arns["database/app"]' in gateway,
         f"{environment} Model Gateway needs the canonical NODE-27 database connection",
     )
+
+    require(
+        "image         = var.worker_media_image" in dispatcher,
+        f"{environment} outbox dispatcher must reuse the accepted worker-media image",
+    )
+    for marker in (
+        '"lumi_worker_media.cli"',
+        '"dispatch-outbox"',
+        '"--watch"',
+        'LUMI_DATABASE_URL = local.secret_arns["database/app"]',
+        'LUMI_RABBITMQ_URL = local.secret_arns["rabbitmq/url"]',
+        "s3_bucket_arns         = []",
+    ):
+        require(marker in dispatcher, f"{environment} outbox dispatcher missing {marker}")
+    for forbidden in (
+        "LUMI_MODEL_GATEWAY_AUTH_SECRET",
+        "LUMI_SANDBOX_RUNTIME_AUTH_SECRET",
+        "LUMI_AUTH_SIGNING_SECRET",
+        "LUMI_BRAVE_SEARCH_API_KEY",
+        'local.secret_arns["providers/',
+        'local.bucket_arns[',
+    ):
+        require(
+            forbidden not in dispatcher,
+            f"{environment} outbox dispatcher has unnecessary capability: {forbidden}",
+        )
 
 
 def main() -> int:
@@ -131,9 +159,6 @@ def main() -> int:
     require("capture-ecs-deployment-state.sh" in production_workflow, "production workflow must archive ECS steady-state evidence")
     require("running_count == .desired_count" in ecs_evidence and "pending_count == 0" in ecs_evidence, "ECS evidence script must verify counts")
 
-    # Pre-deployment snapshot and isolated recovery automation depend on these
-    # identifiers. Keep the full data -> platform-core -> environment output chain
-    # explicit so a release cannot reference an output Terraform never exported.
     for output_name in (
         "postgres_instance_id",
         "postgres_backup_retention_days",
@@ -157,14 +182,9 @@ def main() -> int:
         "predeploy snapshot must consume explicit RDS safety outputs",
     )
 
-    # Provider credentials are a security and financial control boundary. Only
-    # Model Gateway may hold them, and it must also have the canonical NODE-27
-    # database connection required by the durable platform spend guard.
     assert_provider_secret_boundary(staging_app, environment="staging")
     assert_provider_secret_boundary(production_app, environment="production")
 
-    # Sandbox control plane is denied arbitrary public egress even though other
-    # application services retain explicit Internet capability.
     app_sg = hcl_block(network, 'resource "aws_security_group" "app" {')
     internet_sg = hcl_block(
         network,
@@ -173,10 +193,17 @@ def main() -> int:
     sandbox_sg = hcl_block(network, 'resource "aws_security_group" "sandbox_egress" {')
     require('cidr_blocks = ["0.0.0.0/0"]' not in app_sg, "app identity SG grants public egress")
     require('cidr_blocks = ["0.0.0.0/0"]' in internet_sg, "explicit app Internet egress SG missing")
-    require('cidr_blocks = ["0.0.0.0/0"]' not in sandbox_sg, "sandbox SG grants public egress")
-    require("prefix_list_ids = [data.aws_prefix_list.s3.id]" in sandbox_sg, "sandbox S3-only transport allowance missing")
-    require('name == "sandbox-runtime"' in compute, "sandbox ECS security-group branch missing")
-    require("var.sandbox_egress_security_group_id" in compute, "sandbox restricted egress SG not attached")
+    require('cidr_blocks = ["0.0.0.0/0"]' not in sandbox_sg, "restricted runtime SG grants public egress")
+    require("prefix_list_ids = [data.aws_prefix_list.s3.id]" in sandbox_sg, "restricted runtime S3 transport allowance missing")
+    require(
+        'contains(["sandbox-runtime", "outbox-dispatcher"], name)' in compute,
+        "sandbox/outbox restricted ECS security-group branch missing",
+    )
+    require("var.sandbox_egress_security_group_id" in compute, "restricted egress SG not attached")
+    require(
+        "? [var.app_security_group_id, var.sandbox_egress_security_group_id]" in compute,
+        "restricted runtime SG mapping missing",
+    )
 
     version_files = [ROOT / "infra/iac/bootstrap/versions.tf", *ROOT.glob("infra/iac/environments/**/versions.tf")]
     for version_file in version_files:
