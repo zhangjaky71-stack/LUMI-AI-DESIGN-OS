@@ -7,12 +7,14 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKER_APP = ROOT / "apps/worker-media/src/lumi_worker_media/app.py"
 WORKER_PROJECT = ROOT / "apps/worker-media/pyproject.toml"
 HOSTED_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/video_generation_runtime.py"
+VIDEO_COST = ROOT / "apps/worker-media/src/lumi_worker_media/video_cost_runtime.py"
 VIDEO_GATEWAY = ROOT / "apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py"
 VIDEO_REPOSITORY = ROOT / "apps/worker-media/src/lumi_worker_media/video_generation_repository.py"
 VIDEO_ARTIFACT = ROOT / "apps/worker-media/src/lumi_worker_media/video_generation_artifacts.py"
 VIDEO_PORTS = ROOT / "apps/worker-media/src/lumi_worker_media/video_generation_ports.py"
 VIDEO_SANDBOX = ROOT / "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py"
 VIDEO_CODEC = ROOT / "apps/worker-media/src/lumi_worker_media/video_generation_codec.py"
+VIDEO_COST_TEST = ROOT / "apps/worker-media/tests/test_video_cost_runtime.py"
 VIDEO_GATEWAY_TEST = ROOT / "apps/worker-media/tests/test_video_gateway_runtime.py"
 VIDEO_PORTS_TEST = ROOT / "apps/worker-media/tests/test_video_generation_ports.py"
 VIDEO_SANDBOX_TEST = ROOT / "apps/worker-media/tests/test_video_sandbox_runtime.py"
@@ -114,12 +116,14 @@ def main() -> None:
         WORKER_APP,
         WORKER_PROJECT,
         HOSTED_RUNTIME,
+        VIDEO_COST,
         VIDEO_GATEWAY,
         VIDEO_REPOSITORY,
         VIDEO_ARTIFACT,
         VIDEO_PORTS,
         VIDEO_SANDBOX,
         VIDEO_CODEC,
+        VIDEO_COST_TEST,
         VIDEO_GATEWAY_TEST,
         VIDEO_PORTS_TEST,
         VIDEO_SANDBOX_TEST,
@@ -135,12 +139,14 @@ def main() -> None:
     worker = WORKER_APP.read_text(encoding="utf-8")
     project = WORKER_PROJECT.read_text(encoding="utf-8")
     hosted = HOSTED_RUNTIME.read_text(encoding="utf-8")
+    cost = VIDEO_COST.read_text(encoding="utf-8")
     gateway = VIDEO_GATEWAY.read_text(encoding="utf-8")
     repository = VIDEO_REPOSITORY.read_text(encoding="utf-8")
     artifact = VIDEO_ARTIFACT.read_text(encoding="utf-8")
     ports = VIDEO_PORTS.read_text(encoding="utf-8")
     sandbox = VIDEO_SANDBOX.read_text(encoding="utf-8")
     codec = VIDEO_CODEC.read_text(encoding="utf-8")
+    cost_test = VIDEO_COST_TEST.read_text(encoding="utf-8")
     gateway_test = VIDEO_GATEWAY_TEST.read_text(encoding="utf-8")
     ports_test = VIDEO_PORTS_TEST.read_text(encoding="utf-8")
     sandbox_test = VIDEO_SANDBOX_TEST.read_text(encoding="utf-8")
@@ -177,7 +183,8 @@ def main() -> None:
             "HostedVideoOutputAdapter.from_env()",
             "HostedVideoMediaSandbox.from_spec(spec)",
             "PostgresVideoArtifactAdapter",
-            "PostgresVideoCostObserver",
+            "ScopedPostgresVideoCostObserver",
+            "costs=ScopedPostgresVideoCostObserver(self.database_dsn)",
             "PostgresVideoEventSink",
             "TimedMediaSandbox",
             "PerformanceTelemetryContext.from_environ()",
@@ -189,8 +196,45 @@ def main() -> None:
     )
     forbid_markers(
         hosted,
-        ("InMemoryVideoRepository", "ArtifactHistoryVideoAdapter", "MemoryMediaSandbox"),
+        (
+            "InMemoryVideoRepository",
+            "ArtifactHistoryVideoAdapter",
+            "MemoryMediaSandbox",
+            "costs=PostgresVideoCostObserver(",
+        ),
         "hosted video composition root",
+    )
+
+    require_markers(
+        cost,
+        (
+            "class ScopedPostgresVideoCostObserver",
+            "FROM video_generation_jobs",
+            "job_snapshot ->> 'video_job_id' = $1",
+            "VIDEO_COST_JOB_SCOPE_NOT_UNIQUE",
+            "io.organization_id = cl.organization_id",
+            "cl.organization_id = $1",
+            "io.organization_id = $1",
+            "io.business_scope_id = $2",
+            "confidence.casefold()",
+        ),
+        "tenant-scoped video cost observer",
+    )
+    forbid_markers(
+        cost,
+        ("INSERT INTO cost_ledger", "UPDATE cost_ledger", "DELETE FROM cost_ledger"),
+        "tenant-scoped video cost observer",
+    )
+    require_markers(
+        cost_test,
+        (
+            "test_video_cost_reconciliation_is_tenant_scoped",
+            "test_video_cost_duplicate_job_scope_fails_before_ledger_lookup",
+            "test_video_cost_confidence_uses_canonical_lowercase_ledger_contract",
+            'assert "cl.organization_id = $1" in ledger_sql',
+            'assert "io.organization_id = $1" in ledger_sql',
+        ),
+        "tenant-scoped video cost executable coverage",
     )
 
     require_markers(
@@ -325,7 +369,7 @@ def main() -> None:
     )
 
     validate_iac()
-    print("PASS: Hosted video.render production binding is durable, isolated, checksum-bound, and CI-gated")
+    print("PASS: Hosted video.render production binding is durable, tenant-scoped, isolated, checksum-bound, and CI-gated")
 
 
 if __name__ == "__main__":
