@@ -105,6 +105,10 @@ resource "aws_ecs_task_definition" "sandbox_child" {
     cpu_architecture        = "X86_64"
   }
 
+  volume {
+    name = "sandbox-work"
+  }
+
   container_definitions = jsonencode([
     {
       name      = "sandbox-child"
@@ -122,6 +126,13 @@ resource "aws_ecs_task_definition" "sandbox_child" {
         },
       ]
       readonlyRootFilesystem = true
+      mountPoints = [
+        {
+          sourceVolume  = "sandbox-work"
+          containerPath = "/tmp"
+          readOnly      = false
+        },
+      ]
       linuxParameters = {
         initProcessEnabled = true
       }
