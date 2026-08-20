@@ -3,16 +3,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 IMAGE_REF = re.compile(r"^[^\s@]+@sha256:[0-9a-f]{64}$")
 REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 SERVICE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+SHA40 = re.compile(r"^[0-9a-f]{40}$")
 EXPECTED_SERVICES = {
     "api",
     "agent-runtime",
@@ -21,6 +23,8 @@ EXPECTED_SERVICES = {
     "worker-media",
     "sandbox-runtime",
 }
+RELEASE_SOURCE_REF = "refs/heads/release-closure-p0"
+SIGNER_WORKFLOW_PATH = ".github/workflows/build-runtime-image-set.yml"
 
 
 class AttestationVerificationError(RuntimeError):
@@ -31,6 +35,16 @@ class AttestationVerificationError(RuntimeError):
 class ImageTarget:
     service: str
     image: str
+
+
+@dataclass(frozen=True, slots=True)
+class GitHubAttestationPolicy:
+    repository: str
+    signer_workflow: str
+    source_digest: str
+    source_ref: str
+    workflow_ref: str
+    deny_self_hosted_runners: bool = True
 
 
 def _require(condition: bool, message: str) -> None:
@@ -45,6 +59,37 @@ def parse_target(raw: str) -> ImageTarget:
     _require(bool(SERVICE.fullmatch(service)), f"invalid runtime service name: {service!r}")
     _require(bool(IMAGE_REF.fullmatch(image)), f"runtime image must use an immutable @sha256 digest: {image!r}")
     return ImageTarget(service=service, image=image)
+
+
+def resolve_github_attestation_policy(
+    repository: str,
+    env: Mapping[str, str],
+) -> GitHubAttestationPolicy:
+    _require(bool(REPOSITORY.fullmatch(repository)), "repository must use OWNER/REPO form")
+    source_digest = env.get("GITHUB_SHA", "").lower()
+    _require(bool(SHA40.fullmatch(source_digest)), "GITHUB_SHA must be an exact lowercase SHA40")
+
+    source_ref = env.get("GITHUB_REF", "")
+    _require(
+        source_ref == RELEASE_SOURCE_REF,
+        f"GITHUB_REF must be the release source ref {RELEASE_SOURCE_REF}",
+    )
+
+    signer_workflow = f"{repository}/{SIGNER_WORKFLOW_PATH}"
+    workflow_ref = env.get("GITHUB_WORKFLOW_REF", "")
+    expected_workflow_ref = f"{signer_workflow}@{source_ref}"
+    _require(
+        workflow_ref == expected_workflow_ref,
+        "GITHUB_WORKFLOW_REF must bind the canonical runtime-image build workflow to the release ref",
+    )
+
+    return GitHubAttestationPolicy(
+        repository=repository,
+        signer_workflow=signer_workflow,
+        source_digest=source_digest,
+        source_ref=source_ref,
+        workflow_ref=workflow_ref,
+    )
 
 
 def _json_value(raw: str, *, label: str) -> Any:
@@ -124,15 +169,33 @@ def _inspect_json(image: str, expression: str, *, label: str) -> Any:
     return _json_value(result.stdout, label=label)
 
 
-def _verify_one(target: ImageTarget, *, repository: str) -> dict[str, Any]:
+def _verify_one(
+    target: ImageTarget,
+    *,
+    policy: GitHubAttestationPolicy,
+) -> dict[str, Any]:
     image = target.image
     _run(
         ["docker", "buildx", "imagetools", "inspect", image],
         label=f"{target.service} registry digest resolution",
     )
     attestation = _run(
-        ["gh", "attestation", "verify", f"oci://{image}", "--repo", repository],
-        label=f"{target.service} GitHub artifact attestation verification",
+        [
+            "gh",
+            "attestation",
+            "verify",
+            f"oci://{image}",
+            "--repo",
+            policy.repository,
+            "--signer-workflow",
+            policy.signer_workflow,
+            "--source-digest",
+            policy.source_digest,
+            "--source-ref",
+            policy.source_ref,
+            "--deny-self-hosted-runners",
+        ],
+        label=f"{target.service} GitHub artifact attestation signer/source verification",
     )
 
     provenance = _inspect_json(
@@ -162,6 +225,13 @@ def _verify_one(target: ImageTarget, *, repository: str) -> dict[str, Any]:
         "registry_resolvable": True,
         "github_attestation_verified": True,
         "github_attestation_output_lines": len(attestation_lines),
+        "github_attestation_policy": {
+            "signer_workflow": policy.signer_workflow,
+            "source_digest": policy.source_digest,
+            "source_ref": policy.source_ref,
+            "workflow_ref": policy.workflow_ref,
+            "deny_self_hosted_runners": policy.deny_self_hosted_runners,
+        },
         "buildkit_provenance": provenance_summary,
         "buildkit_sbom": sbom_summary,
         "status": "PASS",
@@ -185,6 +255,37 @@ def self_test() -> dict[str, Any]:
         except AttestationVerificationError:
             continue
         raise AttestationVerificationError(f"negative immutable image-ref drill did not block: {raw}")
+
+    source_digest = "b" * 40
+    good_env = {
+        "GITHUB_SHA": source_digest,
+        "GITHUB_REF": RELEASE_SOURCE_REF,
+        "GITHUB_WORKFLOW_REF": (
+            "example/lumi/.github/workflows/build-runtime-image-set.yml@"
+            + RELEASE_SOURCE_REF
+        ),
+    }
+    policy = resolve_github_attestation_policy("example/lumi", good_env)
+    _require(policy.source_digest == source_digest, "clean source digest identity fixture failed")
+    _require(
+        policy.signer_workflow == "example/lumi/.github/workflows/build-runtime-image-set.yml",
+        "clean signer workflow identity fixture failed",
+    )
+
+    bad_identity_envs = [
+        {**good_env, "GITHUB_SHA": "bad"},
+        {**good_env, "GITHUB_REF": "refs/heads/main"},
+        {
+            **good_env,
+            "GITHUB_WORKFLOW_REF": "example/lumi/.github/workflows/other.yml@refs/heads/release-closure-p0",
+        },
+    ]
+    for value in bad_identity_envs:
+        try:
+            resolve_github_attestation_policy("example/lumi", value)
+        except AttestationVerificationError:
+            continue
+        raise AttestationVerificationError("negative GitHub signer/source identity drill did not block")
 
     provenance = {
         "buildType": "https://mobyproject.org/buildkit@v1",
@@ -232,6 +333,7 @@ def self_test() -> dict[str, Any]:
     return {
         "status": "PASS",
         "immutable_ref_negative_drills": len(bad_targets),
+        "github_identity_negative_drills": len(bad_identity_envs),
         "provenance_negative_drills": len(bad_provenance),
         "sbom_negative_drills": len(bad_sbom),
     }
@@ -239,7 +341,10 @@ def self_test() -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Verify all six immutable runtime images, GitHub attestations, BuildKit provenance, and SPDX SBOMs"
+        description=(
+            "Verify six immutable runtime images, GitHub signer/source attestations, "
+            "BuildKit provenance, and SPDX SBOMs"
+        )
     )
     parser.add_argument("--repository", help="GitHub repository in OWNER/REPO form")
     parser.add_argument("--image", action="append", default=[], help="service=registry/name@sha256:<digest>")
@@ -253,6 +358,7 @@ def main() -> int:
 
     if not isinstance(args.repository, str) or not REPOSITORY.fullmatch(args.repository):
         raise AttestationVerificationError("--repository must use OWNER/REPO form")
+    policy = resolve_github_attestation_policy(args.repository, os.environ)
     targets = [parse_target(raw) for raw in args.image]
     services = [target.service for target in targets]
     _require(len(services) == 6, "exactly six runtime --image values are required")
@@ -261,13 +367,20 @@ def main() -> int:
     _require(shutil.which("docker") is not None, "docker executable is unavailable")
     _require(shutil.which("gh") is not None, "GitHub CLI executable is unavailable")
 
-    results = [_verify_one(target, repository=args.repository) for target in targets]
+    results = [_verify_one(target, policy=policy) for target in targets]
     payload = {
         "schema_version": 1,
         "kind": "LUMI_RUNTIME_IMAGE_ATTESTATION_VERIFICATION_V1",
         "status": "PASS",
         "repository": args.repository,
         "runtime_count": len(results),
+        "github_attestation_policy": {
+            "signer_workflow": policy.signer_workflow,
+            "source_digest": policy.source_digest,
+            "source_ref": policy.source_ref,
+            "workflow_ref": policy.workflow_ref,
+            "deny_self_hosted_runners": policy.deny_self_hosted_runners,
+        },
         "tools": {
             "docker_buildx": _tool_version(["docker", "buildx", "version"], label="docker buildx version"),
             "github_cli": _tool_version(["gh", "--version"], label="GitHub CLI version"),
