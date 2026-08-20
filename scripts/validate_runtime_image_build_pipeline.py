@@ -85,6 +85,7 @@ def validate_workflow() -> None:
         "python3 scripts/validate_uv_lock_regeneration_contract.py",
         "python3 scripts/validate_runtime_image_closure.py",
         "python3 scripts/runtime_image_set.py validate-manifest",
+        "python3 scripts/verify_runtime_image_attestations.py --self-test",
         "python3 scripts/validate_runtime_image_build_pipeline.py",
         PINNED_ACTIONS["checkout"],
         PINNED_ACTIONS["setup-python"],
@@ -93,7 +94,9 @@ def validate_workflow() -> None:
         PINNED_ACTIONS["buildx"],
         PINNED_ACTIONS["build-push"],
         PINNED_ACTIONS["attest"],
-        "docker buildx imagetools inspect",
+        "python3 scripts/verify_runtime_image_attestations.py",
+        'GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}',
+        "attestation-verification.json",
         "python3 scripts/runtime_image_set.py assemble",
         PINNED_ACTIONS["upload"],
         "runtime-image-set-${{ github.sha }}",
@@ -118,6 +121,7 @@ def validate_workflow() -> None:
         "python3 scripts/validate_release_action_pins.py",
         "python3 scripts/validate_uv_lock_regeneration_contract.py",
         "python3 scripts/validate_runtime_image_closure.py",
+        "python3 scripts/verify_runtime_image_attestations.py --self-test",
         "python3 scripts/validate_runtime_image_build_pipeline.py",
         "python3 scripts/validate_uv_workspace_lock.py",
         "uv lock --check",
@@ -155,19 +159,36 @@ def validate_workflow() -> None:
         text.count("python3 scripts/runtime_image_set.py fragment") == 6,
         "all six image digests must produce freeze fragments",
     )
-    _require(text.count("@${{ steps.build_") >= 6, "frozen image refs must use build-step digests")
+    _require(text.count("@${{ steps.build_") >= 12, "attestation verification and frozen refs must use exact build-step digests")
 
-    ordered = list(EXPECTED.items())
-    for index, (service, dockerfile) in enumerate(ordered):
-        build_marker = f"file: {dockerfile}"
-        next_marker = f"file: {ordered[index + 1][1]}" if index + 1 < len(ordered) else None
-        block = _block(text, build_marker, next_marker)
-        _require("push: true" in block, f"{service} image must be pushed")
-        _require("provenance: mode=max" in block, f"{service} image max provenance missing")
-        _require("sbom: true" in block, f"{service} image SBOM missing")
-        _require(f"-{service}:rc-${{{{ github.sha }}}}" in block, f"{service} RC tag binding missing")
+    verification = _block(
+        build,
+        "- name: Verify all six immutable runtime image attestations",
+        "- name: Freeze exact six-image set for NODE-71",
+    )
+    _require('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}' in verification, "GitHub attestation verification must receive the workflow token")
+    _require("python3 scripts/verify_runtime_image_attestations.py" in verification, "live attestation verifier is missing")
+    _require('--repository "$GITHUB_REPOSITORY"' in verification, "attestation verification must bind repository identity")
+    for service in EXPECTED:
+        _require(f'--image "{service}=' in verification, f"attestation verification is missing runtime: {service}")
+    _require(
+        '--out "${root}/attestation-verification.json"' in verification,
+        "attestation verification must persist one report beside the frozen image set",
+    )
+
+    last_attest_pos = build.rfind(PINNED_ACTIONS["attest"])
+    verify_pos = build.find("- name: Verify all six immutable runtime image attestations")
+    freeze_pos = build.find("- name: Freeze exact six-image set for NODE-71")
+    upload_pos = build.find("- name: Upload frozen six-runtime RC image set")
+    _require(
+        min(last_attest_pos, verify_pos, freeze_pos, upload_pos) >= 0
+        and last_attest_pos < verify_pos < freeze_pos < upload_pos,
+        "all six image attestations must be live-verified before NODE-71 freeze and upload",
+    )
 
     freeze_block = _block(text, "- name: Freeze exact six-image set for NODE-71", "- name: Upload frozen six-runtime RC image set")
+    _require('test -f "${root}/attestation-verification.json"' in freeze_block, "freeze must require the attestation verification report")
+    _require('.get("status")' in freeze_block and '= "PASS"' in freeze_block, "freeze must fail closed unless attestation verification status is PASS")
     for service in EXPECTED:
         _require(f"--service {service}" in freeze_block, f"{service} freeze fragment missing")
         _require(f"-{service}@${{{{ steps.build_" in freeze_block, f"{service} immutable digest freeze missing")
@@ -179,7 +200,7 @@ def validate_workflow() -> None:
 def main() -> int:
     _load_manifest()
     validate_workflow()
-    print("Six-runtime RC image build/freeze pipeline contract: PASS")
+    print("Six-runtime RC image build/attestation/freeze pipeline contract: PASS")
     return 0
 
 
