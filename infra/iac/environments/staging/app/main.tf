@@ -55,15 +55,16 @@ locals {
 
   services = {
     api = {
-      image             = var.api_image
-      cpu               = 1024
-      memory            = 2048
-      desired_count     = 2
-      min_capacity      = 2
-      max_capacity      = 6
-      container_port    = 8000
-      publicly_routed   = true
-      health_check_path = "/health/ready"
+      image               = var.api_image
+      cpu                 = 1024
+      memory              = 2048
+      desired_count       = 2
+      min_capacity        = 2
+      max_capacity        = 2
+      autoscaling_enabled = false
+      container_port      = 8000
+      publicly_routed     = true
+      health_check_path   = "/health/ready"
       environment = merge(local.common_environment, { LUMI_ROLE = "api" })
       secret_arns = {
         LUMI_DATABASE_URL                    = local.secret_arns["database/app"]
@@ -77,18 +78,17 @@ locals {
         LUMI_TOOL_DATA_AUTH_SECRET           = local.secret_arns["internal/tool-data"]
         LUMI_AGENT_CONTROL_AUTH_SECRET       = local.secret_arns["internal/agent-control"]
       }
-      s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["exports"]]
-      autoscale_metric_name  = "ApiConcurrentRequests"
-      autoscale_target_value = 80
+      s3_bucket_arns = [local.bucket_arns["assets"], local.bucket_arns["exports"]]
     }
 
     agent-runtime = {
-      image         = var.agent_runtime_image
-      cpu           = 2048
-      memory        = 4096
-      desired_count = 2
-      min_capacity  = 2
-      max_capacity  = 8
+      image               = var.agent_runtime_image
+      cpu                 = 2048
+      memory              = 4096
+      desired_count       = 2
+      min_capacity        = 2
+      max_capacity        = 2
+      autoscaling_enabled = false
       environment = merge(
         local.common_environment,
         local.model_gateway_environment,
@@ -104,19 +104,18 @@ locals {
         LUMI_TOOL_GATEWAY_AUTH_SECRET  = local.secret_arns["internal/tool-gateway"]
         LUMI_AGENT_CONTROL_AUTH_SECRET = local.secret_arns["internal/agent-control"]
       }
-      s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["sandbox"]]
-      autoscale_metric_name  = "AgentPendingRuns"
-      autoscale_target_value = 10
+      s3_bucket_arns = [local.bucket_arns["assets"], local.bucket_arns["sandbox"]]
     }
 
     model-gateway = {
-      image          = var.model_gateway_image
-      cpu            = 1024
-      memory         = 2048
-      desired_count  = 2
-      min_capacity   = 2
-      max_capacity   = 6
-      container_port = 8080
+      image               = var.model_gateway_image
+      cpu                 = 1024
+      memory              = 2048
+      desired_count       = 2
+      min_capacity        = 2
+      max_capacity        = 2
+      autoscaling_enabled = false
+      container_port      = 8080
       environment = merge(
         local.common_environment,
         {
@@ -131,19 +130,18 @@ locals {
         LUMI_MEDIA_PROVIDER_SECRET     = local.secret_arns["providers/media"]
         LUMI_MODEL_GATEWAY_AUTH_SECRET = local.secret_arns["internal/model-gateway"]
       }
-      s3_bucket_arns         = [local.bucket_arns["assets"]]
-      autoscale_metric_name  = "ModelGatewayInflight"
-      autoscale_target_value = 40
+      s3_bucket_arns = [local.bucket_arns["assets"]]
     }
 
     tool-gateway = {
-      image          = var.tool_gateway_image
-      cpu            = 1024
-      memory         = 2048
-      desired_count  = 2
-      min_capacity   = 2
-      max_capacity   = 6
-      container_port = 8080
+      image               = var.tool_gateway_image
+      cpu                 = 1024
+      memory              = 2048
+      desired_count       = 2
+      min_capacity        = 2
+      max_capacity        = 2
+      autoscaling_enabled = false
+      container_port      = 8080
       environment = merge(
         local.common_environment,
         local.sandbox_runtime_environment,
@@ -168,18 +166,17 @@ locals {
         LUMI_TOOL_DATA_AUTH_SECRET           = local.secret_arns["internal/tool-data"]
         LUMI_BRAVE_SEARCH_API_KEY            = local.secret_arns["providers/search"]
       }
-      s3_bucket_arns         = [local.bucket_arns["exports"]]
-      autoscale_metric_name  = "ToolGatewayInflight"
-      autoscale_target_value = 30
+      s3_bucket_arns = [local.bucket_arns["exports"]]
     }
 
     worker-media = {
-      image         = var.worker_media_image
-      cpu           = 2048
-      memory        = 4096
-      desired_count = 2
-      min_capacity  = 2
-      max_capacity  = 12
+      image               = var.worker_media_image
+      cpu                 = 2048
+      memory              = 4096
+      desired_count       = 2
+      min_capacity        = 2
+      max_capacity        = 2
+      autoscaling_enabled = false
       environment = merge(
         local.common_environment,
         local.model_gateway_environment,
@@ -199,18 +196,17 @@ locals {
         LUMI_MODEL_GATEWAY_AUTH_SECRET   = local.secret_arns["internal/model-gateway"]
         LUMI_SANDBOX_RUNTIME_AUTH_SECRET = local.secret_arns["internal/sandbox-runtime"]
       }
-      s3_bucket_arns         = [local.bucket_arns["assets"], local.bucket_arns["exports"], local.bucket_arns["sandbox"]]
-      autoscale_metric_name  = "MediaQueueBacklog"
-      autoscale_target_value = 5
+      s3_bucket_arns = [local.bucket_arns["assets"], local.bucket_arns["exports"], local.bucket_arns["sandbox"]]
     }
 
     outbox-dispatcher = {
-      image         = var.worker_media_image
-      cpu           = 512
-      memory        = 1024
-      desired_count = 1
-      min_capacity  = 1
-      max_capacity  = 2
+      image               = var.worker_media_image
+      cpu                 = 512
+      memory              = 1024
+      desired_count       = 1
+      min_capacity        = 1
+      max_capacity        = 1
+      autoscaling_enabled = false
       command = [
         "python",
         "-m",
@@ -225,28 +221,25 @@ locals {
         LUMI_DATABASE_URL = local.secret_arns["database/app"]
         LUMI_RABBITMQ_URL = local.secret_arns["rabbitmq/url"]
       }
-      s3_bucket_arns         = []
-      autoscale_metric_name  = "OutboxPendingEvents"
-      autoscale_target_value = 100
+      s3_bucket_arns = []
     }
 
     sandbox-runtime = {
-      image          = var.sandbox_runtime_image
-      cpu            = 1024
-      memory         = 2048
-      desired_count  = 2
-      min_capacity   = 2
-      max_capacity   = 6
-      container_port = 8080
+      image               = var.sandbox_runtime_image
+      cpu                 = 1024
+      memory              = 2048
+      desired_count       = 2
+      min_capacity        = 2
+      max_capacity        = 2
+      autoscaling_enabled = false
+      container_port      = 8080
       environment = merge(local.common_environment, { LUMI_ROLE = "sandbox-runtime" })
       secret_arns = {
         LUMI_REDIS_URL                   = local.secret_arns["redis/url"]
         LUMI_RABBITMQ_URL                = local.secret_arns["rabbitmq/url"]
         LUMI_SANDBOX_RUNTIME_AUTH_SECRET = local.secret_arns["internal/sandbox-runtime"]
       }
-      s3_bucket_arns         = [local.bucket_arns["sandbox"]]
-      autoscale_metric_name  = "SandboxQueueBacklog"
-      autoscale_target_value = 5
+      s3_bucket_arns = [local.bucket_arns["sandbox"]]
     }
   }
 }
