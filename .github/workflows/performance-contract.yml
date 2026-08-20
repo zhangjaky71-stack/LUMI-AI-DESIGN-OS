@@ -40,6 +40,7 @@ jobs:
           apps/worker-media/src/lumi_worker_media/performance_ports.py
           apps/worker-media/src/lumi_worker_media/image_generation_runtime.py
           apps/worker-media/src/lumi_worker_media/job_runtime.py
+          apps/worker-media/tests/test_job_runtime_performance.py
       - name: Shell syntax
         run: bash -n scripts/perf-db-snapshot
       - name: JSON syntax
