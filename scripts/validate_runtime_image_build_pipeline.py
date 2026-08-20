@@ -69,16 +69,23 @@ def validate_workflow() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     for marker in (
         "workflow_dispatch:",
+        "  source-gate:\n",
+        "  build-and-freeze:\n",
+        "needs: [source-gate]",
         "packages: write",
         "attestations: write",
         "id-token: write",
         "github.ref_name == 'release-closure-p0'",
+        "ref: ${{ github.sha }}",
+        'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
         "python3 scripts/validate_uv_workspace_lock.py",
         "uv lock --check",
         "uv sync --all-packages --frozen",
         "python3 scripts/validate_release_action_pins.py",
+        "python3 scripts/validate_uv_lock_regeneration_contract.py",
         "python3 scripts/validate_runtime_image_closure.py",
         "python3 scripts/runtime_image_set.py validate-manifest",
+        "python3 scripts/validate_runtime_image_build_pipeline.py",
         PINNED_ACTIONS["checkout"],
         PINNED_ACTIONS["setup-python"],
         PINNED_ACTIONS["setup-uv"],
@@ -93,12 +100,51 @@ def validate_workflow() -> None:
     ):
         _require(marker in text, f"runtime image build workflow missing: {marker}")
 
-    pin_pos = text.find("python3 scripts/validate_release_action_pins.py")
+    top = text[: text.find("jobs:\n")]
+    _require(
+        "permissions:\n  contents: read\n" in top,
+        "runtime image workflow top-level token must be read-only",
+    )
+    for permission in ("packages: write", "attestations: write", "id-token: write", "contents: write"):
+        _require(permission not in top, f"runtime image workflow top-level permission is too broad: {permission}")
+
+    source = _block(text, "  source-gate:\n", "  build-and-freeze:\n")
+    build = _block(text, "  build-and-freeze:\n", None)
+
+    _require("permissions:\n      contents: read\n" in source, "source-gate must explicitly remain contents-read-only")
+    for permission in ("packages: write", "attestations: write", "id-token: write", "contents: write"):
+        _require(permission not in source, f"source-gate must not receive write capability: {permission}")
+    for marker in (
+        "python3 scripts/validate_release_action_pins.py",
+        "python3 scripts/validate_uv_lock_regeneration_contract.py",
+        "python3 scripts/validate_runtime_image_closure.py",
+        "python3 scripts/validate_runtime_image_build_pipeline.py",
+        "python3 scripts/validate_uv_workspace_lock.py",
+        "uv lock --check",
+        "uv sync --all-packages --frozen",
+    ):
+        _require(marker in source, f"read-only source-gate missing prerequisite: {marker}")
+    _require(PINNED_ACTIONS["login"] not in source, "source-gate must not authenticate to the package registry")
+    _require(PINNED_ACTIONS["build-push"] not in source, "source-gate must not build/push release images")
+    _require(PINNED_ACTIONS["attest"] not in source, "source-gate must not create attestations")
+
+    _require("needs: [source-gate]" in build, "write-capable image build must depend on source-gate")
+    for permission in ("contents: read", "packages: write", "attestations: write", "id-token: write"):
+        _require(permission in build, f"build-and-freeze missing scoped permission: {permission}")
+    _require("ref: ${{ github.sha }}" in build, "write-capable build must checkout exact dispatch SHA")
+    _require(
+        'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"' in build,
+        "write-capable build must re-bind checkout HEAD to dispatch SHA",
+    )
+
+    source_pos = text.find("  source-gate:\n")
+    build_pos = text.find("  build-and-freeze:\n")
     registry_login_pos = text.find(PINNED_ACTIONS["login"])
     _require(
-        pin_pos >= 0 and registry_login_pos >= 0 and pin_pos < registry_login_pos,
-        "release action pin self-check must run before registry login/package writes",
+        0 <= source_pos < build_pos < registry_login_pos,
+        "read-only source-gate definition must precede the privileged image build path",
     )
+    _require(text.count("ref: ${{ github.sha }}") >= 2, "both source-gate and build job must checkout exact dispatch SHA")
     _require("latest" not in text.casefold(), "runtime image build workflow must not publish a latest tag")
     _require(text.count("provenance: mode=max") == 6, "all six images require max provenance")
     _require(text.count("sbom: true") == 6, "all six images require SBOM attestation")
