@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULES = {
     "governance": ROOT / "scripts/validate_release_governance_policy.py",
     "live_governance": ROOT / "scripts/validate_live_release_governance_v2.py",
+    "environment": ROOT / "scripts/validate_live_release_environment_v1.py",
     "governance_apply": ROOT / "scripts/apply_release_branch_protection.py",
     "dispatch_registry": ROOT / "scripts/validate_release_dispatch_registry_contract.py",
     "live_dispatch_registry": ROOT / "scripts/validate_live_default_branch_dispatch_registry.py",
@@ -33,6 +34,7 @@ RELEASE_TEMPLATE = ROOT / "final/acceptance/release-manifest-v2-template.json"
 POLICY_TEMPLATE = ROOT / "final/acceptance/release-approval-policy-v2-template.json"
 REQUEST_TEMPLATE = ROOT / "final/acceptance/release-authorization-request-v2-template.json"
 GOVERNANCE_TEMPLATE = ROOT / "final/acceptance/repository-governance-policy-template.json"
+ENVIRONMENT_TEMPLATE = ROOT / "final/acceptance/release-environment-policy-template.json"
 CANONICAL_FINAL_CHECK = "node73-final-contract-gate"
 
 
@@ -64,6 +66,7 @@ def run_self_tests(modules: dict[str, ModuleType]) -> None:
     expected = {
         "governance": ("negative_drills", 12),
         "live_governance": ("negative_drills", 7),
+        "environment": ("negative_drills", 5),
         "dispatch_registry": ("negative_drills", 5),
         "live_dispatch_registry": ("negative_drills", 7),
         "authorization": ("negative_drills", 6),
@@ -124,6 +127,16 @@ def validate_templates(modules: dict[str, ModuleType]) -> None:
         "governance policy must keep merge-target release branch unlocked",
     )
 
+    environment_policy = json.loads(ENVIRONMENT_TEMPLATE.read_text(encoding="utf-8"))
+    environment = modules["environment"].validate_policy(environment_policy)
+    require(environment["environment"] == "production", "release environment policy must bind production")
+    require(environment["minimum_required_reviewers"] >= 1, "production environment must require a deployment reviewer")
+    require(environment["require_prevent_self_review"] is True, "production environment must prevent self-review")
+    require(
+        environment["deployment_branch_policy"] == {"protected_branches": True, "custom_branch_policies": False},
+        "production environment must be restricted to protected branches",
+    )
+
 
 def validate_canonical_sources() -> None:
     markers(ASSEMBLER_V2, (
@@ -154,10 +167,15 @@ def validate_canonical_sources() -> None:
 
     markers(DECISION_V2, (
         'GOVERNANCE_BINDER_V2 = ROOT / "scripts" / "validate_live_release_governance_v2.py"',
+        'ENVIRONMENT_LIVE = ROOT / "scripts" / "validate_live_release_environment_v1.py"',
+        'ENVIRONMENT_POLICY = ROOT / "final" / "acceptance" / "release-environment-policy-template.json"',
         'DISPATCH_REGISTRY_LIVE = ROOT / "scripts" / "validate_live_default_branch_dispatch_registry.py"',
         'DISPATCH_REGISTRY_POLICY = ROOT / "production" / "release-actions" / "default-branch-dispatch-registry-v1.json"',
         'governance_binder.validate_live_report(',
+        'environment.capture(EXPECTED_REPOSITORY, token=approval_token)',
         'dispatch_registry.capture(EXPECTED_REPOSITORY, token=approval_token)',
+        '"production_environment": {',
+        '"release_environment_policy": {',
         '"default_branch_dispatch_registry": {',
         '"default_branch_dispatch_registry_policy": {',
         'expected_evidence_head_sha=evidence_head_sha',
@@ -169,6 +187,7 @@ def validate_canonical_sources() -> None:
         '"release_authorization_request": {',
         '"evidence_head_locked": governance_result.get("evidence_head_locked")',
         '"evidence_head_lock_policy_bound": governance_result.get("evidence_head_lock_policy_bound")',
+        '"environment_policy_bound": environment_report.get("environment_policy_bound")',
         '"status_check_policy_bound": governance_result.get("status_check_policy_bound")',
         '"kind": "LUMI_FINAL_ACCEPTANCE_DECISION_V2"',
     ))
@@ -181,6 +200,7 @@ def validate_canonical_sources() -> None:
     require(final.count(f"name: {CANONICAL_FINAL_CHECK}") == 1, "canonical final check display name must be unique")
     require("scripts/final-acceptance-decision-v2.py" in final, "Final workflow must use V2 outer decision")
     require("scripts/final-acceptance-decision.py" not in final, "Final workflow must not invoke V1 outer decision")
+    require("scripts/validate_live_release_environment_v1.py" in final, "Final workflow source syntax gate must include environment governance validator")
 
     final_decision_start = final.find("  final-decision:\n")
     contract_gate_start = final.find("  contract-gate:\n", final_decision_start + 1)
@@ -188,6 +208,10 @@ def validate_canonical_sources() -> None:
     final_decision_job = final[final_decision_start:contract_gate_start]
     governance_secret = "${{ secrets.RELEASE_GOVERNANCE_TOKEN }}"
     require("environment: production" in final_decision_job, "Administration-read Final Decision must remain production-environment protected")
+    require(
+        "permissions:\n      contents: read\n      actions: read\n      pull-requests: read\n" in final_decision_job,
+        "Final Decision must receive only scoped contents/actions/PR read permissions",
+    )
     require(governance_secret in final_decision_job, "Final Decision is missing Administration-read governance secret")
     require(final.count(governance_secret) == 1, "Administration-read governance secret must be injected exactly once")
     require(
