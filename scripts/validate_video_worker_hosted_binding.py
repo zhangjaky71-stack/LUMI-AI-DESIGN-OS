@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +26,7 @@ PROVIDER_OUTPUT = ROOT / "apps/api/src/lumi_api/provider_output_store.py"
 PROVIDER_OUTPUT_TEST = ROOT / "apps/api/tests/test_provider_output_store.py"
 VIDEO_PERFORMANCE = ROOT / "services/video-generation/src/lumi_video_generation/performance_ports.py"
 VIDEO_WORKFLOW = ROOT / ".github/workflows/video-generation.yml"
+VIDEO_PRODUCER_GATE = ROOT / "scripts/validate_video_generation_producer_binding.py"
 SANDBOX_WORKFLOW = ROOT / ".github/workflows/sandbox-remote-runtime-closure.yml"
 ENVIRONMENTS = ("staging", "production")
 
@@ -430,6 +432,8 @@ def main() -> None:
         "sandbox exchange workflow",
     )
 
+    require(VIDEO_PRODUCER_GATE.is_file(), "missing Hosted video generation producer gate")
+    runpy.run_path(str(VIDEO_PRODUCER_GATE), run_name="__main__")
     validate_iac()
     print(
         "PASS: Hosted video.render production binding is durable, tenant-scoped, "
