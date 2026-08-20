@@ -8,6 +8,13 @@
   ],
   "evidence_head_branch": "release-closure-p0",
   "protection_profile": "LUMI_RELEASE_PROTECTION_PROFILE_V1",
+  "required_status_checks": {
+    "strict": true,
+    "required_contexts": [
+      "node73-final-contract-gate"
+    ],
+    "allow_additional_contexts": true
+  },
   "require_live_reverification": true,
   "require_evidence_head_equals_execution_sha": true
 }
