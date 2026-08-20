@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "staging-acceptance-gate.yml"
 EVIDENCE_TEMPLATE = ROOT / "staging" / "acceptance" / "evidence-template.json"
+EVIDENCE_VALIDATOR = ROOT / "scripts" / "validate_staging_evidence_artifacts.py"
 DOWNLOAD_ACTION = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1"
 UPLOAD_ACTION = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2"
 
@@ -32,6 +35,25 @@ def _job_block(text: str, job_name: str, next_job: str | None) -> str:
     if end < 0:
         raise WorkflowContractError(f"missing workflow job terminator: {next_job}")
     return text[start:end]
+
+
+def _run_evidence_binding_self_test() -> None:
+    result = subprocess.run(
+        [sys.executable, str(EVIDENCE_VALIDATOR), "--self-test"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    require(result.returncode == 0, f"staging evidence artifact validator self-test failed: {result.stderr.strip()}")
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise WorkflowContractError("staging evidence artifact validator self-test did not emit JSON") from exc
+    require(payload.get("status") == "PASS", "staging evidence artifact validator self-test did not PASS")
+    require(payload.get("static_negative_drills") == 8, "staging evidence artifact static negative drill count drift")
+    require(payload.get("live_negative_drills") == 8, "staging evidence artifact live negative drill count drift")
+    require(payload.get("verified_artifacts") == 2, "staging evidence artifact clean fixture verification count drift")
 
 
 def main() -> int:
@@ -63,6 +85,8 @@ def main() -> int:
         '--expected-repository "${{ github.repository }}"',
     ):
         require(marker in text, f"staging workflow missing evidence/runtime-image/decision binding marker: {marker}")
+
+    _run_evidence_binding_self_test()
 
     require(
         text.count('ref: ${{ github.sha }}') == 4,
@@ -183,7 +207,7 @@ def main() -> int:
         "source-contract must fail closed on release action supply-chain drift",
     )
 
-    print("NODE-71 immutable evidence/live producers, runtime-image, decision artifact, exact-SHA checkout, and scoped permission workflow contract: PASS")
+    print("NODE-71 immutable evidence/live producers, runtime-image, decision artifact, exact-SHA checkout, scoped permission, and executable negative-drill workflow contract: PASS")
     return 0
 
 
