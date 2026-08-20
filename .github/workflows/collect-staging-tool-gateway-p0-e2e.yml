@@ -1,0 +1,139 @@
+name: Collect Staging Tool Gateway P0 E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_git_sha:
+        description: "Exact 40-character RC Git SHA already deployed to Production-like Staging"
+        required: true
+        type: string
+      collect_ack:
+        description: "Required acknowledgement: COLLECT_TOOL_GATEWAY_P0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  RELEASE_GIT_SHA: ${{ inputs.release_git_sha }}
+  COLLECT_ACK: ${{ inputs.collect_ack }}
+
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: staging
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Require exact RC checkout and explicit acknowledgement
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$COLLECT_ACK" = "COLLECT_TOOL_GATEWAY_P0"
+          [[ "$RELEASE_GIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_GIT_SHA"
+          test -n "$AWS_REGION"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install bounded AWS evidence client dependency
+        run: python -m pip install --disable-pip-version-check "boto3>=1.42,<2"
+
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: lumi-staging-tool-p0-${{ github.run_id }}
+
+      - name: Compile and self-test evidence tooling
+        run: |
+          python3 -m py_compile \
+            scripts/run_tool_gateway_p0_staging_e2e_ecs.py \
+            scripts/verify_tool_gateway_p0_offload_s3.py \
+            scripts/validate_tool_gateway_p0_offload_probe.py \
+            scripts/validate_tool_gateway_p0_runtime_identity.py
+          python3 scripts/validate_tool_gateway_p0_offload_probe.py --self-test
+          python3 scripts/validate_tool_gateway_p0_runtime_identity.py --self-test
+
+      - name: Materialize synthetic fixture and execute deployed private Tool Gateway chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/staging-acceptance/runtime
+          python3 scripts/run_tool_gateway_p0_staging_e2e_ecs.py \
+            --release-git-sha "$RELEASE_GIT_SHA"
+
+      - name: Verify durable Tool Gateway result offload through S3 metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          LUMI_PROBE_INPUT=reports/staging-acceptance/runtime/tool-gateway-p0-probe.json \
+          LUMI_S3_EVIDENCE_OUTPUT=reports/staging-acceptance/runtime/tool-gateway-p0-s3-evidence.json \
+          python3 scripts/verify_tool_gateway_p0_offload_s3.py
+
+      - name: Require real truncated-preview plus private full-result semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/validate_tool_gateway_p0_offload_probe.py \
+            --probe reports/staging-acceptance/runtime/tool-gateway-p0-probe.json \
+            --s3 reports/staging-acceptance/runtime/tool-gateway-p0-s3-evidence.json \
+            > reports/staging-acceptance/runtime/tool-gateway-p0-offload-validation.json
+
+      - name: Require collection remains synthetic and release-labelled
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.synthetic_only == true and .schema_version == 1' \
+            reports/staging-acceptance/runtime/tool-gateway-p0-fixture.json >/dev/null
+          jq -e --arg sha "$RELEASE_GIT_SHA" \
+            '.release_git_sha == $sha and .environment == "staging" and .synthetic_only == true and (.services | length) == 4' \
+            reports/staging-acceptance/runtime/tool-gateway-p0-runtime-identity.json >/dev/null
+          jq -e '.fixture.container_exit_code == 0 and .probe.container_exit_code == 0' \
+            reports/staging-acceptance/runtime/tool-gateway-p0-ecs-tasks.json >/dev/null
+          jq -e '.inline_preview_present == true and .full_payload_inline_present == false and .truncated == true' \
+            reports/staging-acceptance/runtime/tool-gateway-p0-offload-validation.json >/dev/null
+
+      - name: Freeze collector checksums without claiming staging PASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd reports/staging-acceptance/runtime
+          sha256sum \
+            tool-gateway-p0-fixture.json \
+            tool-gateway-p0-probe.json \
+            tool-gateway-p0-db-evidence.json \
+            tool-gateway-p0-readiness.json \
+            tool-gateway-p0-runtime-identity.json \
+            tool-gateway-p0-ecs-tasks.json \
+            tool-gateway-p0-s3-evidence.json \
+            tool-gateway-p0-offload-validation.json \
+            > tool-gateway-p0-collector.sha256
+          jq -n \
+            --arg release_git_sha "$RELEASE_GIT_SHA" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            '{
+              schema_version: 1,
+              status: "COLLECTED_NOT_ACCEPTED",
+              release_git_sha: $release_git_sha,
+              github_run_id: $run_id,
+              github_run_attempt: $run_attempt,
+              synthetic_only: true,
+              note: "Runtime evidence collected only. Exact RC identity must still be joined to canonical staging evidence before PASS."
+            }' > tool-gateway-p0-collector-status.json
+
+      - name: Upload Tool Gateway runtime evidence package
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-tool-gateway-p0-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/staging-acceptance/runtime/
+          if-no-files-found: warn
+          retention-days: 30
