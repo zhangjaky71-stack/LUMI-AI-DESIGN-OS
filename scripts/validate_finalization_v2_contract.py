@@ -12,6 +12,8 @@ MODULES = {
     "governance": ROOT / "scripts/validate_release_governance_policy.py",
     "live_governance": ROOT / "scripts/validate_live_release_governance_v2.py",
     "governance_apply": ROOT / "scripts/apply_release_branch_protection.py",
+    "dispatch_registry": ROOT / "scripts/validate_release_dispatch_registry_contract.py",
+    "live_dispatch_registry": ROOT / "scripts/validate_live_default_branch_dispatch_registry.py",
     "authorization": ROOT / "scripts/capture_release_authorization_v2.py",
     "approval_feasibility": ROOT / "scripts/validate_release_approval_policy_feasibility_v2.py",
     "authorization_prep": ROOT / "scripts/prepare_release_authorization_request_v2.py",
@@ -61,6 +63,8 @@ def run_self_tests(modules: dict[str, ModuleType]) -> None:
     expected = {
         "governance": ("negative_drills", 10),
         "live_governance": ("negative_drills", 4),
+        "dispatch_registry": ("negative_drills", 5),
+        "live_dispatch_registry": ("negative_drills", 6),
         "authorization": ("negative_drills", 6),
         "approval_feasibility": ("negative_drills", 5),
         "authorization_prep": ("negative_drills", 1),
@@ -81,6 +85,7 @@ def run_self_tests(modules: dict[str, ModuleType]) -> None:
         in results["approval_feasibility"]["clean"]["excluded_logins"],
         "approval feasibility must model PR #135 author exclusion",
     )
+    require(modules["dispatch_registry"].main() == 0, "static release dispatch registry contract did not PASS")
     require(modules["package_contract"].main() == 0, "V2 assembler/package execution contract did not PASS")
     require(modules["assembler_workflow_contract"].main() == 0, "V2 assembler workflow contract did not PASS")
     require(modules["permissions"].main() == 0, "release workflow permission contract did not PASS")
@@ -132,7 +137,12 @@ def validate_canonical_sources() -> None:
 
     markers(DECISION_V2, (
         'GOVERNANCE_BINDER_V2 = ROOT / "scripts" / "validate_live_release_governance_v2.py"',
+        'DISPATCH_REGISTRY_LIVE = ROOT / "scripts" / "validate_live_default_branch_dispatch_registry.py"',
+        'DISPATCH_REGISTRY_POLICY = ROOT / "production" / "release-actions" / "default-branch-dispatch-registry-v1.json"',
         'governance_binder.validate_live_report(',
+        'dispatch_registry.capture(EXPECTED_REPOSITORY, token=approval_token)',
+        '"default_branch_dispatch_registry": {',
+        '"default_branch_dispatch_registry_policy": {',
         'expected_evidence_head_sha=evidence_head_sha',
         'authorization.capture(',
         'evidence_head_sha=evidence_head_sha',
