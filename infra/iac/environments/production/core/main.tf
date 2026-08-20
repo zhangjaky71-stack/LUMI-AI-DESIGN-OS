@@ -23,6 +23,7 @@ locals {
     "internal/tool-audit",
     "internal/tool-approval",
     "internal/tool-data",
+    "internal/agent-control",
   ])
 }
 
