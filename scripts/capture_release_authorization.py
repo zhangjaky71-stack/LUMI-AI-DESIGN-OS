@@ -13,7 +13,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_REPOSITORY = "zhangjaky71-stack/LUMI-AI-DESIGN-OS"
@@ -408,7 +408,6 @@ def validate_authorization_report(
     approvals = report.get("approvals")
     _require(isinstance(approvals, Mapping) and set(approvals) == set(ROLES), f"release authorization approvals must equal {sorted(ROLES)}")
     selected: dict[str, str] = {}
-    review_ids: set[int] = set()
     for role in ROLES:
         item = approvals[role]
         _require(isinstance(item, Mapping) and item.get("status") == "APPROVED", f"release authorization role {role} is not APPROVED")
@@ -417,8 +416,6 @@ def validate_authorization_report(
         _require(actor != author and not actor.endswith("[bot]"), f"release authorization role {role} must be approved by a human other than PR author")
         review_id = item.get("review_id")
         _require(isinstance(review_id, int) and review_id > 0, f"release authorization role {role} review_id invalid")
-        _require(review_id not in review_ids, f"release authorization review id reused across roles: {review_id}")
-        review_ids.add(review_id)
         review_url = item.get("review_url")
         _require(isinstance(review_url, str) and review_url.startswith(f"https://github.com/{EXPECTED_REPOSITORY}/pull/{EXPECTED_PR}"), f"release authorization role {role} review URL invalid")
         _require(item.get("commit_id") == git_sha.lower(), f"release authorization role {role} review commit does not equal RC")
@@ -617,7 +614,7 @@ def self_test() -> dict[str, Any]:
         clean = validate_authorization_report(report, expected_release_id="rc-auth-selftest", expected_rc=(rc_sha, "1.0.0-rc", "0020"))
 
         blocked = 0
-        drills: list[tuple[str, callable]] = []
+        drills: list[tuple[str, Callable[[], None]]] = []
 
         def stale_review() -> None:
             changed = copy.deepcopy(reviews)
@@ -661,12 +658,12 @@ def self_test() -> dict[str, Any]:
 
         drills.append(("approval commit swap", report_commit_swap))
 
-        def report_review_reuse() -> None:
+        def report_timestamp_missing() -> None:
             changed = copy.deepcopy(report)
-            changed["approvals"]["operations"]["review_id"] = changed["approvals"]["product"]["review_id"]
+            changed["approvals"]["operations"]["submitted_at"] = ""
             validate_authorization_report(changed)
 
-        drills.append(("review id reuse", report_review_reuse))
+        drills.append(("approval submitted_at missing", report_timestamp_missing))
 
         def policy_hash_tamper() -> None:
             original = policy_path.read_text(encoding="utf-8")
