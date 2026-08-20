@@ -190,9 +190,14 @@ jobs:
           test -f /tmp/staging-db-parity-freeze/database-parity.json
           test -f /tmp/staging-db-parity-freeze/database-parity.catalog.json
           target="reports/staging-acceptance/evidence/${RC_SHA}"
-          if test -d "$target"; then
-            if cmp -s /tmp/staging-db-parity-freeze/database-parity.json "$target/database-parity.json" \
-              && cmp -s /tmp/staging-db-parity-freeze/database-parity.catalog.json "$target/database-parity.catalog.json"; then
+          mkdir -p "$target"
+          wrapper="$target/database-parity.json"
+          catalog="$target/database-parity.catalog.json"
+          if test -e "$wrapper" || test -e "$catalog"; then
+            test -f "$wrapper"
+            test -f "$catalog"
+            if cmp -s /tmp/staging-db-parity-freeze/database-parity.json "$wrapper" \
+              && cmp -s /tmp/staging-db-parity-freeze/database-parity.catalog.json "$catalog"; then
               echo "identical database parity evidence already frozen"
               echo "FREEZE_NOOP=true" >> "$GITHUB_ENV"
               exit 0
@@ -200,9 +205,8 @@ jobs:
             echo "refusing to overwrite non-identical database parity evidence for $RC_SHA" >&2
             exit 66
           fi
-          mkdir -p "$target"
-          cp /tmp/staging-db-parity-freeze/database-parity.json "$target/database-parity.json"
-          cp /tmp/staging-db-parity-freeze/database-parity.catalog.json "$target/database-parity.catalog.json"
+          cp /tmp/staging-db-parity-freeze/database-parity.json "$wrapper"
+          cp /tmp/staging-db-parity-freeze/database-parity.catalog.json "$catalog"
           echo "FREEZE_NOOP=false" >> "$GITHUB_ENV"
 
       - name: Commit only validated Staging database parity evidence with exact-head guard
