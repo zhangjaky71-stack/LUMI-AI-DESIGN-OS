@@ -14,6 +14,7 @@ from .job_runtime import JobOutcome, TaskJobStore, execute_job
 from .queue_contracts import JobKind, JobMessage, JobState, queue_for, retry_policy_for
 from .task_base import RuntimeTask
 from .topology import build_job_queues
+from .video_generation_runtime import HostedVideoGenerationRuntime
 
 broker = os.getenv("LUMI_RABBITMQ_URL") or os.getenv("RABBITMQ_URL", "memory://")
 configured_backend = os.getenv("CELERY_RESULT_BACKEND")
@@ -94,16 +95,48 @@ async def _execute_image_generation_job(message: JobMessage) -> JobOutcome:
     )
 
 
-@celery_app.task(name="lumi.jobs.video.render", base=RuntimeTask)
-def video_render(message: dict[str, object]) -> dict[str, object]:
+@celery_app.task(
+    name="lumi.jobs.video.render",
+    bind=True,
+    max_retries=2,
+    base=RuntimeTask,
+)
+def video_render(self: object, message: dict[str, object]) -> dict[str, object]:
     parsed = JobMessage.from_mapping(message)
-    policy = retry_policy_for(JobKind.VIDEO_RENDER)
+    outcome = asyncio.run(_execute_video_generation_job(parsed))
+    if outcome.state == JobState.RETRYING:
+        retries = getattr(getattr(self, "request", None), "retries", 0)
+        policy = retry_policy_for(JobKind.VIDEO_RENDER)
+        retry = getattr(self, "retry")
+        countdown = policy.delay_seconds(
+            attempt=max(1, outcome.attempt_count),
+            jitter_seed=retries,
+        )
+        raise retry(
+            exc=RuntimeError(str(outcome.output.get("error", "VIDEO_GENERATION_RETRY"))),
+            countdown=countdown,
+        )
+    if outcome.state == JobState.FAILED:
+        raise RuntimeError(
+            "VIDEO_GENERATION_JOB_FAILED:"
+            + str(outcome.output.get("error", "unknown"))[:1000]
+        )
     return {
         "job_id": str(parsed.job_id),
-        "status": "accepted",
-        "kind": JobKind.VIDEO_RENDER,
-        "provider_reconciliation_required": policy.provider_reconciliation_required,
+        "state": outcome.state.value,
+        "attempt_count": outcome.attempt_count,
+        **outcome.output,
     }
+
+
+async def _execute_video_generation_job(message: JobMessage) -> JobOutcome:
+    runtime = HostedVideoGenerationRuntime.from_env()
+    store = TaskJobStore(_database_dsn())
+    return await execute_job(
+        store=store,
+        message=message,
+        handler=runtime.execute,
+    )
 
 
 @celery_app.task(name="lumi.jobs.asset.preview", base=RuntimeTask)
