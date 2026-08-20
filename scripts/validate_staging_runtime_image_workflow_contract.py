@@ -38,16 +38,21 @@ def main() -> int:
         "actions: read",
         "python3 scripts/validate_staging_runtime_image_binding.py --self-test",
         "python3 scripts/validate_staging_runtime_image_workflow_contract.py",
+        "python3 scripts/validate_node71_decision_artifact.py --self-test",
         "scripts/validate_staging_runtime_image_binding.py",
         "scripts/validate_staging_runtime_image_workflow_contract.py",
+        "scripts/validate_node71_decision_artifact.py",
         "actions/download-artifact@v8",
         "github-token: ${{ secrets.GITHUB_TOKEN }}",
         "repository: ${{ github.repository }}",
         "run-id: ${{ inputs.runtime_image_set_run_id }}",
         "runtime-image-set-${{ steps.runtime_image_binding.outputs.rc_sha }}",
         "--expected-run-id \"$LUMI_RUNTIME_IMAGE_SET_RUN_ID\"",
+        "--write-provenance reports/staging-acceptance/runtime/decision-provenance.json",
+        '--expected-run-id "${{ github.run_id }}"',
+        '--expected-repository "${{ github.repository }}"',
     ):
-        require(marker in text, f"staging workflow missing runtime-image binding marker: {marker}")
+        require(marker in text, f"staging workflow missing runtime-image/decision binding marker: {marker}")
 
     acceptance = _job_block(text, "acceptance-decision", "contract-gate")
     require(
@@ -78,9 +83,16 @@ def main() -> int:
     download_pos = acceptance.find("actions/download-artifact@v8")
     binding_pos = acceptance.find("validate_staging_runtime_image_binding.py")
     gate_pos = acceptance.find("staging-acceptance-gate.py")
+    provenance_pos = acceptance.find("--write-provenance reports/staging-acceptance/runtime/decision-provenance.json")
+    self_verify_pos = acceptance.find("Self-verify NODE-71 decision provenance before archive")
+    upload_pos = acceptance.find("actions/upload-artifact@v4")
     require(
         download_pos >= 0 and binding_pos >= 0 and gate_pos >= 0 and download_pos < binding_pos < gate_pos,
-        "exact artifact download and binding must run before NODE-71 decision",
+        "exact runtime-image artifact download and binding must run before NODE-71 decision",
+    )
+    require(
+        gate_pos < provenance_pos < self_verify_pos < upload_pos,
+        "NODE-71 decision provenance capture/self-verification must occur after decision and before archive",
     )
 
     source = _job_block(text, "source-contract", "canonical-lock-gate")
@@ -92,8 +104,12 @@ def main() -> int:
         "validate_staging_runtime_image_workflow_contract.py" in source,
         "source-contract must execute this workflow anti-regression contract",
     )
+    require(
+        "validate_node71_decision_artifact.py --self-test" in source,
+        "source-contract must execute NODE-71 decision artifact negative drills",
+    )
 
-    print("NODE-71 frozen runtime-image artifact workflow contract: PASS")
+    print("NODE-71 frozen runtime-image and decision artifact workflow contract: PASS")
     return 0
 
 
