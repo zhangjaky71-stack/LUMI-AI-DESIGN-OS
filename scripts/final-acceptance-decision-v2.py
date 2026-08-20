@@ -196,6 +196,9 @@ def evaluate(*, matrix_path: Path, release_path: Path, evidence_path: Path, outp
             "evidence_head_sha": governance_result.get("release_head_sha"),
             "required_status_contexts": governance_result.get("required_status_contexts"),
             "branch_status_contexts": governance_result.get("branch_status_contexts"),
+            "branch_lock_state": governance_result.get("branch_lock_state"),
+            "evidence_head_locked": governance_result.get("evidence_head_locked"),
+            "evidence_head_lock_policy_bound": governance_result.get("evidence_head_lock_policy_bound"),
             "status_check_policy_bound": governance_result.get("status_check_policy_bound"),
         },
         "default_branch_dispatch_registry": {
