@@ -4,8 +4,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import tempfile
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -15,6 +18,7 @@ ARTIFACT_KIND = "LUMI_STAGING_EVIDENCE_ARTIFACT_V1"
 ALLOWED_ROOT = Path("reports/staging-acceptance/evidence")
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+WORKFLOW_PATH = re.compile(r"^\.github/workflows/[A-Za-z0-9._/-]+\.ya?ml$")
 MAX_REF_LENGTH = 2048
 
 
@@ -52,12 +56,15 @@ def logical_ref(value: object, *, label: str) -> str:
     return ref
 
 
+def normalize_sha40(value: object, *, label: str) -> str:
+    require(isinstance(value, str) and bool(SHA40.fullmatch(value.lower())), f"{label} must be exact SHA40")
+    return value.lower()
+
+
 def normalize_rc_sha(evidence: Mapping[str, Any]) -> str:
     rc = evidence.get("release_candidate")
     require(isinstance(rc, Mapping), "release_candidate object is missing")
-    value = rc.get("git_sha")
-    require(isinstance(value, str) and bool(SHA40.fullmatch(value.lower())), "release_candidate.git_sha must be exact SHA40")
-    return value.lower()
+    return normalize_sha40(rc.get("git_sha"), label="release_candidate.git_sha")
 
 
 def _collect_pass_refs(container: object, *, label: str) -> dict[str, list[str]]:
@@ -93,7 +100,10 @@ def validate_catalog_metadata(evidence: Mapping[str, Any]) -> dict[str, Any]:
         expected_sha = entry.get("sha256")
         entry_rc = entry.get("rc_git_sha")
         require(non_pending_string(path), f"evidence_artifacts[{ref}].path is missing/PENDING")
-        require(isinstance(expected_sha, str) and bool(SHA256.fullmatch(expected_sha.lower())), f"evidence_artifacts[{ref}].sha256 must be SHA-256")
+        require(
+            isinstance(expected_sha, str) and bool(SHA256.fullmatch(expected_sha.lower())),
+            f"evidence_artifacts[{ref}].sha256 must be SHA-256",
+        )
         require(entry_rc == rc_sha, f"evidence_artifacts[{ref}].rc_git_sha must equal release_candidate.git_sha")
         normalized[ref] = {
             "path": str(path),
@@ -116,7 +126,9 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
     try:
         candidate.relative_to(allowed)
     except ValueError as exc:
-        raise StagingEvidenceArtifactError(f"evidence artifact path escapes {ALLOWED_ROOT.as_posix()}: {raw}") from exc
+        raise StagingEvidenceArtifactError(
+            f"evidence artifact path escapes {ALLOWED_ROOT.as_posix()}: {raw}"
+        ) from exc
 
     current = candidate_lexical
     while current != root and root in current.parents:
@@ -137,17 +149,37 @@ def validate_artifact_payload(payload: Mapping[str, Any], *, ref: str, rc_sha: s
     producer = payload.get("producer")
     require(isinstance(producer, Mapping), f"artifact {ref} producer object is missing")
     require(producer.get("repository") == EXPECTED_REPOSITORY, f"artifact {ref} producer repository mismatch")
+    workflow = logical_ref(producer.get("workflow"), label=f"artifact {ref} producer.workflow")
+    workflow_path = logical_ref(producer.get("workflow_path"), label=f"artifact {ref} producer.workflow_path")
+    require(bool(WORKFLOW_PATH.fullmatch(workflow_path)), f"artifact {ref} producer.workflow_path is invalid")
+    head_sha = normalize_sha40(producer.get("head_sha"), label=f"artifact {ref} producer.head_sha")
+    head_branch = logical_ref(producer.get("head_branch"), label=f"artifact {ref} producer.head_branch")
+
     run_id = producer.get("run_id")
     run_text = str(run_id) if isinstance(run_id, (str, int)) and not isinstance(run_id, bool) else ""
     require(run_text.isdecimal() and int(run_text) > 0, f"artifact {ref} producer.run_id must be positive decimal")
-    require(non_pending_string(producer.get("workflow")), f"artifact {ref} producer.workflow is missing/PENDING")
+    run_attempt = producer.get("run_attempt")
+    attempt_text = (
+        str(run_attempt)
+        if isinstance(run_attempt, (str, int)) and not isinstance(run_attempt, bool)
+        else ""
+    )
+    require(
+        attempt_text.isdecimal() and int(attempt_text) > 0,
+        f"artifact {ref} producer.run_attempt must be positive decimal",
+    )
     run_url = producer.get("run_url")
     expected_url = f"https://github.com/{EXPECTED_REPOSITORY}/actions/runs/{run_text}"
     require(isinstance(run_url, str) and run_url == expected_url, f"artifact {ref} producer.run_url mismatch")
     return {
         "artifact_id": ref,
         "producer_run_id": run_text,
-        "producer_workflow": str(producer["workflow"]),
+        "producer_run_attempt": attempt_text,
+        "producer_workflow": workflow,
+        "producer_workflow_path": workflow_path,
+        "producer_head_sha": head_sha,
+        "producer_head_branch": head_branch,
+        "producer_run_url": expected_url,
         "captured_at": str(payload["captured_at"]),
     }
 
@@ -172,11 +204,105 @@ def validate_evidence(evidence: Mapping[str, Any], *, root: Path = ROOT) -> dict
         "rc_git_sha": rc_sha,
         "required_ref_count": metadata["required_ref_count"],
         "verified_artifact_count": len(verified),
+        "producer_provenance_live_verified": False,
         "verified_artifacts": verified,
     }
 
 
+def _fetch_run(run_id: str, *, token: str) -> dict[str, Any]:
+    require(bool(token.strip()), "GitHub Actions read token is missing")
+    url = f"https://api.github.com/repos/{EXPECTED_REPOSITORY}/actions/runs/{run_id}"
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "lumi-node71-staging-evidence-artifacts",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.load(response)
+    except urllib.error.HTTPError as exc:
+        raise StagingEvidenceArtifactError(
+            f"GitHub Actions run lookup failed for {run_id} with HTTP {exc.code}"
+        ) from exc
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        raise StagingEvidenceArtifactError(f"GitHub Actions run lookup failed for {run_id}: {exc}") from exc
+    require(isinstance(payload, dict), f"GitHub Actions run lookup returned non-object JSON for {run_id}")
+    return payload
+
+
+def _run_workflow_path(value: object) -> str:
+    require(isinstance(value, str) and bool(value), "GitHub Actions run workflow path is missing")
+    return value.split("@", 1)[0]
+
+
+def validate_live_run_payload(
+    artifact: Mapping[str, Any],
+    run: Mapping[str, Any],
+) -> dict[str, Any]:
+    run_id = artifact.get("producer_run_id")
+    require(isinstance(run_id, str) and run_id.isdecimal(), "producer run id is invalid before live validation")
+    require(run.get("id") == int(run_id), f"producer run id mismatch for artifact {artifact.get('artifact_id')}")
+    repository = run.get("repository")
+    require(
+        isinstance(repository, Mapping) and repository.get("full_name") == EXPECTED_REPOSITORY,
+        f"producer run repository mismatch for artifact {artifact.get('artifact_id')}",
+    )
+    require(run.get("status") == "completed", f"producer run is not completed for artifact {artifact.get('artifact_id')}")
+    require(run.get("conclusion") == "success", f"producer run did not succeed for artifact {artifact.get('artifact_id')}")
+    require(run.get("html_url") == artifact.get("producer_run_url"), f"producer run URL mismatch for artifact {artifact.get('artifact_id')}")
+    require(run.get("name") == artifact.get("producer_workflow"), f"producer workflow name mismatch for artifact {artifact.get('artifact_id')}")
+    require(
+        _run_workflow_path(run.get("path")) == artifact.get("producer_workflow_path"),
+        f"producer workflow path mismatch for artifact {artifact.get('artifact_id')}",
+    )
+    require(run.get("head_sha") == artifact.get("producer_head_sha"), f"producer head SHA mismatch for artifact {artifact.get('artifact_id')}")
+    require(
+        run.get("head_branch") == artifact.get("producer_head_branch"),
+        f"producer head branch mismatch for artifact {artifact.get('artifact_id')}",
+    )
+    require(
+        run.get("run_attempt") == int(str(artifact.get("producer_run_attempt"))),
+        f"producer run attempt mismatch for artifact {artifact.get('artifact_id')}",
+    )
+    return {
+        "run_id": run_id,
+        "run_attempt": str(artifact["producer_run_attempt"]),
+        "workflow": artifact["producer_workflow"],
+        "workflow_path": artifact["producer_workflow_path"],
+        "head_sha": artifact["producer_head_sha"],
+        "head_branch": artifact["producer_head_branch"],
+        "run_url": artifact["producer_run_url"],
+        "status": "PASS",
+    }
+
+
+def validate_live_producers(binding: Mapping[str, Any], *, token: str) -> dict[str, Any]:
+    artifacts = binding.get("verified_artifacts")
+    require(isinstance(artifacts, Mapping), "verified_artifacts missing before live producer validation")
+    cache: dict[str, dict[str, Any]] = {}
+    live: dict[str, Any] = {}
+    for ref, raw in artifacts.items():
+        require(isinstance(ref, str) and isinstance(raw, Mapping), "verified artifact entry is invalid")
+        run_id = raw.get("producer_run_id")
+        require(isinstance(run_id, str) and run_id.isdecimal(), f"producer run id missing for {ref}")
+        run = cache.get(run_id)
+        if run is None:
+            run = _fetch_run(run_id, token=token)
+            cache[run_id] = run
+        live[ref] = validate_live_run_payload(raw, run)
+    result = dict(binding)
+    result["producer_provenance_live_verified"] = True
+    result["live_producer_run_count"] = len(cache)
+    result["live_producers"] = live
+    return result
+
+
 def _artifact_payload(ref: str, rc_sha: str, run_id: int, *, status: str = "PASS") -> dict[str, Any]:
+    producer_sha = f"{run_id % 16:x}" * 40
     return {
         "schema_version": 1,
         "kind": ARTIFACT_KIND,
@@ -186,11 +312,30 @@ def _artifact_payload(ref: str, rc_sha: str, run_id: int, *, status: str = "PASS
         "captured_at": "2026-08-20T00:00:00Z",
         "producer": {
             "repository": EXPECTED_REPOSITORY,
-            "workflow": "self-test",
+            "workflow": "Self Test Producer",
+            "workflow_path": ".github/workflows/self-test-producer.yml",
             "run_id": run_id,
+            "run_attempt": 1,
             "run_url": f"https://github.com/{EXPECTED_REPOSITORY}/actions/runs/{run_id}",
+            "head_sha": producer_sha,
+            "head_branch": "release-closure-p0",
         },
         "payload": {"summary": "self-test"},
+    }
+
+
+def _live_run_fixture(artifact: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "id": int(str(artifact["producer_run_id"])),
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": artifact["producer_run_url"],
+        "name": artifact["producer_workflow"],
+        "path": artifact["producer_workflow_path"],
+        "head_sha": artifact["producer_head_sha"],
+        "head_branch": artifact["producer_head_branch"],
+        "run_attempt": int(str(artifact["producer_run_attempt"])),
+        "repository": {"full_name": EXPECTED_REPOSITORY},
     }
 
 
@@ -227,7 +372,7 @@ def self_test() -> dict[str, Any]:
         result = validate_evidence(clean, root=root)
         require(result["verified_artifact_count"] == 2, "clean artifact binding fixture did not verify two artifacts")
 
-        blocked = 0
+        static_blocked = 0
         mutations: list[dict[str, Any]] = []
 
         missing = json.loads(json.dumps(clean))
@@ -268,7 +413,7 @@ def self_test() -> dict[str, Any]:
 
         bad_producer_path = artifact_root / "bad-producer.json"
         bad_producer_payload = _artifact_payload(refs[0], rc_sha, 203)
-        bad_producer_payload["producer"].pop("workflow")
+        bad_producer_payload["producer"].pop("workflow_path")
         bad_producer_path.write_text(json.dumps(bad_producer_payload, sort_keys=True), encoding="utf-8")
         bad_producer = json.loads(json.dumps(clean))
         bad_producer["evidence_artifacts"][refs[0]] = {
@@ -286,17 +431,55 @@ def self_test() -> dict[str, Any]:
             try:
                 validate_evidence(mutation, root=root)
             except StagingEvidenceArtifactError:
-                blocked += 1
+                static_blocked += 1
                 continue
             raise StagingEvidenceArtifactError(f"negative staging evidence artifact drill did not block: {index}")
 
-        return {"status": "PASS", "negative_drills": blocked, "verified_artifacts": 2}
+        first = next(iter(result["verified_artifacts"].values()))
+        live_run = _live_run_fixture(first)
+        validate_live_run_payload(first, live_run)
+        live_blocked = 0
+        live_mutations: list[dict[str, Any]] = []
+        for field, value in (
+            ("status", "in_progress"),
+            ("conclusion", "failure"),
+            ("head_sha", "f" * 40),
+            ("head_branch", "main"),
+            ("run_attempt", 2),
+            ("name", "Different Workflow"),
+        ):
+            candidate = json.loads(json.dumps(live_run))
+            candidate[field] = value
+            live_mutations.append(candidate)
+        path_swap = json.loads(json.dumps(live_run))
+        path_swap["path"] = ".github/workflows/other.yml"
+        live_mutations.append(path_swap)
+        repo_swap = json.loads(json.dumps(live_run))
+        repo_swap["repository"]["full_name"] = "example/other"
+        live_mutations.append(repo_swap)
+
+        for index, mutation in enumerate(live_mutations, start=1):
+            try:
+                validate_live_run_payload(first, mutation)
+            except StagingEvidenceArtifactError:
+                live_blocked += 1
+                continue
+            raise StagingEvidenceArtifactError(f"negative live producer drill did not block: {index}")
+
+        return {
+            "status": "PASS",
+            "static_negative_drills": static_blocked,
+            "live_negative_drills": live_blocked,
+            "verified_artifacts": 2,
+        }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate immutable NODE-71 Staging evidence artifact bindings")
     parser.add_argument("--evidence", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--require-live-producers", action="store_true")
+    parser.add_argument("--token-env", default="STAGING_EVIDENCE_GITHUB_TOKEN")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     try:
@@ -306,6 +489,8 @@ def main() -> int:
             require(args.evidence is not None, "--evidence is required unless --self-test is used")
             evidence = load_json(args.evidence)
             result = validate_evidence(evidence, root=ROOT)
+            if args.require_live_producers:
+                result = validate_live_producers(result, token=os.environ.get(args.token_env, ""))
         encoded = json.dumps(result, indent=2, sort_keys=True) + "\n"
         if args.output is not None:
             output = args.output.resolve()
@@ -313,7 +498,9 @@ def main() -> int:
             try:
                 output.relative_to(allowed)
             except ValueError as exc:
-                raise StagingEvidenceArtifactError("output must stay below reports/staging-acceptance/runtime/") from exc
+                raise StagingEvidenceArtifactError(
+                    "output must stay below reports/staging-acceptance/runtime/"
+                ) from exc
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(encoded, encoding="utf-8")
         print(encoded, end="")
