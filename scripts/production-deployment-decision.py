@@ -25,6 +25,8 @@ RUNTIME_SERVICE_IMAGE_KEY = {
     "outbox-dispatcher": "worker-media",
     "sandbox-runtime": "sandbox-runtime",
 }
+CAPACITY_CONTRACT_SOURCE = "terraform-live-state"
+CAPACITY_CONTRACT_SCOPE = "production-app-service-desired-counts"
 
 
 class ProductionDecisionError(RuntimeError):
@@ -104,6 +106,46 @@ def _capacity_row_valid(item: object) -> bool:
     )
 
 
+def _validate_capacity_contract(
+    runtime: dict[str, Any],
+    services: list[Any],
+    *,
+    expected_deployment_id: Any,
+    blockers: list[str],
+) -> dict[str, int]:
+    contract = runtime.get("capacity_contract")
+    if not isinstance(contract, dict):
+        blockers.append("runtime identity capacity_contract missing")
+        return {}
+    if contract.get("schema_version") != 1:
+        blockers.append("runtime identity capacity_contract schema_version must be 1")
+    if contract.get("source") != CAPACITY_CONTRACT_SOURCE:
+        blockers.append("runtime identity capacity_contract source mismatch")
+    if contract.get("scope") != CAPACITY_CONTRACT_SCOPE:
+        blockers.append("runtime identity capacity_contract scope mismatch")
+    if contract.get("deployment_id") != expected_deployment_id:
+        blockers.append("runtime identity capacity_contract deployment_id mismatch")
+
+    counts = contract.get("service_desired_counts")
+    if not isinstance(counts, dict) or set(counts) != set(RUNTIME_SERVICE_IMAGE_KEY):
+        blockers.append("runtime identity capacity_contract must contain exactly seven service counts")
+        return {}
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or value <= 0
+        for value in counts.values()
+    ):
+        blockers.append("runtime identity capacity_contract counts must be positive integers")
+        return {}
+    row_counts = {
+        item.get("service_name"): item.get("expected_desired_count")
+        for item in services
+        if isinstance(item, dict) and isinstance(item.get("service_name"), str)
+    }
+    if row_counts != counts:
+        blockers.append("runtime identity capacity_contract does not equal per-service Terraform expectations")
+    return {str(name): int(value) for name, value in counts.items()}
+
+
 def evaluate(
     manifest: dict[str, Any],
     deployment_gate: dict[str, Any],
@@ -140,6 +182,7 @@ def evaluate(
         blockers.append("runtime identity RC mismatch")
     services = runtime.get("services")
     expected_service_images = _expected_service_images(manifest.get("images"), blockers)
+    runtime_capacity: dict[str, int] = {}
     if not isinstance(services, list) or len(services) != len(RUNTIME_SERVICE_IMAGE_KEY):
         blockers.append("runtime identity must contain exactly seven services")
     else:
@@ -170,6 +213,12 @@ def evaluate(
             blockers.append(
                 "runtime identity contains non-steady, image-mismatched, or Terraform-capacity-mismatched service"
             )
+        runtime_capacity = _validate_capacity_contract(
+            runtime,
+            services,
+            expected_deployment_id=deployment_id,
+            blockers=blockers,
+        )
 
     check_passed(rollout, label="rollout-evidence", blockers=blockers, deployment_id=deployment_id)
     if rc(rollout) != manifest_rc:
@@ -223,11 +272,35 @@ def evaluate(
     if not isinstance(rollback_refs, list) or not rollback_refs:
         blockers.append("rollback rehearsal must freeze its own evidence_refs")
 
+    rollback_capacity = rollback.get("capacity_contract")
+    if not isinstance(rollback_capacity, dict):
+        blockers.append("rollback rehearsal capacity_contract missing")
+    else:
+        if rollback_capacity.get("schema_version") != 1:
+            blockers.append("rollback rehearsal capacity_contract schema_version must be 1")
+        if rollback_capacity.get("source") != CAPACITY_CONTRACT_SOURCE:
+            blockers.append("rollback rehearsal capacity_contract source mismatch")
+        if rollback_capacity.get("scope") != CAPACITY_CONTRACT_SCOPE:
+            blockers.append("rollback rehearsal capacity_contract scope mismatch")
+        if rollback_capacity.get("current_infrastructure_deployment_id") != deployment_id:
+            blockers.append("rollback rehearsal capacity contract is not bound to current infrastructure")
+        if rollback_capacity.get("preserved_across_image_rollback") is not True:
+            blockers.append("rollback rehearsal did not prove capacity preservation across image rollback")
+        if rollback_capacity.get("service_desired_counts") != runtime_capacity:
+            blockers.append("rollback rehearsal capacity contract differs from deployed runtime capacity")
+
     release_candidate = manifest.get("release_candidate", {})
     payload: dict[str, Any] = {
         "schema_version": 1,
         "deployment_id": deployment_id,
         "release_candidate": release_candidate,
+        "capacity_contract": {
+            "schema_version": 1,
+            "source": CAPACITY_CONTRACT_SOURCE,
+            "scope": CAPACITY_CONTRACT_SCOPE,
+            "deployment_id": deployment_id,
+            "service_desired_counts": runtime_capacity,
+        },
         "passed": not blockers,
         "evidence_refs": refs,
         "blockers": sorted(set(blockers)),
