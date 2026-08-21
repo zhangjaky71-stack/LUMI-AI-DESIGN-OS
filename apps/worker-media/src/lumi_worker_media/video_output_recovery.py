@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from lumi_asset_storage.models import ObjectHead
 from lumi_asset_storage.s3 import S3ObjectStore
 
 _PROVIDER_OUTPUT_PREFIX = "provider-output/v1/async/"
@@ -23,7 +24,7 @@ class DeferredProviderOutputStore:
     def pending_provider_delete_count(self) -> int:
         return len(self._pending_provider_deletes)
 
-    async def head(self, *, bucket: str, object_key: str):
+    async def head(self, *, bucket: str, object_key: str) -> ObjectHead:
         return await self.delegate.head(bucket=bucket, object_key=object_key)
 
     async def copy(
