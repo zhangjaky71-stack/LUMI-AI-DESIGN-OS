@@ -83,6 +83,23 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
   }
 
   dynamic "rule" {
+    for_each = each.key == "assets" ? [1] : []
+    content {
+      id     = "expire-provider-output-staging"
+      status = "Enabled"
+      filter {
+        prefix = "provider-output/v1/async/"
+      }
+      expiration {
+        days = 1
+      }
+      noncurrent_version_expiration {
+        noncurrent_days = 1
+      }
+    }
+  }
+
+  dynamic "rule" {
     for_each = each.key == "exports" ? [1] : []
     content {
       id     = "expire-exports"
