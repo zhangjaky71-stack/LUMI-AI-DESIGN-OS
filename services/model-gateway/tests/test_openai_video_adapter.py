@@ -112,11 +112,13 @@ def _request(*, capability: Capability = Capability.VIDEO_TEXT_TO_VIDEO) -> Mode
             "duration_seconds": "4",
             "width": 1280,
             "height": 720,
+            "fps": 24,
         },
         constraints={
             "duration_seconds": "4",
             "width": 1280,
             "height": 720,
+            "fps": 24,
         },
     )
 
@@ -155,6 +157,7 @@ def test_create_poll_complete_stages_mp4_without_returning_binary() -> None:
     assert created.status == ResultStatus.PENDING
     assert created.provider_request_id == "video_123"
     assert created.outputs == ()
+    assert request.constraints["fps"] == 24
     assert transport.calls[0] == (
         "POST",
         "https://api.openai.com/v1/videos",
@@ -165,6 +168,8 @@ def test_create_poll_complete_stages_mp4_without_returning_binary() -> None:
             "size": "1280x720",
         },
     )
+    assert transport.calls[0][2] is not None
+    assert "fps" not in transport.calls[0][2]
 
     pending = asyncio.run(adapter.get_async_status(provider_request_id="video_123"))
     assert pending.status == ResultStatus.PENDING
