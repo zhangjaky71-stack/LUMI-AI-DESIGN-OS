@@ -11,12 +11,19 @@ HOSTED_VALIDATION = ROOT / "apps/worker-media/src/lumi_worker_media/video_valida
 FINAL_PROBE_TEST = ROOT / "apps/worker-media/tests/test_video_final_probe_runtime.py"
 HOSTED_VALIDATION_TEST = ROOT / "apps/worker-media/tests/test_video_validation_runtime.py"
 SANDBOX_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py"
+MODEL_GATEWAY_VIDEO_ADAPTER = (
+    ROOT / "services/model-gateway/src/lumi_model_gateway/openai_video_adapter.py"
+)
+MODEL_GATEWAY_VIDEO_TEST = ROOT / "services/model-gateway/tests/test_openai_video_adapter.py"
 RUNTIME_IMAGE_MANIFEST = ROOT / "production/runtime-images/manifest-v1.json"
 VIDEO_WORKFLOW = ROOT / ".github/workflows/video-generation.yml"
 FINAL_WORKFLOW = ROOT / ".github/workflows/final-acceptance-gate.yml"
 SELF_PATH = "scripts/validate_video_final_probe_binding.py"
 FINAL_PROBE_PATH = "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py"
 HOSTED_VALIDATION_PATH = "apps/worker-media/src/lumi_worker_media/video_validation_runtime.py"
+MODEL_GATEWAY_VIDEO_ADAPTER_PATH = (
+    "services/model-gateway/src/lumi_model_gateway/openai_video_adapter.py"
+)
 
 
 class VideoFinalProbeContractError(RuntimeError):
@@ -38,6 +45,15 @@ def require_markers(source: str, markers: tuple[str, ...], label: str) -> None:
     require(not missing, f"{label} missing markers: {missing}")
 
 
+def require_python_syntax(source: str, path: Path) -> None:
+    try:
+        compile(source, str(path), "exec")
+    except SyntaxError as exc:
+        raise VideoFinalProbeContractError(
+            f"{path.relative_to(ROOT)} has invalid Python syntax: {exc}"
+        ) from exc
+
+
 def main() -> int:
     final_probe = read(FINAL_PROBE)
     hosted = read(HOSTED_RUNTIME)
@@ -45,8 +61,13 @@ def main() -> int:
     tests = read(FINAL_PROBE_TEST)
     hosted_validation_tests = read(HOSTED_VALIDATION_TEST)
     sandbox = read(SANDBOX_RUNTIME)
+    model_gateway_video_adapter = read(MODEL_GATEWAY_VIDEO_ADAPTER)
+    model_gateway_video_test = read(MODEL_GATEWAY_VIDEO_TEST)
     workflow = read(VIDEO_WORKFLOW)
     final = read(FINAL_WORKFLOW)
+
+    require_python_syntax(model_gateway_video_adapter, MODEL_GATEWAY_VIDEO_ADAPTER)
+    require_python_syntax(model_gateway_video_test, MODEL_GATEWAY_VIDEO_TEST)
 
     require_markers(
         final_probe,
@@ -77,6 +98,48 @@ def main() -> int:
         final_probe.find("await self._probe_durable(rendered)")
         < final_probe.find("return _verified_final_render(rendered, timeline, probe)"),
         "final durable ffprobe must precede verified metadata return",
+    )
+
+    # OpenAI Videos currently exposes final size and duration controls but no FPS
+    # create field. Keep the internal final-output FPS intent provider-neutral and do
+    # not fabricate a native provider field that the adapter cannot guarantee.
+    require_markers(
+        model_gateway_video_adapter,
+        (
+            "class OpenAIVideoGenerationAdapter",
+            '"model": self._descriptor.model',
+            '"prompt": self._prompt(request)',
+            '"seconds": str(seconds)',
+            '"size": size',
+            "_OPENAI_VIDEOS_URL",
+        ),
+        "OpenAI hosted video adapter",
+    )
+    invoke_start = model_gateway_video_adapter.find("    async def invoke(")
+    status_start = model_gateway_video_adapter.find(
+        "    async def get_async_status(", invoke_start
+    )
+    require(
+        invoke_start >= 0 and status_start > invoke_start,
+        "OpenAI hosted video adapter invoke boundary is missing",
+    )
+    invoke_block = model_gateway_video_adapter[invoke_start:status_start]
+    require(
+        '"fps"' not in invoke_block,
+        "OpenAI native /v1/videos create payload must not fabricate an unsupported FPS field",
+    )
+    require_markers(
+        model_gateway_video_test,
+        (
+            '"fps": 24',
+            'assert request.constraints["fps"] == 24',
+            '"https://api.openai.com/v1/videos"',
+            'assert "fps" not in transport.calls[0][2]',
+            '"model": "sora-2"',
+            '"seconds": "4"',
+            '"size": "1280x720"',
+        ),
+        "OpenAI hosted video FPS ownership test",
     )
 
     # Raw provider FPS is not a controllable OpenAI Videos create parameter. Hosted
@@ -175,7 +238,9 @@ def main() -> int:
     )
 
     try:
-        runtime_manifest = json.loads(RUNTIME_IMAGE_MANIFEST.read_text(encoding="utf-8"))
+        runtime_manifest = json.loads(
+            RUNTIME_IMAGE_MANIFEST.read_text(encoding="utf-8")
+        )
     except (OSError, json.JSONDecodeError) as exc:
         raise VideoFinalProbeContractError("runtime image manifest is unreadable") from exc
     runtimes = runtime_manifest.get("runtimes")
@@ -186,6 +251,15 @@ def main() -> int:
         and FINAL_PROBE_PATH in worker_sources
         and HOSTED_VALIDATION_PATH in worker_sources,
         "canonical worker-media image provenance does not bind final/raw video validation",
+    )
+    model_gateway = runtimes.get("model-gateway") if isinstance(runtimes, dict) else None
+    model_gateway_sources = (
+        model_gateway.get("source_paths") if isinstance(model_gateway, dict) else None
+    )
+    require(
+        isinstance(model_gateway_sources, list)
+        and MODEL_GATEWAY_VIDEO_ADAPTER_PATH in model_gateway_sources,
+        "canonical model-gateway image provenance does not bind OpenAI hosted video adapter",
     )
 
     for source, label in (
@@ -210,7 +284,7 @@ def main() -> int:
         "Final Acceptance does not directly syntax-gate hosted video validation boundaries",
     )
 
-    print("Hosted video FPS ownership and final durable probe contract: PASS")
+    print("Hosted video provider/raw/final FPS ownership contract: PASS")
     return 0
 
 
