@@ -37,13 +37,24 @@ def _write(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _attestation_report(images: dict[str, str]) -> dict[str, object]:
+def _attestation_report(images: dict[str, str], git_sha: str) -> dict[str, object]:
+    policy = {
+        "signer_workflow": "example/lumi/.github/workflows/build-runtime-image-set.yml",
+        "source_digest": git_sha,
+        "source_ref": "refs/heads/release-closure-p0",
+        "workflow_ref": (
+            "example/lumi/.github/workflows/build-runtime-image-set.yml@"
+            "refs/heads/release-closure-p0"
+        ),
+        "deny_self_hosted_runners": True,
+    }
     return {
         "schema_version": 1,
         "kind": "LUMI_RUNTIME_IMAGE_ATTESTATION_VERIFICATION_V1",
         "status": "PASS",
         "repository": "example/lumi",
         "runtime_count": 6,
+        "github_attestation_policy": dict(policy),
         "tools": {
             "docker_buildx": "github.com/docker/buildx v0.contract",
             "github_cli": "gh version 0.contract",
@@ -55,6 +66,7 @@ def _attestation_report(images: dict[str, str]) -> dict[str, object]:
                 "registry_resolvable": True,
                 "github_attestation_verified": True,
                 "github_attestation_output_lines": 1,
+                "github_attestation_policy": dict(policy),
                 "buildkit_provenance": {
                     "build_type": "https://mobyproject.org/buildkit@v1",
                     "builder_id": "https://github.com/example/lumi/actions/runs/123",
@@ -100,7 +112,7 @@ def main() -> int:
             _write(fragments / f"{service}.json", fragment)
 
         report_path = root / "attestation-verification.json"
-        report = _attestation_report(images)
+        report = _attestation_report(images, git_sha)
         _write(report_path, report)
 
         clean = module.assemble(
@@ -126,6 +138,8 @@ def main() -> int:
             raise ContractError("clean assembly missing attestation_verification binding")
         if attestation.get("status") != "PASS" or attestation.get("runtime_count") != 6:
             raise ContractError("clean assembly attestation binding is not PASS for six runtimes")
+        if attestation.get("source_digest") != git_sha:
+            raise ContractError("clean assembly did not bind attestation source digest to RC git_sha")
         report_hash = attestation.get("sha256")
         if not isinstance(report_hash, str) or len(report_hash) != 64:
             raise ContractError("clean assembly did not bind attestation report SHA-256")
@@ -234,6 +248,35 @@ def main() -> int:
             "attestation report image mismatch",
         )
 
+        stale_source_report = copy.deepcopy(report)
+        stale_source_report["github_attestation_policy"]["source_digest"] = "b" * 40  # type: ignore[index]
+        _write(report_path, stale_source_report)
+        _expect_failure(
+            lambda: module.assemble(
+                fragments_dir=fragments,
+                git_sha=git_sha,
+                version=version,
+                build_run_url=run_url,
+                attestation_report=report_path,
+            ),
+            "stale attestation source digest",
+        )
+
+        mixed_policy_report = copy.deepcopy(report)
+        first_policy = mixed_policy_report["results"][0]["github_attestation_policy"]  # type: ignore[index]
+        first_policy["source_digest"] = "b" * 40  # type: ignore[index]
+        _write(report_path, mixed_policy_report)
+        _expect_failure(
+            lambda: module.assemble(
+                fragments_dir=fragments,
+                git_sha=git_sha,
+                version=version,
+                build_run_url=run_url,
+                attestation_report=report_path,
+            ),
+            "mixed per-runtime attestation policy",
+        )
+
     print(
         json.dumps(
             {
@@ -246,7 +289,9 @@ def main() -> int:
                     "mixed_build_run_blocked",
                     "missing_attestation_report_blocked",
                     "failed_attestation_report_blocked",
-                    "attestation_image_swap_blocked"
+                    "attestation_image_swap_blocked",
+                    "stale_attestation_source_digest_blocked",
+                    "mixed_runtime_attestation_policy_blocked"
                 ]
             },
             indent=2,
