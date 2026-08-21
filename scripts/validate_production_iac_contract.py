@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +38,11 @@ def hcl_block(source: str, marker: str) -> str:
     raise SystemExit(f"production IaC contract invalid: unterminated HCL block {marker}")
 
 
+def require_hcl_assignment(block: str, key: str, value: str, message: str) -> None:
+    pattern = rf"(?m)^\s*{re.escape(key)}\s*=\s*{re.escape(value)}\s*(?:#.*)?$"
+    require(re.search(pattern, block) is not None, message)
+
+
 def assert_provider_secret_boundary(app: str, *, environment: str) -> None:
     agent = hcl_block(app, "agent-runtime = {")
     gateway = hcl_block(app, "model-gateway = {")
@@ -59,30 +65,55 @@ def assert_provider_secret_boundary(app: str, *, environment: str) -> None:
             and "LUMI_MEDIA_PROVIDER_SECRET" not in block,
             f"{environment} {name} must not receive provider credentials",
         )
-    require(
-        'LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"]' in gateway,
+
+    require_hcl_assignment(
+        gateway,
+        "LUMI_MODEL_PROVIDER_SECRET",
+        'local.secret_arns["providers/model"]',
         f"{environment} Model Gateway must own model provider credentials",
     )
-    require(
-        'LUMI_MEDIA_PROVIDER_SECRET = local.secret_arns["providers/media"]' in gateway,
+    require_hcl_assignment(
+        gateway,
+        "LUMI_MEDIA_PROVIDER_SECRET",
+        'local.secret_arns["providers/media"]',
         f"{environment} Model Gateway must own media provider credentials",
     )
-    require(
-        'LUMI_DATABASE_URL          = local.secret_arns["database/app"]' in gateway,
+    require_hcl_assignment(
+        gateway,
+        "LUMI_DATABASE_URL",
+        'local.secret_arns["database/app"]',
         f"{environment} Model Gateway needs the canonical NODE-27 database connection",
     )
 
-    require(
-        "image         = var.worker_media_image" in dispatcher,
+    require_hcl_assignment(
+        dispatcher,
+        "image",
+        "var.worker_media_image",
         f"{environment} outbox dispatcher must reuse the accepted worker-media image",
+    )
+    require_hcl_assignment(
+        dispatcher,
+        "LUMI_DATABASE_URL",
+        'local.secret_arns["database/app"]',
+        f"{environment} outbox dispatcher must receive the application database credential",
+    )
+    require_hcl_assignment(
+        dispatcher,
+        "LUMI_RABBITMQ_URL",
+        'local.secret_arns["rabbitmq/url"]',
+        f"{environment} outbox dispatcher must receive the RabbitMQ credential",
+    )
+    require_hcl_assignment(
+        dispatcher,
+        "s3_bucket_arns",
+        "[]",
+        f"{environment} outbox dispatcher must not receive S3 capability",
     )
     for marker in (
         '"lumi_worker_media.cli"',
         '"dispatch-outbox"',
         '"--watch"',
-        'LUMI_DATABASE_URL = local.secret_arns["database/app"]',
-        'LUMI_RABBITMQ_URL = local.secret_arns["rabbitmq/url"]',
-        "s3_bucket_arns         = []",
+        '"--interval"',
     ):
         require(marker in dispatcher, f"{environment} outbox dispatcher missing {marker}")
     for forbidden in (
