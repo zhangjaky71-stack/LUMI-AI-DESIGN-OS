@@ -30,6 +30,8 @@ SERVICE_IMAGE_KEY = {
     "outbox-dispatcher": "worker-media",
     "sandbox-runtime": "sandbox-runtime",
 }
+CAPACITY_CONTRACT_SOURCE = "terraform-live-state"
+CAPACITY_CONTRACT_SCOPE = "production-app-service-desired-counts"
 
 
 def load_module(path: Path, name: str) -> ModuleType:
@@ -91,7 +93,12 @@ def manifest(*, deployment_id: str, version: str, sha: str, image_seed: str) -> 
     }
 
 
-def runtime(value: dict[str, Any]) -> dict[str, Any]:
+def runtime(
+    value: dict[str, Any],
+    *,
+    capacity_contract_deployment_id: str | None = None,
+) -> dict[str, Any]:
+    counts = {service: service_capacity(service) for service in SERVICE_IMAGE_KEY}
     return {
         "schema_version": 1,
         "deployment_id": value["deployment_id"],
@@ -100,6 +107,13 @@ def runtime(value: dict[str, Any]) -> dict[str, Any]:
             for key in ("git_sha", "version", "migration_head")
         },
         "cluster_arn": "arn:aws:ecs:ap-northeast-1:123456789012:cluster/lumi-production",
+        "capacity_contract": {
+            "schema_version": 1,
+            "source": CAPACITY_CONTRACT_SOURCE,
+            "scope": CAPACITY_CONTRACT_SCOPE,
+            "deployment_id": capacity_contract_deployment_id or value["deployment_id"],
+            "service_desired_counts": copy.deepcopy(counts),
+        },
         "passed": True,
         "services": [
             {
@@ -111,9 +125,9 @@ def runtime(value: dict[str, Any]) -> dict[str, Any]:
                 "image_matches": True,
                 "status": "ACTIVE",
                 "rollout_state": "COMPLETED",
-                "expected_desired_count": service_capacity(service),
-                "desired_count": service_capacity(service),
-                "running_count": service_capacity(service),
+                "expected_desired_count": counts[service],
+                "desired_count": counts[service],
+                "running_count": counts[service],
                 "pending_count": 0,
                 "capacity_matches": True,
                 "steady": True,
@@ -196,7 +210,10 @@ def main() -> int:
         "mutable rollback image must block",
     )
 
-    previous_runtime = runtime(previous)
+    previous_runtime = runtime(
+        previous,
+        capacity_contract_deployment_id=current["deployment_id"],
+    )
     previous_smoke = smoke(previous)
     restored_runtime = runtime(current)
     restored_smoke = smoke(current)
@@ -211,6 +228,49 @@ def main() -> int:
         [{"path": "fixture", "sha256": "a" * 64}],
     )
     require(rehearsal["passed"] is True, "clean rollback+roll-forward rehearsal must pass")
+    require(
+        rehearsal["capacity_contract"]["current_infrastructure_deployment_id"]
+        == current["deployment_id"],
+        "rollback rehearsal must bind capacity to current infrastructure deployment",
+    )
+    require(
+        rehearsal["capacity_contract"]["preserved_across_image_rollback"] is True,
+        "rollback rehearsal must prove capacity preservation",
+    )
+
+    wrong_previous_capacity_owner = copy.deepcopy(previous_runtime)
+    wrong_previous_capacity_owner["capacity_contract"]["deployment_id"] = previous["deployment_id"]
+    require(
+        rollback_decision.evaluate(
+            current,
+            previous,
+            previous_path,
+            wrong_previous_capacity_owner,
+            previous_smoke,
+            restored_runtime,
+            restored_smoke,
+            [],
+        )["passed"]
+        is False,
+        "rollback target capacity must remain bound to current infrastructure",
+    )
+
+    forged_previous_capacity_map = copy.deepcopy(previous_runtime)
+    forged_previous_capacity_map["capacity_contract"]["service_desired_counts"]["outbox-dispatcher"] += 1
+    require(
+        rollback_decision.evaluate(
+            current,
+            previous,
+            previous_path,
+            forged_previous_capacity_map,
+            previous_smoke,
+            restored_runtime,
+            restored_smoke,
+            [],
+        )["passed"]
+        is False,
+        "rollback target forged capacity map must block",
+    )
 
     wrong_restored_image = copy.deepcopy(restored_runtime)
     wrong_restored_image["services"][0]["image"] = previous["images"]["api"]
@@ -274,6 +334,24 @@ def main() -> int:
         is False,
         "roll-forward must reject dispatcher capacity drift even if booleans are forged true",
     )
+
+    wrong_restored_capacity_owner = copy.deepcopy(restored_runtime)
+    wrong_restored_capacity_owner["capacity_contract"]["deployment_id"] = previous["deployment_id"]
+    require(
+        rollback_decision.evaluate(
+            current,
+            previous,
+            previous_path,
+            previous_runtime,
+            previous_smoke,
+            wrong_restored_capacity_owner,
+            restored_smoke,
+            [],
+        )["passed"]
+        is False,
+        "roll-forward capacity contract must be bound to current infrastructure",
+    )
+
     wrong_previous_version = copy.deepcopy(previous_smoke)
     wrong_previous_version["results"]["/version"]["version"] = "wrong"
     require(
@@ -322,6 +400,10 @@ def main() -> int:
         [{"path": "fixture", "sha256": "a" * 64}],
     )
     require(final["passed"] is True, "clean production deployment decision must pass")
+    require(
+        final["capacity_contract"]["deployment_id"] == current["deployment_id"],
+        "deployment decision must freeze current capacity contract identity",
+    )
 
     bad_runtime_dispatcher = copy.deepcopy(restored_runtime)
     dispatcher = next(
@@ -371,6 +453,60 @@ def main() -> int:
         )["passed"]
         is False,
         "production decision must block Terraform capacity drift even if evidence booleans are forged true",
+    )
+
+    bad_runtime_capacity_contract = copy.deepcopy(restored_runtime)
+    bad_runtime_capacity_contract["capacity_contract"]["deployment_id"] = previous["deployment_id"]
+    require(
+        deployment_decision.evaluate(
+            current,
+            deployment_gate,
+            snapshot,
+            migration,
+            bad_runtime_capacity_contract,
+            live_rollout,
+            restored_smoke,
+            rehearsal,
+            [],
+        )["passed"]
+        is False,
+        "production decision must block runtime capacity contract deployment substitution",
+    )
+
+    bad_rollback_capacity_owner = copy.deepcopy(rehearsal)
+    bad_rollback_capacity_owner["capacity_contract"]["current_infrastructure_deployment_id"] = previous["deployment_id"]
+    require(
+        deployment_decision.evaluate(
+            current,
+            deployment_gate,
+            snapshot,
+            migration,
+            restored_runtime,
+            live_rollout,
+            restored_smoke,
+            bad_rollback_capacity_owner,
+            [],
+        )["passed"]
+        is False,
+        "production decision must block rollback evidence bound to another capacity deployment",
+    )
+
+    bad_rollback_capacity_preservation = copy.deepcopy(rehearsal)
+    bad_rollback_capacity_preservation["capacity_contract"]["preserved_across_image_rollback"] = False
+    require(
+        deployment_decision.evaluate(
+            current,
+            deployment_gate,
+            snapshot,
+            migration,
+            restored_runtime,
+            live_rollout,
+            restored_smoke,
+            bad_rollback_capacity_preservation,
+            [],
+        )["passed"]
+        is False,
+        "production decision must block rollback without capacity preservation proof",
     )
 
     bad_rollout = copy.deepcopy(live_rollout)
@@ -457,14 +593,21 @@ def main() -> int:
     require("service_desired_counts" in identity_script, "runtime identity must read Terraform desired counts")
     require("expected_desired_count" in identity_script, "runtime identity must freeze expected desired count")
     require("capacity_matches" in identity_script, "runtime identity must freeze capacity match")
+    require("capacity_contract_deployment_id" in identity_script, "runtime identity must freeze capacity deployment identity")
+    require("capacity_contract_service_desired_counts" in identity_script, "runtime identity must freeze canonical capacity map")
     require("_capacity_row_valid" in deployment_source, "production decision must recompute runtime capacity validity")
+    require("_validate_capacity_contract" in deployment_source, "production decision must validate runtime capacity contract")
     require("outbox-dispatcher" in deployment_source, "production decision must bind dispatcher identity")
     require("outbox-dispatcher" in rollback_source, "rollback decision must bind dispatcher identity")
+    require("preserved_across_image_rollback" in rollback_source, "rollback decision must freeze capacity preservation semantics")
+    require("current_infrastructure_deployment_id" in rollback_source, "rollback decision must bind current infrastructure identity")
     require("deploymentConfiguration" in rollout_script, "rollout evidence must read live ECS deployment config")
     require("alarms.rollback" in rollout_script, "rollout evidence must require alarm rollback")
     require("capture-production-runtime-identity.sh" in deploy_workflow, "deploy workflow must capture exact image identity")
     require("capture-production-rollout-evidence.sh" in deploy_workflow, "deploy workflow must capture live rollout config")
     require("environment: production" in rollback_workflow, "rollback rehearsal must use protected production environment")
+    require("Verify previous six-runtime identity on current infrastructure capacity" in rollback_workflow, "rollback target must declare current capacity semantics")
+    require('"$CURRENT_DEPLOYMENT_ID"' in rollback_workflow, "rollback runtime capture must bind current capacity deployment id")
     require("Best-effort restore current RC after failed rehearsal" in rollback_workflow, "failed rehearsal must attempt current-RC restoration")
     require("production-deployment-decision.py" in freeze_workflow, "evidence freeze must recompute NODE-72 decision")
     require("git push origin" in freeze_workflow, "validated evidence freeze must persist to repository")
@@ -477,18 +620,25 @@ def main() -> int:
                     "cross_account_rollback_blocked": True,
                     "unsafe_database_rollback_blocked": True,
                     "mutable_rollback_image_blocked": True,
+                    "rollback_target_capacity_owner_swap_blocked": True,
+                    "rollback_target_capacity_map_forgery_blocked": True,
                     "wrong_rollforward_image_blocked": True,
                     "dispatcher_rollforward_image_swap_blocked": True,
                     "dispatcher_rollforward_capacity_drift_blocked": True,
+                    "rollforward_capacity_owner_swap_blocked": True,
                     "wrong_previous_smoke_version_blocked": True,
                     "dispatcher_production_image_key_swap_blocked": True,
                     "dispatcher_production_capacity_drift_blocked": True,
+                    "production_capacity_owner_swap_blocked": True,
+                    "rollback_capacity_owner_swap_blocked": True,
+                    "rollback_capacity_preservation_false_blocked": True,
                     "canary_100_percent_blocked": True,
                     "alarm_state_blocked": True,
                     "failed_migration_blocked": True,
                     "rollback_without_rollforward_blocked": True,
                     "runtime_identity_source_bound": True,
                     "runtime_capacity_source_bound": True,
+                    "runtime_capacity_contract_source_bound": True,
                     "live_canary_source_bound": True,
                     "protected_rehearsal_source_bound": True,
                     "frozen_evidence_source_bound": True,
