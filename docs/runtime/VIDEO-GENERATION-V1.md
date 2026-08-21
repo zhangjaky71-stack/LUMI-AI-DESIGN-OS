@@ -2,60 +2,34 @@
 
 Status: **IMPLEMENTED / VALIDATING / not COMPLETE**
 
-NODE-48 owns the long-running video-generation and final timeline-composition workflow. It consumes provider execution from NODE-22, provider capability/benchmark facts from NODE-23, cost semantics from NODE-27, Artifact history from NODE-42, Brand rules from NODE-43 and Identity evidence from NODE-44.
+NODE-48 owns the provider-neutral video-generation state machine and typed final media composition. The current Hosted production composition is deliberately narrower than the domain model and fails closed on controls that do not yet have an end-to-end provider/authorization boundary.
 
 ## 1. Ownership boundary
 
 NODE-48 owns:
 
-- `VideoTaskSpec`;
-- deterministic Storyboard compilation;
-- per-shot paid operation identity;
+- `VideoTaskSpec` and semantic identity;
+- deterministic storyboard compilation;
+- per-shot paid-operation identity;
 - long-running submit / external-wait / resume state;
-- per-shot budget and cost reconciliation;
-- start-frame / previous-tail / explicit-reference continuity;
-- keyframe postflight orchestration;
+- cumulative budget and cost reconciliation;
+- provider-output materialization and technical postflight;
 - shot Artifact creation;
-- typed `VideoTimeline`;
-- typed media-sandbox render request;
+- typed `VideoTimeline` composition;
 - final VIDEO Artifact and `COMPOSED_FROM` lineage.
 
 NODE-48 does **not** own:
 
-- provider SDK credentials or native provider payloads — NODE-22;
+- provider credentials/native payloads — Model Gateway;
 - provider/model benchmark truth — NODE-23;
-- budget ledger authority — NODE-27;
+- canonical provider-cost ledger truth — NODE-27;
 - Artifact history semantics — NODE-42;
-- Brand scoring — NODE-43;
-- Product/Character/Logo identity scoring — NODE-44;
-- final general-purpose export system — NODE-49.
+- Brand/Identity scoring — NODE-43/NODE-44;
+- general-purpose export — NODE-49.
 
-## 2. VideoTask contract
+## 2. Domain contract vs Hosted V1
 
-`VideoTaskSpec` pins:
-
-- organization / project / task / operation;
-- generation mode;
-- prompt + optional negative prompt;
-- duration;
-- aspect ratio;
-- width / height;
-- FPS;
-- Decimal task budget;
-- source image versions/checksums;
-- storyboard shots;
-- audio tracks;
-- Brand Rule Set version;
-- Identity requirements;
-- code Git SHA;
-- optional-shot policy;
-- quality-retry limit.
-
-The semantic hash excludes no material generation input. Reusing an operation ID with changed semantics fails closed.
-
-## 3. Modes
-
-V1 supports:
+The provider-neutral domain model can represent:
 
 ```text
 TEXT_TO_VIDEO
@@ -63,271 +37,201 @@ IMAGE_TO_VIDEO
 STORYBOARD_MULTI_SHOT
 ```
 
-A single-shot task without an explicit storyboard is compiled into `shot-001`.
+The current Hosted production composition intentionally accepts only:
 
-## 4. Storyboard
+```text
+TEXT_TO_VIDEO
+single required shot
+4 / 8 / 12 seconds
+CUT transition
+no source/reference image
+no separate audio track
+no Identity requirement
+no Brand Rule Set requirement
+no deterministic seed
+no negative prompt / camera motion / subject-action provider controls
+```
 
-Each `ShotSpec` contains:
+Unsupported controls fail before a provider side effect. They are not silently weakened or ignored.
 
-- `shot_id`;
-- exact Decimal duration;
-- shot prompt;
-- camera motion;
-- subject action;
-- optional source image;
-- continuity references;
-- transition to next;
-- explicit optional flag.
+## 3. Canonical product producer
 
-The sum of shot durations must equal task duration. Duplicate shot IDs fail before any provider call.
+Public `video.generate` is produced by the API control plane, not directly by Worker Media.
 
-Each shot receives a stable UUIDv5 paid operation. A quality retry receives a different stable UUIDv5 paid operation, so the retry is a separate billable action rather than a mutation of the original call.
+The producer atomically creates/binds:
 
-## 5. Long-running state machine
+- canonical `Task` with type `video.render`;
+- canonical generic `Generation` with capability `video.generate`;
+- NODE-20 API idempotency operation;
+- `job.dispatch.requested` outbox event routed to `lumi.jobs.video.render` / `lumi.media.video`.
 
-Video generation is an external-wait workflow.
+Worker Media does not create a second product-generation API model.
+
+## 4. Long-running execution
+
+Hosted Video is an external-wait workflow:
 
 ```text
 start
-  -> submit one shot
+  -> estimate
+  -> submit one provider job
+  -> persist provider identity
   -> WAITING_EXTERNAL
 
-resume
+wake/resume
   -> poll at most once
-  -> still pending: return immediately
-  -> terminal: reconcile cost + validate + persist
-  -> submit next shot if needed
+  -> pending: persist + return ExternalWait
+  -> terminal: reconcile canonical cost + materialize + validate
+  -> compose final output
 ```
 
-The pipeline contains no sleep/poll loop. LangGraph or queue workers do not remain occupied while a provider renders video.
+There is no worker sleep/poll loop. External wake does not consume a task retry attempt.
 
-Supported job states:
+## 5. Durable recovery state
 
-```text
-SUBMITTING
-WAITING_EXTERNAL
-VALIDATING
-COMPOSING
-COMPLETED
-PARTIAL
-FAILED
-CANCELLED
-```
-
-## 6. Provider-job crash recovery
-
-Provider jobs are persisted by:
-
-```text
-organization_id
-video_job_id
-shot_id
-paid_operation_id
-provider/model
-provider_request_id
-request_hash
-terminal result snapshot
-```
-
-Terminal provider-job rows are archived, not deleted. If a worker crashes after provider completion but before cost/Artifact completion, the next resume can replay the same terminal result without another provider call.
-
-Cost reconciliation is idempotent by `paid_operation_id`.
-
-## 7. Provider routing
-
-The adapter maps to NODE-22 capabilities:
-
-```text
-video.text_to_video
-video.image_to_video
-```
-
-V1 uses NODE-22 async status and cancellation APIs.
-
-### 7.1 Provider feature registry
-
-Some capabilities are finer-grained than the top-level model capability:
-
-```text
-video.start_frame
-video.reference_image
-video.camera_controls
-```
-
-NODE-48 therefore consumes a pinned `VideoFeatureRegistry` snapshot derived from NODE-23. When a shot needs one of these features, absence of the registry fails closed.
-
-The feature registry resolves an allowlist of exact `provider:model` keys. NODE-22 applies the allowlist before paid invocation.
-
-### 7.2 Quality retry exclusion
-
-After a terminal provider or postflight quality failure, an allowed quality retry:
-
-1. records the first attempt cost;
-2. preserves its Artifact/provenance where an output exists;
-3. creates a new paid operation ID;
-4. adds the previous `provider:model` to request-level exclusions;
-5. re-estimates total task budget;
-6. submits to another eligible provider.
-
-Hard Brand/Identity/output requirements are unchanged.
-
-## 8. Continuity
-
-Continuity inputs may be:
-
-```text
-FIRST_FRAME
-PREVIOUS_TAIL
-EXPLICIT_REFERENCE
-```
-
-For sequential storyboards, the previous READY shot tail frame is automatically added when a shot does not specify another previous-tail relation.
-
-The previous clip ArtifactVersion is also recorded as lineage/provenance input.
-
-A downstream shot cannot consume a PREVIOUS_TAIL dependency that is not READY.
-
-## 9. Output materialization and probe
-
-Provider URLs are transient/restricted inputs only. Durable truth is:
-
-```text
-storage_key
-checksum_sha256
-mime_type
-width
-height
-duration_ms
-durable_asset_ref
-poster_frame_ref
-tail_frame_ref
-keyframe_refs
-```
-
-A video probe must establish:
-
-- decodability;
-- MP4 MIME/container contract;
-- codec metadata;
-- dimensions;
-- FPS;
-- duration;
-- keyframe references;
-- poster/tail frame references.
-
-## 10. Postflight
-
-Per-shot V1 checks include:
-
-- decode integrity;
-- MIME;
-- resolution;
-- FPS;
-- duration;
-- provider safety block;
-- NODE-44 Identity continuity on sampled keyframes;
-- NODE-43 Brand continuity on sampled keyframes.
-
-When Identity requirements exist but the delegate is unavailable, validation returns HARD unavailable/reject. The same rule applies to a requested Brand Rule Set.
-
-No validator outage is treated as PASS.
-
-## 11. Artifact lineage
-
-Every generated attempt with a materialized clip receives its own VIDEO ArtifactVersion. Attempt identity includes the paid operation ID, so rejected first attempts and successful retries coexist.
-
-Shot lineage may contain `REFERENCE_USED` edges from:
-
-- source ArtifactVersion;
-- previous shot clip ArtifactVersion;
-- explicit continuity parent versions.
-
-Only PASS clips are selected for the final timeline.
-
-Final VIDEO Artifact lineage:
-
-```text
-clip v1 --COMPOSED_FROM--> final video
-clip v2 --COMPOSED_FROM--> final video
-...
-```
-
-Thumbnail/poster/subtitle outputs are Artifact files/sub-artifacts rather than untracked provider URLs.
-
-## 12. Optional shots
-
-A shot may be dropped only when both are true:
-
-```text
-shot.optional == true
-allow_optional_shot_drop == true
-```
-
-Explicit optional drop may occur because of budget or terminal/quality failure. The final job becomes `PARTIAL`, not `COMPLETED`.
-
-Required Identity/Product constraints are never weakened to avoid a drop/failure.
-
-## 13. Cost
-
-All costs use Decimal in Python and `numeric(20,8)` in PostgreSQL.
-
-Task budget is cumulative across initial attempts and retries. Every terminal accepted provider call is reconciled even when:
-
-- the output is corrupt;
-- postflight rejects it;
-- a later provider retry succeeds.
-
-## 14. Typed media sandbox
-
-`VideoTimeline` is the only input to final composition.
-
-It contains:
-
-```text
-clips[]
-overlays[]
-audio_tracks[]
-transitions[]
-output_spec
-```
-
-`FfmpegArgvCompiler` emits an argv tuple, never a shell command string. Input paths come only from `SandboxPathResolver` and must resolve under `/sandbox/`.
-
-`SandboxLimits` requires network-disabled execution plus CPU/memory/time ceilings. Production execution requires an injected `SandboxExecutor`; there is no local subprocess fallback in the domain runtime.
-
-V1 composition supports:
-
-- CUT clip concatenation;
-- pre-rendered overlays;
-- multiple audio tracks;
-- typed audio gain;
-- typed audio offset;
-- `amix`;
-- H.264/AAC MP4;
-- fixed FPS/resolution/duration;
-- fast-start metadata.
-
-CROSSFADE is declared in the timeline contract but intentionally fails closed in the V1 FFmpeg compiler until its deterministic transition math is implemented and tested.
-
-## 15. Persistence
-
-`0007_video_generation.sql` persists:
+Hosted production uses Alembic `0023_video_generation_runtime` for exactly two NODE-48 recovery tables:
 
 ```text
 video_generation_jobs
-video_generation_shots
 video_provider_jobs
-video_generation_cost_reconciliation
-video_timelines
-video_generation_provenance
-video_validation_findings
 ```
 
-Provider attempts are append-preserved. A partial unique index permits only one active provider attempt per shot while retaining prior terminal attempts.
+These tables preserve:
 
-## 16. Events
+- canonical spec/job snapshots;
+- provider/model/request identity;
+- paid operation identity;
+- request hash;
+- terminal provider result snapshot.
 
-Current lifecycle events include:
+Runtime privileges are SELECT/INSERT/UPDATE only; DELETE is not granted. Provider attempts are archived by state rather than physically erased.
+
+The historical seven-table `0007_video_generation.sql` model is **not** the canonical Hosted production schema.
+
+## 6. Canonical cross-node persistence
+
+Other truth remains in existing canonical subsystems:
+
+- `tasks` / TaskJobStore for execution lifecycle and external wait;
+- `generations` for public Generation state/result;
+- NODE-20 idempotency operations for paid side-effect identity;
+- NODE-27 `cost_ledger` for provider cost truth;
+- canonical Artifact/Branch/Version/File/Provenance tables for media lineage;
+- `outbox_events` for durable domain/dispatch events.
+
+Worker Video adapters are not allowed to create a parallel cost or Artifact ledger.
+
+## 7. Provider boundary
+
+Worker Media calls only the private signed Model Gateway. It does not hold provider credentials.
+
+For the current OpenAI Hosted adapter:
+
+- provider work is asynchronous;
+- duration is restricted to 4/8/12 seconds;
+- size must be enabled by the pinned video price card before invocation;
+- provider output is staged as a private S3 `provider-output/v1/async/...` reference;
+- source-image/reference inputs remain fail-closed until an authorized Asset-to-provider input boundary exists;
+- cancellation remains fail-closed because deletion is not treated as proven in-progress cancellation.
+
+## 8. Provider output materialization
+
+Provider output is never accepted through a public URL as durable truth.
+
+The Worker:
+
+1. validates the private provider-output S3 ref;
+2. verifies size/MIME/checksum;
+3. server-side copies it into the Sandbox exchange bucket;
+4. runs network-disabled `ffprobe`;
+5. validates decodability/container metadata;
+6. server-side promotes the exact object into `generated/video/v1/...`;
+7. verifies promotion size/checksum/MIME before creating a clip record.
+
+The Worker does not download provider video bytes into the Worker process.
+
+## 9. Raw-shot validation and FPS ownership
+
+`VideoTaskSpec.fps` is the **final output FPS contract**.
+
+The current Hosted provider create boundary does not expose an FPS control. Therefore raw provider clips are **not** rejected merely because observed provider FPS differs from `spec.fps`.
+
+Hosted raw-shot validation remains fail-closed for:
+
+- decode integrity;
+- MP4 MIME;
+- requested resolution;
+- requested duration within tolerance;
+- provider safety block.
+
+Raw FPS is still probed and observable metadata, but final FPS ownership belongs to typed FFmpeg composition and the final durable probe.
+
+The provider-neutral domain validator may retain stricter raw-FPS semantics for providers whose contract actually owns that control.
+
+## 10. Typed final media sandbox
+
+`VideoTimeline` is the only input to final composition.
+
+`FfmpegArgvCompiler` produces argv only; no shell command is built from prompt/user text. Hosted execution uses the remote Sandbox Runtime with network-disabled child execution and bounded CPU/memory/time.
+
+Current V1 final composition produces:
+
+- H.264 MP4;
+- fixed requested width/height;
+- fixed requested FPS through `-r`;
+- bounded requested duration;
+- fast-start metadata;
+- provider audio omitted unless explicitly represented by a supported timeline audio path.
+
+CROSSFADE remains fail-closed in V1.
+
+## 11. Final durable MP4 verification
+
+The Sandbox bridge's intermediate `RenderedVideo` metadata is **not trusted as final evidence**.
+
+After final MP4 promotion to durable S3, `HostedVerifiedVideoMediaSandbox` independently re-stages and re-probes the durable object through network-disabled `ffprobe`.
+
+Before final Artifact readiness it requires actual-file evidence for:
+
+- durable checksum/size identity;
+- MP4 container/MIME;
+- H.264 codec;
+- requested width/height;
+- requested FPS;
+- requested duration within tolerance;
+- expected audio presence/absence.
+
+The final `RenderedVideo` metadata is rebuilt from the probe result. Timeline-expected width/height/duration cannot self-certify the Artifact.
+
+## 12. Artifact lineage
+
+Every materialized shot attempt receives its own VIDEO ArtifactVersion. Rejected attempts remain auditable.
+
+Final lineage uses canonical edges such as:
+
+```text
+shot clip version --COMPOSED_FROM--> final video version
+```
+
+Final files point only at durable generated objects.
+
+## 13. Cost semantics
+
+Every accepted paid provider attempt is reconciled against the canonical NODE-27 ledger by tenant + paid operation scope.
+
+Worker Media is read-only with respect to provider cost truth. It verifies the one canonical `actual_cost` row already written through Model Gateway and does not insert/update/delete `cost_ledger`.
+
+## 14. Public Generation synchronization
+
+For API-created video operations, `PostgresVideoRepository.flush()` synchronizes the canonical generic `generations` row in the same PostgreSQL transaction as the recovery snapshot.
+
+Public result JSON is sanitized and includes job/shot status, costs and Artifact identifiers. Provider request IDs are intentionally not exposed in the public result.
+
+Internal Agent/TaskGraph video jobs without a public Generation row remain valid and safely no-op that synchronization step.
+
+## 15. Events and external wait
+
+Current durable lifecycle events include:
 
 ```text
 video_generation.started
@@ -338,19 +242,33 @@ video_generation.completed
 video_generation.cancelled
 ```
 
-Events carry identifiers and status/provenance references, not provider credentials or raw media bytes.
+Events contain identifiers/status/provenance references, not provider credentials or raw video bytes.
 
-## 17. Synthetic vs live evidence
+## 16. Performance telemetry
 
-`fixtures/video-generation/node-48-conformance.json` defines 48 synthetic orchestration/contract cases.
+Final media work is wrapped by `TimedMediaSandbox` and emitted under the real POSTPROCESS performance stage. The final durable ffprobe is inside this Hosted media boundary rather than a hidden unmeasured side path.
 
-`MockProvider` proves the NODE-22 submit/poll/cancel integration, but does not prove visual quality.
+## 17. Evidence and CI
 
-Production routing remains gated by `reports/nodes/NODE-48/provider-benchmark.md` until selected live provider revisions are benchmarked for prompt adherence, first-frame fidelity, Product/Character/Logo continuity, multi-shot temporal continuity, camera control, technical output, latency, cost, cancellation and fallback.
+The dedicated Video Generation workflow requires:
+
+- Hosted source contracts;
+- frozen all-workspace dependency install;
+- NODE-48 domain tests;
+- Hosted Worker boundary tests;
+- Ruff/Pyright;
+- Worker image build/import/liveness smoke;
+- PostgreSQL producer/recovery/privilege/public-generation acceptance;
+- Model Gateway / Artifact regressions;
+- deterministic benchmark.
+
+Synthetic/MockProvider evidence does not certify live visual quality.
 
 ## 18. Completion rule
 
 NODE-48 remains **IMPLEMENTED / VALIDATING / not COMPLETE** until:
 
-1. hosted contract/quality/integration/benchmark jobs actually execute green; and
-2. approved live provider benchmark snapshots exist for production-routed video models.
+1. the canonical `uv.lock` includes the full workspace and frozen install passes;
+2. hosted contract/quality/integration/image-smoke jobs actually execute green;
+3. PostgreSQL and runtime-image evidence is captured from a trusted runnable environment; and
+4. approved live provider/model video benchmark snapshots exist for the production-routed model profile.
