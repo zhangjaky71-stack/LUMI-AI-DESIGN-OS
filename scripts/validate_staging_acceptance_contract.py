@@ -76,6 +76,7 @@ WORKER_MEDIA_REQUIRED_SOURCES = [
     "apps/worker-media/src/lumi_worker_media/video_generation_artifacts.py",
     "apps/worker-media/src/lumi_worker_media/video_generation_runtime.py",
     "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_validation_runtime.py",
     "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py",
     "apps/worker-media/src/lumi_worker_media/video_cost_runtime.py",
 ]
@@ -418,6 +419,7 @@ def main() -> int:
             "worker_media_video_artifact_source_required": True,
             "worker_media_video_sandbox_source_required": True,
             "worker_media_video_final_probe_source_required": True,
+            "worker_media_video_validation_source_required": True,
             "worker_media_video_cost_source_required": True,
             "worker_media_external_wait_source_required": True,
             "worker_media_job_dispatch_source_required": True,
