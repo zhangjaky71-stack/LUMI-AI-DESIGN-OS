@@ -56,6 +56,10 @@ jobs:
           python3 scripts/validate_node71_decision_artifact.py --self-test
           python3 scripts/validate_production_node71_workflow_contract.py
           python3 scripts/validate_production_deployment_contract.py
+          python3 scripts/validate_production_readiness_contract.py
+          python3 scripts/validate_production_recovery_contract.py
+          python3 scripts/validate_production_recovery_evidence_workflow_contract.py
+          python3 scripts/validate_production_evidence_freezer_contract.py
           python3 scripts/validate_release_action_pins.py
           python3 scripts/validate_release_workflow_permissions.py
           python3 scripts/validate_uv_lock_regeneration_contract.py
@@ -108,7 +112,15 @@ jobs:
             scripts/validate_node71_decision_artifact.py \
             scripts/validate_production_node71_workflow_contract.py \
             scripts/production-deployment-gate.py \
+            scripts/production-deployment-decision.py \
+            scripts/production-rollback-gate.py \
+            scripts/production-rollback-rehearsal-decision.py \
+            scripts/production-recovery-decision.py \
             scripts/validate_production_deployment_contract.py \
+            scripts/validate_production_readiness_contract.py \
+            scripts/validate_production_recovery_contract.py \
+            scripts/validate_production_recovery_evidence_workflow_contract.py \
+            scripts/validate_production_evidence_freezer_contract.py \
             scripts/validate_release_action_pins.py \
             scripts/validate_release_workflow_permissions.py \
             scripts/validate_uv_lock_regeneration_contract.py \
