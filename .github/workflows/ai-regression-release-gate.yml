@@ -5,12 +5,12 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: "Live eval suite preflight"
+        description: "Live eval authorization-preflight suite"
         required: true
         default: "smoke"
         type: string
       budget_usd:
-        description: "Maximum live eval spend for this manual run"
+        description: "Maximum live eval spend authorized for a future protected executor"
         required: true
         default: "5"
         type: string
@@ -73,21 +73,26 @@ jobs:
             evals/tests/test_statistics.py
 
   live-provider-preflight:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release-closure-p0'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       LUMI_LIVE_EVAL_ENABLED: "1"
-      LUMI_LIVE_EVAL_API_KEY: ${{ secrets.LUMI_LIVE_EVAL_API_KEY }}
+      LUMI_LIVE_EVAL_PREFLIGHT_MODE: "authorization-only"
       LUMI_LIVE_EVAL_BUDGET_USD: ${{ inputs.budget_usd }}
       LUMI_LIVE_EVAL_SUITE_ACK: ${{ inputs.suite }}
       LUMI_LIVE_EVAL_SIDE_EFFECT_MODE: "none"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require exact secretless preflight source SHA
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
-      - name: Live provider authorization preflight only
+      - name: Secretless live-provider authorization preflight only
         run: python3 -m evals.cli live --suite "${{ inputs.suite }}"
 
   release-gate:
