@@ -307,8 +307,8 @@ def _validate_dispatch_registry() -> None:
         raise ReleaseActionPinError(f"default-branch dispatch registry contract failed: {exc}") from exc
     if self_result.get("status") != "PASS" or self_result.get("negative_drills") != 5:
         raise ReleaseActionPinError("default-branch dispatch registry self-test drift")
-    if result.get("workflow_count") != 11:
-        raise ReleaseActionPinError("default-branch dispatch registry must cover exactly eleven release-critical workflows")
+    if result.get("workflow_count") != 12:
+        raise ReleaseActionPinError("default-branch dispatch registry must cover exactly twelve release-critical workflows")
 
 
 def _validate_workflow_set(policy: dict[str, Any], workflows: list[str]) -> dict[str, int]:
