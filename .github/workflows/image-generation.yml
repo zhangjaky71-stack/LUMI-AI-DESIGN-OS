@@ -13,6 +13,7 @@ on:
       - "apps/worker-media/Dockerfile"
       - "apps/worker-media/src/lumi_worker_media/app.py"
       - "apps/worker-media/src/lumi_worker_media/job_runtime.py"
+      - "apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py"
       - "apps/worker-media/src/lumi_worker_media/worker_cli.py"
       - "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py"
       - "apps/worker-media/src/lumi_worker_media/image_generation_codec.py"
@@ -29,7 +30,10 @@ on:
       - "apps/worker-media/tests/integration/test_image_generation_repository_postgres.py"
       - "apps/worker-media/pyproject.toml"
       - "apps/api/alembic/**"
+      - "apps/api/src/lumi_api/product_app.py"
+      - "apps/api/src/lumi_api/api/v1/router.py"
       - "apps/api/src/lumi_api/api/v1/contracts.py"
+      - "apps/api/src/lumi_api/generations/gateway.py"
       - "apps/api/src/lumi_api/generations/**"
       - "apps/api/src/lumi_api/media_dispatch.py"
       - "apps/api/src/lumi_api/persistence/models/workflow.py"
@@ -39,7 +43,9 @@ on:
       - "db/migrations/0005_image_generation.sql"
       - "fixtures/image-generation/**"
       - "scripts/validate_image_generation.py"
+      - "scripts/validate_image_generation_producer_contract.py"
       - "scripts/benchmark_image_generation.py"
+      - "production/runtime-images/manifest-v1.json"
       - "docs/runtime/IMAGE-GENERATION-V1.md"
       - "docs/nodes/NODE-46-IMAGE-GENERATION.md"
       - "reports/nodes/NODE-46/**"
@@ -67,6 +73,7 @@ jobs:
           services/image-generation/tests
           apps/worker-media/src/lumi_worker_media/app.py
           apps/worker-media/src/lumi_worker_media/job_runtime.py
+          apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py
           apps/worker-media/src/lumi_worker_media/worker_cli.py
           apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py
           apps/worker-media/src/lumi_worker_media/image_generation_codec.py
@@ -81,14 +88,21 @@ jobs:
           apps/worker-media/tests/test_job_runtime_performance.py
           apps/worker-media/tests/test_worker_cli.py
           apps/worker-media/tests/integration/test_image_generation_repository_postgres.py
+          apps/api/src/lumi_api/product_app.py
+          apps/api/src/lumi_api/api/v1/router.py
+          apps/api/src/lumi_api/generations/gateway.py
           apps/api/src/lumi_api/generations/service.py
+          apps/api/src/lumi_api/media_dispatch.py
           apps/api/tests/integration/test_generation_control_plane_postgres.py
           scripts/validate_image_generation.py
+          scripts/validate_image_generation_producer_contract.py
           scripts/benchmark_image_generation.py
       - name: Validate NODE-46 architecture contract
         env:
           PYTHONPATH: services/image-generation/src:services/model-gateway/src:services/asset-intelligence/src:services/artifact-history/src
         run: python scripts/validate_image_generation.py
+      - name: Validate canonical product-to-Worker image producer binding
+        run: python scripts/validate_image_generation_producer_contract.py
 
   image-generation-quality:
     needs: image-generation-contract
@@ -127,6 +141,7 @@ jobs:
           services/image-generation/tests
           apps/worker-media/src/lumi_worker_media/app.py
           apps/worker-media/src/lumi_worker_media/job_runtime.py
+          apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py
           apps/worker-media/src/lumi_worker_media/worker_cli.py
           apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py
           apps/worker-media/src/lumi_worker_media/image_generation_codec.py
@@ -141,9 +156,14 @@ jobs:
           apps/worker-media/tests/test_job_runtime_performance.py
           apps/worker-media/tests/test_worker_cli.py
           apps/worker-media/tests/integration/test_image_generation_repository_postgres.py
+          apps/api/src/lumi_api/product_app.py
+          apps/api/src/lumi_api/api/v1/router.py
+          apps/api/src/lumi_api/generations/gateway.py
           apps/api/src/lumi_api/generations/service.py
+          apps/api/src/lumi_api/media_dispatch.py
           apps/api/tests/integration/test_generation_control_plane_postgres.py
           scripts/validate_image_generation.py
+          scripts/validate_image_generation_producer_contract.py
           scripts/benchmark_image_generation.py
       - name: Pyright gate
         run: |
