@@ -39,6 +39,10 @@
       "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
     },
     {
+      "path": ".github/workflows/production-rollback-rehearsal.yml",
+      "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
+    },
+    {
       "path": ".github/workflows/final-acceptance-gate.yml",
       "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
     }
