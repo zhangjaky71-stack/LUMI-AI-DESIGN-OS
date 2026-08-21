@@ -8,9 +8,11 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "apps/worker-media/src/lumi_worker_media/app.py"
 VIDEO_JOB_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/video_job_runtime.py"
 HOSTED_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/video_generation_runtime.py"
+PIPELINE = ROOT / "services/video-generation/src/lumi_video_generation/pipeline.py"
 OPENAI_VIDEO = ROOT / "services/model-gateway/src/lumi_model_gateway/openai_video_adapter.py"
 TEST = ROOT / "apps/worker-media/tests/test_video_job_runtime.py"
 HOSTED_TEST = ROOT / "apps/worker-media/tests/test_video_cancellation_runtime.py"
+PIPELINE_TEST = ROOT / "services/video-generation/tests/test_video_cancellation.py"
 MANIFEST = ROOT / "production/runtime-images/manifest-v1.json"
 DOC = ROOT / "docs/runtime/VIDEO-GENERATION-V1.md"
 VIDEO_WORKFLOW = ROOT / ".github/workflows/video-generation.yml"
@@ -42,9 +44,11 @@ def validate_repo() -> None:
     app = read(APP)
     executor = read(VIDEO_JOB_RUNTIME)
     hosted = read(HOSTED_RUNTIME)
+    pipeline = read(PIPELINE)
     provider = read(OPENAI_VIDEO)
     tests = read(TEST)
     hosted_tests = read(HOSTED_TEST)
+    pipeline_tests = read(PIPELINE_TEST)
     doc = read(DOC)
     video_workflow = read(VIDEO_WORKFLOW)
     final_workflow = read(FINAL_WORKFLOW)
@@ -53,8 +57,10 @@ def validate_repo() -> None:
         (app, APP),
         (executor, VIDEO_JOB_RUNTIME),
         (hosted, HOSTED_RUNTIME),
+        (pipeline, PIPELINE),
         (tests, TEST),
         (hosted_tests, HOSTED_TEST),
+        (pipeline_tests, PIPELINE_TEST),
     ):
         try:
             compile(source, str(path), "exec")
@@ -145,6 +151,48 @@ def validate_repo() -> None:
     )
 
     require_markers(
+        pipeline,
+        (
+            "async def cancel(self, *, organization_id: str, video_job_id: str) -> VideoJob:",
+            "if pending is None:",
+            "return job",
+            "result = await self.gateway.cancel(pending=pending)",
+            "self.repository.save_provider_job(replace(pending, result=result))",
+            'if result.status != "CANCELLED":',
+            "job = await self._record_cost(job, waiting, result)",
+            "self.repository.delete_provider_job(",
+            'status="CANCELLED"',
+            '"video_generation.cancelled"',
+        ),
+        "provider-neutral cancellation truth",
+    )
+    pipeline_cancel_start = pipeline.find("    async def cancel(")
+    advance_start = pipeline.find("    async def _advance(", pipeline_cancel_start)
+    require(
+        pipeline_cancel_start >= 0 and advance_start > pipeline_cancel_start,
+        "provider-neutral cancellation function boundary missing",
+    )
+    pipeline_cancel = pipeline[pipeline_cancel_start:advance_start]
+    missing_at = pipeline_cancel.find("if pending is None:")
+    save_at = pipeline_cancel.find("self.repository.save_provider_job(replace(pending, result=result))")
+    status_at = pipeline_cancel.find('if result.status != "CANCELLED":')
+    cost_at = pipeline_cancel.find("job = await self._record_cost(job, waiting, result)")
+    delete_at = pipeline_cancel.find("self.repository.delete_provider_job(", cost_at)
+    cancelled_at = pipeline_cancel.find("cancelled = replace(", delete_at)
+    require(
+        0 <= missing_at < save_at < status_at < cost_at < delete_at < cancelled_at,
+        "provider-neutral cancellation must preserve non-cancel provider truth before terminal cancellation work",
+    )
+    require(
+        pipeline_cancel.find("return job", missing_at) < save_at,
+        "missing provider recovery must remain unresolved instead of self-certifying cancellation",
+    )
+    require(
+        pipeline_cancel.find("return job", status_at) < cost_at,
+        "PENDING/SUCCEEDED/FAILED cancel results must return before terminal cost/archive",
+    )
+
+    require_markers(
         provider,
         (
             "async def cancel(self, provider_request_id: str) -> ModelResult:",
@@ -194,6 +242,19 @@ def validate_repo() -> None:
             'assert [job.status for job in runtime.flushed] == ["CANCELLED"]',
         ),
         "Hosted cancellation runtime regression",
+    )
+    require_markers(
+        pipeline_tests,
+        (
+            "test_pending_cancel_result_preserves_provider_job_and_waiting_state",
+            "test_terminal_non_cancel_result_is_preserved_for_resume_truth",
+            "test_cancelled_result_is_only_provider_result_that_marks_job_cancelled",
+            "test_missing_provider_recovery_never_self_certifies_cancellation",
+            "assert costs.calls == 0",
+            "assert repository.provider_jobs",
+            'assert events.types.count("video_generation.cancelled") == 1',
+        ),
+        "provider-neutral cancellation executable regression",
     )
 
     try:
