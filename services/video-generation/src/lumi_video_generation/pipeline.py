@@ -130,7 +130,13 @@ class VideoGenerationPipeline:
         )
         return await self._advance(spec, job)
 
-    async def resume(self, *, organization_id: str, video_job_id: str) -> VideoJob:
+    async def resume(
+        self,
+        *,
+        organization_id: str,
+        video_job_id: str,
+        allow_quality_retry: bool = True,
+    ) -> VideoJob:
         job = self.repository.get(organization_id, video_job_id)
         if job is None:
             raise ValueError("VIDEO_JOB_NOT_FOUND")
@@ -172,7 +178,13 @@ class VideoGenerationPipeline:
             item for item in compile_storyboard(spec).shots if item.shot.shot_id == waiting.shot_id
         )
         compiled = _compiled_for_runtime(base, waiting)
-        job = await self._finish_terminal(spec, job, compiled, result)
+        job = await self._finish_terminal(
+            spec,
+            job,
+            compiled,
+            result,
+            allow_quality_retry=allow_quality_retry,
+        )
         return await self._advance(spec, job)
 
     async def cancel(self, *, organization_id: str, video_job_id: str) -> VideoJob:
@@ -344,11 +356,13 @@ class VideoGenerationPipeline:
         job: VideoJob,
         shot: CompiledShot,
         result: GatewayVideoResult,
+        *,
+        allow_quality_retry: bool = True,
     ) -> VideoJob:
         runtime = next(item for item in job.shots if item.shot_id == shot.shot.shot_id)
         job = await self._record_cost(job, runtime, result)
         if result.status != "SUCCEEDED" or not result.output_ref:
-            if result.status != "CANCELLED":
+            if result.status != "CANCELLED" and allow_quality_retry:
                 retry = await self._quality_retry(
                     spec,
                     job,
@@ -386,15 +400,16 @@ class VideoGenerationPipeline:
                 safety_metadata=result.safety_metadata,
             )
         except Exception as exc:
-            retry = await self._quality_retry(
-                spec,
-                job,
-                runtime,
-                provider_key=_provider_key(result),
-                reason=f"VIDEO_POSTPROCESS_EXCEPTION:{type(exc).__name__}",
-            )
-            if retry is not None:
-                return retry
+            if allow_quality_retry:
+                retry = await self._quality_retry(
+                    spec,
+                    job,
+                    runtime,
+                    provider_key=_provider_key(result),
+                    reason=f"VIDEO_POSTPROCESS_EXCEPTION:{type(exc).__name__}",
+                )
+                if retry is not None:
+                    return retry
             if shot.shot.optional and spec.allow_optional_shot_drop:
                 dropped = replace(
                     runtime,
@@ -467,15 +482,16 @@ class VideoGenerationPipeline:
                 },
             )
             return job
-        retry = await self._quality_retry(
-            spec,
-            job,
-            replace(runtime, attempt_artifact_version_ids=attempts),
-            provider_key=_provider_key(result),
-            reason="VIDEO_SHOT_VALIDATION_FAILED",
-        )
-        if retry is not None:
-            return retry
+        if allow_quality_retry:
+            retry = await self._quality_retry(
+                spec,
+                job,
+                replace(runtime, attempt_artifact_version_ids=attempts),
+                provider_key=_provider_key(result),
+                reason="VIDEO_SHOT_VALIDATION_FAILED",
+            )
+            if retry is not None:
+                return retry
         if shot.shot.optional and spec.allow_optional_shot_drop:
             dropped = replace(
                 runtime,
