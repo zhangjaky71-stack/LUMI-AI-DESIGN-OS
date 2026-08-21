@@ -19,6 +19,7 @@ GATEWAY_SERVICE = "apps/api/src/lumi_api/model_gateway_service.py"
 RUNTIME_MANIFEST = "production/runtime-images/manifest-v1.json"
 MODEL_WORKFLOW = ".github/workflows/model-gateway.yml"
 IAC_WORKFLOW = ".github/workflows/production-iac-contract.yml"
+STAGING_WORKFLOW = ".github/workflows/staging-acceptance-gate.yml"
 FINAL_WORKFLOW = ".github/workflows/final-acceptance-gate.yml"
 
 PROVIDER_SECRET_MARKERS = (
@@ -313,6 +314,7 @@ def validate_workflow_binding() -> None:
     workflows = (
         (MODEL_WORKFLOW, 3, "Model Gateway workflow"),
         (IAC_WORKFLOW, 2, "Production IaC workflow"),
+        (STAGING_WORKFLOW, 2, "Staging Acceptance workflow"),
         (FINAL_WORKFLOW, 2, "Final Acceptance workflow"),
     )
     for path, minimum_count, label in workflows:
