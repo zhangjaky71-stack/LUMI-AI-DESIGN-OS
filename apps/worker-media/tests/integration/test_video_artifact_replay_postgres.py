@@ -70,7 +70,7 @@ def _spec() -> tuple[VideoTaskSpec, CompiledShot, UUID]:
     )
 
 
-def _clip(spec: VideoTaskSpec, paid_operation_id: UUID, checksum: str) -> StoredVideoClip:
+def _clip(paid_operation_id: UUID, checksum: str) -> StoredVideoClip:
     key = (
         f"generated/video/v1/{ORG}/{PROJECT}/shots/"
         f"{paid_operation_id.hex}/{checksum}.mp4"
@@ -90,6 +90,26 @@ def _clip(spec: VideoTaskSpec, paid_operation_id: UUID, checksum: str) -> Stored
     )
 
 
+def _final_clip(spec: VideoTaskSpec, checksum: str) -> StoredVideoClip:
+    key = (
+        f"generated/video/v1/{ORG}/{PROJECT}/final/"
+        f"{UUID(spec.operation_id).hex}/{checksum}.mp4"
+    )
+    return StoredVideoClip(
+        storage_key=key,
+        checksum_sha256=checksum,
+        mime_type="video/mp4",
+        size_bytes=8192,
+        width=1280,
+        height=720,
+        duration_ms=4000,
+        durable_asset_ref=key,
+        poster_frame_ref=None,
+        tail_frame_ref=None,
+        keyframe_refs=(),
+    )
+
+
 def test_video_artifacts_are_deterministic_and_idempotent_across_replay() -> None:
     async def run() -> None:
         spec, shot, paid_operation_id = _spec()
@@ -98,7 +118,7 @@ def test_video_artifacts_are_deterministic_and_idempotent_across_replay() -> Non
             bucket="lumi-assets",
         )
         validation = ShotValidationReport(decision="PASS", findings=())
-        clip = _clip(spec, paid_operation_id, "d" * 64)
+        clip = _clip(paid_operation_id, "d" * 64)
         video_job_id = f"video-job:{uuid4().hex}"
         shot_provenance = ShotProvenance(
             video_job_id=video_job_id,
@@ -139,7 +159,7 @@ def test_video_artifacts_are_deterministic_and_idempotent_across_replay() -> Non
         )
         assert clip_replay == clip_first
 
-        final_clip = _clip(spec, paid_operation_id, "e" * 64)
+        final_clip = _final_clip(spec, "e" * 64)
         final_provenance = FinalVideoProvenance(
             video_job_id=video_job_id,
             organization_id=str(ORG),
