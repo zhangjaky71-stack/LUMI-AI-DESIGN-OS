@@ -181,14 +181,28 @@ def validate_lock() -> None:
 def validate_ai_regression() -> None:
     source = text(AI_REGRESSION)
     require_top_read_only(source, "AI Regression Release Gate")
-    source_contract = job_block(source, "source-contract", "canonical-eval-tests")
-    canonical = job_block(source, "canonical-eval-tests", "live-provider-preflight")
     live = job_block(source, "live-provider-preflight", "release-gate")
-    require("LUMI_LIVE_EVAL_API_KEY" not in source_contract + canonical, "live provider secret must not enter PR/source evaluation jobs")
-    require("if: github.event_name == 'workflow_dispatch'" in live, "live provider preflight must be manual-dispatch only")
-    require(source.count("${{ secrets.LUMI_LIVE_EVAL_API_KEY }}") == 1, "live provider secret must be injected exactly once")
+    require("LUMI_LIVE_EVAL_API_KEY" not in source, "AI Regression preflight must never receive Provider credentials")
+    require("secrets.LUMI_LIVE_EVAL_API_KEY" not in source, "AI Regression workflow must not reference Provider secret")
+    require("${{ secrets." not in source, "AI Regression release workflow must remain secretless")
+    require(
+        "if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release-closure-p0'" in live,
+        "AI authorization preflight must be manual release-ref only",
+    )
+    require(
+        'LUMI_LIVE_EVAL_PREFLIGHT_MODE: "authorization-only"' in live,
+        "AI authorization preflight must bind secretless authorization-only mode",
+    )
+    require(
+        'ref: ${{ github.sha }}' in live and "persist-credentials: false" in live,
+        "AI authorization preflight must checkout exact dispatch SHA without persisted credentials",
+    )
+    require(
+        'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"' in live,
+        "AI authorization preflight must verify exact checked-out SHA",
+    )
     for forbidden in ("contents: write", "actions: write", "packages: write", "attestations: write", "id-token: write", "pull-requests: write"):
-        require(forbidden not in live, f"AI live provider preflight has unrelated GitHub write capability: {forbidden}")
+        require(forbidden not in live, f"AI authorization preflight has unrelated GitHub write capability: {forbidden}")
 
 
 def validate_staging() -> None:
