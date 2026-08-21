@@ -7,8 +7,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 FINAL_PROBE = ROOT / "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py"
 HOSTED_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/video_generation_runtime.py"
+HOSTED_REPOSITORY = ROOT / "apps/worker-media/src/lumi_worker_media/video_generation_repository.py"
+EVENT_BUFFER = ROOT / "apps/worker-media/src/lumi_worker_media/video_event_buffer.py"
 HOSTED_VALIDATION = ROOT / "apps/worker-media/src/lumi_worker_media/video_validation_runtime.py"
 FINAL_PROBE_TEST = ROOT / "apps/worker-media/tests/test_video_final_probe_runtime.py"
+EVENT_UOW_TEST = ROOT / "apps/worker-media/tests/test_video_event_uow.py"
 HOSTED_VALIDATION_TEST = ROOT / "apps/worker-media/tests/test_video_validation_runtime.py"
 SANDBOX_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py"
 MODEL_GATEWAY_VIDEO_ADAPTER = (
@@ -21,6 +24,7 @@ FINAL_WORKFLOW = ROOT / ".github/workflows/final-acceptance-gate.yml"
 SELF_PATH = "scripts/validate_video_final_probe_binding.py"
 FINAL_PROBE_PATH = "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py"
 HOSTED_VALIDATION_PATH = "apps/worker-media/src/lumi_worker_media/video_validation_runtime.py"
+EVENT_BUFFER_PATH = "apps/worker-media/src/lumi_worker_media/video_event_buffer.py"
 MODEL_GATEWAY_VIDEO_ADAPTER_PATH = (
     "services/model-gateway/src/lumi_model_gateway/openai_video_adapter.py"
 )
@@ -57,8 +61,11 @@ def require_python_syntax(source: str, path: Path) -> None:
 def main() -> int:
     final_probe = read(FINAL_PROBE)
     hosted = read(HOSTED_RUNTIME)
+    repository = read(HOSTED_REPOSITORY)
+    event_buffer = read(EVENT_BUFFER)
     hosted_validation = read(HOSTED_VALIDATION)
     tests = read(FINAL_PROBE_TEST)
+    event_uow_tests = read(EVENT_UOW_TEST)
     hosted_validation_tests = read(HOSTED_VALIDATION_TEST)
     sandbox = read(SANDBOX_RUNTIME)
     model_gateway_video_adapter = read(MODEL_GATEWAY_VIDEO_ADAPTER)
@@ -66,8 +73,15 @@ def main() -> int:
     workflow = read(VIDEO_WORKFLOW)
     final = read(FINAL_WORKFLOW)
 
-    require_python_syntax(model_gateway_video_adapter, MODEL_GATEWAY_VIDEO_ADAPTER)
-    require_python_syntax(model_gateway_video_test, MODEL_GATEWAY_VIDEO_TEST)
+    for source, path in (
+        (model_gateway_video_adapter, MODEL_GATEWAY_VIDEO_ADAPTER),
+        (model_gateway_video_test, MODEL_GATEWAY_VIDEO_TEST),
+        (hosted, HOSTED_RUNTIME),
+        (repository, HOSTED_REPOSITORY),
+        (event_buffer, EVENT_BUFFER),
+        (event_uow_tests, EVENT_UOW_TEST),
+    ):
+        require_python_syntax(source, path)
 
     require_markers(
         final_probe,
@@ -237,6 +251,81 @@ def main() -> int:
         "Hosted final durable probe tests",
     )
 
+    # Hosted Video domain events must commit with the recovery/provider/public
+    # Generation snapshot. The pipeline emits only into an invocation-local buffer;
+    # the repository flushes that buffer on its existing PostgreSQL transaction and
+    # clears it only after the transaction context has committed successfully.
+    require_markers(
+        event_buffer,
+        (
+            "class BufferedVideoEventSink",
+            "self._pending: dict[UUID, BufferedVideoEvent] = {}",
+            "async def flush_into(self, connection: asyncpg.Connection)",
+            "INSERT INTO outbox_events",
+            "ON CONFLICT (id) DO NOTHING",
+            "def mark_committed(self) -> None:",
+            "self._pending.clear()",
+        ),
+        "Hosted video buffered event UoW",
+    )
+    require_markers(
+        hosted,
+        (
+            "from .video_event_buffer import BufferedVideoEventSink",
+            "events = BufferedVideoEventSink(self.database_dsn)",
+            "events=events",
+            "event_sink=events",
+        ),
+        "Hosted video buffered-event composition",
+    )
+    require(
+        "PostgresVideoEventSink(" not in hosted,
+        "Hosted runtime must not reintroduce an immediate independent event transaction",
+    )
+    require_markers(
+        repository,
+        (
+            "event_sink: BufferedVideoEventSink | None = None",
+            'raise RuntimeError("VIDEO_EVENT_UOW_DATABASE_MISMATCH")',
+            "async with connection.transaction():",
+            "await _sync_public_generation(connection, spec=spec, job=job)",
+            "await event_sink.flush_into(connection)",
+            "event_sink.mark_committed()",
+        ),
+        "Hosted video atomic repository/event flush",
+    )
+    flush_start = repository.find("    async def flush(")
+    connect_at = repository.find("        connection = await asyncpg.connect(self.dsn)", flush_start)
+    mismatch_at = repository.find("VIDEO_EVENT_UOW_DATABASE_MISMATCH", flush_start)
+    transaction_at = repository.find("            async with connection.transaction():", flush_start)
+    event_flush_at = repository.find("                    await event_sink.flush_into(connection)", flush_start)
+    event_commit_at = repository.find("                event_sink.mark_committed()", flush_start)
+    require(
+        flush_start >= 0
+        and mismatch_at > flush_start
+        and connect_at > mismatch_at,
+        "event UoW database identity must fail closed before PostgreSQL connection",
+    )
+    require(
+        transaction_at > connect_at
+        and event_flush_at > transaction_at
+        and event_commit_at > event_flush_at,
+        "buffered events must stage inside the repository transaction and clear only after commit",
+    )
+    require_markers(
+        event_uow_tests,
+        (
+            "test_buffered_video_event_is_idempotent_until_transaction_commit",
+            "assert sink.pending_count == 1",
+            "sink.mark_committed()",
+            "assert sink.pending_count == 0",
+            "test_buffered_video_event_remains_pending_when_transaction_write_fails",
+            "test_video_repository_rejects_event_uow_database_mismatch_before_connect",
+            "VIDEO_EVENT_UOW_DATABASE_MISMATCH",
+        ),
+        "Hosted video event UoW executable tests",
+    )
+
     try:
         runtime_manifest = json.loads(
             RUNTIME_IMAGE_MANIFEST.read_text(encoding="utf-8")
@@ -249,8 +338,9 @@ def main() -> int:
     require(
         isinstance(worker_sources, list)
         and FINAL_PROBE_PATH in worker_sources
-        and HOSTED_VALIDATION_PATH in worker_sources,
-        "canonical worker-media image provenance does not bind final/raw video validation",
+        and HOSTED_VALIDATION_PATH in worker_sources
+        and EVENT_BUFFER_PATH in worker_sources,
+        "canonical worker-media image provenance does not bind final/raw/event-UoW video sources",
     )
     model_gateway = runtimes.get("model-gateway") if isinstance(runtimes, dict) else None
     model_gateway_sources = (
@@ -268,15 +358,19 @@ def main() -> int:
     ):
         require(
             f"python3 {SELF_PATH}" in source,
-            f"{label} does not execute final durable probe contract",
+            f"{label} does not execute final durable probe/event-UoW contract",
         )
         require(
             f"{SELF_PATH} \\" in source,
-            f"{label} does not syntax-gate final durable probe contract",
+            f"{label} does not syntax-gate final durable probe/event-UoW contract",
         )
     require(
         'apps/worker-media/src/lumi_worker_media/video_*.py' in workflow,
         "Video Generation workflow does not syntax-gate hosted video runtime sources",
+    )
+    require(
+        'apps/worker-media/tests/test_video_*.py' in workflow,
+        "Video Generation workflow does not execute Hosted video event-UoW regression tests",
     )
     require(
         f"{FINAL_PROBE_PATH} \\" in final
@@ -284,7 +378,7 @@ def main() -> int:
         "Final Acceptance does not directly syntax-gate hosted video validation boundaries",
     )
 
-    print("Hosted video provider/raw/final FPS ownership contract: PASS")
+    print("Hosted video provider/raw/final/event-UoW contract: PASS")
     return 0
 
 
