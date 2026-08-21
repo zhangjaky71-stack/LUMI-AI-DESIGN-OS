@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py"
+JOB_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py"
+DOMAIN_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/event_runtime.py"
 CLI = ROOT / "apps/worker-media/src/lumi_worker_media/cli.py"
 TEST = ROOT / "apps/worker-media/tests/test_job_dispatch_observability.py"
 STAGING_IAC = ROOT / "infra/iac/environments/staging/app/outbox_observability.tf"
@@ -36,6 +38,14 @@ def require_markers(source: str, markers: tuple[str, ...], label: str) -> None:
     require(not missing, f"{label} missing markers: {missing}")
 
 
+def require_assignment(source: str, key: str, value: str, label: str) -> None:
+    pattern = rf"(?m)^\s*{re.escape(key)}\s*=\s*{re.escape(value)}\s*(?:#.*)?$"
+    require(
+        re.search(pattern, source) is not None,
+        f"{label} missing assignment: {key} = {value}",
+    )
+
+
 def python_syntax(source: str, path: Path) -> None:
     try:
         compile(source, str(path), "exec")
@@ -61,11 +71,23 @@ def service_block(source: str, service: str) -> str:
     raise OutboxObservabilityContractError(f"unterminated service block: {service}")
 
 
+def health_method_block(source: str, *, end_marker: str, label: str) -> str:
+    start = source.find("    async def health_snapshot(")
+    end = source.find(end_marker, start)
+    require(start >= 0 and end > start, f"{label} health query boundary is missing")
+    return source[start:end]
+
+
 def validate_environment_iac(source: str, *, environment: str) -> None:
+    require_assignment(
+        source,
+        "outbox_dispatcher_metric_namespace",
+        '"LUMI/MediaDispatch"',
+        f"{environment} outbox observability IaC",
+    )
     require_markers(
         source,
         (
-            'outbox_dispatcher_metric_namespace = "LUMI/MediaDispatch"',
             'resource "aws_cloudwatch_log_metric_filter" "outbox_oldest_unpublished_age"',
             'resource "aws_cloudwatch_log_metric_filter" "outbox_oldest_publish_attempts"',
             'pattern        = "{ $.kind = \\"lumi.outbox_dispatcher.health\\" }"',
@@ -92,7 +114,8 @@ def validate_environment_iac(source: str, *, environment: str) -> None:
 
 
 def main() -> int:
-    runtime = read(RUNTIME)
+    job_runtime = read(JOB_RUNTIME)
+    domain_runtime = read(DOMAIN_RUNTIME)
     cli = read(CLI)
     tests = read(TEST)
     staging_iac = read(STAGING_IAC)
@@ -103,11 +126,16 @@ def main() -> int:
     production_iac_workflow = read(PRODUCTION_IAC_WORKFLOW)
     final_workflow = read(FINAL_WORKFLOW)
 
-    for source, path in ((runtime, RUNTIME), (cli, CLI), (tests, TEST)):
+    for source, path in (
+        (job_runtime, JOB_RUNTIME),
+        (domain_runtime, DOMAIN_RUNTIME),
+        (cli, CLI),
+        (tests, TEST),
+    ):
         python_syntax(source, path)
 
     require_markers(
-        runtime,
+        job_runtime,
         (
             "class MediaJobOutboxHealth",
             "async def health_snapshot(self) -> MediaJobOutboxHealth:",
@@ -121,26 +149,87 @@ def main() -> int:
         ),
         "job dispatcher health query",
     )
-    health_start = runtime.find("    async def health_snapshot(")
-    validator_start = runtime.find("\ndef _validate_media_dispatch", health_start)
-    require(
-        health_start >= 0 and validator_start > health_start,
-        "job dispatcher health query boundary is missing",
+    job_health_block = health_method_block(
+        job_runtime,
+        end_marker="\ndef _validate_media_dispatch",
+        label="job dispatcher",
     )
-    health_block = runtime[health_start:validator_start]
     require(
-        "COUNT(" not in health_block.upper(),
-        "outbox health must not count/scan the full pending queue every loop",
+        "COUNT(" not in job_health_block.upper(),
+        "job outbox health must not count/scan the full pending queue every loop",
     )
-    require("FOR UPDATE" not in health_block, "outbox health must remain read-only")
+    require("FOR UPDATE" not in job_health_block.upper(), "job outbox health must remain read-only")
+
+    require_markers(
+        domain_runtime,
+        (
+            "class DomainOutboxHealth",
+            "async def health_snapshot(self) -> DomainOutboxHealth:",
+            "Read only the oldest pending domain row; never count or lock the full outbox.",
+            "EXTRACT(EPOCH FROM (now() - created_at))",
+            "publish_attempts AS oldest_publish_attempts",
+            "WHERE published_at IS NULL",
+            "event_name <> $1",
+            "ORDER BY created_at, id",
+            "LIMIT 1",
+        ),
+        "domain dispatcher health query",
+    )
+    domain_health_block = health_method_block(
+        domain_runtime,
+        end_marker="\n\nclass EventValidationError",
+        label="domain dispatcher",
+    )
+    require(
+        "COUNT(" not in domain_health_block.upper(),
+        "domain outbox health must not count/scan the full pending queue every loop",
+    )
+    require(
+        "FOR UPDATE" not in domain_health_block.upper(),
+        "domain outbox health must remain read-only",
+    )
+
+    domain_dispatch_start = domain_runtime.find("class OutboxDispatcher:")
+    domain_dispatch_end = domain_runtime.find("\n\nclass EventValidationError", domain_dispatch_start)
+    require(
+        domain_dispatch_start >= 0 and domain_dispatch_end > domain_dispatch_start,
+        "domain outbox dispatcher boundary missing",
+    )
+    domain_dispatch_block = domain_runtime[domain_dispatch_start:domain_dispatch_end]
+    require_markers(
+        domain_dispatch_block,
+        (
+            "failure: Exception | None = None",
+            "publish_attempts + 1",
+            "await asyncio.to_thread(self.publisher.publish, record)",
+            "failure = exc",
+            "if failure is not None:",
+            "raise failure",
+        ),
+        "durable domain publish failure accounting",
+    )
+    require(
+        domain_dispatch_block.find("if failure is not None:")
+        > domain_dispatch_block.find("async with connection.transaction():"),
+        "domain publish failure must be raised only after transaction exit",
+    )
 
     require_markers(
         cli,
         (
             '_HEALTH_LOG_KIND = "lumi.outbox_dispatcher.health"',
             "job_health = await job_dispatcher.health_snapshot()",
-            '"oldest_unpublished_age_seconds"',
-            '"oldest_publish_attempts"',
+            "domain_health = await domain_dispatcher.health_snapshot()",
+            'failures.append(("jobs-health", exc))',
+            'failures.append(("domain-health", exc))',
+            "oldest_unpublished_age_seconds = max(",
+            "oldest_publish_attempts = max(",
+            '"oldest_job_unpublished_age_seconds"',
+            '"oldest_job_publish_attempts"',
+            '"oldest_domain_unpublished_age_seconds"',
+            '"oldest_domain_publish_attempts"',
+            '"oldest_unpublished_age_seconds": oldest_unpublished_age_seconds',
+            '"oldest_publish_attempts": oldest_publish_attempts',
             '"failure_channels": channels',
             '"failure_count": len(failures)',
             '"status": "degraded" if failures else "ok"',
@@ -148,7 +237,7 @@ def main() -> int:
             "flush=True",
             "OUTBOX_DISPATCH_FAILED:",
         ),
-        "outbox dispatcher bounded health log",
+        "outbox dispatcher bounded combined health log",
     )
     require(
         "str(exc)" not in cli and "repr(exc)" not in cli,
@@ -165,12 +254,19 @@ def main() -> int:
         tests,
         (
             "test_job_dispatch_health_reads_only_oldest_pending_row",
+            "test_domain_dispatch_health_reads_only_oldest_pending_row",
+            "test_domain_outbox_failed_publish_attempt_commits_before_fail_closed",
             'assert "COUNT(" not in query.upper()',
+            'assert "FOR UPDATE" not in query.upper()',
+            "assert connection.transaction_state.committed is True",
+            "assert connection.transaction_state.exc_type is None",
             "test_job_dispatch_health_is_zero_when_queue_is_empty",
-            "test_dispatch_cli_emits_bounded_json_health_before_failure",
+            "test_dispatch_cli_emits_bounded_combined_json_health_before_failure",
             'assert "password" not in raw',
-            '"oldest_unpublished_age_seconds": 601',
-            '"oldest_publish_attempts": 6',
+            '"oldest_job_unpublished_age_seconds": 601',
+            '"oldest_domain_unpublished_age_seconds": 701',
+            '"oldest_unpublished_age_seconds": 701',
+            '"oldest_publish_attempts": 9',
             '"failure_channels": ["jobs"]',
         ),
         "outbox observability executable tests",
@@ -187,10 +283,21 @@ def main() -> int:
                 '"dispatch-outbox"',
                 '"--watch"',
                 '"--interval"',
-                f"desired_count       = {expected_count}",
-                "autoscaling_enabled = false",
             ),
             f"{environment} outbox dispatcher service",
+        )
+        for key in ("desired_count", "min_capacity", "max_capacity"):
+            require_assignment(
+                dispatcher,
+                key,
+                expected_count,
+                f"{environment} outbox dispatcher static capacity",
+            )
+        require_assignment(
+            dispatcher,
+            "autoscaling_enabled",
+            "false",
+            f"{environment} outbox dispatcher static capacity",
         )
 
     validate_environment_iac(staging_iac, environment="staging")
@@ -209,6 +316,11 @@ def main() -> int:
             f"{SELF_PATH} \\" in workflow,
             f"{label} does not syntax-gate outbox observability contract",
         )
+
+    require(
+        "apps/worker-media/tests/test_job_dispatch_observability.py" in video_workflow,
+        "Video Generation workflow must execute the combined outbox observability regressions",
+    )
 
     print("Outbox dispatcher operational observability contract: PASS")
     return 0
