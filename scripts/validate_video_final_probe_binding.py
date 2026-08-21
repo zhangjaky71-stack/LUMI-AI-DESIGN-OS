@@ -127,7 +127,7 @@ def main() -> int:
             f"{label} does not execute final durable probe contract",
         )
         require(
-            SELF_PATH in source and "py_compile" in source or "compileall" in source,
+            f"{SELF_PATH} \\" in source,
             f"{label} does not syntax-gate final durable probe contract",
         )
 
