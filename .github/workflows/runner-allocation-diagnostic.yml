@@ -1,0 +1,33 @@
+name: Runner Allocation Diagnostic
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/runner-allocation-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ubuntu-latest:
+    name: ubuntu-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Runner started
+        run: |
+          echo "runner_os=${RUNNER_OS}"
+          echo "runner_arch=${RUNNER_ARCH}"
+          echo "runner_name=${RUNNER_NAME}"
+
+  ubuntu-24-04:
+    name: ubuntu-24.04
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Runner started
+        run: |
+          echo "runner_os=${RUNNER_OS}"
+          echo "runner_arch=${RUNNER_ARCH}"
+          echo "runner_name=${RUNNER_NAME}"
