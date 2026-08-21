@@ -17,15 +17,12 @@ from lumi_video_generation.performance_ports import TimedMediaSandbox
 from .job_runtime import ExternalWait
 from .queue_contracts import JobMessage
 from .video_cost_runtime import ScopedPostgresVideoCostObserver
+from .video_event_buffer import BufferedVideoEventSink
 from .video_final_probe_runtime import HostedVerifiedVideoMediaSandbox
 from .video_gateway_runtime import HostedVideoGateway
 from .video_generation_artifacts import PostgresVideoArtifactAdapter
 from .video_generation_codec import decode_video_task_spec
-from .video_generation_ports import (
-    HostedVideoMediaSandbox,
-    HostedVideoOutputAdapter,
-    PostgresVideoEventSink,
-)
+from .video_generation_ports import HostedVideoMediaSandbox, HostedVideoOutputAdapter
 from .video_generation_repository import PostgresVideoRepository
 from .video_validation_runtime import HostedV1VideoValidator
 
@@ -50,8 +47,9 @@ class HostedVideoGenerationRuntime:
 
     V1 intentionally exposes only single-shot text-to-video. Provider work is async
     behind the private Model Gateway. Each Worker invocation hydrates one PostgreSQL
-    UoW, advances the NODE-48 state machine once, flushes its recovery snapshot, and
-    parks the canonical Task as waiting_external when the provider is still pending.
+    UoW, advances the NODE-48 state machine once, then atomically flushes recovery,
+    provider/public Generation state and buffered domain events before parking the
+    canonical Task as waiting_external when the provider is still pending.
     """
 
     def __init__(
@@ -100,6 +98,7 @@ class HostedVideoGenerationRuntime:
         )
         gateway = HostedVideoGateway.from_env()
         output = HostedVideoOutputAdapter.from_env()
+        events = BufferedVideoEventSink(self.database_dsn)
         base_sandbox = HostedVideoMediaSandbox.from_spec(spec)
         sandbox = HostedVerifiedVideoMediaSandbox(
             spec=spec,
@@ -122,7 +121,7 @@ class HostedVideoGenerationRuntime:
                 task_id=spec.task_id,
             ),
             costs=ScopedPostgresVideoCostObserver(self.database_dsn),
-            events=PostgresVideoEventSink(self.database_dsn),
+            events=events,
         )
 
         if existing is None:
@@ -136,6 +135,7 @@ class HostedVideoGenerationRuntime:
         persisted = await repository.flush(
             organization_id=spec.organization_id,
             operation_id=spec.operation_id,
+            event_sink=events,
         )
         if persisted != job:
             raise HostedVideoGenerationError(
