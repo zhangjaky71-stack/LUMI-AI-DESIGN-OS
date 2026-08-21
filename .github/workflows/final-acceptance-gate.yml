@@ -85,6 +85,8 @@ jobs:
           python3 -m json.tool production/release-actions/pins-v1.json >/dev/null
           python3 -m json.tool staging/acceptance/api-provenance-sources-v1.json >/dev/null
           python3 -m py_compile \
+            apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py \
+            apps/worker-media/src/lumi_worker_media/video_validation_runtime.py \
             scripts/final-acceptance-gate.py \
             scripts/final-acceptance-decision-v2.py \
             scripts/create-final-acceptance-evidence.py \
