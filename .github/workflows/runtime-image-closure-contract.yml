@@ -3,6 +3,7 @@ name: Runtime Image Closure Contract
 on:
   pull_request:
     paths:
+      - ".dockerignore"
       - "apps/api/Dockerfile"
       - "apps/api/src/lumi_api/cli.py"
       - "apps/api/src/lumi_api/product_app.py"
