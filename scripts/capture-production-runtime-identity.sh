@@ -2,14 +2,15 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 <terraform-app-dir> <deployment-manifest-json> <output-json>" >&2
+  echo "usage: $0 <terraform-app-dir> <deployment-manifest-json> <output-json> [capacity-contract-deployment-id]" >&2
   exit 64
 }
 
-[[ $# -eq 3 ]] || usage
+[[ $# -ge 3 && $# -le 4 ]] || usage
 APP_DIR="$1"
 MANIFEST="$2"
 OUTPUT_JSON="$3"
+CAPACITY_CONTRACT_DEPLOYMENT_ID="${4:-}"
 mkdir -p "$(dirname "$OUTPUT_JSON")"
 
 [[ -f "$MANIFEST" ]] || { echo "deployment manifest missing" >&2; exit 64; }
@@ -23,6 +24,13 @@ EXPECTED_IMAGES="$(jq -c '.images // {}' "$MANIFEST")"
   echo "deployment manifest identity incomplete" >&2
   exit 65
 }
+if [[ -z "$CAPACITY_CONTRACT_DEPLOYMENT_ID" ]]; then
+  CAPACITY_CONTRACT_DEPLOYMENT_ID="$DEPLOYMENT_ID"
+fi
+[[ -n "$CAPACITY_CONTRACT_DEPLOYMENT_ID" ]] || {
+  echo "capacity contract deployment identity missing" >&2
+  exit 65
+}
 
 EXPECTED_IMAGE_KEYS='["agent-runtime","api","model-gateway","sandbox-runtime","tool-gateway","worker-media"]'
 EXPECTED_SERVICES='["agent-runtime","api","model-gateway","outbox-dispatcher","sandbox-runtime","tool-gateway","worker-media"]'
@@ -34,6 +42,7 @@ fi
 CLUSTER_ARN="$(terraform -chdir="$APP_DIR" output -raw cluster_arn)"
 SERVICES_JSON="$(terraform -chdir="$APP_DIR" output -json service_names)"
 EXPECTED_CAPACITY_JSON="$(terraform -chdir="$APP_DIR" output -json service_desired_counts)"
+EXPECTED_CAPACITY_CANONICAL="$(jq -c 'to_entries | sort_by(.key) | from_entries' <<<"$EXPECTED_CAPACITY_JSON")"
 mapfile -t SERVICES < <(jq -r '.[]' <<<"$SERVICES_JSON")
 
 [[ -n "$CLUSTER_ARN" && "$CLUSTER_ARN" != "null" ]] || { echo "cluster_arn missing" >&2; exit 65; }
@@ -44,10 +53,14 @@ ACTUAL_SERVICES="$(printf '%s\n' "${SERVICES[@]}" | jq -R . | jq -sc 'sort')"
   echo "ECS service set does not match canonical six-image/seven-service contract" >&2
   exit 66
 }
-[[ "$(jq -c 'keys | sort' <<<"$EXPECTED_CAPACITY_JSON")" == "$EXPECTED_SERVICES" ]] || {
+[[ "$(jq -c 'keys | sort' <<<"$EXPECTED_CAPACITY_CANONICAL")" == "$EXPECTED_SERVICES" ]] || {
   echo "Terraform expected capacity set does not match canonical seven-service contract" >&2
   exit 66
 }
+if ! jq -e 'all(.[]; (type == "number") and (floor == .) and (. > 0))' <<<"$EXPECTED_CAPACITY_CANONICAL" >/dev/null; then
+  echo "Terraform expected capacity values must be positive integers" >&2
+  exit 66
+fi
 
 DESCRIPTION="$(aws ecs describe-services --cluster "$CLUSTER_ARN" --services "${SERVICES[@]}")"
 [[ "$(jq '.failures | length' <<<"$DESCRIPTION")" -eq 0 ]] || {
@@ -70,7 +83,7 @@ for service in "${SERVICES[@]}"; do
   TASK_JSON="$(aws ecs describe-task-definition --task-definition "$TASK_DEFINITION")"
   IMAGE="$(jq -r --arg name "$service" '.taskDefinition.containerDefinitions[] | select(.name == $name) | .image // empty' <<<"$TASK_JSON")"
   EXPECTED_IMAGE="$(jq -r --arg name "$IMAGE_KEY" '.[$name] // empty' <<<"$EXPECTED_IMAGES")"
-  EXPECTED_DESIRED="$(jq -r --arg name "$service" '.[$name] // empty' <<<"$EXPECTED_CAPACITY_JSON")"
+  EXPECTED_DESIRED="$(jq -r --arg name "$service" '.[$name] // empty' <<<"$EXPECTED_CAPACITY_CANONICAL")"
   PRIMARY="$(jq -c '[.deployments[] | select(.status == "PRIMARY")][0] // null' <<<"$SERVICE_JSON")"
   STATUS="$(jq -r '.status' <<<"$SERVICE_JSON")"
   DESIRED="$(jq -r '.desiredCount' <<<"$SERVICE_JSON")"
@@ -124,9 +137,13 @@ jq -n \
   --arg version "$RC_VERSION" \
   --arg migration_head "$MIGRATION_HEAD" \
   --arg cluster_arn "$CLUSTER_ARN" \
+  --arg capacity_contract_deployment_id "$CAPACITY_CONTRACT_DEPLOYMENT_ID" \
+  --arg capacity_contract_source "terraform-live-state" \
+  --arg capacity_contract_scope "production-app-service-desired-counts" \
+  --argjson capacity_contract_service_desired_counts "$EXPECTED_CAPACITY_CANONICAL" \
   --argjson services "$(jq -c 'sort_by(.service_name)' <<<"$ROWS")" \
   --argjson passed "$PASSED" \
-  '{schema_version:1,deployment_id:$deployment_id,release_candidate:{git_sha:$git_sha,version:$version,migration_head:$migration_head},cluster_arn:$cluster_arn,passed:$passed,services:$services}' \
+  '{schema_version:1,deployment_id:$deployment_id,release_candidate:{git_sha:$git_sha,version:$version,migration_head:$migration_head},cluster_arn:$cluster_arn,capacity_contract:{schema_version:1,source:$capacity_contract_source,scope:$capacity_contract_scope,deployment_id:$capacity_contract_deployment_id,service_desired_counts:$capacity_contract_service_desired_counts},passed:$passed,services:$services}' \
   > "$OUTPUT_JSON"
 
 if [[ "$PASSED" != true ]]; then
