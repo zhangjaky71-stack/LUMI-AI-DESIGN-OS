@@ -42,6 +42,7 @@ PRIVATE_DEPLOYMENT_CONTRACT = ROOT / "scripts/validate_private_model_gateway_dep
 PRIVATE_DEPLOYMENT_WORKFLOWS = (
     (ROOT / ".github/workflows/model-gateway.yml", 3),
     (ROOT / ".github/workflows/production-iac-contract.yml", 2),
+    (ROOT / ".github/workflows/staging-acceptance-gate.yml", 2),
     (ROOT / ".github/workflows/final-acceptance-gate.yml", 2),
 )
 
