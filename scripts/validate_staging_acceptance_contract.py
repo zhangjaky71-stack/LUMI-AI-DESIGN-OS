@@ -41,6 +41,7 @@ API_REQUIRED_SOURCES = [
 MODEL_GATEWAY_REQUIRED_SOURCES = [
     "services/model-gateway",
     "services/model-gateway/src/lumi_model_gateway/openai_image_adapter.py",
+    "services/model-gateway/src/lumi_model_gateway/openai_video_adapter.py",
     "services/asset-storage/src/lumi_asset_storage/s3.py",
     "apps/api/src/lumi_api/model_gateway_runtime.py",
     "apps/api/src/lumi_api/model_gateway_bootstrap.py",
@@ -120,6 +121,14 @@ def validate_api_image_source_contract() -> None:
 
     for relative in API_REQUIRED_SOURCES:
         require((ROOT / relative).exists(), f"api provenance source {relative} must exist in the accepted source tree")
+
+
+def validate_model_gateway_source_contract() -> None:
+    for relative in MODEL_GATEWAY_REQUIRED_SOURCES:
+        require(
+            (ROOT / relative).exists(),
+            f"model-gateway provenance source {relative} must exist in the accepted source tree",
+        )
 
 
 def validate_worker_media_source_contract() -> None:
@@ -274,6 +283,7 @@ def main() -> int:
     template = load_json(TEMPLATE)
     gate = load_gate()
     validate_api_image_source_contract()
+    validate_model_gateway_source_contract()
     validate_worker_media_source_contract()
 
     scenarios = manifest.get("scenarios")
@@ -405,6 +415,7 @@ def main() -> int:
             "api_frozen_non_root_image_contract": True,
             "model_gateway_all_required_sources_drilled": True,
             "model_gateway_media_adapter_source_required": True,
+            "model_gateway_video_adapter_source_required": True,
             "model_gateway_provider_output_store_source_required": True,
             "model_gateway_asset_storage_source_required": True,
             "worker_media_all_required_media_sources_drilled": True,
