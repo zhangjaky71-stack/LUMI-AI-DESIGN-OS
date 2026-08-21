@@ -15,16 +15,19 @@ IMAGE_REF = re.compile(r"^[^\s@]+@sha256:[0-9a-f]{64}$")
 REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 SERVICE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
-EXPECTED_SERVICES = {
-    "api",
-    "agent-runtime",
-    "model-gateway",
-    "tool-gateway",
-    "worker-media",
-    "sandbox-runtime",
+EXPECTED_DOCKERFILES = {
+    "api": "apps/api/Dockerfile",
+    "agent-runtime": "apps/agent-runtime/Dockerfile",
+    "model-gateway": "services/model-gateway/Dockerfile",
+    "tool-gateway": "services/tool-gateway/Dockerfile",
+    "worker-media": "apps/worker-media/Dockerfile",
+    "sandbox-runtime": "services/sandbox-runtime/Dockerfile",
 }
+EXPECTED_SERVICES = set(EXPECTED_DOCKERFILES)
 RELEASE_SOURCE_REF = "refs/heads/release-closure-p0"
 SIGNER_WORKFLOW_PATH = ".github/workflows/build-runtime-image-set.yml"
+BUILDKIT_BUILD_TYPE = "https://mobyproject.org/buildkit@v1"
+BUILDKIT_PLATFORM = "linux/amd64"
 
 
 class AttestationVerificationError(RuntimeError):
@@ -101,19 +104,66 @@ def _json_value(raw: str, *, label: str) -> Any:
         raise AttestationVerificationError(f"{label} returned invalid JSON: {exc}") from exc
 
 
-def validate_provenance(value: Any) -> dict[str, Any]:
+def validate_provenance(
+    value: Any,
+    *,
+    repository: str,
+    source_digest: str,
+    dockerfile: str,
+) -> dict[str, Any]:
     _require(isinstance(value, dict) and bool(value), "BuildKit SLSA provenance must be a non-empty object")
-    build_type = value.get("buildType")
+    _require(
+        value.get("buildType") == BUILDKIT_BUILD_TYPE,
+        "BuildKit SLSA provenance buildType must be the canonical BuildKit build type",
+    )
+
     builder = value.get("builder")
-    _require(isinstance(build_type, str) and bool(build_type.strip()), "BuildKit SLSA provenance buildType is missing")
     _require(isinstance(builder, dict) and bool(builder), "BuildKit SLSA provenance builder is missing")
     builder_id = builder.get("id")
     _require(isinstance(builder_id, str) and bool(builder_id.strip()), "BuildKit SLSA provenance builder.id is missing")
+
+    invocation = value.get("invocation")
+    _require(isinstance(invocation, dict), "BuildKit SLSA provenance invocation is missing")
+    config_source = invocation.get("configSource")
+    _require(isinstance(config_source, dict), "BuildKit SLSA provenance configSource is missing")
+
+    expected_uri = f"https://github.com/{repository}.git#{source_digest}"
+    source_uri = config_source.get("uri")
+    _require(
+        source_uri == expected_uri,
+        "BuildKit provenance configSource.uri must bind the immutable GitHub repository and RC SHA",
+    )
+
+    source_digests = config_source.get("digest")
+    _require(isinstance(source_digests, dict), "BuildKit provenance configSource.digest is missing")
+    _require(
+        source_digests.get("sha1") == source_digest,
+        "BuildKit provenance configSource.digest.sha1 must equal the RC Git SHA",
+    )
+    _require(
+        config_source.get("entryPoint") == dockerfile,
+        "BuildKit provenance configSource.entryPoint must equal the runtime Dockerfile",
+    )
+
+    environment = invocation.get("environment")
+    _require(isinstance(environment, dict), "BuildKit SLSA provenance invocation.environment is missing")
+    _require(
+        environment.get("platform") == BUILDKIT_PLATFORM,
+        "BuildKit provenance invocation.environment.platform must be linux/amd64",
+    )
+
     materials = value.get("materials")
-    _require(isinstance(materials, list), "BuildKit SLSA provenance materials must be an array")
+    _require(
+        isinstance(materials, list) and len(materials) > 0,
+        "BuildKit SLSA provenance materials must be a non-empty array",
+    )
     return {
-        "build_type": build_type,
+        "build_type": BUILDKIT_BUILD_TYPE,
         "builder_id": builder_id,
+        "source_uri": source_uri,
+        "source_digest": source_digest,
+        "entrypoint": dockerfile,
+        "platform": BUILDKIT_PLATFORM,
         "material_count": len(materials),
     }
 
@@ -203,7 +253,12 @@ def _verify_one(
         "{{ json .Provenance.SLSA }}",
         label=f"{target.service} BuildKit SLSA provenance inspection",
     )
-    provenance_summary = validate_provenance(provenance)
+    provenance_summary = validate_provenance(
+        provenance,
+        repository=policy.repository,
+        source_digest=policy.source_digest,
+        dockerfile=EXPECTED_DOCKERFILES[target.service],
+    )
 
     sbom = _inspect_json(
         image,
@@ -288,26 +343,86 @@ def self_test() -> dict[str, Any]:
         raise AttestationVerificationError("negative GitHub signer/source identity drill did not block")
 
     provenance = {
-        "buildType": "https://mobyproject.org/buildkit@v1",
+        "buildType": BUILDKIT_BUILD_TYPE,
         "builder": {"id": "https://github.com/example/repo/actions/runs/1"},
-        "materials": [],
+        "invocation": {
+            "configSource": {
+                "uri": f"https://github.com/example/lumi.git#{source_digest}",
+                "digest": {"sha1": source_digest},
+                "entryPoint": "apps/api/Dockerfile",
+            },
+            "environment": {"platform": BUILDKIT_PLATFORM},
+        },
+        "materials": [
+            {
+                "uri": "pkg:docker/python@3.12-slim",
+                "digest": {"sha256": "c" * 64},
+            }
+        ],
     }
-    provenance_summary = validate_provenance(provenance)
-    _require(provenance_summary["material_count"] == 0, "clean provenance fixture failed")
+    provenance_summary = validate_provenance(
+        provenance,
+        repository="example/lumi",
+        source_digest=source_digest,
+        dockerfile="apps/api/Dockerfile",
+    )
+    _require(provenance_summary["material_count"] == 1, "clean provenance fixture failed")
 
     bad_provenance = [
         {},
-        {"builder": {"id": "builder"}, "materials": []},
-        {"buildType": "buildkit", "materials": []},
-        {"buildType": "buildkit", "builder": {}, "materials": []},
-        {"buildType": "buildkit", "builder": {"id": "builder"}, "materials": {}},
+        {**provenance, "buildType": "buildkit"},
+        {**provenance, "builder": {}},
+        {**provenance, "invocation": {}},
+        {
+            **provenance,
+            "invocation": {
+                **provenance["invocation"],
+                "configSource": {
+                    **provenance["invocation"]["configSource"],
+                    "uri": f"https://github.com/example/other.git#{source_digest}",
+                },
+            },
+        },
+        {
+            **provenance,
+            "invocation": {
+                **provenance["invocation"],
+                "configSource": {
+                    **provenance["invocation"]["configSource"],
+                    "digest": {"sha1": "d" * 40},
+                },
+            },
+        },
+        {
+            **provenance,
+            "invocation": {
+                **provenance["invocation"],
+                "configSource": {
+                    **provenance["invocation"]["configSource"],
+                    "entryPoint": "Dockerfile",
+                },
+            },
+        },
+        {
+            **provenance,
+            "invocation": {
+                **provenance["invocation"],
+                "environment": {"platform": "linux/arm64"},
+            },
+        },
+        {**provenance, "materials": []},
     ]
     for value in bad_provenance:
         try:
-            validate_provenance(value)
+            validate_provenance(
+                value,
+                repository="example/lumi",
+                source_digest=source_digest,
+                dockerfile="apps/api/Dockerfile",
+            )
         except AttestationVerificationError:
             continue
-        raise AttestationVerificationError("negative BuildKit provenance drill did not block")
+        raise AttestationVerificationError("negative immutable BuildKit provenance drill did not block")
 
     sbom = {
         "SPDXID": "SPDXRef-DOCUMENT",
@@ -343,7 +458,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Verify six immutable runtime images, GitHub signer/source attestations, "
-            "BuildKit provenance, and SPDX SBOMs"
+            "BuildKit immutable Git-source provenance, and SPDX SBOMs"
         )
     )
     parser.add_argument("--repository", help="GitHub repository in OWNER/REPO form")
