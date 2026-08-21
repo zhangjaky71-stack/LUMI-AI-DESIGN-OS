@@ -1,5 +1,8 @@
-FROM ghcr.io/astral-sh/uv:0.11.28 AS uv
-FROM python:3.12-slim
+ARG UV_BASE_IMAGE=ghcr.io/astral-sh/uv:0.11.28
+ARG PYTHON_BASE_IMAGE=python:3.12-slim
+
+FROM ${UV_BASE_IMAGE} AS uv
+FROM ${PYTHON_BASE_IMAGE}
 
 COPY --from=uv /uv /uvx /bin/
 
