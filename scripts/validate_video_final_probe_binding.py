@@ -9,11 +9,14 @@ FINAL_PROBE = ROOT / "apps/worker-media/src/lumi_worker_media/video_final_probe_
 HOSTED_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/video_generation_runtime.py"
 HOSTED_REPOSITORY = ROOT / "apps/worker-media/src/lumi_worker_media/video_generation_repository.py"
 EVENT_BUFFER = ROOT / "apps/worker-media/src/lumi_worker_media/video_event_buffer.py"
+OUTPUT_RECOVERY = ROOT / "apps/worker-media/src/lumi_worker_media/video_output_recovery.py"
 HOSTED_VALIDATION = ROOT / "apps/worker-media/src/lumi_worker_media/video_validation_runtime.py"
 FINAL_PROBE_TEST = ROOT / "apps/worker-media/tests/test_video_final_probe_runtime.py"
 EVENT_UOW_TEST = ROOT / "apps/worker-media/tests/test_video_event_uow.py"
+OUTPUT_RECOVERY_TEST = ROOT / "apps/worker-media/tests/test_video_output_recovery.py"
 HOSTED_VALIDATION_TEST = ROOT / "apps/worker-media/tests/test_video_validation_runtime.py"
 SANDBOX_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py"
+STORAGE_IAC = ROOT / "infra/iac/modules/storage/main.tf"
 MODEL_GATEWAY_VIDEO_ADAPTER = (
     ROOT / "services/model-gateway/src/lumi_model_gateway/openai_video_adapter.py"
 )
@@ -25,6 +28,7 @@ SELF_PATH = "scripts/validate_video_final_probe_binding.py"
 FINAL_PROBE_PATH = "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py"
 HOSTED_VALIDATION_PATH = "apps/worker-media/src/lumi_worker_media/video_validation_runtime.py"
 EVENT_BUFFER_PATH = "apps/worker-media/src/lumi_worker_media/video_event_buffer.py"
+OUTPUT_RECOVERY_PATH = "apps/worker-media/src/lumi_worker_media/video_output_recovery.py"
 MODEL_GATEWAY_VIDEO_ADAPTER_PATH = (
     "services/model-gateway/src/lumi_model_gateway/openai_video_adapter.py"
 )
@@ -63,11 +67,14 @@ def main() -> int:
     hosted = read(HOSTED_RUNTIME)
     repository = read(HOSTED_REPOSITORY)
     event_buffer = read(EVENT_BUFFER)
+    output_recovery = read(OUTPUT_RECOVERY)
     hosted_validation = read(HOSTED_VALIDATION)
     tests = read(FINAL_PROBE_TEST)
     event_uow_tests = read(EVENT_UOW_TEST)
+    output_recovery_tests = read(OUTPUT_RECOVERY_TEST)
     hosted_validation_tests = read(HOSTED_VALIDATION_TEST)
     sandbox = read(SANDBOX_RUNTIME)
+    storage_iac = read(STORAGE_IAC)
     model_gateway_video_adapter = read(MODEL_GATEWAY_VIDEO_ADAPTER)
     model_gateway_video_test = read(MODEL_GATEWAY_VIDEO_TEST)
     workflow = read(VIDEO_WORKFLOW)
@@ -80,6 +87,8 @@ def main() -> int:
         (repository, HOSTED_REPOSITORY),
         (event_buffer, EVENT_BUFFER),
         (event_uow_tests, EVENT_UOW_TEST),
+        (output_recovery, OUTPUT_RECOVERY),
+        (output_recovery_tests, OUTPUT_RECOVERY_TEST),
     ):
         require_python_syntax(source, path)
 
@@ -326,6 +335,67 @@ def main() -> int:
         "Hosted video event UoW executable tests",
     )
 
+    # Provider-output deletion must happen only after the recovery/event transaction
+    # commits. The underlying adapter may call delete_candidate in a finally block,
+    # so Hosted composition replaces its object store with a deferred-delete wrapper.
+    require_markers(
+        output_recovery,
+        (
+            "class DeferredProviderOutputStore",
+            '_PROVIDER_OUTPUT_PREFIX = "provider-output/v1/async/"',
+            "self._pending_provider_deletes.add((bucket, object_key))",
+            "await self.delegate.delete_candidate(bucket=bucket, object_key=object_key)",
+            "async def cleanup_committed_provider_outputs",
+            "except Exception:",
+            "self._pending_provider_deletes.discard((bucket, object_key))",
+        ),
+        "Hosted video provider-output recovery wrapper",
+    )
+    require_markers(
+        hosted,
+        (
+            "from .video_output_recovery import DeferredProviderOutputStore",
+            "output_recovery = DeferredProviderOutputStore(output.object_store)",
+            "output.object_store = cast(S3ObjectStore, output_recovery)",
+            "await output_recovery.cleanup_committed_provider_outputs()",
+        ),
+        "Hosted video deferred provider-output cleanup composition",
+    )
+    snapshot_flush_at = hosted.find("        persisted = await repository.flush(")
+    snapshot_match_at = hosted.find("        if persisted != job:", snapshot_flush_at)
+    output_cleanup_at = hosted.find(
+        "        await output_recovery.cleanup_committed_provider_outputs()",
+        snapshot_flush_at,
+    )
+    require(
+        snapshot_flush_at >= 0
+        and snapshot_match_at > snapshot_flush_at
+        and output_cleanup_at > snapshot_match_at,
+        "provider-output cleanup must occur only after committed snapshot identity verification",
+    )
+    require_markers(
+        output_recovery_tests,
+        (
+            "test_provider_output_delete_is_deferred_but_exchange_cleanup_is_immediate",
+            "assert store.pending_provider_delete_count == 1",
+            "cleanup_committed_provider_outputs",
+            "test_provider_cleanup_failure_is_nonfatal_and_left_for_lifecycle_fallback",
+            "test_non_provider_delete_failure_remains_fail_closed",
+        ),
+        "Hosted video provider-output recovery tests",
+    )
+    require_markers(
+        storage_iac,
+        (
+            'for_each = each.key == "assets" ? [1] : []',
+            'id     = "expire-provider-output-staging"',
+            'prefix = "provider-output/v1/async/"',
+            "days = 1",
+            "noncurrent_days = 1",
+        ),
+        "provider-output lifecycle fallback",
+    )
+
     try:
         runtime_manifest = json.loads(
             RUNTIME_IMAGE_MANIFEST.read_text(encoding="utf-8")
@@ -339,8 +409,9 @@ def main() -> int:
         isinstance(worker_sources, list)
         and FINAL_PROBE_PATH in worker_sources
         and HOSTED_VALIDATION_PATH in worker_sources
-        and EVENT_BUFFER_PATH in worker_sources,
-        "canonical worker-media image provenance does not bind final/raw/event-UoW video sources",
+        and EVENT_BUFFER_PATH in worker_sources
+        and OUTPUT_RECOVERY_PATH in worker_sources,
+        "canonical worker-media provenance omits final/raw/event/output-recovery video sources",
     )
     model_gateway = runtimes.get("model-gateway") if isinstance(runtimes, dict) else None
     model_gateway_sources = (
@@ -358,11 +429,11 @@ def main() -> int:
     ):
         require(
             f"python3 {SELF_PATH}" in source,
-            f"{label} does not execute final durable probe/event-UoW contract",
+            f"{label} does not execute final durable probe/event/recovery contract",
         )
         require(
             f"{SELF_PATH} \\" in source,
-            f"{label} does not syntax-gate final durable probe/event-UoW contract",
+            f"{label} does not syntax-gate final durable probe/event/recovery contract",
         )
     require(
         'apps/worker-media/src/lumi_worker_media/video_*.py' in workflow,
@@ -370,7 +441,7 @@ def main() -> int:
     )
     require(
         'apps/worker-media/tests/test_video_*.py' in workflow,
-        "Video Generation workflow does not execute Hosted video event-UoW regression tests",
+        "Video Generation workflow does not execute Hosted video recovery regressions",
     )
     require(
         f"{FINAL_PROBE_PATH} \\" in final
@@ -378,7 +449,7 @@ def main() -> int:
         "Final Acceptance does not directly syntax-gate hosted video validation boundaries",
     )
 
-    print("Hosted video provider/raw/final/event-UoW contract: PASS")
+    print("Hosted video provider/raw/final/event/output-recovery contract: PASS")
     return 0
 
 
