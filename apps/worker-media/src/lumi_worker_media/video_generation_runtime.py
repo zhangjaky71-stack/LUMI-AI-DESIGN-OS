@@ -49,7 +49,9 @@ class HostedVideoGenerationRuntime:
     behind the private Model Gateway. Each Worker invocation hydrates one PostgreSQL
     UoW, advances the NODE-48 state machine once, then atomically flushes recovery,
     provider/public Generation state and buffered domain events before parking the
-    canonical Task as waiting_external when the provider is still pending.
+    canonical Task as waiting_external when the provider is still pending. The legacy
+    PostgresVideoEventSink remains a compatibility port only and is never composed on
+    this Hosted path because it owns an independent transaction.
     """
 
     def __init__(
