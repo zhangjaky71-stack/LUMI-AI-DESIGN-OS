@@ -291,7 +291,7 @@ def main() -> int:
     missing_approval = copy.deepcopy(clean)
     missing_approval["approvals"]["security"] = "PENDING"
     require(
-        gate.evaluate(clean, missing_approval, acceptance_path)["passed"] is False,
+        gate.evaluate(missing_approval, decision, acceptance_path)["passed"] is False,
         "missing security approval must block",
     )
 
