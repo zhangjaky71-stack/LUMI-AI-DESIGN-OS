@@ -47,6 +47,7 @@ jobs:
           python3 scripts/validate_api_provenance_source_manifest.py
           python3 scripts/validate_image_generation_producer_contract.py
           python3 scripts/validate_video_worker_hosted_binding.py
+          python3 scripts/validate_video_cancellation_contract.py
           python3 scripts/validate_video_final_probe_binding.py
           python3 scripts/validate_outbox_dispatcher_observability.py
           python3 scripts/runtime_image_set.py validate-manifest
@@ -109,6 +110,7 @@ jobs:
             scripts/validate_api_provenance_source_manifest.py \
             scripts/validate_image_generation_producer_contract.py \
             scripts/validate_video_worker_hosted_binding.py \
+            scripts/validate_video_cancellation_contract.py \
             scripts/validate_video_final_probe_binding.py \
             scripts/validate_outbox_dispatcher_observability.py \
             scripts/runtime_image_set.py \
