@@ -31,6 +31,13 @@ FORBIDDEN_PROVIDER_KEYS = {
     "FAL_KEY",
     "TOGETHER_API_KEY",
 }
+PROVIDER_SECRET_ENV_NAMES = {
+    "LUMI_MODEL_PROVIDER_SECRET",
+    "LUMI_MEDIA_PROVIDER_SECRET",
+}
+MODEL_GATEWAY_HOST_SECRET_FILES = {
+    ROOT / "apps/api/src/lumi_api/model_gateway_service.py",
+}
 
 
 def require(path: str, *needles: str) -> None:
@@ -73,6 +80,13 @@ def scan_callers() -> None:
                     raise SystemExit(
                         f"{path}: provider credential name is outside Model Gateway: {key}"
                     )
+            if path not in MODEL_GATEWAY_HOST_SECRET_FILES:
+                for secret_name in PROVIDER_SECRET_ENV_NAMES:
+                    if secret_name in text:
+                        raise SystemExit(
+                            f"{path}: composite Provider secret is outside Hosted Model Gateway: "
+                            f"{secret_name}"
+                        )
 
 
 def hosted_composition_contract() -> None:
