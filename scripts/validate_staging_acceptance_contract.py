@@ -53,17 +53,31 @@ MODEL_GATEWAY_REQUIRED_SOURCES = [
 ]
 WORKER_MEDIA_REQUIRED_SOURCES = [
     "services/image-generation",
+    "services/video-generation",
     "services/asset-storage/src/lumi_asset_storage/s3.py",
     "apps/worker-media/Dockerfile",
+    "apps/worker-media/pyproject.toml",
     "apps/worker-media/src/lumi_worker_media/app.py",
-    "apps/worker-media/src/lumi_worker_media/job_runtime.py",
     "apps/worker-media/src/lumi_worker_media/worker_cli.py",
+    "apps/worker-media/src/lumi_worker_media/job_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/event_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/external_wait_runtime.py",
     "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py",
     "apps/worker-media/src/lumi_worker_media/image_generation_codec.py",
     "apps/worker-media/src/lumi_worker_media/image_generation_repository.py",
     "apps/worker-media/src/lumi_worker_media/image_generation_ports.py",
     "apps/worker-media/src/lumi_worker_media/image_generation_artifacts.py",
     "apps/worker-media/src/lumi_worker_media/image_generation_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_codec.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_repository.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_ports.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_artifacts.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_cost_runtime.py",
 ]
 
 
@@ -105,6 +119,14 @@ def validate_api_image_source_contract() -> None:
 
     for relative in API_REQUIRED_SOURCES:
         require((ROOT / relative).exists(), f"api provenance source {relative} must exist in the accepted source tree")
+
+
+def validate_worker_media_source_contract() -> None:
+    for relative in WORKER_MEDIA_REQUIRED_SOURCES:
+        require(
+            (ROOT / relative).exists(),
+            f"worker-media provenance source {relative} must exist in the accepted source tree",
+        )
 
 
 def clean_image_set(git_sha: str) -> dict[str, Any]:
@@ -251,6 +273,7 @@ def main() -> int:
     template = load_json(TEMPLATE)
     gate = load_gate()
     validate_api_image_source_contract()
+    validate_worker_media_source_contract()
 
     scenarios = manifest.get("scenarios")
     require(isinstance(scenarios, list) and len(scenarios) >= 25, "acceptance manifest must cover the full product surface")
@@ -318,7 +341,7 @@ def main() -> int:
         clean=clean,
         service="worker-media",
         required_sources=WORKER_MEDIA_REQUIRED_SOURCES,
-        blocker_fragment="worker-media image provenance is missing required hosted image sources",
+        blocker_fragment="worker-media image provenance is missing required hosted media sources",
     )
 
     not_run = copy.deepcopy(clean)
@@ -383,14 +406,21 @@ def main() -> int:
             "model_gateway_media_adapter_source_required": True,
             "model_gateway_provider_output_store_source_required": True,
             "model_gateway_asset_storage_source_required": True,
-            "worker_media_all_required_image_sources_drilled": True,
+            "worker_media_all_required_media_sources_drilled": True,
             "worker_media_build_recipe_source_required": True,
             "worker_media_entrypoint_source_required": True,
-            "worker_media_generation_domain_source_required": True,
-            "worker_media_gateway_source_required": True,
-            "worker_media_durable_storage_source_required": True,
-            "worker_media_artifact_source_required": True,
-            "worker_media_composition_root_source_required": True,
+            "worker_media_image_generation_domain_source_required": True,
+            "worker_media_image_gateway_source_required": True,
+            "worker_media_video_generation_domain_source_required": True,
+            "worker_media_video_gateway_source_required": True,
+            "worker_media_video_repository_source_required": True,
+            "worker_media_video_ports_source_required": True,
+            "worker_media_video_artifact_source_required": True,
+            "worker_media_video_sandbox_source_required": True,
+            "worker_media_video_final_probe_source_required": True,
+            "worker_media_video_cost_source_required": True,
+            "worker_media_external_wait_source_required": True,
+            "worker_media_job_dispatch_source_required": True,
             "workflow_cli_output_markdown_smoke": True,
             "p0_not_run_blocked": True,
             "unevidenced_pass_blocked": True,
