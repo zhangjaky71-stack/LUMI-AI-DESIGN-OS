@@ -27,6 +27,10 @@
       "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
     },
     {
+      "path": ".github/workflows/ai-regression-release-gate.yml",
+      "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
+    },
+    {
       "path": ".github/workflows/staging-acceptance-gate.yml",
       "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
     },
