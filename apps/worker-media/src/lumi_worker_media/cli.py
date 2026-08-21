@@ -9,7 +9,7 @@ from uuid import UUID
 import asyncpg
 from kombu import Connection, Producer
 
-from .event_runtime import KombuDomainPublisher, OutboxDispatcher
+from .event_runtime import DomainOutboxHealth, KombuDomainPublisher, OutboxDispatcher
 from .external_wait_runtime import MediaExternalWaitWakeScheduler
 from .job_dispatch_runtime import (
     CeleryJobPublisher,
@@ -86,6 +86,10 @@ async def _dispatch_outbox(
             oldest_unpublished_age_seconds=0,
             oldest_publish_attempts=0,
         )
+        domain_health = DomainOutboxHealth(
+            oldest_unpublished_age_seconds=0,
+            oldest_publish_attempts=0,
+        )
         failures: list[tuple[str, Exception]] = []
         try:
             wakes = len(await wake_scheduler.stage_due_batch(limit=limit))
@@ -103,8 +107,20 @@ async def _dispatch_outbox(
             job_health = await job_dispatcher.health_snapshot()
         except Exception as exc:
             failures.append(("jobs-health", exc))
+        try:
+            domain_health = await domain_dispatcher.health_snapshot()
+        except Exception as exc:
+            failures.append(("domain-health", exc))
 
         published = job_published + domain_published
+        oldest_unpublished_age_seconds = max(
+            job_health.oldest_unpublished_age_seconds,
+            domain_health.oldest_unpublished_age_seconds,
+        )
+        oldest_publish_attempts = max(
+            job_health.oldest_publish_attempts,
+            domain_health.oldest_publish_attempts,
+        )
         channels = sorted({name for name, _ in failures})
         print(
             json.dumps(
@@ -115,10 +131,18 @@ async def _dispatch_outbox(
                     "job_published": job_published,
                     "domain_published": domain_published,
                     "external_wakes": wakes,
-                    "oldest_unpublished_age_seconds": (
+                    "oldest_unpublished_age_seconds": oldest_unpublished_age_seconds,
+                    "oldest_publish_attempts": oldest_publish_attempts,
+                    "oldest_job_unpublished_age_seconds": (
                         job_health.oldest_unpublished_age_seconds
                     ),
-                    "oldest_publish_attempts": job_health.oldest_publish_attempts,
+                    "oldest_job_publish_attempts": job_health.oldest_publish_attempts,
+                    "oldest_domain_unpublished_age_seconds": (
+                        domain_health.oldest_unpublished_age_seconds
+                    ),
+                    "oldest_domain_publish_attempts": (
+                        domain_health.oldest_publish_attempts
+                    ),
                     "failure_count": len(failures),
                     "failure_channels": channels,
                 },
