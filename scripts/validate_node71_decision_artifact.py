@@ -9,6 +9,28 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+WORKER_VIDEO_REQUIRED_SOURCE_PATHS = {
+    "services/video-generation",
+    "services/asset-storage/src/lumi_asset_storage/s3.py",
+    "apps/worker-media/Dockerfile",
+    "apps/worker-media/pyproject.toml",
+    "apps/worker-media/src/lumi_worker_media/app.py",
+    "apps/worker-media/src/lumi_worker_media/worker_cli.py",
+    "apps/worker-media/src/lumi_worker_media/job_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/event_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/external_wait_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_codec.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_repository.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_ports.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_artifacts.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_cost_runtime.py",
+}
+
 
 class DecisionArtifactError(RuntimeError):
     pass
@@ -52,6 +74,25 @@ def _canonical_run_url(url: object, repository: str) -> tuple[str, str]:
     return url, _positive_run_id(parts[4])
 
 
+def _require_worker_video_provenance(decision: dict[str, Any]) -> None:
+    image_set = decision.get("container_image_set")
+    provenance = image_set.get("provenance") if isinstance(image_set, dict) else None
+    worker = provenance.get("worker-media") if isinstance(provenance, dict) else None
+    source_paths = worker.get("source_paths") if isinstance(worker, dict) else None
+    if not isinstance(source_paths, list) or not all(
+        isinstance(value, str) and bool(value) for value in source_paths
+    ):
+        raise DecisionArtifactError(
+            "NODE-71 worker-media provenance source_paths are missing/invalid"
+        )
+    missing = sorted(WORKER_VIDEO_REQUIRED_SOURCE_PATHS - set(source_paths))
+    if missing:
+        raise DecisionArtifactError(
+            "NODE-71 worker-media provenance is missing Hosted Video sources: "
+            + ", ".join(missing)
+        )
+
+
 def build_provenance(
     *,
     decision_path: Path,
@@ -64,6 +105,7 @@ def build_provenance(
         raise DecisionArtifactError("NODE-71 decision schema_version must be 1")
     if decision.get("passed") is not True:
         raise DecisionArtifactError("NODE-71 decision provenance can only be captured for passed=true decision")
+    _require_worker_video_provenance(decision)
     decision_id = decision.get("decision_id")
     release_candidate = decision.get("release_candidate")
     if not isinstance(decision_id, str) or not decision_id:
@@ -121,6 +163,7 @@ def validate_artifact(
         raise DecisionArtifactError("NODE-71 decision_id differs from provenance")
     if provenance.get("release_candidate") != decision.get("release_candidate"):
         raise DecisionArtifactError("NODE-71 release_candidate differs from provenance")
+    _require_worker_video_provenance(decision)
     return {
         "status": "PASS",
         "workflow_run_id": run_id,
@@ -154,7 +197,14 @@ def self_test() -> dict[str, Any]:
                 "version": "1.0.0-rc.contract",
                 "migration_head": "contract-head",
             },
-            "container_image_set": {"images": {}, "provenance": {}},
+            "container_image_set": {
+                "images": {},
+                "provenance": {
+                    "worker-media": {
+                        "source_paths": sorted(WORKER_VIDEO_REQUIRED_SOURCE_PATHS),
+                    }
+                },
+            },
         }
         _write_json(decision_path, decision)
         provenance = build_provenance(
@@ -219,6 +269,35 @@ def self_test() -> dict[str, Any]:
         _write_json(provenance_path, bad_provenance)
         must_block(
             "run_url_swap_blocked",
+            lambda: validate_artifact(
+                decision_path=decision_path,
+                provenance_path=provenance_path,
+                expected_run_id=run_id,
+                expected_repository=repository,
+            ),
+        )
+        _write_json(provenance_path, provenance)
+
+        missing_video = copy.deepcopy(decision)
+        missing_video["container_image_set"]["provenance"]["worker-media"]["source_paths"].remove(
+            "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py"
+        )
+        _write_json(decision_path, missing_video)
+        must_block(
+            "hosted_video_provenance_write_blocked",
+            lambda: build_provenance(
+                decision_path=decision_path,
+                repository=repository,
+                workflow_run_id=run_id,
+                workflow_run_url=run_url,
+            ),
+        )
+
+        forged = copy.deepcopy(provenance)
+        forged["decision_sha256"] = _sha256(decision_path)
+        _write_json(provenance_path, forged)
+        must_block(
+            "hosted_video_provenance_download_blocked",
             lambda: validate_artifact(
                 decision_path=decision_path,
                 provenance_path=provenance_path,
