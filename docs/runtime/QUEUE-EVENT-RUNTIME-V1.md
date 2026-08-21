@@ -63,18 +63,51 @@ NODE-19 deliberately keeps Celery `task_acks_late=false` and `task_reject_on_wor
 
 ## 6. Outbox dispatcher
 
-Dispatcher transaction:
+The always-on dispatcher splits the shared `outbox_events` table into two explicit channels:
+
+- `MediaJobOutboxDispatcher`: only `event_name = 'job.dispatch.requested'`;
+- `OutboxDispatcher`: all domain events where `event_name <> 'job.dispatch.requested'`.
+
+Both channels use row locking only for the publish transaction:
 
 ```text
 SELECT unpublished rows
 FOR UPDATE SKIP LOCKED
 → increment publish_attempts
 → publish with RabbitMQ publisher confirm when available
-→ set published_at
+→ on success set published_at
 → commit
 ```
 
-A crash after broker publish but before `published_at` can produce a duplicate. This is intentional at-least-once behavior and is absorbed by the Inbox unique key `(consumer, event_id)`.
+Broker failure is deliberately handled **inside** the transaction boundary. The failed row's `publish_attempts + 1` is committed first, `published_at` remains `NULL`, and the original publisher error is re-raised only after the transaction exits. This prevents retry evidence from disappearing through rollback while preserving fail-closed process behavior.
+
+A crash after broker acceptance but before `published_at` can still produce a duplicate. This is intentional at-least-once behavior and is absorbed by downstream idempotency/Inbox uniqueness. Exactly-once broker delivery is not claimed.
+
+### 6.1 Operational health snapshot
+
+Each dispatcher exposes a bounded read-only queue-head snapshot. It does **not** run `COUNT(*)` and does **not** lock rows:
+
+```text
+oldest pending row only
+ORDER BY created_at, id
+LIMIT 1
+→ oldest_unpublished_age_seconds
+→ oldest_publish_attempts
+```
+
+The CLI samples both job and domain queue heads after every dispatch cycle and emits one bounded JSON record with kind `lumi.outbox_dispatcher.health`. The general fields are the maximum of the two channels:
+
+- `oldest_unpublished_age_seconds = max(job_age, domain_age)`;
+- `oldest_publish_attempts = max(job_attempts, domain_attempts)`.
+
+Channel-specific job/domain fields are retained for diagnosis. Exception strings, database DSNs and broker credentials are never serialized into the health payload. A failed cycle emits its health record before the dispatcher exits fail-closed.
+
+Staging and Production derive CloudWatch metrics from these general fields. The current operational alarms are:
+
+- oldest unpublished age `>= 300s` for two 60-second evaluation periods;
+- oldest publish attempts `>= 5` for one 60-second evaluation period.
+
+The alarms use `Maximum`, which is required because Production runs two dispatcher replicas and either replica may observe the unhealthy queue head.
 
 ## 7. Consumer runtime
 
@@ -104,6 +137,8 @@ This database record is the future NODE-64 Admin source. Replay marks `replayed_
 
 Image, video, export and asset-processing queues are isolated. Worker deployments can scale concurrency independently. The default worker prefetch multiplier is `1`, preventing one worker process from reserving a large batch of expensive media jobs.
 
+Dynamic ECS autoscaling remains disabled in the current release until NODE-69 has measured capacity evidence and a real production metric emitter. The outbox dispatcher therefore runs at explicit static capacity: one replica in Staging and two in Production.
+
 ## 10. Security
 
 - RabbitMQ credentials come from environment configuration.
@@ -111,6 +146,8 @@ Image, video, export and asset-processing queues are isolated. Worker deployment
 - Provider secrets and binary media are explicitly blocked from job messages.
 - Domain envelopes are treated as untrusted input and validated before handler execution.
 - Tenant IDs are bound into Inbox/Outbox persistence.
+- The outbox dispatcher receives only PostgreSQL and RabbitMQ secrets, no provider/model/sandbox/auth/search credentials and no S3 IAM capability.
+- Production/Staging dispatcher networking uses the restricted VPC egress branch rather than arbitrary public Internet egress.
 
 ## 11. Verification
 
@@ -118,6 +155,7 @@ Required gates:
 
 ```bash
 python scripts/validate_queue_runtime_contract.py
+python scripts/validate_outbox_dispatcher_observability.py
 uv run pytest apps/worker-media/tests -q
 uv run ruff check apps/worker-media apps/api/src/lumi_api/persistence scripts/validate_queue_runtime_contract.py
 uv run pyright
@@ -127,4 +165,6 @@ make db-upgrade
 bash scripts/db-local schema-check
 ```
 
-Hosted integration additionally exercises RabbitMQ topology, Celery sample delivery, Outbox publish, duplicate Inbox suppression, permanent DLQ, and queue separation.
+Hosted integration additionally exercises RabbitMQ topology, Celery sample delivery, durable Outbox publish-attempt accounting, duplicate Inbox suppression, permanent DLQ, queue separation, and the PostgreSQL-backed queue/event state.
+
+The current repository contract is source-complete for these behaviors, but release acceptance still requires trusted executable evidence from the frozen dependency graph, PostgreSQL, RabbitMQ, Docker and Terraform environments.
