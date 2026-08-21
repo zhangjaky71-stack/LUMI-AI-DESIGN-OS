@@ -33,12 +33,20 @@ def main() -> int:
     )
     require(
         "apps/worker-media/src/lumi_worker_media/event_runtime.py",
+        "class DomainOutboxHealth",
         "FOR UPDATE SKIP LOCKED",
         "ON CONFLICT (consumer, event_id) DO NOTHING",
         "publish_attempts =",
         "published_at = now()",
         "event_name <> $2",
+        "event_name <> $1",
         "JOB_DISPATCH_EVENT_NAME",
+        "failure: Exception | None = None",
+        "failure = exc",
+        "if failure is not None:",
+        "async def health_snapshot(self) -> DomainOutboxHealth:",
+        "ORDER BY created_at, id",
+        "LIMIT 1",
         "message.reject(requeue=False)",
         "dead_letter_records",
     )
@@ -68,6 +76,7 @@ def main() -> int:
         "SET published_at = now()",
         "await asyncio.to_thread(self.publisher.publish, dispatch)",
         "if failure is not None",
+        "async def health_snapshot(self) -> MediaJobOutboxHealth:",
         "exchange=JOBS_EXCHANGE.name",
         "routing_key=IMAGE_TRANSFORM_ROUTING_KEY",
     )
@@ -109,8 +118,16 @@ def main() -> int:
         "failures: list[tuple[str, Exception]] = []",
         "job_published = await job_dispatcher.dispatch_batch",
         "domain_published = await domain_dispatcher.dispatch_batch",
+        "job_health = await job_dispatcher.health_snapshot()",
+        "domain_health = await domain_dispatcher.health_snapshot()",
         'failures.append(("jobs", exc))',
         'failures.append(("domain", exc))',
+        'failures.append(("jobs-health", exc))',
+        'failures.append(("domain-health", exc))',
+        "oldest_unpublished_age_seconds = max(",
+        "oldest_publish_attempts = max(",
+        '"oldest_domain_unpublished_age_seconds"',
+        '"oldest_job_unpublished_age_seconds"',
         "OUTBOX_DISPATCH_FAILED",
         "replay-dead-letter",
         "DEAD_LETTER_ALREADY_REPLAYED",
@@ -118,8 +135,19 @@ def main() -> int:
     require(
         "apps/worker-media/tests/test_queue_cli.py",
         "test_domain_dispatch_still_runs_when_job_dispatch_fails",
+        "MediaJobOutboxHealth",
+        "DomainOutboxHealth",
+        "async def health_snapshot",
         'assert calls == ["jobs", "domain"]',
         "OUTBOX_DISPATCH_FAILED:jobs",
+    )
+    require(
+        "apps/worker-media/tests/test_job_dispatch_observability.py",
+        "test_domain_outbox_failed_publish_attempt_commits_before_fail_closed",
+        "assert connection.transaction_state.committed is True",
+        "assert connection.transaction_state.exc_type is None",
+        "test_domain_dispatch_health_reads_only_oldest_pending_row",
+        "test_dispatch_cli_emits_bounded_combined_json_health_before_failure",
     )
     require(
         "apps/api/alembic/versions/0008_queue_event_runtime.py",
