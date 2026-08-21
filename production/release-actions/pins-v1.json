@@ -119,6 +119,10 @@
   "release_evidence_workflows": [
     ".github/workflows/collect-staging-database-parity.yml",
     ".github/workflows/freeze-staging-database-parity.yml",
+    ".github/workflows/collect-staging-media-generation-e2e.yml",
+    ".github/workflows/freeze-staging-media-generation-e2e.yml",
+    ".github/workflows/collect-staging-tool-gateway-p0-e2e.yml",
+    ".github/workflows/freeze-staging-tool-gateway-p0-e2e.yml",
     ".github/workflows/production-dr-rehearsal.yml",
     ".github/workflows/freeze-production-evidence.yml",
     ".github/workflows/freeze-production-recovery-evidence.yml",
