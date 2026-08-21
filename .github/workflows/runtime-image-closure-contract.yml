@@ -53,6 +53,7 @@ on:
       - "scripts/validate_uv_lock_regeneration_contract.py"
       - "scripts/validate_runtime_image_build_pipeline.py"
       - "scripts/validate_runtime_image_set_contract.py"
+      - "scripts/validate_staging_runtime_image_binding.py"
       - "scripts/validate_runtime_image_closure.py"
       - "scripts/validate_api_provenance_source_manifest.py"
       - "scripts/validate_video_generation_producer_binding.py"
@@ -96,6 +97,7 @@ jobs:
             scripts/validate_uv_lock_regeneration_contract.py \
             scripts/validate_runtime_image_build_pipeline.py \
             scripts/validate_runtime_image_set_contract.py \
+            scripts/validate_staging_runtime_image_binding.py \
             scripts/validate_runtime_image_closure.py \
             scripts/validate_api_provenance_source_manifest.py \
             scripts/validate_video_generation_producer_binding.py \
@@ -143,6 +145,7 @@ jobs:
           python scripts/verify_runtime_image_attestations.py --self-test
           python scripts/validate_runtime_image_build_pipeline.py
           python scripts/validate_runtime_image_set_contract.py
+          python scripts/validate_staging_runtime_image_binding.py --self-test
           python scripts/validate_api_provenance_source_manifest.py
           python scripts/validate_video_generation_producer_binding.py
           python scripts/validate_release_action_pins.py
