@@ -1,19 +1,20 @@
 # NODE-72 — Production Deployment & Infrastructure — Release Evidence
 
-> Status: **SOURCE IMPLEMENTED / ATTESTED RC PROMOTION SOURCE-CLOSED / CLOUD VALIDATION PENDING / GO-LIVE BLOCKED**  
+> Status: **SOURCE IMPLEMENTED / IMMUTABLE-GIT ATTESTED RC PROMOTION SOURCE-CLOSED / CLOUD VALIDATION PENDING / GO-LIVE BLOCKED**  
 > Evidence date: 2026-08-21  
 > Branch: `release-closure-p0`  
-> Current sampled head: `29602f4d0f5117f174ae4f4c806145c420635050`
+> Runtime provenance hardening baseline: `9388984516602c3102d985797b51ad188b910bd9`  
+> Latest sampled execution head: `9388984516602c3102d985797b51ad188b910bd9`
 
 ## 1. Current decision
 
-NODE-72 has a production deployment control plane and IaC source baseline. The source path from an attested six-runtime NODE-71 image build to the NODE-72 Production gate is now fail-closed, but **no real Production deployment has been proven**.
+NODE-72 has a production deployment control plane and IaC source baseline. The source path from an exact immutable Git source through an attested six-runtime NODE-71 image set to the NODE-72 Production gate is now fail-closed, but **no real Production deployment has been proven**.
 
-A Terraform tree, a frozen manifest, or a source validator is not Production evidence. Production PASS still requires the exact NODE-71 accepted RC to be built, attested, deployed to production-like Staging, accepted, promoted without rebuild, provisioned, migrated, canaried, observed, smoke-tested and rollback-tested in the target cloud environment.
+A Terraform tree, frozen manifest, source validator, or zero-step CI run is not Production evidence. Production PASS still requires the exact NODE-71 accepted RC to be built, attested, deployed to production-like Staging, accepted, promoted without rebuild, provisioned, migrated, canaried, observed, smoke-tested and rollback-tested in the target cloud environment.
 
 ```text
 SOURCE IMPLEMENTED
-ATTESTED RC PROMOTION CONTRACT: SOURCE-CLOSED
+IMMUTABLE-GIT ATTESTED RC PROMOTION CONTRACT: SOURCE-CLOSED
 HOSTED EXECUTION: BLOCKED BEFORE STEPS START
 CLOUD VALIDATION: PENDING
 PRODUCTION: NOT PROVISIONED BY THIS EVIDENCE
@@ -26,10 +27,17 @@ The source chain is now:
 
 ```text
 exact release-closure-p0 Git SHA
-→ six exact runtime Dockerfile/build blocks
-→ root build context + .dockerignore provenance-source guard
+→ six SHA-pinned remote Git contexts
+   https://github.com/${GITHUB_REPOSITORY}.git#${GITHUB_SHA}
+→ exact per-runtime Dockerfile + linux/amd64
+→ BuildKit max SLSA v0.2 provenance
+   configSource URI == repository.git#RC_SHA
+   configSource.digest.sha1 == RC_SHA
+   configSource.entryPoint == runtime Dockerfile
+   invocation.environment.platform == linux/amd64
+   materials != []
 → immutable registry digests
-→ BuildKit max provenance + SPDX SBOM
+→ SPDX SBOM
 → GitHub artifact attestation
    signer workflow + source SHA + release ref + hosted-runner identity
 → frozen container-image-set.json + attestation-verification.json
@@ -42,7 +50,7 @@ exact release-closure-p0 Git SHA
 
 ### 2.1 Exact per-runtime build identity
 
-`scripts/validate_runtime_image_build_pipeline.py` now binds every runtime independently rather than relying only on six global counts. For each of:
+`scripts/validate_runtime_image_build_pipeline.py` binds every runtime independently. For each of:
 
 ```text
 api
@@ -53,87 +61,73 @@ worker-media
 sandbox-runtime
 ```
 
-it requires the correct Dockerfile, root context, `linux/amd64`, immutable `rc-${GITHUB_SHA}` tag, the runtime's own build-step digest, the runtime's own GitHub attestation step, the corresponding SBOM reference, provenance output, and freeze fragment.
+it requires:
 
-`.dockerignore` is now part of the Runtime Image Closure trigger and the source contract fails closed if a positive ignore rule can remove a runtime `source_paths` entry declared by `production/runtime-images/manifest-v1.json`.
+- the correct Dockerfile;
+- immutable remote Git context pinned to `${{ github.sha }}`;
+- `linux/amd64`;
+- immutable `rc-${GITHUB_SHA}` tag;
+- `provenance: mode=max,version=v0.2`;
+- scoped `GIT_AUTH_TOKEN` for Git context resolution;
+- the runtime's own build-step digest;
+- the runtime's own GitHub attestation subject/digest;
+- the corresponding SBOM reference, provenance output and freeze fragment.
 
-### 2.2 Registry digest / attestation / source SHA binding
+The validator rejects release-image regression to `context: .` or `{{defaultContext}}`. `.dockerignore` remains part of Runtime Image Closure so declared runtime source paths cannot be silently excluded from supported source topology.
 
-`scripts/verify_runtime_image_attestations.py` already requires live registry resolution plus GitHub artifact attestation verification against:
+### 2.2 Registry digest / attestation / actual BuildKit source binding
+
+`scripts/verify_runtime_image_attestations.py` requires live registry resolution plus GitHub artifact attestation verification against:
 
 - canonical signer workflow `.github/workflows/build-runtime-image-set.yml`;
 - exact `GITHUB_SHA` source digest;
 - exact `refs/heads/release-closure-p0` source ref;
 - exact workflow ref;
-- `--deny-self-hosted-runners`;
-- actual BuildKit provenance metadata;
-- actual SPDX SBOM metadata.
+- `--deny-self-hosted-runners`.
 
-`scripts/runtime_image_set.py` now additionally refuses to freeze an image set unless:
+It also validates the actual BuildKit SLSA v0.2 provenance for each digest, rather than merely checking that a provenance object exists. The verifier requires:
 
-- report `github_attestation_policy.source_digest == frozen release_candidate.git_sha`;
-- every runtime result carries the same signer/source policy as the report-level policy;
-- all six exact image digests are covered;
-- all six registry digests and GitHub attestations report PASS;
-- BuildKit provenance and SBOM summaries are present.
+```text
+buildType == https://mobyproject.org/buildkit@v1
+configSource.uri == https://github.com/<owner>/<repo>.git#<RC_SHA>
+configSource.digest.sha1 == <RC_SHA>
+configSource.entryPoint == <service Dockerfile>
+invocation.environment.platform == linux/amd64
+materials is a non-empty array
+```
 
-The frozen metadata now includes `source_digest` alongside the attestation report SHA-256.
+SPDX SBOM metadata is independently required. This closes the code-addressable gap where a workflow could previously have a valid GitHub attestation while the BuildKit provenance itself did not prove the exact immutable Git source/Dockerfile used for the image bytes.
+
+`scripts/runtime_image_set.py` refuses to freeze an image set unless report `source_digest == frozen release_candidate.git_sha`, every runtime result carries the same signer/source policy, all six exact image digests are covered, and provenance/SBOM summaries are present.
 
 ### 2.3 NODE-71 sealed decision
 
-`validate_staging_runtime_image_binding.py` now cross-checks the downloaded frozen artifact, attestation report SHA-256, source digest, build repository/run identity, evidence RC SHA/version and exact six-runtime image/provenance set.
+`validate_staging_runtime_image_binding.py` cross-checks the downloaded frozen artifact, attestation report SHA-256, source digest, build repository/run identity, evidence RC SHA/version and exact six-runtime image/provenance set.
 
 `bind_node71_runtime_image_decision.py` then seals the verified result into the passed NODE-71 decision as the exact field set:
 
 ```text
 status
- git_sha
- version
- build_run_id
- container_image_set_ref
- attestation_report_sha256
- attestation_source_digest
- runtime_count
+git_sha
+version
+build_run_id
+container_image_set_ref
+attestation_report_sha256
+attestation_source_digest
+runtime_count
 ```
 
-The sealer recalculates `decision_id`, so runtime-image attestation identity is inside the decision identity rather than being a side file only. The human decision Markdown is updated to the resealed decision ID.
-
-`validate_node71_decision_artifact.py` now refuses both provenance creation and provenance verification unless this runtime-image seal exists and matches the NODE-71 release candidate. Decision provenance copies the seal as well as hashing the complete sealed `decision.json`.
-
-The NODE-71 workflow contract locks the required order:
-
-```text
-live staging evidence binding
-< frozen image-set download
-< runtime-image attestation binding
-< staging acceptance decision
-< runtime-image decision seal
-< decision provenance capture
-< provenance self-verification
-< artifact archive
-```
+The sealer recalculates `decision_id`, so runtime-image attestation identity is inside the decision identity. `validate_node71_decision_artifact.py` refuses provenance creation or verification unless that seal exists and matches the NODE-71 release candidate.
 
 ### 2.4 NODE-72 direct promotion gate
 
-`production-deployment-gate.py` no longer checks only the six accepted digest strings. It directly rejects a NODE-71 decision when:
+`production-deployment-gate.py` rejects a NODE-71 decision when the runtime-image binding is missing or malformed; SHA/version differ from the Production RC; build run id is invalid; frozen artifact ref differs; attestation report hash/source digest is invalid; runtime count is not exactly six; or Production image digests differ from NODE-71 accepted image digests.
 
-- `runtime_image_binding` is absent or not exactly shaped;
-- binding status is not PASS;
-- binding SHA/version differ from the Production RC;
-- runtime image build run id is not a positive GitHub Actions run id;
-- frozen image-set artifact ref differs from NODE-71 RC identity;
-- attestation report SHA-256 is malformed;
-- attestation source digest differs from the Production RC SHA;
-- runtime count is not exactly six;
-- Production image digests differ from NODE-71 accepted image digests.
-
-The normalized runtime-image seal is included in the Production gate payload and therefore in `gate_id`.
-
-`validate_production_deployment_contract.py` contains negative drills for missing seal, source-SHA swap, invalid build run, invalid report hash, artifact-ref swap and unexpected seal fields. `validate_production_node71_workflow_contract.py` independently locks the NODE-71 sealer interlock and the NODE-72 promotion checks.
+The normalized runtime-image seal contributes to the Production `gate_id`. `validate_production_deployment_contract.py` and `validate_production_node71_workflow_contract.py` independently lock those semantics.
 
 ## 3. Other Production source controls implemented
 
-The existing NODE-72 source baseline also includes:
+The NODE-72 source baseline also includes:
 
 - exact NODE-71 decision/run/path and decision-provenance verification;
 - same RC Git SHA, version and migration head;
@@ -144,51 +138,48 @@ The existing NODE-72 source baseline also includes:
 - KMS/private/versioned S3;
 - per-service ECS task/execution roles and Cloud Map;
 - Route53/ACM/HTTPS/WAF edge;
-- API 5% ECS-native canary + bake + alarm rollback;
+- API canary + bake + alarm rollback;
 - rolling/circuit-breaker deployment for internal services;
 - one-shot Alembic migration and exit-code gate;
 - GitHub Environment + OIDC Production mutation boundary;
 - ECS steady-state evidence and read-only Production smoke;
-- first-day provider spend hard limit <= $100 in the release manifest, while durable Provider spend enforcement remains separately required from NODE-27/22 runtime evidence.
+- provider spend hard-limit policy while durable Provider spend enforcement remains separately required from NODE-27/22 runtime evidence.
 
 ## 4. Current Hosted CI evidence
 
-Sampled head: `29602f4d0f5117f174ae4f4c806145c420635050`.
-
-### Runtime Image Closure
+Sampled head: `9388984516602c3102d985797b51ad188b910bd9`.
 
 ```text
-run_id: 32459558295
-runtime-image-closure job_id: 96703575372
-conclusion: failure
-logs_url: null
-steps: null
-```
+Runtime Image Closure Contract
+run_id: 32462283655
+runtime-image-closure job_id: 96711482008
+failure / logs_url=null / steps=null
 
-### Production IaC Contract
+Staging Acceptance Gate
+run_id: 32462283704
+canonical-lock-gate job_id: 96711482611 -> failure / logs_url=null / steps=null
+source-contract job_id: 96711482808 -> failure / logs_url=null / steps=null
+contract-gate job_id: 96711514824 -> failure / logs_url=null / steps=null
+remote-read-only-preflight -> skipped
+acceptance-decision -> skipped
 
-```text
-run_id: 32459558285
-terraform-static job_id: 96703575564 -> failure, logs_url=null, steps=null
-source-contract job_id: 96703575742 -> failure, logs_url=null, steps=null
-contract-gate job_id: 96703588716 -> failure, logs_url=null, steps=null
-```
+Production IaC Contract
+run_id: 32462283621
+terraform-static job_id: 96711482728 -> failure / logs_url=null / steps=null
+source-contract job_id: 96711483040 -> failure / logs_url=null / steps=null
+contract-gate job_id: 96711522020 -> failure / logs_url=null / steps=null
 
-### Final Product Acceptance Gate
-
-```text
-run_id: 32459558476
-source-contract job_id: 96703576056 -> failure, logs_url=null, steps=null
-canonical-lock-gate job_id: 96703576351 -> failure, logs_url=null, steps=null
-node73-final-contract-gate job_id: 96703611450 -> failure, logs_url=null, steps=null
+Final Product Acceptance Gate
+run_id: 32462283662
+source-contract job_id: 96711482533 -> failure / logs_url=null / steps=null
+canonical-lock-gate job_id: 96711482731 -> failure / logs_url=null / steps=null
+node73-final-contract-gate job_id: 96711498190 -> failure / logs_url=null / steps=null
 final-decision -> skipped
 ```
 
-These are the same zero-step Hosted-runner failures seen on prior heads. No checkout, Python validator, runtime-image self-test, Terraform, `uv`, Docker, registry attestation, Staging or Production command is evidenced as having executed in those jobs. They are **not evidence that the new contracts failed**, and they are **not PASS evidence**.
+These are zero-step Hosted-runner failures. No checkout, Python validator, runtime-image self-test, Terraform, `uv`, Docker, registry attestation, Staging or Production command is evidenced as having executed. They are **not evidence that the new contracts failed**, and they are **not PASS evidence**.
 
 ## 5. Runtime evidence required before PASS
-
-All remain unchecked until actual execution produces immutable evidence.
 
 ### Canonical dependency / CI
 
@@ -198,10 +189,11 @@ All remain unchecked until actual execution produces immutable evidence.
 
 ### Runtime images / attestations
 
-- [ ] Canonical six-runtime build workflow executes from the exact RC SHA.
+- [ ] Canonical six-runtime build workflow executes from the exact RC SHA remote Git context.
 - [ ] Six registry image digests are resolvable.
-- [ ] Six GitHub artifact attestations verify against the canonical signer workflow, exact source SHA/ref and hosted-runner policy.
-- [ ] Six BuildKit provenance records and SPDX SBOMs are retrieved from the actual images.
+- [ ] Six GitHub artifact attestations verify against canonical signer/source/ref/runner policy.
+- [ ] Six BuildKit provenance records prove exact repository, RC SHA, service Dockerfile, `linux/amd64` and non-empty materials.
+- [ ] Six SPDX SBOMs are retrieved from the actual images.
 - [ ] `container-image-set.json` and `attestation-verification.json` are frozen and archived from that exact build run.
 - [ ] NODE-71 downloads that exact build artifact and emits a sealed `passed=true` decision.
 - [ ] Production consumes the exact NODE-71 accepted digests without rebuilding them.
@@ -238,35 +230,17 @@ production/runtime-images/manifest-v1.json
 .github/workflows/staging-acceptance-gate.yml
 .github/workflows/deploy-production.yml
 .github/workflows/production-iac-contract.yml
+.github/workflows/final-acceptance-gate.yml
 scripts/verify_runtime_image_attestations.py
 scripts/runtime_image_set.py
 scripts/validate_runtime_image_build_pipeline.py
 scripts/validate_runtime_image_set_contract.py
 scripts/validate_staging_runtime_image_binding.py
 scripts/bind_node71_runtime_image_decision.py
-scripts/validate_staging_runtime_image_workflow_contract.py
 scripts/validate_node71_decision_artifact.py
 scripts/production-deployment-gate.py
 scripts/validate_production_deployment_contract.py
 scripts/validate_production_node71_workflow_contract.py
-infra/iac/
-reports/production-deployments/
 ```
 
-## 8. Completion rule
-
-NODE-72 may move to COMPLETE only when:
-
-```text
-canonical dependencies resolved
-+ exact six-runtime registry images built and attestations/SBOM/provenance verified
-+ same immutable image set accepted by real NODE-71 Staging decision
-+ same digests promoted to Production without rebuild
-+ Production infrastructure provisioned through controlled CI/CD
-+ migration/canary/smoke/SLO green
-+ rollback/recovery/security/cost controls proven
-```
-
-Until then:
-
-**SOURCE IMPLEMENTED / ATTESTED RC PROMOTION SOURCE-CLOSED / CLOUD VALIDATION PENDING / GO-LIVE BLOCKED**.
+NODE-72 remains blocked until the exact NODE-71 accepted RC is proven by real runtime/cloud evidence and promoted without rebuild.
