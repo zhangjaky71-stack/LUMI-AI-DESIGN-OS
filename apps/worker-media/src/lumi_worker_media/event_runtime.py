@@ -92,6 +92,7 @@ class OutboxDispatcher:
             raise ValueError("OUTBOX_BATCH_LIMIT_INVALID")
         connection = await asyncpg.connect(self.dsn)
         published = 0
+        failure: Exception | None = None
         try:
             async with connection.transaction():
                 rows = await connection.fetch(
@@ -126,12 +127,18 @@ class OutboxDispatcher:
                         ),
                         record.event_id,
                     )
-                    await asyncio.to_thread(self.publisher.publish, record)
+                    try:
+                        await asyncio.to_thread(self.publisher.publish, record)
+                    except Exception as exc:
+                        failure = exc
+                        break
                     await connection.execute(
                         "UPDATE outbox_events SET published_at = now() WHERE id = $1",
                         record.event_id,
                     )
                     published += 1
+            if failure is not None:
+                raise failure
             return published
         finally:
             await connection.close()
