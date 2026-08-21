@@ -10,7 +10,6 @@ import time
 import urllib.error
 import urllib.request
 from decimal import Decimal, InvalidOperation
-from types import MappingProxyType
 from typing import Any, Mapping
 from uuid import UUID, uuid5
 
