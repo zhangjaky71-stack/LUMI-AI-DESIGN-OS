@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from fnmatch import fnmatchcase
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "production" / "runtime-images" / "manifest-v1.json"
 WORKFLOW = ROOT / ".github" / "workflows" / "build-runtime-image-set.yml"
+CLOSURE_WORKFLOW = ROOT / ".github" / "workflows" / "runtime-image-closure-contract.yml"
 ATTESTATION_VERIFIER = ROOT / "scripts" / "verify_runtime_image_attestations.py"
+DOCKERIGNORE = ROOT / ".dockerignore"
 EXPECTED = {
     "api": "apps/api/Dockerfile",
     "agent-runtime": "apps/agent-runtime/Dockerfile",
@@ -15,6 +18,44 @@ EXPECTED = {
     "tool-gateway": "services/tool-gateway/Dockerfile",
     "worker-media": "apps/worker-media/Dockerfile",
     "sandbox-runtime": "services/sandbox-runtime/Dockerfile",
+}
+BUILD_BINDINGS = {
+    "api": ("API", "api", "build_api", "attest_api", "API_PROVENANCE"),
+    "agent-runtime": (
+        "Agent Runtime",
+        "agent-runtime",
+        "build_agent_runtime",
+        "attest_agent_runtime",
+        "AGENT_PROVENANCE",
+    ),
+    "model-gateway": (
+        "Model Gateway",
+        "model-gateway",
+        "build_model_gateway",
+        "attest_model_gateway",
+        "MODEL_PROVENANCE",
+    ),
+    "tool-gateway": (
+        "Tool Gateway",
+        "tool-gateway",
+        "build_tool_gateway",
+        "attest_tool_gateway",
+        "TOOL_PROVENANCE",
+    ),
+    "worker-media": (
+        "Worker Media",
+        "worker-media",
+        "build_worker_media",
+        "attest_worker_media",
+        "WORKER_PROVENANCE",
+    ),
+    "sandbox-runtime": (
+        "Sandbox Runtime",
+        "sandbox-runtime",
+        "build_sandbox_runtime",
+        "attest_sandbox_runtime",
+        "SANDBOX_PROVENANCE",
+    ),
 }
 PINNED_ACTIONS = {
     "checkout": "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0",
@@ -37,6 +78,50 @@ def _require(condition: bool, message: str) -> None:
         raise PipelineContractError(message)
 
 
+def _dockerignore_candidates(source: str) -> tuple[str, ...]:
+    path = PurePosixPath(source.strip("/"))
+    parts = path.parts
+    return tuple("/".join(parts[:index]) for index in range(1, len(parts) + 1))
+
+
+def _positive_ignore_rule_matches(rule: str, source: str) -> bool:
+    pattern = rule.strip().lstrip("/")
+    if not pattern or pattern.startswith("!"):
+        return False
+    if pattern.endswith("/"):
+        pattern = pattern.rstrip("/") + "/**"
+    for candidate in _dockerignore_candidates(source):
+        if fnmatchcase(candidate, pattern):
+            return True
+        if "/" not in pattern and fnmatchcase(PurePosixPath(candidate).name, pattern):
+            return True
+    return False
+
+
+def _validate_dockerignore(payload: dict[str, object]) -> None:
+    _require(DOCKERIGNORE.is_file(), ".dockerignore is missing from the root build context")
+    rules = [
+        line.strip()
+        for line in DOCKERIGNORE.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    runtimes = payload.get("runtimes")
+    _require(isinstance(runtimes, dict), "runtime image manifest runtimes missing")
+    for service, item in runtimes.items():
+        _require(isinstance(item, dict), f"runtime image manifest entry missing: {service}")
+        sources = item.get("source_paths")
+        _require(isinstance(sources, list), f"{service} provenance sources missing")
+        for raw_source in sources:
+            source = str(raw_source)
+            for rule in rules:
+                if rule.startswith("!"):
+                    continue
+                _require(
+                    not _positive_ignore_rule_matches(rule, source),
+                    f".dockerignore rule {rule!r} can remove declared {service} provenance source {source!r}",
+                )
+
+
 def _load_manifest() -> dict[str, object]:
     payload = json.loads(MANIFEST.read_text(encoding="utf-8"))
     _require(isinstance(payload, dict), "runtime image manifest must be an object")
@@ -51,6 +136,7 @@ def _load_manifest() -> dict[str, object]:
         _require((ROOT / dockerfile).is_file(), f"{service} Dockerfile missing")
         sources = item.get("source_paths")
         _require(isinstance(sources, list) and len(sources) > 0, f"{service} provenance sources missing")
+    _validate_dockerignore(payload)
     return payload
 
 
@@ -102,6 +188,54 @@ def validate_attestation_verifier() -> None:
         "policy = resolve_github_attestation_policy(args.repository, os.environ)" in text,
         "live verifier must derive signer/source identity from immutable GitHub Actions environment",
     )
+
+
+def _validate_exact_runtime_build_blocks(text: str) -> None:
+    ordered = list(EXPECTED)
+    for index, service in enumerate(ordered):
+        display, image_suffix, build_id, attest_id, provenance_env = BUILD_BINDINGS[service]
+        dockerfile = EXPECTED[service]
+        build_marker = f"- name: Build and push {display}"
+        attest_marker = f"- name: Attest {display} image"
+        if index + 1 < len(ordered):
+            next_display = BUILD_BINDINGS[ordered[index + 1]][0]
+            next_marker = f"- name: Build and push {next_display}"
+        else:
+            next_marker = "- name: Verify all six immutable runtime image attestations"
+
+        build_block = _block(text, build_marker, attest_marker)
+        attest_block = _block(text, attest_marker, next_marker)
+        build_markers = (
+            f"id: {build_id}",
+            PINNED_ACTIONS["build-push"],
+            "context: .",
+            f"file: {dockerfile}",
+            "platforms: linux/amd64",
+            "push: true",
+            "tags: ${{ env.IMAGE_BASE }}-" + image_suffix + ":rc-${{ github.sha }}",
+            "provenance: mode=max",
+            "sbom: true",
+        )
+        for marker in build_markers:
+            _require(marker in build_block, f"{service} build block missing exact runtime binding: {marker}")
+
+        attest_markers = (
+            f"id: {attest_id}",
+            PINNED_ACTIONS["attest"],
+            "subject-name: ${{ env.IMAGE_BASE }}-" + image_suffix,
+            "subject-digest: ${{ steps." + build_id + ".outputs.digest }}",
+            "push-to-registry: true",
+        )
+        for marker in attest_markers:
+            _require(marker in attest_block, f"{service} attestation block missing exact build binding: {marker}")
+
+        _require(
+            provenance_env
+            + ": ${{ steps."
+            + attest_id
+            + ".outputs['attestation-url'] }}" in text,
+            f"{service} frozen provenance reference must come from its own attestation step",
+        )
 
 
 def validate_workflow() -> None:
@@ -198,7 +332,7 @@ def validate_workflow() -> None:
         text.count("python3 scripts/runtime_image_set.py fragment") == 6,
         "all six image digests must produce freeze fragments",
     )
-    _require(text.count("@${{ steps.build_") >= 12, "attestation verification and frozen refs must use exact build-step digests")
+    _validate_exact_runtime_build_blocks(build)
 
     verification = _block(
         build,
@@ -209,7 +343,17 @@ def validate_workflow() -> None:
     _require("python3 scripts/verify_runtime_image_attestations.py" in verification, "live attestation verifier is missing")
     _require('--repository "$GITHUB_REPOSITORY"' in verification, "attestation verification must bind repository identity")
     for service in EXPECTED:
-        _require(f'--image "{service}=' in verification, f"attestation verification is missing runtime: {service}")
+        _, image_suffix, build_id, _, _ = BUILD_BINDINGS[service]
+        exact_image = (
+            '--image "'
+            + service
+            + '=${IMAGE_BASE}-'
+            + image_suffix
+            + '@${{ steps.'
+            + build_id
+            + '.outputs.digest }}"'
+        )
+        _require(exact_image in verification, f"attestation verification is not bound to {service} build digest")
     _require(
         '--out "${root}/attestation-verification.json"' in verification,
         "attestation verification must persist one report beside the frozen image set",
@@ -229,18 +373,46 @@ def validate_workflow() -> None:
     _require('test -f "${root}/attestation-verification.json"' in freeze_block, "freeze must require the attestation verification report")
     _require('.get("status")' in freeze_block and '= "PASS"' in freeze_block, "freeze must fail closed unless attestation verification status is PASS")
     for service in EXPECTED:
+        _, image_suffix, build_id, _, provenance_env = BUILD_BINDINGS[service]
         _require(f"--service {service}" in freeze_block, f"{service} freeze fragment missing")
-        _require(f"-{service}@${{{{ steps.build_" in freeze_block, f"{service} immutable digest freeze missing")
+        exact_image = (
+            '--image "${IMAGE_BASE}-'
+            + image_suffix
+            + '@${{ steps.'
+            + build_id
+            + '.outputs.digest }}"'
+        )
+        _require(exact_image in freeze_block, f"{service} frozen image is not bound to its own build digest")
+        exact_sbom = (
+            '--sbom-ref "oci://${IMAGE_BASE}-'
+            + image_suffix
+            + '@${{ steps.'
+            + build_id
+            + '.outputs.digest }}#attestation=sbom"'
+        )
+        _require(exact_sbom in freeze_block, f"{service} frozen SBOM is not bound to its own build digest")
+        _require(
+            '--provenance-ref "$' + provenance_env + '"' in freeze_block,
+            f"{service} frozen provenance is not bound to its own attestation output",
+        )
     _require("--git-sha \"$GITHUB_SHA\"" in freeze_block, "frozen set must bind exact Git SHA")
-    _require("#attestation=sbom" in freeze_block, "frozen set must retain SBOM reference")
-    _require("--provenance-ref" in freeze_block, "frozen set must retain provenance reference")
+
+    closure = CLOSURE_WORKFLOW.read_text(encoding="utf-8")
+    _require(
+        '- ".dockerignore"' in closure,
+        "Runtime Image Closure pull_request paths must include .dockerignore build-context changes",
+    )
+    _require(
+        'scripts/validate_runtime_image_build_pipeline.py' in closure,
+        "Runtime Image Closure must continue executing the build-pipeline validator",
+    )
 
 
 def main() -> int:
     _load_manifest()
     validate_attestation_verifier()
     validate_workflow()
-    print("Six-runtime RC image signer/source attestation/freeze pipeline contract: PASS")
+    print("Six-runtime RC image signer/source/recipe/digest attestation/freeze pipeline contract: PASS")
     return 0
 
 
