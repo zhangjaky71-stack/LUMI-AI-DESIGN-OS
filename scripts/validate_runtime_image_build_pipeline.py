@@ -157,6 +157,9 @@ def validate_attestation_verifier() -> None:
     for marker in (
         'RELEASE_SOURCE_REF = "refs/heads/release-closure-p0"',
         'SIGNER_WORKFLOW_PATH = ".github/workflows/build-runtime-image-set.yml"',
+        'BUILDKIT_BUILD_TYPE = "https://mobyproject.org/buildkit@v1"',
+        'BUILDKIT_PLATFORM = "linux/amd64"',
+        'EXPECTED_DOCKERFILES = {',
         'env.get("GITHUB_SHA", "").lower()',
         'env.get("GITHUB_REF", "")',
         'env.get("GITHUB_WORKFLOW_REF", "")',
@@ -164,6 +167,11 @@ def validate_attestation_verifier() -> None:
         '"--source-digest"',
         '"--source-ref"',
         '"--deny-self-hosted-runners"',
+        'config_source = invocation.get("configSource")',
+        'config_source.get("entryPoint") == dockerfile',
+        'source_digests.get("sha1") == source_digest',
+        'environment.get("platform") == BUILDKIT_PLATFORM',
+        '"source_uri": source_uri',
         '"github_attestation_policy"',
         '"signer_workflow": policy.signer_workflow',
         '"source_digest": policy.source_digest',
@@ -171,8 +179,9 @@ def validate_attestation_verifier() -> None:
         '"workflow_ref": policy.workflow_ref',
         '"deny_self_hosted_runners": policy.deny_self_hosted_runners',
         "bad_identity_envs = [",
+        "bad_provenance = [",
     ):
-        _require(marker in text, f"runtime attestation verifier missing signer/source identity marker: {marker}")
+        _require(marker in text, f"runtime attestation verifier missing immutable signer/source marker: {marker}")
 
     command_start = text.find('"gh",\n            "attestation",\n            "verify"')
     signer_pos = text.find('"--signer-workflow"', command_start)
@@ -187,6 +196,12 @@ def validate_attestation_verifier() -> None:
     _require(
         "policy = resolve_github_attestation_policy(args.repository, os.environ)" in text,
         "live verifier must derive signer/source identity from immutable GitHub Actions environment",
+    )
+    _require(
+        "repository=policy.repository" in text
+        and "source_digest=policy.source_digest" in text
+        and "dockerfile=EXPECTED_DOCKERFILES[target.service]" in text,
+        "live BuildKit provenance validation must bind repository, RC SHA, and runtime Dockerfile",
     )
 
 
@@ -208,16 +223,18 @@ def _validate_exact_runtime_build_blocks(text: str) -> None:
         build_markers = (
             f"id: {build_id}",
             PINNED_ACTIONS["build-push"],
-            "context: .",
+            "context: https://github.com/${{ github.repository }}.git#${{ github.sha }}",
             f"file: {dockerfile}",
             "platforms: linux/amd64",
             "push: true",
             "tags: ${{ env.IMAGE_BASE }}-" + image_suffix + ":rc-${{ github.sha }}",
-            "provenance: mode=max",
+            "provenance: mode=max,version=v0.2",
             "sbom: true",
+            "secrets: |",
+            "GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}",
         )
         for marker in build_markers:
-            _require(marker in build_block, f"{service} build block missing exact runtime binding: {marker}")
+            _require(marker in build_block, f"{service} build block missing exact immutable Git-source binding: {marker}")
 
         attest_markers = (
             f"id: {attest_id}",
@@ -323,7 +340,12 @@ def validate_workflow() -> None:
     )
     _require(text.count("ref: ${{ github.sha }}") >= 2, "both source-gate and build job must checkout exact dispatch SHA")
     _require("latest" not in text.casefold(), "runtime image build workflow must not publish a latest tag")
-    _require(text.count("provenance: mode=max") == 6, "all six images require max provenance")
+    immutable_context = "context: https://github.com/${{ github.repository }}.git#${{ github.sha }}"
+    _require(text.count(immutable_context) == 6, "all six images must build from the immutable RC Git context")
+    _require("context: ." not in build, "release runtime images must not use mutable local path context")
+    _require("{{defaultContext}}" not in build, "release runtime images must not build from a mutable branch/ref default context")
+    _require(text.count("GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}") == 6, "all six immutable private Git contexts require scoped Git auth")
+    _require(text.count("provenance: mode=max,version=v0.2") == 6, "all six images require pinned max SLSA v0.2 provenance")
     _require(text.count("sbom: true") == 6, "all six images require SBOM attestation")
     _require(text.count("push-to-registry: true") == 6, "all six images require GitHub registry attestation")
     _require(text.count(PINNED_ACTIONS["build-push"]) == 6, "all six builds must use the approved immutable build-push action")
@@ -412,7 +434,7 @@ def main() -> int:
     _load_manifest()
     validate_attestation_verifier()
     validate_workflow()
-    print("Six-runtime RC image signer/source/recipe/digest attestation/freeze pipeline contract: PASS")
+    print("Six-runtime RC immutable Git-source/signer/recipe/digest attestation/freeze pipeline contract: PASS")
     return 0
 
 
