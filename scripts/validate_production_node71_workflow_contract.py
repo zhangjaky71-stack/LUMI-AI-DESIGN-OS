@@ -6,6 +6,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "deploy-production.yml"
 MANIFEST = ROOT / "production" / "deployment" / "manifest-template.json"
+DEPLOYMENT_GATE = ROOT / "scripts" / "production-deployment-gate.py"
+STAGING_WORKFLOW_CONTRACT = ROOT / "scripts" / "validate_staging_runtime_image_workflow_contract.py"
 CANONICAL_PATH = "reports/production-deployments/runtime/node71/decision.json"
 DOWNLOAD_ACTION = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1"
 
@@ -35,6 +37,8 @@ def _job_block(text: str, job_name: str, next_job: str | None) -> str:
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     manifest_text = MANIFEST.read_text(encoding="utf-8")
+    gate_text = DEPLOYMENT_GATE.read_text(encoding="utf-8")
+    staging_contract_text = STAGING_WORKFLOW_CONTRACT.read_text(encoding="utf-8")
 
     require("acceptance_decision_path:" not in text, "manual NODE-71 decision path input must remain removed")
     for marker in (
@@ -54,6 +58,24 @@ def main() -> int:
         CANONICAL_PATH,
     ):
         require(marker in text, f"production workflow missing NODE-71 binding marker: {marker}")
+
+    for marker in (
+        "_validate_runtime_image_seal(",
+        'decision.get("runtime_image_binding")',
+        'binding.get("attestation_source_digest") == manifest_sha',
+        'binding.get("runtime_count") == 6',
+        '"runtime_image_binding": decision.get("runtime_image_binding", {})',
+    ):
+        require(marker in gate_text, f"production deployment gate missing runtime attestation promotion marker: {marker}")
+    for marker in (
+        "bind_node71_runtime_image_decision.py --self-test",
+        "Seal verified runtime-image attestation into NODE-71 decision",
+        "seal_pos < provenance_pos < self_verify_pos < upload_pos",
+    ):
+        require(
+            marker in staging_contract_text,
+            f"production promotion must depend on NODE-71 runtime attestation decision-sealing interlock: {marker}",
+        )
 
     header = text[: text.find("jobs:\n")]
     require(
@@ -119,7 +141,7 @@ def main() -> int:
         "production manifest must fix the canonical downloaded NODE-71 path",
     )
 
-    print("NODE-72 exact NODE-71 artifact and scoped production OIDC workflow contract: PASS")
+    print("NODE-72 exact NODE-71 artifact + runtime attestation seal promotion + scoped production OIDC workflow contract: PASS")
     return 0
 
 
