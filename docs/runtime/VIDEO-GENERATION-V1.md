@@ -134,7 +134,7 @@ For the current OpenAI Hosted adapter:
 - source-image/reference inputs remain fail-closed until an authorized Asset-to-provider input boundary exists;
 - cancellation remains fail-closed because deletion is not treated as proven in-progress cancellation.
 
-## 8. Provider output materialization
+## 8. Provider output materialization and crash-safe cleanup
 
 Provider output is never accepted through a public URL as durable truth.
 
@@ -149,6 +149,12 @@ The Worker:
 7. verifies promotion size/checksum/MIME before creating a clip record.
 
 The Worker does not download provider video bytes into the Worker process.
+
+Hosted production wraps the output store with `DeferredProviderOutputStore`. The base adapter may request deletion from its `finally` block, but canonical `provider-output/v1/async/...` deletion is deferred until the recovery/public-Generation/event transaction has committed and the persisted snapshot matches the in-memory job. Sandbox-exchange probe files are still deleted immediately.
+
+If the post-commit provider-output delete fails, the committed job is not failed or replayed. The object remains eligible for a narrowly scoped one-day S3 lifecycle rule on `provider-output/v1/async/`. Durable `generated/video/v1/...` objects are outside that lifecycle prefix.
+
+This boundary prevents a crash after media/artifact materialization but before recovery persistence from deleting the only provider source needed for deterministic resume.
 
 ## 9. Raw-shot validation and FPS ownership
 
@@ -203,7 +209,7 @@ Before final Artifact readiness it requires actual-file evidence for:
 
 The final `RenderedVideo` metadata is rebuilt from the probe result. Timeline-expected width/height/duration cannot self-certify the Artifact.
 
-## 12. Artifact lineage
+## 12. Artifact lineage and replay boundary
 
 Every materialized shot attempt receives its own VIDEO ArtifactVersion. Rejected attempts remain auditable.
 
@@ -215,19 +221,25 @@ shot clip version --COMPOSED_FROM--> final video version
 
 Final files point only at durable generated objects.
 
+Artifact persistence and the NODE-48 recovery snapshot are intentionally **not claimed to be one PostgreSQL transaction**. Artifact IDs, branch IDs, version IDs, file IDs, provenance IDs and lineage edge IDs are deterministic UUID5 identities derived from stable operation/provenance inputs. Replaying the same successful materialization therefore converges on the same canonical rows instead of creating duplicate versions or lineage.
+
+The Hosted crash-recovery contract combines that deterministic Artifact replay with deferred provider-output deletion. If the Artifact transaction commits and the later recovery transaction fails, the previous WAITING_EXTERNAL/provider identity remains the recovery source of truth, the provider source object is retained, and retry can re-poll/re-materialize the same provider result into the same Artifact identities. This is a recoverable transaction boundary, not a claim of global atomicity.
+
 ## 13. Cost semantics
 
 Every accepted paid provider attempt is reconciled against the canonical NODE-27 ledger by tenant + paid operation scope.
 
 Worker Media is read-only with respect to provider cost truth. It verifies the one canonical `actual_cost` row already written through Model Gateway and does not insert/update/delete `cost_ledger`.
 
-## 14. Public Generation synchronization
+## 14. Public Generation and event UoW
 
-For API-created video operations, `PostgresVideoRepository.flush()` synchronizes the canonical generic `generations` row in the same PostgreSQL transaction as the recovery snapshot.
+For API-created video operations, `PostgresVideoRepository.flush()` synchronizes the canonical generic `generations` row in the same PostgreSQL transaction as the NODE-48 recovery/provider snapshot.
+
+Hosted lifecycle events do not use an independent immediate transaction. `BufferedVideoEventSink` keeps events invocation-local while the pipeline advances; `PostgresVideoRepository.flush()` inserts those canonical `outbox_events` on the same connection/transaction as recovery/provider/public Generation state. The buffer is cleared only after the transaction context commits successfully. A repository/event database mismatch fails before a PostgreSQL connection is opened.
 
 Public result JSON is sanitized and includes job/shot status, costs and Artifact identifiers. Provider request IDs are intentionally not exposed in the public result.
 
-Internal Agent/TaskGraph video jobs without a public Generation row remain valid and safely no-op that synchronization step.
+Internal Agent/TaskGraph video jobs without a public Generation row remain valid and safely no-op that synchronization step while still using the same recovery/event transaction.
 
 ## 15. Events and external wait
 
@@ -244,6 +256,8 @@ video_generation.cancelled
 
 Events contain identifiers/status/provenance references, not provider credentials or raw video bytes.
 
+The legacy `PostgresVideoEventSink` remains available only as a compatibility adapter for non-Hosted direct use. Hosted production composition must use `BufferedVideoEventSink`; reintroducing `PostgresVideoEventSink(...)` into `HostedVideoGenerationRuntime` is a release-contract failure.
+
 ## 16. Performance telemetry
 
 Final media work is wrapped by `TimedMediaSandbox` and emitted under the real POSTPROCESS performance stage. The final durable ffprobe is inside this Hosted media boundary rather than a hidden unmeasured side path.
@@ -252,10 +266,13 @@ Final media work is wrapped by `TimedMediaSandbox` and emitted under the real PO
 
 The dedicated Video Generation workflow requires:
 
-- Hosted source contracts;
+- Hosted source contracts, including buffered event UoW and deferred provider-output cleanup;
 - frozen all-workspace dependency install;
 - NODE-48 domain tests;
 - Hosted Worker boundary tests;
+- deterministic provider-output cleanup regressions;
+- PostgreSQL transaction rollback proof for recovery + event UoW;
+- PostgreSQL deterministic Artifact replay proof;
 - Ruff/Pyright;
 - Worker image build/import/liveness smoke;
 - PostgreSQL producer/recovery/privilege/public-generation acceptance;
