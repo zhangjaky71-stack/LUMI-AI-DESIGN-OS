@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -9,10 +10,14 @@ BUILD = ROOT / ".github/workflows/build-runtime-image-set.yml"
 GOVERNANCE_APPLY = ROOT / ".github/workflows/configure-release-branch-protection.yml"
 LOCK = ROOT / ".github/workflows/regenerate-uv-lock.yml"
 RUNTIME = ROOT / ".github/workflows/runtime-image-closure-contract.yml"
+AI_REGRESSION = ROOT / ".github/workflows/ai-regression-release-gate.yml"
 STAGING = ROOT / ".github/workflows/staging-acceptance-gate.yml"
+SECURITY = ROOT / ".github/workflows/security-release-gate.yml"
 PROD_IAC = ROOT / ".github/workflows/production-iac-contract.yml"
 DEPLOY = ROOT / ".github/workflows/deploy-production.yml"
+ROLLBACK = ROOT / ".github/workflows/production-rollback-rehearsal.yml"
 FINAL = ROOT / ".github/workflows/final-acceptance-gate.yml"
+PINS = ROOT / "production/release-actions/pins-v1.json"
 
 
 class PermissionContractError(RuntimeError):
@@ -173,6 +178,19 @@ def validate_lock() -> None:
     require('test "$(git rev-parse "origin/${TARGET_REF}")" = "$EXPECTED_SHA"' in commit, "uv-lock mutation must fail closed if release branch moved")
 
 
+def validate_ai_regression() -> None:
+    source = text(AI_REGRESSION)
+    require_top_read_only(source, "AI Regression Release Gate")
+    source_contract = job_block(source, "source-contract", "canonical-eval-tests")
+    canonical = job_block(source, "canonical-eval-tests", "live-provider-preflight")
+    live = job_block(source, "live-provider-preflight", "release-gate")
+    require("LUMI_LIVE_EVAL_API_KEY" not in source_contract + canonical, "live provider secret must not enter PR/source evaluation jobs")
+    require("if: github.event_name == 'workflow_dispatch'" in live, "live provider preflight must be manual-dispatch only")
+    require(source.count("${{ secrets.LUMI_LIVE_EVAL_API_KEY }}") == 1, "live provider secret must be injected exactly once")
+    for forbidden in ("contents: write", "actions: write", "packages: write", "attestations: write", "id-token: write", "pull-requests: write"):
+        require(forbidden not in live, f"AI live provider preflight has unrelated GitHub write capability: {forbidden}")
+
+
 def validate_staging() -> None:
     source = text(STAGING)
     require_top_read_only(source, "NODE-71 staging acceptance")
@@ -184,6 +202,27 @@ def validate_staging() -> None:
         require("actions: read" not in block, f"NODE-71 {label} must not receive cross-run artifact read permission")
     require("permissions:\n      contents: read\n      actions: read\n" in decision, "only NODE-71 acceptance-decision may receive actions:read")
     require("actions/download-artifact@" in decision, "NODE-71 artifact download must remain inside the actions:read job")
+
+
+def validate_security() -> None:
+    source = text(SECURITY)
+    require_top_read_only(source, "Security Release Gate")
+    header = top(source)
+    require("security-events: write" not in header, "Security Release Gate must not grant security-events:write at workflow scope")
+    codeql = job_block(source, "codeql", "dependency-review")
+    require(
+        "permissions:\n      contents: read\n      security-events: write\n      packages: read\n" in codeql,
+        "CodeQL job must own the only scoped security-events write permission",
+    )
+    require(source.count("security-events: write") == 1, "security-events write permission must exist only in CodeQL job")
+    for job, next_job in (
+        ("security-tests", "node-supply-chain"),
+        ("node-supply-chain", "codeql"),
+        ("dependency-review", "secret-and-iac-scan"),
+        ("secret-and-iac-scan", "release-gate"),
+        ("release-gate", None),
+    ):
+        require("security-events: write" not in job_block(source, job, next_job), f"Security {job} job must not receive security-events write")
 
 
 def validate_deploy() -> None:
@@ -199,6 +238,24 @@ def validate_deploy() -> None:
     require("needs: [release-gate]" in production and "environment: production" in production, "production mutation must depend on protected release gate")
     require("permissions:\n      contents: read\n      id-token: write\n" in production, "OIDC must be scoped only to protected production job")
     require("actions: read" not in production and "aws-actions/configure-aws-credentials@" in production, "production OIDC boundary drift")
+
+
+def validate_rollback() -> None:
+    source = text(ROLLBACK)
+    require_top_read_only(source, "Production Rollback Rehearsal")
+    header = top(source)
+    require("id-token: write" not in header, "Production Rollback must not grant OIDC at workflow scope")
+    gate = job_block(source, "rollback-gate", "rehearse")
+    rehearse = job_block(source, "rehearse", None)
+    require("id-token: write" not in gate, "rollback-gate must remain without OIDC")
+    require("aws-actions/configure-aws-credentials@" not in gate, "rollback-gate must not assume Production AWS role")
+    require("environment: production" in rehearse, "rollback mutation must remain production-environment protected")
+    require(
+        "permissions:\n      contents: read\n      id-token: write\n" in rehearse,
+        "only protected rollback rehearsal job may receive OIDC",
+    )
+    require("aws-actions/configure-aws-credentials@" in rehearse, "protected rollback job must own AWS OIDC exchange")
+    require(source.count("id-token: write") == 1, "Production Rollback OIDC permission must be scoped exactly once")
 
 
 def validate_final() -> None:
@@ -224,13 +281,42 @@ def validate_final() -> None:
     require("RELEASE_APPROVAL_TOKEN:" not in header + source_contract + lock_gate, "approval token must not escape final-decision")
 
 
+def validate_registry_coverage() -> None:
+    policy = json.loads(PINS.read_text(encoding="utf-8"))
+    critical = policy.get("release_critical_workflows")
+    require(isinstance(critical, list), "release action pin policy critical workflow list missing")
+    audited = {
+        path.relative_to(ROOT).as_posix()
+        for path in (
+            ASSEMBLE,
+            BUILD,
+            GOVERNANCE_APPLY,
+            LOCK,
+            RUNTIME,
+            AI_REGRESSION,
+            STAGING,
+            SECURITY,
+            PROD_IAC,
+            DEPLOY,
+            ROLLBACK,
+            FINAL,
+        )
+    }
+    require(len(audited) == 12, "permission audit workflow count must remain exactly twelve")
+    require(audited == set(critical), "permission contract must exactly cover release_critical_workflows from pins-v1.json")
+
+
 def main() -> int:
+    validate_registry_coverage()
     validate_assemble()
     validate_governance_apply()
     validate_build()
     validate_lock()
+    validate_ai_regression()
     validate_staging()
+    validate_security()
     validate_deploy()
+    validate_rollback()
     validate_final()
     for path, label in ((RUNTIME, "Runtime Image Closure"), (PROD_IAC, "Production IaC Contract")):
         require_top_read_only(text(path), label)
@@ -241,5 +327,5 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (PermissionContractError, OSError) as exc:
+    except (PermissionContractError, OSError, json.JSONDecodeError) as exc:
         raise SystemExit(f"release workflow permission contract failed: {exc}") from exc
