@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -62,6 +63,14 @@ def forbid_markers(source: str, markers: tuple[str, ...], label: str) -> None:
     require(not present, f"{label} contains forbidden markers: {present}")
 
 
+def require_assignment(source: str, key: str, value: str, label: str) -> None:
+    pattern = rf"(?m)^\s*{re.escape(key)}\s*=\s*{re.escape(value)}\s*(?:#.*)?$"
+    require(
+        re.search(pattern, source) is not None,
+        f"{label} missing assignment: {key} = {value}",
+    )
+
+
 def service_block(text: str, service: str) -> str:
     marker = f"    {service} = {{"
     start = text.find(marker)
@@ -95,19 +104,58 @@ def validate_outbox_deployment() -> None:
         require_markers(
             block,
             (
-                "image         = var.worker_media_image",
                 '"python"',
                 '"-m"',
                 '"lumi_worker_media.cli"',
                 '"dispatch-outbox"',
                 '"--watch"',
                 '"--interval"',
-                'LUMI_ROLE = "outbox-dispatcher"',
-                'LUMI_DATABASE_URL = local.secret_arns["database/app"]',
-                'LUMI_RABBITMQ_URL = local.secret_arns["rabbitmq/url"]',
-                "s3_bucket_arns         = []",
             ),
+            f"{environment} outbox dispatcher command",
+        )
+        require_assignment(
+            block,
+            "image",
+            "var.worker_media_image",
             f"{environment} outbox dispatcher",
+        )
+        require_assignment(
+            block,
+            "LUMI_ROLE",
+            '"outbox-dispatcher"',
+            f"{environment} outbox dispatcher",
+        )
+        require_assignment(
+            block,
+            "LUMI_DATABASE_URL",
+            'local.secret_arns["database/app"]',
+            f"{environment} outbox dispatcher",
+        )
+        require_assignment(
+            block,
+            "LUMI_RABBITMQ_URL",
+            'local.secret_arns["rabbitmq/url"]',
+            f"{environment} outbox dispatcher",
+        )
+        require_assignment(
+            block,
+            "s3_bucket_arns",
+            "[]",
+            f"{environment} outbox dispatcher",
+        )
+        expected_count = "1" if environment == "staging" else "2"
+        for key in ("desired_count", "min_capacity", "max_capacity"):
+            require_assignment(
+                block,
+                key,
+                expected_count,
+                f"{environment} outbox dispatcher static capacity",
+            )
+        require_assignment(
+            block,
+            "autoscaling_enabled",
+            "false",
+            f"{environment} outbox dispatcher static capacity",
         )
         forbid_markers(
             block,
@@ -122,13 +170,6 @@ def validate_outbox_deployment() -> None:
                 'local.bucket_arns[',
             ),
             f"{environment} outbox dispatcher least privilege",
-        )
-        desired_marker = "desired_count = 1" if environment == "staging" else "desired_count = 2"
-        min_marker = "min_capacity  = 1" if environment == "staging" else "min_capacity  = 2"
-        require_markers(
-            block,
-            (desired_marker, min_marker),
-            f"{environment} outbox dispatcher always-on capacity",
         )
 
 
@@ -310,9 +351,13 @@ def main() -> None:
             'dispatch.add_argument("--watch", action="store_true")',
             "MediaExternalWaitWakeScheduler(dsn)",
             "MediaJobOutboxDispatcher(dsn, CeleryJobPublisher())",
+            '_HEALTH_LOG_KIND = "lumi.outbox_dispatcher.health"',
+            "job_health = await job_dispatcher.health_snapshot()",
             'failures.append(("external-wake", exc))',
             'failures.append(("jobs", exc))',
-            'raise RuntimeError(f"OUTBOX_DISPATCH_FAILED:{channels}")',
+            'failures.append(("domain", exc))',
+            'failures.append(("jobs-health", exc))',
+            "OUTBOX_DISPATCH_FAILED:",
         ),
         "always-on outbox dispatcher CLI",
     )
@@ -324,6 +369,9 @@ def main() -> None:
             "celery_app.send_task(",
             "FOR UPDATE SKIP LOCKED",
             "SET published_at = now()",
+            "async def health_snapshot(self) -> MediaJobOutboxHealth:",
+            "ORDER BY created_at, id",
+            "LIMIT 1",
         ),
         "canonical media outbox publisher",
     )
@@ -392,11 +440,13 @@ def main() -> None:
         workflow,
         (
             "scripts/validate_video_generation_producer_binding.py",
+            "scripts/validate_outbox_dispatcher_observability.py",
             "apps/api/src/lumi_api/generations/video_service.py",
             "apps/api/src/lumi_api/generations/gateway.py",
             "apps/api/tests/integration/test_video_generation_control_plane_postgres.py",
             "apps/api/tests/integration/test_video_outbox_dispatch_postgres.py",
             "apps/worker-media/tests/integration/test_video_public_generation_sync_postgres.py",
+            "apps/worker-media/tests/test_job_dispatch_observability.py",
             "Run Video Generation API PostgreSQL producer acceptance",
             "Run Hosted video PostgreSQL acceptance",
             "infra/iac/modules/compute/main.tf",
