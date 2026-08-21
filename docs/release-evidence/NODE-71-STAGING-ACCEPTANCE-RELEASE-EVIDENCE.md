@@ -2,15 +2,15 @@
 
 > Evidence date: 2026-08-21  
 > Branch: `release-closure-p0`  
-> Current source head: `6a52e5b5f44a86e8b7360c165242c0e02f013351`  
-> Latest sampled execution head: `29602f4d0f5117f174ae4f4c806145c420635050`  
-> Status: **ACCEPTANCE HARNESS + STAGING IAC + ATTESTED RC DECISION SEAL SOURCE-CLOSED / STAGING RC NOT DEPLOYED / GO-LIVE BLOCKED**
+> Runtime provenance hardening baseline: `9388984516602c3102d985797b51ad188b910bd9`  
+> Latest sampled execution head: `9388984516602c3102d985797b51ad188b910bd9`  
+> Status: **ACCEPTANCE HARNESS + STAGING IAC + IMMUTABLE-GIT RUNTIME ATTESTATION + RC DECISION SEAL SOURCE-CLOSED / STAGING RC NOT DEPLOYED / GO-LIVE BLOCKED**
 
 ## Decision
 
-NODE-71 has a fail-closed Staging acceptance control plane, production-like Staging IaC source definitions, exact six-runtime image/attestation binding, and a sealed decision/provenance path. This is **not** evidence that a Staging RC has been deployed or accepted.
+NODE-71 now has a fail-closed Staging acceptance control plane, production-like Staging IaC source definitions, a six-runtime supply-chain contract that binds the actual BuildKit source to the exact RC Git SHA, and a sealed decision/provenance path. This is **not** evidence that a Staging RC has been deployed or accepted.
 
-No real Staging URL, executed six-runtime image build, verified registry attestation artifact, completed environment parity proof, Golden E2E, resilience/security drills, browser matrix, NODE-69 launch run, NODE-70 production AI release decision, or final approver set has been evidenced for the current RC.
+No real Staging URL, successful six-runtime build, verified registry attestation artifact, completed environment parity proof, Golden E2E, resilience/security drills, browser matrix, NODE-69 launch run, NODE-70 production AI release decision, or final approver set has been evidenced for the current RC.
 
 ## Current repository reality
 
@@ -25,7 +25,7 @@ No real Staging URL, executed six-runtime image build, verified registry attesta
 
 NODE-71 source controls include:
 
-- versioned 30-scenario acceptance manifest and environment parity contract;
+- versioned acceptance manifest and environment parity contract;
 - synthetic account/evidence template;
 - fail-closed `staging-acceptance-gate.py`;
 - read-only HTTPS preflight;
@@ -33,7 +33,7 @@ NODE-71 source controls include:
 - canonical dependency gate: `validate_uv_workspace_lock.py -> uv lock --check -> uv sync --all-packages --frozen`;
 - private Model Gateway deployment boundary;
 - exact runtime-image build/attestation binding;
-- NODE-71 decision artifact workflow provenance;
+- NODE-71 runtime-image decision seal and decision artifact provenance;
 - canonical media-generation E2E and Tool Gateway provenance validators.
 
 P0 still requires real evidenced PASS. `BLOCKED_EXTERNAL`, synthetic fixtures, source contracts, or local Compose cannot substitute for runtime acceptance.
@@ -44,10 +44,19 @@ The NODE-71 runtime-image acceptance path is now:
 
 ```text
 exact RC Git SHA
-→ six exact runtime Dockerfile builds
+→ six SHA-pinned remote Git build contexts
+   https://github.com/${GITHUB_REPOSITORY}.git#${GITHUB_SHA}
+→ exact per-runtime Dockerfile + linux/amd64
 → immutable registry digests
-→ BuildKit max provenance + SPDX SBOM
-→ GitHub artifact attestation bound to signer/source SHA/ref/runner policy
+→ BuildKit max SLSA v0.2 provenance + SPDX SBOM
+→ provenance source validation
+   configSource.uri == repository.git#RC_SHA
+   configSource.digest.sha1 == RC_SHA
+   configSource.entryPoint == runtime Dockerfile
+   invocation.environment.platform == linux/amd64
+   materials != []
+→ GitHub artifact attestation
+   signer workflow + source SHA + release ref + hosted-runner identity
 → container-image-set.json + attestation-verification.json
 → NODE-71 exact runtime-image binding
 → staging-acceptance decision
@@ -56,6 +65,19 @@ exact RC Git SHA
 → decision SHA-256 workflow provenance
 → archive
 ```
+
+### Why the immutable Git context matters
+
+The previous build recipe used `context: .`. That could prove which checked-out tree the workflow intended to use, but the BuildKit provenance validator itself accepted only the presence of a provenance object and did not require the provenance source to identify the exact repository, RC SHA, Dockerfile, platform, or even a non-empty material set.
+
+The source contract now fails closed on that gap:
+
+- `.github/workflows/build-runtime-image-set.yml` builds all six images from the exact Git SHA remote context rather than local Path context;
+- every build pins `provenance: mode=max,version=v0.2` and `linux/amd64`;
+- `scripts/verify_runtime_image_attestations.py` validates BuildKit `invocation.configSource` against the repository, exact RC SHA and service-specific Dockerfile, and requires non-empty materials;
+- `scripts/validate_runtime_image_build_pipeline.py` rejects regression to `context: .`, `{{defaultContext}}`, wrong Dockerfile, missing Git auth, unpinned provenance shape, or missing per-runtime digest/attestation/SBOM/freeze binding.
+
+This closes the code-addressable gap between “the static manifest says these files matter” and “the image provenance says which immutable Git source and Dockerfile actually built this digest.”
 
 ### Frozen build binding
 
@@ -83,25 +105,11 @@ attestation_source_digest
 runtime_count
 ```
 
-### Decision sealing
+### Decision sealing and provenance
 
-`bind_node71_runtime_image_decision.py` accepts only a `passed=true` decision plus a valid runtime-image binding. It requires RC SHA/version/artifact-ref consistency, positive build-run identity, valid report hash, exact source SHA and six runtimes, then:
+`bind_node71_runtime_image_decision.py` accepts only a `passed=true` decision plus a valid runtime-image binding. It requires RC SHA/version/artifact-ref consistency, positive build-run identity, valid report hash, exact source SHA and six runtimes, then seals the binding into `decision.json` and recalculates `decision_id`.
 
-- adds the normalized `runtime_image_binding` to `decision.json`;
-- recalculates `decision_id` over the sealed decision;
-- updates the human decision Markdown with the new Decision ID and attestation PASS seal.
-
-### Decision provenance
-
-`validate_node71_decision_artifact.py` now refuses both provenance creation and provenance verification when a passed NODE-71 decision:
-
-- lacks the runtime-image seal;
-- has an invalid seal field set;
-- has a source SHA different from the RC;
-- has invalid build-run/hash/count identity;
-- differs from the seal copied into decision provenance.
-
-Therefore an old-format unsealed `passed=true` decision cannot satisfy the current NODE-71 artifact contract.
+`validate_node71_decision_artifact.py` refuses provenance creation or verification when a passed NODE-71 decision lacks the runtime-image seal, has an invalid field set, differs from the RC source SHA, or differs from the seal copied into decision provenance. An old-format unsealed `passed=true` decision therefore cannot satisfy the current NODE-71 artifact contract.
 
 ### Workflow anti-regression order
 
@@ -118,54 +126,43 @@ immutable/live evidence binding
 < artifact archive
 ```
 
-The archived runtime directory includes the evidence binding, `runtime-image-binding.json`, sealed `decision.json`, decision Markdown and decision provenance.
+## Hosted CI evidence — sampled hardening head
 
-## Acceptance coverage still requiring real execution
-
-The manifest includes P0/P1 coverage for:
+Sampled head: `9388984516602c3102d985797b51ad188b910bd9`.
 
 ```text
-Environment parity
-Synthetic tenant/account matrix
-Golden brand-project E2E
-Precision edit invariants
-Agent/worker/provider/Redis/idempotency/DB resilience
-Cross-tenant, signed URL, SVG, prompt injection, SSRF, sandbox, admin/approval security
-Cost ledger / budget / credits / webhook idempotency
-NODE-69 performance launch profile
-NODE-70 production-candidate AI release evidence
-Chrome / Edge / Safari
-Chinese IME / fonts / upload / download
-Project/archive/data retention/vector/audit/export expiry
-Backup restore
-Observability correlation
-```
-
-## Hosted CI evidence
-
-The latest sampled critical execution evidence is from head `29602f4d0f5117f174ae4f4c806145c420635050`.
-
-```text
-Runtime Image Closure
-run_id: 32459558295
-runtime-image-closure job_id: 96703575372
+Runtime Image Closure Contract
+run_id: 32462283655
+runtime-image-closure job_id: 96711482008
 failure / logs_url=null / steps=null
 
-Production IaC Contract
-run_id: 32459558285
-terraform-static job_id: 96703575564 -> failure / logs_url=null / steps=null
-source-contract job_id: 96703575742 -> failure / logs_url=null / steps=null
-contract-gate job_id: 96703588716 -> failure / logs_url=null / steps=null
+Staging Acceptance Gate
+run_id: 32462283704
+canonical-lock-gate job_id: 96711482611 -> failure / logs_url=null / steps=null
+source-contract job_id: 96711482808 -> failure / logs_url=null / steps=null
+contract-gate job_id: 96711514824 -> failure / logs_url=null / steps=null
+remote-read-only-preflight -> skipped on pull_request
+acceptance-decision -> skipped on pull_request
 
-Final Product Acceptance
-run_id: 32459558476
-source-contract job_id: 96703576056 -> failure / logs_url=null / steps=null
-canonical-lock-gate job_id: 96703576351 -> failure / logs_url=null / steps=null
-node73-final-contract-gate job_id: 96703611450 -> failure / logs_url=null / steps=null
+Production IaC Contract
+run_id: 32462283621
+terraform-static job_id: 96711482728 -> failure / logs_url=null / steps=null
+source-contract job_id: 96711483040 -> failure / logs_url=null / steps=null
+contract-gate job_id: 96711522020 -> failure / logs_url=null / steps=null
+
+Final Product Acceptance Gate
+run_id: 32462283662
+source-contract job_id: 96711482533 -> failure / logs_url=null / steps=null
+canonical-lock-gate job_id: 96711482731 -> failure / logs_url=null / steps=null
+node73-final-contract-gate job_id: 96711498190 -> failure / logs_url=null / steps=null
 final-decision -> skipped
 ```
 
-These are zero-step Hosted-runner failures. They do not prove the source contracts failed and they do not provide PASS evidence. No checkout, Python, `uv`, Docker, registry attestation, PostgreSQL, Terraform or Staging command is evidenced as having executed in these jobs.
+These are zero-step Hosted-runner failures. They do not prove the new source contracts failed and they do not provide PASS evidence. No checkout, Python, `uv`, Docker, registry attestation, PostgreSQL, Terraform or Staging command is evidenced as having executed in those jobs.
+
+## Acceptance coverage still requiring real execution
+
+The acceptance manifest still requires real evidence across environment parity, synthetic tenant/account matrix, Golden brand-project E2E, precision edit invariants, agent/worker/provider/Redis/idempotency/DB resilience, cross-tenant/security/sandbox controls, billing/cost ledger, NODE-69 performance, NODE-70 AI release evidence, browser/IME/font/upload/download, data lifecycle, backup restore and observability correlation.
 
 ## Release blockers
 
@@ -173,18 +170,14 @@ These are zero-step Hosted-runner failures. They do not prove the source contrac
 - [ ] NODE-71 source/lock contracts actually execute with step/log evidence.
 - [ ] Canonical six-runtime build workflow executes on the exact RC SHA.
 - [ ] Six registry digests resolve and six GitHub artifact attestations verify.
-- [ ] BuildKit provenance and SPDX SBOMs are collected from the actual images.
+- [ ] Each actual BuildKit provenance record proves the exact repository, RC SHA, runtime Dockerfile, `linux/amd64` and non-empty build materials.
+- [ ] SPDX SBOMs are collected from the actual images.
 - [ ] Frozen image-set + attestation report artifact is produced by the exact build run.
 - [ ] Production-like Staging infrastructure is actually planned/applied and reachable.
 - [ ] NODE-71 downloads the exact build artifact and emits a real sealed `passed=true` decision.
-- [ ] All environment-parity checks have real PASS evidence.
-- [ ] Synthetic Org A/B/ops/billing accounts are provisioned without production customer data.
-- [ ] Read-only remote preflight passes on the exact RC.
-- [ ] Golden Brand Project and Precision Edit E2Es pass.
+- [ ] All environment-parity, Golden E2E, security, resilience, billing, performance and AI checks have real PASS evidence.
 - [ ] Canonical image/video producer → Worker → Provider → Artifact paths execute in Staging.
 - [ ] Private Model Gateway secret/path boundary is proven on deployed tasks/images.
-- [ ] Resilience/security/billing/performance/AI gates execute and pass.
-- [ ] Browser/IME/font/upload/download and data-lifecycle/recovery/observability evidence pass.
 - [ ] Engineering/security/product/release-owner approvals are complete.
 
 ## Current status
@@ -194,7 +187,7 @@ ACCEPTANCE MANIFEST: IMPLEMENTED SOURCE
 ENVIRONMENT PARITY CONTRACT: IMPLEMENTED SOURCE
 STAGING IAC: IMPLEMENTED SOURCE / NOT APPLIED
 PRIVATE MODEL GATEWAY STAGING BINDING: SOURCE-CLOSED / DEPLOYED PROOF PENDING
-RUNTIME IMAGE BUILD/ATTESTATION BINDING: SOURCE-CLOSED / ACTUAL BUILD MISSING
+RUNTIME IMAGE IMMUTABLE GIT SOURCE + ATTESTATION BINDING: SOURCE-CLOSED / ACTUAL BUILD MISSING
 NODE-71 RUNTIME IMAGE DECISION SEAL: SOURCE-CLOSED / REAL SEALED DECISION MISSING
 NODE-71 DECISION PROVENANCE: SOURCE-CLOSED / REAL PASSED ARTIFACT MISSING
 CANONICAL LOCK: STALE / RESOLVER EXECUTION BLOCKED
