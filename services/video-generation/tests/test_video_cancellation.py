@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 from decimal import Decimal
 
+from lumi_artifacts.history import ArtifactHistory
+from lumi_video_generation.artifact_adapter import ArtifactHistoryVideoAdapter
+from lumi_video_generation.inmemory import MemoryMediaSandbox, MemoryVideoOutput
 from lumi_video_generation.model import (
     CompiledShot,
     GatewayEstimate,
@@ -10,11 +13,14 @@ from lumi_video_generation.model import (
     ProviderJobRecord,
     ShotRuntime,
     ShotSpec,
+    StoredVideoClip,
     VideoJob,
+    VideoProbeResult,
     VideoTaskSpec,
 )
 from lumi_video_generation.pipeline import VideoGenerationPipeline
 from lumi_video_generation.repository import InMemoryVideoRepository
+from lumi_video_generation.validation import CompositeVideoValidator
 
 ORG = "00000000-0000-0000-0000-000000000001"
 PROJECT = "00000000-0000-0000-0000-000000000002"
@@ -65,6 +71,37 @@ def _result(status: str, *, cost: str = "0.25") -> GatewayVideoResult:
         pricing_snapshot_id="price-v1",
         routing_reason_codes=("CANCEL_RECONCILIATION",),
     )
+
+
+def _clip() -> tuple[StoredVideoClip, VideoProbeResult]:
+    keyframes = ("asset:keyframe:cancel-success:0", "asset:keyframe:cancel-success:1")
+    clip = StoredVideoClip(
+        storage_key="video/clips/cancel-success.mp4",
+        checksum_sha256="e" * 64,
+        mime_type="video/mp4",
+        size_bytes=4096,
+        width=1280,
+        height=720,
+        duration_ms=4000,
+        durable_asset_ref="asset:video-clip:cancel-success",
+        poster_frame_ref="asset:poster:cancel-success",
+        tail_frame_ref="asset:tail:cancel-success",
+        keyframe_refs=keyframes,
+    )
+    probe = VideoProbeResult(
+        decode_ok=True,
+        mime_type="video/mp4",
+        container="mp4",
+        video_codec="h264",
+        width=1280,
+        height=720,
+        fps=Decimal("24"),
+        duration_seconds=Decimal("4"),
+        keyframe_refs=keyframes,
+        poster_frame_ref=clip.poster_frame_ref,
+        tail_frame_ref=clip.tail_frame_ref,
+    )
+    return clip, probe
 
 
 def _job(spec: VideoTaskSpec) -> VideoJob:
@@ -186,6 +223,7 @@ def _pipeline(
     cancel_result: GatewayVideoResult,
     *,
     include_provider_record: bool = True,
+    outputs: dict[str, tuple[StoredVideoClip, VideoProbeResult]] | None = None,
 ) -> tuple[VideoGenerationPipeline, InMemoryVideoRepository, _Gateway, _Costs, _Events]:
     repository = InMemoryVideoRepository()
     spec = _spec()
@@ -196,14 +234,13 @@ def _pipeline(
     gateway = _Gateway(cancel_result)
     costs = _Costs()
     events = _Events()
-    unused = object()
     pipeline = VideoGenerationPipeline(
         repository=repository,
         gateway=gateway,  # type: ignore[arg-type]
-        output=unused,  # type: ignore[arg-type]
-        validator=unused,  # type: ignore[arg-type]
-        artifacts=unused,  # type: ignore[arg-type]
-        sandbox=unused,  # type: ignore[arg-type]
+        output=MemoryVideoOutput(outputs or {}),
+        validator=CompositeVideoValidator(),
+        artifacts=ArtifactHistoryVideoAdapter(ArtifactHistory()),
+        sandbox=MemoryMediaSandbox(),
         costs=costs,  # type: ignore[arg-type]
         events=events,  # type: ignore[arg-type]
     )
@@ -298,3 +335,32 @@ def test_cancellation_terminal_reconciliation_never_launches_quality_retry() -> 
     archived = repository.get_provider_job(ORG, VIDEO_JOB_ID, SHOT_ID, PAID_OPERATION_ID)
     assert archived is not None
     assert archived.result.status == "FAILED"
+
+
+def test_successful_provider_truth_wins_over_cancellation_intent() -> None:
+    pipeline, repository, gateway, costs, events = _pipeline(
+        _result("SUCCEEDED"),
+        outputs={"provider-output": _clip()},
+    )
+
+    cancelled_attempt = _cancel(pipeline)
+    assert cancelled_attempt.status == "WAITING_EXTERNAL"
+
+    reconciled = asyncio.run(
+        pipeline.resume(
+            organization_id=ORG,
+            video_job_id=VIDEO_JOB_ID,
+            allow_quality_retry=False,
+        )
+    )
+
+    assert reconciled.status == "COMPLETED"
+    assert reconciled.final_artifact_version_id is not None
+    assert gateway.estimate_count == 0
+    assert gateway.submit_count == 0
+    assert costs.calls == 1
+    assert "video_generation.cancelled" not in events.types
+    assert events.types.count("video_generation.completed") == 1
+    archived = repository.get_provider_job(ORG, VIDEO_JOB_ID, SHOT_ID, PAID_OPERATION_ID)
+    assert archived is not None
+    assert archived.result.status == "SUCCEEDED"
