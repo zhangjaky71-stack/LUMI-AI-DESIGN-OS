@@ -26,6 +26,8 @@ SERVICE_IMAGE_KEY = {
     "outbox-dispatcher": "worker-media",
     "sandbox-runtime": "sandbox-runtime",
 }
+CAPACITY_CONTRACT_SOURCE = "terraform-live-state"
+CAPACITY_CONTRACT_SCOPE = "production-app-service-desired-counts"
 
 
 def require(condition: bool, message: str) -> None:
@@ -69,10 +71,21 @@ def fixtures() -> list[dict[str, Any]]:
             "object_version_recovery_required": True,
         },
     }
+    capacity_counts = {
+        service: service_capacity(service)
+        for service in SERVICE_IMAGE_KEY
+    }
     baseline = {
         "schema_version": 1,
         "deployment_id": manifest["deployment_id"],
         "release_candidate": copy.deepcopy(rc),
+        "capacity_contract": {
+            "schema_version": 1,
+            "source": CAPACITY_CONTRACT_SOURCE,
+            "scope": CAPACITY_CONTRACT_SCOPE,
+            "deployment_id": manifest["deployment_id"],
+            "service_desired_counts": copy.deepcopy(capacity_counts),
+        },
         "passed": True,
         "services": [
             {
@@ -81,9 +94,9 @@ def fixtures() -> list[dict[str, Any]]:
                 "image": images[image_key],
                 "expected_image": images[image_key],
                 "image_matches": True,
-                "expected_desired_count": service_capacity(service),
-                "desired_count": service_capacity(service),
-                "running_count": service_capacity(service),
+                "expected_desired_count": capacity_counts[service],
+                "desired_count": capacity_counts[service],
+                "running_count": capacity_counts[service],
                 "capacity_matches": True,
                 "steady": True,
             }
@@ -189,6 +202,7 @@ def source_contract() -> None:
     cross_drill = (ROOT / "scripts/production-object-cross-region-drill.sh").read_text()
     cleanup = (ROOT / "scripts/cleanup-production-object-dr-replicas.sh").read_text()
     db_verify = (ROOT / "scripts/production-recovery-db-verify.py").read_text()
+    identity_capture = (ROOT / "scripts/capture-production-runtime-identity.sh").read_text()
     dr_workflow = (ROOT / ".github/workflows/production-dr-rehearsal.yml").read_text()
     decision = DECISION.read_text()
 
@@ -218,8 +232,14 @@ def source_contract() -> None:
     require("outbox-dispatcher" in decision, "recovery decision must bind dispatcher runtime identity")
     require("exactly seven services" in decision, "recovery decision must require seven runtime services")
     require("_capacity_row_valid" in decision, "recovery decision must recompute runtime capacity validity")
+    require("_validate_capacity_contract" in decision, "recovery decision must validate capacity contract identity")
+    require("capacity_contract" in decision, "recovery decision must freeze capacity contract")
+    require("service_desired_counts" in decision, "recovery decision must freeze canonical capacity map")
     require("expected_desired_count" in decision, "recovery decision must require expected runtime capacity")
     require("capacity_matches" in decision, "recovery decision must require capacity match evidence")
+    require("capacity_contract_deployment_id" in identity_capture, "runtime capture must support explicit capacity owner identity")
+    require("capacity_contract_service_desired_counts" in identity_capture, "runtime capture must freeze Terraform capacity map")
+    require("capture-production-runtime-identity.sh" in dr_workflow, "DR workflow must capture baseline runtime identity")
 
     forbidden_unversioned_delete = 'aws s3api delete-object --bucket "$EXPORTS_BUCKET" --key "$DB_EVIDENCE_KEY"'
     require(
@@ -241,7 +261,12 @@ def source_contract() -> None:
 def main() -> int:
     module = load_decision()
     source_contract()
-    require(evaluate(module, fixtures())["passed"] is True, "clean recovery fixture must pass")
+    clean = evaluate(module, fixtures())
+    require(clean["passed"] is True, "clean recovery fixture must pass")
+    require(
+        clean["capacity_contract"]["deployment_id"] == "prod-recovery-contract-001",
+        "clean recovery decision must freeze current capacity owner",
+    )
 
     must_block(module, lambda f: f[2].__setitem__("observed_rpo_minutes", 5.01), "RPO > 5m")
     must_block(module, lambda f: f[2].__setitem__("observed_rto_minutes", 60.01), "RTO > 60m")
@@ -263,6 +288,29 @@ def main() -> int:
     must_block(module, lambda f: f[5].__setitem__("source_region", "ap-southeast-1"), "cleanup source region mismatch")
     must_block(module, lambda f: f[5].__setitem__("recovery_region", "ap-northeast-1"), "cleanup recovery region mismatch")
     must_block(module, lambda f: f[1]["services"][0].__setitem__("image_matches", False), "baseline runtime mismatch")
+    must_block(
+        module,
+        lambda f: f[1]["capacity_contract"].__setitem__("deployment_id", "prod-other"),
+        "baseline capacity owner mismatch",
+    )
+    must_block(
+        module,
+        lambda f: f[1]["capacity_contract"].__setitem__("source", "fixture"),
+        "baseline capacity source mismatch",
+    )
+    must_block(
+        module,
+        lambda f: f[1]["capacity_contract"].__setitem__("scope", "other-scope"),
+        "baseline capacity scope mismatch",
+    )
+    must_block(
+        module,
+        lambda f: f[1]["capacity_contract"]["service_desired_counts"].__setitem__(
+            "outbox-dispatcher",
+            f[1]["capacity_contract"]["service_desired_counts"]["outbox-dispatcher"] + 1,
+        ),
+        "baseline capacity map forgery",
+    )
 
     def swap_dispatcher(values: list[dict[str, Any]]) -> None:
         dispatcher = next(
