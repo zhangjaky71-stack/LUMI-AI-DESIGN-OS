@@ -6,7 +6,9 @@ import json
 import pytest
 
 import lumi_worker_media.cli as cli_module
+import lumi_worker_media.event_runtime as event_module
 import lumi_worker_media.job_dispatch_runtime as dispatch_module
+from lumi_worker_media.event_runtime import DomainOutboxHealth, OutboxDispatcher
 from lumi_worker_media.job_dispatch_runtime import (
     MediaJobOutboxDispatcher,
     MediaJobOutboxHealth,
@@ -59,8 +61,42 @@ def test_job_dispatch_health_reads_only_oldest_pending_row(
     assert "ORDER BY created_at, id" in query
     assert "LIMIT 1" in query
     assert "COUNT(" not in query.upper()
+    assert "FOR UPDATE" not in query.upper()
     assert "event_name = $1" in query
     assert args == (dispatch_module.JOB_DISPATCH_EVENT_NAME,)
+    assert connection.closed is True
+
+
+def test_domain_dispatch_health_reads_only_oldest_pending_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = _HealthConnection(
+        {
+            "oldest_unpublished_age_seconds": 654,
+            "oldest_publish_attempts": 8,
+        }
+    )
+
+    async def fake_connect(dsn: str) -> _HealthConnection:
+        assert dsn == "postgresql://test"
+        return connection
+
+    monkeypatch.setattr(event_module.asyncpg, "connect", fake_connect)
+    snapshot = asyncio.run(
+        OutboxDispatcher("postgresql://test", _Publisher()).health_snapshot()
+    )
+
+    assert snapshot == DomainOutboxHealth(
+        oldest_unpublished_age_seconds=654,
+        oldest_publish_attempts=8,
+    )
+    query, args = connection.fetchrow_calls[0]
+    assert "ORDER BY created_at, id" in query
+    assert "LIMIT 1" in query
+    assert "COUNT(" not in query.upper()
+    assert "FOR UPDATE" not in query.upper()
+    assert "event_name <> $1" in query
+    assert args == (event_module.JOB_DISPATCH_EVENT_NAME,)
     assert connection.closed is True
 
 
@@ -83,7 +119,7 @@ def test_job_dispatch_health_is_zero_when_queue_is_empty(
     assert connection.closed is True
 
 
-def test_dispatch_cli_emits_bounded_json_health_before_failure(
+def test_dispatch_cli_emits_bounded_combined_json_health_before_failure(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -102,6 +138,12 @@ def test_dispatch_cli_emits_bounded_json_health_before_failure(
         async def dispatch_batch(self, *, limit: int) -> int:
             assert limit == 9
             return 2
+
+        async def health_snapshot(self) -> DomainOutboxHealth:
+            return DomainOutboxHealth(
+                oldest_unpublished_age_seconds=701,
+                oldest_publish_attempts=9,
+            )
 
     class FakeJobDispatcher:
         def __init__(self, dsn: str, publisher: object) -> None:
@@ -144,8 +186,12 @@ def test_dispatch_cli_emits_bounded_json_health_before_failure(
         "failure_count": 1,
         "job_published": 0,
         "kind": "lumi.outbox_dispatcher.health",
-        "oldest_publish_attempts": 6,
-        "oldest_unpublished_age_seconds": 601,
+        "oldest_domain_publish_attempts": 9,
+        "oldest_domain_unpublished_age_seconds": 701,
+        "oldest_job_publish_attempts": 6,
+        "oldest_job_unpublished_age_seconds": 601,
+        "oldest_publish_attempts": 9,
+        "oldest_unpublished_age_seconds": 701,
         "published": 2,
         "status": "degraded",
     }
