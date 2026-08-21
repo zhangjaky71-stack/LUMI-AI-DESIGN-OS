@@ -10,6 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DEPLOYMENT = ROOT / "scripts" / "production-deployment-decision.py"
 ROLLBACK = ROOT / "scripts" / "production-rollback-rehearsal-decision.py"
 RECOVERY = ROOT / "scripts" / "production-recovery-decision.py"
+PRODUCTION_IAC_WORKFLOW = ROOT / ".github" / "workflows" / "production-iac-contract.yml"
+FINAL_WORKFLOW = ROOT / ".github" / "workflows" / "final-acceptance-gate.yml"
+SELF_PATH = "scripts/validate_capacity_decision_fail_closed.py"
 
 SERVICE_NAMES = (
     "api",
@@ -101,6 +104,23 @@ def must_fail_closed(
     require(bool(blockers), f"{label}: invalid capacity evidence did not emit a blocker")
 
 
+def validate_workflow_binding() -> None:
+    for path, label in (
+        (PRODUCTION_IAC_WORKFLOW, "Production IaC Contract"),
+        (FINAL_WORKFLOW, "Final Product Acceptance Gate"),
+    ):
+        require(path.is_file(), f"{label} workflow missing")
+        source = path.read_text(encoding="utf-8")
+        require(
+            f"python3 {SELF_PATH}" in source,
+            f"{label} does not execute the capacity fail-closed contract",
+        )
+        require(
+            SELF_PATH in source and "python3 -m py_compile" in source,
+            f"{label} does not syntax-gate the capacity fail-closed contract",
+        )
+
+
 DEPLOYMENT_MODULE = load(DEPLOYMENT, "lumi_capacity_deployment_decision")
 ROLLBACK_MODULE = load(ROLLBACK, "lumi_capacity_rollback_decision")
 RECOVERY_MODULE = load(RECOVERY, "lumi_capacity_recovery_decision")
@@ -108,6 +128,8 @@ MODULES = (DEPLOYMENT_MODULE, ROLLBACK_MODULE, RECOVERY_MODULE)
 
 
 def main() -> int:
+    validate_workflow_binding()
+
     for module in MODULES:
         clean, blockers = invoke(module, runtime(), services())
         require(clean == counts(), f"{module.__name__}: clean capacity contract did not normalize")
