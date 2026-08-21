@@ -113,6 +113,7 @@
         "apps/worker-media/src/lumi_worker_media/video_generation_repository.py",
         "apps/worker-media/src/lumi_worker_media/video_generation_ports.py",
         "apps/worker-media/src/lumi_worker_media/video_event_buffer.py",
+        "apps/worker-media/src/lumi_worker_media/video_output_recovery.py",
         "apps/worker-media/src/lumi_worker_media/video_generation_artifacts.py",
         "apps/worker-media/src/lumi_worker_media/video_generation_runtime.py",
         "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py",
