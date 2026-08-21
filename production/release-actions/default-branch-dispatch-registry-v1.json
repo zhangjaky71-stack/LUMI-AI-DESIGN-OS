@@ -31,6 +31,10 @@
       "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
     },
     {
+      "path": ".github/workflows/security-release-gate.yml",
+      "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
+    },
+    {
       "path": ".github/workflows/production-iac-contract.yml",
       "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB"
     },
