@@ -16,6 +16,8 @@ FROZEN_VALIDATOR = ROOT / "scripts" / "validate_frozen_production_recovery_evide
 PINS = ROOT / "production" / "release-actions" / "pins-v1.json"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 USES = re.compile(r"^\s*-\s+uses:\s+([^\s#]+)(?:\s+#\s*(\S+))?\s*$", re.MULTILINE)
+EXPECTED_CRITICAL_WORKFLOW_COUNT = 12
+EXPECTED_EVIDENCE_WORKFLOW_COUNT = 10
 
 
 class RecoveryWorkflowContractError(RuntimeError):
@@ -150,17 +152,43 @@ def validate_bundle_and_assembly() -> None:
 def validate_policy_membership() -> None:
     policy = json.loads(PINS.read_text(encoding="utf-8"))
     evidence = policy.get("release_evidence_workflows")
+    critical = policy.get("release_critical_workflows")
     require(isinstance(evidence, list), "release evidence workflow pin list missing")
-    required = {
-        ".github/workflows/collect-staging-database-parity.yml",
-        ".github/workflows/freeze-staging-database-parity.yml",
+    require(isinstance(critical, list), "release critical workflow pin list missing")
+    require(
+        len(evidence) == EXPECTED_EVIDENCE_WORKFLOW_COUNT,
+        f"release evidence governance count must remain exactly {EXPECTED_EVIDENCE_WORKFLOW_COUNT}",
+    )
+    require(
+        len(critical) == EXPECTED_CRITICAL_WORKFLOW_COUNT,
+        f"release executor registry must remain exactly {EXPECTED_CRITICAL_WORKFLOW_COUNT} workflows",
+    )
+    required_recovery_evidence = {
         ".github/workflows/production-dr-rehearsal.yml",
         ".github/workflows/freeze-production-recovery-evidence.yml",
     }
-    require(set(evidence) == required, "P0 release evidence Action-pin workflow set drift")
-    critical = policy.get("release_critical_workflows")
-    require(isinstance(critical, list) and len(critical) == 9, "release executor registry must remain exactly nine workflows")
-    require(required.isdisjoint(set(critical)), "evidence producers must not pollute the nine release executor registry")
+    required_staging_db_evidence = {
+        ".github/workflows/collect-staging-database-parity.yml",
+        ".github/workflows/freeze-staging-database-parity.yml",
+    }
+    evidence_set = set(evidence)
+    critical_set = set(critical)
+    require(
+        required_recovery_evidence.issubset(evidence_set),
+        "Production recovery producer/freezer must remain release-evidence governed",
+    )
+    require(
+        required_staging_db_evidence.issubset(evidence_set),
+        "staging database evidence chain must remain release-evidence governed",
+    )
+    require(
+        required_recovery_evidence.isdisjoint(critical_set),
+        "recovery evidence producers must not be misclassified as release executors",
+    )
+    require(
+        evidence_set.isdisjoint(critical_set),
+        "release critical and release evidence governance sets must remain disjoint",
+    )
 
 
 def main() -> int:
@@ -179,7 +207,8 @@ def main() -> int:
                 "freeze_two_phase": True,
                 "producer_provenance_negative_drills": 8,
                 "final_assembler_bound": True,
-                "evidence_workflow_pin_count": 4,
+                "release_critical_workflow_pin_count": EXPECTED_CRITICAL_WORKFLOW_COUNT,
+                "release_evidence_workflow_pin_count": EXPECTED_EVIDENCE_WORKFLOW_COUNT,
             },
             sort_keys=True,
         )
