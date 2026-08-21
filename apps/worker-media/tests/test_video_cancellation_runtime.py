@@ -87,6 +87,7 @@ class _Pipeline:
         self.cancel_job = cancel_job
         self.resume_job = resume_job
         self.calls: list[str] = []
+        self.resume_allow_quality_retry: list[bool] = []
 
     async def cancel(self, *, organization_id: str, video_job_id: str) -> VideoJob:
         assert organization_id == str(ORG)
@@ -94,10 +95,17 @@ class _Pipeline:
         self.calls.append("cancel")
         return self.cancel_job
 
-    async def resume(self, *, organization_id: str, video_job_id: str) -> VideoJob:
+    async def resume(
+        self,
+        *,
+        organization_id: str,
+        video_job_id: str,
+        allow_quality_retry: bool = True,
+    ) -> VideoJob:
         assert organization_id == str(ORG)
         assert video_job_id == "video-job-cancel-runtime"
         self.calls.append("resume")
+        self.resume_allow_quality_retry.append(allow_quality_retry)
         if self.resume_job is None:
             raise AssertionError("resume must not be called")
         return self.resume_job
@@ -152,6 +160,7 @@ def test_unproven_cancel_polls_same_provider_once_before_single_flush(monkeypatc
     assert not isinstance(result, ExternalWait)
     assert result["status"] == "COMPLETED"
     assert pipeline.calls == ["cancel", "resume"]
+    assert pipeline.resume_allow_quality_retry == [False]
     assert [job.status for job in runtime.flushed] == ["COMPLETED"]
 
 
@@ -170,7 +179,27 @@ def test_still_pending_after_cancel_poll_remains_external_wait(monkeypatch) -> N
     assert isinstance(result, ExternalWait)
     assert result.wait_reason == "video_provider_pending"
     assert pipeline.calls == ["cancel", "resume"]
+    assert pipeline.resume_allow_quality_retry == [False]
     assert [job.status for job in runtime.flushed] == ["WAITING_EXTERNAL"]
+
+
+def test_failed_provider_truth_does_not_enable_quality_retry(monkeypatch) -> None:
+    from lumi_worker_media import video_generation_runtime as module
+
+    pipeline = _Pipeline(
+        cancel_job=_job("WAITING_EXTERNAL", waiting=True),
+        resume_job=_job("FAILED"),
+    )
+    runtime = _Runtime(spec=_spec(), pipeline=pipeline)
+    monkeypatch.setattr(module, "PostgresVideoRepository", _Repository)
+
+    result = asyncio.run(runtime.reconcile_cancellation(_message()))
+
+    assert not isinstance(result, ExternalWait)
+    assert result["status"] == "FAILED"
+    assert pipeline.calls == ["cancel", "resume"]
+    assert pipeline.resume_allow_quality_retry == [False]
+    assert [job.status for job in runtime.flushed] == ["FAILED"]
 
 
 def test_proven_cancel_skips_provider_poll_and_flushes_once(monkeypatch) -> None:
@@ -188,4 +217,5 @@ def test_proven_cancel_skips_provider_poll_and_flushes_once(monkeypatch) -> None
     assert not isinstance(result, ExternalWait)
     assert result["status"] == "CANCELLED"
     assert pipeline.calls == ["cancel"]
+    assert pipeline.resume_allow_quality_retry == []
     assert [job.status for job in runtime.flushed] == ["CANCELLED"]
