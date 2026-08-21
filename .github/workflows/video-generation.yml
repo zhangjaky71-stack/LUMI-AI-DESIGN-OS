@@ -20,6 +20,7 @@ on:
       - "apps/worker-media/src/lumi_worker_media/external_wait_runtime.py"
       - "apps/worker-media/src/lumi_worker_media/video_*.py"
       - "apps/worker-media/tests/test_video_*.py"
+      - "apps/worker-media/tests/test_job_dispatch_observability.py"
       - "apps/worker-media/tests/integration/test_video_*.py"
       - "apps/api/alembic/versions/0023_video_generation_runtime.py"
       - "apps/api/pyproject.toml"
@@ -32,9 +33,11 @@ on:
       - "apps/api/tests/integration/test_video_outbox_dispatch_postgres.py"
       - "apps/api/tests/test_provider_output_store.py"
       - "infra/iac/environments/staging/app/main.tf"
+      - "infra/iac/environments/staging/app/outbox_observability.tf"
       - "infra/iac/environments/staging/app/variables.tf"
       - "infra/iac/environments/staging/app/terraform.tfvars.example"
       - "infra/iac/environments/production/app/main.tf"
+      - "infra/iac/environments/production/app/outbox_observability.tf"
       - "infra/iac/environments/production/app/variables.tf"
       - "infra/iac/environments/production/app/terraform.tfvars.example"
       - "infra/iac/modules/compute/main.tf"
@@ -48,6 +51,7 @@ on:
       - "scripts/production-recovery-decision.py"
       - "scripts/validate_production_readiness_contract.py"
       - "scripts/validate_production_recovery_contract.py"
+      - "scripts/validate_outbox_dispatcher_observability.py"
       - "scripts/validate_video_generation.py"
       - "scripts/validate_video_generation_producer_binding.py"
       - "scripts/validate_video_worker_hosted_binding.py"
@@ -87,6 +91,7 @@ jobs:
             apps/worker-media/src/lumi_worker_media/external_wait_runtime.py \
             apps/worker-media/src/lumi_worker_media/video_*.py \
             apps/worker-media/tests/test_video_*.py \
+            apps/worker-media/tests/test_job_dispatch_observability.py \
             apps/worker-media/tests/integration/test_video_*.py \
             apps/api/src/lumi_api/generations/gateway.py \
             apps/api/src/lumi_api/generations/video_service.py \
@@ -100,6 +105,7 @@ jobs:
             scripts/production-recovery-decision.py \
             scripts/validate_production_readiness_contract.py \
             scripts/validate_production_recovery_contract.py \
+            scripts/validate_outbox_dispatcher_observability.py \
             scripts/validate_video_generation.py \
             scripts/validate_video_generation_producer_binding.py \
             scripts/validate_video_worker_hosted_binding.py \
@@ -117,6 +123,8 @@ jobs:
         run: python scripts/validate_video_worker_hosted_binding.py
       - name: Validate final durable video probe binding
         run: python3 scripts/validate_video_final_probe_binding.py
+      - name: Validate outbox dispatcher operational observability
+        run: python3 scripts/validate_outbox_dispatcher_observability.py
 
   video-generation-quality:
     needs: video-generation-contract
@@ -140,7 +148,12 @@ jobs:
         run: uv run pytest services/video-generation/tests -q
       - name: Run all Hosted Worker video boundary tests
         shell: bash
-        run: uv run pytest apps/worker-media/tests/test_video_*.py apps/api/tests/test_provider_output_store.py -q
+        run: >-
+          uv run pytest
+          apps/worker-media/tests/test_video_*.py
+          apps/worker-media/tests/test_job_dispatch_observability.py
+          apps/api/tests/test_provider_output_store.py
+          -q
       - name: Ruff correctness gate
         shell: bash
         run: |
@@ -154,6 +167,7 @@ jobs:
             apps/worker-media/src/lumi_worker_media/external_wait_runtime.py \
             apps/worker-media/src/lumi_worker_media/video_*.py \
             apps/worker-media/tests/test_video_*.py \
+            apps/worker-media/tests/test_job_dispatch_observability.py \
             apps/worker-media/tests/integration/test_video_*.py \
             apps/api/src/lumi_api/generations/gateway.py \
             apps/api/src/lumi_api/generations/video_service.py \
@@ -166,6 +180,7 @@ jobs:
             scripts/validate_video_generation_producer_binding.py \
             scripts/validate_video_worker_hosted_binding.py \
             scripts/validate_video_final_probe_binding.py \
+            scripts/validate_outbox_dispatcher_observability.py \
             scripts/benchmark_video_generation.py
       - name: Pyright runtime gate
         shell: bash
@@ -173,7 +188,9 @@ jobs:
           uv run pyright -p services/video-generation/pyrightconfig.json
           uv run pyright \
             apps/worker-media/src/lumi_worker_media/video_*.py \
-            apps/worker-media/tests/test_video_*.py
+            apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py \
+            apps/worker-media/tests/test_video_*.py \
+            apps/worker-media/tests/test_job_dispatch_observability.py
 
   worker-media-video-smoke:
     needs: video-generation-quality
