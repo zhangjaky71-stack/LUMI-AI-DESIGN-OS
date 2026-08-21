@@ -140,9 +140,18 @@ def _provider_record(result: GatewayVideoResult | None = None) -> ProviderJobRec
 
 
 class _Gateway:
-    def __init__(self, result: GatewayVideoResult) -> None:
+    def __init__(
+        self,
+        result: GatewayVideoResult,
+        *,
+        cancel_error: Exception | None = None,
+        poll_result: GatewayVideoResult | None = None,
+    ) -> None:
         self.result = result
+        self.cancel_error = cancel_error
+        self.poll_result = poll_result
         self.cancel_count = 0
+        self.poll_count = 0
         self.estimate_count = 0
         self.submit_count = 0
 
@@ -187,9 +196,18 @@ class _Gateway:
             routing_reason_codes=("QUALITY_RETRY",),
         )
 
+    async def poll(self, *, pending: ProviderJobRecord) -> GatewayVideoResult:
+        assert pending.result.provider_request_id == PROVIDER_REQUEST_ID
+        self.poll_count += 1
+        if self.poll_result is None:
+            raise AssertionError("poll must not be called")
+        return self.poll_result
+
     async def cancel(self, *, pending: ProviderJobRecord) -> GatewayVideoResult:
         assert pending.result.provider_request_id == PROVIDER_REQUEST_ID
         self.cancel_count += 1
+        if self.cancel_error is not None:
+            raise self.cancel_error
         return self.result
 
 
@@ -224,6 +242,8 @@ def _pipeline(
     *,
     include_provider_record: bool = True,
     outputs: dict[str, tuple[StoredVideoClip, VideoProbeResult]] | None = None,
+    cancel_error: Exception | None = None,
+    poll_result: GatewayVideoResult | None = None,
 ) -> tuple[VideoGenerationPipeline, InMemoryVideoRepository, _Gateway, _Costs, _Events]:
     repository = InMemoryVideoRepository()
     spec = _spec()
@@ -231,7 +251,11 @@ def _pipeline(
     repository.save(_job(spec))
     if include_provider_record:
         repository.save_provider_job(_provider_record())
-    gateway = _Gateway(cancel_result)
+    gateway = _Gateway(
+        cancel_result,
+        cancel_error=cancel_error,
+        poll_result=poll_result,
+    )
     costs = _Costs()
     events = _Events()
     pipeline = VideoGenerationPipeline(
@@ -364,3 +388,42 @@ def test_successful_provider_truth_wins_over_cancellation_intent() -> None:
     archived = repository.get_provider_job(ORG, VIDEO_JOB_ID, SHOT_ID, PAID_OPERATION_ID)
     assert archived is not None
     assert archived.result.status == "SUCCEEDED"
+
+
+def test_cancel_transport_error_reconciles_original_provider_success_without_retry() -> None:
+    pipeline, repository, gateway, costs, events = _pipeline(
+        _result("PENDING"),
+        cancel_error=RuntimeError("provider cancel transport timeout"),
+        poll_result=_result("SUCCEEDED"),
+        outputs={"provider-output": _clip()},
+    )
+
+    cancelled_attempt = _cancel(pipeline)
+
+    assert cancelled_attempt.status == "WAITING_EXTERNAL"
+    assert gateway.cancel_count == 1
+    assert gateway.poll_count == 0
+    pending = repository.get_provider_job(ORG, VIDEO_JOB_ID, SHOT_ID, PAID_OPERATION_ID)
+    assert pending is not None
+    assert pending.result.status == "PENDING"
+
+    reconciled = asyncio.run(
+        pipeline.resume(
+            organization_id=ORG,
+            video_job_id=VIDEO_JOB_ID,
+            allow_quality_retry=False,
+        )
+    )
+
+    assert reconciled.status == "COMPLETED"
+    assert reconciled.final_artifact_version_id is not None
+    assert gateway.poll_count == 1
+    assert gateway.estimate_count == 0
+    assert gateway.submit_count == 0
+    assert costs.calls == 1
+    assert "video_generation.cancelled" not in events.types
+    assert events.types.count("video_generation.completed") == 1
+    archived = repository.get_provider_job(ORG, VIDEO_JOB_ID, SHOT_ID, PAID_OPERATION_ID)
+    assert archived is not None
+    assert archived.result.status == "SUCCEEDED"
+    assert archived.result.provider_request_id == PROVIDER_REQUEST_ID
