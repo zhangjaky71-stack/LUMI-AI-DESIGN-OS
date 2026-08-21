@@ -195,12 +195,13 @@ jobs:
           export TF_VAR_sandbox_runtime_image="$PREVIOUS_SANDBOX"
           terraform -chdir=infra/iac/environments/production/app plan -input=false -out=rollback.tfplan
           terraform -chdir=infra/iac/environments/production/app apply -input=false -auto-approve rollback.tfplan
-      - name: Verify previous six-runtime identity
+      - name: Verify previous six-runtime identity on current infrastructure capacity
         run: |
           bash scripts/capture-production-runtime-identity.sh \
             infra/iac/environments/production/app \
             "$PREVIOUS_MANIFEST" \
-            reports/production-deployments/runtime/rollback-rehearsal/previous-runtime.json
+            reports/production-deployments/runtime/rollback-rehearsal/previous-runtime.json \
+            "$CURRENT_DEPLOYMENT_ID"
       - name: Smoke previous application version against forward database schema
         run: |
           python3 scripts/production-read-only-smoke.py \
@@ -220,12 +221,13 @@ jobs:
           export TF_VAR_sandbox_runtime_image="$CURRENT_SANDBOX"
           terraform -chdir=infra/iac/environments/production/app plan -input=false -out=rollforward.tfplan
           terraform -chdir=infra/iac/environments/production/app apply -input=false -auto-approve rollforward.tfplan
-      - name: Verify restored current six-runtime identity
+      - name: Verify restored current six-runtime identity and capacity
         run: |
           bash scripts/capture-production-runtime-identity.sh \
             infra/iac/environments/production/app \
             "$CURRENT_MANIFEST" \
-            reports/production-deployments/runtime/rollback-rehearsal/restored-runtime.json
+            reports/production-deployments/runtime/rollback-rehearsal/restored-runtime.json \
+            "$CURRENT_DEPLOYMENT_ID"
       - name: Smoke restored current RC
         run: |
           python3 scripts/production-read-only-smoke.py \
@@ -260,7 +262,8 @@ jobs:
           bash scripts/capture-production-runtime-identity.sh \
             infra/iac/environments/production/app \
             "$CURRENT_MANIFEST" \
-            reports/production-deployments/runtime/rollback-rehearsal/emergency-restored-runtime.json
+            reports/production-deployments/runtime/rollback-rehearsal/emergency-restored-runtime.json \
+            "$CURRENT_DEPLOYMENT_ID"
       - name: Archive rollback rehearsal evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
