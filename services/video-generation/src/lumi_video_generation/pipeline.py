@@ -189,19 +189,22 @@ class VideoGenerationPipeline:
                 waiting.shot_id,
                 waiting.paid_operation_id,
             )
-            if pending is not None:
-                try:
-                    result = await self.gateway.cancel(pending=pending)
-                except Exception:
-                    return job
-                job = await self._record_cost(job, waiting, result)
-                self.repository.save_provider_job(replace(pending, result=result))
-                self.repository.delete_provider_job(
-                    organization_id,
-                    video_job_id,
-                    waiting.shot_id,
-                    waiting.paid_operation_id,
-                )
+            if pending is None:
+                return job
+            try:
+                result = await self.gateway.cancel(pending=pending)
+            except Exception:
+                return job
+            self.repository.save_provider_job(replace(pending, result=result))
+            if result.status != "CANCELLED":
+                return job
+            job = await self._record_cost(job, waiting, result)
+            self.repository.delete_provider_job(
+                organization_id,
+                video_job_id,
+                waiting.shot_id,
+                waiting.paid_operation_id,
+            )
         cancelled = replace(
             job,
             shots=tuple(
