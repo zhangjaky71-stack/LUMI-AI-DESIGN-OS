@@ -150,7 +150,7 @@ attempt provider cancellation
          -> failed: preserve real provider failure
 ```
 
-The cancellation reconciliation path never calls `pipeline.start()` and never submits replacement paid provider work. The cancel attempt and, when required, the single poll are reconciled in one Worker invocation and then flushed once through the canonical recovery/public-Generation/event UoW.
+The cancellation reconciliation path never calls `pipeline.start()` and never submits replacement paid provider work. It explicitly disables quality retry while reconciling the existing Provider request, so Provider failure, postprocess failure, or validation failure after cancellation intent cannot launch another paid generation attempt. The cancel attempt and, when required, the single poll are reconciled in one Worker invocation and then flushed once through the canonical recovery/public-Generation/event UoW.
 
 For the current OpenAI Videos adapter, deletion is deliberately **not** treated as cancellation proof. The adapter fails closed instead of issuing a DELETE and declaring success. This means a cancellation request can remain `WAITING_EXTERNAL` until the same provider request reaches a real terminal state.
 
