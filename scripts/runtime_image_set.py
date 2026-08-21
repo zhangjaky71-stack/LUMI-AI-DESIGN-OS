@@ -23,6 +23,12 @@ REQUIRED_RUNTIMES = {
 }
 ATTESTATION_KIND = "LUMI_RUNTIME_IMAGE_ATTESTATION_VERIFICATION_V1"
 ATTESTATION_REPORT_FILE = "attestation-verification.json"
+BUILDKIT_BUILD_TYPE = "https://mobyproject.org/buildkit@v1"
+BUILDKIT_PLATFORM = "linux/amd64"
+APPROVED_BASE_IMAGE_PREFIXES = {
+    "UV_BASE_IMAGE": "ghcr.io/astral-sh/uv@sha256:",
+    "PYTHON_BASE_IMAGE": "python@sha256:",
+}
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 DIGEST_IMAGE = re.compile(r"^[^\s@]+@sha256:[0-9a-f]{64}$")
@@ -50,6 +56,14 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def _nonempty(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip()) and value.strip().upper() != "PENDING"
+
+
+def _positive_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _nonnegative_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def _load_staging_gate() -> ModuleType:
@@ -168,15 +182,40 @@ def build_fragment(
     }
 
 
+def _validate_base_images(value: object, *, service: str) -> dict[str, str]:
+    if not isinstance(value, dict) or set(value) != set(APPROVED_BASE_IMAGE_PREFIXES):
+        raise RuntimeImageSetError(
+            f"BuildKit provenance base_images must contain exact approved keys for {service}"
+        )
+    normalized: dict[str, str] = {}
+    for name, prefix in APPROVED_BASE_IMAGE_PREFIXES.items():
+        image = value.get(name)
+        if not isinstance(image, str) or not DIGEST_IMAGE.fullmatch(image):
+            raise RuntimeImageSetError(
+                f"BuildKit provenance {name} must be digest-only for {service}"
+            )
+        if not image.startswith(prefix):
+            raise RuntimeImageSetError(
+                f"BuildKit provenance {name} uses an unapproved repository for {service}"
+            )
+        normalized[name] = image
+    return normalized
+
+
 def validate_attestation_report(
     report: dict[str, Any],
     *,
     images: dict[str, str],
     git_sha: str,
+    build_recipes: dict[str, str],
 ) -> dict[str, Any]:
     expected_git_sha = git_sha.lower()
     if not SHA40.fullmatch(expected_git_sha):
         raise RuntimeImageSetError("attestation verification expected git_sha is invalid")
+    if set(build_recipes) != REQUIRED_RUNTIMES or not all(
+        _nonempty(value) for value in build_recipes.values()
+    ):
+        raise RuntimeImageSetError("attestation verification build recipes must cover six runtimes")
     if report.get("schema_version") != 1 or report.get("kind") != ATTESTATION_KIND:
         raise RuntimeImageSetError("attestation verification report schema/kind mismatch")
     if report.get("status") != "PASS":
@@ -186,15 +225,22 @@ def validate_attestation_report(
     repository = report.get("repository")
     if not isinstance(repository, str) or not REPOSITORY.fullmatch(repository):
         raise RuntimeImageSetError("attestation verification report repository is invalid")
+    expected_source_uri = f"https://github.com/{repository}.git#{expected_git_sha}"
     tools = report.get("tools")
-    if not isinstance(tools, dict) or not _nonempty(tools.get("docker_buildx")) or not _nonempty(tools.get("github_cli")):
+    if (
+        not isinstance(tools, dict)
+        or not _nonempty(tools.get("docker_buildx"))
+        or not _nonempty(tools.get("github_cli"))
+    ):
         raise RuntimeImageSetError("attestation verification report tool identity is incomplete")
 
     policy = report.get("github_attestation_policy")
     if not isinstance(policy, dict):
         raise RuntimeImageSetError("attestation verification report GitHub policy is missing")
     if policy.get("source_digest") != expected_git_sha:
-        raise RuntimeImageSetError("attestation verification source_digest does not match frozen RC git_sha")
+        raise RuntimeImageSetError(
+            "attestation verification source_digest does not match frozen RC git_sha"
+        )
     for key in ("signer_workflow", "source_ref", "workflow_ref"):
         if not _nonempty(policy.get(key)):
             raise RuntimeImageSetError(f"attestation verification GitHub policy missing {key}")
@@ -203,23 +249,36 @@ def validate_attestation_report(
 
     results = report.get("results")
     if not isinstance(results, list) or len(results) != 6:
-        raise RuntimeImageSetError("attestation verification report results must contain six entries")
+        raise RuntimeImageSetError(
+            "attestation verification report results must contain six entries"
+        )
     seen: set[str] = set()
+    common_base_images: dict[str, str] | None = None
     for item in results:
         if not isinstance(item, dict):
             raise RuntimeImageSetError("attestation verification result must be an object")
         service = item.get("service")
-        if not isinstance(service, str) or service not in REQUIRED_RUNTIMES or service in seen:
-            raise RuntimeImageSetError(f"attestation verification result service invalid/duplicate: {service}")
+        if (
+            not isinstance(service, str)
+            or service not in REQUIRED_RUNTIMES
+            or service in seen
+        ):
+            raise RuntimeImageSetError(
+                f"attestation verification result service invalid/duplicate: {service}"
+            )
         seen.add(service)
         if item.get("image") != images.get(service):
             raise RuntimeImageSetError(f"attestation verification image mismatch for {service}")
         if item.get("status") != "PASS":
-            raise RuntimeImageSetError(f"attestation verification status is not PASS for {service}")
+            raise RuntimeImageSetError(
+                f"attestation verification status is not PASS for {service}"
+            )
         if item.get("registry_resolvable") is not True:
             raise RuntimeImageSetError(f"registry digest was not verified for {service}")
         if item.get("github_attestation_verified") is not True:
-            raise RuntimeImageSetError(f"GitHub artifact attestation was not verified for {service}")
+            raise RuntimeImageSetError(
+                f"GitHub artifact attestation was not verified for {service}"
+            )
         item_policy = item.get("github_attestation_policy")
         if not isinstance(item_policy, dict):
             raise RuntimeImageSetError(f"GitHub attestation policy is missing for {service}")
@@ -234,14 +293,52 @@ def validate_attestation_report(
                 raise RuntimeImageSetError(
                     f"GitHub attestation policy mismatch for {service}: {key}"
                 )
+
         provenance = item.get("buildkit_provenance")
-        sbom = item.get("buildkit_sbom")
-        if not isinstance(provenance, dict) or not _nonempty(provenance.get("build_type")) or not _nonempty(provenance.get("builder_id")):
+        if not isinstance(provenance, dict):
             raise RuntimeImageSetError(f"BuildKit provenance summary is missing for {service}")
+        if provenance.get("build_type") != BUILDKIT_BUILD_TYPE:
+            raise RuntimeImageSetError(f"BuildKit build_type mismatch for {service}")
+        if not _nonempty(provenance.get("builder_id")):
+            raise RuntimeImageSetError(f"BuildKit builder_id is missing for {service}")
+        if provenance.get("source_uri") != expected_source_uri:
+            raise RuntimeImageSetError(f"BuildKit source_uri mismatch for {service}")
+        if provenance.get("source_digest") != expected_git_sha:
+            raise RuntimeImageSetError(f"BuildKit source_digest mismatch for {service}")
+        if provenance.get("entrypoint") != build_recipes[service]:
+            raise RuntimeImageSetError(f"BuildKit Dockerfile entrypoint mismatch for {service}")
+        if provenance.get("platform") != BUILDKIT_PLATFORM:
+            raise RuntimeImageSetError(f"BuildKit platform mismatch for {service}")
+        base_images = _validate_base_images(provenance.get("base_images"), service=service)
+        if common_base_images is None:
+            common_base_images = base_images
+        elif base_images != common_base_images:
+            raise RuntimeImageSetError(
+                f"BuildKit base-image identities differ across runtimes at {service}"
+            )
+        material_count = provenance.get("material_count")
+        material_sha256_count = provenance.get("material_sha256_count")
+        if not _positive_int(material_count):
+            raise RuntimeImageSetError(f"BuildKit material_count must be positive for {service}")
+        if not _positive_int(material_sha256_count):
+            raise RuntimeImageSetError(
+                f"BuildKit material_sha256_count must be positive for {service}"
+            )
+        if int(material_sha256_count) > int(material_count):
+            raise RuntimeImageSetError(
+                f"BuildKit material_sha256_count exceeds material_count for {service}"
+            )
+
+        sbom = item.get("buildkit_sbom")
         if not isinstance(sbom, dict) or not _nonempty(sbom.get("spdx_version")):
             raise RuntimeImageSetError(f"BuildKit SBOM summary is missing for {service}")
+        if not _nonnegative_int(sbom.get("package_count")):
+            raise RuntimeImageSetError(f"BuildKit SBOM package_count is invalid for {service}")
+
     if seen != REQUIRED_RUNTIMES:
         raise RuntimeImageSetError("attestation verification report service set is incomplete")
+    if common_base_images is None:
+        raise RuntimeImageSetError("attestation verification report has no common base-image identity")
     return {
         "schema_version": 1,
         "kind": ATTESTATION_KIND,
@@ -249,6 +346,7 @@ def validate_attestation_report(
         "runtime_count": 6,
         "repository": repository,
         "source_digest": expected_git_sha,
+        "base_images": common_base_images,
     }
 
 
@@ -287,6 +385,7 @@ def assemble(
 
     images: dict[str, str] = {}
     provenance: dict[str, dict[str, Any]] = {}
+    build_recipes: dict[str, str] = {}
     for service in sorted(REQUIRED_RUNTIMES):
         fragment = fragments[service]
         image = fragment.get("image")
@@ -295,10 +394,14 @@ def assemble(
             raise RuntimeImageSetError(f"{service} fragment image is not immutable")
         if not isinstance(item, dict) or item.get("git_sha") != git_sha.lower():
             raise RuntimeImageSetError(f"{service} fragment git_sha mismatch")
+        build_recipe = item.get("build_recipe_ref")
+        if not _nonempty(build_recipe):
+            raise RuntimeImageSetError(f"{service} fragment build_recipe_ref is missing")
         if fragment.get("build_run_url") != build_run_url:
             raise RuntimeImageSetError(f"{service} build_run_url mismatch")
         images[service] = image
         provenance[service] = item
+        build_recipes[service] = str(build_recipe)
 
     image_set = {"images": images, "provenance": provenance}
     gate = _load_staging_gate()
@@ -312,7 +415,12 @@ def assemble(
         raise RuntimeImageSetError("staging image-set contract blocked: " + "; ".join(blockers))
 
     report = _load_json(attestation_report)
-    report_summary = validate_attestation_report(report, images=images, git_sha=git_sha)
+    report_summary = validate_attestation_report(
+        report,
+        images=images,
+        git_sha=git_sha,
+        build_recipes=build_recipes,
+    )
     report_sha256 = hashlib.sha256(attestation_report.read_bytes()).hexdigest()
     if not SHA256.fullmatch(report_sha256):
         raise RuntimeImageSetError("attestation report SHA-256 calculation failed")
@@ -335,7 +443,9 @@ def assemble(
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Build and validate the canonical six-runtime RC image set")
+    parser = argparse.ArgumentParser(
+        description="Build and validate the canonical six-runtime RC image set"
+    )
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -364,7 +474,12 @@ def main() -> int:
     args = _parser().parse_args()
     manifest = validate_manifest(args.manifest)
     if args.command == "validate-manifest":
-        print(json.dumps({"status": "PASS", "runtime_count": len(manifest["runtimes"])}, sort_keys=True))
+        print(
+            json.dumps(
+                {"status": "PASS", "runtime_count": len(manifest["runtimes"])},
+                sort_keys=True,
+            )
+        )
         return 0
     if args.command == "fragment":
         payload = build_fragment(
