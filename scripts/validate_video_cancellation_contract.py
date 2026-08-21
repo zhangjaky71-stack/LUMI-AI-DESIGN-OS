@@ -10,6 +10,7 @@ VIDEO_JOB_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/video_job_ru
 HOSTED_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/video_generation_runtime.py"
 OPENAI_VIDEO = ROOT / "services/model-gateway/src/lumi_model_gateway/openai_video_adapter.py"
 TEST = ROOT / "apps/worker-media/tests/test_video_job_runtime.py"
+HOSTED_TEST = ROOT / "apps/worker-media/tests/test_video_cancellation_runtime.py"
 MANIFEST = ROOT / "production/runtime-images/manifest-v1.json"
 DOC = ROOT / "docs/runtime/VIDEO-GENERATION-V1.md"
 VIDEO_JOB_RUNTIME_PATH = "apps/worker-media/src/lumi_worker_media/video_job_runtime.py"
@@ -40,6 +41,7 @@ def validate_repo() -> None:
     hosted = read(HOSTED_RUNTIME)
     provider = read(OPENAI_VIDEO)
     tests = read(TEST)
+    hosted_tests = read(HOSTED_TEST)
     doc = read(DOC)
 
     for source, path in (
@@ -47,6 +49,7 @@ def validate_repo() -> None:
         (executor, VIDEO_JOB_RUNTIME),
         (hosted, HOSTED_RUNTIME),
         (tests, TEST),
+        (hosted_tests, HOSTED_TEST),
     ):
         try:
             compile(source, str(path), "exec")
@@ -171,7 +174,21 @@ def validate_repo() -> None:
             'assert outcome.output["cancellation_request_lost_race_to_terminal"] is True',
             "test_invalid_video_cancellation_resolution_fails_closed",
         ),
-        "video cancellation executable regression",
+        "video cancellation executor regression",
+    )
+    require_markers(
+        hosted_tests,
+        (
+            "test_unproven_cancel_polls_same_provider_once_before_single_flush",
+            'assert pipeline.calls == ["cancel", "resume"]',
+            'assert [job.status for job in runtime.flushed] == ["COMPLETED"]',
+            "test_still_pending_after_cancel_poll_remains_external_wait",
+            'assert [job.status for job in runtime.flushed] == ["WAITING_EXTERNAL"]',
+            "test_proven_cancel_skips_provider_poll_and_flushes_once",
+            'assert pipeline.calls == ["cancel"]',
+            'assert [job.status for job in runtime.flushed] == ["CANCELLED"]',
+        ),
+        "Hosted cancellation runtime regression",
     )
 
     try:
@@ -191,6 +208,8 @@ def validate_repo() -> None:
         (
             "Cancellation is provider-reconciled",
             "cancellation request",
+            "poll the same provider request exactly once",
+            "never submits replacement paid provider work",
             "WAITING_EXTERNAL",
         ),
         "canonical Video Runtime cancellation semantics",
