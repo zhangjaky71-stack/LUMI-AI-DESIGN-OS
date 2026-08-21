@@ -13,6 +13,8 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   BUILD_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  UV_BASE_TAG: ghcr.io/astral-sh/uv:0.11.28
+  PYTHON_BASE_TAG: python:3.12-slim
 
 jobs:
   source-gate:
@@ -103,6 +105,30 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
+      - name: Resolve immutable base image digests once
+        id: base_images
+        shell: bash
+        run: |
+          set -euo pipefail
+          resolve_digest() {
+            local image="$1"
+            local payload
+            local digest
+            payload="$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}')"
+            digest="$(printf '%s' "$payload" | python3 -c 'import json, re, sys; value=json.load(sys.stdin).get("digest", ""); assert re.fullmatch(r"sha256:[0-9a-f]{64}", value), value; print(value)')"
+            printf '%s' "$digest"
+          }
+
+          uv_digest="$(resolve_digest "$UV_BASE_TAG")"
+          python_digest="$(resolve_digest "$PYTHON_BASE_TAG")"
+          uv_image="ghcr.io/astral-sh/uv@${uv_digest}"
+          python_image="python@${python_digest}"
+
+          echo "UV_BASE_IMAGE=${uv_image}" >> "$GITHUB_ENV"
+          echo "PYTHON_BASE_IMAGE=${python_image}" >> "$GITHUB_ENV"
+          echo "uv_image=${uv_image}" >> "$GITHUB_OUTPUT"
+          echo "python_image=${python_image}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push API
         id: build_api
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -112,6 +138,9 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE_BASE }}-api:rc-${{ github.sha }}
+          build-args: |
+            UV_BASE_IMAGE=${{ env.UV_BASE_IMAGE }}
+            PYTHON_BASE_IMAGE=${{ env.PYTHON_BASE_IMAGE }}
           provenance: mode=max,version=v0.2
           sbom: true
           secrets: |
@@ -136,6 +165,9 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE_BASE }}-agent-runtime:rc-${{ github.sha }}
+          build-args: |
+            UV_BASE_IMAGE=${{ env.UV_BASE_IMAGE }}
+            PYTHON_BASE_IMAGE=${{ env.PYTHON_BASE_IMAGE }}
           provenance: mode=max,version=v0.2
           sbom: true
           secrets: |
@@ -160,6 +192,9 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE_BASE }}-model-gateway:rc-${{ github.sha }}
+          build-args: |
+            UV_BASE_IMAGE=${{ env.UV_BASE_IMAGE }}
+            PYTHON_BASE_IMAGE=${{ env.PYTHON_BASE_IMAGE }}
           provenance: mode=max,version=v0.2
           sbom: true
           secrets: |
@@ -184,6 +219,9 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE_BASE }}-tool-gateway:rc-${{ github.sha }}
+          build-args: |
+            UV_BASE_IMAGE=${{ env.UV_BASE_IMAGE }}
+            PYTHON_BASE_IMAGE=${{ env.PYTHON_BASE_IMAGE }}
           provenance: mode=max,version=v0.2
           sbom: true
           secrets: |
@@ -208,6 +246,9 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE_BASE }}-worker-media:rc-${{ github.sha }}
+          build-args: |
+            UV_BASE_IMAGE=${{ env.UV_BASE_IMAGE }}
+            PYTHON_BASE_IMAGE=${{ env.PYTHON_BASE_IMAGE }}
           provenance: mode=max,version=v0.2
           sbom: true
           secrets: |
@@ -232,6 +273,9 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE_BASE }}-sandbox-runtime:rc-${{ github.sha }}
+          build-args: |
+            UV_BASE_IMAGE=${{ env.UV_BASE_IMAGE }}
+            PYTHON_BASE_IMAGE=${{ env.PYTHON_BASE_IMAGE }}
           provenance: mode=max,version=v0.2
           sbom: true
           secrets: |
