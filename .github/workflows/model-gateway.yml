@@ -21,11 +21,18 @@ on:
       - "apps/api/tests/test_provider_output_store.py"
       - "apps/api/tests/integration/test_model_paid_guard_postgres.py"
       - "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py"
+      - "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/runtime_factory.py"
       - "apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py"
       - "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py"
+      - "apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py"
       - "apps/worker-media/tests/test_image_gateway_runtime.py"
+      - "infra/iac/environments/staging/app/main.tf"
+      - "infra/iac/environments/production/app/main.tf"
+      - "infra/iac/modules/compute/main.tf"
+      - "production/runtime-images/manifest-v1.json"
       - "scripts/validate_model_gateway_contract.py"
       - "scripts/validate_deep_agents_model_gateway_contract.py"
+      - "scripts/validate_private_model_gateway_deployment_contract.py"
       - "scripts/integration_model_gateway.py"
       - "docs/runtime/MODEL-GATEWAY-V1.md"
       - "reports/nodes/NODE-22/**"
@@ -61,14 +68,19 @@ jobs:
           apps/api/tests/test_model_gateway_media_bootstrap.py
           apps/api/tests/test_provider_output_store.py
           apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py
+          apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/runtime_factory.py
           apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py
+          apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py
           apps/worker-media/tests/test_image_gateway_runtime.py
           scripts/validate_model_gateway_contract.py
           scripts/validate_deep_agents_model_gateway_contract.py
+          scripts/validate_private_model_gateway_deployment_contract.py
       - name: Static architecture and secret boundary
         run: python scripts/validate_model_gateway_contract.py
       - name: Deep Agents private Model Gateway boundary
         run: python scripts/validate_deep_agents_model_gateway_contract.py
+      - name: Cross-layer private Model Gateway deployment boundary
+        run: python scripts/validate_private_model_gateway_deployment_contract.py
 
   model-gateway:
     needs: source-contract
@@ -91,6 +103,9 @@ jobs:
       - name: Static architecture and secret boundary
         run: uv run python scripts/validate_model_gateway_contract.py
 
+      - name: Cross-layer private deployment boundary
+        run: uv run python scripts/validate_private_model_gateway_deployment_contract.py
+
       - name: Model gateway lint
         run: >-
           uv run ruff check
@@ -104,8 +119,10 @@ jobs:
           apps/api/src/lumi_api/model_paid_guard.py
           apps/api/src/lumi_api/provider_output_store.py
           apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py
+          apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/runtime_factory.py
           apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py
           apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py
+          apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py
           apps/worker-media/tests/test_image_gateway_runtime.py
           apps/api/tests/test_model_gateway_media_bootstrap.py
           apps/api/tests/test_model_paid_guard.py
@@ -113,6 +130,7 @@ jobs:
           apps/api/tests/integration/test_model_paid_guard_postgres.py
           scripts/validate_model_gateway_contract.py
           scripts/validate_deep_agents_model_gateway_contract.py
+          scripts/validate_private_model_gateway_deployment_contract.py
           scripts/integration_model_gateway.py
 
       - name: Model gateway type check
@@ -127,8 +145,10 @@ jobs:
           apps/api/src/lumi_api/model_paid_guard.py
           apps/api/src/lumi_api/provider_output_store.py
           apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py
+          apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/runtime_factory.py
           apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py
           apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py
+          apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py
           apps/worker-media/tests/test_image_gateway_runtime.py
           apps/api/tests/test_model_gateway_media_bootstrap.py
           apps/api/tests/test_model_paid_guard.py
