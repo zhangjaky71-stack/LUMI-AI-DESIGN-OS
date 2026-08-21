@@ -5,10 +5,11 @@ import json
 import os
 import re
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import asyncpg
+from lumi_asset_storage.s3 import S3ObjectStore
 from lumi_domain.performance_events import PerformanceTelemetryContext
 from lumi_video_generation import VideoGenerationPipeline
 from lumi_video_generation.model import VideoJob, VideoTaskSpec
@@ -24,6 +25,7 @@ from .video_generation_artifacts import PostgresVideoArtifactAdapter
 from .video_generation_codec import decode_video_task_spec
 from .video_generation_ports import HostedVideoMediaSandbox, HostedVideoOutputAdapter
 from .video_generation_repository import PostgresVideoRepository
+from .video_output_recovery import DeferredProviderOutputStore
 from .video_validation_runtime import HostedV1VideoValidator
 
 _TASK_INPUT_SCHEMA_VERSION = 1
@@ -51,7 +53,8 @@ class HostedVideoGenerationRuntime:
     provider/public Generation state and buffered domain events before parking the
     canonical Task as waiting_external when the provider is still pending. The legacy
     PostgresVideoEventSink remains a compatibility port only and is never composed on
-    this Hosted path because it owns an independent transaction.
+    this Hosted path because it owns an independent transaction. Provider-output
+    deletion is also deferred until the recovery/event UoW has committed.
     """
 
     def __init__(
@@ -100,6 +103,8 @@ class HostedVideoGenerationRuntime:
         )
         gateway = HostedVideoGateway.from_env()
         output = HostedVideoOutputAdapter.from_env()
+        output_recovery = DeferredProviderOutputStore(output.object_store)
+        output.object_store = cast(S3ObjectStore, output_recovery)
         events = BufferedVideoEventSink(self.database_dsn)
         base_sandbox = HostedVideoMediaSandbox.from_spec(spec)
         sandbox = HostedVerifiedVideoMediaSandbox(
@@ -144,6 +149,7 @@ class HostedVideoGenerationRuntime:
                 "VIDEO_RUNTIME_FLUSH_RESULT_MISMATCH",
                 "durable video snapshot changed during flush",
             )
+        await output_recovery.cleanup_committed_provider_outputs()
         if job.status == "WAITING_EXTERNAL":
             waiting = [item for item in job.shots if item.status == "WAITING_EXTERNAL"]
             if len(waiting) != 1:
