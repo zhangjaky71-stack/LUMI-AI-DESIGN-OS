@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 45
     environment: staging
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Require exact RC checkout and explicit acknowledgement
         shell: bash
@@ -38,14 +38,14 @@ jobs:
           test "$(git rev-parse HEAD)" = "$RELEASE_GIT_SHA"
           test -n "$AWS_REGION"
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
 
       - name: Install bounded AWS evidence client dependency
         run: python -m pip install --disable-pip-version-check "boto3>=1.42,<2"
 
-      - uses: aws-actions/configure-aws-credentials@v6.2.3
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           aws-region: ${{ vars.AWS_REGION }}
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
@@ -131,7 +131,7 @@ jobs:
 
       - name: Upload Tool Gateway runtime evidence package
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: staging-tool-gateway-p0-${{ github.run_id }}-${{ github.run_attempt }}
           path: reports/staging-acceptance/runtime/
