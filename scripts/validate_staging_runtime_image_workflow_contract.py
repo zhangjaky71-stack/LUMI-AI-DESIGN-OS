@@ -11,6 +11,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "staging-acceptance-gate.yml"
 EVIDENCE_TEMPLATE = ROOT / "staging" / "acceptance" / "evidence-template.json"
 EVIDENCE_VALIDATOR = ROOT / "scripts" / "validate_staging_evidence_artifacts.py"
 DATABASE_PARITY_CONTRACT = ROOT / "scripts" / "validate_staging_database_parity_contract.py"
+RUNTIME_BINDER = ROOT / "scripts" / "bind_node71_runtime_image_decision.py"
 DOWNLOAD_ACTION = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1"
 UPLOAD_ACTION = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2"
 
@@ -74,6 +75,18 @@ def _run_database_parity_contract() -> None:
     require(payload.get("freeze_two_phase") is True, "database parity freeze two-phase boundary drift")
 
 
+def _run_runtime_binder_self_test() -> None:
+    require(RUNTIME_BINDER.is_file(), "NODE-71 runtime-image decision binder is missing")
+    payload = _run_json_contract(
+        [sys.executable, str(RUNTIME_BINDER), "--self-test"],
+        label="NODE-71 runtime-image decision binder self-test",
+    )
+    require(payload.get("status") == "PASS", "NODE-71 runtime-image decision binder self-test did not PASS")
+    require(payload.get("decision_id_resealed") is True, "NODE-71 decision_id is not bound to runtime-image attestation")
+    drills = payload.get("negative_drills")
+    require(isinstance(drills, list) and len(drills) >= 7, "NODE-71 runtime-image decision binder negative drills drifted")
+
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     for marker in (
@@ -81,6 +94,7 @@ def main() -> int:
         'description: "GitHub Actions run id that produced the frozen six-runtime RC image set"',
         "python3 scripts/validate_staging_evidence_artifacts.py --self-test",
         "python3 scripts/validate_staging_runtime_image_binding.py --self-test",
+        "python3 scripts/bind_node71_runtime_image_decision.py --self-test",
         "python3 scripts/validate_staging_runtime_image_workflow_contract.py",
         "python3 scripts/validate_node71_decision_artifact.py --self-test",
         "python3 scripts/validate_release_action_pins.py",
@@ -88,9 +102,13 @@ def main() -> int:
         "--require-live-producers",
         "STAGING_EVIDENCE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
         "scripts/validate_staging_runtime_image_binding.py",
+        "scripts/bind_node71_runtime_image_decision.py",
         "scripts/validate_staging_runtime_image_workflow_contract.py",
         "scripts/validate_node71_decision_artifact.py",
         "--output reports/staging-acceptance/runtime/evidence-artifact-binding.json",
+        "RUNTIME_IMAGE_BINDING_PATH: reports/staging-acceptance/runtime/runtime-image-binding.json",
+        ' > "$RUNTIME_IMAGE_BINDING_PATH"',
+        '--binding "$RUNTIME_IMAGE_BINDING_PATH"',
         DOWNLOAD_ACTION,
         UPLOAD_ACTION,
         "github-token: ${{ secrets.GITHUB_TOKEN }}",
@@ -106,6 +124,7 @@ def main() -> int:
 
     _run_evidence_binding_self_test()
     _run_database_parity_contract()
+    _run_runtime_binder_self_test()
 
     require(
         text.count('ref: ${{ github.sha }}') == 4,
@@ -185,6 +204,7 @@ def main() -> int:
     download_pos = acceptance.find(DOWNLOAD_ACTION)
     binding_pos = acceptance.find("validate_staging_runtime_image_binding.py")
     gate_pos = acceptance.find("staging-acceptance-gate.py")
+    seal_pos = acceptance.find("Seal verified runtime-image attestation into NODE-71 decision")
     provenance_pos = acceptance.find("--write-provenance reports/staging-acceptance/runtime/decision-provenance.json")
     self_verify_pos = acceptance.find("Self-verify NODE-71 decision provenance before archive")
     upload_pos = acceptance.find(UPLOAD_ACTION)
@@ -193,16 +213,17 @@ def main() -> int:
         and download_pos >= 0
         and binding_pos >= 0
         and gate_pos >= 0
-        and evidence_binding_pos < download_pos < binding_pos < gate_pos,
-        "generic evidence artifact/live producer binding, exact image artifact binding, and NODE-71 decision must execute in fail-closed order",
+        and seal_pos >= 0
+        and evidence_binding_pos < download_pos < binding_pos < gate_pos < seal_pos,
+        "generic evidence, exact image attestation binding, NODE-71 decision, and decision sealing must execute in fail-closed order",
     )
     require(
-        gate_pos < provenance_pos < self_verify_pos < upload_pos,
-        "NODE-71 decision provenance capture/self-verification must occur after decision and before archive",
+        seal_pos < provenance_pos < self_verify_pos < upload_pos,
+        "runtime-image sealed NODE-71 decision must be provenance-captured and self-verified before archive",
     )
     require(
         "path: reports/staging-acceptance/runtime/" in acceptance,
-        "NODE-71 archive must retain evidence-artifact binding report with decision artifacts",
+        "NODE-71 archive must retain evidence binding, runtime-image binding, and decision artifacts",
     )
 
     require(
@@ -212,6 +233,14 @@ def main() -> int:
     require(
         "validate_staging_runtime_image_binding.py --self-test" in source,
         "source-contract must execute runtime image binding negative drills",
+    )
+    require(
+        "bind_node71_runtime_image_decision.py --self-test" in source,
+        "source-contract must execute runtime-image decision sealing negative drills",
+    )
+    require(
+        "bind_node71_runtime_image_decision.py" in source and "scripts/bind_node71_runtime_image_decision.py" in source,
+        "source-contract must retain runtime-image decision binder syntax/execution binding",
     )
     require(
         "validate_staging_runtime_image_workflow_contract.py" in source,
@@ -226,7 +255,7 @@ def main() -> int:
         "source-contract must fail closed on release action supply-chain drift",
     )
 
-    print("NODE-71 immutable evidence/live producers, parity-only database evidence producer/merger, runtime-image, decision artifact, exact-SHA checkout, scoped permission, and executable negative-drill workflow contract: PASS")
+    print("NODE-71 immutable evidence/live producers, parity-only database evidence producer/merger, verified runtime-image attestation decision sealing, decision artifact, exact-SHA checkout, scoped permission, and executable negative-drill workflow contract: PASS")
     return 0
 
 
