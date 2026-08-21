@@ -8,6 +8,7 @@ import asyncpg
 from lumi_video_generation.model import ProviderJobRecord, VideoJob, VideoTaskSpec
 from lumi_video_generation.repository import InMemoryVideoRepository, VideoOperationConflict
 
+from .video_event_buffer import BufferedVideoEventSink
 from .video_generation_codec import (
     decode_provider_record,
     decode_video_job,
@@ -28,9 +29,10 @@ class PostgresVideoRepository(InMemoryVideoRepository):
 
     The domain pipeline intentionally retains its synchronous repository protocol.
     Hosted execution hydrates this UoW before one start/resume step and flushes the
-    complete recovery snapshot afterwards. Provider paid-operation crash safety is
-    separately enforced by NODE-20 in Model Gateway; this repository never owns a
-    second paid-side-effect ledger.
+    recovery snapshot, provider state, public Generation state, and buffered Hosted
+    video events in one PostgreSQL transaction. Provider paid-operation crash safety
+    remains separately enforced by NODE-20 in Model Gateway; this repository never
+    owns a second paid-side-effect ledger.
     """
 
     def __init__(self, database_dsn: str) -> None:
@@ -94,7 +96,15 @@ class PostgresVideoRepository(InMemoryVideoRepository):
         finally:
             await connection.close()
 
-    async def flush(self, *, organization_id: str, operation_id: str) -> VideoJob:
+    async def flush(
+        self,
+        *,
+        organization_id: str,
+        operation_id: str,
+        event_sink: BufferedVideoEventSink | None = None,
+    ) -> VideoJob:
+        if event_sink is not None and event_sink.dsn != self.dsn:
+            raise RuntimeError("VIDEO_EVENT_UOW_DATABASE_MISMATCH")
         spec = self.get_spec(organization_id, operation_id)
         job = self.get_by_operation(organization_id, operation_id)
         if spec is None or job is None:
@@ -208,6 +218,10 @@ class PostgresVideoRepository(InMemoryVideoRepository):
                     await _upsert_provider(connection, row_id=row_id, record=record, active=True)
 
                 await _sync_public_generation(connection, spec=spec, job=job)
+                if event_sink is not None:
+                    await event_sink.flush_into(connection)
+            if event_sink is not None:
+                event_sink.mark_committed()
             return job
         finally:
             await connection.close()
