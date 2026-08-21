@@ -90,6 +90,7 @@ def _validate_report_binding(
     attestation_report: dict[str, Any],
     attestation_report_sha256: str,
     expected_repository: str,
+    expected_git_sha: str,
 ) -> None:
     if len(attestation_report_sha256) != 64 or any(c not in SHA256 for c in attestation_report_sha256):
         raise BindingError("attestation verification report SHA-256 is invalid")
@@ -102,6 +103,7 @@ def _validate_report_binding(
         "status",
         "runtime_count",
         "repository",
+        "source_digest",
         "report_file",
         "sha256",
     }
@@ -113,13 +115,26 @@ def _validate_report_binding(
         raise BindingError("downloaded attestation verification report SHA-256 differs from frozen image set")
     if metadata.get("repository") != expected_repository:
         raise BindingError("frozen attestation verification repository differs from build-run repository")
+    if metadata.get("source_digest") != expected_git_sha.lower():
+        raise BindingError("frozen attestation source digest differs from accepted RC SHA")
 
     module = _load_image_set_module()
     try:
-        summary = module.validate_attestation_report(attestation_report, images=images)
+        summary = module.validate_attestation_report(
+            attestation_report,
+            images=images,
+            git_sha=expected_git_sha,
+        )
     except Exception as exc:
         raise BindingError(f"downloaded attestation verification report is invalid: {exc}") from exc
-    for key in ("schema_version", "kind", "status", "runtime_count", "repository"):
+    for key in (
+        "schema_version",
+        "kind",
+        "status",
+        "runtime_count",
+        "repository",
+        "source_digest",
+    ):
         if metadata.get(key) != summary.get(key):
             raise BindingError(f"frozen attestation verification metadata mismatch: {key}")
     if summary.get("repository") != expected_repository:
@@ -185,6 +200,7 @@ def validate_binding(
         attestation_report=attestation_report,
         attestation_report_sha256=attestation_report_sha256,
         expected_repository=build_repository,
+        expected_git_sha=evidence_sha,
     )
 
     return {
@@ -194,6 +210,7 @@ def validate_binding(
         "build_run_id": build_run_id,
         "container_image_set_ref": expected_ref,
         "attestation_report_sha256": attestation_report_sha256,
+        "attestation_source_digest": evidence_sha.lower(),
         "runtime_count": 6,
     }
 
@@ -224,12 +241,23 @@ def _fixture() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], str]:
             "source_paths": list(item["source_paths"]),
         }
     image_set = {"images": images, "provenance": provenance}
+    policy = {
+        "signer_workflow": "example/lumi/.github/workflows/build-runtime-image-set.yml",
+        "source_digest": git_sha,
+        "source_ref": "refs/heads/release-closure-p0",
+        "workflow_ref": (
+            "example/lumi/.github/workflows/build-runtime-image-set.yml@"
+            "refs/heads/release-closure-p0"
+        ),
+        "deny_self_hosted_runners": True,
+    }
     report = {
         "schema_version": 1,
         "kind": "LUMI_RUNTIME_IMAGE_ATTESTATION_VERIFICATION_V1",
         "status": "PASS",
         "repository": "example/lumi",
         "runtime_count": 6,
+        "github_attestation_policy": dict(policy),
         "tools": {
             "docker_buildx": "github.com/docker/buildx v0.contract",
             "github_cli": "gh version 0.contract",
@@ -241,6 +269,7 @@ def _fixture() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], str]:
                 "registry_resolvable": True,
                 "github_attestation_verified": True,
                 "github_attestation_output_lines": 1,
+                "github_attestation_policy": dict(policy),
                 "buildkit_provenance": {
                     "build_type": "https://mobyproject.org/buildkit@v1",
                     "builder_id": "https://github.com/example/lumi/actions/runs/123",
@@ -274,6 +303,7 @@ def _fixture() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], str]:
             "status": "PASS",
             "runtime_count": 6,
             "repository": "example/lumi",
+            "source_digest": git_sha,
             "report_file": "attestation-verification.json",
             "sha256": report_hash,
         },
@@ -352,6 +382,10 @@ def self_test() -> dict[str, Any]:
     hash_swap["attestation_verification"]["sha256"] = "f" * 64
     _must_block(evidence, hash_swap, report, report_hash, "attestation report hash swap")
 
+    frozen_source_swap = copy.deepcopy(frozen)
+    frozen_source_swap["attestation_verification"]["source_digest"] = "b" * 40
+    _must_block(evidence, frozen_source_swap, report, report_hash, "frozen attestation source swap")
+
     report_status_swap = copy.deepcopy(report)
     report_status_swap["status"] = "FAIL"
     _must_block(evidence, frozen, report_status_swap, report_hash, "attestation report status swap")
@@ -363,6 +397,14 @@ def self_test() -> dict[str, Any]:
     report_repository_swap = copy.deepcopy(report)
     report_repository_swap["repository"] = "example/other"
     _must_block(evidence, frozen, report_repository_swap, report_hash, "attestation report repository swap")
+
+    report_source_swap = copy.deepcopy(report)
+    report_source_swap["github_attestation_policy"]["source_digest"] = "b" * 40
+    _must_block(evidence, frozen, report_source_swap, report_hash, "attestation report source swap")
+
+    runtime_policy_swap = copy.deepcopy(report)
+    runtime_policy_swap["results"][0]["github_attestation_policy"]["source_digest"] = "b" * 40
+    _must_block(evidence, frozen, runtime_policy_swap, report_hash, "runtime attestation policy swap")
 
     return {
         "status": "PASS",
@@ -377,9 +419,12 @@ def self_test() -> dict[str, Any]:
             "frozen_build_run_url_swap_blocked",
             "noncanonical_build_run_url_blocked",
             "attestation_report_hash_swap_blocked",
+            "frozen_attestation_source_swap_blocked",
             "attestation_report_status_swap_blocked",
             "attestation_report_image_swap_blocked",
             "attestation_report_repository_swap_blocked",
+            "attestation_report_source_swap_blocked",
+            "runtime_attestation_policy_swap_blocked",
         ],
     }
 
