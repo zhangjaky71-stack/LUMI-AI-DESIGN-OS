@@ -27,6 +27,7 @@ PROVIDER_OUTPUT_TEST = ROOT / "apps/api/tests/test_provider_output_store.py"
 VIDEO_PERFORMANCE = ROOT / "services/video-generation/src/lumi_video_generation/performance_ports.py"
 VIDEO_WORKFLOW = ROOT / ".github/workflows/video-generation.yml"
 VIDEO_PRODUCER_GATE = ROOT / "scripts/validate_video_generation_producer_binding.py"
+VIDEO_CANCELLATION_GATE = ROOT / "scripts/validate_video_cancellation_contract.py"
 SANDBOX_WORKFLOW = ROOT / ".github/workflows/sandbox-remote-runtime-closure.yml"
 ENVIRONMENTS = ("staging", "production")
 
@@ -149,7 +150,7 @@ def main() -> None:
         (
             "HostedVideoGenerationRuntime",
             "_execute_video_generation_job",
-            "execute_job(",
+            "execute_video_job(",
             'name="lumi.jobs.video.render"',
             "JobState.RETRYING",
             "JobState.FAILED",
@@ -160,6 +161,10 @@ def main() -> None:
         "@celery_app.task", 1
     )[0]
     require('"status": "accepted"' not in video_block, "video.render is accepted-only")
+    require(
+        "execute_job(" not in video_block,
+        "video.render must use provider-reconciled video executor",
+    )
 
     require_markers(
         hosted,
@@ -172,7 +177,7 @@ def main() -> None:
             "PostgresVideoArtifactAdapter",
             "ScopedPostgresVideoCostObserver",
             "costs=ScopedPostgresVideoCostObserver(self.database_dsn)",
-            "PostgresVideoEventSink",
+            "BufferedVideoEventSink",
             "TimedMediaSandbox",
             "PerformanceTelemetryContext.from_environ()",
             "ExternalWait(",
@@ -188,6 +193,7 @@ def main() -> None:
             "ArtifactHistoryVideoAdapter",
             "MemoryMediaSandbox",
             "costs=PostgresVideoCostObserver(",
+            "events=PostgresVideoEventSink(",
         ),
         "hosted video composition",
     )
@@ -434,10 +440,13 @@ def main() -> None:
 
     require(VIDEO_PRODUCER_GATE.is_file(), "missing Hosted video generation producer gate")
     runpy.run_path(str(VIDEO_PRODUCER_GATE), run_name="__main__")
+    require(VIDEO_CANCELLATION_GATE.is_file(), "missing Hosted video cancellation gate")
+    runpy.run_path(str(VIDEO_CANCELLATION_GATE), run_name="__main__")
     validate_iac()
     print(
         "PASS: Hosted video.render production binding is durable, tenant-scoped, "
-        "append-only, PostgreSQL-accepted, isolated, checksum-bound, and CI-gated"
+        "append-only, provider-reconciled, PostgreSQL-accepted, isolated, "
+        "checksum-bound, and CI-gated"
     )
 
 
