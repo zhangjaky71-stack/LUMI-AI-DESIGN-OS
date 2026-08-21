@@ -28,6 +28,8 @@ RUNTIME_SERVICE_IMAGE_KEY = {
     "outbox-dispatcher": "worker-media",
     "sandbox-runtime": "sandbox-runtime",
 }
+CAPACITY_CONTRACT_SOURCE = "terraform-live-state"
+CAPACITY_CONTRACT_SCOPE = "production-app-service-desired-counts"
 
 
 class RollbackDecisionError(RuntimeError):
@@ -101,13 +103,56 @@ def _capacity_row_valid(item: object) -> bool:
     )
 
 
+def _validate_capacity_contract(
+    runtime: dict[str, Any],
+    services: list[Any],
+    *,
+    expected_deployment_id: Any,
+    label: str,
+    blockers: list[str],
+) -> dict[str, int]:
+    contract = runtime.get("capacity_contract")
+    if not isinstance(contract, dict):
+        blockers.append(f"{label} runtime capacity_contract missing")
+        return {}
+    if contract.get("schema_version") != 1:
+        blockers.append(f"{label} runtime capacity_contract schema_version must be 1")
+    if contract.get("source") != CAPACITY_CONTRACT_SOURCE:
+        blockers.append(f"{label} runtime capacity_contract source mismatch")
+    if contract.get("scope") != CAPACITY_CONTRACT_SCOPE:
+        blockers.append(f"{label} runtime capacity_contract scope mismatch")
+    if contract.get("deployment_id") != expected_deployment_id:
+        blockers.append(f"{label} runtime capacity_contract deployment_id mismatch")
+
+    counts = contract.get("service_desired_counts")
+    if not isinstance(counts, dict) or set(counts) != set(RUNTIME_SERVICE_IMAGE_KEY):
+        blockers.append(f"{label} runtime capacity_contract must contain exactly seven service counts")
+        return {}
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or value <= 0
+        for value in counts.values()
+    ):
+        blockers.append(f"{label} runtime capacity_contract counts must be positive integers")
+        return {}
+
+    row_counts = {
+        item.get("service_name"): item.get("expected_desired_count")
+        for item in services
+        if isinstance(item, dict) and isinstance(item.get("service_name"), str)
+    }
+    if row_counts != counts:
+        blockers.append(f"{label} runtime capacity_contract does not equal per-service Terraform expectations")
+    return {str(name): int(value) for name, value in counts.items()}
+
+
 def validate_runtime(
     runtime: dict[str, Any],
     manifest: dict[str, Any],
     *,
     label: str,
+    capacity_contract_deployment_id: Any,
     blockers: list[str],
-) -> None:
+) -> dict[str, int]:
     if runtime.get("schema_version") != 1 or runtime.get("passed") is not True:
         blockers.append(f"{label} runtime identity is not passed=true")
     if runtime.get("deployment_id") != manifest.get("deployment_id"):
@@ -118,7 +163,7 @@ def validate_runtime(
     expected_service_images = _expected_service_images(manifest.get("images"), blockers, label=label)
     if not isinstance(services, list) or len(services) != len(RUNTIME_SERVICE_IMAGE_KEY):
         blockers.append(f"{label} runtime must contain exactly seven services")
-        return
+        return {}
     observed_images = {
         item.get("service_name"): item.get("image")
         for item in services
@@ -144,6 +189,13 @@ def validate_runtime(
         blockers.append(
             f"{label} runtime contains non-steady, image-mismatched, or Terraform-capacity-mismatched service"
         )
+    return _validate_capacity_contract(
+        runtime,
+        services,
+        expected_deployment_id=capacity_contract_deployment_id,
+        label=label,
+        blockers=blockers,
+    )
 
 
 def validate_smoke(
@@ -183,23 +235,50 @@ def evaluate(
     blockers = list(gate.get("blockers") or [])
     if gate.get("passed") is not True:
         blockers.append("production rollback relationship is not passed=true")
-    validate_runtime(previous_runtime, previous, label="rollback-target", blockers=blockers)
+
+    current_deployment_id = current.get("deployment_id")
+    previous_capacity = validate_runtime(
+        previous_runtime,
+        previous,
+        label="rollback-target",
+        capacity_contract_deployment_id=current_deployment_id,
+        blockers=blockers,
+    )
     validate_smoke(previous_smoke, previous, label="rollback-target", blockers=blockers)
-    validate_runtime(restored_runtime, current, label="roll-forward", blockers=blockers)
+    restored_capacity = validate_runtime(
+        restored_runtime,
+        current,
+        label="roll-forward",
+        capacity_contract_deployment_id=current_deployment_id,
+        blockers=blockers,
+    )
     validate_smoke(restored_smoke, current, label="roll-forward", blockers=blockers)
+
+    capacity_preserved = bool(previous_capacity) and previous_capacity == restored_capacity
+    if not capacity_preserved:
+        blockers.append("rollback target and roll-forward runtime capacity contracts differ")
 
     current_rc = current.get("release_candidate", {})
     previous_rc = previous.get("release_candidate", {})
     blockers = sorted(set(blockers))
     payload: dict[str, Any] = {
         "schema_version": 1,
-        "current_deployment_id": current.get("deployment_id"),
+        "current_deployment_id": current_deployment_id,
         "previous_deployment_id": previous.get("deployment_id"),
         "release_candidate": current_rc,
         "previous_release_candidate": previous_rc,
         "rollback_gate_id": gate.get("gate_id"),
         "rollback_executed": True,
         "roll_forward_restored": not blockers,
+        "capacity_contract": {
+            "schema_version": 1,
+            "source": CAPACITY_CONTRACT_SOURCE,
+            "scope": CAPACITY_CONTRACT_SCOPE,
+            "current_infrastructure_deployment_id": current_deployment_id,
+            "rollback_target_manifest_deployment_id": previous.get("deployment_id"),
+            "service_desired_counts": restored_capacity if capacity_preserved else {},
+            "preserved_across_image_rollback": capacity_preserved,
+        },
         "passed": not blockers,
         "evidence_refs": refs,
         "blockers": blockers,
