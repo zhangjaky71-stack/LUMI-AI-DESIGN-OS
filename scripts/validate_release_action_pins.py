@@ -6,13 +6,28 @@ import json
 import re
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
 PINS_PATH = ROOT / "production" / "release-actions" / "pins-v1.json"
 DISPATCH_REGISTRY_CONTRACT = ROOT / "scripts" / "validate_release_dispatch_registry_contract.py"
+WORKFLOW_ROOT = ROOT / ".github" / "workflows"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 USES_LINE = re.compile(r"^\s*-\s+uses:\s+([^\s#]+)(?:\s+#\s*(\S+))?\s*$")
+PRODUCTION_ENVIRONMENT = re.compile(r"(?m)^\s*environment:\s*production\s*$")
+STAGING_ENVIRONMENT = re.compile(r"(?m)^\s*environment:\s*staging\s*$")
+ID_TOKEN_WRITE = re.compile(r"(?m)^\s*id-token:\s*write\s*$")
+CONTENTS_WRITE = re.compile(r"(?m)^\s*contents:\s*write\s*$")
+CANONICAL_GATE_NAME = re.compile(
+    r"(?mi)^name:\s*.*(?:Release Gate|Acceptance Gate)\s*$"
+)
+RELEASE_EVIDENCE_ROOTS = (
+    "reports/staging-acceptance",
+    "reports/production-deployments",
+    "reports/production-recovery",
+    "reports/security-release",
+    "reports/final-acceptance",
+)
 
 
 class ReleaseActionPinError(RuntimeError):
@@ -155,6 +170,61 @@ def validate_workflow_text(*, policy: dict[str, Any], workflow: str, text: str) 
     return external
 
 
+def _sensitive_workflow_reasons(text: str) -> tuple[str, ...]:
+    reasons: list[str] = []
+    if PRODUCTION_ENVIRONMENT.search(text):
+        reasons.append("production-environment")
+    if (
+        STAGING_ENVIRONMENT.search(text)
+        and ID_TOKEN_WRITE.search(text)
+        and "reports/staging-acceptance" in text
+    ):
+        reasons.append("staging-oidc-release-evidence")
+    if (
+        CONTENTS_WRITE.search(text)
+        and "git push origin" in text
+        and any(root in text for root in RELEASE_EVIDENCE_ROOTS)
+    ):
+        reasons.append("release-evidence-git-push")
+    if CANONICAL_GATE_NAME.search(text):
+        reasons.append("canonical-release-gate")
+    return tuple(reasons)
+
+
+def _repository_workflow_texts() -> dict[str, str]:
+    if not WORKFLOW_ROOT.is_dir():
+        raise ReleaseActionPinError("workflow directory is missing")
+    workflows: dict[str, str] = {}
+    for path in sorted([*WORKFLOW_ROOT.glob("*.yml"), *WORKFLOW_ROOT.glob("*.yaml")]):
+        workflows[path.relative_to(ROOT).as_posix()] = path.read_text(encoding="utf-8")
+    if not workflows:
+        raise ReleaseActionPinError("repository has no GitHub workflows to audit")
+    return workflows
+
+
+def _validate_sensitive_workflow_coverage(
+    policy: dict[str, Any],
+    *,
+    workflow_texts: Mapping[str, str] | None = None,
+) -> dict[str, tuple[str, ...]]:
+    texts = dict(workflow_texts) if workflow_texts is not None else _repository_workflow_texts()
+    governed = set(policy["release_critical_workflows"]) | set(policy["release_evidence_workflows"])
+    discovered = {
+        workflow: reasons
+        for workflow, text in texts.items()
+        if (reasons := _sensitive_workflow_reasons(text))
+    }
+    missing = sorted(set(discovered) - governed)
+    if missing:
+        details = "; ".join(
+            f"{workflow}={','.join(discovered[workflow])}" for workflow in missing
+        )
+        raise ReleaseActionPinError(
+            "sensitive release workflow is outside immutable action-pin governance: " + details
+        )
+    return dict(sorted(discovered.items()))
+
+
 def _negative_drills(policy: dict[str, Any]) -> None:
     good = "    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0\n"
     if validate_workflow_text(policy=policy, workflow="fixture.yml", text=good) != 1:
@@ -177,6 +247,54 @@ def _negative_drills(policy: dict[str, Any]) -> None:
         except ReleaseActionPinError:
             continue
         raise ReleaseActionPinError(f"negative release-action pin drill {index} did not block")
+
+    sensitive_fixtures = {
+        ".github/workflows/unguarded-production.yml": """
+name: Unguarded Production
+jobs:
+  write:
+    environment: production
+    runs-on: ubuntu-latest
+""",
+        ".github/workflows/unguarded-staging-evidence.yml": """
+name: Unguarded Staging Evidence
+permissions:
+  id-token: write
+jobs:
+  collect:
+    environment: staging
+    runs-on: ubuntu-latest
+    steps:
+      - run: mkdir -p reports/staging-acceptance/runtime
+""",
+        ".github/workflows/unguarded-freeze.yml": """
+name: Unguarded Freeze
+permissions:
+  contents: write
+jobs:
+  freeze:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          mkdir -p reports/security-release/example
+          git push origin HEAD:release
+""",
+        ".github/workflows/unguarded-release-gate.yml": """
+name: Example Release Gate
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+""",
+    }
+    for index, (workflow, text) in enumerate(sensitive_fixtures.items(), start=1):
+        try:
+            _validate_sensitive_workflow_coverage(
+                policy,
+                workflow_texts={workflow: text},
+            )
+        except ReleaseActionPinError:
+            continue
+        raise ReleaseActionPinError(f"sensitive workflow discovery drill {index} did not block")
 
 
 def _validate_dispatch_registry() -> None:
@@ -211,6 +329,7 @@ def main() -> int:
     policy = _load_policy()
     critical = _validate_workflow_set(policy, policy["release_critical_workflows"])
     evidence = _validate_workflow_set(policy, policy["release_evidence_workflows"])
+    discovered_sensitive = _validate_sensitive_workflow_coverage(policy)
     _negative_drills(policy)
     _validate_dispatch_registry()
     print(
@@ -222,6 +341,8 @@ def main() -> int:
                 "release_evidence_workflow_count": len(evidence),
                 "external_action_steps": sum(critical.values()) + sum(evidence.values()),
                 "dispatch_registry_bound": True,
+                "sensitive_workflow_discovery_bound": True,
+                "sensitive_workflows": discovered_sensitive,
                 "release_critical_workflows": critical,
                 "release_evidence_workflows": evidence,
                 "negative_drills": {
@@ -230,7 +351,11 @@ def main() -> int:
                     "missing_version_annotation_blocked": True,
                     "unknown_sha_blocked": True,
                     "unknown_action_blocked": True,
-                    "subaction_unknown_sha_blocked": True
+                    "subaction_unknown_sha_blocked": True,
+                    "unguarded_production_workflow_blocked": True,
+                    "unguarded_staging_evidence_blocked": True,
+                    "unguarded_evidence_push_blocked": True,
+                    "unguarded_release_gate_blocked": True
                 }
             },
             indent=2,
