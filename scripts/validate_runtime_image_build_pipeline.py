@@ -67,6 +67,14 @@ PINNED_ACTIONS = {
     "attest": "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2",
     "upload": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1",
 }
+UV_BASE_TAG = "ghcr.io/astral-sh/uv:0.11.28"
+PYTHON_BASE_TAG = "python:3.12-slim"
+DOCKERFILE_BASE_MARKERS = (
+    f"ARG UV_BASE_IMAGE={UV_BASE_TAG}",
+    f"ARG PYTHON_BASE_IMAGE={PYTHON_BASE_TAG}",
+    "FROM ${UV_BASE_IMAGE} AS uv",
+    "FROM ${PYTHON_BASE_IMAGE}",
+)
 
 
 class PipelineContractError(RuntimeError):
@@ -122,6 +130,22 @@ def _validate_dockerignore(payload: dict[str, object]) -> None:
                 )
 
 
+def _validate_dockerfile_base_image_contract() -> None:
+    for service, relative in EXPECTED.items():
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        for marker in DOCKERFILE_BASE_MARKERS:
+            _require(marker in text, f"{service} Dockerfile missing release base-image parameter marker: {marker}")
+        _require(
+            f"FROM {UV_BASE_TAG}" not in text and f"FROM {PYTHON_BASE_TAG}" not in text,
+            f"{service} Dockerfile must consume release-resolved base-image args rather than direct mutable FROM tags",
+        )
+        _require("COPY . /workspace" in text, f"{service} Dockerfile must copy the exact root Git context into /workspace")
+        _require(
+            "uv sync --all-packages --frozen --no-dev" in text,
+            f"{service} Dockerfile must consume the canonical frozen workspace dependency graph",
+        )
+
+
 def _load_manifest() -> dict[str, object]:
     payload = json.loads(MANIFEST.read_text(encoding="utf-8"))
     _require(isinstance(payload, dict), "runtime image manifest must be an object")
@@ -137,6 +161,7 @@ def _load_manifest() -> dict[str, object]:
         sources = item.get("source_paths")
         _require(isinstance(sources, list) and len(sources) > 0, f"{service} provenance sources missing")
     _validate_dockerignore(payload)
+    _validate_dockerfile_base_image_contract()
     return payload
 
 
@@ -160,6 +185,9 @@ def validate_attestation_verifier() -> None:
         'BUILDKIT_BUILD_TYPE = "https://mobyproject.org/buildkit@v1"',
         'BUILDKIT_PLATFORM = "linux/amd64"',
         'EXPECTED_DOCKERFILES = {',
+        'EXPECTED_BASE_IMAGE_PREFIXES = {',
+        '"UV_BASE_IMAGE": "ghcr.io/astral-sh/uv@sha256:"',
+        '"PYTHON_BASE_IMAGE": "python@sha256:"',
         'env.get("GITHUB_SHA", "").lower()',
         'env.get("GITHUB_REF", "")',
         'env.get("GITHUB_WORKFLOW_REF", "")',
@@ -171,17 +199,17 @@ def validate_attestation_verifier() -> None:
         'config_source.get("entryPoint") == dockerfile',
         'source_digests.get("sha1") == source_digest',
         'environment.get("platform") == BUILDKIT_PLATFORM',
+        '_validate_base_image_build_args(invocation)',
+        'f"build-arg:{arg_name}"',
+        'bool(IMAGE_REF.fullmatch(value))',
+        '"base_images": base_images',
+        '"material_sha256_count": len(material_digests)',
         '"source_uri": source_uri',
         '"github_attestation_policy"',
-        '"signer_workflow": policy.signer_workflow',
-        '"source_digest": policy.source_digest',
-        '"source_ref": policy.source_ref',
-        '"workflow_ref": policy.workflow_ref',
-        '"deny_self_hosted_runners": policy.deny_self_hosted_runners',
         "bad_identity_envs = [",
         "bad_provenance = [",
     ):
-        _require(marker in text, f"runtime attestation verifier missing immutable signer/source marker: {marker}")
+        _require(marker in text, f"runtime attestation verifier missing immutable signer/source/base marker: {marker}")
 
     command_start = text.find('"gh",\n            "attestation",\n            "verify"')
     signer_pos = text.find('"--signer-workflow"', command_start)
@@ -228,13 +256,16 @@ def _validate_exact_runtime_build_blocks(text: str) -> None:
             "platforms: linux/amd64",
             "push: true",
             "tags: ${{ env.IMAGE_BASE }}-" + image_suffix + ":rc-${{ github.sha }}",
+            "build-args: |",
+            "UV_BASE_IMAGE=${{ env.UV_BASE_IMAGE }}",
+            "PYTHON_BASE_IMAGE=${{ env.PYTHON_BASE_IMAGE }}",
             "provenance: mode=max,version=v0.2",
             "sbom: true",
             "secrets: |",
             "GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}",
         )
         for marker in build_markers:
-            _require(marker in build_block, f"{service} build block missing exact immutable Git-source binding: {marker}")
+            _require(marker in build_block, f"{service} build block missing exact immutable input binding: {marker}")
 
         attest_markers = (
             f"id: {attest_id}",
@@ -268,6 +299,15 @@ def validate_workflow() -> None:
         "github.ref_name == 'release-closure-p0'",
         "ref: ${{ github.sha }}",
         'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
+        f"UV_BASE_TAG: {UV_BASE_TAG}",
+        f"PYTHON_BASE_TAG: {PYTHON_BASE_TAG}",
+        "- name: Resolve immutable base image digests once",
+        'docker buildx imagetools inspect "$image" --format \'{{json .Manifest}}\'',
+        're.fullmatch(r"sha256:[0-9a-f]{64}", value)',
+        'uv_image="ghcr.io/astral-sh/uv@${uv_digest}"',
+        'python_image="python@${python_digest}"',
+        'echo "UV_BASE_IMAGE=${uv_image}" >> "$GITHUB_ENV"',
+        'echo "PYTHON_BASE_IMAGE=${python_image}" >> "$GITHUB_ENV"',
         "python3 scripts/validate_uv_workspace_lock.py",
         "uv lock --check",
         "uv sync --all-packages --frozen",
@@ -334,9 +374,12 @@ def validate_workflow() -> None:
     source_pos = text.find("  source-gate:\n")
     build_pos = text.find("  build-and-freeze:\n")
     registry_login_pos = text.find(PINNED_ACTIONS["login"])
+    buildx_pos = text.find(PINNED_ACTIONS["buildx"])
+    base_resolve_pos = text.find("- name: Resolve immutable base image digests once")
+    first_build_pos = text.find("- name: Build and push API")
     _require(
-        0 <= source_pos < build_pos < registry_login_pos,
-        "read-only source-gate definition must precede the privileged image build path",
+        0 <= source_pos < build_pos < registry_login_pos < buildx_pos < base_resolve_pos < first_build_pos,
+        "release must pass read-only source gate, authenticate, initialize Buildx, freeze base digests, then build",
     )
     _require(text.count("ref: ${{ github.sha }}") >= 2, "both source-gate and build job must checkout exact dispatch SHA")
     _require("latest" not in text.casefold(), "runtime image build workflow must not publish a latest tag")
@@ -345,6 +388,9 @@ def validate_workflow() -> None:
     _require("context: ." not in build, "release runtime images must not use mutable local path context")
     _require("{{defaultContext}}" not in build, "release runtime images must not build from a mutable branch/ref default context")
     _require(text.count("GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}") == 6, "all six immutable private Git contexts require scoped Git auth")
+    _require(text.count("build-args: |") == 6, "all six release images must receive immutable base-image build args")
+    _require(text.count("UV_BASE_IMAGE=${{ env.UV_BASE_IMAGE }}") == 6, "all six release images must use the one resolved uv digest")
+    _require(text.count("PYTHON_BASE_IMAGE=${{ env.PYTHON_BASE_IMAGE }}") == 6, "all six release images must use the one resolved Python digest")
     _require(text.count("provenance: mode=max,version=v0.2") == 6, "all six images require pinned max SLSA v0.2 provenance")
     _require(text.count("sbom: true") == 6, "all six images require SBOM attestation")
     _require(text.count("push-to-registry: true") == 6, "all six images require GitHub registry attestation")
@@ -424,6 +470,8 @@ def validate_workflow() -> None:
         '- ".dockerignore"' in closure,
         "Runtime Image Closure pull_request paths must include .dockerignore build-context changes",
     )
+    for dockerfile in EXPECTED.values():
+        _require(f'- "{dockerfile}"' in closure, f"Runtime Image Closure must trigger on {dockerfile}")
     _require(
         'scripts/validate_runtime_image_build_pipeline.py' in closure,
         "Runtime Image Closure must continue executing the build-pipeline validator",
@@ -434,7 +482,7 @@ def main() -> int:
     _load_manifest()
     validate_attestation_verifier()
     validate_workflow()
-    print("Six-runtime RC immutable Git-source/signer/recipe/digest attestation/freeze pipeline contract: PASS")
+    print("Six-runtime RC immutable Git/base-image/signer/recipe/digest attestation/freeze pipeline contract: PASS")
     return 0
 
 
