@@ -107,13 +107,15 @@ jobs:
         id: build_api
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: .
+          context: https://github.com/${{ github.repository }}.git#${{ github.sha }}
           file: apps/api/Dockerfile
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE_BASE }}-api:rc-${{ github.sha }}
-          provenance: mode=max
+          provenance: mode=max,version=v0.2
           sbom: true
+          secrets: |
+            GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha,scope=lumi-runtime-images
           cache-to: type=gha,mode=max,scope=lumi-runtime-images
 
@@ -129,13 +131,15 @@ jobs:
         id: build_agent_runtime
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: .
+          context: https://github.com/${{ github.repository }}.git#${{ github.sha }}
           file: apps/agent-runtime/Dockerfile
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE_BASE }}-agent-runtime:rc-${{ github.sha }}
-          provenance: mode=max
+          provenance: mode=max,version=v0.2
           sbom: true
+          secrets: |
+            GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha,scope=lumi-runtime-images
           cache-to: type=gha,mode=max,scope=lumi-runtime-images
 
@@ -151,13 +155,15 @@ jobs:
         id: build_model_gateway
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: .
+          context: https://github.com/${{ github.repository }}.git#${{ github.sha }}
           file: services/model-gateway/Dockerfile
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE_BASE }}-model-gateway:rc-${{ github.sha }}
-          provenance: mode=max
+          provenance: mode=max,version=v0.2
           sbom: true
+          secrets: |
+            GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha,scope=lumi-runtime-images
           cache-to: type=gha,mode=max,scope=lumi-runtime-images
 
@@ -173,13 +179,15 @@ jobs:
         id: build_tool_gateway
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: .
+          context: https://github.com/${{ github.repository }}.git#${{ github.sha }}
           file: services/tool-gateway/Dockerfile
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE_BASE }}-tool-gateway:rc-${{ github.sha }}
-          provenance: mode=max
+          provenance: mode=max,version=v0.2
           sbom: true
+          secrets: |
+            GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha,scope=lumi-runtime-images
           cache-to: type=gha,mode=max,scope=lumi-runtime-images
 
@@ -195,13 +203,15 @@ jobs:
         id: build_worker_media
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: .
+          context: https://github.com/${{ github.repository }}.git#${{ github.sha }}
           file: apps/worker-media/Dockerfile
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE_BASE }}-worker-media:rc-${{ github.sha }}
-          provenance: mode=max
+          provenance: mode=max,version=v0.2
           sbom: true
+          secrets: |
+            GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha,scope=lumi-runtime-images
           cache-to: type=gha,mode=max,scope=lumi-runtime-images
 
@@ -217,13 +227,15 @@ jobs:
         id: build_sandbox_runtime
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: .
+          context: https://github.com/${{ github.repository }}.git#${{ github.sha }}
           file: services/sandbox-runtime/Dockerfile
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE_BASE }}-sandbox-runtime:rc-${{ github.sha }}
-          provenance: mode=max
+          provenance: mode=max,version=v0.2
           sbom: true
+          secrets: |
+            GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha,scope=lumi-runtime-images
           cache-to: type=gha,mode=max,scope=lumi-runtime-images
 
