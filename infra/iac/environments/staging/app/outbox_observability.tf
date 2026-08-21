@@ -1,8 +1,8 @@
 locals {
-  outbox_dispatcher_log_group = "/lumi/${local.environment}/outbox-dispatcher"
+  outbox_dispatcher_log_group        = "/lumi/${local.environment}/outbox-dispatcher"
   outbox_dispatcher_metric_namespace = "LUMI/MediaDispatch"
-  outbox_oldest_age_metric = "${local.project}-${local.environment}-OutboxOldestUnpublishedAgeSeconds"
-  outbox_oldest_attempts_metric = "${local.project}-${local.environment}-OutboxOldestPublishAttempts"
+  outbox_oldest_age_metric           = "${local.project}-${local.environment}-OutboxOldestUnpublishedAgeSeconds"
+  outbox_oldest_attempts_metric      = "${local.project}-${local.environment}-OutboxOldestPublishAttempts"
 }
 
 resource "aws_cloudwatch_log_metric_filter" "outbox_oldest_unpublished_age" {
@@ -14,7 +14,7 @@ resource "aws_cloudwatch_log_metric_filter" "outbox_oldest_unpublished_age" {
     name          = local.outbox_oldest_age_metric
     namespace     = local.outbox_dispatcher_metric_namespace
     value         = "$.oldest_unpublished_age_seconds"
-    default_value = "0"
+    default_value = 0
   }
 
   depends_on = [module.platform_app]
@@ -29,7 +29,7 @@ resource "aws_cloudwatch_log_metric_filter" "outbox_oldest_publish_attempts" {
     name          = local.outbox_oldest_attempts_metric
     namespace     = local.outbox_dispatcher_metric_namespace
     value         = "$.oldest_publish_attempts"
-    default_value = "0"
+    default_value = 0
   }
 
   depends_on = [module.platform_app]
