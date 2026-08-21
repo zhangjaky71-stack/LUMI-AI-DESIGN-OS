@@ -55,6 +55,10 @@ class HostedVideoGenerationRuntime:
     PostgresVideoEventSink remains a compatibility port only and is never composed on
     this Hosted path because it owns an independent transaction. Provider-output
     deletion is also deferred until the recovery/event UoW has committed.
+
+    Cancellation is provider-reconciled. A Task cancellation request is not proof that
+    an async provider job stopped; `reconcile_cancellation()` returns WAITING_EXTERNAL
+    when the private Model Gateway cannot prove cancellation.
     """
 
     def __init__(
@@ -92,15 +96,96 @@ class HostedVideoGenerationRuntime:
         )
 
     async def execute(self, message: JobMessage) -> dict[str, Any] | ExternalWait:
-        telemetry = PerformanceTelemetryContext.from_environ()
         spec = await self._load_spec(message)
         _validate_hosted_v1_spec(spec)
-
         repository = PostgresVideoRepository(self.database_dsn)
         existing = await repository.load(
             organization_id=spec.organization_id,
             operation_id=spec.operation_id,
         )
+        pipeline, events, output_recovery = self._build_pipeline(spec, repository)
+
+        if existing is None:
+            job = await pipeline.start(spec)
+        else:
+            job = await pipeline.resume(
+                organization_id=spec.organization_id,
+                video_job_id=existing.video_job_id,
+            )
+
+        await self._flush_job(
+            spec=spec,
+            job=job,
+            repository=repository,
+            events=events,
+            output_recovery=output_recovery,
+        )
+        if job.status == "WAITING_EXTERNAL":
+            return self._external_wait(job)
+        if job.status in {"FAILED", "CANCELLED"}:
+            raise HostedVideoGenerationError(
+                job.error_code or f"VIDEO_GENERATION_{job.status}",
+                f"video generation ended in {job.status.lower()}",
+            )
+        if job.status not in {"COMPLETED", "PARTIAL"}:
+            raise HostedVideoGenerationError(
+                "VIDEO_RUNTIME_NONTERMINAL_WITHOUT_EXTERNAL_WAIT",
+                f"unexpected video job state: {job.status}",
+            )
+        return _task_output(job)
+
+    async def reconcile_cancellation(
+        self,
+        message: JobMessage,
+    ) -> dict[str, Any] | ExternalWait:
+        """Resolve a Task cancellation request against durable provider state.
+
+        A never-started Task has no NODE-48 recovery row and can be cancelled locally.
+        Once a video recovery row exists, provider cancellation must be proven by the
+        NODE-48 pipeline. Hosted OpenAI currently cannot prove cancellation, so the
+        normal result for an in-flight provider job is another ExternalWait.
+        """
+
+        spec = await self._load_spec(message)
+        _validate_hosted_v1_spec(spec)
+        repository = PostgresVideoRepository(self.database_dsn)
+        existing = await repository.load(
+            organization_id=spec.organization_id,
+            operation_id=spec.operation_id,
+        )
+        if existing is None:
+            return {
+                "status": "CANCELLED",
+                "operation_id": spec.operation_id,
+                "cancelled_before_provider_recovery": True,
+            }
+
+        pipeline, events, output_recovery = self._build_pipeline(spec, repository)
+        job = await pipeline.cancel(
+            organization_id=spec.organization_id,
+            video_job_id=existing.video_job_id,
+        )
+        await self._flush_job(
+            spec=spec,
+            job=job,
+            repository=repository,
+            events=events,
+            output_recovery=output_recovery,
+        )
+        if job.status == "WAITING_EXTERNAL":
+            return self._external_wait(job)
+        return _task_output(job)
+
+    def _build_pipeline(
+        self,
+        spec: VideoTaskSpec,
+        repository: PostgresVideoRepository,
+    ) -> tuple[
+        VideoGenerationPipeline,
+        BufferedVideoEventSink,
+        DeferredProviderOutputStore,
+    ]:
+        telemetry = PerformanceTelemetryContext.from_environ()
         gateway = HostedVideoGateway.from_env()
         output = HostedVideoOutputAdapter.from_env()
         output_recovery = DeferredProviderOutputStore(output.object_store)
@@ -130,15 +215,17 @@ class HostedVideoGenerationRuntime:
             costs=ScopedPostgresVideoCostObserver(self.database_dsn),
             events=events,
         )
+        return pipeline, events, output_recovery
 
-        if existing is None:
-            job = await pipeline.start(spec)
-        else:
-            job = await pipeline.resume(
-                organization_id=spec.organization_id,
-                video_job_id=existing.video_job_id,
-            )
-
+    async def _flush_job(
+        self,
+        *,
+        spec: VideoTaskSpec,
+        job: VideoJob,
+        repository: PostgresVideoRepository,
+        events: BufferedVideoEventSink,
+        output_recovery: DeferredProviderOutputStore,
+    ) -> None:
         persisted = await repository.flush(
             organization_id=spec.organization_id,
             operation_id=spec.operation_id,
@@ -150,36 +237,26 @@ class HostedVideoGenerationRuntime:
                 "durable video snapshot changed during flush",
             )
         await output_recovery.cleanup_committed_provider_outputs()
-        if job.status == "WAITING_EXTERNAL":
-            waiting = [item for item in job.shots if item.status == "WAITING_EXTERNAL"]
-            if len(waiting) != 1:
-                raise HostedVideoGenerationError("VIDEO_RUNTIME_WAITING_SHOT_INVALID")
-            shot = waiting[0]
-            if not shot.provider_request_id:
-                raise HostedVideoGenerationError("VIDEO_RUNTIME_PROVIDER_REQUEST_ID_MISSING")
-            wait_ref = hashlib.sha256(
-                (
-                    f"{job.video_job_id}\x00{shot.shot_id}\x00"
-                    f"{shot.provider_request_id}"
-                ).encode("utf-8")
-            ).hexdigest()
-            return ExternalWait(
-                wait_reason="video_provider_pending",
-                external_ref=f"video-provider:{wait_ref}",
-                retry_not_before=datetime.now(UTC) + timedelta(seconds=self.poll_seconds),
-                output=_task_output(job),
-            )
-        if job.status in {"FAILED", "CANCELLED"}:
-            raise HostedVideoGenerationError(
-                job.error_code or f"VIDEO_GENERATION_{job.status}",
-                f"video generation ended in {job.status.lower()}",
-            )
-        if job.status not in {"COMPLETED", "PARTIAL"}:
-            raise HostedVideoGenerationError(
-                "VIDEO_RUNTIME_NONTERMINAL_WITHOUT_EXTERNAL_WAIT",
-                f"unexpected video job state: {job.status}",
-            )
-        return _task_output(job)
+
+    def _external_wait(self, job: VideoJob) -> ExternalWait:
+        waiting = [item for item in job.shots if item.status == "WAITING_EXTERNAL"]
+        if len(waiting) != 1:
+            raise HostedVideoGenerationError("VIDEO_RUNTIME_WAITING_SHOT_INVALID")
+        shot = waiting[0]
+        if not shot.provider_request_id:
+            raise HostedVideoGenerationError("VIDEO_RUNTIME_PROVIDER_REQUEST_ID_MISSING")
+        wait_ref = hashlib.sha256(
+            (
+                f"{job.video_job_id}\x00{shot.shot_id}\x00"
+                f"{shot.provider_request_id}"
+            ).encode("utf-8")
+        ).hexdigest()
+        return ExternalWait(
+            wait_reason="video_provider_pending",
+            external_ref=f"video-provider:{wait_ref}",
+            retry_not_before=datetime.now(UTC) + timedelta(seconds=self.poll_seconds),
+            output=_task_output(job),
+        )
 
     async def _load_spec(self, message: JobMessage) -> VideoTaskSpec:
         connection = await asyncpg.connect(self.database_dsn)
