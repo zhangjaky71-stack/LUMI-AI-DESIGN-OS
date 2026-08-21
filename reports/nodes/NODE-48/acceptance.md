@@ -16,6 +16,7 @@ Status: **IMPLEMENTED / VALIDATING / not COMPLETE**
 | One provider poll per resume | pipeline contract/tests | Implemented |
 | Stable paid operation identity | NODE-20 + shot paid operation IDs | Implemented |
 | Provider job crash recovery | `video_generation_jobs` / `video_provider_jobs` snapshots | Implemented |
+| Provider-reconciled cancellation | `VideoGenerationPipeline.cancel/resume` + Hosted runtime + static cancellation contract | Implemented source; Hosted execution evidence blocked |
 | Runtime recovery rows not physically deleted | Alembic 0023 privilege contract | Implemented |
 | Canonical provider cost truth | tenant-scoped NODE-27 reconciliation | Implemented |
 | Worker cannot mutate `cost_ledger` | source + PostgreSQL privilege acceptance | Implemented |
@@ -72,6 +73,9 @@ Domain expressiveness is not evidence that the Hosted production path exposes a 
 12. Artifact files/edges/provenance remain canonical append-preserved truth.
 13. Public Generation results do not expose provider request IDs.
 14. Production cancellation remains fail-closed until provider cancellation semantics are proven rather than inferred from deletion.
+15. A Provider cancel transport exception or timeout does not self-certify cancellation: the job remains `WAITING_EXTERNAL`, the original provider recovery row remains authoritative, and the next cancellation reconciliation polls that same provider request at most once.
+16. If the original Provider request has already succeeded, terminal Provider truth wins the cancellation race: the successful output is materialized/validated/composed and no replacement `estimate` or `submit` is allowed.
+17. Cancellation reconciliation uses `resume(..., allow_quality_retry=False)` so Provider failure, postprocess failure, or validation failure after cancellation intent cannot create a second paid quality-retry request.
 
 ## Persistence truth
 
@@ -158,16 +162,37 @@ Quality includes all Hosted Worker `test_video_*.py` tests plus Ruff/Pyright. In
 
 The cross-node Model Gateway and Artifact regressions execute inside the Video integration job.
 
+## Cancellation recovery regression closure
+
+The provider-neutral cancellation suite now explicitly locks both terminal-race and transport-failure behavior:
+
+- `test_successful_provider_truth_wins_over_cancellation_intent` proves a Provider `SUCCEEDED` truth is preserved through cancellation reconciliation, produces a final Artifact, records terminal cost once, emits completion rather than cancellation, and performs zero replacement `estimate`/`submit` calls.
+- `test_cancel_transport_error_reconciles_original_provider_success_without_retry` proves a cancel API exception preserves the original `PENDING` provider recovery row, the next reconciliation polls the same `provider_request_id` exactly once, accepts `SUCCEEDED`, and performs zero replacement `estimate`/`submit` calls.
+- `scripts/validate_video_cancellation_contract.py` requires both regressions plus the single-poll/original-request/no-replacement evidence markers, so removal of these protections blocks the static Video/Final source gates.
+
 ## Hosted runner evidence status
 
-Recent sampled PR-head runs continue to fail before executable steps begin (`steps=null`, `logs_url=null`) and downstream jobs are skipped. This is consistent with the existing GitHub-hosted runner/account blocker.
+Latest sampled PR head: `c8147dec26c3a93f54fa96a91168427543c2edcb`.
 
-Those red checks are:
+Video Generation run `32454884400` still failed before any executable step began:
 
-- not evidence of a Python/Ruff/Pyright/pytest/PostgreSQL/Docker failure; and
+- `video-generation-contract` job `96690155600`: `failure`, `steps=null`, `logs_url=null`;
+- `video-generation-quality`: skipped;
+- `video-generation-benchmark`: skipped;
+- `worker-media-video-smoke`: skipped;
+- `video-generation-integration`: skipped.
+
+The same PR head also shows the broader release gates failing before executable evidence:
+
+- Production IaC Contract run `32454884297`: `source-contract` job `96690155400`, `terraform-static` job `96690155650`, and `contract-gate` job `96690167927` all failed with no job steps/log URL exposed;
+- Final Product Acceptance Gate run `32454884358`: `canonical-lock-gate` job `96690155354`, `source-contract` job `96690155541`, and `node73-final-contract-gate` job `96690167278` failed with no job steps/log URL exposed; `final-decision` was skipped.
+
+This remains consistent with the existing GitHub-hosted runner/account/scheduling blocker. These red checks are:
+
+- not evidence of a Python/Ruff/Pyright/pytest/PostgreSQL/Docker/Terraform application failure; and
 - not PASS evidence.
 
-No final acceptance claim is made from zero-step runs.
+No checkout, Python, `uv`, Docker, pytest, PostgreSQL, Terraform, or application command is evidenced as having executed for this head. No final acceptance claim is made from zero-step runs.
 
 ## Synthetic evidence honesty
 
