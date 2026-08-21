@@ -4,20 +4,52 @@ import asyncio
 from decimal import Decimal
 
 from lumi_video_generation.model import (
+    CompiledShot,
+    GatewayEstimate,
     GatewayVideoResult,
     ProviderJobRecord,
     ShotRuntime,
+    ShotSpec,
     VideoJob,
+    VideoTaskSpec,
 )
 from lumi_video_generation.pipeline import VideoGenerationPipeline
 from lumi_video_generation.repository import InMemoryVideoRepository
 
 ORG = "00000000-0000-0000-0000-000000000001"
+PROJECT = "00000000-0000-0000-0000-000000000002"
+TASK = "00000000-0000-0000-0000-000000000003"
 VIDEO_JOB_ID = "video-job-cancellation-contract"
 OPERATION_ID = "00000000-0000-0000-0000-000000000004"
 SHOT_ID = "shot-1"
 PAID_OPERATION_ID = "00000000-0000-0000-0000-000000000005"
 PROVIDER_REQUEST_ID = "provider-video-1"
+
+
+def _spec() -> VideoTaskSpec:
+    return VideoTaskSpec(
+        organization_id=ORG,
+        project_id=PROJECT,
+        task_id=TASK,
+        operation_id=OPERATION_ID,
+        mode="TEXT_TO_VIDEO",
+        prompt="Cancellation provider truth",
+        duration_seconds=Decimal("4"),
+        aspect_ratio="16:9",
+        width=1280,
+        height=720,
+        fps=24,
+        budget_limit_usd=Decimal("5"),
+        code_git_sha="d" * 40,
+        shots=(
+            ShotSpec(
+                shot_id=SHOT_ID,
+                duration_seconds=Decimal("4"),
+                prompt="Cancellation provider truth",
+            ),
+        ),
+        quality_retry_limit=1,
+    )
 
 
 def _result(status: str, *, cost: str = "0.25") -> GatewayVideoResult:
@@ -35,12 +67,12 @@ def _result(status: str, *, cost: str = "0.25") -> GatewayVideoResult:
     )
 
 
-def _job() -> VideoJob:
+def _job(spec: VideoTaskSpec) -> VideoJob:
     return VideoJob(
         video_job_id=VIDEO_JOB_ID,
         organization_id=ORG,
         operation_id=OPERATION_ID,
-        semantic_hash="a" * 64,
+        semantic_hash=spec.semantic_hash,
         storyboard_hash="b" * 64,
         status="WAITING_EXTERNAL",
         shots=(
@@ -49,7 +81,7 @@ def _job() -> VideoJob:
                 ordinal=1,
                 paid_operation_id=PAID_OPERATION_ID,
                 status="WAITING_EXTERNAL",
-                attempt_count=1,
+                attempt_count=0,
                 provider="provider-a",
                 model="video-a",
                 provider_request_id=PROVIDER_REQUEST_ID,
@@ -74,6 +106,49 @@ class _Gateway:
     def __init__(self, result: GatewayVideoResult) -> None:
         self.result = result
         self.cancel_count = 0
+        self.estimate_count = 0
+        self.submit_count = 0
+
+    async def estimate(
+        self,
+        *,
+        spec: VideoTaskSpec,
+        shot: CompiledShot,
+        continuity_refs: tuple[str, ...],
+        excluded_provider_keys: tuple[str, ...] = (),
+    ) -> GatewayEstimate:
+        del spec, shot, continuity_refs, excluded_provider_keys
+        self.estimate_count += 1
+        return GatewayEstimate(
+            amount_usd=Decimal("0.25"),
+            provider="provider-b",
+            model="video-b",
+            pricing_snapshot_id="price-v2",
+            routing_reason_codes=("QUALITY_RETRY",),
+        )
+
+    async def submit(
+        self,
+        *,
+        spec: VideoTaskSpec,
+        shot: CompiledShot,
+        continuity_refs: tuple[str, ...],
+        excluded_provider_keys: tuple[str, ...] = (),
+    ) -> GatewayVideoResult:
+        del spec, shot, continuity_refs, excluded_provider_keys
+        self.submit_count += 1
+        return GatewayVideoResult(
+            status="PENDING",
+            provider="provider-b",
+            model="video-b",
+            provider_request_id="provider-video-retry",
+            output_ref=None,
+            output_mime_type=None,
+            cost_usd=Decimal("0.25"),
+            cost_confidence="EXACT",
+            pricing_snapshot_id="price-v2",
+            routing_reason_codes=("QUALITY_RETRY",),
+        )
 
     async def cancel(self, *, pending: ProviderJobRecord) -> GatewayVideoResult:
         assert pending.result.provider_request_id == PROVIDER_REQUEST_ID
@@ -113,7 +188,9 @@ def _pipeline(
     include_provider_record: bool = True,
 ) -> tuple[VideoGenerationPipeline, InMemoryVideoRepository, _Gateway, _Costs, _Events]:
     repository = InMemoryVideoRepository()
-    repository.save(_job())
+    spec = _spec()
+    repository.save_spec(spec)
+    repository.save(_job(spec))
     if include_provider_record:
         repository.save_provider_job(_provider_record())
     gateway = _Gateway(cancel_result)
@@ -196,3 +273,28 @@ def test_missing_provider_recovery_never_self_certifies_cancellation() -> None:
     assert costs.calls == 0
     assert "video_generation.cancelled" not in events.types
     assert repository.get_provider_job(ORG, VIDEO_JOB_ID, SHOT_ID, PAID_OPERATION_ID) is None
+
+
+def test_cancellation_terminal_reconciliation_never_launches_quality_retry() -> None:
+    pipeline, repository, gateway, costs, events = _pipeline(_result("FAILED"))
+
+    cancelled_attempt = _cancel(pipeline)
+    assert cancelled_attempt.status == "WAITING_EXTERNAL"
+
+    reconciled = asyncio.run(
+        pipeline.resume(
+            organization_id=ORG,
+            video_job_id=VIDEO_JOB_ID,
+            allow_quality_retry=False,
+        )
+    )
+
+    assert reconciled.status == "FAILED"
+    assert reconciled.error_code == "VIDEO_PROVIDER_FAILED"
+    assert gateway.estimate_count == 0
+    assert gateway.submit_count == 0
+    assert costs.calls == 1
+    assert "video_generation.shot_quality_retry" not in events.types
+    archived = repository.get_provider_job(ORG, VIDEO_JOB_ID, SHOT_ID, PAID_OPERATION_ID)
+    assert archived is not None
+    assert archived.result.status == "FAILED"
