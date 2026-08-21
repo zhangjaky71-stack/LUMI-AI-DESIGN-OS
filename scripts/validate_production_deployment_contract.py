@@ -111,14 +111,30 @@ def clean_manifest(acceptance_path: str) -> dict[str, Any]:
 
 
 def clean_decision(images: dict[str, str]) -> dict[str, Any]:
+    git_sha = "c" * 40
+    image_set_ref = (
+        "https://github.com/example/lumi/actions/runs/456"
+        f"#artifact=runtime-image-set-{git_sha}/container-image-set.json"
+    )
     return {
         "schema_version": 1,
         "decision_id": "acceptance-contract-001",
         "passed": True,
         "release_candidate": {
-            "git_sha": "c" * 40,
+            "git_sha": git_sha,
             "version": "1.0.0-rc.1",
             "migration_head": "20260815_001",
+            "container_image_set_ref": image_set_ref,
+        },
+        "runtime_image_binding": {
+            "status": "PASS",
+            "git_sha": git_sha,
+            "version": "1.0.0-rc.1",
+            "build_run_id": "456",
+            "container_image_set_ref": image_set_ref,
+            "attestation_report_sha256": "a" * 64,
+            "attestation_source_digest": git_sha,
+            "runtime_count": 6,
         },
         "container_image_set": {
             "images": copy.deepcopy(images),
@@ -170,12 +186,20 @@ def main() -> int:
         'parser.add_argument("--acceptance-run-id", required=True)',
         'parser.add_argument("--repository", required=True)',
         "_validate_node71_artifact(",
+        "_validate_runtime_image_seal(",
+        'decision.get("runtime_image_binding")',
+        'binding.get("attestation_source_digest") == manifest_sha',
+        'binding.get("runtime_count") == 6',
         "production manifest staging_acceptance_run_id differs from requested NODE-71 run",
     ):
-        require(marker in gate_source, f"production gate missing NODE-71 artifact binding marker: {marker}")
+        require(marker in gate_source, f"production gate missing NODE-71 artifact/runtime-attestation binding marker: {marker}")
 
     result = gate.evaluate(clean, decision, acceptance_path)
     require(result["passed"] is True, "clean contract fixture must pass")
+    require(
+        result["runtime_image_binding"] == decision["runtime_image_binding"],
+        "production gate result must retain exact NODE-71 runtime-image seal",
+    )
 
     invalid_run_id = copy.deepcopy(clean)
     invalid_run_id["release_candidate"]["staging_acceptance_run_id"] = "PENDING"
@@ -219,6 +243,48 @@ def main() -> int:
     require(
         gate.evaluate(migration_swap, decision, acceptance_path)["passed"] is False,
         "migration-head mismatch must block",
+    )
+
+    missing_runtime_seal = copy.deepcopy(decision)
+    missing_runtime_seal.pop("runtime_image_binding")
+    require(
+        gate.evaluate(clean, missing_runtime_seal, acceptance_path)["passed"] is False,
+        "missing NODE-71 runtime-image attestation seal must block",
+    )
+
+    runtime_source_swap = copy.deepcopy(decision)
+    runtime_source_swap["runtime_image_binding"]["attestation_source_digest"] = "e" * 40
+    require(
+        gate.evaluate(clean, runtime_source_swap, acceptance_path)["passed"] is False,
+        "runtime-image attestation source SHA mismatch must block",
+    )
+
+    runtime_build_run_zero = copy.deepcopy(decision)
+    runtime_build_run_zero["runtime_image_binding"]["build_run_id"] = "0"
+    require(
+        gate.evaluate(clean, runtime_build_run_zero, acceptance_path)["passed"] is False,
+        "invalid runtime-image build run id must block",
+    )
+
+    runtime_hash_invalid = copy.deepcopy(decision)
+    runtime_hash_invalid["runtime_image_binding"]["attestation_report_sha256"] = "invalid"
+    require(
+        gate.evaluate(clean, runtime_hash_invalid, acceptance_path)["passed"] is False,
+        "invalid runtime-image attestation report hash must block",
+    )
+
+    runtime_ref_swap = copy.deepcopy(decision)
+    runtime_ref_swap["runtime_image_binding"]["container_image_set_ref"] = "other"
+    require(
+        gate.evaluate(clean, runtime_ref_swap, acceptance_path)["passed"] is False,
+        "runtime-image artifact ref mismatch must block",
+    )
+
+    runtime_extra_field = copy.deepcopy(decision)
+    runtime_extra_field["runtime_image_binding"]["untrusted"] = True
+    require(
+        gate.evaluate(clean, runtime_extra_field, acceptance_path)["passed"] is False,
+        "runtime-image seal unexpected fields must block",
     )
 
     mutable_image = copy.deepcopy(clean)
@@ -308,6 +374,12 @@ def main() -> int:
                     "node71_not_passed_blocked": True,
                     "accepted_sha_swap_blocked": True,
                     "migration_swap_blocked": True,
+                    "runtime_attestation_seal_missing_blocked": True,
+                    "runtime_attestation_source_swap_blocked": True,
+                    "runtime_build_run_invalid_blocked": True,
+                    "runtime_attestation_hash_invalid_blocked": True,
+                    "runtime_artifact_ref_swap_blocked": True,
+                    "runtime_seal_extra_field_blocked": True,
                     "mutable_image_blocked": True,
                     "accepted_image_swap_blocked": True,
                     "all_at_once_rollout_blocked": True,
