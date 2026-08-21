@@ -2,50 +2,127 @@
 
 > Evidence date: 2026-08-21  
 > Branch: `release-closure-p0`  
-> Current sampled head: `a27dc1fbc70edbd663318253dded507e5093d2a3`  
-> Status: **ACCEPTANCE HARNESS + STAGING IAC SOURCE IMPLEMENTED / STAGING RC NOT DEPLOYED / GO-LIVE BLOCKED**
+> Current source head: `6a52e5b5f44a86e8b7360c165242c0e02f013351`  
+> Latest sampled execution head: `29602f4d0f5117f174ae4f4c806145c420635050`  
+> Status: **ACCEPTANCE HARNESS + STAGING IAC + ATTESTED RC DECISION SEAL SOURCE-CLOSED / STAGING RC NOT DEPLOYED / GO-LIVE BLOCKED**
 
 ## Decision
 
-NODE-71 has a fail-closed, versioned Staging acceptance control plane plus production-like Staging IaC source definitions. This is **not** evidence that a Staging release candidate has been deployed or accepted. No real Staging URL, executed immutable six-runtime image set, completed environment-parity proof, Golden E2E, resilience/security drills, browser matrix, NODE-69 launch run, NODE-70 production AI release decision, or final approver set has been evidenced for the current RC.
+NODE-71 has a fail-closed Staging acceptance control plane, production-like Staging IaC source definitions, exact six-runtime image/attestation binding, and a sealed decision/provenance path. This is **not** evidence that a Staging RC has been deployed or accepted.
+
+No real Staging URL, executed six-runtime image build, verified registry attestation artifact, completed environment parity proof, Golden E2E, resilience/security drills, browser matrix, NODE-69 launch run, NODE-70 production AI release decision, or final approver set has been evidenced for the current RC.
 
 ## Current repository reality
 
-- Canonical Staging IaC exists under `infra/iac/environments/staging/` and shares the same production-class module topology as the Production environment.
-- Local Compose infrastructure remains local-only and is not accepted as Staging evidence.
-- The API exposes `/health/live`, `/health/ready`, and `/version`; NODE-71 uses those endpoints only for read-only remote preflight.
-- Provider model/media secrets are source-bound to `model-gateway`. Agent Runtime and Worker Media receive the private Model Gateway URL plus HMAC secret for Hosted model access.
-- `scripts/validate_private_model_gateway_deployment_contract.py` now spans Staging/Production IaC secret ownership, ECS secret materialization, Agent/Worker private clients and runtime-image provenance.
-- Model Gateway, Production IaC, **Staging Acceptance**, and Final Acceptance workflows all execute and syntax-gate that cross-layer contract. `scripts/validate_model_gateway_contract.py` independently locks this wiring so removing the Staging binding cannot silently pass by deleting only one validator.
-- Root workspace membership and checked-in `uv.lock` still differ by six packages: `lumi-auth`, `lumi-domain`, `lumi-project-core`, `lumi-asset-storage`, `lumi-image-generation`, and `lumi-video-generation`. The lockfile remains a real frozen-install blocker and is not hand-edited.
+- Canonical Staging IaC exists under `infra/iac/environments/staging/` and shares the production-class module topology.
+- Local Compose remains local-only and is not Staging evidence.
+- Provider model/media secrets are source-bound to `model-gateway`; Agent Runtime and Worker Media use private Gateway URL + HMAC auth for Hosted model access.
+- Staging Acceptance directly gates the private Model Gateway deployment contract.
+- Root workspace and `uv.lock` still differ by exactly six packages: `lumi-auth`, `lumi-domain`, `lumi-project-core`, `lumi-asset-storage`, `lumi-image-generation`, `lumi-video-generation`.
+- The lockfile must not be hand-edited and remains a frozen-install blocker.
 
-Therefore NODE-71 does **not** report `staging RC deployed` or `staging acceptance passed` as complete.
+## Source acceptance baseline
 
-## Implemented source baseline
+NODE-71 source controls include:
 
-- Versioned 30-scenario acceptance manifest: `staging/acceptance/manifest-v1.json`.
-- 10-check environment parity contract: `staging/acceptance/environment-parity-v1.json`.
-- Synthetic-only evidence template with Org A/B, platform ops and billing account matrix.
-- Explicit provider-mode recording for MockProvider, provider sandbox/test mode and small production-candidate quality samples.
-- Fail-closed `scripts/staging-acceptance-gate.py`.
-- Machine JSON + human Markdown acceptance decisions with deterministic `decision_id`.
-- P0 requires evidenced PASS; `BLOCKED_EXTERNAL` never substitutes for P0 PASS.
-- PASS requires `actual`, `evidence_ref`, and `owner`.
-- Open Critical/High issues block.
-- All required environment parity checks must have real PASS evidence.
-- Engineering, security, product and release-owner approvals must all be APPROVED.
-- Production customer data is forbidden; test data and isolated Staging secrets are required.
-- Read-only `scripts/staging-preflight.py` requires HTTPS, exact host ACK, Staging environment ACK, exact RC version, no redirects, health/readiness/version checks and core security headers.
-- Dependency-free `scripts/validate_staging_acceptance_contract.py` provides negative drills.
-- `.github/workflows/staging-acceptance-gate.yml` contains source-contract, canonical-lock, remote read-only preflight, evidence decision and artifact paths.
-- The canonical dependency gate is: `validate_uv_workspace_lock.py -> uv lock --check -> uv sync --all-packages --frozen`.
-- NODE-71 source-contract directly executes and syntax-gates the private Model Gateway deployment contract.
-- Workflow-dispatch inputs are transferred via environment variables instead of direct shell interpolation.
-- Evidence paths are constrained below `reports/staging-acceptance/`.
+- versioned 30-scenario acceptance manifest and environment parity contract;
+- synthetic account/evidence template;
+- fail-closed `staging-acceptance-gate.py`;
+- read-only HTTPS preflight;
+- immutable evidence/live-producer binding;
+- canonical dependency gate: `validate_uv_workspace_lock.py -> uv lock --check -> uv sync --all-packages --frozen`;
+- private Model Gateway deployment boundary;
+- exact runtime-image build/attestation binding;
+- NODE-71 decision artifact workflow provenance;
+- canonical media-generation E2E and Tool Gateway provenance validators.
 
-## Acceptance coverage
+P0 still requires real evidenced PASS. `BLOCKED_EXTERNAL`, synthetic fixtures, source contracts, or local Compose cannot substitute for runtime acceptance.
 
-The manifest includes P0/P1 scenarios for:
+## Attested runtime-image decision sealing — source-closed
+
+The NODE-71 runtime-image acceptance path is now:
+
+```text
+exact RC Git SHA
+→ six exact runtime Dockerfile builds
+→ immutable registry digests
+→ BuildKit max provenance + SPDX SBOM
+→ GitHub artifact attestation bound to signer/source SHA/ref/runner policy
+→ container-image-set.json + attestation-verification.json
+→ NODE-71 exact runtime-image binding
+→ staging-acceptance decision
+→ runtime_image_binding seal
+→ resealed decision_id
+→ decision SHA-256 workflow provenance
+→ archive
+```
+
+### Frozen build binding
+
+`validate_staging_runtime_image_binding.py` requires the downloaded image-set artifact and attestation report to match:
+
+- evidence RC SHA/version;
+- frozen RC SHA/version;
+- requested image-build run id;
+- canonical GitHub build-run URL/repository;
+- exact six image digests and provenance records;
+- attestation report SHA-256;
+- attestation `source_digest == RC git_sha`;
+- consistent per-runtime signer/source policy.
+
+The resulting `runtime-image-binding.json` carries:
+
+```text
+status
+git_sha
+version
+build_run_id
+container_image_set_ref
+attestation_report_sha256
+attestation_source_digest
+runtime_count
+```
+
+### Decision sealing
+
+`bind_node71_runtime_image_decision.py` accepts only a `passed=true` decision plus a valid runtime-image binding. It requires RC SHA/version/artifact-ref consistency, positive build-run identity, valid report hash, exact source SHA and six runtimes, then:
+
+- adds the normalized `runtime_image_binding` to `decision.json`;
+- recalculates `decision_id` over the sealed decision;
+- updates the human decision Markdown with the new Decision ID and attestation PASS seal.
+
+### Decision provenance
+
+`validate_node71_decision_artifact.py` now refuses both provenance creation and provenance verification when a passed NODE-71 decision:
+
+- lacks the runtime-image seal;
+- has an invalid seal field set;
+- has a source SHA different from the RC;
+- has invalid build-run/hash/count identity;
+- differs from the seal copied into decision provenance.
+
+Therefore an old-format unsealed `passed=true` decision cannot satisfy the current NODE-71 artifact contract.
+
+### Workflow anti-regression order
+
+`validate_staging_runtime_image_workflow_contract.py` locks the acceptance order:
+
+```text
+immutable/live evidence binding
+< exact image-set download
+< runtime-image attestation binding
+< Staging acceptance decision
+< runtime-image decision seal
+< decision provenance capture
+< decision provenance self-verification
+< artifact archive
+```
+
+The archived runtime directory includes the evidence binding, `runtime-image-binding.json`, sealed `decision.json`, decision Markdown and decision provenance.
+
+## Acceptance coverage still requiring real execution
+
+The manifest includes P0/P1 coverage for:
 
 ```text
 Environment parity
@@ -64,100 +141,51 @@ Backup restore
 Observability correlation
 ```
 
-## Direct GitHub Actions evidence — current head
+## Hosted CI evidence
 
-Sampled head: `a27dc1fbc70edbd663318253dded507e5093d2a3`.
-
-### Staging Acceptance Gate
-
-```text
-run_id: 32456978107
-source-contract job_id: 96696044522 -> failure, logs_url=null, steps=[]
-canonical-lock-gate job_id: 96696044272 -> failure, logs_url=null, steps=[]
-contract-gate job_id: 96696078959 -> failure, logs_url=null, steps=[]
-remote-read-only-preflight -> skipped on pull_request by design
-acceptance-decision -> skipped on pull_request by design
-```
-
-The key jobs have no executed steps. Therefore checkout, Python contract execution, `validate_uv_workspace_lock.py`, `uv lock --check`, and `uv sync --all-packages --frozen` are **not evidenced as having run**.
-
-### Corroborating release workflows on the same head
+The latest sampled critical execution evidence is from head `29602f4d0f5117f174ae4f4c806145c420635050`.
 
 ```text
 Runtime Image Closure
-run_id: 32456978005
-runtime-image-closure job_id: 96696043625 -> failure, logs_url=null, steps=[]
-
-Model Gateway
-run_id: 32456978136
-source-contract job_id: 96696044002 -> failure, logs_url=null, steps=null
-hosted-paid-guard-postgres -> skipped
-model-gateway -> skipped
+run_id: 32459558295
+runtime-image-closure job_id: 96703575372
+failure / logs_url=null / steps=null
 
 Production IaC Contract
-run_id: 32456977615
-terraform-static job_id: 96696042282 -> failure, logs_url=null, steps=null
-source-contract job_id: 96696042430 -> failure, logs_url=null, steps=null
-contract-gate job_id: 96696068577 -> failure, logs_url=null, steps=null
+run_id: 32459558285
+terraform-static job_id: 96703575564 -> failure / logs_url=null / steps=null
+source-contract job_id: 96703575742 -> failure / logs_url=null / steps=null
+contract-gate job_id: 96703588716 -> failure / logs_url=null / steps=null
 
-Image Generation
-run_id: 32456977880
-image-generation-contract job_id: 96696042319 -> failure, logs_url=null, steps=null
-quality / Worker image smoke / integration / benchmark -> skipped
-
-Video Generation
-run_id: 32456977960
-video-generation-contract job_id: 96696042648 -> failure, logs_url=null, steps=null
-quality / Worker video smoke / integration / benchmark -> skipped
-
-Final Product Acceptance Gate
-run_id: 32456977991
-source-contract job_id: 96696043548 -> failure, logs_url=null, steps=null
-canonical-lock-gate job_id: 96696043713 -> failure, logs_url=null, steps=null
-node73-final-contract-gate job_id: 96696073915 -> failure, logs_url=null, steps=null
+Final Product Acceptance
+run_id: 32459558476
+source-contract job_id: 96703576056 -> failure / logs_url=null / steps=null
+canonical-lock-gate job_id: 96703576351 -> failure / logs_url=null / steps=null
+node73-final-contract-gate job_id: 96703611450 -> failure / logs_url=null / steps=null
 final-decision -> skipped
 ```
 
-This is the same zero-step Hosted-runner failure pattern seen on earlier heads. These red jobs are neither application-test failures nor PASS evidence. No Ruff, Pyright, pytest, PostgreSQL, Docker, Terraform, runtime-image build, Staging probe, or application command is proven to have executed in the sampled critical jobs.
-
-## Contract drills still required to execute
-
-Once Hosted execution is available, `scripts/validate_staging_acceptance_contract.py` must prove:
-
-- empty evidence cannot PASS;
-- the manifest contains the intended product surface and unique IDs;
-- a complete synthetic fixture can pass the evaluator logic;
-- P0 `NOT_RUN` blocks;
-- PASS without evidence blocks;
-- internal scenarios cannot abuse `BLOCKED_EXTERNAL`;
-- valid external P0 blockage still blocks go-live;
-- open Critical issues block;
-- environment parity failure blocks.
-
-These remain control-plane drills only and cannot replace real Staging acceptance.
+These are zero-step Hosted-runner failures. They do not prove the source contracts failed and they do not provide PASS evidence. No checkout, Python, `uv`, Docker, registry attestation, PostgreSQL, Terraform or Staging command is evidenced as having executed in these jobs.
 
 ## Release blockers
 
-- [ ] Hosted Staging `source-contract` actually executes and passes with step/log evidence.
-- [ ] Canonical lock is resolver-regenerated; exact workspace validation, `uv lock --check`, and `uv sync --all-packages --frozen` execute and pass.
+- [ ] Resolver-generated `uv.lock` includes all 17 workspace packages and frozen validation passes.
+- [ ] NODE-71 source/lock contracts actually execute with step/log evidence.
+- [ ] Canonical six-runtime build workflow executes on the exact RC SHA.
+- [ ] Six registry digests resolve and six GitHub artifact attestations verify.
+- [ ] BuildKit provenance and SPDX SBOMs are collected from the actual images.
+- [ ] Frozen image-set + attestation report artifact is produced by the exact build run.
 - [ ] Production-like Staging infrastructure is actually planned/applied and reachable.
-- [ ] Exact immutable six-runtime RC image set is built, attested, promoted and deployed.
-- [ ] SBOM/provenance attestations are verified against the exact RC SHA and image digests.
-- [ ] All 10 environment parity checks have real evidence.
+- [ ] NODE-71 downloads the exact build artifact and emits a real sealed `passed=true` decision.
+- [ ] All environment-parity checks have real PASS evidence.
 - [ ] Synthetic Org A/B/ops/billing accounts are provisioned without production customer data.
 - [ ] Read-only remote preflight passes on the exact RC.
-- [ ] Golden Brand Project E2E passes.
-- [ ] Precision Edit E2E passes product/Logo/QR/version invariants.
-- [ ] Image/video canonical producer -> Worker -> Provider -> Artifact paths execute in Staging.
-- [ ] Private Model Gateway secret/path boundary is proven on deployed tasks, not only source configuration.
-- [ ] Resilience and security scenarios execute; Critical/High failures are zero.
-- [ ] Billing/cost reconciliation executes and passes.
-- [ ] NODE-69 Profile G Staging evidence exists for the exact RC.
-- [ ] NODE-70 production-candidate release evidence exists for the exact RC/model configuration.
-- [ ] Chrome/Edge, Chinese IME/font/upload/download P0 checks pass; Safari P1 is honestly evidenced or externally blocked.
-- [ ] Data lifecycle, backup restore and observability correlation evidence pass.
+- [ ] Golden Brand Project and Precision Edit E2Es pass.
+- [ ] Canonical image/video producer → Worker → Provider → Artifact paths execute in Staging.
+- [ ] Private Model Gateway secret/path boundary is proven on deployed tasks/images.
+- [ ] Resilience/security/billing/performance/AI gates execute and pass.
+- [ ] Browser/IME/font/upload/download and data-lifecycle/recovery/observability evidence pass.
 - [ ] Engineering/security/product/release-owner approvals are complete.
-- [ ] Final `decision.json` returns `passed=true` for the exact immutable RC.
 
 ## Current status
 
@@ -166,18 +194,15 @@ ACCEPTANCE MANIFEST: IMPLEMENTED SOURCE
 ENVIRONMENT PARITY CONTRACT: IMPLEMENTED SOURCE
 STAGING IAC: IMPLEMENTED SOURCE / NOT APPLIED
 PRIVATE MODEL GATEWAY STAGING BINDING: SOURCE-CLOSED / DEPLOYED PROOF PENDING
-EVIDENCE SCHEMA/TEMPLATE: IMPLEMENTED SOURCE
-FAIL-CLOSED RC EVALUATOR: IMPLEMENTED SOURCE
-READ-ONLY REMOTE PREFLIGHT: IMPLEMENTED SOURCE / NOT RUN AGAINST RC
-NEGATIVE CONTRACT DRILLS: IMPLEMENTED SOURCE / HOSTED EXECUTION BLOCKED
+RUNTIME IMAGE BUILD/ATTESTATION BINDING: SOURCE-CLOSED / ACTUAL BUILD MISSING
+NODE-71 RUNTIME IMAGE DECISION SEAL: SOURCE-CLOSED / REAL SEALED DECISION MISSING
+NODE-71 DECISION PROVENANCE: SOURCE-CLOSED / REAL PASSED ARTIFACT MISSING
 CANONICAL LOCK: STALE / RESOLVER EXECUTION BLOCKED
-STAGING ACCEPTANCE WORKFLOW: IMPLEMENTED SOURCE
 HOSTED CI EXECUTION: BLOCKED BEFORE STEPS START
 REAL STAGING RC: MISSING
-REAL RUNTIME-IMAGE ATTESTATION: MISSING
 REAL GOLDEN E2E / SECURITY / RESILIENCE / PERF / AI EVIDENCE: MISSING
 FINAL APPROVALS: MISSING
 NODE-71 GO-LIVE STATUS: BLOCKED
 ```
 
-NODE-72 may supply the deployment machinery, but Production promotion must not consume NODE-71 until the exact immutable RC has a real acceptance decision with `passed=true`.
+NODE-72 Production promotion may consume NODE-71 only after the exact immutable RC has a real, sealed and provenance-verified `passed=true` decision.
