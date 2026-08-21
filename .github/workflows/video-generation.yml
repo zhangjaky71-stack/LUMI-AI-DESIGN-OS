@@ -51,6 +51,7 @@ on:
       - "scripts/validate_video_generation.py"
       - "scripts/validate_video_generation_producer_binding.py"
       - "scripts/validate_video_worker_hosted_binding.py"
+      - "scripts/validate_video_final_probe_binding.py"
       - "scripts/benchmark_video_generation.py"
       - "fixtures/video-generation/**"
       - "docs/runtime/VIDEO-GENERATION-V1.md"
@@ -102,6 +103,7 @@ jobs:
             scripts/validate_video_generation.py \
             scripts/validate_video_generation_producer_binding.py \
             scripts/validate_video_worker_hosted_binding.py \
+            scripts/validate_video_final_probe_binding.py \
             scripts/benchmark_video_generation.py
       - name: Validate release identity capture shell syntax
         run: bash -n scripts/capture-production-runtime-identity.sh
@@ -113,6 +115,8 @@ jobs:
         run: python scripts/validate_video_generation_producer_binding.py
       - name: Validate Hosted video.render production binding
         run: python scripts/validate_video_worker_hosted_binding.py
+      - name: Validate final durable video probe binding
+        run: python3 scripts/validate_video_final_probe_binding.py
 
   video-generation-quality:
     needs: video-generation-contract
@@ -161,6 +165,7 @@ jobs:
             scripts/validate_video_generation.py \
             scripts/validate_video_generation_producer_binding.py \
             scripts/validate_video_worker_hosted_binding.py \
+            scripts/validate_video_final_probe_binding.py \
             scripts/benchmark_video_generation.py
       - name: Pyright runtime gate
         shell: bash
@@ -182,7 +187,7 @@ jobs:
         run: >-
           docker run --rm --entrypoint python
           lumi-worker-media-video:${{ github.sha }}
-          -c "from lumi_worker_media.app import video_render; from lumi_worker_media.video_generation_runtime import HostedVideoGenerationRuntime; from lumi_worker_media.video_sandbox_runtime import SandboxExchangeMediaRuntime; from lumi_worker_media.cli import main as outbox_cli_main; print('hosted-video-imports-ok')"
+          -c "from lumi_worker_media.app import video_render; from lumi_worker_media.video_generation_runtime import HostedVideoGenerationRuntime; from lumi_worker_media.video_final_probe_runtime import HostedVerifiedVideoMediaSandbox; from lumi_worker_media.video_sandbox_runtime import SandboxExchangeMediaRuntime; from lumi_worker_media.cli import main as outbox_cli_main; print('hosted-video-imports-ok')"
       - name: Start Worker Media container and assert process liveness
         shell: bash
         run: |
