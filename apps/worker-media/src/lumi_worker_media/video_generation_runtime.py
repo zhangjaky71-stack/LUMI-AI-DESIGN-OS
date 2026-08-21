@@ -24,10 +24,10 @@ from .video_generation_codec import decode_video_task_spec
 from .video_generation_ports import (
     HostedVideoMediaSandbox,
     HostedVideoOutputAdapter,
-    HostedVideoValidator,
     PostgresVideoEventSink,
 )
 from .video_generation_repository import PostgresVideoRepository
+from .video_validation_runtime import HostedV1VideoValidator
 
 _TASK_INPUT_SCHEMA_VERSION = 1
 _JOB_KIND = "video.render"
@@ -110,7 +110,7 @@ class HostedVideoGenerationRuntime:
             repository=repository,
             gateway=gateway,
             output=output,
-            validator=HostedVideoValidator(),
+            validator=HostedV1VideoValidator(),
             artifacts=PostgresVideoArtifactAdapter(
                 self.database_dsn,
                 bucket=self.asset_bucket,
