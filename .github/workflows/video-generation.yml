@@ -274,6 +274,8 @@ jobs:
           apps/worker-media/tests/integration/test_video_hosted_postgres.py
           apps/worker-media/tests/integration/test_video_runtime_privileges_postgres.py
           apps/worker-media/tests/integration/test_video_public_generation_sync_postgres.py
+          apps/worker-media/tests/integration/test_video_event_uow_postgres.py
+          apps/worker-media/tests/integration/test_video_artifact_replay_postgres.py
           -q
       - name: Run video / Model Gateway / Artifact regressions
         env:
