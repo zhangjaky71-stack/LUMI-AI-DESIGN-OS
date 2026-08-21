@@ -200,6 +200,15 @@ def main() -> int:
             f"{SELF_PATH} \\" in source,
             f"{label} does not syntax-gate final durable probe contract",
         )
+    require(
+        'apps/worker-media/src/lumi_worker_media/video_*.py' in workflow,
+        "Video Generation workflow does not syntax-gate hosted video runtime sources",
+    )
+    require(
+        f"{FINAL_PROBE_PATH} \\" in final
+        and f"{HOSTED_VALIDATION_PATH} \\" in final,
+        "Final Acceptance does not directly syntax-gate hosted video validation boundaries",
+    )
 
     print("Hosted video FPS ownership and final durable probe contract: PASS")
     return 0
