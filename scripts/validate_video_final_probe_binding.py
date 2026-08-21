@@ -7,13 +7,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 FINAL_PROBE = ROOT / "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py"
 HOSTED_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/video_generation_runtime.py"
+HOSTED_VALIDATION = ROOT / "apps/worker-media/src/lumi_worker_media/video_validation_runtime.py"
 FINAL_PROBE_TEST = ROOT / "apps/worker-media/tests/test_video_final_probe_runtime.py"
+HOSTED_VALIDATION_TEST = ROOT / "apps/worker-media/tests/test_video_validation_runtime.py"
 SANDBOX_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py"
 RUNTIME_IMAGE_MANIFEST = ROOT / "production/runtime-images/manifest-v1.json"
 VIDEO_WORKFLOW = ROOT / ".github/workflows/video-generation.yml"
 FINAL_WORKFLOW = ROOT / ".github/workflows/final-acceptance-gate.yml"
 SELF_PATH = "scripts/validate_video_final_probe_binding.py"
 FINAL_PROBE_PATH = "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py"
+HOSTED_VALIDATION_PATH = "apps/worker-media/src/lumi_worker_media/video_validation_runtime.py"
 
 
 class VideoFinalProbeContractError(RuntimeError):
@@ -38,7 +41,9 @@ def require_markers(source: str, markers: tuple[str, ...], label: str) -> None:
 def main() -> int:
     final_probe = read(FINAL_PROBE)
     hosted = read(HOSTED_RUNTIME)
+    hosted_validation = read(HOSTED_VALIDATION)
     tests = read(FINAL_PROBE_TEST)
+    hosted_validation_tests = read(HOSTED_VALIDATION_TEST)
     sandbox = read(SANDBOX_RUNTIME)
     workflow = read(VIDEO_WORKFLOW)
     final = read(FINAL_WORKFLOW)
@@ -72,6 +77,53 @@ def main() -> int:
         final_probe.find("await self._probe_durable(rendered)")
         < final_probe.find("return _verified_final_render(rendered, timeline, probe)"),
         "final durable ffprobe must precede verified metadata return",
+    )
+
+    # Raw provider FPS is not a controllable OpenAI Videos create parameter. Hosted
+    # raw validation must not turn it into a post-payment rejection condition; the
+    # final typed ffmpeg render and durable ffprobe own output FPS correctness.
+    require_markers(
+        hosted_validation,
+        (
+            "class HostedV1VideoValidator",
+            "does not expose an FPS control",
+            "Raw-shot acceptance remains fail-closed",
+            "VIDEO_DECODE_FAILED",
+            "VIDEO_MIME_MISMATCH",
+            "VIDEO_RESOLUTION_MISMATCH",
+            "VIDEO_DURATION_MISMATCH",
+            "VIDEO_PROVIDER_SAFETY_BLOCK",
+            'decision="REJECT" if frozen else "PASS"',
+        ),
+        "Hosted raw video validation",
+    )
+    require(
+        "VIDEO_FPS_MISMATCH" not in hosted_validation,
+        "Hosted raw provider validation must not reject an uncontrollable provider FPS",
+    )
+    require_markers(
+        hosted,
+        (
+            "HostedV1VideoValidator",
+            "validator=HostedV1VideoValidator()",
+        ),
+        "Hosted raw validator composition",
+    )
+    require_markers(
+        hosted_validation_tests,
+        (
+            "test_hosted_raw_provider_fps_is_not_mistaken_for_final_output_fps",
+            'fps=Decimal("30")',
+            "assert spec.fps == 24",
+            'assert report.decision == "PASS"',
+            "test_hosted_raw_resolution_mismatch_still_rejects",
+            "VIDEO_RESOLUTION_MISMATCH",
+            "test_hosted_raw_duration_mismatch_still_rejects",
+            "VIDEO_DURATION_MISMATCH",
+            "test_hosted_raw_provider_safety_block_still_rejects",
+            "VIDEO_PROVIDER_SAFETY_BLOCK",
+        ),
+        "Hosted raw video validation tests",
     )
 
     # The lower-level bridge is allowed to carry expected timeline metadata only as
@@ -130,8 +182,10 @@ def main() -> int:
     worker = runtimes.get("worker-media") if isinstance(runtimes, dict) else None
     worker_sources = worker.get("source_paths") if isinstance(worker, dict) else None
     require(
-        isinstance(worker_sources, list) and FINAL_PROBE_PATH in worker_sources,
-        "canonical worker-media image provenance does not bind the final probe runtime",
+        isinstance(worker_sources, list)
+        and FINAL_PROBE_PATH in worker_sources
+        and HOSTED_VALIDATION_PATH in worker_sources,
+        "canonical worker-media image provenance does not bind final/raw video validation",
     )
 
     for source, label in (
@@ -147,7 +201,7 @@ def main() -> int:
             f"{label} does not syntax-gate final durable probe contract",
         )
 
-    print("Hosted video final durable probe contract: PASS")
+    print("Hosted video FPS ownership and final durable probe contract: PASS")
     return 0
 
 
