@@ -115,7 +115,8 @@ def validate_repo() -> None:
             "job = await pipeline.cancel(",
             'if job.status == "WAITING_EXTERNAL":',
             "job = await pipeline.resume(",
-            "this never submits a second provider job",
+            "allow_quality_retry=False",
+            "never launch a quality retry or replacement",
             "await self._flush_job(",
             "return self._external_wait(job)",
         ),
@@ -131,19 +132,24 @@ def validate_repo() -> None:
     cancel_at = cancellation_block.find("job = await pipeline.cancel(")
     waiting_at = cancellation_block.find('if job.status == "WAITING_EXTERNAL":', cancel_at)
     resume_at = cancellation_block.find("job = await pipeline.resume(", waiting_at)
-    flush_at = cancellation_block.find("await self._flush_job(", resume_at)
+    no_retry_at = cancellation_block.find("allow_quality_retry=False", resume_at)
+    flush_at = cancellation_block.find("await self._flush_job(", no_retry_at)
     require(
-        0 <= cancel_at < waiting_at < resume_at < flush_at,
-        "Hosted cancellation must attempt cancel, reconcile the same pending provider request once, then flush",
+        0 <= cancel_at < waiting_at < resume_at < no_retry_at < flush_at,
+        "Hosted cancellation must cancel, reconcile the same provider request without paid quality retry, then flush",
     )
     require(
         cancellation_block.count("await pipeline.resume(") == 1,
-        "Hosted cancellation must poll at most once per Worker invocation",
+        "Hosted cancellation must poll/reconcile at most once per Worker invocation",
+    )
+    require(
+        cancellation_block.count("allow_quality_retry=False") == 1,
+        "Hosted cancellation must explicitly suppress replacement paid quality retry",
     )
     require(
         "pipeline.start(" not in cancellation_block
         and "pipeline.submit(" not in cancellation_block,
-        "Hosted cancellation must never submit replacement paid provider work",
+        "Hosted cancellation must never directly submit replacement paid provider work",
     )
     require(
         cancellation_block.count("await self._flush_job(") == 1,
@@ -153,6 +159,9 @@ def validate_repo() -> None:
     require_markers(
         pipeline,
         (
+            "async def resume(",
+            "allow_quality_retry: bool = True",
+            "allow_quality_retry=allow_quality_retry",
             "async def cancel(self, *, organization_id: str, video_job_id: str) -> VideoJob:",
             "if pending is None:",
             "return job",
@@ -163,6 +172,8 @@ def validate_repo() -> None:
             "self.repository.delete_provider_job(",
             'status="CANCELLED"',
             '"video_generation.cancelled"',
+            'if result.status != "CANCELLED" and allow_quality_retry:',
+            "if allow_quality_retry:",
         ),
         "provider-neutral cancellation truth",
     )
@@ -190,6 +201,14 @@ def validate_repo() -> None:
     require(
         pipeline_cancel.find("return job", status_at) < cost_at,
         "PENDING/SUCCEEDED/FAILED cancel results must return before terminal cost/archive",
+    )
+
+    resume_start = pipeline.find("    async def resume(")
+    cancel_start = pipeline.find("    async def cancel(", resume_start)
+    resume_block = pipeline[resume_start:cancel_start]
+    require(
+        "allow_quality_retry=allow_quality_retry" in resume_block,
+        "provider resume must propagate the cancellation no-quality-retry control into terminal reconciliation",
     )
 
     require_markers(
@@ -234,11 +253,15 @@ def validate_repo() -> None:
         (
             "test_unproven_cancel_polls_same_provider_once_before_single_flush",
             'assert pipeline.calls == ["cancel", "resume"]',
+            'assert pipeline.resume_allow_quality_retry == [False]',
             'assert [job.status for job in runtime.flushed] == ["COMPLETED"]',
             "test_still_pending_after_cancel_poll_remains_external_wait",
             'assert [job.status for job in runtime.flushed] == ["WAITING_EXTERNAL"]',
+            "test_failed_provider_truth_does_not_enable_quality_retry",
+            'assert [job.status for job in runtime.flushed] == ["FAILED"]',
             "test_proven_cancel_skips_provider_poll_and_flushes_once",
             'assert pipeline.calls == ["cancel"]',
+            'assert pipeline.resume_allow_quality_retry == []',
             'assert [job.status for job in runtime.flushed] == ["CANCELLED"]',
         ),
         "Hosted cancellation runtime regression",
@@ -250,6 +273,10 @@ def validate_repo() -> None:
             "test_terminal_non_cancel_result_is_preserved_for_resume_truth",
             "test_cancelled_result_is_only_provider_result_that_marks_job_cancelled",
             "test_missing_provider_recovery_never_self_certifies_cancellation",
+            "test_cancellation_terminal_reconciliation_never_launches_quality_retry",
+            "allow_quality_retry=False",
+            "assert gateway.estimate_count == 0",
+            "assert gateway.submit_count == 0",
             "assert costs.calls == 0",
             "assert repository.provider_jobs",
             'assert events.types.count("video_generation.cancelled") == 1',
@@ -276,6 +303,7 @@ def validate_repo() -> None:
             "cancellation request",
             "poll the same provider request exactly once",
             "never submits replacement paid provider work",
+            "quality retry",
             "WAITING_EXTERNAL",
         ),
         "canonical Video Runtime cancellation semantics",
