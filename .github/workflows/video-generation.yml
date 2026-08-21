@@ -55,6 +55,7 @@ on:
       - "scripts/validate_video_generation.py"
       - "scripts/validate_video_generation_producer_binding.py"
       - "scripts/validate_video_worker_hosted_binding.py"
+      - "scripts/validate_video_cancellation_contract.py"
       - "scripts/validate_video_final_probe_binding.py"
       - "scripts/benchmark_video_generation.py"
       - "fixtures/video-generation/**"
@@ -109,6 +110,7 @@ jobs:
             scripts/validate_video_generation.py \
             scripts/validate_video_generation_producer_binding.py \
             scripts/validate_video_worker_hosted_binding.py \
+            scripts/validate_video_cancellation_contract.py \
             scripts/validate_video_final_probe_binding.py \
             scripts/benchmark_video_generation.py
       - name: Validate release identity capture shell syntax
@@ -121,6 +123,8 @@ jobs:
         run: python scripts/validate_video_generation_producer_binding.py
       - name: Validate Hosted video.render production binding
         run: python scripts/validate_video_worker_hosted_binding.py
+      - name: Validate provider-reconciled video cancellation contract
+        run: python3 scripts/validate_video_cancellation_contract.py
       - name: Validate final durable video probe binding
         run: python3 scripts/validate_video_final_probe_binding.py
       - name: Validate outbox dispatcher operational observability
@@ -179,6 +183,7 @@ jobs:
             scripts/validate_video_generation.py \
             scripts/validate_video_generation_producer_binding.py \
             scripts/validate_video_worker_hosted_binding.py \
+            scripts/validate_video_cancellation_contract.py \
             scripts/validate_video_final_probe_binding.py \
             scripts/validate_outbox_dispatcher_observability.py \
             scripts/benchmark_video_generation.py
