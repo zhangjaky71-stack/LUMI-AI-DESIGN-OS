@@ -1,33 +1,22 @@
 # NODE-73 — Final Product Acceptance — Release Evidence
 
-> Status: **SOURCE CLOSURE ADVANCED / FINAL PRODUCT NOT ACCEPTED / RUNTIME EVIDENCE PENDING**  
+> Status: **SOURCE CLOSURE ADVANCED / ATTESTED RC PROMOTION SOURCE-CLOSED / FINAL PRODUCT NOT ACCEPTED / RUNTIME EVIDENCE PENDING**  
 > Evidence date: 2026-08-21  
 > Working branch: `release-closure-p0`  
+> Current sampled head: `29602f4d0f5117f174ae4f4c806145c420635050`  
 > Draft PR: `#135 — release: close NODE-73 code-addressable P0 gates`
 
 ## 1. Current final decision
 
-NODE-73 has a fail-closed source implementation for final product acceptance, and multiple code-addressable P0 gaps have been closed on `release-closure-p0`. The current LUMI release is still **not eligible for PRODUCT ACCEPTED status** because canonical dependency, Hosted CI, PostgreSQL, container, Terraform, Staging, Production, live-provider, rollback and DR evidence remain incomplete.
-
-Current required headline:
+NODE-73 has a fail-closed source implementation for final product acceptance, and multiple code-addressable P0 gaps are now source-closed on `release-closure-p0`. The current LUMI release is still **not eligible for PRODUCT ACCEPTED status** because canonical dependency, Hosted CI, PostgreSQL, actual container build/attestation, Terraform, Staging, Production, live-provider, rollback and DR evidence remain incomplete.
 
 # NOT ACCEPTED — SEE BLOCKING GAPS
 
-The headline:
+`LUMI AI DESIGN OS — PRODUCT ACCEPTED` remains reserved for a future immutable V2 machine decision where every required P0/upstream gate has real PASS evidence and `blockers=[]`.
 
-```text
-LUMI AI DESIGN OS — PRODUCT ACCEPTED
-```
+## 2. Canonical final policy and dependency blocker
 
-is reserved exclusively for a future machine decision where every P0 requirement and required upstream gate is frozen and PASS with no unresolved release blocker.
-
-## 2. Final source-gate controls
-
-### Canonical final matrix and decision policy
-
-`final/acceptance/manifest-v1.json` freezes the final release scenarios spanning upstream gates, architecture, Golden Journeys, Agent/Design Intelligence, security, reliability, provenance, cost/billing, browser, performance, recovery, observability, Production operations, documentation and handoff.
-
-Exit policy remains fail-closed:
+Final Acceptance requires:
 
 ```text
 all P0 = PASS
@@ -39,11 +28,7 @@ all required upstream gates = PASS
 all final approvals = APPROVED
 ```
 
-`scripts/final-acceptance-gate.py` remains the only source allowed to emit `accepted=true`. Frozen V2 release/evidence identity, anti-fabrication hashes, release approvals and operational handoff remain mandatory.
-
-### Canonical dependency gate
-
-Final Acceptance now explicitly requires:
+The canonical dependency gate is:
 
 ```text
 python3 scripts/validate_uv_workspace_lock.py
@@ -51,7 +36,7 @@ uv lock --check
 uv sync --all-packages --frozen
 ```
 
-The checked-in `uv.lock` is currently stale. The exact root-workspace members missing from the current lock manifest are:
+The checked-in `uv.lock` remains stale relative to the 17-member root workspace. Missing lock-manifest workspace packages remain exactly:
 
 ```text
 lumi-auth
@@ -62,284 +47,280 @@ lumi-image-generation
 lumi-video-generation
 ```
 
-This is a system-wide frozen-install blocker. `uv.lock` must **not** be hand-edited.
+`uv.lock` must not be hand-edited. `.github/workflows/regenerate-uv-lock.yml` already implements the canonical minimum-permission resolver flow, but no resolver-generated replacement lock is claimed because the local environment cannot perform external package resolution and GitHub-hosted jobs continue to fail before executable steps begin.
 
-The canonical resolver workflow already exists as `.github/workflows/regenerate-uv-lock.yml` and is intentionally two-stage/minimum-permission:
+## 3. Code-addressable P0 source closure
 
-```text
-resolver job (contents: read)
-  -> uv lock
-  -> exact workspace-member validation
-  -> uv lock --check
-  -> uv sync --all-packages --frozen
-  -> compile
-  -> upload uv.lock + digest only
+### 3.1 Platform Provider spend / durable paid side effects
 
-write job (contents: write)
-  -> verify artifact digest
-  -> verify branch head has not moved
-  -> require changed files == uv.lock only
-  -> commit/push uv.lock only
-```
+NODE-20/NODE-27/Hosted Model Gateway source contracts bind Provider attempt lifecycle, canonical cost ledger/reservations, platform daily Provider spend stop and fail-closed ambiguous outcomes. Real PostgreSQL/provider evidence is still required.
 
-No resolver-generated lock is claimed yet because the current available local execution environment has no external package-resolution/DNS access and GitHub-hosted jobs are still failing before executable steps begin.
+### 3.2 Sandbox production egress topology
 
-## 3. Code-addressable P0 closure completed on release-closure-p0
+Production IaC separates the general Internet-egress branch from restricted Sandbox/outbox topology; child Sandbox execution still preserves `--network none`. Live Staging/Production network probes are still required.
 
-### 3.1 Platform-wide Provider spend / durable paid side effects
+### 3.3 Canonical image producer-to-Worker path
 
-Source-level NODE-20/NODE-27 release closure includes platform Provider spend hard-stop contracts, durable provider-attempt lifecycle barriers, fail-closed ambiguous outcomes and Hosted Model Gateway paid invocation binding. Runtime PostgreSQL/cloud evidence is still required before release acceptance.
-
-### 3.2 Sandbox egress source topology
-
-The IaC source contract separates the app identity SG, explicit Internet-egress SG and restricted Sandbox/outbox SG branch. Sandbox source topology prohibits public egress and permits required internal/S3 transport. Live Production-like egress probes remain required; source topology is not Production proof.
-
-### 3.3 Canonical image producer-to-Worker closure
-
-The image-generation path is now statically bound end-to-end:
+Image generation is source-bound:
 
 ```text
 POST /generations
-  -> GenerationRuntimeGateway
-  -> ImageGenerationControlPlane
-  -> canonical Generation + Task
-  -> versioned image_generation_spec in Task.input_json
-  -> canonical job.dispatch.requested outbox row
-  -> MediaJobOutboxDispatcher
-  -> lumi.jobs.image.transform / lumi.media.image
-  -> Worker Media image_transform
-  -> HostedImageGenerationRuntime
+→ GenerationRuntimeGateway
+→ ImageGenerationControlPlane
+→ canonical Generation + Task + image_generation_spec
+→ job.dispatch.requested outbox
+→ MediaJobOutboxDispatcher
+→ lumi.jobs.image.transform / lumi.media.image
+→ Worker Media image_transform
+→ HostedImageGenerationRuntime
 ```
 
-`scripts/validate_image_generation_producer_contract.py` now checks:
+The producer contract covers DB-only creation, identity/semantic-hash routing, outbox publish ordering, Worker Hosted entrypoint and API/Worker runtime provenance. PostgreSQL and real Worker execution remain pending.
 
-- production API binding and idempotency;
-- canonical Generation/Task/spec/outbox creation ordering;
-- DB-only producer boundary with no direct Provider/Celery side effect;
-- organization/project/task/operation/semantic-hash dispatch identity;
-- canonical outbox dispatcher queue/routing and publish ordering;
-- Worker `image.transform` Hosted runtime entrypoint;
-- API/Worker runtime-image provenance;
-- self-gating in Image Generation and Final Acceptance workflows.
+### 3.4 Hosted Video provider-truth cancellation
 
-Image Generation workflow now executes this producer contract in its first contract job. PostgreSQL execution and real Worker image execution are still pending.
+Cancellation remains intent until Provider terminal truth is known. Source tests/contracts lock same-request reconciliation, Provider success winning cancellation races, transport-error recovery and `allow_quality_retry=False` after cancellation intent so no replacement paid request is created. Hosted/PostgreSQL/live-provider execution remains pending.
 
-### 3.4 Hosted Video provider-truth cancellation closure
+### 3.5 Private Model Gateway deployment binding
 
-Video cancellation now treats `tasks.cancellation_requested_at` as intent, not proof that an accepted async Provider request stopped.
+The cross-layer deployment contract requires Provider model/media secrets only on `model-gateway`, while Agent Runtime/Worker Media receive private Gateway URL + HMAC secret and use signed provider-neutral clients. Staging, Production, ECS declared-secret materialization, private clients and runtime source provenance are cross-checked. Model Gateway, Production IaC, NODE-71 Staging and Final Acceptance workflows all gate this source contract.
 
-Source regressions and static gates lock:
+This is not a claim of zero Internet egress for Agent/Worker; it is a claim of Provider-secret centralization and private Hosted model path source/deployment binding. Deployed-task evidence remains pending.
 
-- Provider `CANCELLED` is the only Provider result that self-certifies cancellation;
-- `PENDING`, `SUCCEEDED`, `FAILED`, missing recovery state and cancel transport exceptions remain unresolved/provider-truth driven;
-- a Provider success racing with cancellation is preserved and completed;
-- a cancel API transport timeout preserves the original provider recovery row and reconciles the same `provider_request_id`;
-- cancellation reconciliation polls the same request at most once per Worker invocation;
-- `resume(..., allow_quality_retry=False)` prevents a replacement paid request after cancellation intent;
-- estimate/submit must remain zero on the provider-terminal recovery path.
+### 3.6 P0-4 attested runtime-image identity and promotion — source-closed
 
-NODE-48 remains IMPLEMENTED / VALIDATING / not COMPLETE until Hosted, PostgreSQL, container and live-provider evidence execute.
+The runtime-image source path has now been hardened beyond a static `manifest-v1.json` declaration.
 
-### 3.5 Private Model Gateway deployment binding closure
+#### Build recipe → digest mapping
 
-A new cross-layer source contract now binds deployment configuration to Hosted runtime clients:
+`scripts/validate_runtime_image_build_pipeline.py` now validates each of the six runtimes independently:
 
 ```text
-scripts/validate_private_model_gateway_deployment_contract.py
+runtime
+→ exact Dockerfile
+→ context: .
+→ linux/amd64
+→ exact rc-${GITHUB_SHA} tag
+→ own build-step digest
+→ own GitHub attestation subject/digest
+→ own provenance output
+→ own SBOM digest reference
+→ own freeze fragment
 ```
 
-It requires:
+The contract no longer relies only on global counts such as “six build steps” or “six attest steps”. `.dockerignore` is now a Runtime Image Closure trigger and cannot silently exclude a runtime `source_paths` entry declared by the production runtime manifest.
 
-1. Staging and Production expose the Model Gateway through private service-discovery URL `model-gateway.<env>.lumi.internal:8080`;
-2. only the `model-gateway` service receives `providers/model` and `providers/media` secrets;
-3. Agent Runtime and Worker Media receive `LUMI_MODEL_GATEWAY_URL` plus `LUMI_MODEL_GATEWAY_AUTH_SECRET`, not Provider model/media credentials;
-4. ECS execution IAM authorizes only each service's declared `secret_arns` and ECS task definitions inject only those declarations;
-5. Hosted Agent Runtime constructs `HttpProfileModelProvider.from_env()`;
-6. Hosted image generation constructs `HostedImageModelGatewayAdapter.from_env()`;
-7. Hosted video generation constructs `HostedVideoGateway.from_env()`;
-8. the Hosted Model Gateway service requires model/media Provider secrets and verifies signed callers restricted to `agent-runtime` / `worker-media`;
-9. Agent, Worker and Model Gateway runtime-image provenance contains the private-boundary implementation sources;
-10. Model Gateway, Production IaC and Final Acceptance workflows all execute and syntax-gate this contract.
+#### Registry digest → GitHub attestation → exact source SHA
 
-This source closure intentionally does **not** claim Agent Runtime or Worker Media have no Internet egress. The current canonical Production IaC contract explicitly grants the general Internet-egress SG to services outside the restricted `sandbox-runtime` / `outbox-dispatcher` branch. The audited claim is narrower: Provider credentials remain centralized in Model Gateway and Hosted model execution is source/deployment-bound to the signed private Gateway client.
+The live attestation verifier requires:
 
-Runtime proof that the deployed task definitions and exact promoted images actually implement this boundary is still required.
+- actual registry digest resolution;
+- canonical signer workflow `.github/workflows/build-runtime-image-set.yml`;
+- exact `GITHUB_SHA` source digest;
+- exact `refs/heads/release-closure-p0` source ref;
+- exact workflow ref;
+- hosted-runner identity policy;
+- BuildKit provenance metadata;
+- SPDX SBOM metadata.
 
-### 3.6 Runtime-image source provenance
+`scripts/runtime_image_set.py` now refuses to freeze a six-runtime set unless the report-level attestation `source_digest` equals the frozen RC SHA and every runtime result carries the same signer/source policy. The frozen attestation metadata also carries the report SHA-256 and source digest.
 
-The source manifest now includes executable API, Agent Runtime, Model Gateway, Tool Gateway, Worker Media and Sandbox Runtime build/entrypoint/source provenance requirements, including the Hosted image/video and private Model Gateway implementation chains. Actual promoted-image build/start/SBOM/provenance evidence remains pending.
+Negative drills now reject stale source SHA, per-runtime policy drift, mutable image refs, image swaps, mixed build runs and failed/missing attestation reports.
 
-## 4. Hosted CI evidence — current blocker
+#### NODE-71 attestation seal
 
-The current GitHub-hosted runner/account condition continues to fail jobs before executable steps begin. Red zero-step jobs are **not application-test failures and are not PASS evidence**.
-
-### Image producer closure sample
-
-Head sampled: `ee5ca15d2849d50c70c946de0f5aac9bca252f07`
+`validate_staging_runtime_image_binding.py` cross-checks:
 
 ```text
-Image Generation run: 32455525781
-image-generation-contract job: 96691955849
+NODE-71 evidence RC
+↔ frozen image-set RC
+↔ exact build run
+↔ six image digests/provenance
+↔ downloaded attestation report bytes/hash
+↔ attestation source SHA
+```
+
+`bind_node71_runtime_image_decision.py` then seals the verified result into the passed NODE-71 decision as an exact `runtime_image_binding` field set containing:
+
+```text
+status
+git_sha
+version
+build_run_id
+container_image_set_ref
+attestation_report_sha256
+attestation_source_digest
+runtime_count
+```
+
+The sealer recalculates `decision_id`, so runtime-image attestation identity is inside the decision identity. NODE-71 workflow contract locks ordering so sealing occurs before decision provenance capture/self-verification/archive.
+
+`validate_node71_decision_artifact.py` now refuses to create or validate provenance for a passed decision that lacks this seal, has a mismatched source SHA, or differs from the provenance copy. Therefore an old-format passed NODE-71 decision cannot satisfy the current artifact contract.
+
+#### NODE-72 Production promotion
+
+`production-deployment-gate.py` directly requires the NODE-71 runtime-image seal and rechecks RC SHA/version, positive image-build run id, frozen artifact ref, attestation report SHA-256, attestation source SHA and exact six-runtime count. Production image digests must still equal NODE-71 accepted images exactly.
+
+The normalized seal is included in the Production gate payload and therefore contributes to `gate_id`.
+
+`validate_production_deployment_contract.py` now contains negative drills for missing runtime seal, source-SHA swap, invalid build run, malformed report hash, artifact-ref swap and unexpected fields. `validate_production_node71_workflow_contract.py` independently interlocks the NODE-71 sealer workflow contract with the NODE-72 promotion gate.
+
+**Important evidence boundary:** this closes the source/anti-regression chain. It does not prove that any current RC images were actually built, pushed, attested, frozen, accepted in Staging or promoted to Production.
+
+## 4. Hosted CI evidence — current head
+
+Sampled head: `29602f4d0f5117f174ae4f4c806145c420635050`.
+
+### Runtime Image Closure
+
+```text
+run_id: 32459558295
+runtime-image-closure job_id: 96703575372
 conclusion: failure
-steps: null
 logs_url: null
-quality: skipped
-worker-media-image-smoke: skipped
-integration: skipped
-benchmark: skipped
-```
-
-### Private Model Gateway / release closure sample
-
-Head sampled: `b45c857ee9d25276bc9d826c3e18580391d78145`
-
-```text
-Model Gateway run: 32456048585
-source-contract job: 96693429449
-conclusion: failure
 steps: null
-logs_url: null
-model-gateway: skipped
-hosted-paid-guard-postgres: skipped
 ```
+
+### Production IaC Contract
 
 ```text
-Production IaC run: 32456048507
-source-contract job: 96693429271 -> failure / steps=null / logs_url=null
-terraform-static job: 96693429489 -> failure / steps=null / logs_url=null
-contract-gate job: 96693458867 -> failure / steps=null / logs_url=null
+run_id: 32459558285
+terraform-static job_id: 96703575564 -> failure / logs_url=null / steps=null
+source-contract job_id: 96703575742 -> failure / logs_url=null / steps=null
+contract-gate job_id: 96703588716 -> failure / logs_url=null / steps=null
 ```
+
+### Final Product Acceptance
 
 ```text
-Final Product Acceptance run: 32456048271
-source-contract job: 96693428258 -> failure / steps=null / logs_url=null
-canonical-lock-gate job: 96693428476 -> failure / steps=null / logs_url=null
-node73-final-contract-gate job: 96693468762 -> failure / steps=null / logs_url=null
-final-decision: skipped
+run_id: 32459558476
+source-contract job_id: 96703576056 -> failure / logs_url=null / steps=null
+canonical-lock-gate job_id: 96703576351 -> failure / logs_url=null / steps=null
+node73-final-contract-gate job_id: 96703611450 -> failure / logs_url=null / steps=null
+final-decision -> skipped
 ```
 
-No checkout, Python, new source contract, `uv`, Ruff, Pyright, pytest, PostgreSQL, Docker, Terraform or application command is evidenced as having executed in those critical jobs.
+These jobs failed before executable steps started. There is no evidence that checkout, Python source contracts, `uv`, Ruff, Pyright, pytest, PostgreSQL, Docker, registry attestation, Terraform, Staging or Production commands executed in them.
 
 Therefore:
 
 ```text
-zero-step red != application failure
+zero-step red != application/source-contract failure
 zero-step red != PASS
 ```
 
-The correct state remains **BLOCKED_EXTERNAL for Hosted execution evidence**.
+The correct state remains Hosted execution evidence blocked.
 
-## 5. Runtime evidence required before PRODUCT ACCEPTED
+## 5. Runtime evidence still required before PRODUCT ACCEPTED
 
-All items below remain release blockers until evidenced on the exact frozen RC.
+### Canonical dependency / CI
 
-### Canonical repository / CI
-
-- [ ] canonical resolver regenerates `uv.lock` and exact workspace-member validation passes;
-- [ ] `uv lock --check` passes;
-- [ ] `uv sync --all-packages --frozen` passes;
-- [ ] Model Gateway/Image/Video/Final source contracts actually execute green;
-- [ ] Ruff/Pyright/pytest gates execute green;
-- [ ] canonical Security/Dependency/Secret/CI gates execute green.
+- [ ] resolver regenerates `uv.lock` with all 17 workspace members;
+- [ ] exact workspace validation, `uv lock --check`, and all-packages frozen sync pass;
+- [ ] critical source contracts actually execute green with step/log evidence;
+- [ ] Ruff/Pyright/pytest/security/dependency/secret gates execute green.
 
 ### PostgreSQL / durable state
 
-- [ ] canonical Alembic migration and ORM-drift gates pass;
-- [ ] NODE-20 durable side-effect provider-attempt lifecycle passes against PostgreSQL;
-- [ ] NODE-27 platform Provider-cost hard stop/reconciliation passes against PostgreSQL;
-- [ ] NODE-46 image producer/repository integration passes;
-- [ ] NODE-48 video control-plane/recovery/privilege/public-generation integration passes;
-- [ ] no historical parallel runtime tables are present where the canonical contracts require their absence.
+- [ ] canonical migrations and ORM drift pass;
+- [ ] durable Provider side-effect lifecycle passes against PostgreSQL;
+- [ ] Provider spend reservation/reconciliation hard stop passes against PostgreSQL;
+- [ ] image producer/repository and video recovery/public-generation integration execute against PostgreSQL.
 
-### Runtime images / service execution
+### Real runtime-image supply chain
 
-- [ ] all six runtime images build from the frozen workspace;
-- [ ] packaged production entrypoints import/start successfully;
-- [ ] Model Gateway readiness proves durable paid/cost dependencies;
-- [ ] Worker Media image/video execution is proven in the accepted image;
-- [ ] SBOM/provenance/runtime source attestations are captured for the exact promoted digests;
-- [ ] Staging runs the exact accepted images and Production deploys those exact digests.
+- [ ] canonical six-runtime build workflow executes for the exact RC SHA;
+- [ ] six registry digest identities resolve;
+- [ ] six GitHub artifact attestations verify against signer/source/ref/runner policy;
+- [ ] actual BuildKit provenance and SPDX SBOMs are retrieved;
+- [ ] exact `container-image-set.json` + `attestation-verification.json` artifact is frozen;
+- [ ] NODE-71 downloads and verifies that exact artifact;
+- [ ] real NODE-71 passed decision contains the sealed runtime-image binding;
+- [ ] Production consumes those exact digests without rebuild;
+- [ ] all packaged runtime entrypoints import/start and execute successfully.
 
-### Private Gateway / provider boundary
+### Private Gateway / Provider boundary
 
-- [ ] deployed Agent Runtime task receives the intended private Model Gateway URL/auth secret and no Provider model/media credential;
-- [ ] deployed Worker Media task receives the intended private Model Gateway URL/auth secret and no Provider model/media credential;
-- [ ] deployed Model Gateway task alone receives Provider model/media secrets;
-- [ ] Agent Runtime and Worker Media execute real model/media requests through the signed private Gateway boundary;
-- [ ] exact runtime identities/source attestations are captured.
+- [ ] deployed Agent Runtime/Worker Media tasks receive only private Gateway model credentials;
+- [ ] deployed Model Gateway alone receives Provider model/media secrets;
+- [ ] real Agent/image/video model requests traverse the signed private boundary;
+- [ ] deployed runtime identity matches the accepted attested source.
 
-### Terraform / network / cloud
+### Terraform / Staging / Production
 
-- [ ] Terraform fmt/validate/plan succeeds from trusted execution;
-- [ ] Production-like Staging apply succeeds;
-- [ ] Sandbox restricted-egress behavior is probed live;
-- [ ] Production apply/deployment evidence is captured;
-- [ ] WAF, secrets, backups, observability and service discovery are live and reviewed.
+- [ ] Terraform fmt/validate/plan/apply executes from trusted runners;
+- [ ] Production-like Staging infrastructure exists and parity checks PASS;
+- [ ] Golden E2E/security/resilience/billing/performance/AI Staging scenarios PASS;
+- [ ] Production migration, canary, ECS steady-state and read-only smoke PASS;
+- [ ] alarm rollback/post-promotion rollback/restore drills execute;
+- [ ] sandbox live restricted-egress behavior is proven.
 
-### Live model/provider quality
+### Live Provider quality
 
-- [ ] selected production image provider/model revision has approved NODE-23 quality/cost/latency evidence;
-- [ ] selected production video provider/model revision has approved NODE-23 quality/cost/latency evidence;
-- [ ] no live visual-quality score is inferred from MockProvider/synthetic tests.
+- [ ] production-routed image Provider/model has approved live NODE-23 quality/cost/latency evidence;
+- [ ] production-routed video Provider/model has approved live NODE-23 quality/cost/latency evidence;
+- [ ] no visual-quality acceptance is inferred from MockProvider/synthetic fixtures.
 
-### Upstream release gates and final product journeys
+### Final upstream/operational gates
 
 - [ ] NODE-66 Security real PASS;
 - [ ] NODE-68 Recovery/DR real PASS;
 - [ ] NODE-69 Performance/capacity real PASS;
 - [ ] NODE-70 AI Regression real PASS;
-- [ ] NODE-71 Production-like Staging real `passed=true` for the exact RC;
-- [ ] NODE-72 Production deployment/canary/smoke/rollback real PASS for the exact RC;
-- [ ] Golden Journeys A-D execute on the final RC;
-- [ ] browser/IME/upload/download/export/approval/billing/team release-scope journeys pass;
-- [ ] final Product/Engineering/Security/Operations/Release Owner approvals are all APPROVED;
-- [ ] operational-handoff owners are assigned.
+- [ ] NODE-71 real sealed `passed=true` decision for the exact RC;
+- [ ] NODE-72 real Production deploy/canary/smoke/rollback PASS;
+- [ ] final Golden Journeys and browser/IME/upload/download/export/approval/billing/team scope pass;
+- [ ] Product/Engineering/Security/Operations/Release Owner approvals and operational handoff are complete.
 
 ## 6. Current blocking facts
 
-1. `uv.lock` remains stale by six root-workspace packages and has not been resolver-regenerated.
-2. GitHub-hosted critical jobs still fail before executable steps begin, so none of the newly strengthened source gates has Hosted PASS evidence.
-3. PostgreSQL migration/integration evidence remains pending.
-4. real Model Gateway and Worker Media Docker build/start/readiness/execution evidence remains pending.
-5. Terraform validate/plan/apply and live Staging/Production network evidence remain pending.
-6. six-runtime promoted-image identity/SBOM/provenance evidence remains pending.
-7. the private Model Gateway deployment boundary is source-closed but not yet proven on deployed task definitions/images.
-8. canonical image/video product producer paths are source-closed but not yet proven through full deployed end-to-end execution.
-9. selected live image/video Provider/model quality evidence remains pending.
-10. NODE-68/69/70/71/72 and final Production smoke/canary/rollback/DR evidence remain incomplete.
-11. no real final V2 acceptance evidence package has produced `accepted=true`.
+1. `uv.lock` is still stale by six workspace packages.
+2. Critical Hosted jobs still fail before executable steps start.
+3. PostgreSQL runtime/integration evidence is missing.
+4. No actual six-runtime registry build/attestation/SBOM/provenance artifact exists for the current RC.
+5. No real NODE-71 sealed `passed=true` Staging decision exists.
+6. Model Gateway/Worker Docker start and full execution evidence remains missing.
+7. Terraform plan/apply and live Staging/Production evidence remains missing.
+8. Private Model Gateway and product image/video execution paths are source-closed but not proven on deployed tasks/images.
+9. Live image/video Provider/model benchmark approval remains missing.
+10. NODE-68/69/70/71/72 and final canary/rollback/DR evidence remain incomplete.
+11. No real frozen V2 Final Acceptance package has produced `accepted=true`.
 
-Any one P0 blocker is sufficient to prevent PRODUCT ACCEPTED status.
+Any one P0 blocker is sufficient to prevent PRODUCT ACCEPTED.
 
-## 7. Source evidence locations
+## 7. Primary source evidence
 
 ```text
-final/acceptance/manifest-v1.json
+.github/workflows/build-runtime-image-set.yml
+.github/workflows/runtime-image-closure-contract.yml
+.github/workflows/staging-acceptance-gate.yml
+.github/workflows/deploy-production.yml
 .github/workflows/final-acceptance-gate.yml
-.github/workflows/regenerate-uv-lock.yml
-.github/workflows/model-gateway.yml
-.github/workflows/image-generation.yml
-.github/workflows/video-generation.yml
-.github/workflows/production-iac-contract.yml
-scripts/validate_uv_workspace_lock.py
-scripts/validate_uv_lock_regeneration_contract.py
-scripts/validate_image_generation_producer_contract.py
-scripts/validate_video_generation_producer_binding.py
-scripts/validate_video_worker_hosted_binding.py
-scripts/validate_video_cancellation_contract.py
-scripts/validate_private_model_gateway_deployment_contract.py
-scripts/validate_production_iac_contract.py
 production/runtime-images/manifest-v1.json
+scripts/verify_runtime_image_attestations.py
+scripts/runtime_image_set.py
+scripts/validate_runtime_image_build_pipeline.py
+scripts/validate_runtime_image_set_contract.py
+scripts/validate_staging_runtime_image_binding.py
+scripts/bind_node71_runtime_image_decision.py
+scripts/validate_staging_runtime_image_workflow_contract.py
+scripts/validate_node71_decision_artifact.py
+scripts/production-deployment-gate.py
+scripts/validate_production_deployment_contract.py
+scripts/validate_production_node71_workflow_contract.py
+scripts/validate_private_model_gateway_deployment_contract.py
+scripts/validate_image_generation_producer_contract.py
+scripts/validate_video_cancellation_contract.py
 reports/nodes/NODE-22/acceptance.md
 reports/nodes/NODE-46/acceptance.md
 reports/nodes/NODE-48/acceptance.md
-reports/final-acceptance/README.md
-docs/acceptance/NODE-73-FINAL-ACCEPTANCE-RUNBOOK.md
+docs/release-evidence/NODE-71-STAGING-ACCEPTANCE-RELEASE-EVIDENCE.md
+docs/release-evidence/NODE-72-PRODUCTION-DEPLOYMENT-RELEASE-EVIDENCE.md
 ```
 
 ## 8. Completion rule
 
-NODE-73 is COMPLETE only when a real frozen release package produces:
+NODE-73 becomes COMPLETE only when a real immutable release package produces:
 
 ```text
 accepted=true
@@ -348,8 +329,8 @@ headline="LUMI AI DESIGN OS — PRODUCT ACCEPTED"
 blockers=[]
 ```
 
-and every P0, required upstream gate, Production requirement, approval and operational handoff condition is evidenced for the exact accepted RC.
+with every P0, required upstream gate, Production requirement, approval and operational handoff condition evidenced for the same exact accepted RC.
 
-Until that happens, the correct project decision remains:
+Until then:
 
 # NOT ACCEPTED — SEE BLOCKING GAPS
