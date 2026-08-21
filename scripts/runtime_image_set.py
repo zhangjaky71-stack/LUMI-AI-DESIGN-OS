@@ -172,7 +172,11 @@ def validate_attestation_report(
     report: dict[str, Any],
     *,
     images: dict[str, str],
+    git_sha: str,
 ) -> dict[str, Any]:
+    expected_git_sha = git_sha.lower()
+    if not SHA40.fullmatch(expected_git_sha):
+        raise RuntimeImageSetError("attestation verification expected git_sha is invalid")
     if report.get("schema_version") != 1 or report.get("kind") != ATTESTATION_KIND:
         raise RuntimeImageSetError("attestation verification report schema/kind mismatch")
     if report.get("status") != "PASS":
@@ -185,6 +189,17 @@ def validate_attestation_report(
     tools = report.get("tools")
     if not isinstance(tools, dict) or not _nonempty(tools.get("docker_buildx")) or not _nonempty(tools.get("github_cli")):
         raise RuntimeImageSetError("attestation verification report tool identity is incomplete")
+
+    policy = report.get("github_attestation_policy")
+    if not isinstance(policy, dict):
+        raise RuntimeImageSetError("attestation verification report GitHub policy is missing")
+    if policy.get("source_digest") != expected_git_sha:
+        raise RuntimeImageSetError("attestation verification source_digest does not match frozen RC git_sha")
+    for key in ("signer_workflow", "source_ref", "workflow_ref"):
+        if not _nonempty(policy.get(key)):
+            raise RuntimeImageSetError(f"attestation verification GitHub policy missing {key}")
+    if policy.get("deny_self_hosted_runners") is not True:
+        raise RuntimeImageSetError("attestation verification must deny self-hosted runners")
 
     results = report.get("results")
     if not isinstance(results, list) or len(results) != 6:
@@ -205,6 +220,20 @@ def validate_attestation_report(
             raise RuntimeImageSetError(f"registry digest was not verified for {service}")
         if item.get("github_attestation_verified") is not True:
             raise RuntimeImageSetError(f"GitHub artifact attestation was not verified for {service}")
+        item_policy = item.get("github_attestation_policy")
+        if not isinstance(item_policy, dict):
+            raise RuntimeImageSetError(f"GitHub attestation policy is missing for {service}")
+        for key in (
+            "signer_workflow",
+            "source_digest",
+            "source_ref",
+            "workflow_ref",
+            "deny_self_hosted_runners",
+        ):
+            if item_policy.get(key) != policy.get(key):
+                raise RuntimeImageSetError(
+                    f"GitHub attestation policy mismatch for {service}: {key}"
+                )
         provenance = item.get("buildkit_provenance")
         sbom = item.get("buildkit_sbom")
         if not isinstance(provenance, dict) or not _nonempty(provenance.get("build_type")) or not _nonempty(provenance.get("builder_id")):
@@ -219,6 +248,7 @@ def validate_attestation_report(
         "status": "PASS",
         "runtime_count": 6,
         "repository": repository,
+        "source_digest": expected_git_sha,
     }
 
 
@@ -282,7 +312,7 @@ def assemble(
         raise RuntimeImageSetError("staging image-set contract blocked: " + "; ".join(blockers))
 
     report = _load_json(attestation_report)
-    report_summary = validate_attestation_report(report, images=images)
+    report_summary = validate_attestation_report(report, images=images, git_sha=git_sha)
     report_sha256 = hashlib.sha256(attestation_report.read_bytes()).hexdigest()
     if not SHA256.fullmatch(report_sha256):
         raise RuntimeImageSetError("attestation report SHA-256 calculation failed")
