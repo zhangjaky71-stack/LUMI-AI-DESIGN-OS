@@ -286,6 +286,7 @@ async def _ensure_artifact(
     title: str,
     metadata: dict[str, object],
 ) -> None:
+    metadata_json = _json(metadata)
     await connection.execute(
         """
         INSERT INTO artifacts (
@@ -299,17 +300,22 @@ async def _ensure_artifact(
         project_id,
         kind,
         title,
-        _json(metadata),
+        metadata_json,
     )
-    row = await connection.fetchrow(
-        "SELECT organization_id, project_id, kind FROM artifacts WHERE id=$1",
+    identity = await connection.fetchval(
+        """
+        SELECT id FROM artifacts
+        WHERE id=$1 AND organization_id=$2 AND project_id=$3
+          AND kind=$4 AND title=$5 AND metadata_json=$6::jsonb
+        """,
         artifact_id,
+        organization_id,
+        project_id,
+        kind,
+        title,
+        metadata_json,
     )
-    if row is None or (
-        row["organization_id"] != organization_id
-        or row["project_id"] != project_id
-        or row["kind"] != kind
-    ):
+    if identity != artifact_id:
         raise RuntimeError("VIDEO_ARTIFACT_IDENTITY_CONFLICT")
 
 
@@ -334,6 +340,19 @@ async def _ensure_branch(
         project_id,
         artifact_id,
     )
+    identity = await connection.fetchval(
+        """
+        SELECT id FROM artifact_branches
+        WHERE id=$1 AND organization_id=$2 AND project_id=$3
+          AND artifact_id=$4 AND name='main'
+        """,
+        branch_id,
+        organization_id,
+        project_id,
+        artifact_id,
+    )
+    if identity != branch_id:
+        raise RuntimeError("VIDEO_ARTIFACT_BRANCH_IDENTITY_CONFLICT")
 
 
 async def _ensure_version(
@@ -349,6 +368,7 @@ async def _ensure_version(
     metadata: dict[str, object],
     created_by_id: UUID,
 ) -> None:
+    metadata_json = _json(metadata)
     await connection.execute(
         """
         INSERT INTO artifact_versions (
@@ -365,14 +385,29 @@ async def _ensure_version(
         branch_id,
         status,
         content_hash,
-        _json(metadata),
+        metadata_json,
         created_by_id,
     )
-    row = await connection.fetchrow(
-        "SELECT status, content_hash FROM artifact_versions WHERE id=$1",
+    identity = await connection.fetchval(
+        """
+        SELECT id FROM artifact_versions
+        WHERE id=$1 AND organization_id=$2 AND project_id=$3
+          AND artifact_id=$4 AND branch_id=$5
+          AND parent_version_id IS NULL AND version_number=1
+          AND status=$6 AND content_hash=$7 AND metadata_json=$8::jsonb
+          AND created_by_type='agent' AND created_by_id=$9
+        """,
         version_id,
+        organization_id,
+        project_id,
+        artifact_id,
+        branch_id,
+        status,
+        content_hash,
+        metadata_json,
+        created_by_id,
     )
-    if row is None or row["status"] != status or row["content_hash"] != content_hash:
+    if identity != version_id:
         raise RuntimeError("VIDEO_ARTIFACT_VERSION_CONFLICT")
 
 
@@ -405,6 +440,23 @@ async def _ensure_file(
         checksum,
         mime_type,
     )
+    identity = await connection.fetchval(
+        """
+        SELECT id FROM artifact_files
+        WHERE id=$1 AND organization_id=$2 AND artifact_version_id=$3
+          AND format='MP4' AND bucket=$4 AND object_key=$5
+          AND checksum_sha256=$6 AND mime_type=$7
+        """,
+        file_id,
+        organization_id,
+        artifact_version_id,
+        bucket,
+        object_key,
+        checksum,
+        mime_type,
+    )
+    if identity != file_id:
+        raise RuntimeError("VIDEO_ARTIFACT_FILE_CONFLICT")
 
 
 async def _ensure_provenance(
@@ -417,6 +469,7 @@ async def _ensure_provenance(
     operation: str,
     metadata: dict[str, object],
 ) -> None:
+    metadata_json = _json(metadata)
     await connection.execute(
         """
         INSERT INTO artifact_provenance (
@@ -430,8 +483,24 @@ async def _ensure_provenance(
         artifact_version_id,
         source_id,
         operation,
-        _json(metadata),
+        metadata_json,
     )
+    identity = await connection.fetchval(
+        """
+        SELECT id FROM artifact_provenance
+        WHERE id=$1 AND organization_id=$2 AND artifact_version_id=$3
+          AND source_type='generation' AND source_id=$4
+          AND operation=$5 AND metadata_json=$6::jsonb
+        """,
+        provenance_id,
+        organization_id,
+        artifact_version_id,
+        source_id,
+        operation,
+        metadata_json,
+    )
+    if identity != provenance_id:
+        raise RuntimeError("VIDEO_ARTIFACT_PROVENANCE_CONFLICT")
 
 
 async def _ensure_edge(
@@ -451,6 +520,7 @@ async def _ensure_edge(
     )
     if parent is None:
         raise RuntimeError("VIDEO_ARTIFACT_PARENT_NOT_FOUND")
+    metadata_json = _json(metadata)
     await connection.execute(
         """
         INSERT INTO artifact_edges (
@@ -464,8 +534,24 @@ async def _ensure_edge(
         from_version_id,
         to_version_id,
         edge_type,
-        _json(metadata),
+        metadata_json,
     )
+    identity = await connection.fetchval(
+        """
+        SELECT id FROM artifact_edges
+        WHERE id=$1 AND organization_id=$2
+          AND from_artifact_version_id=$3 AND to_artifact_version_id=$4
+          AND edge_type=$5 AND metadata_json=$6::jsonb
+        """,
+        edge_id,
+        organization_id,
+        from_version_id,
+        to_version_id,
+        edge_type,
+        metadata_json,
+    )
+    if identity != edge_id:
+        raise RuntimeError("VIDEO_ARTIFACT_EDGE_CONFLICT")
 
 
 async def _set_branch_head(
