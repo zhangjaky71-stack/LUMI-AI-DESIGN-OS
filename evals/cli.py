@@ -49,7 +49,7 @@ def _compare(args: argparse.Namespace) -> int:
 def _live(args: argparse.Namespace) -> int:
     result = live_preflight(args.suite)
     print(canonical_json(result), end="")
-    return 0
+    return 0 if result.get("status") == "READY" else 2
 
 
 def _report(args: argparse.Namespace) -> int:
@@ -79,7 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare_parser.add_argument("--out", default=str(DEFAULT_REPORTS))
     compare_parser.set_defaults(func=_compare)
 
-    live_parser = sub.add_parser("live", help="perform live-provider preflight")
+    live_parser = sub.add_parser("live", help="perform secretless live-provider authorization preflight")
     live_parser.add_argument("--suite", required=True)
     live_parser.set_defaults(func=_live)
 
