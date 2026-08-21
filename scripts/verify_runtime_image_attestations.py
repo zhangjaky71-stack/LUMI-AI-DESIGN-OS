@@ -24,6 +24,10 @@ EXPECTED_DOCKERFILES = {
     "sandbox-runtime": "services/sandbox-runtime/Dockerfile",
 }
 EXPECTED_SERVICES = set(EXPECTED_DOCKERFILES)
+EXPECTED_BASE_IMAGE_PREFIXES = {
+    "UV_BASE_IMAGE": "ghcr.io/astral-sh/uv@sha256:",
+    "PYTHON_BASE_IMAGE": "python@sha256:",
+}
 RELEASE_SOURCE_REF = "refs/heads/release-closure-p0"
 SIGNER_WORKFLOW_PATH = ".github/workflows/build-runtime-image-set.yml"
 BUILDKIT_BUILD_TYPE = "https://mobyproject.org/buildkit@v1"
@@ -104,6 +108,29 @@ def _json_value(raw: str, *, label: str) -> Any:
         raise AttestationVerificationError(f"{label} returned invalid JSON: {exc}") from exc
 
 
+def _validate_base_image_build_args(invocation: Mapping[str, Any]) -> dict[str, str]:
+    parameters = invocation.get("parameters")
+    _require(isinstance(parameters, dict), "BuildKit SLSA provenance invocation.parameters is missing")
+    args = parameters.get("args")
+    _require(isinstance(args, dict), "BuildKit SLSA provenance invocation.parameters.args is missing")
+
+    result: dict[str, str] = {}
+    for arg_name, prefix in EXPECTED_BASE_IMAGE_PREFIXES.items():
+        key = f"build-arg:{arg_name}"
+        value = args.get(key)
+        _require(isinstance(value, str), f"BuildKit provenance missing {key}")
+        _require(
+            bool(IMAGE_REF.fullmatch(value)),
+            f"BuildKit provenance {key} must be a digest-only OCI image reference",
+        )
+        _require(
+            value.startswith(prefix),
+            f"BuildKit provenance {key} must use approved base image repository {prefix.split('@')[0]}",
+        )
+        result[arg_name] = value
+    return result
+
+
 def validate_provenance(
     value: Any,
     *,
@@ -152,11 +179,26 @@ def validate_provenance(
         "BuildKit provenance invocation.environment.platform must be linux/amd64",
     )
 
+    base_images = _validate_base_image_build_args(invocation)
+
     materials = value.get("materials")
     _require(
         isinstance(materials, list) and len(materials) > 0,
         "BuildKit SLSA provenance materials must be a non-empty array",
     )
+    material_digests = sorted(
+        {
+            digest
+            for material in materials
+            if isinstance(material, dict)
+            for digest_map in [material.get("digest")]
+            if isinstance(digest_map, dict)
+            for digest in [digest_map.get("sha256")]
+            if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest)
+        }
+    )
+    _require(material_digests, "BuildKit SLSA provenance materials must include immutable SHA-256 dependencies")
+
     return {
         "build_type": BUILDKIT_BUILD_TYPE,
         "builder_id": builder_id,
@@ -164,7 +206,9 @@ def validate_provenance(
         "source_digest": source_digest,
         "entrypoint": dockerfile,
         "platform": BUILDKIT_PLATFORM,
+        "base_images": base_images,
         "material_count": len(materials),
+        "material_sha256_count": len(material_digests),
     }
 
 
@@ -351,12 +395,18 @@ def self_test() -> dict[str, Any]:
                 "digest": {"sha1": source_digest},
                 "entryPoint": "apps/api/Dockerfile",
             },
+            "parameters": {
+                "args": {
+                    "build-arg:UV_BASE_IMAGE": f"ghcr.io/astral-sh/uv@sha256:{'c' * 64}",
+                    "build-arg:PYTHON_BASE_IMAGE": f"python@sha256:{'d' * 64}",
+                }
+            },
             "environment": {"platform": BUILDKIT_PLATFORM},
         },
         "materials": [
             {
                 "uri": "pkg:docker/python@3.12-slim",
-                "digest": {"sha256": "c" * 64},
+                "digest": {"sha256": "e" * 64},
             }
         ],
     }
@@ -367,6 +417,10 @@ def self_test() -> dict[str, Any]:
         dockerfile="apps/api/Dockerfile",
     )
     _require(provenance_summary["material_count"] == 1, "clean provenance fixture failed")
+    _require(
+        provenance_summary["base_images"]["UV_BASE_IMAGE"].startswith("ghcr.io/astral-sh/uv@sha256:"),
+        "clean digest-pinned uv base image fixture failed",
+    )
 
     bad_provenance = [
         {},
@@ -389,7 +443,7 @@ def self_test() -> dict[str, Any]:
                 **provenance["invocation"],
                 "configSource": {
                     **provenance["invocation"]["configSource"],
-                    "digest": {"sha1": "d" * 40},
+                    "digest": {"sha1": "f" * 40},
                 },
             },
         },
@@ -410,7 +464,47 @@ def self_test() -> dict[str, Any]:
                 "environment": {"platform": "linux/arm64"},
             },
         },
+        {
+            **provenance,
+            "invocation": {
+                **provenance["invocation"],
+                "parameters": {
+                    "args": {
+                        "build-arg:UV_BASE_IMAGE": "ghcr.io/astral-sh/uv:0.11.28",
+                        "build-arg:PYTHON_BASE_IMAGE": f"python@sha256:{'d' * 64}",
+                    }
+                },
+            },
+        },
+        {
+            **provenance,
+            "invocation": {
+                **provenance["invocation"],
+                "parameters": {
+                    "args": {
+                        "build-arg:UV_BASE_IMAGE": f"ghcr.io/other/uv@sha256:{'c' * 64}",
+                        "build-arg:PYTHON_BASE_IMAGE": f"python@sha256:{'d' * 64}",
+                    }
+                },
+            },
+        },
+        {
+            **provenance,
+            "invocation": {
+                **provenance["invocation"],
+                "parameters": {
+                    "args": {
+                        "build-arg:UV_BASE_IMAGE": f"ghcr.io/astral-sh/uv@sha256:{'c' * 64}",
+                        "build-arg:PYTHON_BASE_IMAGE": "python:3.12-slim",
+                    }
+                },
+            },
+        },
         {**provenance, "materials": []},
+        {
+            **provenance,
+            "materials": [{"uri": "https://example.invalid/source", "digest": {"sha1": "a" * 40}}],
+        },
     ]
     for value in bad_provenance:
         try:
@@ -458,7 +552,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Verify six immutable runtime images, GitHub signer/source attestations, "
-            "BuildKit immutable Git-source provenance, and SPDX SBOMs"
+            "BuildKit immutable Git/base-image provenance, and SPDX SBOMs"
         )
     )
     parser.add_argument("--repository", help="GitHub repository in OWNER/REPO form")
