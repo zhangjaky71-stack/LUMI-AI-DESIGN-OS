@@ -51,6 +51,20 @@ class OutboxRecord:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class DomainOutboxHealth:
+    """Bounded domain-event queue-head health for dispatcher telemetry."""
+
+    oldest_unpublished_age_seconds: int
+    oldest_publish_attempts: int
+
+    def __post_init__(self) -> None:
+        if self.oldest_unpublished_age_seconds < 0:
+            raise ValueError("DOMAIN_OUTBOX_HEALTH_AGE_INVALID")
+        if self.oldest_publish_attempts < 0:
+            raise ValueError("DOMAIN_OUTBOX_HEALTH_ATTEMPTS_INVALID")
+
+
 class DomainPublisher(Protocol):
     def publish(self, record: OutboxRecord) -> None: ...
 
@@ -140,6 +154,41 @@ class OutboxDispatcher:
             if failure is not None:
                 raise failure
             return published
+        finally:
+            await connection.close()
+
+    async def health_snapshot(self) -> DomainOutboxHealth:
+        """Read only the oldest pending domain row; never count or lock the full outbox."""
+
+        connection = await asyncpg.connect(self.dsn)
+        try:
+            row = await connection.fetchrow(
+                """
+                SELECT
+                    GREATEST(
+                        FLOOR(EXTRACT(EPOCH FROM (now() - created_at))),
+                        0
+                    )::bigint AS oldest_unpublished_age_seconds,
+                    publish_attempts AS oldest_publish_attempts
+                FROM outbox_events
+                WHERE published_at IS NULL
+                  AND event_name <> $1
+                ORDER BY created_at, id
+                LIMIT 1
+                """,
+                JOB_DISPATCH_EVENT_NAME,
+            )
+            if row is None:
+                return DomainOutboxHealth(
+                    oldest_unpublished_age_seconds=0,
+                    oldest_publish_attempts=0,
+                )
+            return DomainOutboxHealth(
+                oldest_unpublished_age_seconds=int(
+                    row["oldest_unpublished_age_seconds"]
+                ),
+                oldest_publish_attempts=int(row["oldest_publish_attempts"]),
+            )
         finally:
             await connection.close()
 
