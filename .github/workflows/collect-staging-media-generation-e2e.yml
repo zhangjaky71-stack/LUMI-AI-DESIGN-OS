@@ -35,7 +35,7 @@ jobs:
     timeout-minutes: 45
     environment: staging
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Require exact RC checkout and explicit acknowledgement
         shell: bash
@@ -49,12 +49,12 @@ jobs:
           test "$COLLECT_TIMEOUT_SECONDS" -le 1800
           [[ "$EXPECTED_API_IMAGE" =~ @sha256:[0-9a-f]{64}$ ]]
 
-      - uses: hashicorp/setup-terraform@v4.0.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: "1.14.6"
           terraform_wrapper: false
 
-      - uses: aws-actions/configure-aws-credentials@v6.2.3
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           aws-region: ${{ vars.AWS_REGION }}
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
@@ -216,7 +216,7 @@ jobs:
 
       - name: Upload collector evidence package
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: staging-media-generation-e2e-${{ github.run_id }}-${{ github.run_attempt }}
           path: reports/staging-acceptance/runtime/
