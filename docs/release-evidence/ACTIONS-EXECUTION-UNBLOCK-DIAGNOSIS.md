@@ -12,7 +12,7 @@ The current evidence does **not** support changing product/runtime source code t
 
 ## Representative evidence
 
-Current PR head before this diagnostic commit:
+Current PR head before the first diagnostic commit:
 
 `a0fc3447471bbb6078d36eb0c8e88c1dccd19ca6`
 
@@ -41,48 +41,73 @@ Attempt 2:
 
 The `changes` job is a minimal GitHub-hosted Ubuntu job whose first executable action is `actions/checkout`. Because GitHub reports no steps and no downloadable job log, no repository command, checkout, Python, Node, `uv`, Docker, Terraform, database command, or application code is evidenced as having started.
 
+## Post-account-change rerun
+
+After the account-side billing/budget settings were adjusted, the current-head minimal `CI / changes` job was rerun again:
+
+- source head before isolation experiment: `c0ae64d644b4d159d936cc8aa6b3a798ceb2bf25`
+- workflow run: `32465520731`
+- rerun job: `96722114616`
+- observed transition: `queued` -> `completed/failure`
+- `steps=null`
+- `logs_url=null`
+
+Therefore the account-side change did not yet produce a runnable GitHub-hosted VM for the repository.
+
+## Runner-label isolation experiment
+
+A temporary diagnostic workflow was committed at `66622207ddc40f8499e9f53834605998bf628bd8` with two independent jobs. Each job had exactly one shell `echo` step and used no checkout, no third-party Action, no dependency installation, no repository code, no secrets and no external service.
+
+Workflow run: `32465958920`
+
+Results:
+
+- `ubuntu-latest` / job `96722467731`: `completed/failure`, `steps=null`, `logs_url=null`
+- `ubuntu-24.04` / job `96722467435`: `completed/failure`, `steps=null`, `logs_url=null`
+
+Both standard GitHub-hosted Linux labels are supported for private repositories according to GitHub's runner documentation. The identical pre-step failure therefore rules out an `ubuntu-24.04`-specific label problem.
+
+The temporary diagnostic workflow is removed after recording this result; it is not part of the intended release workflow surface.
+
 ## Scope reduction
 
-GitHub Status was checked during the diagnosis and GitHub Actions was reported operational. This substantially lowers the probability of a platform-wide Actions incident.
+The following explanations are now directly ruled out for the observed zero-step failures:
+
+- application source code;
+- Python/Node/`uv`/Docker/Terraform execution;
+- checkout or third-party Action failure;
+- repository secrets;
+- dependency installation;
+- an `ubuntu-24.04`-specific runner label issue;
+- job-level shell commands, because the shell never starts.
+
+GitHub Actions is recognized and the workflow/job objects are created successfully, so this is also not being treated as an invalid-workflow parse failure.
+
+The remaining blocker class is account/repository GitHub-hosted runner execution eligibility/allocation, with billing, included quota and hard budget controls still the highest-probability causes.
 
 The affected repository is private and owned by the personal account `zhangjaky71-stack`.
 
-GitHub's current billing documentation states that private repositories consume the owner's GitHub-hosted Actions allowance, and that GitHub-hosted usage is blocked after included quota is exhausted when there is no valid payment method. It also states that a hard Actions budget can block additional hosted-runner usage when its limit is reached.
+GitHub's current billing documentation states that private repositories consume the owner's GitHub-hosted Actions allowance. If the included quota is exhausted and no valid payment method is available, additional GitHub-hosted usage is blocked. With a valid payment method, one or more exhausted budgets with `Stop usage when budget limit is reached` can still block usage.
 
 No recent matching GitHub Actions/billing warning email was found in the currently connected Gmail account. Absence of such email is **not** treated as proof that quota/budget/payment is healthy, because alerts can be disabled, sent to another billing address, or omitted for a particular account state.
 
-## Most likely external blocker class
+## Highest-priority account checks
 
-Based on the current evidence, the highest-priority checks are account/repository-level GitHub Actions execution eligibility rather than source changes:
+Inspect the personal account, not repository source:
 
-1. GitHub Actions included usage / metered usage exhausted.
-2. Missing or invalid payment method after included private-repository minutes are consumed.
-3. A GitHub Actions budget with `Stop usage when budget limit is reached` enabled and exhausted.
-4. Less likely: repository/account Actions policy or hosted-runner restriction.
+1. **Settings -> Billing & licensing -> Usage**: confirm GitHub Actions included usage and metered usage state.
+2. **Settings -> Billing & licensing -> Budgets and alerts**: inspect every budget that applies to Actions, including overlapping product/repository budgets.
+3. Confirm the payment method is valid and usable for metered Actions usage.
+4. Confirm no applicable budget is exhausted with `Stop usage when budget limit is reached` enabled.
+5. Confirm the account/repository is allowed to use standard GitHub-hosted runners.
 
-The connector available to this release workflow can rerun jobs and inspect runs but does not expose the owner's Billing/Budgets UI, so these account-level controls cannot be changed from repository source.
-
-## Required manual account check
-
-Open GitHub personal account billing settings and inspect:
-
-- **Settings -> Billing & licensing -> Usage** (GitHub Actions usage)
-- **Settings -> Billing & licensing -> Budgets and alerts**
-- payment method / billing validity
-
-For GitHub Actions:
-
-- if included usage is exhausted and no valid payment method exists, add/repair a valid payment method;
-- if a hard Actions budget is exhausted, increase the budget or disable `Stop usage when budget limit is reached` as appropriate;
-- confirm GitHub Actions hosted-runner usage is permitted for the account/repository.
-
-Do **not** merge PR #135 or mark NODE-73 accepted merely after changing billing. A successful runner allocation must be observed first.
+If a payment method was just added or repaired, successful runner allocation—not the UI save itself—is the acceptance criterion.
 
 ## Acceptance test after account unblock
 
-Re-run the minimal `CI / changes` job first.
+Re-run a minimal job first.
 
-Execution environment is considered unblocked only when the job exposes real steps/logs, beginning with checkout. A red job with actual steps is materially different from the current zero-step red state and can then be diagnosed as a real repository/test failure.
+Execution environment is considered unblocked only when the job exposes real steps/logs and a shell or checkout actually begins. A red job with actual steps is materially different from the current zero-step red state and can then be diagnosed as a real repository/test failure.
 
 Once the minimal job starts executing, proceed in this order:
 
