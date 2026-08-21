@@ -109,6 +109,7 @@
     ".github/workflows/configure-release-branch-protection.yml",
     ".github/workflows/regenerate-uv-lock.yml",
     ".github/workflows/runtime-image-closure-contract.yml",
+    ".github/workflows/ai-regression-release-gate.yml",
     ".github/workflows/staging-acceptance-gate.yml",
     ".github/workflows/security-release-gate.yml",
     ".github/workflows/production-iac-contract.yml",
