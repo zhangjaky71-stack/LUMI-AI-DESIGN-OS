@@ -57,6 +57,7 @@ jobs:
           python3 scripts/validate_production_node71_workflow_contract.py
           python3 scripts/validate_production_deployment_contract.py
           python3 scripts/validate_production_readiness_contract.py
+          python3 scripts/validate_capacity_decision_fail_closed.py
           python3 scripts/validate_production_recovery_contract.py
           python3 scripts/validate_production_recovery_evidence_workflow_contract.py
           python3 scripts/validate_production_evidence_freezer_contract.py
@@ -118,6 +119,7 @@ jobs:
             scripts/production-recovery-decision.py \
             scripts/validate_production_deployment_contract.py \
             scripts/validate_production_readiness_contract.py \
+            scripts/validate_capacity_decision_fail_closed.py \
             scripts/validate_production_recovery_contract.py \
             scripts/validate_production_recovery_evidence_workflow_contract.py \
             scripts/validate_production_evidence_freezer_contract.py \
