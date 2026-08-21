@@ -1,286 +1,272 @@
 # NODE-72 — Production Deployment & Infrastructure — Release Evidence
 
-> Status: **SOURCE IMPLEMENTED / CLOUD VALIDATION PENDING / GO-LIVE BLOCKED**  
-> Evidence date: 2026-08-15  
-> Branch: `node-72-production-deployment-release`
+> Status: **SOURCE IMPLEMENTED / ATTESTED RC PROMOTION SOURCE-CLOSED / CLOUD VALIDATION PENDING / GO-LIVE BLOCKED**  
+> Evidence date: 2026-08-21  
+> Branch: `release-closure-p0`  
+> Current sampled head: `29602f4d0f5117f174ae4f4c806145c420635050`
 
 ## 1. Current decision
 
-NODE-72 has a production deployment **control plane and IaC source baseline**, but it is **not production-ready and has not deployed LUMI to Production**.
+NODE-72 has a production deployment control plane and IaC source baseline. The source path from an attested six-runtime NODE-71 image build to the NODE-72 Production gate is now fail-closed, but **no real Production deployment has been proven**.
 
-A Terraform source tree, deployment workflow, or successful source-contract fixture is not proof that Production exists. Production PASS requires the exact NODE-71 accepted RC to be provisioned, migrated, canaried, observed, smoke-tested and rollback-tested in the target cloud environment.
-
-Current release decision:
+A Terraform tree, a frozen manifest, or a source validator is not Production evidence. Production PASS still requires the exact NODE-71 accepted RC to be built, attested, deployed to production-like Staging, accepted, promoted without rebuild, provisioned, migrated, canaried, observed, smoke-tested and rollback-tested in the target cloud environment.
 
 ```text
 SOURCE IMPLEMENTED
-CLOUD VALIDATION PENDING
-PRODUCTION NOT PROVISIONED BY THIS EVIDENCE
-GO-LIVE BLOCKED
+ATTESTED RC PROMOTION CONTRACT: SOURCE-CLOSED
+HOSTED EXECUTION: BLOCKED BEFORE STEPS START
+CLOUD VALIDATION: PENDING
+PRODUCTION: NOT PROVISIONED BY THIS EVIDENCE
+GO-LIVE: BLOCKED
 ```
 
-## 2. Source controls implemented
+## 2. Release identity and attested runtime promotion closure
 
-### Release identity and fail-closed deployment gate
-
-- exact NODE-71 `decision.json` is required;
-- NODE-71 must report `passed=true`;
-- deployment manifest must bind the same Git SHA, RC version and migration head;
-- deployment manifest pins exactly six runtime image identities by immutable `@sha256` digest;
-- mutable image tags are rejected;
-- rollback target and DB backward compatibility must be explicitly declared;
-- external dependency and engineering/security/release approvals must be ready;
-- production evidence paths are constrained to the repository evidence archives.
-
-Primary source:
+The source chain is now:
 
 ```text
-production/deployment/manifest-template.json
-scripts/production-deployment-gate.py
-scripts/validate_production_deployment_contract.py
+exact release-closure-p0 Git SHA
+→ six exact runtime Dockerfile/build blocks
+→ root build context + .dockerignore provenance-source guard
+→ immutable registry digests
+→ BuildKit max provenance + SPDX SBOM
+→ GitHub artifact attestation
+   signer workflow + source SHA + release ref + hosted-runner identity
+→ frozen container-image-set.json + attestation-verification.json
+→ NODE-71 runtime-image binding
+→ NODE-71 passed decision runtime_image_binding seal
+→ NODE-71 decision SHA-256 workflow provenance
+→ NODE-72 Production deployment gate
+→ exact six accepted image digests passed to Terraform
 ```
 
-### AWS/Terraform reference infrastructure
+### 2.1 Exact per-runtime build identity
 
-Implemented modules:
+`scripts/validate_runtime_image_build_pipeline.py` now binds every runtime independently rather than relying only on six global counts. For each of:
 
 ```text
-network
-storage
-data
-secrets
-compute
-edge
-platform-core
-platform-app
-migration-runner
+api
+agent-runtime
+model-gateway
+tool-gateway
+worker-media
+sandbox-runtime
 ```
 
-The topology encodes:
+it requires the correct Dockerfile, root context, `linux/amd64`, immutable `rc-${GITHUB_SHA}` tag, the runtime's own build-step digest, the runtime's own GitHub attestation step, the corresponding SBOM reference, provenance output, and freeze fragment.
 
-- three-AZ public/private/data subnet classes;
-- public ALB only; ECS tasks remain private with no public IP;
-- RDS PostgreSQL private, encrypted, Multi-AZ and backup/PITR configured;
-- Redis Multi-AZ/failover with transit and at-rest encryption;
-- Amazon MQ RabbitMQ `CLUSTER_MULTI_AZ`, private subnets and AMQPS boundary;
-- private KMS-encrypted/versioned S3 buckets for assets/exports/sandbox;
-- Secrets Manager metadata containers without storing secret values in Terraform;
-- per-service ECS task/execution roles;
-- Cloud Map private service discovery;
-- WAF managed rules and rate limiting;
-- Route53/HTTPS ALB edge;
-- custom backlog/concurrency autoscaling metrics instead of CPU-only scaling.
+`.dockerignore` is now part of the Runtime Image Closure trigger and the source contract fails closed if a positive ignore rule can remove a runtime `source_paths` entry declared by `production/runtime-images/manifest-v1.json`.
 
-### Environment parity and deployment ordering
+### 2.2 Registry digest / attestation / source SHA binding
 
-Staging and Production use the same Terraform modules and the same three-state lifecycle:
+`scripts/verify_runtime_image_attestations.py` already requires live registry resolution plus GitHub artifact attestation verification against:
+
+- canonical signer workflow `.github/workflows/build-runtime-image-set.yml`;
+- exact `GITHUB_SHA` source digest;
+- exact `refs/heads/release-closure-p0` source ref;
+- exact workflow ref;
+- `--deny-self-hosted-runners`;
+- actual BuildKit provenance metadata;
+- actual SPDX SBOM metadata.
+
+`scripts/runtime_image_set.py` now additionally refuses to freeze an image set unless:
+
+- report `github_attestation_policy.source_digest == frozen release_candidate.git_sha`;
+- every runtime result carries the same signer/source policy as the report-level policy;
+- all six exact image digests are covered;
+- all six registry digests and GitHub attestations report PASS;
+- BuildKit provenance and SBOM summaries are present.
+
+The frozen metadata now includes `source_digest` alongside the attestation report SHA-256.
+
+### 2.3 NODE-71 sealed decision
+
+`validate_staging_runtime_image_binding.py` now cross-checks the downloaded frozen artifact, attestation report SHA-256, source digest, build repository/run identity, evidence RC SHA/version and exact six-runtime image/provenance set.
+
+`bind_node71_runtime_image_decision.py` then seals the verified result into the passed NODE-71 decision as the exact field set:
 
 ```text
-core
--> secret population/readiness
--> migration
--> app
+status
+ git_sha
+ version
+ build_run_id
+ container_image_set_ref
+ attestation_report_sha256
+ attestation_source_digest
+ runtime_count
 ```
 
-The migration stack is intentionally separate from the application stack so first deployment cannot start application services before schema migration completes.
+The sealer recalculates `decision_id`, so runtime-image attestation identity is inside the decision identity rather than being a side file only. The human decision Markdown is updated to the resealed decision ID.
 
-### Database deployment safety
+`validate_node71_decision_artifact.py` now refuses both provenance creation and provenance verification unless this runtime-image seal exists and matches the NODE-71 release candidate. Decision provenance copies the seal as well as hashing the complete sealed `decision.json`.
 
-- `MIGRATION_DATABASE_URL` is separate from the application credential;
-- Alembic takes a PostgreSQL advisory migration lock;
-- production release creates and waits for a pre-deploy RDS snapshot;
-- migration is a one-shot Fargate task, not a continuously reconciled ECS service;
-- migration task exit code must be zero before application rollout.
-
-### Public API deployment safety
-
-- real API port is pinned to 8000, matching the API CLI;
-- public API uses two ALB target groups;
-- ECS-native `CANARY` strategy sends an initial 5% to green;
-- default bake/observation interval is 10 minutes;
-- green-target 5xx and unhealthy-host CloudWatch alarms are configured for rollback;
-- Terraform waits for ECS steady state;
-- deployment state is independently captured and verifies running/desired/pending/PRIMARY rollout state;
-- final Production smoke is HTTPS GET-only and checks live/ready/version/security headers.
-
-Internal/headless services use rolling ECS deployments with circuit-breaker rollback.
-
-### Supply-chain/tooling source constraints
-
-- Terraform CLI contract: `>= 1.14.6, < 1.15.0`;
-- AWS provider contract: `= 6.55.0`;
-- production images must be immutable digests;
-- GitHub Actions uses OIDC instead of committed AWS access keys;
-- production OIDC trust is scoped to the repository and protected `production` Environment subject;
-- Terraform creates Secret containers only; actual Secret Versions are provisioned by the protected operations path.
-
-## 3. Source validation staged
-
-`Production IaC Contract` contains:
-
-- dependency-free production deployment negative drills;
-- dependency-free infrastructure invariants;
-- Python syntax checks;
-- shell syntax checks for secret/snapshot/migration/ECS-state scripts;
-- production manifest JSON validation;
-- recursive `terraform fmt -check`;
-- backend-disabled `terraform init` + `terraform validate` for bootstrap, Staging core/migration/app and Production core/migration/app;
-- final contract job requiring both source and Terraform validation to succeed.
-
-### 3.1 Direct hosted CI evidence
-
-The first NODE-72 PR run is:
+The NODE-71 workflow contract locks the required order:
 
 ```text
-workflow: Production IaC Contract
-run_id: 31892439606
-head_sha: 62a4a236b07866f2c0d866e6b9e47b57b51162b5
-source-contract job: 95030619472
-terraform-static job: 95030619515
-contract-gate job: 95030625526
+live staging evidence binding
+< frozen image-set download
+< runtime-image attestation binding
+< staging acceptance decision
+< runtime-image decision seal
+< decision provenance capture
+< provenance self-verification
+< artifact archive
 ```
 
-All three jobs completed with `conclusion=failure`, but each had:
+### 2.4 NODE-72 direct promotion gate
+
+`production-deployment-gate.py` no longer checks only the six accepted digest strings. It directly rejects a NODE-71 decision when:
+
+- `runtime_image_binding` is absent or not exactly shaped;
+- binding status is not PASS;
+- binding SHA/version differ from the Production RC;
+- runtime image build run id is not a positive GitHub Actions run id;
+- frozen image-set artifact ref differs from NODE-71 RC identity;
+- attestation report SHA-256 is malformed;
+- attestation source digest differs from the Production RC SHA;
+- runtime count is not exactly six;
+- Production image digests differ from NODE-71 accepted image digests.
+
+The normalized runtime-image seal is included in the Production gate payload and therefore in `gate_id`.
+
+`validate_production_deployment_contract.py` contains negative drills for missing seal, source-SHA swap, invalid build run, invalid report hash, artifact-ref swap and unexpected seal fields. `validate_production_node71_workflow_contract.py` independently locks the NODE-71 sealer interlock and the NODE-72 promotion checks.
+
+## 3. Other Production source controls implemented
+
+The existing NODE-72 source baseline also includes:
+
+- exact NODE-71 decision/run/path and decision-provenance verification;
+- same RC Git SHA, version and migration head;
+- immutable digest-only images;
+- Staging/Production same Terraform module topology;
+- `core -> Secret readiness -> pre-deploy snapshot -> migration -> app` ordering;
+- private RDS PostgreSQL, Redis and RabbitMQ data planes;
+- KMS/private/versioned S3;
+- per-service ECS task/execution roles and Cloud Map;
+- Route53/ACM/HTTPS/WAF edge;
+- API 5% ECS-native canary + bake + alarm rollback;
+- rolling/circuit-breaker deployment for internal services;
+- one-shot Alembic migration and exit-code gate;
+- GitHub Environment + OIDC Production mutation boundary;
+- ECS steady-state evidence and read-only Production smoke;
+- first-day provider spend hard limit <= $100 in the release manifest, while durable Provider spend enforcement remains separately required from NODE-27/22 runtime evidence.
+
+## 4. Current Hosted CI evidence
+
+Sampled head: `29602f4d0f5117f174ae4f4c806145c420635050`.
+
+### Runtime Image Closure
 
 ```text
-runner_id=0
-steps=[]
+run_id: 32459558295
+runtime-image-closure job_id: 96703575372
+conclusion: failure
+logs_url: null
+steps: null
 ```
 
-The `source-contract` and `terraform-static` GitHub check annotations both state:
+### Production IaC Contract
 
 ```text
-The job was not started because recent account payments have failed
-or your spending limit needs to be increased.
+run_id: 32459558285
+terraform-static job_id: 96703575564 -> failure, logs_url=null, steps=null
+source-contract job_id: 96703575742 -> failure, logs_url=null, steps=null
+contract-gate job_id: 96703588716 -> failure, logs_url=null, steps=null
 ```
 
-Therefore **no NODE-72 validator or Terraform command ran on GitHub-hosted CI in this run**. The failure is classified as an external GitHub Billing/spending-limit runner-start blocker, not as a source-contract or Terraform failure. This direct evidence does not waive validation; the jobs still need to execute green after runner access is restored.
-
-## 4. Runtime evidence required before PASS
-
-All boxes remain intentionally unchecked until real evidence exists.
-
-### Repository / CI
-
-- [ ] NODE-72 `Production IaC Contract` actually receives a runner and executes green.
-- [ ] Terraform format and validation jobs execute green with the pinned toolchain.
-- [ ] The inherited root `uv.lock` freshness / canonical supply-chain blocker from NODE-66 is resolved.
-- [ ] Canonical security and repository release gates execute green.
-
-### NODE-71 / exact release candidate
-
-- [ ] NODE-71 has a real Production-like Staging environment.
-- [ ] NODE-71 returns an evidenced `passed=true` decision for an exact RC.
-- [ ] NODE-70 real AI release evidence is attached to that RC.
-- [ ] NODE-69 launch-profile/capacity evidence exists for that RC.
-
-### Cloud provisioning
-
-- [ ] Dedicated/approved Staging and Production AWS isolation is available.
-- [ ] GitHub OIDC provider is configured in the target AWS account(s).
-- [ ] Encrypted/versioned Terraform state backend is applied.
-- [ ] Production core `terraform plan` is reviewed.
-- [ ] Production core `terraform apply` succeeds.
-- [ ] Network reachability negative tests prove DB/Redis/MQ are not public.
-- [ ] Runtime IAM least-privilege checks are executed against real roles.
-- [ ] Route53/ACM/TLS/WAF are live on the production domain.
-
-### Secrets / providers / support
-
-- [ ] All eight required Secret Versions exist with `AWSCURRENT`.
-- [ ] Secret rotation procedure is tested.
-- [ ] Model/media provider credentials and quotas are production-ready.
-- [ ] Billing webhook production endpoint/secret is validated.
-- [ ] Email domain is production-ready or the feature is explicitly disabled.
-- [ ] Support/on-call ownership is active.
-
-### Runtime images and transports
-
-- [ ] `api` production image is reproducibly built, scanned and promoted from Staging by digest.
-- [ ] `agent-runtime` has a real production runtime entrypoint/image and is exercised in Staging.
-- [ ] `model-gateway` has a real production transport/server entrypoint/image and is exercised in Staging.
-- [ ] `tool-gateway` has a real production transport/server entrypoint/image and is exercised in Staging.
-- [ ] `worker-media` production worker image is exercised in Staging.
-- [ ] `sandbox-runtime` has a real production control-plane/runtime entrypoint/image and is exercised in Staging.
-- [ ] SBOM/vulnerability scan evidence exists for the exact promoted images.
-- [ ] Production reuses the exact Staging-accepted image digests; it does not rebuild them.
-
-### Database / recovery
-
-- [ ] Pre-deploy RDS snapshot completes and is archived as evidence.
-- [ ] One-shot Alembic migration completes with exit code 0.
-- [ ] Backward-compatible rollback is proven for the release migration set.
-- [ ] NODE-68 Production-like restore/PITR evidence satisfies the release policy.
-- [ ] Backup alarms and restore procedures are tested in the target topology.
-
-### Deployment / canary / rollback
-
-- [ ] Production app plan is reviewed after migration succeeds.
-- [ ] API 5% native canary actually executes against the exact RC.
-- [ ] Canary 5xx/unhealthy alarm rollback is deliberately exercised in a safe environment.
-- [ ] Internal services reach ECS steady state.
-- [ ] `ecs-deployment-state.json` passes for all intended services.
-- [ ] `production-smoke.json` passes against the production domain/version.
-- [ ] Post-promotion rollback to the previous immutable deployment is exercised.
-- [ ] Service restart and autoscaling drills are executed.
-
-### Security / cost controls
-
-- [ ] Production sandbox has reviewed network/egress isolation consistent with NODE-66 threat model.
-- [ ] Production WAF/rate-limit behavior is exercised.
-- [ ] First-day org/run/video/invite limits are proven at the runtime enforcement point.
-- [ ] Platform-wide daily provider-dollar hard stop is durably enforced; a manifest value alone is not sufficient.
-- [ ] Provider outage/reconciliation tests show no duplicate paid effect.
-
-## 5. Known STOP SHIP items at source-baseline close
-
-1. NODE-71 does not yet have a real `passed=true` Staging RC decision.
-2. NODE-72 cloud resources have not been provisioned by this evidence.
-3. Real Secret Versions and commercial credentials have not been proven.
-4. The six intended production deployment boundaries do not all yet have independently proven production transport/entrypoint + reproducible image promotion pipelines.
-5. Real canary, alarm rollback and post-promotion rollback evidence do not exist yet.
-6. Sandbox production egress isolation remains to be hardened/reviewed.
-7. A platform-wide daily provider-dollar hard stop is not yet proven as a durable runtime control.
-8. NODE-68/69/70/71 Production-like runtime evidence remains incomplete.
-9. NODE-72 hosted CI run `31892439606` was blocked before runner start by the account Billing/spending-limit condition; it is not a green validation and should not be repeatedly rerun until the external condition changes.
-
-## 6. Evidence locations
+### Final Product Acceptance Gate
 
 ```text
-infra/iac/README.md
-infra/iac/bootstrap/
-infra/iac/modules/
-infra/iac/environments/staging/
-infra/iac/environments/production/
-production/deployment/manifest-template.json
-.github/workflows/production-iac-contract.yml
-.github/workflows/deploy-staging-infrastructure.yml
+run_id: 32459558476
+source-contract job_id: 96703576056 -> failure, logs_url=null, steps=null
+canonical-lock-gate job_id: 96703576351 -> failure, logs_url=null, steps=null
+node73-final-contract-gate job_id: 96703611450 -> failure, logs_url=null, steps=null
+final-decision -> skipped
+```
+
+These are the same zero-step Hosted-runner failures seen on prior heads. No checkout, Python validator, runtime-image self-test, Terraform, `uv`, Docker, registry attestation, Staging or Production command is evidenced as having executed in those jobs. They are **not evidence that the new contracts failed**, and they are **not PASS evidence**.
+
+## 5. Runtime evidence required before PASS
+
+All remain unchecked until actual execution produces immutable evidence.
+
+### Canonical dependency / CI
+
+- [ ] Resolver-generated root `uv.lock` includes all 17 workspace packages.
+- [ ] `validate_uv_workspace_lock.py`, `uv lock --check`, and `uv sync --all-packages --frozen` execute and pass.
+- [ ] Runtime Image Closure and Production IaC source/Terraform jobs actually execute with step/log evidence.
+
+### Runtime images / attestations
+
+- [ ] Canonical six-runtime build workflow executes from the exact RC SHA.
+- [ ] Six registry image digests are resolvable.
+- [ ] Six GitHub artifact attestations verify against the canonical signer workflow, exact source SHA/ref and hosted-runner policy.
+- [ ] Six BuildKit provenance records and SPDX SBOMs are retrieved from the actual images.
+- [ ] `container-image-set.json` and `attestation-verification.json` are frozen and archived from that exact build run.
+- [ ] NODE-71 downloads that exact build artifact and emits a sealed `passed=true` decision.
+- [ ] Production consumes the exact NODE-71 accepted digests without rebuilding them.
+
+### Staging / cloud / Production
+
+- [ ] Production-like Staging infrastructure is actually applied and reachable.
+- [ ] NODE-71 environment parity, Golden E2E, security, resilience, billing, performance and AI gates all PASS for the exact RC.
+- [ ] Production Terraform plan/apply succeeds in the approved AWS account.
+- [ ] Secret Versions/provider quotas/DNS/TLS/billing/email/support dependencies are ready.
+- [ ] One-shot migration, canary, ECS steady state and Production smoke pass.
+- [ ] Alarm rollback and post-promotion rollback are actually exercised.
+- [ ] NODE-68 recovery/restore and NODE-69 capacity evidence meet release policy.
+- [ ] Sandbox production egress and private Model Gateway deployed boundaries are proven live.
+- [ ] Durable platform Provider spend hard stop and no-duplicate-paid-effect semantics are proven against PostgreSQL/provider paths.
+
+## 6. Current STOP SHIP list
+
+1. `uv.lock` remains stale by six workspace packages and has not been resolver-regenerated.
+2. Hosted critical CI still fails before executable steps start.
+3. No real six-runtime registry build/attestation/SBOM/provenance artifact exists for the current RC.
+4. NODE-71 has no real sealed `passed=true` Production-like Staging decision.
+5. Production AWS resources and real Secret Versions are not evidenced as provisioned.
+6. Real PostgreSQL, Docker/runtime, Terraform plan/apply, Staging E2E and Production smoke evidence remain missing.
+7. Live Provider image/video benchmark evidence for production-routed profiles remains incomplete.
+8. Canary/rollback/recovery drills and final Production approvals remain incomplete.
+
+## 7. Evidence locations
+
+```text
+production/runtime-images/manifest-v1.json
+.github/workflows/build-runtime-image-set.yml
+.github/workflows/runtime-image-closure-contract.yml
+.github/workflows/staging-acceptance-gate.yml
 .github/workflows/deploy-production.yml
+.github/workflows/production-iac-contract.yml
+scripts/verify_runtime_image_attestations.py
+scripts/runtime_image_set.py
+scripts/validate_runtime_image_build_pipeline.py
+scripts/validate_runtime_image_set_contract.py
+scripts/validate_staging_runtime_image_binding.py
+scripts/bind_node71_runtime_image_decision.py
+scripts/validate_staging_runtime_image_workflow_contract.py
+scripts/validate_node71_decision_artifact.py
 scripts/production-deployment-gate.py
 scripts/validate_production_deployment_contract.py
-scripts/validate_production_iac_contract.py
-scripts/check-aws-secret-versions.sh
-scripts/create-predeploy-rds-snapshot.sh
-scripts/ecs-run-one-shot-task.sh
-scripts/capture-ecs-deployment-state.sh
-scripts/production-read-only-smoke.py
-docs/deployment/NODE-72-PRODUCTION-DEPLOYMENT-RUNBOOK.md
-reports/production-deployments/README.md
+scripts/validate_production_node71_workflow_contract.py
+infra/iac/
+reports/production-deployments/
 ```
 
-## 7. Completion rule
+## 8. Completion rule
 
-NODE-72 may move to COMPLETE only when the Production Definition of Done is evidenced:
+NODE-72 may move to COMPLETE only when:
 
 ```text
-production infrastructure provisioned
-+ exact NODE-71 accepted RC deployed through controlled CI/CD
-+ canary/alarms successful
-+ smoke/SLO green
-+ rollback path exercised
-+ required security/recovery/cost controls proven
+canonical dependencies resolved
++ exact six-runtime registry images built and attestations/SBOM/provenance verified
++ same immutable image set accepted by real NODE-71 Staging decision
++ same digests promoted to Production without rebuild
++ Production infrastructure provisioned through controlled CI/CD
++ migration/canary/smoke/SLO green
++ rollback/recovery/security/cost controls proven
 ```
 
-Until then, the correct status remains:
+Until then:
 
-**SOURCE IMPLEMENTED / CLOUD VALIDATION PENDING / GO-LIVE BLOCKED**.
+**SOURCE IMPLEMENTED / ATTESTED RC PROMOTION SOURCE-CLOSED / CLOUD VALIDATION PENDING / GO-LIVE BLOCKED**.
