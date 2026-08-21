@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -8,9 +9,11 @@ FINAL_PROBE = ROOT / "apps/worker-media/src/lumi_worker_media/video_final_probe_
 HOSTED_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/video_generation_runtime.py"
 FINAL_PROBE_TEST = ROOT / "apps/worker-media/tests/test_video_final_probe_runtime.py"
 SANDBOX_RUNTIME = ROOT / "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py"
+RUNTIME_IMAGE_MANIFEST = ROOT / "production/runtime-images/manifest-v1.json"
 VIDEO_WORKFLOW = ROOT / ".github/workflows/video-generation.yml"
 FINAL_WORKFLOW = ROOT / ".github/workflows/final-acceptance-gate.yml"
 SELF_PATH = "scripts/validate_video_final_probe_binding.py"
+FINAL_PROBE_PATH = "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py"
 
 
 class VideoFinalProbeContractError(RuntimeError):
@@ -116,6 +119,18 @@ def main() -> int:
             "assert called is False",
         ),
         "Hosted final durable probe tests",
+    )
+
+    try:
+        runtime_manifest = json.loads(RUNTIME_IMAGE_MANIFEST.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise VideoFinalProbeContractError("runtime image manifest is unreadable") from exc
+    runtimes = runtime_manifest.get("runtimes")
+    worker = runtimes.get("worker-media") if isinstance(runtimes, dict) else None
+    worker_sources = worker.get("source_paths") if isinstance(worker, dict) else None
+    require(
+        isinstance(worker_sources, list) and FINAL_PROBE_PATH in worker_sources,
+        "canonical worker-media image provenance does not bind the final probe runtime",
     )
 
     for source, label in (
