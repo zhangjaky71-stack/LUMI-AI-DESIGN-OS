@@ -30,6 +30,8 @@ RUNTIME_SERVICE_IMAGE_KEY = {
     "outbox-dispatcher": "worker-media",
     "sandbox-runtime": "sandbox-runtime",
 }
+CAPACITY_CONTRACT_SOURCE = "terraform-live-state"
+CAPACITY_CONTRACT_SCOPE = "production-app-service-desired-counts"
 
 
 class RecoveryDecisionError(RuntimeError):
@@ -91,6 +93,48 @@ def _capacity_row_valid(item: object) -> bool:
         and desired == expected
         and item.get("capacity_matches") is True
     )
+
+
+def _validate_capacity_contract(
+    runtime: dict[str, Any],
+    services: list[Any],
+    *,
+    expected_deployment_id: Any,
+    blockers: list[str],
+) -> dict[str, int]:
+    contract = runtime.get("capacity_contract")
+    if not isinstance(contract, dict):
+        blockers.append("baseline production runtime capacity_contract missing")
+        return {}
+    if contract.get("schema_version") != 1:
+        blockers.append("baseline production runtime capacity_contract schema_version must be 1")
+    if contract.get("source") != CAPACITY_CONTRACT_SOURCE:
+        blockers.append("baseline production runtime capacity_contract source mismatch")
+    if contract.get("scope") != CAPACITY_CONTRACT_SCOPE:
+        blockers.append("baseline production runtime capacity_contract scope mismatch")
+    if contract.get("deployment_id") != expected_deployment_id:
+        blockers.append("baseline production runtime capacity_contract deployment_id mismatch")
+
+    counts = contract.get("service_desired_counts")
+    if not isinstance(counts, dict) or set(counts) != set(RUNTIME_SERVICE_IMAGE_KEY):
+        blockers.append("baseline production runtime capacity_contract must contain exactly seven service counts")
+        return {}
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or value <= 0
+        for value in counts.values()
+    ):
+        blockers.append("baseline production runtime capacity_contract counts must be positive integers")
+        return {}
+    row_counts = {
+        item.get("service_name"): item.get("expected_desired_count")
+        for item in services
+        if isinstance(item, dict) and isinstance(item.get("service_name"), str)
+    }
+    if row_counts != counts:
+        blockers.append(
+            "baseline production runtime capacity_contract does not equal per-service Terraform expectations"
+        )
+    return {str(name): int(value) for name, value in counts.items()}
 
 
 def validate_cross_region_object_recovery(
@@ -176,6 +220,7 @@ def evaluate(
         blockers.append("baseline production runtime RC mismatch")
     services = baseline_runtime.get("services")
     expected_service_images = _expected_service_images(manifest.get("images"), blockers)
+    baseline_capacity: dict[str, int] = {}
     if not isinstance(services, list) or len(services) != len(RUNTIME_SERVICE_IMAGE_KEY):
         blockers.append("baseline production runtime must contain exactly seven services")
     else:
@@ -206,6 +251,12 @@ def evaluate(
             blockers.append(
                 "baseline production runtime is not fully steady or Terraform-capacity-matched"
             )
+        baseline_capacity = _validate_capacity_contract(
+            baseline_runtime,
+            services,
+            expected_deployment_id=deployment_id,
+            blockers=blockers,
+        )
 
     if rds_restore.get("schema_version") != 1 or rds_restore.get("passed") is not True:
         blockers.append("RDS PITR rehearsal is not passed=true")
@@ -306,6 +357,13 @@ def evaluate(
         "deployment_id": deployment_id,
         "release_candidate": manifest.get("release_candidate", {}),
         "recovery_policy": manifest.get("recovery", {}),
+        "capacity_contract": {
+            "schema_version": 1,
+            "source": CAPACITY_CONTRACT_SOURCE,
+            "scope": CAPACITY_CONTRACT_SCOPE,
+            "deployment_id": deployment_id,
+            "service_desired_counts": baseline_capacity,
+        },
         "observed_rpo_minutes": rpo,
         "observed_rto_minutes": rto,
         "object_dr_destination_region": destination_region,
