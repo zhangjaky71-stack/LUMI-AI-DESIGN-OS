@@ -82,12 +82,14 @@
     ".github/workflows/staging-acceptance-gate.yml",
     ".github/workflows/production-iac-contract.yml",
     ".github/workflows/deploy-production.yml",
+    ".github/workflows/production-rollback-rehearsal.yml",
     ".github/workflows/final-acceptance-gate.yml"
   ],
   "release_evidence_workflows": [
     ".github/workflows/collect-staging-database-parity.yml",
     ".github/workflows/freeze-staging-database-parity.yml",
     ".github/workflows/production-dr-rehearsal.yml",
+    ".github/workflows/freeze-production-evidence.yml",
     ".github/workflows/freeze-production-recovery-evidence.yml"
   ]
 }
