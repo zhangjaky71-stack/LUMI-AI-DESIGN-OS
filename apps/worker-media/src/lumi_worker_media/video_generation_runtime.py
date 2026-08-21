@@ -144,8 +144,8 @@ class HostedVideoGenerationRuntime:
         Once a video recovery row exists, provider cancellation must be proven by the
         NODE-48 pipeline. If the provider cancel boundary cannot prove cancellation,
         the same provider request is reconciled once so completion/failure truth can
-        win over cancellation intent; cancellation reconciliation never launches a
-        quality retry or replacement paid provider job.
+        win over cancellation intent; it must never launch a quality retry or replacement
+        paid provider job.
         """
 
         spec = await self._load_spec(message)
