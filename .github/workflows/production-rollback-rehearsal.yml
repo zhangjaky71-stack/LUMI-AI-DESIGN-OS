@@ -18,7 +18,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 env:
   CURRENT_MANIFEST_INPUT: ${{ inputs.current_manifest_path }}
@@ -116,6 +115,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     environment: production
+    permissions:
+      contents: read
+      id-token: write
     env:
       AWS_REGION: ${{ needs.rollback-gate.outputs.region }}
       TF_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
