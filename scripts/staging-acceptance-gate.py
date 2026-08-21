@@ -36,6 +36,7 @@ API_REQUIRED_SOURCE_PATHS = {
 MODEL_GATEWAY_REQUIRED_SOURCE_PATHS = {
     "services/model-gateway",
     "services/model-gateway/src/lumi_model_gateway/openai_image_adapter.py",
+    "services/model-gateway/src/lumi_model_gateway/openai_video_adapter.py",
     "services/asset-storage/src/lumi_asset_storage/s3.py",
     "apps/api/src/lumi_api/model_gateway_runtime.py",
     "apps/api/src/lumi_api/model_gateway_bootstrap.py",
