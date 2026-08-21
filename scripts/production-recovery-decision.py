@@ -106,14 +106,20 @@ def _validate_capacity_contract(
     if not isinstance(contract, dict):
         blockers.append("baseline production runtime capacity_contract missing")
         return {}
+
+    valid = True
     if contract.get("schema_version") != 1:
         blockers.append("baseline production runtime capacity_contract schema_version must be 1")
+        valid = False
     if contract.get("source") != CAPACITY_CONTRACT_SOURCE:
         blockers.append("baseline production runtime capacity_contract source mismatch")
+        valid = False
     if contract.get("scope") != CAPACITY_CONTRACT_SCOPE:
         blockers.append("baseline production runtime capacity_contract scope mismatch")
+        valid = False
     if contract.get("deployment_id") != expected_deployment_id:
         blockers.append("baseline production runtime capacity_contract deployment_id mismatch")
+        valid = False
 
     counts = contract.get("service_desired_counts")
     if not isinstance(counts, dict) or set(counts) != set(RUNTIME_SERVICE_IMAGE_KEY):
@@ -134,6 +140,9 @@ def _validate_capacity_contract(
         blockers.append(
             "baseline production runtime capacity_contract does not equal per-service Terraform expectations"
         )
+        valid = False
+    if not valid:
+        return {}
     return {str(name): int(value) for name, value in counts.items()}
 
 
