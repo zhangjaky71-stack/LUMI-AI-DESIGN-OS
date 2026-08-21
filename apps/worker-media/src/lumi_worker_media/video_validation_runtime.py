@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from decimal import Decimal
-from typing import Mapping
 
 from lumi_video_generation import CompositeVideoValidator
 from lumi_video_generation.model import (
