@@ -94,6 +94,13 @@ def _approved(policy: dict[str, Any], action: str, sha: str, version: str | None
     return False
 
 
+def _action_repository(action_path: str) -> str:
+    parts = action_path.split("/")
+    if len(parts) < 2 or any(not part for part in parts[:2]):
+        raise ReleaseActionPinError(f"unsupported external action repository path: {action_path!r}")
+    return "/".join(parts[:2])
+
+
 def _validate_uses_target(
     *,
     policy: dict[str, Any],
@@ -106,20 +113,22 @@ def _validate_uses_target(
         return None
     if "@" not in target:
         raise ReleaseActionPinError(f"{workflow}:{line_no}: external action is missing @ref: {target}")
-    action, ref = target.rsplit("@", 1)
-    if action.count("/") != 1:
-        raise ReleaseActionPinError(f"{workflow}:{line_no}: unsupported external action target: {target}")
+    action_path, ref = target.rsplit("@", 1)
+    try:
+        action = _action_repository(action_path)
+    except ReleaseActionPinError as exc:
+        raise ReleaseActionPinError(f"{workflow}:{line_no}: {exc}") from exc
     if not SHA40.fullmatch(ref):
         raise ReleaseActionPinError(
-            f"{workflow}:{line_no}: {action} must be pinned to a full lowercase 40-character commit SHA"
+            f"{workflow}:{line_no}: {action_path} must be pinned to a full lowercase 40-character commit SHA"
         )
     if version_comment is None:
         raise ReleaseActionPinError(
-            f"{workflow}:{line_no}: {action}@{ref} must carry its approved version comment"
+            f"{workflow}:{line_no}: {action_path}@{ref} must carry its approved version comment"
         )
     if not _approved(policy, action, ref, version_comment):
         raise ReleaseActionPinError(
-            f"{workflow}:{line_no}: unapproved release action pin {action}@{ref} # {version_comment}"
+            f"{workflow}:{line_no}: unapproved release action pin {action_path}@{ref} # {version_comment}"
         )
     return action, ref, version_comment
 
@@ -150,6 +159,9 @@ def _negative_drills(policy: dict[str, Any]) -> None:
     good = "    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0\n"
     if validate_workflow_text(policy=policy, workflow="fixture.yml", text=good) != 1:
         raise ReleaseActionPinError("clean full-SHA fixture did not pass")
+    subaction = "    - uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7\n"
+    if validate_workflow_text(policy=policy, workflow="subaction-fixture.yml", text=subaction) != 1:
+        raise ReleaseActionPinError("clean pinned sub-action fixture did not pass")
 
     blocked = (
         "    - uses: actions/checkout@v6\n",
@@ -157,6 +169,7 @@ def _negative_drills(policy: dict[str, Any]) -> None:
         "    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803\n",
         "    - uses: actions/checkout@0000000000000000000000000000000000000000 # v6.1.0\n",
         "    - uses: attacker/example@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0\n",
+        "    - uses: github/codeql-action/analyze@0000000000000000000000000000000000000000 # v4.37.7\n",
     )
     for index, text in enumerate(blocked, start=1):
         try:
@@ -176,8 +189,8 @@ def _validate_dispatch_registry() -> None:
         raise ReleaseActionPinError(f"default-branch dispatch registry contract failed: {exc}") from exc
     if self_result.get("status") != "PASS" or self_result.get("negative_drills") != 5:
         raise ReleaseActionPinError("default-branch dispatch registry self-test drift")
-    if result.get("workflow_count") != 10:
-        raise ReleaseActionPinError("default-branch dispatch registry must cover exactly ten release-critical workflows")
+    if result.get("workflow_count") != 11:
+        raise ReleaseActionPinError("default-branch dispatch registry must cover exactly eleven release-critical workflows")
 
 
 def _validate_workflow_set(policy: dict[str, Any], workflows: list[str]) -> dict[str, int]:
@@ -216,7 +229,8 @@ def main() -> int:
                     "short_sha_blocked": True,
                     "missing_version_annotation_blocked": True,
                     "unknown_sha_blocked": True,
-                    "unknown_action_blocked": True
+                    "unknown_action_blocked": True,
+                    "subaction_unknown_sha_blocked": True
                 }
             },
             indent=2,
