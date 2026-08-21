@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 from uuid import UUID
 
@@ -10,8 +11,14 @@ from kombu import Connection, Producer
 
 from .event_runtime import KombuDomainPublisher, OutboxDispatcher
 from .external_wait_runtime import MediaExternalWaitWakeScheduler
-from .job_dispatch_runtime import CeleryJobPublisher, MediaJobOutboxDispatcher
+from .job_dispatch_runtime import (
+    CeleryJobPublisher,
+    MediaJobOutboxDispatcher,
+    MediaJobOutboxHealth,
+)
 from .topology import DOMAIN_EXCHANGE, declare_topology
+
+_HEALTH_LOG_KIND = "lumi.outbox_dispatcher.health"
 
 
 def main() -> int:
@@ -75,6 +82,10 @@ async def _dispatch_outbox(
         wakes = 0
         job_published = 0
         domain_published = 0
+        job_health = MediaJobOutboxHealth(
+            oldest_unpublished_age_seconds=0,
+            oldest_publish_attempts=0,
+        )
         failures: list[tuple[str, Exception]] = []
         try:
             wakes = len(await wake_scheduler.stage_due_batch(limit=limit))
@@ -88,15 +99,38 @@ async def _dispatch_outbox(
             domain_published = await domain_dispatcher.dispatch_batch(limit=limit)
         except Exception as exc:
             failures.append(("domain", exc))
+        try:
+            job_health = await job_dispatcher.health_snapshot()
+        except Exception as exc:
+            failures.append(("jobs-health", exc))
 
         published = job_published + domain_published
+        channels = sorted({name for name, _ in failures})
         print(
-            f"published={published} jobs={job_published} domain={domain_published} "
-            f"external_wakes={wakes}"
+            json.dumps(
+                {
+                    "kind": _HEALTH_LOG_KIND,
+                    "status": "degraded" if failures else "ok",
+                    "published": published,
+                    "job_published": job_published,
+                    "domain_published": domain_published,
+                    "external_wakes": wakes,
+                    "oldest_unpublished_age_seconds": (
+                        job_health.oldest_unpublished_age_seconds
+                    ),
+                    "oldest_publish_attempts": job_health.oldest_publish_attempts,
+                    "failure_count": len(failures),
+                    "failure_channels": channels,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            flush=True,
         )
         if failures:
-            channels = ",".join(name for name, _ in failures)
-            raise RuntimeError(f"OUTBOX_DISPATCH_FAILED:{channels}") from failures[0][1]
+            raise RuntimeError(
+                f"OUTBOX_DISPATCH_FAILED:{','.join(channels)}"
+            ) from failures[0][1]
         if not watch:
             return
         if published == 0 and wakes == 0:
@@ -148,7 +182,11 @@ async def _replay_dead_letter(dsn: str, *, broker_url: str, record_id: UUID) -> 
         await connection.close()
 
 
-def _publish_domain_replay(broker_url: str, payload: dict[str, object], routing_key: str) -> None:
+def _publish_domain_replay(
+    broker_url: str,
+    payload: dict[str, object],
+    routing_key: str,
+) -> None:
     with Connection(broker_url) as connection:
         with connection.channel() as channel:
             Producer(channel, serializer="json").publish(
@@ -175,7 +213,11 @@ def _publish_job_replay(
     task_name = data.get("task")
     args = data.get("args", [])
     kwargs = data.get("kwargs", {})
-    if not isinstance(task_name, str) or not isinstance(args, list) or not isinstance(kwargs, dict):
+    if (
+        not isinstance(task_name, str)
+        or not isinstance(args, list)
+        or not isinstance(kwargs, dict)
+    ):
         raise RuntimeError("DEAD_LETTER_JOB_PAYLOAD_INVALID")
     celery_app.send_task(
         task_name,
