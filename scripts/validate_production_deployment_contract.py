@@ -4,7 +4,6 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
-import runpy
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -15,13 +14,17 @@ CAPACITY_CONTRACT_PATH = ROOT / "scripts" / "validate_capacity_autoscaling_contr
 MANIFEST_TEMPLATE_PATH = ROOT / "production" / "deployment" / "manifest-template.json"
 
 
-def load_gate() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("lumi_production_deployment_gate", GATE_PATH)
+def load_module(path: Path, name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise SystemExit("unable to import production deployment gate")
+        raise SystemExit(f"unable to import {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_gate() -> ModuleType:
+    return load_module(GATE_PATH, "lumi_production_deployment_gate")
 
 
 def require(condition: bool, message: str) -> None:
@@ -126,7 +129,11 @@ def clean_decision(images: dict[str, str]) -> dict[str, Any]:
 
 def main() -> int:
     require(CAPACITY_CONTRACT_PATH.is_file(), "capacity autoscaling contract missing")
-    runpy.run_path(str(CAPACITY_CONTRACT_PATH), run_name="__main__")
+    capacity_contract = load_module(
+        CAPACITY_CONTRACT_PATH,
+        "lumi_capacity_autoscaling_contract",
+    )
+    capacity_contract.validate_repo()
 
     gate = load_gate()
     acceptance_path = Path(gate.CANONICAL_STAGING_ACCEPTANCE_PATH)
@@ -284,7 +291,7 @@ def main() -> int:
     missing_approval = copy.deepcopy(clean)
     missing_approval["approvals"]["security"] = "PENDING"
     require(
-        gate.evaluate(missing_approval, decision, acceptance_path)["passed"] is False,
+        gate.evaluate(clean, missing_approval, acceptance_path)["passed"] is False,
         "missing security approval must block",
     )
 
