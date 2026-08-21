@@ -15,6 +15,7 @@ from .queue_contracts import JobKind, JobMessage, JobState, queue_for, retry_pol
 from .task_base import RuntimeTask
 from .topology import build_job_queues
 from .video_generation_runtime import HostedVideoGenerationRuntime
+from .video_job_runtime import execute_video_job
 
 broker = os.getenv("LUMI_RABBITMQ_URL") or os.getenv("RABBITMQ_URL", "memory://")
 configured_backend = os.getenv("CELERY_RESULT_BACKEND")
@@ -132,10 +133,10 @@ def video_render(self: object, message: dict[str, object]) -> dict[str, object]:
 async def _execute_video_generation_job(message: JobMessage) -> JobOutcome:
     runtime = HostedVideoGenerationRuntime.from_env()
     store = TaskJobStore(_database_dsn())
-    return await execute_job(
+    return await execute_video_job(
         store=store,
         message=message,
-        handler=runtime.execute,
+        runtime=runtime,
     )
 
 
