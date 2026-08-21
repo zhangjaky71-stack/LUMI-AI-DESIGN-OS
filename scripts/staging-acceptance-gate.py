@@ -48,17 +48,31 @@ MODEL_GATEWAY_REQUIRED_SOURCE_PATHS = {
 }
 WORKER_MEDIA_REQUIRED_SOURCE_PATHS = {
     "services/image-generation",
+    "services/video-generation",
     "services/asset-storage/src/lumi_asset_storage/s3.py",
     "apps/worker-media/Dockerfile",
+    "apps/worker-media/pyproject.toml",
     "apps/worker-media/src/lumi_worker_media/app.py",
-    "apps/worker-media/src/lumi_worker_media/job_runtime.py",
     "apps/worker-media/src/lumi_worker_media/worker_cli.py",
+    "apps/worker-media/src/lumi_worker_media/job_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/event_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/external_wait_runtime.py",
     "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py",
     "apps/worker-media/src/lumi_worker_media/image_generation_codec.py",
     "apps/worker-media/src/lumi_worker_media/image_generation_repository.py",
     "apps/worker-media/src/lumi_worker_media/image_generation_ports.py",
     "apps/worker-media/src/lumi_worker_media/image_generation_artifacts.py",
     "apps/worker-media/src/lumi_worker_media/image_generation_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_codec.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_repository.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_ports.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_artifacts.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_cost_runtime.py",
 }
 
 
@@ -176,7 +190,7 @@ def validate_container_image_set(
     missing_worker_sources = sorted(WORKER_MEDIA_REQUIRED_SOURCE_PATHS - worker_sources)
     if missing_worker_sources:
         blockers.append(
-            "worker-media image provenance is missing required hosted image sources: "
+            "worker-media image provenance is missing required hosted media sources: "
             + ", ".join(missing_worker_sources)
         )
 
