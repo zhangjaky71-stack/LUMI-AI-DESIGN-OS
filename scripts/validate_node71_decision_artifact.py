@@ -45,6 +45,16 @@ WORKER_VIDEO_REQUIRED_SOURCE_PATHS = {
     "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py",
     "apps/worker-media/src/lumi_worker_media/video_cost_runtime.py",
 }
+RUNTIME_IMAGE_BINDING_FIELDS = {
+    "status",
+    "git_sha",
+    "version",
+    "build_run_id",
+    "container_image_set_ref",
+    "attestation_report_sha256",
+    "attestation_source_digest",
+    "runtime_count",
+}
 
 
 class DecisionArtifactError(RuntimeError):
@@ -72,6 +82,22 @@ def _positive_run_id(value: object) -> str:
     if not text.isdecimal() or int(text) <= 0:
         raise DecisionArtifactError("workflow run id must be a positive decimal integer")
     return text
+
+
+def _sha40(value: object, label: str) -> str:
+    if not isinstance(value, str) or len(value) != 40 or any(
+        char not in "0123456789abcdef" for char in value.lower()
+    ):
+        raise DecisionArtifactError(f"{label} must be an exact SHA40")
+    return value.lower()
+
+
+def _sha256_text(value: object, label: str) -> str:
+    if not isinstance(value, str) or len(value) != 64 or any(
+        char not in "0123456789abcdef" for char in value.lower()
+    ):
+        raise DecisionArtifactError(f"{label} must be an exact SHA-256")
+    return value.lower()
 
 
 def _canonical_run_url(url: object, repository: str) -> tuple[str, str]:
@@ -135,6 +161,40 @@ def _require_hosted_video_provenance(decision: dict[str, Any]) -> None:
     )
 
 
+def _require_runtime_image_binding(decision: dict[str, Any]) -> dict[str, Any]:
+    rc = decision.get("release_candidate")
+    if not isinstance(rc, dict):
+        raise DecisionArtifactError("NODE-71 decision release_candidate is missing")
+    rc_sha = _sha40(rc.get("git_sha"), "NODE-71 release_candidate.git_sha")
+    binding = decision.get("runtime_image_binding")
+    if not isinstance(binding, dict):
+        raise DecisionArtifactError("NODE-71 decision runtime_image_binding seal is missing")
+    if set(binding) != RUNTIME_IMAGE_BINDING_FIELDS:
+        raise DecisionArtifactError("NODE-71 runtime_image_binding field set is invalid")
+    if binding.get("status") != "PASS":
+        raise DecisionArtifactError("NODE-71 runtime_image_binding status must be PASS")
+    if _sha40(binding.get("git_sha"), "runtime_image_binding.git_sha") != rc_sha:
+        raise DecisionArtifactError("NODE-71 runtime_image_binding git_sha differs from release candidate")
+    if binding.get("version") != rc.get("version"):
+        raise DecisionArtifactError("NODE-71 runtime_image_binding version differs from release candidate")
+    _positive_run_id(binding.get("build_run_id"))
+    artifact_ref = binding.get("container_image_set_ref")
+    if not isinstance(artifact_ref, str) or not artifact_ref or artifact_ref != rc.get("container_image_set_ref"):
+        raise DecisionArtifactError("NODE-71 runtime_image_binding artifact ref differs from release candidate")
+    _sha256_text(
+        binding.get("attestation_report_sha256"),
+        "runtime_image_binding.attestation_report_sha256",
+    )
+    if _sha40(
+        binding.get("attestation_source_digest"),
+        "runtime_image_binding.attestation_source_digest",
+    ) != rc_sha:
+        raise DecisionArtifactError("NODE-71 runtime-image attestation source differs from release candidate")
+    if binding.get("runtime_count") != 6:
+        raise DecisionArtifactError("NODE-71 runtime_image_binding must cover exactly six runtimes")
+    return binding
+
+
 def build_provenance(
     *,
     decision_path: Path,
@@ -149,6 +209,7 @@ def build_provenance(
         raise DecisionArtifactError(
             "NODE-71 decision provenance can only be captured for passed=true decision"
         )
+    runtime_binding = _require_runtime_image_binding(decision)
     _require_hosted_video_provenance(decision)
     decision_id = decision.get("decision_id")
     release_candidate = decision.get("release_candidate")
@@ -171,6 +232,7 @@ def build_provenance(
         "decision_sha256": _sha256(decision_path),
         "decision_id": decision_id,
         "release_candidate": copy.deepcopy(release_candidate),
+        "runtime_image_binding": copy.deepcopy(runtime_binding),
     }
 
 
@@ -211,6 +273,9 @@ def validate_artifact(
         raise DecisionArtifactError("NODE-71 decision_id differs from provenance")
     if provenance.get("release_candidate") != decision.get("release_candidate"):
         raise DecisionArtifactError("NODE-71 release_candidate differs from provenance")
+    runtime_binding = _require_runtime_image_binding(decision)
+    if provenance.get("runtime_image_binding") != runtime_binding:
+        raise DecisionArtifactError("NODE-71 runtime_image_binding differs from provenance")
     _require_hosted_video_provenance(decision)
     return {
         "status": "PASS",
@@ -219,6 +284,7 @@ def validate_artifact(
         "decision_id": decision.get("decision_id"),
         "decision_sha256": provenance.get("decision_sha256"),
         "release_candidate": decision.get("release_candidate"),
+        "runtime_image_binding": runtime_binding,
     }
 
 
@@ -235,6 +301,11 @@ def self_test() -> dict[str, Any]:
     repository = "example/lumi"
     run_id = "123"
     run_url = "https://github.com/example/lumi/actions/runs/123"
+    git_sha = "a" * 40
+    image_set_ref = (
+        "https://github.com/example/lumi/actions/runs/456"
+        f"#artifact=runtime-image-set-{git_sha}/container-image-set.json"
+    )
     with tempfile.TemporaryDirectory(prefix="lumi-node71-decision-") as temp_dir:
         root = Path(temp_dir)
         decision_path = root / "decision.json"
@@ -244,9 +315,20 @@ def self_test() -> dict[str, Any]:
             "decision_id": "node71-contract-001",
             "passed": True,
             "release_candidate": {
-                "git_sha": "a" * 40,
+                "git_sha": git_sha,
                 "version": "1.0.0-rc.contract",
                 "migration_head": "contract-head",
+                "container_image_set_ref": image_set_ref,
+            },
+            "runtime_image_binding": {
+                "status": "PASS",
+                "git_sha": git_sha,
+                "version": "1.0.0-rc.contract",
+                "build_run_id": "456",
+                "container_image_set_ref": image_set_ref,
+                "attestation_report_sha256": "b" * 64,
+                "attestation_source_digest": git_sha,
+                "runtime_count": 6,
             },
             "container_image_set": {
                 "images": {},
@@ -334,6 +416,63 @@ def self_test() -> dict[str, Any]:
                 expected_repository=repository,
             ),
         )
+        _write_json(provenance_path, provenance)
+
+        missing_runtime_seal = copy.deepcopy(decision)
+        missing_runtime_seal.pop("runtime_image_binding")
+        _write_json(decision_path, missing_runtime_seal)
+        must_block(
+            "runtime_image_binding_write_required",
+            lambda: build_provenance(
+                decision_path=decision_path,
+                repository=repository,
+                workflow_run_id=run_id,
+                workflow_run_url=run_url,
+            ),
+        )
+        forged_seal = copy.deepcopy(provenance)
+        forged_seal["decision_sha256"] = _sha256(decision_path)
+        _write_json(provenance_path, forged_seal)
+        must_block(
+            "runtime_image_binding_download_required",
+            lambda: validate_artifact(
+                decision_path=decision_path,
+                provenance_path=provenance_path,
+                expected_run_id=run_id,
+                expected_repository=repository,
+            ),
+        )
+        _write_json(decision_path, decision)
+        _write_json(provenance_path, provenance)
+
+        source_swap = copy.deepcopy(decision)
+        source_swap["runtime_image_binding"]["attestation_source_digest"] = "c" * 40
+        _write_json(decision_path, source_swap)
+        must_block(
+            "runtime_image_source_write_blocked",
+            lambda: build_provenance(
+                decision_path=decision_path,
+                repository=repository,
+                workflow_run_id=run_id,
+                workflow_run_url=run_url,
+            ),
+        )
+        forged_source = copy.deepcopy(provenance)
+        forged_source["decision_sha256"] = _sha256(decision_path)
+        forged_source["runtime_image_binding"] = copy.deepcopy(
+            source_swap["runtime_image_binding"]
+        )
+        _write_json(provenance_path, forged_source)
+        must_block(
+            "runtime_image_source_download_blocked",
+            lambda: validate_artifact(
+                decision_path=decision_path,
+                provenance_path=provenance_path,
+                expected_run_id=run_id,
+                expected_repository=repository,
+            ),
+        )
+        _write_json(decision_path, decision)
         _write_json(provenance_path, provenance)
 
         missing_worker_video = copy.deepcopy(decision)
