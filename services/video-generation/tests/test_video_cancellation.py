@@ -1,0 +1,198 @@
+from __future__ import annotations
+
+import asyncio
+from decimal import Decimal
+
+from lumi_video_generation.model import (
+    GatewayVideoResult,
+    ProviderJobRecord,
+    ShotRuntime,
+    VideoJob,
+)
+from lumi_video_generation.pipeline import VideoGenerationPipeline
+from lumi_video_generation.repository import InMemoryVideoRepository
+
+ORG = "00000000-0000-0000-0000-000000000001"
+VIDEO_JOB_ID = "video-job-cancellation-contract"
+OPERATION_ID = "00000000-0000-0000-0000-000000000004"
+SHOT_ID = "shot-1"
+PAID_OPERATION_ID = "00000000-0000-0000-0000-000000000005"
+PROVIDER_REQUEST_ID = "provider-video-1"
+
+
+def _result(status: str, *, cost: str = "0.25") -> GatewayVideoResult:
+    return GatewayVideoResult(
+        status=status,  # type: ignore[arg-type]
+        provider="provider-a",
+        model="video-a",
+        provider_request_id=PROVIDER_REQUEST_ID,
+        output_ref="provider-output" if status == "SUCCEEDED" else None,
+        output_mime_type="video/mp4" if status == "SUCCEEDED" else None,
+        cost_usd=Decimal(cost),
+        cost_confidence="EXACT",
+        pricing_snapshot_id="price-v1",
+        routing_reason_codes=("CANCEL_RECONCILIATION",),
+    )
+
+
+def _job() -> VideoJob:
+    return VideoJob(
+        video_job_id=VIDEO_JOB_ID,
+        organization_id=ORG,
+        operation_id=OPERATION_ID,
+        semantic_hash="a" * 64,
+        storyboard_hash="b" * 64,
+        status="WAITING_EXTERNAL",
+        shots=(
+            ShotRuntime(
+                shot_id=SHOT_ID,
+                ordinal=1,
+                paid_operation_id=PAID_OPERATION_ID,
+                status="WAITING_EXTERNAL",
+                attempt_count=1,
+                provider="provider-a",
+                model="video-a",
+                provider_request_id=PROVIDER_REQUEST_ID,
+            ),
+        ),
+        estimated_cost_usd=Decimal("0.25"),
+    )
+
+
+def _provider_record(result: GatewayVideoResult | None = None) -> ProviderJobRecord:
+    return ProviderJobRecord(
+        organization_id=ORG,
+        video_job_id=VIDEO_JOB_ID,
+        shot_id=SHOT_ID,
+        paid_operation_id=PAID_OPERATION_ID,
+        request_hash="c" * 64,
+        result=result or _result("PENDING"),
+    )
+
+
+class _Gateway:
+    def __init__(self, result: GatewayVideoResult) -> None:
+        self.result = result
+        self.cancel_count = 0
+
+    async def cancel(self, *, pending: ProviderJobRecord) -> GatewayVideoResult:
+        assert pending.result.provider_request_id == PROVIDER_REQUEST_ID
+        self.cancel_count += 1
+        return self.result
+
+
+class _Costs:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def record_terminal(self, **kwargs: object) -> bool:
+        del kwargs
+        self.calls += 1
+        return True
+
+
+class _Events:
+    def __init__(self) -> None:
+        self.types: list[str] = []
+
+    async def emit(
+        self,
+        event_type: str,
+        *,
+        organization_id: str,
+        video_job_id: str,
+        payload: object,
+    ) -> None:
+        del organization_id, video_job_id, payload
+        self.types.append(event_type)
+
+
+def _pipeline(
+    cancel_result: GatewayVideoResult,
+    *,
+    include_provider_record: bool = True,
+) -> tuple[VideoGenerationPipeline, InMemoryVideoRepository, _Gateway, _Costs, _Events]:
+    repository = InMemoryVideoRepository()
+    repository.save(_job())
+    if include_provider_record:
+        repository.save_provider_job(_provider_record())
+    gateway = _Gateway(cancel_result)
+    costs = _Costs()
+    events = _Events()
+    unused = object()
+    pipeline = VideoGenerationPipeline(
+        repository=repository,
+        gateway=gateway,  # type: ignore[arg-type]
+        output=unused,  # type: ignore[arg-type]
+        validator=unused,  # type: ignore[arg-type]
+        artifacts=unused,  # type: ignore[arg-type]
+        sandbox=unused,  # type: ignore[arg-type]
+        costs=costs,  # type: ignore[arg-type]
+        events=events,  # type: ignore[arg-type]
+    )
+    return pipeline, repository, gateway, costs, events
+
+
+def _cancel(pipeline: VideoGenerationPipeline) -> VideoJob:
+    return asyncio.run(pipeline.cancel(organization_id=ORG, video_job_id=VIDEO_JOB_ID))
+
+
+def test_pending_cancel_result_preserves_provider_job_and_waiting_state() -> None:
+    pipeline, repository, gateway, costs, events = _pipeline(_result("PENDING"))
+
+    job = _cancel(pipeline)
+
+    assert job.status == "WAITING_EXTERNAL"
+    assert gateway.cancel_count == 1
+    assert costs.calls == 0
+    assert "video_generation.cancelled" not in events.types
+    pending = repository.get_provider_job(ORG, VIDEO_JOB_ID, SHOT_ID, PAID_OPERATION_ID)
+    assert pending is not None
+    assert pending.result.status == "PENDING"
+    assert repository.provider_jobs
+
+
+def test_terminal_non_cancel_result_is_preserved_for_resume_truth() -> None:
+    for status in ("SUCCEEDED", "FAILED"):
+        pipeline, repository, _, costs, events = _pipeline(_result(status))
+
+        job = _cancel(pipeline)
+
+        assert job.status == "WAITING_EXTERNAL"
+        assert costs.calls == 0
+        assert "video_generation.cancelled" not in events.types
+        pending = repository.get_provider_job(ORG, VIDEO_JOB_ID, SHOT_ID, PAID_OPERATION_ID)
+        assert pending is not None
+        assert pending.result.status == status
+        assert repository.provider_jobs
+
+
+def test_cancelled_result_is_only_provider_result_that_marks_job_cancelled() -> None:
+    pipeline, repository, gateway, costs, events = _pipeline(_result("CANCELLED"))
+
+    job = _cancel(pipeline)
+
+    assert job.status == "CANCELLED"
+    assert all(shot.status == "CANCELLED" for shot in job.shots)
+    assert gateway.cancel_count == 1
+    assert costs.calls == 1
+    assert events.types.count("video_generation.cancelled") == 1
+    assert not repository.provider_jobs
+    archived = repository.get_provider_job(ORG, VIDEO_JOB_ID, SHOT_ID, PAID_OPERATION_ID)
+    assert archived is not None
+    assert archived.result.status == "CANCELLED"
+
+
+def test_missing_provider_recovery_never_self_certifies_cancellation() -> None:
+    pipeline, repository, gateway, costs, events = _pipeline(
+        _result("CANCELLED"),
+        include_provider_record=False,
+    )
+
+    job = _cancel(pipeline)
+
+    assert job.status == "WAITING_EXTERNAL"
+    assert gateway.cancel_count == 0
+    assert costs.calls == 0
+    assert "video_generation.cancelled" not in events.types
+    assert repository.get_provider_job(ORG, VIDEO_JOB_ID, SHOT_ID, PAID_OPERATION_ID) is None
