@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SELF_PATH = "scripts/validate_private_model_gateway_deployment_contract.py"
+ARCHITECTURE_CONTRACT = "scripts/validate_model_gateway_contract.py"
 STAGING_APP = "infra/iac/environments/staging/app/main.tf"
 PRODUCTION_APP = "infra/iac/environments/production/app/main.tf"
 COMPUTE = "infra/iac/modules/compute/main.tf"
@@ -180,6 +181,28 @@ def validate_ecs_secret_materialization() -> None:
     )
 
 
+def validate_secret_source_ownership() -> None:
+    architecture = read(ARCHITECTURE_CONTRACT)
+    require_markers(
+        architecture,
+        (
+            "PROVIDER_SECRET_ENV_NAMES = {",
+            '"LUMI_MODEL_PROVIDER_SECRET"',
+            '"LUMI_MEDIA_PROVIDER_SECRET"',
+            "MODEL_GATEWAY_HOST_SECRET_FILES = {",
+            'ROOT / "apps/api/src/lumi_api/model_gateway_service.py"',
+            "if path not in MODEL_GATEWAY_HOST_SECRET_FILES:",
+            "composite Provider secret is outside Hosted Model Gateway",
+        ),
+        "Provider secret source ownership scanner",
+    )
+    require(
+        architecture.find("if path not in MODEL_GATEWAY_HOST_SECRET_FILES:")
+        < architecture.find("composite Provider secret is outside Hosted Model Gateway"),
+        "Provider secret ownership scanner must guard the rejection behind the exact Hosted host allowlist",
+    )
+
+
 def validate_private_clients() -> None:
     agent = read(AGENT_CLIENT)
     factory = read(AGENT_FACTORY)
@@ -309,6 +332,7 @@ def validate_workflow_binding() -> None:
         VIDEO_CLIENT,
         GATEWAY_SERVICE,
         RUNTIME_MANIFEST,
+        ARCHITECTURE_CONTRACT,
         SELF_PATH,
     ):
         require(
@@ -321,6 +345,7 @@ def main() -> int:
     validate_environment(STAGING_APP, environment="staging")
     validate_environment(PRODUCTION_APP, environment="production")
     validate_ecs_secret_materialization()
+    validate_secret_source_ownership()
     validate_private_clients()
     validate_runtime_provenance()
     validate_workflow_binding()
