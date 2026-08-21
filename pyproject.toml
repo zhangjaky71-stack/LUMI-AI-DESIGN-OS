@@ -25,6 +25,7 @@ members = [
   "services/sandbox-runtime",
   "services/asset-storage",
   "services/image-generation",
+  "services/video-generation",
   "services/memory",
   "services/knowledge",
   "services/visual-critic",
@@ -39,6 +40,7 @@ lumi-model-gateway = { workspace = true }
 lumi-tool-gateway = { workspace = true }
 lumi-asset-storage = { workspace = true }
 lumi-image-generation = { workspace = true }
+lumi-video-generation = { workspace = true }
 
 [tool.ruff]
 target-version = "py312"
@@ -55,6 +57,7 @@ src = [
   "services/sandbox-runtime/src",
   "services/asset-storage/src",
   "services/image-generation/src",
+  "services/video-generation/src",
   "services/memory/src",
   "services/knowledge/src",
   "services/visual-critic/src",
@@ -82,6 +85,7 @@ known-first-party = [
   "lumi_sandbox_runtime",
   "lumi_asset_storage",
   "lumi_image_generation",
+  "lumi_video_generation",
   "lumi_memory",
   "lumi_knowledge",
   "lumi_visual_critic",
@@ -104,6 +108,7 @@ extraPaths = [
   "services/sandbox-runtime/src",
   "services/asset-storage/src",
   "services/image-generation/src",
+  "services/video-generation/src",
 ]
 
 [tool.pytest.ini_options]
@@ -118,6 +123,7 @@ pythonpath = [
   "services/sandbox-runtime/src",
   "services/asset-storage/src",
   "services/image-generation/src",
+  "services/video-generation/src",
 ]
 testpaths = [
   "apps/api/tests",
@@ -130,5 +136,6 @@ testpaths = [
   "services/tool-gateway/tests",
   "services/sandbox-runtime/tests",
   "services/asset-storage/tests",
+  "services/video-generation/tests",
   "evals/tests",
 ]
