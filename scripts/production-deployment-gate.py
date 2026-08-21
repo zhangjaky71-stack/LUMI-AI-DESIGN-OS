@@ -11,6 +11,7 @@ from types import ModuleType
 from typing import Any
 
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
 RUN_ID = re.compile(r"^[1-9][0-9]*$")
 DIGEST_IMAGE = re.compile(r"^[^\s@]+@sha256:[0-9a-f]{64}$")
 ACCOUNT_ID = re.compile(r"^[0-9]{12}$")
@@ -188,6 +189,73 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
     return blockers
 
 
+def _validate_runtime_image_seal(
+    decision: dict[str, Any],
+    decision_rc: dict[str, Any],
+    manifest_rc: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    blockers: list[str] = []
+    binding = decision.get("runtime_image_binding")
+    if not isinstance(binding, dict):
+        return {}, ["NODE-71 decision runtime_image_binding seal is missing"]
+    require(binding.get("status") == "PASS", "NODE-71 runtime-image binding status is not PASS", blockers)
+    manifest_sha = manifest_rc.get("git_sha")
+    decision_sha = decision_rc.get("git_sha")
+    binding_sha = binding.get("git_sha")
+    require(
+        isinstance(binding_sha, str)
+        and bool(SHA40.fullmatch(binding_sha.lower()))
+        and binding_sha == decision_sha == manifest_sha,
+        "NODE-71 runtime-image binding git_sha must equal accepted Production RC SHA",
+        blockers,
+    )
+    require(
+        binding.get("version") == decision_rc.get("version") == manifest_rc.get("version"),
+        "NODE-71 runtime-image binding version must equal accepted Production RC version",
+        blockers,
+    )
+    build_run_id = binding.get("build_run_id")
+    require(
+        isinstance(build_run_id, str) and bool(RUN_ID.fullmatch(build_run_id)),
+        "NODE-71 runtime-image binding build_run_id is invalid",
+        blockers,
+    )
+    artifact_ref = binding.get("container_image_set_ref")
+    require(
+        present(artifact_ref) and artifact_ref == decision_rc.get("container_image_set_ref"),
+        "NODE-71 runtime-image binding artifact ref differs from accepted decision RC",
+        blockers,
+    )
+    report_sha = binding.get("attestation_report_sha256")
+    require(
+        isinstance(report_sha, str) and bool(SHA256.fullmatch(report_sha)),
+        "NODE-71 runtime-image binding attestation report SHA-256 is invalid",
+        blockers,
+    )
+    require(
+        binding.get("attestation_source_digest") == manifest_sha,
+        "NODE-71 runtime-image attestation source digest must equal Production RC SHA",
+        blockers,
+    )
+    require(binding.get("runtime_count") == 6, "NODE-71 runtime-image binding must cover exactly six runtimes", blockers)
+    normalized = {
+        "status": binding.get("status"),
+        "git_sha": binding.get("git_sha"),
+        "version": binding.get("version"),
+        "build_run_id": build_run_id,
+        "container_image_set_ref": artifact_ref,
+        "attestation_report_sha256": report_sha,
+        "attestation_source_digest": binding.get("attestation_source_digest"),
+        "runtime_count": binding.get("runtime_count"),
+    }
+    require(
+        binding == normalized,
+        "NODE-71 runtime-image binding seal contains unexpected or missing fields",
+        blockers,
+    )
+    return normalized, blockers
+
+
 def validate_acceptance(manifest: dict[str, Any], decision: dict[str, Any], acceptance_path: Path) -> list[str]:
     blockers: list[str] = []
     rc = manifest.get("release_candidate", {})
@@ -200,6 +268,7 @@ def validate_acceptance(manifest: dict[str, Any], decision: dict[str, Any], acce
     decision_rc = decision.get("release_candidate")
     if not isinstance(decision_rc, dict):
         blockers.append("NODE-71 decision release_candidate missing")
+        decision_rc = {}
     else:
         if decision_rc.get("git_sha") != rc.get("git_sha"):
             blockers.append("NODE-71 accepted RC SHA does not match production deployment RC")
@@ -207,6 +276,9 @@ def validate_acceptance(manifest: dict[str, Any], decision: dict[str, Any], acce
             blockers.append("NODE-71 accepted RC version does not match production deployment RC")
         if decision_rc.get("migration_head") != rc.get("migration_head"):
             blockers.append("NODE-71 accepted migration head does not match production deployment")
+
+    _, seal_blockers = _validate_runtime_image_seal(decision, decision_rc, rc)
+    blockers.extend(seal_blockers)
 
     accepted_image_set = decision.get("container_image_set")
     accepted_images = (
@@ -235,6 +307,7 @@ def evaluate(manifest: dict[str, Any], decision: dict[str, Any], acceptance_path
         "release_candidate": manifest.get("release_candidate", {}),
         "aws": manifest.get("aws", {}),
         "images": manifest.get("images", {}),
+        "runtime_image_binding": decision.get("runtime_image_binding", {}),
         "rollout": manifest.get("rollout", {}),
         "recovery": manifest.get("recovery", {}),
         "staging_acceptance_decision_id": decision.get("decision_id"),
