@@ -38,6 +38,12 @@ PROVIDER_SECRET_ENV_NAMES = {
 MODEL_GATEWAY_HOST_SECRET_FILES = {
     ROOT / "apps/api/src/lumi_api/model_gateway_service.py",
 }
+PRIVATE_DEPLOYMENT_CONTRACT = ROOT / "scripts/validate_private_model_gateway_deployment_contract.py"
+PRIVATE_DEPLOYMENT_WORKFLOWS = (
+    (ROOT / ".github/workflows/model-gateway.yml", 3),
+    (ROOT / ".github/workflows/production-iac-contract.yml", 2),
+    (ROOT / ".github/workflows/final-acceptance-gate.yml", 2),
+)
 
 
 def require(path: str, *needles: str) -> None:
@@ -87,6 +93,23 @@ def scan_callers() -> None:
                             f"{path}: composite Provider secret is outside Hosted Model Gateway: "
                             f"{secret_name}"
                         )
+
+
+def private_deployment_wiring_contract() -> None:
+    if not PRIVATE_DEPLOYMENT_CONTRACT.is_file():
+        raise SystemExit(
+            f"{PRIVATE_DEPLOYMENT_CONTRACT}: private deployment contract is missing"
+        )
+    marker = PRIVATE_DEPLOYMENT_CONTRACT.relative_to(ROOT).as_posix()
+    for workflow, minimum_count in PRIVATE_DEPLOYMENT_WORKFLOWS:
+        if not workflow.is_file():
+            raise SystemExit(f"{workflow}: private deployment workflow is missing")
+        source = workflow.read_text(encoding="utf-8")
+        if source.count(marker) < minimum_count:
+            raise SystemExit(
+                f"{workflow}: private Model Gateway deployment contract must remain "
+                f"executed and syntax-gated (expected >= {minimum_count} references to {marker})"
+            )
 
 
 def hosted_composition_contract() -> None:
@@ -364,6 +387,7 @@ def main() -> int:
         "provider_model_scope_supports_cross_provider_fallback_identity",
         "changed_semantics_on_same_paid_identity_fails_closed",
     )
+    private_deployment_wiring_contract()
     hosted_composition_contract()
     hosted_media_contract()
     scan_callers()
