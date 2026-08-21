@@ -26,6 +26,7 @@ jobs:
           python3 scripts/validate_production_node71_workflow_contract.py
           python3 scripts/validate_production_deployment_contract.py
           python3 scripts/validate_production_iac_contract.py
+          python3 scripts/validate_private_model_gateway_deployment_contract.py
           python3 scripts/validate_outbox_dispatcher_observability.py
           python3 scripts/validate_production_readiness_contract.py
           python3 scripts/validate_capacity_decision_fail_closed.py
@@ -46,6 +47,7 @@ jobs:
             scripts/production-read-only-smoke.py \
             scripts/validate_production_deployment_contract.py \
             scripts/validate_production_iac_contract.py \
+            scripts/validate_private_model_gateway_deployment_contract.py \
             scripts/validate_outbox_dispatcher_observability.py \
             scripts/validate_production_readiness_contract.py \
             scripts/validate_capacity_decision_fail_closed.py \
