@@ -2,152 +2,182 @@
 
 Status: **IMPLEMENTED / VALIDATING / not COMPLETE**
 
-Base: `node-47-image-edit-release`
-
 ## Acceptance matrix
 
-| Requirement | Evidence | Status |
+| Requirement | Canonical evidence | Status |
 |---|---|---|
-| Text-to-video contract | `VideoTaskSpec`, Model Gateway adapter | Implemented |
-| Image-to-video contract | source version/checksum + feature registry | Implemented |
-| Multi-shot storyboard | `storyboard.py`, pipeline | Implemented |
-| External-wait long task | `WAITING_EXTERNAL`, `resume()` | Implemented |
-| No worker sleep loop | pipeline/static validator | Implemented |
-| One poll per resume | pipeline + executable test | Implemented |
-| Provider submit/poll/cancel | NODE-22 adapter + real MockProvider test | Implemented |
-| Provider feature facts | `VideoFeatureRegistry` | Implemented |
-| Exact provider allowlist | NODE-22 routing gate | Implemented |
-| Quality retry provider exclusion | pipeline/router/adapter | Implemented |
-| New paid operation per retry | UUIDv5 retry IDs | Implemented |
-| Terminal provider attempt retention | repository + SQL | Implemented |
-| Crash replay after provider completion | archived terminal result contract | Implemented |
-| Cumulative task budget | pipeline + test | Implemented |
-| Cost on failed/rejected output | terminal cost before postflight | Implemented |
-| Cost idempotency | paid-operation ledger key | Implemented |
-| Optional-shot explicit drop | PARTIAL semantics + test | Implemented |
-| Previous-tail continuity | pipeline + lineage test | Implemented |
-| Source/reference continuity | `ContinuityRef` | Implemented |
-| Identity keyframe validation | NODE-44 delegate contract | Implemented |
-| Brand keyframe validation | NODE-43 delegate contract | Implemented |
-| Validator unavailable fail-closed | validator + test | Implemented |
-| Decode/MIME/resolution/FPS/duration gates | `validation.py` | Implemented |
-| Per-attempt VIDEO Artifact | Artifact adapter | Implemented |
-| Rejected attempts preserved | paid-operation-bound Artifact IDs | Implemented |
-| Final VIDEO Artifact | Artifact adapter | Implemented |
-| COMPOSED_FROM lineage | Artifact adapter + test | Implemented |
-| Poster/tail/keyframe references | clip contract/provenance | Implemented |
-| Thumbnail/subtitle file contracts | final Artifact adapter | Implemented |
-| Typed VideoTimeline | `model.py` | Implemented |
-| FFmpeg argv-only compilation | `media_sandbox.py` | Implemented |
-| Trusted sandbox path resolver | `/sandbox/` path gate | Implemented |
-| Network-disabled sandbox requirement | `SandboxLimits` | Implemented |
-| No domain subprocess fallback | static validator | Implemented |
-| Multi-track audio offset/gain/mix | typed FFmpeg filters | Implemented |
-| Unsupported CROSSFADE fail-closed | compiler + test | Implemented V1 boundary |
-| PostgreSQL persistence | `0007_video_generation.sql` | Implemented |
-| 48-case synthetic matrix | conformance fixture | Implemented synthetic evidence |
-| Dependency-free planning benchmark | benchmark script | Implemented; hosted runner blocked |
-| Dedicated four-stage CI | workflow | Implemented; hosted runner blocked |
-| Live provider visual-quality benchmark | provider benchmark report | **Pending** |
+| Public `video.generate` producer | `VideoGenerationControlPlane` + PostgreSQL producer acceptance | Implemented |
+| Canonical `video.render` dispatch | Task + outbox + dispatcher integration | Implemented |
+| Hosted text-to-video | private Model Gateway + OpenAI async adapter | Implemented |
+| Hosted image-to-video | controlled Asset-to-provider boundary | **Fail-closed / not exposed** |
+| Hosted multi-shot | production continuity/reference boundary | **Fail-closed / not exposed** |
+| External-wait long task | TaskJobStore + `WAITING_EXTERNAL` + wake scheduler | Implemented |
+| No worker sleep loop | NODE-48 pipeline | Implemented |
+| One provider poll per resume | pipeline contract/tests | Implemented |
+| Stable paid operation identity | NODE-20 + shot paid operation IDs | Implemented |
+| Provider job crash recovery | `video_generation_jobs` / `video_provider_jobs` snapshots | Implemented |
+| Runtime recovery rows not physically deleted | Alembic 0023 privilege contract | Implemented |
+| Canonical provider cost truth | tenant-scoped NODE-27 reconciliation | Implemented |
+| Worker cannot mutate `cost_ledger` | source + PostgreSQL privilege acceptance | Implemented |
+| Provider output private staging | provider-output S3 contract | Implemented |
+| Worker binary download avoided | S3 server-side copy + Sandbox exchange | Implemented |
+| Raw provider ffprobe | network-disabled Sandbox | Implemented |
+| Raw decode/MIME/resolution/duration/safety gates | `HostedV1VideoValidator` | Implemented |
+| Raw provider FPS not treated as controllable output FPS | Hosted FPS ownership contract | Implemented |
+| Typed final FFmpeg composition | `FfmpegArgvCompiler` / remote Sandbox | Implemented |
+| Final durable MP4 independent ffprobe | `HostedVerifiedVideoMediaSandbox` | Implemented |
+| Final H.264/container/resolution/FPS/duration enforcement | final probe contract/tests | Implemented |
+| Final VIDEO Artifact | canonical Artifact adapter | Implemented |
+| `COMPOSED_FROM` lineage | PostgreSQL acceptance | Implemented |
+| Public Generation state sync | Worker repository transaction + PostgreSQL acceptance | Implemented |
+| Public result hides provider request ID | sanitized Generation result contract | Implemented |
+| Hosted recovery schema | Alembic `0023_video_generation_runtime` | Implemented |
+| Historical parallel NODE-48 tables absent | Video integration SQL assertion | Implemented contract; execution evidence pending |
+| Worker runtime image provenance includes full Hosted Video chain | runtime manifest + NODE-71 negative drills | Implemented |
+| Video package is canonical uv workspace member | root `pyproject.toml` | Implemented source; lock regeneration pending |
+| Dedicated five-job CI | Video Generation workflow | Implemented; hosted runner execution blocked |
+| Live provider visual-quality benchmark | provider benchmark evidence | **Pending** |
+
+## Hosted production boundary
+
+The provider-neutral domain model can express image-to-video and multi-shot storyboard behavior, but current Hosted V1 intentionally accepts only single-shot `TEXT_TO_VIDEO` with the supported 4/8/12-second provider duration contract.
+
+Hosted V1 fails closed on:
+
+- source/reference images;
+- continuity refs;
+- separate audio tracks;
+- Identity requirements;
+- Brand Rule Sets;
+- seed;
+- negative prompt;
+- camera-motion / subject-action provider controls;
+- optional/multi-shot production execution.
+
+Domain expressiveness is not evidence that the Hosted production path exposes a feature.
 
 ## Safety and correctness assertions
 
-1. Provider-native requests and credentials remain behind NODE-22.
-2. Video provider wait time never occupies a sleeping LangGraph/queue worker.
-3. Provider completion identity is pinned to provider/model/request/paid-operation.
-4. A quality retry is a new paid operation and re-enters budget control.
-5. A retry excludes the provider/model that produced the rejected attempt.
-6. Hard Brand/Identity/technical requirements are not weakened to obtain success.
-7. Optional shots may be dropped only when explicitly marked optional and policy enables it.
-8. Rejected attempt Artifacts are append-preserved and cannot be overwritten by the successful retry.
-9. Provider URLs are not durable file truth; Artifact storage key/checksum is.
-10. FFmpeg execution receives typed argv and sandbox-resolved paths; no user-controlled shell command exists.
-11. Terminal provider-job rows are retained for crash-safe replay.
-12. Cost reconciliation happens before downstream acceptance and is idempotent by paid operation.
-13. Production video providers must return `PENDING` plus a provider job id from submit; synchronous terminal submit is rejected by the NODE-48 Model Gateway adapter so production execution always enters the persisted external-wait protocol before terminal processing.
+1. Provider credentials/native payloads remain behind Model Gateway.
+2. Provider wait time never occupies a sleeping Worker/LangGraph task.
+3. Provider completion identity is pinned to provider/model/request/paid-operation state.
+4. Provider output enters Worker only as a bounded private S3 reference.
+5. Raw media is probed inside a network-disabled Sandbox boundary.
+6. Raw provider FPS is observational metadata for Hosted V1; it is not an uncontrollable post-payment rejection gate.
+7. Final FPS is normalized by typed FFmpeg and independently re-probed from the promoted durable final MP4.
+8. Intermediate timeline-expected width/height/duration metadata cannot self-certify final Artifact readiness.
+9. Every accepted provider attempt keeps canonical NODE-27 cost truth even when quality validation later fails.
+10. Worker Media is read-only with respect to provider cost truth.
+11. Video recovery/provider-attempt rows are retained; runtime DELETE privilege is absent.
+12. Artifact files/edges/provenance remain canonical append-preserved truth.
+13. Public Generation results do not expose provider request IDs.
+14. Production cancellation remains fail-closed until provider cancellation semantics are proven rather than inferred from deletion.
 
-## Synthetic evidence honesty
+## Persistence truth
 
-The 48-case conformance matrix and MockProvider tests validate state, routing, retry, cost, validation, lineage and sandbox contracts. They do **not** demonstrate real provider video fidelity.
+Hosted production does **not** use the historical seven-table `0007_video_generation.sql` model as its runtime source of truth.
 
-## Live provider benchmark blocker
-
-Production routing remains gated until selected provider/model revisions have approved NODE-23 evidence for:
+Canonical Hosted recovery tables are created by Alembic `0023_video_generation_runtime`:
 
 ```text
-text_to_video_prompt_adherence
-image_to_video_first_frame_fidelity
-product_identity_continuity
-character_identity_continuity
-logo_brand_continuity
-multi_shot_temporal_continuity
-camera_control_accuracy
-duration_fps_resolution_accuracy
-provider_latency_and_queue_time
-cost_accuracy
-cancellation_behavior
-fallback_and_quality_retry
+video_generation_jobs
+video_provider_jobs
 ```
 
-No live score is fabricated by NODE-48.
+The rest of the state is reused from canonical subsystems:
+
+```text
+tasks / TaskJobStore
+generations
+idempotency_operations
+cost_ledger
+artifact / branch / version / file / provenance / edge tables
+outbox_events
+```
+
+The Video integration gate explicitly requires exactly the two Hosted recovery tables and requires the historical parallel NODE-48 tables to be absent.
+
+## FPS ownership acceptance
+
+`VideoTaskSpec.fps` remains a material semantic input and final-output requirement.
+
+For current Hosted provider execution, raw provider FPS is not a provider create control. Therefore:
+
+- a raw provider clip at 30 FPS can pass raw validation for a 24 FPS final task when decode/MIME/resolution/duration/safety are valid;
+- typed FFmpeg renders the final output at 24 FPS;
+- the promoted final MP4 must independently ffprobe at 24 FPS or the job fails before final Artifact readiness.
+
+This avoids an unnecessary paid retry for an uncontrollable raw property without weakening final media correctness.
+
+## Runtime image provenance
+
+Worker Media accepted-image provenance must contain both Image and Hosted Video execution sources, including:
+
+- `services/video-generation`;
+- Worker Dockerfile/entrypoint and job runtime;
+- Video gateway/codec/repository/ports/artifacts/runtime;
+- Sandbox bridge;
+- final durable probe runtime;
+- Hosted raw-validation runtime;
+- scoped cost observer;
+- external-wait/event/dispatch runtime.
+
+NODE-71 Staging Acceptance drills removal of every required Worker media source. NODE-71 downloaded decision validation repeats the Hosted Video provenance requirement before Production/Final can consume it.
 
 ## Lockfile discipline
 
-`services/video-generation` introduces no external Python dependency and is not hand-added to the root workspace lock. Root `uv.lock` remains unchanged at SHA `43ca410851428ad00cd7e42ac57c2c12f1fb8666`. Dedicated CI runs it through the frozen root development environment plus explicit `PYTHONPATH`.
+`services/video-generation` is now a **canonical root uv workspace member** and both API and Worker Media declare `lumi-video-generation` as a production dependency.
 
-## Hosted validation evidence — initial release HEAD
+The checked-in `uv.lock` is currently stale because its manifest does not yet contain `lumi-video-generation`. This is an explicit blocker.
 
-Initial release HEAD:
-
-```text
-head_sha: 571af6adbb744a793163db850b9df9eda13665cb
-```
-
-NODE-48 workflow:
+The lock must be regenerated only through the canonical two-phase resolver workflow:
 
 ```text
-workflow: Video Generation
-run_id: 31811017624
-video-generation-contract job_id: 94801382200
-conclusion: failure
-runner_id: 0
-steps: []
-video-generation-integration: skipped
-video-generation-quality: skipped
-video-generation-benchmark: skipped
+uv lock
+-> validate_uv_workspace_lock.py
+-> uv lock --check
+-> uv sync --all-packages --frozen
+-> isolated commit of uv.lock only
 ```
 
-Cross-node NODE-22 regression workflow, triggered because NODE-48 changes request-scoped routing gates:
+The lock must not be hand-edited.
 
-```text
-workflow: Model Gateway
-run_id: 31811017514
-model-gateway job_id: 94801381660
-conclusion: failure
-runner_id: 0
-steps: []
-```
+## Required Hosted CI
 
-Both failed check runs carry the same GitHub annotation:
-
-> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
-
-This is an external GitHub Actions account/billing blocker. The runner never started, so there is no hosted evidence of a Python compile, architecture validator, pytest, Ruff, Pyright, PostgreSQL migration, integration regression, planning benchmark, or Model Gateway regression failure. It is also not PASS.
-
-## Hosted validation requirement
-
-Required NODE-48 jobs:
+The current Video Generation workflow requires:
 
 ```text
 video-generation-contract
 video-generation-quality
+worker-media-video-smoke
 video-generation-integration
 video-generation-benchmark
 ```
 
-The cross-node `Model Gateway` regression job must also execute green because NODE-48 changes request-scoped provider routing filters.
+Quality includes all Hosted Worker `test_video_*.py` tests plus Ruff/Pyright. Integration includes API producer/outbox and Worker PostgreSQL recovery/privilege/public-generation acceptance.
 
-If GitHub returns the known account-level billing/spending-limit zero-step failure, record it as an external validation blocker. It is neither PASS nor an observed code/test failure.
+The cross-node Model Gateway and Artifact regressions execute inside the Video integration job.
+
+## Hosted runner evidence status
+
+Recent sampled PR-head runs continue to fail before executable steps begin (`steps=null`, `logs_url=null`) and downstream jobs are skipped. This is consistent with the existing GitHub-hosted runner/account blocker.
+
+Those red checks are:
+
+- not evidence of a Python/Ruff/Pyright/pytest/PostgreSQL/Docker failure; and
+- not PASS evidence.
+
+No final acceptance claim is made from zero-step runs.
+
+## Synthetic evidence honesty
+
+Synthetic/domain tests validate state-machine, routing, retry, cost, validation, lineage and sandbox contracts. They do **not** demonstrate real provider video fidelity.
+
+## Live provider benchmark blocker
+
+Production routing remains gated until the exact configured provider/model profile has approved live evidence for prompt adherence, technical output, latency/queue time, cost accuracy, provider failure behavior and any production-exposed continuity/control features.
+
+No live score is fabricated by NODE-48.
 
 ## Current decision
 
@@ -155,6 +185,9 @@ If GitHub returns the known account-level billing/spending-limit zero-step failu
 
 Blocking completion evidence:
 
-1. hosted NODE-48 jobs must actually execute green;
-2. cross-node Model Gateway regression must actually execute green;
-3. selected live video provider/model revisions need approved benchmark snapshots.
+1. canonical `uv.lock` must be resolver-regenerated and frozen all-workspace sync must pass;
+2. Hosted NODE-48 jobs must actually execute with step/log evidence and pass;
+3. PostgreSQL and Worker image build/import/liveness evidence must execute successfully;
+4. exact accepted Worker runtime-image provenance/attestations must be captured;
+5. selected production-routed video provider/model revisions need approved live benchmark snapshots;
+6. NODE-71/72 staging and production evidence must close before NODE-73 can pass.
