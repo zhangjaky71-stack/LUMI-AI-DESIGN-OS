@@ -57,9 +57,8 @@ class HostedVideoGenerationRuntime:
     deletion is also deferred until the recovery/event UoW has committed.
 
     Cancellation is provider-reconciled. A Task cancellation request is not proof that
-    an async provider job stopped. Hosted cancellation first attempts the provider
-    cancel boundary and, when cancellation remains unproven, polls that same provider
-    request once before persisting the real terminal-or-waiting state.
+    an async provider job stopped; `reconcile_cancellation()` returns WAITING_EXTERNAL
+    when the private Model Gateway cannot prove cancellation.
     """
 
     def __init__(
@@ -144,8 +143,9 @@ class HostedVideoGenerationRuntime:
         A never-started Task has no NODE-48 recovery row and can be cancelled locally.
         Once a video recovery row exists, provider cancellation must be proven by the
         NODE-48 pipeline. If the provider cancel boundary cannot prove cancellation,
-        the same provider request is polled once so completion/failure truth can win
-        over cancellation intent; only an actually pending job returns ExternalWait.
+        the same provider request is reconciled once so completion/failure truth can
+        win over cancellation intent; cancellation reconciliation never launches a
+        quality retry or replacement paid provider job.
         """
 
         spec = await self._load_spec(message)
@@ -169,10 +169,12 @@ class HostedVideoGenerationRuntime:
         )
         if job.status == "WAITING_EXTERNAL":
             # Cancellation intent is not provider truth. Reconcile the same paid
-            # provider request once; this never submits a second provider job.
+            # provider request once, but never launch a quality retry or replacement
+            # paid provider job after cancellation intent has been recorded.
             job = await pipeline.resume(
                 organization_id=spec.organization_id,
                 video_job_id=existing.video_job_id,
+                allow_quality_retry=False,
             )
         await self._flush_job(
             spec=spec,
