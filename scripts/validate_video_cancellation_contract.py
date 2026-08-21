@@ -13,7 +13,10 @@ TEST = ROOT / "apps/worker-media/tests/test_video_job_runtime.py"
 HOSTED_TEST = ROOT / "apps/worker-media/tests/test_video_cancellation_runtime.py"
 MANIFEST = ROOT / "production/runtime-images/manifest-v1.json"
 DOC = ROOT / "docs/runtime/VIDEO-GENERATION-V1.md"
+VIDEO_WORKFLOW = ROOT / ".github/workflows/video-generation.yml"
+FINAL_WORKFLOW = ROOT / ".github/workflows/final-acceptance-gate.yml"
 VIDEO_JOB_RUNTIME_PATH = "apps/worker-media/src/lumi_worker_media/video_job_runtime.py"
+SELF_PATH = "scripts/validate_video_cancellation_contract.py"
 
 
 class VideoCancellationContractError(RuntimeError):
@@ -43,6 +46,8 @@ def validate_repo() -> None:
     tests = read(TEST)
     hosted_tests = read(HOSTED_TEST)
     doc = read(DOC)
+    video_workflow = read(VIDEO_WORKFLOW)
+    final_workflow = read(FINAL_WORKFLOW)
 
     for source, path in (
         (app, APP),
@@ -214,6 +219,23 @@ def validate_repo() -> None:
         ),
         "canonical Video Runtime cancellation semantics",
     )
+
+    require(
+        f'- "{SELF_PATH}"' in video_workflow,
+        "Video Generation path filter does not react to cancellation contract changes",
+    )
+    for workflow, label in (
+        (video_workflow, "Video Generation workflow"),
+        (final_workflow, "Final Acceptance workflow"),
+    ):
+        require(
+            f"python3 {SELF_PATH}" in workflow,
+            f"{label} does not directly execute provider-reconciled cancellation contract",
+        )
+        require(
+            workflow.count(SELF_PATH) >= 2,
+            f"{label} does not both execute and syntax-gate cancellation contract",
+        )
 
 
 def main() -> int:
