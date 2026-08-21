@@ -14,10 +14,40 @@
         "sha": "ece7cb06caefa5fff74198d8649806c4678c61a1"
       }
     ],
+    "actions/setup-node": [
+      {
+        "version": "v6.5.0",
+        "sha": "249970729cb0ef3589644e2896645e5dc5ba9c38"
+      }
+    ],
     "astral-sh/setup-uv": [
       {
         "version": "v9.0.0",
         "sha": "c771a70e6277c0a99b617c7a806ffedaca235ff9"
+      }
+    ],
+    "github/codeql-action": [
+      {
+        "version": "v4.37.7",
+        "sha": "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd"
+      }
+    ],
+    "actions/dependency-review-action": [
+      {
+        "version": "v4.9.0",
+        "sha": "2031cfc080254a8a887f58cffee85186f0e49e48"
+      }
+    ],
+    "gitleaks/gitleaks-action": [
+      {
+        "version": "v3",
+        "sha": "e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e"
+      }
+    ],
+    "aquasecurity/trivy-action": [
+      {
+        "version": "v0.36.0",
+        "sha": "ed142fd0673e97e23eac54620cfb913e5ce36c25"
       }
     ],
     "docker/login-action": [
@@ -80,6 +110,7 @@
     ".github/workflows/regenerate-uv-lock.yml",
     ".github/workflows/runtime-image-closure-contract.yml",
     ".github/workflows/staging-acceptance-gate.yml",
+    ".github/workflows/security-release-gate.yml",
     ".github/workflows/production-iac-contract.yml",
     ".github/workflows/deploy-production.yml",
     ".github/workflows/production-rollback-rehearsal.yml",
@@ -90,6 +121,7 @@
     ".github/workflows/freeze-staging-database-parity.yml",
     ".github/workflows/production-dr-rehearsal.yml",
     ".github/workflows/freeze-production-evidence.yml",
-    ".github/workflows/freeze-production-recovery-evidence.yml"
+    ".github/workflows/freeze-production-recovery-evidence.yml",
+    ".github/workflows/freeze-security-release-evidence.yml"
   ]
 }
