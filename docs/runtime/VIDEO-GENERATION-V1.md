@@ -134,6 +134,28 @@ For the current OpenAI Hosted adapter:
 - source-image/reference inputs remain fail-closed until an authorized Asset-to-provider input boundary exists;
 - cancellation remains fail-closed because deletion is not treated as proven in-progress cancellation.
 
+### Provider-reconciled cancellation
+
+Cancellation is provider-reconciled. `tasks.cancellation_requested_at` records user intent; it is **not** evidence that an already accepted asynchronous provider job stopped.
+
+`video.render` therefore uses the Video-specific `execute_video_job` boundary rather than the generic request-equals-cancelled executor. When a cancellation request exists and NODE-48 already has a recovery row, Hosted execution performs this bounded sequence:
+
+```text
+attempt provider cancellation
+  -> cancellation proven: persist CANCELLED
+  -> cancellation unproven / still WAITING_EXTERNAL:
+       poll the same provider request exactly once
+         -> still pending: persist WAITING_EXTERNAL + cancellation_pending
+         -> completed/partial: preserve real provider completion
+         -> failed: preserve real provider failure
+```
+
+The cancellation reconciliation path never calls `pipeline.start()` and never submits replacement paid provider work. The cancel attempt and, when required, the single poll are reconciled in one Worker invocation and then flushed once through the canonical recovery/public-Generation/event UoW.
+
+For the current OpenAI Videos adapter, deletion is deliberately **not** treated as cancellation proof. The adapter fails closed instead of issuing a DELETE and declaring success. This means a cancellation request can remain `WAITING_EXTERNAL` until the same provider request reaches a real terminal state.
+
+Terminal provider truth wins races with cancellation intent: `COMPLETED`/`PARTIAL` remains succeeded, `FAILED` remains failed, and only a NODE-48 state actually confirmed as `CANCELLED` permits the Task to become cancelled. A job with no NODE-48 recovery row has no accepted provider identity and may be cancelled locally before provider work exists.
+
 ## 8. Provider output materialization and crash-safe cleanup
 
 Provider output is never accepted through a public URL as durable truth.
@@ -266,10 +288,11 @@ Final media work is wrapped by `TimedMediaSandbox` and emitted under the real PO
 
 The dedicated Video Generation workflow requires:
 
-- Hosted source contracts, including buffered event UoW and deferred provider-output cleanup;
+- Hosted source contracts, including buffered event UoW, deferred provider-output cleanup, and provider-reconciled cancellation;
 - frozen all-workspace dependency install;
 - NODE-48 domain tests;
 - Hosted Worker boundary tests;
+- cancellation regressions covering unproven cancellation, confirmed cancellation, terminal-race success and invalid reconciliation state;
 - deterministic provider-output cleanup regressions;
 - PostgreSQL transaction rollback proof for recovery + event UoW;
 - PostgreSQL deterministic Artifact replay proof;
