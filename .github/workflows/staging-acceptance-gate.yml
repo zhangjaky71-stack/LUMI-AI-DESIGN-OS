@@ -46,6 +46,8 @@ jobs:
           python-version: "3.12"
       - name: Validate staging acceptance contract
         run: python3 scripts/validate_staging_acceptance_contract.py
+      - name: Require private Model Gateway deployment boundary
+        run: python3 scripts/validate_private_model_gateway_deployment_contract.py
       - name: Drill immutable staging evidence artifact binding
         run: python3 scripts/validate_staging_evidence_artifacts.py --self-test
       - name: Require one canonical API provenance source union
@@ -76,6 +78,7 @@ jobs:
             scripts/staging-acceptance-gate.py \
             scripts/staging-preflight.py \
             scripts/validate_staging_acceptance_contract.py \
+            scripts/validate_private_model_gateway_deployment_contract.py \
             scripts/validate_staging_evidence_artifacts.py \
             scripts/validate_api_provenance_source_manifest.py \
             scripts/validate_staging_runtime_image_binding.py \
