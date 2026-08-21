@@ -27,6 +27,7 @@ WORKER_VIDEO_REQUIRED_SOURCE_PATHS = {
     "apps/worker-media/src/lumi_worker_media/video_generation_artifacts.py",
     "apps/worker-media/src/lumi_worker_media/video_generation_runtime.py",
     "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_validation_runtime.py",
     "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py",
     "apps/worker-media/src/lumi_worker_media/video_cost_runtime.py",
 }
@@ -280,7 +281,7 @@ def self_test() -> dict[str, Any]:
 
         missing_video = copy.deepcopy(decision)
         missing_video["container_image_set"]["provenance"]["worker-media"]["source_paths"].remove(
-            "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py"
+            "apps/worker-media/src/lumi_worker_media/video_validation_runtime.py"
         )
         _write_json(decision_path, missing_video)
         must_block(
