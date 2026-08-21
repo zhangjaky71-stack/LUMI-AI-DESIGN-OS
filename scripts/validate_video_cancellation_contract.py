@@ -99,16 +99,41 @@ def validate_repo() -> None:
             "Once a video recovery row exists, provider cancellation must be proven",
             '"cancelled_before_provider_recovery": True',
             "job = await pipeline.cancel(",
-            "await self._flush_job(",
             'if job.status == "WAITING_EXTERNAL":',
+            "job = await pipeline.resume(",
+            "this never submits a second provider job",
+            "await self._flush_job(",
             "return self._external_wait(job)",
         ),
         "Hosted video cancellation reconciliation",
     )
+    cancellation_start = hosted.find("    async def reconcile_cancellation(")
+    build_start = hosted.find("    def _build_pipeline(", cancellation_start)
     require(
-        hosted.find("job = await pipeline.cancel(")
-        < hosted.find("await self._flush_job(", hosted.find("job = await pipeline.cancel(")),
-        "provider cancellation result must be flushed before Task resolution",
+        cancellation_start >= 0 and build_start > cancellation_start,
+        "Hosted cancellation function boundary missing",
+    )
+    cancellation_block = hosted[cancellation_start:build_start]
+    cancel_at = cancellation_block.find("job = await pipeline.cancel(")
+    waiting_at = cancellation_block.find('if job.status == "WAITING_EXTERNAL":', cancel_at)
+    resume_at = cancellation_block.find("job = await pipeline.resume(", waiting_at)
+    flush_at = cancellation_block.find("await self._flush_job(", resume_at)
+    require(
+        0 <= cancel_at < waiting_at < resume_at < flush_at,
+        "Hosted cancellation must attempt cancel, reconcile the same pending provider request once, then flush",
+    )
+    require(
+        cancellation_block.count("await pipeline.resume(") == 1,
+        "Hosted cancellation must poll at most once per Worker invocation",
+    )
+    require(
+        "pipeline.start(" not in cancellation_block
+        and "pipeline.submit(" not in cancellation_block,
+        "Hosted cancellation must never submit replacement paid provider work",
+    )
+    require(
+        cancellation_block.count("await self._flush_job(") == 1,
+        "Hosted cancellation must persist one unified cancel/poll result",
     )
 
     require_markers(
@@ -120,6 +145,18 @@ def validate_repo() -> None:
             "delivery_state=DeliveryState.NOT_ACCEPTED",
         ),
         "OpenAI video cancellation fail-closed boundary",
+    )
+    provider_cancel_start = provider.find("    async def cancel(self, provider_request_id: str)")
+    stream_start = provider.find("    def stream(", provider_cancel_start)
+    require(
+        provider_cancel_start >= 0 and stream_start > provider_cancel_start,
+        "OpenAI video cancel boundary missing",
+    )
+    provider_cancel_block = provider[provider_cancel_start:stream_start]
+    require(
+        'method="DELETE"' not in provider_cancel_block
+        and "delete_object" not in provider_cancel_block,
+        "OpenAI Hosted video must not equate provider deletion with proven cancellation",
     )
 
     require_markers(
