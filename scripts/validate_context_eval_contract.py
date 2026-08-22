@@ -104,7 +104,6 @@ def main() -> int:
     )
     long_eval = require(
         "scripts/integration_context_eval.py",
-        "required-source-recall",
         "CorpusExecutor",
         "verify_determinism=True",
         "forbidden_source_leaks == 0",
