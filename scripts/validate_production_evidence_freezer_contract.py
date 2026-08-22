@@ -52,7 +52,7 @@ def main() -> int:
         'cp /tmp/lumi-production-dr/cleanup.json "$RECOVERY_DIR/evidence/cleanup.json"',
         "production-recovery-decision.py",
         "prefix=\"${RECOVERY_TARGET}/\"",
-        "git push origin \"HEAD:${GITHUB_REF_NAME}\"",
+        'git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:release-closure-p0"',
     ):
         require(token in recovery, f"recovery freezer missing {token!r}")
 
