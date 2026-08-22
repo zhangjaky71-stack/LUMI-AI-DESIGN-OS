@@ -179,7 +179,9 @@ def main() -> int:
         "class OpenAIResponsesToolAdapter(OpenAIResponsesAdapter)",
         '"function_call_output"',
         '"function_call"',
-        'ModelOutput(kind="tool_call"',
+        "ModelOutput(",
+        'kind="tool_call"',
+        'value={"id": call_id, "name": name, "args": arguments}',
         "delivery_state=DeliveryState.ACCEPTED",
     )
     require(
