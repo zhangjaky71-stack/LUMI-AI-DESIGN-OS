@@ -31,35 +31,50 @@ jobs:
 
           root = Path('.')
 
+          # Keep separate protocol-shaped publishers: JobPublisher names its argument
+          # `dispatch`, while DomainPublisher names it `record`.
           path = root / 'apps/worker-media/tests/test_job_dispatch_observability.py'
           text = path.read_text()
+          old = '''class _Publisher:\n    def publish(self, dispatch: object) -> None:\n        del dispatch\n\n\n'''
+          new = '''class _Publisher:\n    def publish(self, dispatch: object) -> None:\n        del dispatch\n\n\nclass _DomainPublisher:\n    def publish(self, record: OutboxRecord) -> None:\n        del record\n\n\n'''
+          assert text.count(old) == 1, 'publisher fake declaration drifted'
+          text = text.replace(old, new, 1)
           old = '        OutboxDispatcher("postgresql://test", _Publisher()).health_snapshot()\n'
-          new = '        OutboxDispatcher(  # pyright: ignore[reportArgumentType]\n            "postgresql://test", _Publisher()\n        ).health_snapshot()\n'
+          new = '        OutboxDispatcher("postgresql://test", _DomainPublisher()).health_snapshot()\n'
           assert text.count(old) == 1, 'domain publisher fake injection drifted'
           text = text.replace(old, new, 1)
           old = '''    class FailingPublisher:\n        def publish(self, outbox_record: OutboxRecord) -> None:\n            assert outbox_record.event_id == record.event_id\n            raise RuntimeError("broker unavailable")\n'''
-          new = '''    class FailingPublisher:\n        def publish(self, record: OutboxRecord) -> None:\n            assert record.event_id == record.event_id\n            raise RuntimeError("broker unavailable")\n'''
-          # Avoid shadowing the enclosing `record`: use an explicit expected id instead.
-          if text.count(old) != 1:
-              raise AssertionError('failing publisher fake drifted')
-          expected = '''    expected_event_id = record.event_id\n\n    class FailingPublisher:\n        def publish(self, record: OutboxRecord) -> None:\n            assert record.event_id == expected_event_id\n            raise RuntimeError("broker unavailable")\n'''
-          text = text.replace(old, expected, 1)
-          path.write_text(text)
+          new = '''    expected_event_id = record.event_id\n\n    class FailingPublisher:\n        def publish(self, record: OutboxRecord) -> None:\n            assert record.event_id == expected_event_id\n            raise RuntimeError("broker unavailable")\n'''
+          assert text.count(old) == 1, 'failing publisher fake drifted'
+          path.write_text(text.replace(old, new, 1))
 
+          # The conflict-guard tests intentionally pass a minimal asyncpg connection
+          # fake to private helpers typed against asyncpg.Connection. Make the test
+          # boundary explicit without weakening production signatures.
           path = root / 'apps/worker-media/tests/test_video_artifact_conflict_guards.py'
           text = path.read_text()
-          old = '# type: ignore[arg-type]'
-          assert text.count(old) == 4, 'artifact conflict ignore count drifted'
-          text = text.replace(old, '# pyright: ignore[reportArgumentType]')
+          old = 'import asyncio\nfrom uuid import uuid4\n\nimport pytest\n'
+          new = 'import asyncio\nfrom typing import cast\nfrom uuid import uuid4\n\nimport asyncpg\nimport pytest\n'
+          assert text.count(old) == 1, 'artifact imports drifted'
+          text = text.replace(old, new, 1)
+          for function in ('_ensure_branch', '_ensure_file', '_ensure_provenance', '_ensure_edge'):
+              old = f'            await {function}(  # type: ignore[arg-type]\n                connection,\n'
+              new = f'            await {function}(\n                cast(asyncpg.Connection, connection),\n'
+              assert text.count(old) == 1, f'{function} fake connection call drifted'
+              text = text.replace(old, new, 1)
           path.write_text(text)
 
+          # This subclass is deliberately a behavioral fake for cancellation
+          # reconciliation; the runtime method body under test never consumes the
+          # concrete pipeline/event/output-store types returned by this override.
           path = root / 'apps/worker-media/tests/test_video_cancellation_runtime.py'
           text = path.read_text()
           old = '    def _build_pipeline(self, spec: VideoTaskSpec, repository):\n'
-          new = '    def _build_pipeline(  # pyright: ignore[reportIncompatibleMethodOverride]\n        self, spec: VideoTaskSpec, repository\n    ):\n'
+          new = '    def _build_pipeline(self, spec: VideoTaskSpec, repository):  # pyright: ignore[reportIncompatibleMethodOverride]\n'
           assert text.count(old) == 1, 'cancellation fake override drifted'
           path.write_text(text.replace(old, new, 1))
 
+          # Prevent list invariance from narrowing this fake row collection to UUID.
           path = root / 'apps/worker-media/tests/test_video_cost_runtime.py'
           text = path.read_text()
           old = '            rows = [{"organization_id": self.organization_id}]\n'
@@ -67,12 +82,23 @@ jobs:
           assert text.count(old) == 1, 'video cost rows inference drifted'
           path.write_text(text.replace(old, new, 1))
 
+          # execute_video_job intentionally owns the concrete PostgreSQL TaskJobStore
+          # production boundary. These unit tests substitute a behavioral in-memory
+          # fake, so cast only at the explicit test injection points.
           path = root / 'apps/worker-media/tests/test_video_job_runtime.py'
           text = path.read_text()
-          old = '# type: ignore[arg-type]'
-          assert text.count(old) == 4, 'video job fake store ignore count drifted'
-          text = text.replace(old, '# pyright: ignore[reportArgumentType]')
-          path.write_text(text)
+          old = 'import asyncio\nfrom datetime import UTC, datetime, timedelta\n'
+          new = 'import asyncio\nfrom datetime import UTC, datetime, timedelta\nfrom typing import cast\n'
+          assert text.count(old) == 1, 'video job typing import drifted'
+          text = text.replace(old, new, 1)
+          old = 'from lumi_worker_media.job_runtime import ExternalWait\n'
+          new = 'from lumi_worker_media.job_runtime import ExternalWait, TaskJobStore\n'
+          assert text.count(old) == 1, 'video job store import drifted'
+          text = text.replace(old, new, 1)
+          old = '        outcome = await execute_video_job(  # type: ignore[arg-type]\n            store=store,\n'
+          new = '        outcome = await execute_video_job(\n            store=cast(TaskJobStore, store),\n'
+          assert text.count(old) == 4, 'video job fake store call count drifted'
+          path.write_text(text.replace(old, new))
           PY
 
       - name: Enforce exact diff allowlist
