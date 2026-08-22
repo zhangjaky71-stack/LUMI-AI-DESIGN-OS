@@ -8,6 +8,7 @@ Create Date: 2026-08-13
 from collections.abc import Iterable
 
 from alembic import op
+from sqlalchemy import text
 
 revision = "0002_workflow_platform_schema"
 down_revision = "0001_domain_core_schema"
@@ -15,8 +16,29 @@ branch_labels = None
 depends_on = None
 
 
+def _role_exists(role_name: str) -> bool:
+    return bool(
+        op.get_bind()
+        .execute(
+            text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :role_name)"),
+            {"role_name": role_name},
+        )
+        .scalar_one()
+    )
+
+
 def _execute(statements: Iterable[str]) -> None:
+    # Database principals are deployment-owned. Alembic must never create
+    # production roles just to make a clean-schema migration pass. When the
+    # deployment has pre-provisioned the canonical roles, preserve the grants;
+    # otherwise apply the schema only and leave principal provisioning external.
+    app_role_exists = _role_exists("lumi_app")
+    migration_role_exists = _role_exists("lumi_migration")
     for statement in statements:
+        if "lumi_app" in statement and not app_role_exists:
+            continue
+        if "lumi_migration" in statement and not migration_role_exists:
+            continue
         op.execute(statement)
 
 
