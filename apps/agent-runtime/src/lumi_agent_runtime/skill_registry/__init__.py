@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
 from .catalog_adapter import Node31SkillCatalog
 from .catalogs import load_skill_eval_catalog, load_skill_schema_catalog
 from .compatibility import AgentSkillCompatibilityValidator
@@ -11,7 +15,6 @@ from .contracts import (
     SkillReleaseStatus,
 )
 from .deep_bundle import DeepAgentsSkillBundle, inject_skill_files
-from .deep_factory import SkillAwareDeepAgentCompiler
 from .definition_validator import SkillDefinitionValidator
 from .errors import (
     SkillCapabilityError,
@@ -30,6 +33,9 @@ from .loader import load_release_manifest, load_skill, load_skills
 from .promotion import SkillEvalEvidence, SkillEvalGate, SkillPromotionManager
 from .registry import SkillRegistry
 from .selector import SkillSelectionContext, SkillSelector
+
+if TYPE_CHECKING:
+    from .deep_factory import SkillAwareDeepAgentCompiler as SkillAwareDeepAgentCompiler
 
 __all__ = [
     "AgentSkillCompatibilityValidator",
@@ -68,3 +74,11 @@ __all__ = [
     "load_skill_schema_catalog",
     "load_skills",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "SkillAwareDeepAgentCompiler":
+        from .deep_factory import SkillAwareDeepAgentCompiler
+
+        return SkillAwareDeepAgentCompiler
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
