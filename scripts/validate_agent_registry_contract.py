@@ -15,6 +15,21 @@ def require(path: str, *markers: str) -> str:
     return text
 
 
+def _validate_eval_profile_source(source: object) -> None:
+    if not isinstance(source, str) or not source:
+        raise SystemExit(f"eval profile source missing: {source}")
+    source_path, separator, fragment = source.partition("#")
+    path = ROOT / source_path
+    if not path.is_file():
+        raise SystemExit(f"eval profile source missing: {source}")
+    if not separator:
+        return
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    roles = payload.get("roles") if isinstance(payload, dict) else None
+    if not fragment or not isinstance(roles, dict) or fragment not in roles:
+        raise SystemExit(f"eval profile fragment missing: {source}")
+
+
 def main() -> int:
     schema = json.loads((ROOT / "schemas/agent-definition-v1.schema.json").read_text())
     required = set(schema.get("required", []))
@@ -65,9 +80,7 @@ def main() -> int:
         if not source or not (ROOT / source).exists():
             raise SystemExit(f"output schema source missing: {source}")
     for row in bootstrap["eval_profiles"].values():
-        source = row.get("source_ref")
-        if not source or not (ROOT / source).exists():
-            raise SystemExit(f"eval profile source missing: {source}")
+        _validate_eval_profile_source(row.get("source_ref"))
 
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/agent_registry/registry.py",
