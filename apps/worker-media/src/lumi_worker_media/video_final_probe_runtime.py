@@ -19,6 +19,7 @@ from .video_generation_ports import (
     _head_sha256,
     _sandbox_request,
 )
+import contextlib
 
 _MAX_FINAL_VIDEO_BYTES = 8 * 1024 * 1024 * 1024
 _ALLOWED_MP4_CONTAINERS = frozenset({"mp4", "mov,mp4,m4a,3gp,3g2,mj2"})
@@ -147,13 +148,11 @@ class HostedVerifiedVideoMediaSandbox:
                 raise RuntimeError("VIDEO_FINAL_FFPROBE_OUTPUT_INVALID")
             return _decode_ffprobe(stdout)
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 await adapter.object_store.delete_candidate(
                     bucket=adapter.exchange_bucket,
                     object_key=exchange_key,
                 )
-            except Exception:
-                pass
 
 
 def _verified_final_render(

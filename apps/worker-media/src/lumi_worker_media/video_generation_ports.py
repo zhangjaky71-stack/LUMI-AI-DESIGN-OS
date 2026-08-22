@@ -28,6 +28,7 @@ from lumi_video_generation.model import (
 )
 
 from .video_sandbox_runtime import SandboxExchangeMediaRuntime
+import contextlib
 
 _MAX_PROVIDER_VIDEO_BYTES = 4 * 1024 * 1024 * 1024
 _EXECUTE_PATH = "/internal/v1/sandbox/execute"
@@ -161,13 +162,11 @@ class HostedVideoOutputAdapter:
             )
             return clip, probe
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 await self.object_store.delete_candidate(
                     bucket=self.bucket,
                     object_key=source_key,
                 )
-            except Exception:
-                pass
 
     async def _probe(
         self,
@@ -236,13 +235,11 @@ class HostedVideoOutputAdapter:
                 raise ValueError("VIDEO_PROVIDER_FFPROBE_OUTPUT_INVALID")
             return _decode_ffprobe(stdout)
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 await self.object_store.delete_candidate(
                     bucket=self.exchange_bucket,
                     object_key=exchange_key,
                 )
-            except Exception:
-                pass
 
 
 class HostedVideoMediaSandbox:

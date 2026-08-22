@@ -178,7 +178,7 @@ def asset_validate(self: object, validation_run_id: str) -> str:
             raise
         retry = self.retry
         countdown = policy.delay_seconds(attempt=retries + 1, jitter_seed=retries)
-        raise retry(exc=exc, countdown=countdown)
+        raise retry(exc=exc, countdown=countdown) from exc
 
 
 def _database_dsn() -> str:
