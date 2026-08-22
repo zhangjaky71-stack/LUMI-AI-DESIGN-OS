@@ -101,7 +101,11 @@ def _validate_exchange_path(value: str, *, prefix: str) -> None:
 
 
 def _validate_exchange_file_limit(value: int) -> None:
-    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= _MAX_EXCHANGE_FILE_BYTES:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 1 <= value <= _MAX_EXCHANGE_FILE_BYTES
+    ):
         raise ValueError("SANDBOX_EXCHANGE_FILE_LIMIT_INVALID")
 
 
