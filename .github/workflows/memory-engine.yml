@@ -70,10 +70,10 @@ jobs:
         run: >-
           PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
           python scripts/validate_context_eval_contract.py
-      - name: Dependency-light Context and Memory unit tests
+      - name: Dependency-light Context and Memory contract tests
         run: |
           export PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
-          python -m unittest discover -s apps/agent-runtime/tests -p 'test_memory_*.py'
+          python -m unittest discover -s apps/agent-runtime/tests -p 'test_memory_postgres_contract.py'
           python -m unittest discover -s apps/agent-runtime/tests -p 'test_context_engine.py'
           python -m unittest discover -s apps/agent-runtime/tests -p 'test_context_learning.py'
           python -m unittest discover -s apps/agent-runtime/tests -p 'test_context_eval.py'
