@@ -11,11 +11,22 @@ lumi_migration/Alembic.
 """
 
 from alembic import op
+from sqlalchemy import text
 
 revision = "0022_langgraph_postgres_runtime"
 down_revision = "0021_tool_approval_scope"
 branch_labels = None
 depends_on = None
+
+
+def _lumi_app_exists() -> bool:
+    return bool(
+        op.get_bind()
+        .execute(
+            text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')")
+        )
+        .scalar_one()
+    )
 
 
 def upgrade() -> None:
@@ -106,29 +117,31 @@ def upgrade() -> None:
     )
     op.execute("INSERT INTO store_migrations (v) SELECT generate_series(0, 3)")
 
-    op.execute(
-        """
-        GRANT SELECT, INSERT, UPDATE, DELETE ON
-            checkpoints, checkpoint_blobs, checkpoint_writes, store
-        TO lumi_app
-        """
-    )
-    op.execute(
-        """
-        GRANT SELECT ON checkpoint_migrations, store_migrations
-        TO lumi_app
-        """
-    )
+    if _lumi_app_exists():
+        op.execute(
+            """
+            GRANT SELECT, INSERT, UPDATE, DELETE ON
+                checkpoints, checkpoint_blobs, checkpoint_writes, store
+            TO lumi_app
+            """
+        )
+        op.execute(
+            """
+            GRANT SELECT ON checkpoint_migrations, store_migrations
+            TO lumi_app
+            """
+        )
 
 
 def downgrade() -> None:
-    op.execute("REVOKE ALL ON store_migrations, checkpoint_migrations FROM lumi_app")
-    op.execute(
-        """
-        REVOKE ALL ON store, checkpoint_writes, checkpoint_blobs, checkpoints
-        FROM lumi_app
-        """
-    )
+    if _lumi_app_exists():
+        op.execute("REVOKE ALL ON store_migrations, checkpoint_migrations FROM lumi_app")
+        op.execute(
+            """
+            REVOKE ALL ON store, checkpoint_writes, checkpoint_blobs, checkpoints
+            FROM lumi_app
+            """
+        )
     op.execute("DROP TABLE IF EXISTS store")
     op.execute("DROP TABLE IF EXISTS store_migrations")
     op.execute("DROP TABLE IF EXISTS checkpoint_writes")

@@ -6,11 +6,22 @@ Create Date: 2026-08-13
 """
 
 from alembic import op
+from sqlalchemy import text
 
 revision = "0014_agent_registry_provenance"
 down_revision = "0013_langgraph_control_plane_limits"
 branch_labels = None
 depends_on = None
+
+
+def _lumi_app_exists() -> bool:
+    return bool(
+        op.get_bind()
+        .execute(
+            text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')")
+        )
+        .scalar_one()
+    )
 
 
 def upgrade() -> None:
@@ -41,8 +52,9 @@ def upgrade() -> None:
     )
     op.execute("CREATE INDEX ix_agent_run_provenance_org_agent ON agent_run_provenance (organization_id, agent_id, exact_version)")
     op.execute("CREATE INDEX ix_agent_run_provenance_project_created ON agent_run_provenance (project_id, created_at)")
-    op.execute("REVOKE UPDATE, DELETE ON agent_run_provenance FROM lumi_app")
-    op.execute("GRANT SELECT, INSERT ON agent_run_provenance TO lumi_app")
+    if _lumi_app_exists():
+        op.execute("REVOKE UPDATE, DELETE ON agent_run_provenance FROM lumi_app")
+        op.execute("GRANT SELECT, INSERT ON agent_run_provenance TO lumi_app")
 
 
 def downgrade() -> None:

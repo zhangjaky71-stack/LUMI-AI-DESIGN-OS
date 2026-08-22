@@ -16,6 +16,16 @@ branch_labels = None
 depends_on = None
 
 
+def _lumi_app_exists() -> bool:
+    return bool(
+        op.get_bind()
+        .execute(
+            sa.text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')")
+        )
+        .scalar_one()
+    )
+
+
 def upgrade() -> None:
     op.create_table(
         "task_graph_instances",
@@ -122,15 +132,17 @@ def upgrade() -> None:
     op.create_index("ix_task_attempts_graph_created", "task_attempts", ["task_graph_id", "created_at"])
     op.create_index("ix_task_attempts_logical_operation", "task_attempts", ["logical_operation_key", "attempt_number"])
 
-    op.execute("REVOKE DELETE ON task_graph_instances FROM lumi_app")
-    op.execute("REVOKE DELETE ON task_attempts FROM lumi_app")
-    op.execute("GRANT SELECT, INSERT, UPDATE ON task_graph_instances TO lumi_app")
-    op.execute("GRANT SELECT, INSERT, UPDATE ON task_attempts TO lumi_app")
+    if _lumi_app_exists():
+        op.execute("REVOKE DELETE ON task_graph_instances FROM lumi_app")
+        op.execute("REVOKE DELETE ON task_attempts FROM lumi_app")
+        op.execute("GRANT SELECT, INSERT, UPDATE ON task_graph_instances TO lumi_app")
+        op.execute("GRANT SELECT, INSERT, UPDATE ON task_attempts TO lumi_app")
 
 
 def downgrade() -> None:
-    op.execute("REVOKE ALL ON task_attempts FROM lumi_app")
-    op.execute("REVOKE ALL ON task_graph_instances FROM lumi_app")
+    if _lumi_app_exists():
+        op.execute("REVOKE ALL ON task_attempts FROM lumi_app")
+        op.execute("REVOKE ALL ON task_graph_instances FROM lumi_app")
     op.drop_index("ix_task_attempts_logical_operation", table_name="task_attempts")
     op.drop_index("ix_task_attempts_graph_created", table_name="task_attempts")
     op.drop_table("task_attempts")

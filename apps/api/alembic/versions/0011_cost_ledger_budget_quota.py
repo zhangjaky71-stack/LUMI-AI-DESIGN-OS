@@ -6,11 +6,22 @@ Create Date: 2026-08-13
 """
 
 from alembic import op
+from sqlalchemy import text
 
 revision = "0011_cost_ledger_budget_quota"
 down_revision = "0010_capability_registry"
 branch_labels = None
 depends_on = None
+
+
+def _lumi_app_exists() -> bool:
+    return bool(
+        op.get_bind()
+        .execute(
+            text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')")
+        )
+        .scalar_one()
+    )
 
 
 def upgrade() -> None:
@@ -248,16 +259,17 @@ def upgrade() -> None:
     # 0002 established default DML privileges for future lumi_migration tables. NODE-27
     # explicitly narrows every new financial/control-plane table rather than relying on
     # GRANT statements to remove privileges that default privileges already supplied.
-    op.execute("REVOKE UPDATE, DELETE ON cost_ledger FROM lumi_app")
-    op.execute("REVOKE UPDATE, DELETE ON usage_ledger FROM lumi_app")
-    op.execute("REVOKE DELETE ON cost_reservations FROM lumi_app")
-    op.execute("REVOKE INSERT, UPDATE, DELETE ON cost_budget_limits FROM lumi_app")
-    op.execute("REVOKE INSERT, UPDATE, DELETE ON quota_limits FROM lumi_app")
-    op.execute("REVOKE DELETE ON quota_leases FROM lumi_app")
-    op.execute("GRANT SELECT, INSERT ON usage_ledger TO lumi_app")
-    op.execute("GRANT SELECT, INSERT, UPDATE ON cost_reservations TO lumi_app")
-    op.execute("GRANT SELECT ON cost_budget_limits, quota_limits TO lumi_app")
-    op.execute("GRANT SELECT, INSERT, UPDATE ON quota_leases TO lumi_app")
+    if _lumi_app_exists():
+        op.execute("REVOKE UPDATE, DELETE ON cost_ledger FROM lumi_app")
+        op.execute("REVOKE UPDATE, DELETE ON usage_ledger FROM lumi_app")
+        op.execute("REVOKE DELETE ON cost_reservations FROM lumi_app")
+        op.execute("REVOKE INSERT, UPDATE, DELETE ON cost_budget_limits FROM lumi_app")
+        op.execute("REVOKE INSERT, UPDATE, DELETE ON quota_limits FROM lumi_app")
+        op.execute("REVOKE DELETE ON quota_leases FROM lumi_app")
+        op.execute("GRANT SELECT, INSERT ON usage_ledger TO lumi_app")
+        op.execute("GRANT SELECT, INSERT, UPDATE ON cost_reservations TO lumi_app")
+        op.execute("GRANT SELECT ON cost_budget_limits, quota_limits TO lumi_app")
+        op.execute("GRANT SELECT, INSERT, UPDATE ON quota_leases TO lumi_app")
 
 
 def downgrade() -> None:

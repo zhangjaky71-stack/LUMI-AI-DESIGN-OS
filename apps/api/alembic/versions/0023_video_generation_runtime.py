@@ -10,11 +10,22 @@ continue to use the canonical Artifact, NODE-27 and outbox schemas.
 """
 
 from alembic import op
+from sqlalchemy import text
 
 revision = "0023_video_generation_runtime"
 down_revision = "0022_langgraph_postgres_runtime"
 branch_labels = None
 depends_on = None
+
+
+def _lumi_app_exists() -> bool:
+    return bool(
+        op.get_bind()
+        .execute(
+            text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')")
+        )
+        .scalar_one()
+    )
 
 
 def upgrade() -> None:
@@ -88,9 +99,10 @@ def upgrade() -> None:
     # Recovery history is mutable only through state advancement. No production
     # runtime needs physical DELETE; keeping DELETE revoked prevents a Worker from
     # erasing paid-attempt recovery evidence.
-    op.execute(
-        "GRANT SELECT, INSERT, UPDATE ON video_generation_jobs, video_provider_jobs TO lumi_app"
-    )
+    if _lumi_app_exists():
+        op.execute(
+            "GRANT SELECT, INSERT, UPDATE ON video_generation_jobs, video_provider_jobs TO lumi_app"
+        )
 
 
 def downgrade() -> None:

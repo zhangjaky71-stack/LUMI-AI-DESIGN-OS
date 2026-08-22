@@ -6,11 +6,22 @@ Create Date: 2026-08-13
 """
 
 from alembic import op
+from sqlalchemy import text
 
 revision = "0010_capability_registry"
 down_revision = "0009_idempotency_side_effects"
 branch_labels = None
 depends_on = None
+
+
+def _lumi_app_exists() -> bool:
+    return bool(
+        op.get_bind()
+        .execute(
+            text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')")
+        )
+        .scalar_one()
+    )
 
 
 def upgrade() -> None:
@@ -195,16 +206,17 @@ def upgrade() -> None:
         "CREATE INDEX ix_org_model_policy_effective "
         "ON organization_model_policies (organization_id, effective_from, effective_to)"
     )
-    for table in (
-        "model_registry_versions",
-        "model_registry_models",
-        "model_capability_claims",
-        "model_pricing_snapshots",
-        "model_benchmark_scores",
-        "model_routing_profiles",
-        "organization_model_policies",
-    ):
-        op.execute(f"GRANT SELECT ON {table} TO lumi_app")
+    if _lumi_app_exists():
+        for table in (
+            "model_registry_versions",
+            "model_registry_models",
+            "model_capability_claims",
+            "model_pricing_snapshots",
+            "model_benchmark_scores",
+            "model_routing_profiles",
+            "organization_model_policies",
+        ):
+            op.execute(f"GRANT SELECT ON {table} TO lumi_app")
 
 
 def downgrade() -> None:

@@ -7,11 +7,22 @@ Revises: 0017_knowledge_engine
 from __future__ import annotations
 
 from alembic import op
+from sqlalchemy import text
 
 revision = "0018_platform_provider_cost_guard"
 down_revision = "0017_knowledge_engine"
 branch_labels = None
 depends_on = None
+
+
+def _lumi_app_exists() -> bool:
+    return bool(
+        op.get_bind()
+        .execute(
+            text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')")
+        )
+        .scalar_one()
+    )
 
 
 def upgrade() -> None:
@@ -48,8 +59,9 @@ def upgrade() -> None:
     )
 
     # Runtime may read the policy but cannot silently raise/disable the hard stop.
-    op.execute("REVOKE INSERT, UPDATE, DELETE ON platform_provider_cost_guard FROM lumi_app")
-    op.execute("GRANT SELECT ON platform_provider_cost_guard TO lumi_app")
+    if _lumi_app_exists():
+        op.execute("REVOKE INSERT, UPDATE, DELETE ON platform_provider_cost_guard FROM lumi_app")
+        op.execute("GRANT SELECT ON platform_provider_cost_guard TO lumi_app")
 
 
 def downgrade() -> None:

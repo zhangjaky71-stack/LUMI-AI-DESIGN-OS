@@ -8,6 +8,7 @@ Create Date: 2026-08-13
 from collections.abc import Iterable
 
 from alembic import op
+from sqlalchemy import text
 
 revision = "0007_asset_storage"
 down_revision = "0006_project_core"
@@ -18,6 +19,16 @@ depends_on = None
 def _execute(statements: Iterable[str]) -> None:
     for statement in statements:
         op.execute(statement)
+
+
+def _lumi_app_exists() -> bool:
+    return bool(
+        op.get_bind()
+        .execute(
+            text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')")
+        )
+        .scalar_one()
+    )
 
 
 UPGRADE_STATEMENTS = (
@@ -150,7 +161,11 @@ DOWNGRADE_STATEMENTS = (
 
 
 def upgrade() -> None:
-    _execute(UPGRADE_STATEMENTS)
+    app_role_exists = _lumi_app_exists()
+    for statement in UPGRADE_STATEMENTS:
+        if "lumi_app" in statement and not app_role_exists:
+            continue
+        op.execute(statement)
 
 
 def downgrade() -> None:
