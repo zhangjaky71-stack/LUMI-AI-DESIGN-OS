@@ -1,0 +1,188 @@
+name: One-shot NODE-73 IaC Schema Fix
+
+on:
+  push:
+    branches:
+      - release-closure-p0
+
+permissions:
+  contents: read
+
+concurrency:
+  group: node73-one-shot-iac-schema-fix
+  cancel-in-progress: false
+
+env:
+  TARGET_REF: release-closure-p0
+
+jobs:
+  patch:
+    if: github.ref == 'refs/heads/release-closure-p0' && github.event.head_commit.message == 'NODE73_ONE_SHOT_IAC_SCHEMA_FIX'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.14.6
+          terraform_wrapper: false
+
+      - name: Apply exact fail-closed schema patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "zhangjaky71-stack/LUMI-AI-DESIGN-OS"
+          test "$GITHUB_REF" = "refs/heads/release-closure-p0"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              body = target.read_text(encoding="utf-8")
+              count = body.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one old fragment, found {count}")
+              target.write_text(body.replace(old, new, 1), encoding="utf-8")
+
+          compute = "infra/iac/modules/compute/main.tf"
+          old_deploy = '''  dynamic "deployment_configuration" {
+            for_each = each.value.publicly_routed ? [1] : []
+            content {
+              strategy             = "CANARY"
+              bake_time_in_minutes = var.public_canary_bake_time_minutes
+
+              canary_configuration {
+                canary_percent              = var.public_canary_percent
+                canary_bake_time_in_minutes = var.public_canary_bake_time_minutes
+              }
+
+              alarms {
+                alarm_names = [
+                  aws_cloudwatch_metric_alarm.public_canary_5xx[each.key].alarm_name,
+                  aws_cloudwatch_metric_alarm.public_canary_unhealthy[each.key].alarm_name,
+                ]
+                enable   = true
+                rollback = true
+              }
+            }
+          }
+'''
+          new_deploy = '''  dynamic "deployment_configuration" {
+            for_each = each.value.publicly_routed ? [1] : []
+            content {
+              strategy             = "CANARY"
+              bake_time_in_minutes = var.public_canary_bake_time_minutes
+
+              canary_configuration {
+                canary_percent              = var.public_canary_percent
+                canary_bake_time_in_minutes = var.public_canary_bake_time_minutes
+              }
+            }
+          }
+
+          dynamic "alarms" {
+            for_each = each.value.publicly_routed ? [1] : []
+            content {
+              alarm_names = [
+                aws_cloudwatch_metric_alarm.public_canary_5xx[each.key].alarm_name,
+                aws_cloudwatch_metric_alarm.public_canary_unhealthy[each.key].alarm_name,
+              ]
+              enable   = true
+              rollback = true
+            }
+          }
+'''
+          replace_once(compute, old_deploy, new_deploy)
+
+          outputs = Path("infra/iac/modules/compute/outputs.tf")
+          output_body = outputs.read_text(encoding="utf-8")
+          if 'output "https_listener_arn"' in output_body:
+              raise SystemExit("compute https_listener_arn output already exists")
+          anchor = '''output "alb_zone_id" {
+            value = aws_lb.this.zone_id
+          }
+'''
+          if output_body.count(anchor) != 1:
+              raise SystemExit("compute outputs: alb_zone_id anchor drift")
+          output_body = output_body.replace(
+              anchor,
+              anchor + '''
+          output "https_listener_arn" {
+            value = aws_lb_listener.https.arn
+          }
+''',
+              1,
+          )
+          outputs.write_text(output_body, encoding="utf-8")
+
+          replace_once(
+              "infra/iac/modules/platform-app/internal-path-deny.tf",
+              "  listener_arn = aws_lb_listener.https.arn\n",
+              "  listener_arn = module.compute.https_listener_arn\n",
+          )
+
+          validator = "scripts/validate_production_iac_contract.py"
+          old_role = '''    require_hcl_assignment(
+              dispatcher,
+              "LUMI_ROLE",
+              '\"outbox-dispatcher\"',
+              f"{environment} outbox dispatcher must bind its explicit runtime identity",
+          )
+'''
+          new_role = '''    require(
+              re.search(r'\\bLUMI_ROLE\\s*=\\s*"outbox-dispatcher"', dispatcher) is not None,
+              f"{environment} outbox dispatcher must bind its explicit runtime identity",
+          )
+'''
+          replace_once(validator, old_role, new_role)
+          PY
+
+          terraform fmt infra/iac/modules/compute/main.tf infra/iac/modules/compute/outputs.tf infra/iac/modules/platform-app/internal-path-deny.tf
+          terraform fmt -check infra/iac/modules/compute/main.tf infra/iac/modules/compute/outputs.tf infra/iac/modules/platform-app/internal-path-deny.tf
+          python3 -m py_compile scripts/validate_production_iac_contract.py
+          git diff --check
+
+          mapfile -t changed < <(git diff --name-only)
+          expected=(
+            infra/iac/modules/compute/main.tf
+            infra/iac/modules/compute/outputs.tf
+            infra/iac/modules/platform-app/internal-path-deny.tf
+            scripts/validate_production_iac_contract.py
+          )
+          test "${#changed[@]}" -eq "${#expected[@]}"
+          for path in "${expected[@]}"; do
+            printf '%s\n' "${changed[@]}" | grep -Fxq "$path"
+          done
+          test -z "$(git ls-files --others --exclude-standard)"
+
+      - name: Commit exact patch if branch did not move
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GITHUB_TOKEN"
+          basic="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          auth_header="AUTHORIZATION: basic $basic"
+          git -c http.https://github.com/.extraheader="$auth_header" fetch --no-tags origin "+refs/heads/${TARGET_REF}:refs/remotes/origin/${TARGET_REF}"
+          test "$(git rev-parse "origin/${TARGET_REF}")" = "$GITHUB_SHA"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            infra/iac/modules/compute/main.tf \
+            infra/iac/modules/compute/outputs.tf \
+            infra/iac/modules/platform-app/internal-path-deny.tf \
+            scripts/validate_production_iac_contract.py
+          test "$(git diff --cached --name-only | wc -l)" -eq 4
+          git commit -m "fix(iac): bind ECS canary and listener schema"
+          git -c http.https://github.com/.extraheader="$auth_header" push origin "HEAD:${TARGET_REF}"
