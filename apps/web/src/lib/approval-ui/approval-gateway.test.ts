@@ -19,7 +19,7 @@ describe("deterministic approval gateway", () => {
     const result = await gateway.decide("p", "a1", { decision: "APPROVE" });
     expect(result.status).toBe("APPROVED");
     expect(result.subject.subject_version).toBe("artifact-v4");
-    expect(result.decisions[0].decided_subject_version).toBe("artifact-v4");
+    expect(result.decisions[0]?.decided_subject_version).toBe("artifact-v4");
   });
 
   it("requires feedback for request changes", async () => {
