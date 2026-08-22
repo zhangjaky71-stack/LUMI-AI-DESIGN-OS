@@ -166,16 +166,21 @@ def main() -> int:
     ecs_evidence = text("scripts/capture-ecs-deployment-state.sh")
     snapshot_script = text("scripts/create-predeploy-rds-snapshot.sh")
 
-    require("assign_public_ip = false" in compute, "ECS services must not receive public IPs")
-    require("internal           = false" in compute, "public ALB contract missing")
-    require("wait_for_steady_state  = true" in compute, "Terraform must wait for ECS steady state")
-    require("deployment_circuit_breaker" in compute and "rollback = true" in compute, "rolling-service rollback missing")
-    require('strategy             = "CANARY"' in compute, "public ECS canary strategy missing")
-    require("canary_percent" in compute and "canary_bake_time_in_minutes" in compute, "canary percentage/bake configuration missing")
-    require("public_alternate" in compute and "advanced_configuration" in compute, "alternate target group canary routing missing")
+    alb = hcl_block(compute, 'resource "aws_lb" "this" {')
+    ecs_service = hcl_block(compute, 'resource "aws_ecs_service" "service" {')
+    require_hcl_assignment(ecs_service, "assign_public_ip", "false", "ECS services must not receive public IPs")
+    require_hcl_assignment(alb, "internal", "false", "public ALB contract missing")
+    require_hcl_assignment(ecs_service, "wait_for_steady_state", "true", "Terraform must wait for ECS steady state")
+    require("deployment_circuit_breaker" in ecs_service and "rollback = true" in ecs_service, "rolling-service rollback missing")
+    require_hcl_assignment(ecs_service, "strategy", '"CANARY"', "public ECS canary strategy missing")
+    require("canary_percent" in ecs_service and "canary_bake_time_in_minutes" in ecs_service, "canary percentage/bake configuration missing")
+    require("public_alternate" in compute and "advanced_configuration" in ecs_service, "alternate target group canary routing missing")
     require("AmazonECSInfrastructureRolePolicyForLoadBalancers" in compute, "ECS load-balancer infrastructure role missing")
     require("public_canary_5xx" in compute and "public_canary_unhealthy" in compute, "canary rollback alarms missing")
-    require("from_port       = 8000" in network and "to_port         = 8000" in network, "ALB-to-API security group port must be 8000")
+
+    app_sg = hcl_block(network, 'resource "aws_security_group" "app" {')
+    require_hcl_assignment(app_sg, "from_port", "8000", "ALB-to-API security group from_port must be 8000")
+    require_hcl_assignment(app_sg, "to_port", "8000", "ALB-to-API security group to_port must be 8000")
     require_hcl_assignment(
         hcl_block(staging_app, "api = {"),
         "container_port",
@@ -188,14 +193,24 @@ def main() -> int:
         "8000",
         "production API container port must match lumi_api CLI port 8000",
     )
-    require("publicly_accessible = false" in data, "RDS must be private")
-    require("multi_az" in data, "RDS Multi-AZ contract missing")
-    require("transit_encryption_enabled = true" in data, "Redis transit encryption missing")
-    require("at_rest_encryption_enabled = true" in data, "Redis at-rest encryption missing")
-    require('deployment_mode = "CLUSTER_MULTI_AZ"' in data, "RabbitMQ Multi-AZ contract missing")
-    require("block_public_acls       = true" in storage and "restrict_public_buckets = true" in storage, "S3 public-access block incomplete")
-    require('status = "Enabled"' in storage, "S3 versioning contract missing")
+
+    postgres = hcl_block(data, 'resource "aws_db_instance" "postgres" {')
+    redis = hcl_block(data, 'resource "aws_elasticache_replication_group" "redis" {')
+    rabbitmq = hcl_block(data, 'resource "aws_mq_broker" "rabbitmq" {')
+    require_hcl_assignment(postgres, "publicly_accessible", "false", "RDS must be private")
+    require_hcl_assignment(postgres, "multi_az", "var.db_multi_az", "RDS Multi-AZ contract missing")
+    require_hcl_assignment(redis, "transit_encryption_enabled", "true", "Redis transit encryption missing")
+    require_hcl_assignment(redis, "at_rest_encryption_enabled", "true", "Redis at-rest encryption missing")
+    require_hcl_assignment(rabbitmq, "deployment_mode", '"CLUSTER_MULTI_AZ"', "RabbitMQ Multi-AZ contract missing")
+    require_hcl_assignment(rabbitmq, "publicly_accessible", "false", "RabbitMQ must remain private")
+
+    public_access = hcl_block(storage, 'resource "aws_s3_bucket_public_access_block" "this" {')
+    versioning = hcl_block(storage, 'resource "aws_s3_bucket_versioning" "this" {')
+    require_hcl_assignment(public_access, "block_public_acls", "true", "S3 public ACL block missing")
+    require_hcl_assignment(public_access, "restrict_public_buckets", "true", "S3 public bucket restriction missing")
+    require_hcl_assignment(versioning, "status", '"Enabled"', "S3 versioning contract missing")
     require("aws:SecureTransport" in storage, "S3 TLS-only policy missing")
+
     require("aws_secretsmanager_secret_version" not in secrets, "secret values must not be written by Terraform")
     require("MIGRATION_DATABASE_URL" in migration, "migration task must inject migration-only database credential")
     require("aws_ecs_service" not in migration, "migration runner must be one-shot, not an ECS service")
@@ -233,7 +248,6 @@ def main() -> int:
     assert_provider_secret_boundary(staging_app, environment="staging")
     assert_provider_secret_boundary(production_app, environment="production")
 
-    app_sg = hcl_block(network, 'resource "aws_security_group" "app" {')
     internet_sg = hcl_block(
         network,
         'resource "aws_security_group" "app_internet_egress" {',
