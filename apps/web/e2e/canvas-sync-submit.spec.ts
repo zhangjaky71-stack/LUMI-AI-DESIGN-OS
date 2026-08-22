@@ -82,6 +82,7 @@ test.describe("NODE-08 synchronous canvas workload", () => {
           antialias: false,
           preference: "webgl",
         });
+        const renderApp = app as unknown as { render(): void };
         app.canvas.style.position = "fixed";
         app.canvas.style.left = "-10000px";
         document.body.appendChild(app.canvas);
@@ -98,7 +99,7 @@ test.describe("NODE-08 synchronous canvas workload", () => {
         for (let warmup = 0; warmup < 5; warmup += 1) {
           graphic.clear();
           graphic.rect(0, 0, 28, 28).fill(0x666666);
-          app.render();
+          renderApp.render();
         }
 
         const samples: number[] = [];
@@ -119,7 +120,7 @@ test.describe("NODE-08 synchronous canvas workload", () => {
           if (visible > 0) {
             graphic.fill(0x666666);
           }
-          app.render();
+          renderApp.render();
           samples.push(performance.now() - started);
           visibleCounts.push(visible);
         }
