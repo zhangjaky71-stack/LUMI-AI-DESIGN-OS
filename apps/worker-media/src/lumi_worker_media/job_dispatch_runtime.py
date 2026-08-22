@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
@@ -137,7 +138,7 @@ class MediaJobOutboxDispatcher:
                         aggregate_type=str(row["aggregate_type"]),
                         aggregate_id=row["aggregate_id"],
                         schema_version=int(row["schema_version"]),
-                        payload=dict(row["payload_json"]),
+                        payload=_decode_outbox_payload(row["payload_json"]),
                     )
                     await connection.execute(
                         """
@@ -202,6 +203,13 @@ class MediaJobOutboxDispatcher:
             )
         finally:
             await connection.close()
+
+
+def _decode_outbox_payload(value: object) -> dict[str, object]:
+    decoded = json.loads(value) if isinstance(value, str) else value
+    if not isinstance(decoded, dict) or not all(isinstance(key, str) for key in decoded):
+        raise ValueError("MEDIA_JOB_OUTBOX_PAYLOAD_INVALID")
+    return dict(decoded)
 
 
 def _validate_media_dispatch(dispatch: JobDispatch) -> str:
