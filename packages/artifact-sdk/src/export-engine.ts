@@ -106,7 +106,7 @@ export class ExportEngine {
   readonly #store: ExportObjectStore;
   readonly #artifacts: ExportArtifactPort;
   readonly #events: ExportEventPort;
-  readonly #validation?: ExportValidationEvidencePort;
+  readonly #validation: ExportValidationEvidencePort | undefined;
   readonly #now: () => string;
 
   constructor(args: { readonly source: ExportSourcePort; readonly jobs: ExportJobRepository; readonly renderer: ExportRendererPort; readonly store: ExportObjectStore; readonly artifacts: ExportArtifactPort; readonly events: ExportEventPort; readonly validation?: ExportValidationEvidencePort; readonly now?: () => string }) {
