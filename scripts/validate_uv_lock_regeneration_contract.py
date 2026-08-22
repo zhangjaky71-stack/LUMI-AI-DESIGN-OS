@@ -87,13 +87,13 @@ def main() -> int:
         'test "$(git rev-parse "origin/${TARGET_REF}")" = "$EXPECTED_SHA"',
         "git add -- uv.lock",
         'test "$(git diff --cached --name-only)" = "uv.lock"',
-        'git commit -m "chore(release): regenerate canonical uv lock"',
+        'git commit -m "chore(release): refresh canonical dependency lock"',
         'push origin "HEAD:${TARGET_REF}"',
     ):
         require(marker in commit, f"isolated uv-lock write phase missing marker: {marker}")
 
-    require("uv lock" not in commit, "write-capable phase must not run dependency resolver")
-    require("uv sync" not in commit, "write-capable phase must not execute project dependency installation")
+    require("run: uv lock" not in commit, "write-capable phase must not run dependency resolver")
+    require("run: uv sync" not in commit, "write-capable phase must not execute project dependency installation")
     require("python3 scripts/" not in commit, "write-capable phase must not execute release-branch Python scripts")
     require(commit.count("GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}") == 1, "write token must be injected into exactly one fixed mutation step")
 
