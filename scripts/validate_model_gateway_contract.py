@@ -221,7 +221,7 @@ def hosted_media_contract() -> None:
         'LUMI_MEDIA_PROVIDER_SECRET',
         "S3ProviderOutputStore.from_env()",
         "media_provider_secret=media_provider_secret",
-        "provider_output_store=provider_output_store",
+        "provider_output_store=S3ProviderOutputStore.from_env()",
     )
     require(
         "apps/api/src/lumi_api/provider_output_store.py",
