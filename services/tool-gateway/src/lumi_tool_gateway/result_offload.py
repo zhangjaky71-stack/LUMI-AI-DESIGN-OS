@@ -44,7 +44,7 @@ class S3ResultOffloader:
             raise ValueError("TOOL_RESULT_BUCKET_INVALID")
         if not _MIN_MAX_BYTES <= max_bytes <= _MAX_MAX_BYTES:
             raise ValueError("TOOL_RESULT_MAX_BYTES_INVALID")
-        self.store = store
+        self.object_store = store
         self.bucket = bucket
         self.max_bytes = max_bytes
 
@@ -57,6 +57,8 @@ class S3ResultOffloader:
         store = S3ObjectStore(
             endpoint_url=os.getenv("LUMI_S3_ENDPOINT_URL") or None,
             region_name=region,
+            access_key_id=None,
+            secret_access_key=None,
             force_path_style=_env_bool("LUMI_S3_FORCE_PATH_STYLE", default=False),
         )
         return cls(
@@ -100,7 +102,7 @@ class S3ResultOffloader:
             "schema-version": "1",
         }
         try:
-            head = await self.store.put_bytes(
+            head = await self.object_store.put_bytes(
                 bucket=self.bucket,
                 object_key=object_key,
                 data=payload,
