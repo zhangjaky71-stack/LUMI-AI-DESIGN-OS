@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -123,8 +124,10 @@ async def _acceptance() -> None:
     assert row is not None
     assert row["published_at"] is not None
     assert row["publish_attempts"] == 1
-    assert row["payload_json"]["task_name"] == "lumi.jobs.video.render"
-    assert row["payload_json"]["queue"] == "lumi.media.video"
+    raw_payload = row["payload_json"]
+    stored_payload = json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
+    assert stored_payload["task_name"] == "lumi.jobs.video.render"
+    assert stored_payload["queue"] == "lumi.media.video"
 
 
 def test_video_control_plane_outbox_reaches_canonical_dispatcher() -> None:
