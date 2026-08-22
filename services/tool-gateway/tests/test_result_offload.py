@@ -4,6 +4,7 @@ import base64
 import hashlib
 import unittest
 from dataclasses import replace
+from typing import cast
 from uuid import uuid4
 
 from lumi_asset_storage.models import ObjectHead
@@ -88,8 +89,7 @@ class S3ResultOffloaderTests(unittest.IsolatedAsyncioTestCase):
         call = store.calls[0]
         self.assertEqual(call["object_key"], expected_key)
         self.assertEqual(call["content_type"], "application/json")
-        metadata = call["metadata"]
-        self.assertIsInstance(metadata, dict)
+        metadata = cast(dict[str, str], call["metadata"])
         self.assertEqual(metadata["sha256"], digest)
         self.assertEqual(metadata["schema-version"], "1")
         self.assertEqual(len(metadata["tool-sha256"]), 64)
