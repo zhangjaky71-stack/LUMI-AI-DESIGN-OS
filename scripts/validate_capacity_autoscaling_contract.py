@@ -80,21 +80,32 @@ def integer_attr(source: str, name: str) -> int:
     return int(match.group(1))
 
 
+def assignment_present(source: str, name: str, value: str) -> bool:
+    return re.search(
+        rf"(?m)^\s*{re.escape(name)}\s*=\s*{re.escape(value)}\s*$",
+        source,
+    ) is not None
+
+
 def validate_environment_text(source: str, *, environment: str) -> None:
+    disabled = re.findall(r"(?m)^\s*autoscaling_enabled\s*=\s*false\s*$", source)
     require(
-        source.count("autoscaling_enabled = false") == len(EXPECTED_SERVICES),
+        len(disabled) == len(EXPECTED_SERVICES),
         f"{environment} must explicitly disable autoscaling for exactly seven services",
     )
-    require("autoscaling_enabled = true" not in source, f"{environment} enables unmeasured autoscaling")
+    require(
+        re.search(r"(?m)^\s*autoscaling_enabled\s*=\s*true\s*$", source) is None,
+        f"{environment} enables unmeasured autoscaling",
+    )
     for metric in PHANTOM_METRICS:
         require(metric not in source, f"{environment} still declares phantom metric {metric}")
     require("autoscale_metric_name" not in source, f"{environment} still declares autoscale_metric_name")
     require("autoscale_target_value" not in source, f"{environment} still declares autoscale_target_value")
 
     for service in EXPECTED_SERVICES:
-        body = block(source, f"    {service} = {{")
+        body = block(source, f"{service} = {{")
         require(
-            "autoscaling_enabled = false" in body,
+            assignment_present(body, "autoscaling_enabled", "false"),
             f"{environment} {service} must explicitly disable autoscaling",
         )
         desired = integer_attr(body, "desired_count")
@@ -109,11 +120,19 @@ def validate_environment_text(source: str, *, environment: str) -> None:
 def validate_module_contract() -> None:
     variables = read("infra/iac/modules/compute/variables.tf")
     compute = read("infra/iac/modules/compute/main.tf")
+    services_variable = block(variables, 'variable "services" {')
+
+    for name, value in (
+        ("autoscaling_enabled", "optional(bool, false)"),
+        ("autoscale_metric_name", 'optional(string, "")'),
+        ("autoscale_target_value", "optional(number, 0)"),
+    ):
+        require(
+            assignment_present(services_variable, name, value),
+            f"compute variables missing fail-closed assignment {name} = {value}",
+        )
 
     for marker in (
-        'autoscaling_enabled      = optional(bool, false)',
-        'autoscale_metric_name    = optional(string, "")',
-        'autoscale_target_value   = optional(number, 0)',
         "service.autoscaling_enabled == false",
         "service.desired_count == service.min_capacity",
         "service.desired_count == service.max_capacity",
@@ -131,7 +150,7 @@ def validate_module_contract() -> None:
     ):
         require(marker in compute, f"compute module missing autoscaling gate marker {marker!r}")
     require(
-        compute.count("for_each = local.autoscaled_services") == 2,
+        len(re.findall(r"(?m)^\s*for_each\s*=\s*local\.autoscaled_services\s*$", compute)) == 2,
         "both autoscaling target and policy must be gated by local.autoscaled_services",
     )
     require("ignore_changes = [desired_count]" not in compute, "Terraform must own static desired_count")
@@ -205,12 +224,25 @@ def validate_repo() -> None:
 
 def self_test() -> None:
     staging = read("infra/iac/environments/staging/app/main.tf")
+    autoscaling_on = re.sub(
+        r"(?m)^(\s*autoscaling_enabled\s*=\s*)false\s*$",
+        r"\1true",
+        staging,
+        count=1,
+    )
+    capacity_drift = re.sub(
+        r"(?m)^(\s*max_capacity\s*=\s*)2\s*$",
+        r"\g<1>3",
+        staging,
+        count=1,
+    )
     mutations = (
-        staging.replace("autoscaling_enabled = false", "autoscaling_enabled = true", 1),
-        staging.replace("max_capacity        = 2", "max_capacity        = 3", 1),
+        autoscaling_on,
+        capacity_drift,
         staging + '\n# autoscale_metric_name = "OutboxPendingEvents"\n',
     )
     for index, mutated in enumerate(mutations, start=1):
+        require(mutated != staging, f"negative drill {index} fixture did not mutate source")
         try:
             validate_environment_text(mutated, environment=f"self-test-{index}")
         except ContractError:
