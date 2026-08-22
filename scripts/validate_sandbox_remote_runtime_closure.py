@@ -104,9 +104,10 @@ def validate() -> None:
         (
             "subprocess.run(",
             "stdin=subprocess.DEVNULL",
-            '"HOME": str(work)',
-            '"TMPDIR": str(work)',
-            'prefix = "sandbox-exchange/v1/"',
+            '"HOME": str(sandbox_root / "work")',
+            '"TMPDIR": str(sandbox_root / "work")',
+            '_EXCHANGE_KEY_PREFIX = "sandbox-exchange/v1/"',
+            "prefix = _EXCHANGE_KEY_PREFIX",
             "download_file(",
             "upload_file(",
             "EXCHANGE_INPUT_CHECKSUM_MISMATCH",
