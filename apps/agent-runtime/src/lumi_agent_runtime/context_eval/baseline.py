@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
-from .contracts import ContextEvalMetrics, ContextEvalReport
+from .contracts import ContextEvalReport
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +28,33 @@ class RegressionPolicy:
 class RegressionResult:
     passed: bool
     reasons: tuple[str, ...]
+
+
+def load_baseline(path: str | Path) -> ContextEvalBaseline:
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or raw.get("schema") != "lumi.context-eval-baseline.v1":
+        raise ValueError("CONTEXT_EVAL_BASELINE_SCHEMA_INVALID")
+    suite_id = raw.get("suite_id")
+    if not isinstance(suite_id, str) or not suite_id:
+        raise ValueError("CONTEXT_EVAL_BASELINE_SUITE_INVALID")
+
+    metrics: dict[str, float] = {}
+    for key in ("source_recall", "fact_recall", "provenance_coverage", "pass_rate"):
+        value = raw.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"CONTEXT_EVAL_BASELINE_METRIC_INVALID:{key}")
+        normalized = float(value)
+        if not 0.0 <= normalized <= 1.0:
+            raise ValueError(f"CONTEXT_EVAL_BASELINE_METRIC_INVALID:{key}")
+        metrics[key] = normalized
+
+    return ContextEvalBaseline(
+        suite_id=suite_id,
+        source_recall=metrics["source_recall"],
+        fact_recall=metrics["fact_recall"],
+        provenance_coverage=metrics["provenance_coverage"],
+        pass_rate=metrics["pass_rate"],
+    )
 
 
 def compare_to_baseline(
