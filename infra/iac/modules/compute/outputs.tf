@@ -30,6 +30,10 @@ output "alb_zone_id" {
   value = aws_lb.this.zone_id
 }
 
+output "https_listener_arn" {
+  value = aws_lb_listener.https.arn
+}
+
 output "service_discovery_namespace" {
   value = aws_service_discovery_private_dns_namespace.this.name
 }

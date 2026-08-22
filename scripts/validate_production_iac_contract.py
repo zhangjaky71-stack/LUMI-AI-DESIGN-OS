@@ -91,10 +91,8 @@ def assert_provider_secret_boundary(app: str, *, environment: str) -> None:
         "var.worker_media_image",
         f"{environment} outbox dispatcher must reuse the accepted worker-media image",
     )
-    require_hcl_assignment(
-        dispatcher,
-        "LUMI_ROLE",
-        '"outbox-dispatcher"',
+    require(
+        re.search(r'\bLUMI_ROLE\s*=\s*"outbox-dispatcher"', dispatcher) is not None,
         f"{environment} outbox dispatcher must bind its explicit runtime identity",
     )
     require_hcl_assignment(

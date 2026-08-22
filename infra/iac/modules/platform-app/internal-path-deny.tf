@@ -1,7 +1,7 @@
 # Private service-to-service control planes are reachable only through Cloud Map/VPC DNS.
 # The public ALB must reject these paths before the catch-all API forwarding rule.
 resource "aws_lb_listener_rule" "deny_internal_paths" {
-  listener_arn = aws_lb_listener.https.arn
+  listener_arn = module.compute.https_listener_arn
   priority     = 1
 
   action {

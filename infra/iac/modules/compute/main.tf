@@ -426,15 +426,18 @@ resource "aws_ecs_service" "service" {
         canary_percent              = var.public_canary_percent
         canary_bake_time_in_minutes = var.public_canary_bake_time_minutes
       }
+    }
+  }
 
-      alarms {
-        alarm_names = [
-          aws_cloudwatch_metric_alarm.public_canary_5xx[each.key].alarm_name,
-          aws_cloudwatch_metric_alarm.public_canary_unhealthy[each.key].alarm_name,
-        ]
-        enable   = true
-        rollback = true
-      }
+  dynamic "alarms" {
+    for_each = each.value.publicly_routed ? [1] : []
+    content {
+      alarm_names = [
+        aws_cloudwatch_metric_alarm.public_canary_5xx[each.key].alarm_name,
+        aws_cloudwatch_metric_alarm.public_canary_unhealthy[each.key].alarm_name,
+      ]
+      enable   = true
+      rollback = true
     }
   }
 
