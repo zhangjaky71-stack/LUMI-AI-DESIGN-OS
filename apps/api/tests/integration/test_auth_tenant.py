@@ -8,6 +8,8 @@ from typing import Any, TypeVar
 from uuid import UUID
 
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from lumi_auth import hash_token
 from lumi_domain import new_uuid7
 from sqlalchemy import select, text
@@ -39,18 +41,20 @@ def run(coroutine: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coroutine)
 
 
-async def _head_is_auth_role_hardening() -> None:
+async def _database_is_at_current_head() -> None:
+    expected_head = ScriptDirectory.from_config(Config("apps/api/alembic.ini")).get_current_head()
+    assert expected_head is not None
     engine = create_engine()
     try:
         async with engine.connect() as connection:
             head = (await connection.execute(text("SELECT version_num FROM alembic_version"))).scalar_one()
-            assert head == "0005_auth_role_hardening"
+            assert head == expected_head
     finally:
         await engine.dispose()
 
 
-def test_database_is_at_auth_head() -> None:
-    run(_head_is_auth_role_hardening())
+def test_database_is_at_current_head() -> None:
+    run(_database_is_at_current_head())
 
 
 async def _local_registration_login_logout_reset() -> None:

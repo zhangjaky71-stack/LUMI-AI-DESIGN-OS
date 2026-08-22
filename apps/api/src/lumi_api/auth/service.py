@@ -173,6 +173,9 @@ class AuthService:
                     status="active",
                 )
             )
+            # Flush the parent before FK-bound credential/token rows. The full
+            # registration remains atomic inside this SAVEPOINT.
+            await self.session.flush()
             self.session.add(
                 PasswordCredential(
                     id=new_uuid7(),
@@ -191,6 +194,9 @@ class AuthService:
                     settings_json={},
                 )
             )
+            # Persist the organization parent before membership/workspace/audit
+            # children so databases enforce the FK boundary deterministically.
+            await self.session.flush()
             self.session.add(
                 OrganizationMember(
                     id=new_uuid7(),
