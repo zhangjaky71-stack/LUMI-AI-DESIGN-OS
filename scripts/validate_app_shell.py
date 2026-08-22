@@ -58,6 +58,7 @@ telemetry = read("apps/web/src/lib/app-shell/telemetry.ts")
 globals_css = read("apps/web/src/app/globals.css")
 shell_frame = read("apps/web/src/components/app-shell/app-shell-frame.tsx")
 shell_context = read("apps/web/src/components/app-shell/shell-context.tsx")
+browser_telemetry = read("apps/web/src/lib/observability/browser.ts")
 
 if '"use client"' in root_layout or "'use client'" in root_layout:
     errors.append("root layout must remain a Server Component")
@@ -108,7 +109,23 @@ for marker in [
     if marker not in globals_css:
         errors.append(f"UI token/accessibility marker missing: {marker}")
 
+# Browser observability is a deliberately separate, bounded low-level transport
+# boundary. It may fall back from sendBeacon to fetch, but only after strict
+# telemetry sanitization and with a small same-origin keepalive payload.
+for marker in [
+    "sanitizeBrowserTelemetry(input)",
+    'const endpoint = options.endpoint ?? "/api/telemetry/browser";',
+    "MAX_BODY_BYTES = 4096",
+    "navigator.sendBeacon(endpoint",
+    'credentials: "same-origin"',
+    "keepalive: true",
+]:
+    if marker not in browser_telemetry:
+        errors.append(f"browser telemetry transport missing contract marker: {marker}")
+
 raw_fetch_allowed = (WEB / "lib" / "app-shell" / "api-client.ts").resolve()
+browser_telemetry_transport = (WEB / "lib" / "observability" / "browser.ts").resolve()
+raw_fetch_boundaries = {raw_fetch_allowed, browser_telemetry_transport}
 for path in WEB.rglob("*"):
     if path.suffix not in {".ts", ".tsx"} or path.name.endswith(".test.ts"):
         continue
@@ -116,8 +133,8 @@ for path in WEB.rglob("*"):
     if "canvas-engine" in path.parts or "canvas-spike" in path.parts:
         continue
     text = path.read_text(encoding="utf-8")
-    if resolved != raw_fetch_allowed and re.search(r"\bfetch\s*\(", text):
-        errors.append(f"raw fetch outside API client: {path.relative_to(ROOT)}")
+    if resolved not in raw_fetch_boundaries and re.search(r"\bfetch\s*\(", text):
+        errors.append(f"raw fetch outside approved transport boundary: {path.relative_to(ROOT)}")
     if (text.startswith('"use client"') or text.startswith("'use client'")) and "process.env" in text:
         errors.append(f"client component reads process.env: {path.relative_to(ROOT)}")
     if (text.startswith('"use client"') or text.startswith("'use client'")) and (
