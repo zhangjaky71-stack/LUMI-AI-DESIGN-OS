@@ -48,7 +48,7 @@ def _tool_gateway_sources(payload: dict[str, Any]) -> set[str]:
         isinstance(item, str) and item for item in source_paths
     ):
         raise WebSearchProvenanceError(
-            "container_image_set.provenance.tool-gateway.source_paths is invalid"
+            "tool-gateway image provenance source_paths is invalid"
         )
     return set(source_paths)
 
