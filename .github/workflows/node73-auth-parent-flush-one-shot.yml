@@ -1,0 +1,73 @@
+name: NODE-73 Auth Parent Flush One-Shot
+
+on:
+  pull_request:
+    branches:
+      - node-73-final-acceptance-release
+    paths:
+      - .github/workflows/node73-auth-parent-flush-one-shot.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-auth:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'release-closure-p0'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release-closure-p0
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Apply exact Auth repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          service_path = Path('apps/api/src/lumi_api/auth/service.py')
+          service = service_path.read_text()
+
+          user_boundary = '''            )\n            self.session.add(\n                PasswordCredential(\n'''
+          user_replacement = '''            )\n            # Flush the parent before FK-bound credential/token rows. The full\n            # registration remains atomic inside this SAVEPOINT.\n            await self.session.flush()\n            self.session.add(\n                PasswordCredential(\n'''
+          if service.count(user_boundary) != 1:
+              raise SystemExit('unexpected User -> PasswordCredential boundary')
+          service = service.replace(user_boundary, user_replacement, 1)
+
+          org_boundary = '''            )\n            self.session.add(\n                OrganizationMember(\n'''
+          org_replacement = '''            )\n            # Persist the organization parent before membership/workspace/audit\n            # children so databases enforce the FK boundary deterministically.\n            await self.session.flush()\n            self.session.add(\n                OrganizationMember(\n'''
+          if service.count(org_boundary) != 1:
+              raise SystemExit('unexpected Organization -> OrganizationMember boundary')
+          service = service.replace(org_boundary, org_replacement, 1)
+          service_path.write_text(service)
+
+          test_path = Path('apps/api/tests/integration/test_auth_tenant.py')
+          test = test_path.read_text()
+          import_boundary = '''import pytest\nfrom lumi_auth import hash_token\n'''
+          import_replacement = '''import pytest\nfrom alembic.config import Config\nfrom alembic.script import ScriptDirectory\nfrom lumi_auth import hash_token\n'''
+          if test.count(import_boundary) != 1:
+              raise SystemExit('unexpected Auth integration import boundary')
+          test = test.replace(import_boundary, import_replacement, 1)
+
+          head_block = '''async def _head_is_auth_role_hardening() -> None:\n    engine = create_engine()\n    try:\n        async with engine.connect() as connection:\n            head = (await connection.execute(text("SELECT version_num FROM alembic_version"))).scalar_one()\n            assert head == "0005_auth_role_hardening"\n    finally:\n        await engine.dispose()\n\n\ndef test_database_is_at_auth_head() -> None:\n    run(_head_is_auth_role_hardening())\n'''
+          head_replacement = '''async def _database_is_at_current_head() -> None:\n    expected_head = ScriptDirectory.from_config(Config("apps/api/alembic.ini")).get_current_head()\n    assert expected_head is not None\n    engine = create_engine()\n    try:\n        async with engine.connect() as connection:\n            head = (await connection.execute(text("SELECT version_num FROM alembic_version"))).scalar_one()\n            assert head == expected_head\n    finally:\n        await engine.dispose()\n\n\ndef test_database_is_at_current_head() -> None:\n    run(_database_is_at_current_head())\n'''
+          if test.count(head_block) != 1:
+              raise SystemExit('unexpected stale Auth head assertion block')
+          test = test.replace(head_block, head_replacement, 1)
+          test_path.write_text(test)
+          PY
+      - name: Syntax-check patched Python
+        run: |
+          python -m py_compile \
+            apps/api/src/lumi_api/auth/service.py \
+            apps/api/tests/integration/test_auth_tenant.py
+      - name: Commit repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/api/src/lumi_api/auth/service.py apps/api/tests/integration/test_auth_tenant.py
+          git diff --cached --check
+          git commit -m 'fix(auth): flush registration parents before FK children'
+          git push origin HEAD:release-closure-p0
