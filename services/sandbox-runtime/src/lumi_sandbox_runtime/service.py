@@ -5,6 +5,7 @@ import hmac
 import json
 import os
 import time
+from contextlib import suppress
 from dataclasses import asdict, dataclass
 from typing import Any
 from uuid import UUID
@@ -153,10 +154,8 @@ def create_sandbox_runtime_app(runtime: HostedSandboxRuntime) -> FastAPI:
             return _error(500, "SANDBOX_EXECUTION_FAILED", "sandbox execution failed")
         finally:
             if sandbox_id is not None:
-                try:
+                with suppress(Exception):
                     runtime.backend.terminate(sandbox_id)
-                except Exception:
-                    pass
 
     return app
 
@@ -227,7 +226,7 @@ async def _authenticated_body(
     if signature is None or len(signature) != 64:
         return _error(401, "SANDBOX_AUTH_SIGNATURE_INVALID", "sandbox authentication failed")
     message = _auth_message(service, timestamp, request.method, request.url.path, body)
-    expected = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+    expected = hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(signature.lower(), expected):
         return _error(401, "SANDBOX_AUTH_SIGNATURE_INVALID", "sandbox authentication failed")
     return service, body
@@ -235,7 +234,7 @@ async def _authenticated_body(
 
 def _auth_message(service: str, timestamp: int, method: str, path: str, body: bytes) -> bytes:
     body_hash = hashlib.sha256(body).hexdigest()
-    return f"{service}\n{timestamp}\n{method.upper()}\n{path}\n{body_hash}".encode("utf-8")
+    return f"{service}\n{timestamp}\n{method.upper()}\n{path}\n{body_hash}".encode()
 
 
 def _build_production_backend() -> SandboxBackend | None:
