@@ -43,6 +43,15 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _release_migration_lock(connection: Connection) -> None:
+    connection.execute(
+        text("SELECT pg_advisory_unlock(:lock_id)"),
+        {"lock_id": MIGRATION_ADVISORY_LOCK_ID},
+    )
+    if connection.in_transaction():
+        connection.commit()
+
+
 def do_run_migrations(connection: Connection) -> None:
     acquired = connection.execute(
         text("SELECT pg_try_advisory_lock(:lock_id)"),
@@ -60,11 +69,17 @@ def do_run_migrations(connection: Connection) -> None:
         )
         with context.begin_transaction():
             context.run_migrations()
-    finally:
-        connection.execute(
-            text("SELECT pg_advisory_unlock(:lock_id)"),
-            {"lock_id": MIGRATION_ADVISORY_LOCK_ID},
-        )
+    except Exception:
+        if connection.in_transaction():
+            connection.rollback()
+        try:
+            _release_migration_lock(connection)
+        except Exception:
+            if connection.in_transaction():
+                connection.rollback()
+        raise
+    else:
+        _release_migration_lock(connection)
 
 
 async def run_async_migrations() -> None:

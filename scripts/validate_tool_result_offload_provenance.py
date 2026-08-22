@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,11 @@ COMPUTE_MODULE = ROOT / "infra/iac/modules/compute/main.tf"
 
 class ToolResultOffloadProvenanceError(RuntimeError):
     pass
+
+
+def _terraform_assignment_present(block: str, key: str, value: str) -> bool:
+    pattern = rf"(?m)^\s*{re.escape(key)}\s*=\s*{re.escape(value)}\s*$"
+    return re.search(pattern, block) is not None
 
 
 def validate_evidence(payload: dict[str, Any]) -> None:
@@ -120,15 +126,16 @@ def validate_source_chain() -> None:
     for path in APP_FILES:
         source = path.read_text(encoding="utf-8")
         block = _terraform_service_block(source, "tool-gateway")
-        for fragment in (
-            'LUMI_TOOL_RESULT_BUCKET = local.bucket_names["exports"]',
-            "LUMI_S3_REGION          = var.region",
-            's3_bucket_arns         = [local.bucket_arns["exports"]]',
-        ):
-            if fragment not in block:
+        required_assignments = (
+            ("LUMI_TOOL_RESULT_BUCKET", 'local.bucket_names["exports"]'),
+            ("LUMI_S3_REGION", "var.region"),
+            ("s3_bucket_arns", '[local.bucket_arns["exports"]]'),
+        )
+        for key, value in required_assignments:
+            if not _terraform_assignment_present(block, key, value):
                 raise ToolResultOffloadProvenanceError(
                     f"{path.relative_to(ROOT)} missing least-privilege offload wiring: "
-                    f"{fragment}"
+                    f"{key} = {value}"
                 )
         forbidden_buckets = (
             'local.bucket_arns["assets"]',
