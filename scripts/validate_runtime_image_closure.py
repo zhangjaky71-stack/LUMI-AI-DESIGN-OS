@@ -163,7 +163,19 @@ RUNTIMES: tuple[RuntimeContract, ...] = (
             ("services/sandbox-runtime/src/lumi_sandbox_runtime/security.py", "class "),
             (
                 "services/sandbox-runtime/src/lumi_sandbox_runtime/service.py",
-                '_ALLOWED_CALLERS = frozenset({"tool-gateway"})',
+                '_ALLOWED_CALLERS = frozenset({"tool-gateway", "worker-media"})',
+            ),
+            (
+                "services/sandbox-runtime/src/lumi_sandbox_runtime/service.py",
+                'if caller != "worker-media" and (exchange_inputs or exchange_outputs):',
+            ),
+            (
+                "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py",
+                '_CALLER = "worker-media"',
+            ),
+            (
+                "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py",
+                '"X-Lumi-Service": _CALLER',
             ),
             (
                 "services/sandbox-runtime/src/lumi_sandbox_runtime/service.py",
