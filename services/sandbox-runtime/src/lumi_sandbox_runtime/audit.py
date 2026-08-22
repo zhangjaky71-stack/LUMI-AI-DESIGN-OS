@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from contextlib import suppress
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -59,10 +60,8 @@ class JsonlAuditSink:
         rotated = self.path.with_name(self.path.name + ".1")
         rotated.unlink(missing_ok=True)
         os.replace(self.path, rotated)
-        try:
+        with suppress(OSError):
             rotated.chmod(0o600)
-        except OSError:
-            pass
 
 
 def _json_default(value: Any) -> str:
