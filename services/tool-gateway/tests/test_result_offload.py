@@ -7,7 +7,6 @@ from dataclasses import replace
 from uuid import uuid4
 
 from lumi_asset_storage.models import ObjectHead
-
 from lumi_tool_gateway.errors import ToolResultOffloadUnavailableError
 from lumi_tool_gateway.result_offload import S3ResultOffloader
 
@@ -151,14 +150,16 @@ class S3ResultOffloaderTests(unittest.IsolatedAsyncioTestCase):
                 bucket="lumi-exports",
                 max_bytes=1024 * 1024,
             )
-            with self.subTest(head=head):
-                with self.assertRaises(ToolResultOffloadUnavailableError):
-                    await offloader.store(
-                        organization_id=organization_id,
-                        tool_call_id=tool_call_id,
-                        resolved_tool="project.query@1.0.0",
-                        payload=payload,
-                    )
+            with (
+                self.subTest(head=head),
+                self.assertRaises(ToolResultOffloadUnavailableError),
+            ):
+                await offloader.store(
+                    organization_id=organization_id,
+                    tool_call_id=tool_call_id,
+                    resolved_tool="project.query@1.0.0",
+                    payload=payload,
+                )
 
     async def test_storage_exception_is_normalized(self) -> None:
         store = _FakeStore()
