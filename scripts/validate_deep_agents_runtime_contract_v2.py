@@ -53,19 +53,37 @@ def assert_no_ambient_authority() -> None:
 def assert_public_exports_are_bounded() -> None:
     path = ROOT / "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/__init__.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    imported: set[str] = set()
+    public_exports: set[str] | None = None
+    lazy_exports: dict[str, tuple[str, str]] | None = None
     for node in tree.body:
-        if isinstance(node, ast.ImportFrom):
-            imported.update(alias.asname or alias.name for alias in node.names)
+        if (
+            isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets)
+        ):
+            value = ast.literal_eval(node.value)
+            public_exports = set(value)
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "_LAZY_EXPORTS"
+            and node.value is not None
+        ):
+            value = ast.literal_eval(node.value)
+            lazy_exports = dict(value)
+    if public_exports is None:
+        raise SystemExit("deep_runtime.__all__ must be explicit")
+    if lazy_exports is None:
+        raise SystemExit("deep_runtime lazy export map must be explicit")
     for required in (
         "BoundedDeepAgentRuntimeFactory",
         "HostedDeepAgentRuntimeFactory",
     ):
-        if required not in imported:
+        if required not in public_exports:
             raise SystemExit(f"required bounded Deep Agent factory is not exported: {required}")
-    if "DeepAgentRuntimeFactory" in imported:
+        if lazy_exports.get(required) != (".runtime_factory", required):
+            raise SystemExit(f"bounded Deep Agent factory lazy binding is invalid: {required}")
+    if "DeepAgentRuntimeFactory" in public_exports or "DeepAgentRuntimeFactory" in lazy_exports:
         raise SystemExit("unbounded raw DeepAgentRuntimeFactory must not be exported")
-
 
 def assert_hosted_model_provider_is_fixed() -> None:
     path = ROOT / "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/runtime_factory.py"
