@@ -58,18 +58,22 @@ jobs:
             local label="$1"
             shift
             printf '\n===== %s =====\n' "$label" | tee -a "$log"
-            if "$@" >>"$log" 2>&1; then
+            "$@" >>"$log" 2>&1
+            local rc=$?
+            if [ "$rc" -eq 0 ]; then
               printf 'PASS: %s\n' "$label" | tee -a "$log"
               return 0
             fi
-            local rc=$?
             printf 'FAIL(%s): %s\n' "$rc" "$label" | tee -a "$log"
             resolver_ok=false
             failed_stage="$label"
             return "$rc"
           }
 
-          run_stage "exact-trigger-sha" bash -c 'test "$GITHUB_REPOSITORY" = "zhangjaky71-stack/LUMI-AI-DESIGN-OS" && test "$GITHUB_REF" = "refs/heads/release-closure-p0" && test "$(git rev-parse HEAD)" = "$GITHUB_SHA" && test -z "$(git status --porcelain)"' || true
+          run_stage "repository-identity" test "$GITHUB_REPOSITORY" = "zhangjaky71-stack/LUMI-AI-DESIGN-OS" || true
+          if [ "$resolver_ok" = true ]; then run_stage "release-ref" test "$GITHUB_REF" = "refs/heads/release-closure-p0" || true; fi
+          if [ "$resolver_ok" = true ]; then run_stage "exact-trigger-sha" test "$(git rev-parse HEAD)" = "$GITHUB_SHA" || true; fi
+          if [ "$resolver_ok" = true ]; then run_stage "clean-worktree" test -z "$(git status --porcelain)" || true; fi
           if [ "$resolver_ok" = true ]; then run_stage "canonical-regeneration-contract" python3 scripts/validate_uv_lock_regeneration_contract.py || true; fi
           if [ "$resolver_ok" = true ]; then run_stage "release-action-pins" python3 scripts/validate_release_action_pins.py || true; fi
           if [ "$resolver_ok" = true ]; then run_stage "uv-lock" uv lock || true; fi
