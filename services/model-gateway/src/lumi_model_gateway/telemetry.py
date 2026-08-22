@@ -51,7 +51,7 @@ class ModelTelemetryProjection:
 
 
 def project_model_telemetry(event: TelemetryEvent) -> ModelTelemetryProjection:
-    """Project gateway telemetry without prompts, outputs, or tenant IDs as metric labels."""
+    """Project gateway telemetry without request content, outputs, or tenant IDs as metric labels."""
 
     outcome = "error" if event.error_category else "success"
     metric_labels = {
