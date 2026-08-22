@@ -50,11 +50,11 @@ jobs:
           PYTHONPATH=apps/agent-runtime/src
           python scripts/validate_langgraph_control_plane_contract_v2.py
       - name: NODE-28 dependency-free unit tests
-        run: >-
-          PYTHONPATH=apps/agent-runtime/src
-          python -m unittest discover
-          -s apps/agent-runtime/tests
-          -p 'test_control_plane*.py'
+        run: |
+          PYTHONPATH=apps/agent-runtime/src python -m unittest discover \
+            -s apps/agent-runtime/tests -p 'test_control_plane.py'
+          PYTHONPATH=apps/agent-runtime/src python -m unittest discover \
+            -s apps/agent-runtime/tests -p 'test_control_plane_client.py'
       - name: NODE-28 resume policy unit tests
         run: >-
           PYTHONPATH=apps/agent-runtime/src
