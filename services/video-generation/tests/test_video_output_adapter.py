@@ -6,7 +6,12 @@ from decimal import Decimal
 
 import pytest
 
-from lumi_video_generation.model import CompiledShot, StoredVideoClip, VideoProbeResult, VideoTaskSpec
+from lumi_video_generation.model import (
+    CompiledShot,
+    StoredVideoClip,
+    VideoProbeResult,
+    VideoTaskSpec,
+)
 from lumi_video_generation.output_adapter import StagedProviderVideo, VerifiedVideoOutputAdapter
 from lumi_video_generation.storyboard import compile_storyboard
 

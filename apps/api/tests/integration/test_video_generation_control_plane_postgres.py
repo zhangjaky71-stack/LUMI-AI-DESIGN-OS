@@ -6,8 +6,6 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from lumi_video_generation.model import ShotSpec, VideoTaskSpec
-from lumi_video_generation.spec_codec import encode_spec
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +15,8 @@ from lumi_api.generations.video_service import VideoGenerationControlPlane
 from lumi_api.persistence.models import Generation, IdempotencyOperation, OutboxEvent, Task
 from lumi_api.persistence.seed import ORG_ID, PROJECT_A_ID
 from lumi_api.persistence.session import create_engine
+from lumi_video_generation.model import ShotSpec, VideoTaskSpec
+from lumi_video_generation.spec_codec import encode_spec
 
 if os.environ.get("LUMI_DB_INTEGRATION") != "1":
     pytest.skip("set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests", allow_module_level=True)

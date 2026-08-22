@@ -5,6 +5,7 @@ import json
 from uuid import UUID, uuid5
 
 import asyncpg
+
 from lumi_video_generation.model import ProviderJobRecord, VideoJob, VideoTaskSpec
 from lumi_video_generation.repository import InMemoryVideoRepository, VideoOperationConflict
 
@@ -404,7 +405,7 @@ def _row_id(organization_id: str, operation_id: str) -> UUID:
 
 def _lock_key(organization_id: str, operation_id: str) -> int:
     digest = hashlib.sha256(
-        f"node48-video-generation\x00{organization_id}\x00{operation_id}".encode("utf-8")
+        f"node48-video-generation\x00{organization_id}\x00{operation_id}".encode()
     ).digest()
     return int.from_bytes(digest[:8], "big", signed=True)
 

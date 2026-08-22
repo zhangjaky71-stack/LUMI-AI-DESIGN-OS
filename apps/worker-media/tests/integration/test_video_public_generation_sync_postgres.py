@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
+
 from lumi_video_generation.model import ShotRuntime, ShotSpec, VideoJob, VideoTaskSpec
 from lumi_video_generation.spec_codec import encode_spec
 from lumi_worker_media.video_generation_repository import PostgresVideoRepository

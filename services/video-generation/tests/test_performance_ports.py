@@ -4,13 +4,13 @@ import asyncio
 from decimal import Decimal
 
 import pytest
+
 from lumi_domain.performance_events import (
     PerformanceOutcome,
     PerformanceStage,
     PerformanceStageEvent,
     PerformanceTelemetryContext,
 )
-
 from lumi_video_generation.model import (
     RenderedVideo,
     StoredVideoClip,

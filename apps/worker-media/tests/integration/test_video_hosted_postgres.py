@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
+
 from lumi_domain.job_dispatch import (
     JOB_DISPATCH_EVENT_NAME,
     JOB_DISPATCH_SCHEMA_VERSION,

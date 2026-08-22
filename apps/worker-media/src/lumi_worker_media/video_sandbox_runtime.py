@@ -105,7 +105,7 @@ class SandboxExchangeMediaRuntime:
         self.operation_id = operation_id
         self.timeout_seconds = timeout_seconds
         scope = hashlib.sha256(
-            f"{organization_id}\x00{project_id}\x00{task_id}\x00{operation_id}".encode("utf-8")
+            f"{organization_id}\x00{project_id}\x00{task_id}\x00{operation_id}".encode()
         ).hexdigest()
         self.exchange_prefix = f"sandbox-exchange/v1/{organization_id}/{scope}"
         self._inputs: dict[str, _InputBinding] = {}
@@ -164,7 +164,7 @@ class SandboxExchangeMediaRuntime:
         if self._output is not None:
             raise RuntimeError("VIDEO_SANDBOX_OUTPUT_ALREADY_ALLOCATED")
         token = hashlib.sha256(
-            f"{self.operation_id}\x00rendered-video".encode("utf-8")
+            f"{self.operation_id}\x00rendered-video".encode()
         ).hexdigest()
         binding = _OutputBinding(
             logical_path="/sandbox/output/render.mp4",
@@ -279,7 +279,7 @@ class SandboxExchangeMediaRuntime:
             if head.content_length <= 0 or head.content_length > _MAX_RENDER_BYTES:
                 raise RuntimeError("VIDEO_SANDBOX_RENDER_SIZE_INVALID")
             scope = hashlib.sha256(
-                f"{self.task_id}\x00{self.operation_id}".encode("utf-8")
+                f"{self.task_id}\x00{self.operation_id}".encode()
             ).hexdigest()
             durable_key = (
                 f"generated/video/v1/{self.organization_id}/{self.project_id}/"
@@ -323,9 +323,7 @@ class SandboxExchangeMediaRuntime:
     def _request(self, body: bytes) -> dict[str, Any]:
         timestamp = int(time.time())
         body_hash = hashlib.sha256(body).hexdigest()
-        canonical = f"{_CALLER}\n{timestamp}\nPOST\n{_EXECUTE_PATH}\n{body_hash}".encode(
-            "utf-8"
-        )
+        canonical = f"{_CALLER}\n{timestamp}\nPOST\n{_EXECUTE_PATH}\n{body_hash}".encode()
         signature = hmac.new(
             self.auth_secret.encode("utf-8"),
             canonical,

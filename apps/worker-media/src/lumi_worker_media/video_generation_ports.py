@@ -9,11 +9,13 @@ import os
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
-from typing import Any, Mapping
+from typing import Any
 from uuid import UUID, uuid5
 
 import asyncpg
+
 from lumi_asset_storage.s3 import S3ObjectStore
 from lumi_video_generation import CompositeVideoValidator, TypedFfmpegSandbox
 from lumi_video_generation.model import (
@@ -120,7 +122,7 @@ class HostedVideoOutputAdapter:
             if probe.container.casefold() not in {"mp4", "mov,mp4,m4a,3gp,3g2,mj2"}:
                 raise ValueError("VIDEO_PROVIDER_CONTAINER_UNSUPPORTED")
             shot_token = hashlib.sha256(
-                f"{shot.shot.shot_id}\x00{shot.paid_operation_id}".encode("utf-8")
+                f"{shot.shot.shot_id}\x00{shot.paid_operation_id}".encode()
             ).hexdigest()
             durable_key = (
                 f"generated/video/v1/{spec.organization_id}/{spec.project_id}/"
@@ -176,7 +178,7 @@ class HostedVideoOutputAdapter:
         checksum: str,
     ) -> VideoProbeResult:
         scope = hashlib.sha256(
-            f"{spec.organization_id}\x00{spec.task_id}\x00{source_key}".encode("utf-8")
+            f"{spec.organization_id}\x00{spec.task_id}\x00{source_key}".encode()
         ).hexdigest()
         exchange_key = (
             f"sandbox-exchange/v1/{spec.organization_id}/{scope}/probe/{checksum}.mp4"
@@ -450,7 +452,7 @@ def _sandbox_request(
         raise RuntimeError("VIDEO_SANDBOX_REQUEST_TOO_LARGE")
     timestamp = int(time.time())
     body_hash = hashlib.sha256(body).hexdigest()
-    canonical = f"{_CALLER}\n{timestamp}\nPOST\n{_EXECUTE_PATH}\n{body_hash}".encode("utf-8")
+    canonical = f"{_CALLER}\n{timestamp}\nPOST\n{_EXECUTE_PATH}\n{body_hash}".encode()
     signature = hmac.new(
         auth_secret.encode("utf-8"),
         canonical,

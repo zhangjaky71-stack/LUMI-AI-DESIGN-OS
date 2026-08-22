@@ -1,9 +1,20 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from decimal import Decimal
-from typing import Mapping, Protocol
+from typing import Protocol
 
-from .model import CompiledShot, RenderedVideo, ShotValidationReport, StoredVideoClip, ValidationDecision, ValidationFinding, VideoProbeResult, VideoTaskSpec, VideoTimeline
+from .model import (
+    CompiledShot,
+    RenderedVideo,
+    ShotValidationReport,
+    StoredVideoClip,
+    ValidationDecision,
+    ValidationFinding,
+    VideoProbeResult,
+    VideoTaskSpec,
+    VideoTimeline,
+)
 
 
 class IdentityContinuityPort(Protocol):

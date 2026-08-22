@@ -1,14 +1,28 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, cast
+from typing import Any, cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from lumi_model_gateway.gateway import ModelGateway
-from lumi_model_gateway.models import Capability, LatencyProfile, ModelRequest, ModelResult, QualityProfile, ResultStatus
+from lumi_model_gateway.models import (
+    Capability,
+    LatencyProfile,
+    ModelRequest,
+    ModelResult,
+    QualityProfile,
+    ResultStatus,
+)
 
-from .model import CompiledShot, GatewayEstimate, GatewayVideoResult, ProviderJobRecord, VideoTaskSpec
+from .model import (
+    CompiledShot,
+    GatewayEstimate,
+    GatewayVideoResult,
+    ProviderJobRecord,
+    VideoTaskSpec,
+)
 
 
 def _stable_uuid(value: str) -> UUID:

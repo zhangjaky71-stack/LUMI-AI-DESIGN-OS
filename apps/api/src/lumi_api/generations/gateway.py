@@ -11,7 +11,12 @@ from lumi_api.api.v1.errors import ApiProblem
 from lumi_api.api.v1.services import ApiV1Gateway
 from lumi_api.persistence.models import Generation
 
-from .errors import GenerationConflict, GenerationControlPlaneError, GenerationInvalid, GenerationNotFound
+from .errors import (
+    GenerationConflict,
+    GenerationControlPlaneError,
+    GenerationInvalid,
+    GenerationNotFound,
+)
 from .service import ImageGenerationControlPlane
 from .video_service import VideoGenerationControlPlane
 

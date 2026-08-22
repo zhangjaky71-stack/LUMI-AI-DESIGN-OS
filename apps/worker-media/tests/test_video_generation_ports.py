@@ -8,9 +8,9 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from lumi_video_generation.model import CompiledShot, ShotSpec, VideoTaskSpec
 
 import lumi_worker_media.video_generation_ports as ports_module
+from lumi_video_generation.model import CompiledShot, ShotSpec, VideoTaskSpec
 from lumi_worker_media.video_generation_ports import HostedVideoOutputAdapter
 
 

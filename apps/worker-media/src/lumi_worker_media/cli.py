@@ -211,16 +211,15 @@ def _publish_domain_replay(
     payload: dict[str, object],
     routing_key: str,
 ) -> None:
-    with Connection(broker_url) as connection:
-        with connection.channel() as channel:
-            Producer(channel, serializer="json").publish(
-                payload,
-                exchange=DOMAIN_EXCHANGE,
-                routing_key=routing_key,
-                serializer="json",
-                declare=[DOMAIN_EXCHANGE],
-                retry=True,
-            )
+    with Connection(broker_url) as connection, connection.channel() as channel:
+        Producer(channel, serializer="json").publish(
+            payload,
+            exchange=DOMAIN_EXCHANGE,
+            routing_key=routing_key,
+            serializer="json",
+            declare=[DOMAIN_EXCHANGE],
+            retry=True,
+        )
 
 
 def _publish_job_replay(

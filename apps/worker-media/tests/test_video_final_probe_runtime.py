@@ -9,6 +9,8 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+
+import lumi_worker_media.video_final_probe_runtime as final_probe_module
 from lumi_video_generation.model import (
     RenderedVideo,
     ShotSpec,
@@ -18,8 +20,6 @@ from lumi_video_generation.model import (
     VideoTaskSpec,
     VideoTimeline,
 )
-
-import lumi_worker_media.video_final_probe_runtime as final_probe_module
 from lumi_worker_media.video_final_probe_runtime import HostedVerifiedVideoMediaSandbox
 
 

@@ -7,12 +7,11 @@ import unittest
 from pathlib import Path
 from uuid import uuid4
 
-from lumi_model_gateway import Capability, ModelRequest
-
 from lumi_api.provider_output_store import (
     ProviderOutputStoreError,
     S3ProviderOutputStore,
 )
+from lumi_model_gateway import Capability, ModelRequest
 
 
 class FakeObjectStore:

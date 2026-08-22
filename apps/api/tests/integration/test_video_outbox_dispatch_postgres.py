@@ -7,14 +7,14 @@ from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
-from lumi_video_generation.model import ShotSpec, VideoTaskSpec
-from lumi_video_generation.spec_codec import encode_spec
-from lumi_worker_media.job_dispatch_runtime import MediaJobOutboxDispatcher
 
 from lumi_api.api.v1.contracts import GenerationCreate
 from lumi_api.generations.video_service import VideoGenerationControlPlane
 from lumi_api.persistence.seed import ORG_ID, PROJECT_A_ID
 from lumi_api.persistence.session import create_engine, create_session_factory
+from lumi_video_generation.model import ShotSpec, VideoTaskSpec
+from lumi_video_generation.spec_codec import encode_spec
+from lumi_worker_media.job_dispatch_runtime import MediaJobOutboxDispatcher
 
 if os.environ.get("LUMI_DB_INTEGRATION") != "1":
     pytest.skip("set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests", allow_module_level=True)

@@ -4,8 +4,6 @@ import hashlib
 from typing import Any
 from uuid import UUID
 
-from lumi_video_generation.model import VideoTaskSpec
-from lumi_video_generation.spec_codec import decode_spec, encode_spec
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +16,8 @@ from lumi_api.media_dispatch import (
 )
 from lumi_api.persistence.base import utc_now
 from lumi_api.persistence.models import AgentRun, Generation, IdempotencyOperation, Project, Task
+from lumi_video_generation.model import VideoTaskSpec
+from lumi_video_generation.spec_codec import decode_spec, encode_spec
 
 from .errors import GenerationConflict, GenerationInvalid, GenerationNotFound
 
@@ -378,25 +378,21 @@ def _uuid(value: str, error: str) -> UUID:
 
 def _idempotency_lock_key(organization_id: UUID, idempotency_key: str) -> int:
     digest = hashlib.sha256(
-        f"{_OPERATION_TYPE}:idempotency\x00{organization_id}\x00{idempotency_key}".encode(
-            "utf-8"
-        )
+        f"{_OPERATION_TYPE}:idempotency\x00{organization_id}\x00{idempotency_key}".encode()
     ).digest()
     return int.from_bytes(digest[:8], "big", signed=True)
 
 
 def _operation_lock_key(organization_id: UUID, operation_id: UUID) -> int:
     digest = hashlib.sha256(
-        f"{_OPERATION_TYPE}:operation\x00{organization_id}\x00{operation_id}".encode(
-            "utf-8"
-        )
+        f"{_OPERATION_TYPE}:operation\x00{organization_id}\x00{operation_id}".encode()
     ).digest()
     return int.from_bytes(digest[:8], "big", signed=True)
 
 
 def _task_lock_key(task_id: UUID) -> int:
     digest = hashlib.sha256(
-        f"{_OPERATION_TYPE}:task\x00{task_id}".encode("utf-8")
+        f"{_OPERATION_TYPE}:task\x00{task_id}".encode()
     ).digest()
     return int.from_bytes(digest[:8], "big", signed=True)
 

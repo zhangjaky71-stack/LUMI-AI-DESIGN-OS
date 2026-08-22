@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from uuid import UUID, uuid5
 
 import asyncpg
+
 from lumi_domain.job_dispatch import JOB_DISPATCH_EVENT_NAME, JOB_DISPATCH_SCHEMA_VERSION
 
 from .job_dispatch_runtime import MediaJobOutboxRecord

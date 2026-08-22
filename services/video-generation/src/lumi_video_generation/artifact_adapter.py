@@ -2,12 +2,27 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from lumi_artifacts.history import ArtifactHistory
-from lumi_artifacts.model import Artifact, ArtifactBranch, ArtifactFile, ArtifactVersion, LineageEdge, ProvenanceRecord
+from lumi_artifacts.model import (
+    Artifact,
+    ArtifactBranch,
+    ArtifactFile,
+    ArtifactVersion,
+    LineageEdge,
+    ProvenanceRecord,
+)
 
-from .model import CompiledShot, FinalVideoProvenance, RenderedVideo, ShotProvenance, ShotValidationReport, StoredVideoClip, VideoTaskSpec
+from .model import (
+    CompiledShot,
+    FinalVideoProvenance,
+    RenderedVideo,
+    ShotProvenance,
+    ShotValidationReport,
+    StoredVideoClip,
+    VideoTaskSpec,
+)
 
 
 def constraint_snapshot_hash(spec: VideoTaskSpec) -> str:
@@ -80,7 +95,7 @@ class ArtifactHistoryVideoAdapter:
             constraint_snapshot_hash=constraint_snapshot_hash(spec),
             created_by_type="AGENT",
             created_by_id=spec.agent_run_id or spec.task_id,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             primary_file_id=file_id,
             brand_rule_set_version=spec.brand_rule_set_version,
             identity_validation_snapshot_id=validation.identity_validation_snapshot_id,
@@ -194,7 +209,7 @@ class ArtifactHistoryVideoAdapter:
             constraint_snapshot_hash=constraint_snapshot_hash(spec),
             created_by_type="AGENT",
             created_by_id=spec.agent_run_id or spec.task_id,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             primary_file_id=file_id,
             brand_rule_set_version=spec.brand_rule_set_version,
         ))

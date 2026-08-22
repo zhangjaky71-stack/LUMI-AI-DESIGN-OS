@@ -9,6 +9,7 @@ from typing import Any, cast
 from uuid import UUID
 
 import asyncpg
+
 from lumi_asset_storage.s3 import S3ObjectStore
 from lumi_domain.performance_events import PerformanceTelemetryContext
 from lumi_video_generation import VideoGenerationPipeline
@@ -260,7 +261,7 @@ class HostedVideoGenerationRuntime:
             (
                 f"{job.video_job_id}\x00{shot.shot_id}\x00"
                 f"{shot.provider_request_id}"
-            ).encode("utf-8")
+            ).encode()
         ).hexdigest()
         return ExternalWait(
             wait_reason="video_provider_pending",

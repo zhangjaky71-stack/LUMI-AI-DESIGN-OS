@@ -10,6 +10,7 @@ from uuid import UUID
 
 import asyncpg
 from kombu import Connection, Producer
+
 from lumi_domain import new_uuid7
 from lumi_domain.job_dispatch import JOB_DISPATCH_EVENT_NAME
 

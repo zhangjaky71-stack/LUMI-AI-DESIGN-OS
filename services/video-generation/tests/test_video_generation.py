@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import pytest
 from lumi_artifacts.history import ArtifactHistory
+
 from lumi_model_gateway import (
     InMemoryProviderHealthRegistry,
     InMemoryProviderRegistry,
@@ -18,7 +19,6 @@ from lumi_model_gateway import (
     ModelRouter,
     RetryPolicy,
 )
-
 from lumi_video_generation.artifact_adapter import ArtifactHistoryVideoAdapter
 from lumi_video_generation.inmemory import (
     MemoryMediaSandbox,
@@ -36,15 +36,18 @@ from lumi_video_generation.model import (
     ShotValidationReport,
     SourceImageRef,
     StoredVideoClip,
+    TimelineClip,
+    TimelineTransition,
     ValidationFinding,
+    VideoOutputSpec,
     VideoProbeResult,
     VideoTaskSpec,
     VideoTimeline,
-    TimelineClip,
-    TimelineTransition,
-    VideoOutputSpec,
 )
-from lumi_video_generation.model_gateway_adapter import ModelGatewayVideoAdapter, VideoFeatureRegistry
+from lumi_video_generation.model_gateway_adapter import (
+    ModelGatewayVideoAdapter,
+    VideoFeatureRegistry,
+)
 from lumi_video_generation.pipeline import VideoGenerationPipeline
 from lumi_video_generation.repository import InMemoryVideoRepository
 from lumi_video_generation.storyboard import compile_storyboard

@@ -6,6 +6,7 @@ from typing import Protocol
 from uuid import UUID
 
 import asyncpg
+
 from lumi_domain.job_dispatch import (
     IMAGE_TRANSFORM_QUEUE,
     IMAGE_TRANSFORM_ROUTING_KEY,

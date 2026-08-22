@@ -2,10 +2,20 @@ from __future__ import annotations
 
 import hashlib
 from collections import deque
+from collections.abc import Mapping
 from decimal import Decimal
-from typing import Mapping
 
-from .model import CompiledShot, GatewayEstimate, GatewayVideoResult, ProviderJobRecord, RenderedVideo, StoredVideoClip, VideoProbeResult, VideoTaskSpec, VideoTimeline
+from .model import (
+    CompiledShot,
+    GatewayEstimate,
+    GatewayVideoResult,
+    ProviderJobRecord,
+    RenderedVideo,
+    StoredVideoClip,
+    VideoProbeResult,
+    VideoTaskSpec,
+    VideoTimeline,
+)
 
 
 class ScriptedVideoGateway:

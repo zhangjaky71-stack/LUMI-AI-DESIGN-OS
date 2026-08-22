@@ -4,6 +4,7 @@ import asyncio
 from decimal import Decimal
 
 from lumi_artifacts.history import ArtifactHistory
+
 from lumi_video_generation.artifact_adapter import ArtifactHistoryVideoAdapter
 from lumi_video_generation.inmemory import MemoryMediaSandbox, MemoryVideoOutput
 from lumi_video_generation.model import (

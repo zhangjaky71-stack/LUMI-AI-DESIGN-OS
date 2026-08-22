@@ -5,9 +5,9 @@ from decimal import Decimal
 from typing import cast
 
 import pytest
+
 from lumi_model_gateway import HttpModelGatewayAsyncClient
 from lumi_video_generation.model import CompiledShot, ShotSpec, VideoTaskSpec
-
 from lumi_worker_media.video_gateway_runtime import HostedVideoGateway
 
 

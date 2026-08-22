@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
+
 from lumi_video_generation.model import (
     CompiledShot,
     FinalVideoProvenance,

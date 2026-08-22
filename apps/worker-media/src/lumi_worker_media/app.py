@@ -5,6 +5,7 @@ import os
 from uuid import UUID
 
 from celery import Celery
+
 from lumi_asset_storage.s3 import S3ObjectStore
 
 from .asset_config import AssetWorkerSettings
@@ -64,7 +65,7 @@ def image_transform(self: object, message: dict[str, object]) -> dict[str, objec
     if outcome.state == JobState.RETRYING:
         retries = getattr(getattr(self, "request", None), "retries", 0)
         policy = retry_policy_for(JobKind.IMAGE_TRANSFORM)
-        retry = getattr(self, "retry")
+        retry = self.retry
         countdown = policy.delay_seconds(
             attempt=max(1, outcome.attempt_count),
             jitter_seed=retries,
@@ -108,7 +109,7 @@ def video_render(self: object, message: dict[str, object]) -> dict[str, object]:
     if outcome.state == JobState.RETRYING:
         retries = getattr(getattr(self, "request", None), "retries", 0)
         policy = retry_policy_for(JobKind.VIDEO_RENDER)
-        retry = getattr(self, "retry")
+        retry = self.retry
         countdown = policy.delay_seconds(
             attempt=max(1, outcome.attempt_count),
             jitter_seed=retries,
@@ -175,7 +176,7 @@ def asset_validate(self: object, validation_run_id: str) -> str:
         policy = retry_policy_for(JobKind.ASSET_VALIDATE)
         if retries >= policy.max_attempts - 1:
             raise
-        retry = getattr(self, "retry")
+        retry = self.retry
         countdown = policy.delay_seconds(attempt=retries + 1, jitter_seed=retries)
         raise retry(exc=exc, countdown=countdown)
 

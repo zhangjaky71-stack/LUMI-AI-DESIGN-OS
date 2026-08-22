@@ -5,6 +5,7 @@ from decimal import Decimal
 from uuid import UUID, uuid5
 
 import asyncpg
+
 from lumi_video_generation.model import (
     CompiledShot,
     FinalVideoProvenance,

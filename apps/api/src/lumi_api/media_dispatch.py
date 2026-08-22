@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID, uuid5
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from lumi_domain.job_dispatch import (
     IMAGE_TRANSFORM_JOB_KIND,
     IMAGE_TRANSFORM_QUEUE,
@@ -17,7 +19,6 @@ from lumi_domain.job_dispatch import (
 )
 from lumi_image_generation.spec_codec import decode_spec as decode_image_spec
 from lumi_video_generation.spec_codec import decode_spec as decode_video_spec
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .persistence.models import Generation, OutboxEvent, Task
 

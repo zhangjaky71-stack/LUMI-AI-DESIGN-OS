@@ -5,7 +5,12 @@ import hashlib
 from dataclasses import replace
 from decimal import Decimal
 
-from lumi_video_generation.model import RenderedVideo, VideoProbeResult, VideoTaskSpec, VideoTimeline
+from lumi_video_generation.model import (
+    RenderedVideo,
+    VideoProbeResult,
+    VideoTaskSpec,
+    VideoTimeline,
+)
 
 from .video_generation_ports import (
     HostedVideoMediaSandbox,
@@ -78,7 +83,7 @@ class HostedVerifiedVideoMediaSandbox:
             raise RuntimeError("VIDEO_FINAL_DURABLE_IDENTITY_MISMATCH")
 
         scope = hashlib.sha256(
-            f"{self.spec.task_id}\x00final-probe\x00{key}".encode("utf-8")
+            f"{self.spec.task_id}\x00final-probe\x00{key}".encode()
         ).hexdigest()
         exchange_key = (
             f"sandbox-exchange/v1/{self.spec.organization_id}/{scope}/"
