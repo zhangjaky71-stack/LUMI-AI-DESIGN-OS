@@ -108,7 +108,7 @@ class ExchangeContractTests(unittest.TestCase):
 
         def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
             self.assertEqual(command[0], "ffmpeg")
-            self.assertNotIn("/sandbox/", " ".join(command))
+            self.assertFalse(any(part.startswith("/sandbox/") for part in command))
             input_path = Path(command[2])
             output_path = Path(command[3])
             self.assertTrue(input_path.is_file())
