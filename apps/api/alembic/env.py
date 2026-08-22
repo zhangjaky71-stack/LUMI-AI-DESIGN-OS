@@ -18,6 +18,7 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 MIGRATION_ADVISORY_LOCK_ID = 7_204_726_001
+ALEMBIC_VERSION_COLUMN_LENGTH = 255
 
 
 def migration_url() -> str:
@@ -43,6 +44,25 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _ensure_alembic_version_capacity(connection: Connection) -> None:
+    connection.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS alembic_version (
+                version_num varchar({ALEMBIC_VERSION_COLUMN_LENGTH}) NOT NULL,
+                CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
+            )
+            """
+        )
+    )
+    connection.execute(
+        text(
+            "ALTER TABLE alembic_version "
+            f"ALTER COLUMN version_num TYPE varchar({ALEMBIC_VERSION_COLUMN_LENGTH})"
+        )
+    )
+
+
 def _release_migration_lock(connection: Connection) -> None:
     connection.execute(
         text("SELECT pg_advisory_unlock(:lock_id)"),
@@ -61,6 +81,7 @@ def do_run_migrations(connection: Connection) -> None:
         raise RuntimeError("another LUMI database migration is already running")
 
     try:
+        _ensure_alembic_version_capacity(connection)
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
