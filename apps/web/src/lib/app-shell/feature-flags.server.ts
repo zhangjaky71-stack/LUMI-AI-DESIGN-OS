@@ -15,7 +15,7 @@ const ENV_KEYS: Readonly<Record<PublicFeatureFlagName, string>> = {
 };
 
 export function getServerPublicFeatureFlags(
-  env: NodeJS.ProcessEnv = process.env,
+  env: Readonly<Record<string, string | undefined>> = process.env,
 ): PublicFeatureFlags {
   const entries = PUBLIC_FEATURE_FLAG_NAMES.map((flag) => {
     const raw = env[ENV_KEYS[flag]];
