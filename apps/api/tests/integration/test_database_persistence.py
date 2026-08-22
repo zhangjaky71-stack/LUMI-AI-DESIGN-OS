@@ -13,6 +13,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from lumi_api.persistence.base import Base
 from lumi_api.persistence.models import CostLedger, Organization, Project, Workspace
 from lumi_api.persistence.repositories import (
     OptimisticLockError,
@@ -26,6 +27,19 @@ if os.environ.get("LUMI_DB_INTEGRATION") != "1":
     pytest.skip("set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests", allow_module_level=True)
 
 T = TypeVar("T")
+EXPECTED_ALEMBIC_HEAD = "0023_video_generation_runtime"
+MIGRATION_ONLY_TABLES = frozenset(
+    {
+        "agent_graph_definitions",
+        "agent_run_control",
+        "checkpoint_migrations",
+        "checkpoints",
+        "checkpoint_blobs",
+        "checkpoint_writes",
+        "store_migrations",
+        "store",
+    }
+)
 
 
 def run(coroutine: Coroutine[Any, Any, T]) -> T:
@@ -37,21 +51,21 @@ async def _head_and_table_count() -> None:
     try:
         async with engine.connect() as connection:
             head = (await connection.execute(text("SELECT version_num FROM alembic_version"))).scalar_one()
-            assert head == "0006_project_core"
-            count = (
-                await connection.execute(
-                    text(
-                        """
-                        SELECT count(*)
-                        FROM information_schema.tables
-                        WHERE table_schema = 'public'
-                          AND table_type = 'BASE TABLE'
-                          AND table_name <> 'alembic_version'
-                        """
-                    )
+            assert head == EXPECTED_ALEMBIC_HEAD
+            rows = await connection.execute(
+                text(
+                    """
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                      AND table_type = 'BASE TABLE'
+                      AND table_name <> 'alembic_version'
+                    """
                 )
-            ).scalar_one()
-            assert count == 48
+            )
+            actual_tables = {str(row[0]) for row in rows}
+            expected_tables = set(Base.metadata.tables) | set(MIGRATION_ONLY_TABLES)
+            assert actual_tables == expected_tables
     finally:
         await engine.dispose()
 
