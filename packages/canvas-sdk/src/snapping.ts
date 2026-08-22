@@ -44,7 +44,7 @@ function rectCandidates(rect: Rect): { readonly x: readonly number[]; readonly y
 
 function bestDelta(
   sourceValues: readonly number[],
-  targetValues: readonly Array<{ readonly value: number; readonly nodeId?: string }>,
+  targetValues: ReadonlyArray<{ readonly value: number; readonly nodeId?: string }>,
   tolerance: number,
 ): { readonly delta: number; readonly value: number; readonly nodeId?: string } | null {
   let best: { readonly delta: number; readonly value: number; readonly nodeId?: string } | null = null;
