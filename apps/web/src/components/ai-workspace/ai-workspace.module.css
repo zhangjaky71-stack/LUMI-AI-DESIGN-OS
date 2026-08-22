@@ -208,5 +208,5 @@ button:disabled { opacity: .38; cursor: not-allowed; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .001ms !important; animation-duration: .001ms !important; }
+  .workspace, .workspace *, .workspace *::before, .workspace *::after { scroll-behavior: auto !important; transition-duration: .001ms !important; animation-duration: .001ms !important; }
 }
