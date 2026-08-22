@@ -1,9 +1,12 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
 from .bootstrap import (
     load_bootstrap_catalog,
     load_named_catalog,
     load_skill_catalog,
 )
-from .deep_adapter import to_deep_agent_definition
 from .definition import AgentDefinition
 from .dependencies import (
     CatalogEntry,
@@ -33,6 +36,9 @@ from .release_types import AgentReleaseManifest, AgentReleaseRecord, AgentReleas
 from .requirements import MemoryPolicy, SkillRequirement, ToolRequirement
 from .semver import SemVer, matches, select_highest
 from .validator import AgentValidator, StaticSystemPromptLinter
+
+if TYPE_CHECKING:
+    from .deep_adapter import to_deep_agent_definition as to_deep_agent_definition
 
 __all__ = [
     "AgentDefinition",
@@ -78,3 +84,11 @@ __all__ = [
     "select_highest",
     "to_deep_agent_definition",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "to_deep_agent_definition":
+        from .deep_adapter import to_deep_agent_definition
+
+        return to_deep_agent_definition
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
