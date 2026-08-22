@@ -17,7 +17,7 @@ env:
 
 jobs:
   regenerate-lock:
-    if: github.ref == 'refs/heads/release-closure-p0' && github.event.head_commit.message == 'ci(release): one-shot regenerate canonical uv lock'
+    if: github.ref == 'refs/heads/release-closure-p0' && github.event.head_commit.message == 'NODE73_ONE_SHOT_REGENERATE_UV_LOCK'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
