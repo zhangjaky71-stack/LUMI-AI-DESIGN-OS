@@ -107,8 +107,16 @@ def require(condition: bool, message: str) -> None:
 def validate_api_image_source_contract() -> None:
     require(API_DOCKERFILE.is_file(), "canonical apps/api/Dockerfile is required")
     dockerfile = API_DOCKERFILE.read_text(encoding="utf-8")
-    require("FROM ghcr.io/astral-sh/uv:0.11.28 AS uv" in dockerfile, "api image must pin the canonical uv builder")
-    require("FROM python:3.12-slim" in dockerfile, "api image must pin Python 3.12 slim runtime")
+    require(
+        "ARG UV_BASE_IMAGE=ghcr.io/astral-sh/uv:0.11.28" in dockerfile,
+        "api image must declare the approved canonical uv default",
+    )
+    require(
+        "ARG PYTHON_BASE_IMAGE=python:3.12-slim" in dockerfile,
+        "api image must declare the approved Python 3.12 slim default",
+    )
+    require("FROM ${UV_BASE_IMAGE} AS uv" in dockerfile, "api image must consume the release-resolved uv base image")
+    require("FROM ${PYTHON_BASE_IMAGE}" in dockerfile, "api image must consume the release-resolved Python base image")
     require("COPY . /workspace" in dockerfile, "api image must build from the repository workspace")
     require("uv sync --all-packages --frozen --no-dev" in dockerfile, "api image dependency install must be frozen")
     require("USER 10001:10001" in dockerfile, "api image must run as the canonical non-root uid/gid")
