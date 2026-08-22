@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,12 @@ def _require(text: str, scope: str, *needles: str) -> None:
             raise ContractError(f"{scope}: missing {needle}")
 
 
+def _require_assignment(text: str, scope: str, key: str, value: str) -> None:
+    pattern = rf"(?m)^\s*{re.escape(key)}\s*=\s*{re.escape(value)}\s*(?:#.*)?$"
+    if re.search(pattern, text) is None:
+        raise ContractError(f"{scope}: missing assignment {key} = {value}")
+
+
 def _forbid(text: str, scope: str, *needles: str) -> None:
     for needle in needles:
         if needle in text:
@@ -47,37 +54,37 @@ def _forbid(text: str, scope: str, *needles: str) -> None:
 def _validate_iac(environment: str) -> None:
     path = f"infra/iac/environments/{environment}/app/main.tf"
     text = _read(path)
-    _require(text, path, "bucket_names = local.core.bucket_names")
+    _require_assignment(text, path, "bucket_names", "local.core.bucket_names")
 
     gateway = _service_block(text, "model-gateway")
-    _require(
-        gateway,
-        f"{path}:model-gateway",
-        'LUMI_DATABASE_URL              = local.secret_arns["database/app"]',
-        'LUMI_MODEL_PROVIDER_SECRET     = local.secret_arns["providers/model"]',
-        'LUMI_MEDIA_PROVIDER_SECRET     = local.secret_arns["providers/media"]',
-        'LUMI_MODEL_GATEWAY_AUTH_SECRET = local.secret_arns["internal/model-gateway"]',
-        'LUMI_PROVIDER_OUTPUT_BUCKET = local.bucket_names["assets"]',
-        "LUMI_S3_REGION              = var.region",
-        's3_bucket_arns         = [local.bucket_arns["assets"]]',
-    )
+    gateway_scope = f"{path}:model-gateway"
+    for key, value in (
+        ("LUMI_DATABASE_URL", 'local.secret_arns["database/app"]'),
+        ("LUMI_MODEL_PROVIDER_SECRET", 'local.secret_arns["providers/model"]'),
+        ("LUMI_MEDIA_PROVIDER_SECRET", 'local.secret_arns["providers/media"]'),
+        ("LUMI_MODEL_GATEWAY_AUTH_SECRET", 'local.secret_arns["internal/model-gateway"]'),
+        ("LUMI_PROVIDER_OUTPUT_BUCKET", 'local.bucket_names["assets"]'),
+        ("LUMI_S3_REGION", "var.region"),
+        ("s3_bucket_arns", '[local.bucket_arns["assets"]]'),
+    ):
+        _require_assignment(gateway, gateway_scope, key, value)
 
     worker = _service_block(text, "worker-media")
-    _require(
-        worker,
-        f"{path}:worker-media",
-        "local.model_gateway_environment",
-        'LUMI_DATABASE_URL              = local.secret_arns["database/app"]',
-        'LUMI_REDIS_URL                 = local.secret_arns["redis/url"]',
-        'LUMI_RABBITMQ_URL              = local.secret_arns["rabbitmq/url"]',
-        'LUMI_MODEL_GATEWAY_AUTH_SECRET = local.secret_arns["internal/model-gateway"]',
-        'LUMI_S3_BUCKET = local.bucket_names["assets"]',
-        "LUMI_S3_REGION = var.region",
-        'local.bucket_arns["assets"]',
-    )
+    worker_scope = f"{path}:worker-media"
+    _require(worker, worker_scope, "local.model_gateway_environment")
+    for key, value in (
+        ("LUMI_DATABASE_URL", 'local.secret_arns["database/app"]'),
+        ("LUMI_REDIS_URL", 'local.secret_arns["redis/url"]'),
+        ("LUMI_RABBITMQ_URL", 'local.secret_arns["rabbitmq/url"]'),
+        ("LUMI_MODEL_GATEWAY_AUTH_SECRET", 'local.secret_arns["internal/model-gateway"]'),
+        ("LUMI_S3_BUCKET", 'local.bucket_names["assets"]'),
+        ("LUMI_S3_REGION", "var.region"),
+    ):
+        _require_assignment(worker, worker_scope, key, value)
+    _require(worker, worker_scope, 'local.bucket_arns["assets"]')
     _forbid(
         worker,
-        f"{path}:worker-media",
+        worker_scope,
         "LUMI_MODEL_PROVIDER_SECRET",
         "LUMI_MEDIA_PROVIDER_SECRET",
         'local.secret_arns["providers/model"]',
@@ -85,20 +92,24 @@ def _validate_iac(environment: str) -> None:
     )
 
     dispatcher = _service_block(text, "outbox-dispatcher")
+    dispatcher_scope = f"{path}:outbox-dispatcher"
     _require(
         dispatcher,
-        f"{path}:outbox-dispatcher",
-        "image         = var.worker_media_image",
+        dispatcher_scope,
         '"lumi_worker_media.cli"',
         '"dispatch-outbox"',
         '"--watch"',
-        'LUMI_DATABASE_URL = local.secret_arns["database/app"]',
-        'LUMI_RABBITMQ_URL = local.secret_arns["rabbitmq/url"]',
-        "s3_bucket_arns         = []",
     )
+    for key, value in (
+        ("image", "var.worker_media_image"),
+        ("LUMI_DATABASE_URL", 'local.secret_arns["database/app"]'),
+        ("LUMI_RABBITMQ_URL", 'local.secret_arns["rabbitmq/url"]'),
+        ("s3_bucket_arns", "[]"),
+    ):
+        _require_assignment(dispatcher, dispatcher_scope, key, value)
     _forbid(
         dispatcher,
-        f"{path}:outbox-dispatcher",
+        dispatcher_scope,
         "LUMI_MODEL_PROVIDER_SECRET",
         "LUMI_MEDIA_PROVIDER_SECRET",
         "LUMI_MODEL_GATEWAY_AUTH_SECRET",
