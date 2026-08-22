@@ -39,7 +39,7 @@ class Brand(IdMixin, MutableTimestampMixin, Base):
 class BrandPalette(IdMixin, MutableTimestampMixin, Base):
     __tablename__ = "brand_palettes"
     __table_args__ = (
-        UniqueConstraint("brand_id", "name", name="brand_palette_name"),
+        UniqueConstraint("brand_id", "name", name="uq_brand_palettes_brand_name"),
         Index("ix_brand_palettes_org_brand", "organization_id", "brand_id"),
     )
 
@@ -237,7 +237,7 @@ class ProjectSummary(IdMixin, MutableTimestampMixin, Base):
 class ProjectMember(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "project_members"
     __table_args__ = (
-        UniqueConstraint("project_id", "user_id", name="project_user"),
+        UniqueConstraint("project_id", "user_id", name="uq_project_members_project_user"),
         Index("ix_project_members_org_project", "organization_id", "project_id"),
     )
 

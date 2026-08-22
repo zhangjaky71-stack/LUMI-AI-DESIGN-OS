@@ -34,7 +34,7 @@ class KnowledgeDocumentModel(IdMixin, MutableTimestampMixin, Base):
             "source_version",
             "source_hash",
             "index_version",
-            name="source",
+            name="uq_knowledge_documents_source",
         ),
         CheckConstraint(
             "permission_scope IN ('PROJECT','ORGANIZATION')",
@@ -118,7 +118,7 @@ class KnowledgeChunkModel(IdMixin, MutableTimestampMixin, Base):
         UniqueConstraint(
             "document_id",
             "ordinal",
-            name="document_ordinal",
+            name="uq_knowledge_chunks_document_ordinal",
         ),
         CheckConstraint("ordinal >= 0", name="ordinal"),
         CheckConstraint("token_estimate > 0", name="tokens"),
@@ -173,7 +173,7 @@ class KnowledgeChunkModel(IdMixin, MutableTimestampMixin, Base):
     search_tsv: Mapped[Any] = mapped_column(
         TSVECTOR,
         Computed("to_tsvector('simple', text)", persisted=True),
-        nullable=False,
+        nullable=True,
     )
     token_estimate: Mapped[int] = mapped_column(Integer, nullable=False)
     locator_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

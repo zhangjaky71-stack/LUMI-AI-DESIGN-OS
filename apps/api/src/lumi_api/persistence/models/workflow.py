@@ -54,7 +54,7 @@ class AgentRun(IdMixin, MutableTimestampMixin, Base):
 class AgentRunStep(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "agent_run_steps"
     __table_args__ = (
-        UniqueConstraint("agent_run_id", "sequence_number", name="agent_run_step_sequence"),
+        UniqueConstraint("agent_run_id", "sequence_number", name="uq_agent_run_steps_sequence"),
         Index("ix_agent_run_steps_org_run", "organization_id", "agent_run_id"),
         Index("ix_agent_run_steps_run_created", "agent_run_id", "created_at"),
     )
@@ -187,7 +187,7 @@ class TaskDependency(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "task_dependencies"
     __table_args__ = (
         CheckConstraint("task_id <> depends_on_task_id", name="task_dependency_no_self_loop"),
-        UniqueConstraint("task_id", "depends_on_task_id", name="task_dependency_identity"),
+        UniqueConstraint("task_id", "depends_on_task_id", name="uq_task_dependencies_identity"),
         Index("ix_task_dependencies_org_task", "organization_id", "task_id"),
         Index("ix_task_dependencies_depends_on", "depends_on_task_id"),
     )
@@ -314,7 +314,11 @@ class Generation(IdMixin, CreatedAtMixin, Base):
         ForeignKey("agent_runs.id", ondelete="SET NULL"),
         nullable=True,
     )
-    operation_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    operation_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("idempotency_operations.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     provider: Mapped[str] = mapped_column(String(100), nullable=False)
     model: Mapped[str] = mapped_column(String(255), nullable=False)
     capability: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -326,7 +330,7 @@ class Generation(IdMixin, CreatedAtMixin, Base):
 class ProviderRequest(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "provider_requests"
     __table_args__ = (
-        UniqueConstraint("provider", "provider_request_id", name="provider_request_native_id"),
+        UniqueConstraint("provider", "provider_request_id", name="uq_provider_requests_native"),
         Index("ix_provider_requests_org_generation", "organization_id", "generation_id"),
         Index("ix_provider_requests_native", "provider_request_id"),
     )

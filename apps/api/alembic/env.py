@@ -19,6 +19,18 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 MIGRATION_ADVISORY_LOCK_ID = 7_204_726_001
 ALEMBIC_VERSION_COLUMN_LENGTH = 255
+MIGRATION_OWNED_TABLES = frozenset(
+    {
+        "agent_graph_definitions",
+        "agent_run_control",
+        "checkpoint_migrations",
+        "checkpoints",
+        "checkpoint_blobs",
+        "checkpoint_writes",
+        "store_migrations",
+        "store",
+    }
+)
 
 
 def migration_url() -> str:
@@ -31,6 +43,21 @@ def migration_url() -> str:
     return value
 
 
+def _include_object(
+    object_: object,
+    name: str | None,
+    type_: str,
+    reflected: bool,
+    compare_to: object,
+) -> bool:
+    if not reflected:
+        return True
+    if type_ == "table" and name in MIGRATION_OWNED_TABLES:
+        return False
+    table_name = getattr(getattr(object_, "table", None), "name", None)
+    return table_name not in MIGRATION_OWNED_TABLES
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=migration_url(),
@@ -39,6 +66,7 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
         compare_server_default=False,
+        include_object=_include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -87,6 +115,7 @@ def do_run_migrations(connection: Connection) -> None:
             target_metadata=target_metadata,
             compare_type=True,
             compare_server_default=False,
+            include_object=_include_object,
         )
         with context.begin_transaction():
             context.run_migrations()
