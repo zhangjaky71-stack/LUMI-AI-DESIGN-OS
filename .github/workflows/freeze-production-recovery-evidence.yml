@@ -99,6 +99,7 @@ jobs:
           test "$(jq -r '.name' <<<"$run")" = "Production DR Rehearsal"
           test "$(jq -r '.path' <<<"$run")" = ".github/workflows/production-dr-rehearsal.yml"
           test "$(jq -r '.head_branch' <<<"$run")" = "release-closure-p0"
+          test "$(jq -r '.head_sha' <<<"$run")" = "$RC_SHA"
           test "$(jq -r '.event' <<<"$run")" = "workflow_dispatch"
           test "$(jq -r '.status' <<<"$run")" = "completed"
           test "$(jq -r '.conclusion' <<<"$run")" = "success"
