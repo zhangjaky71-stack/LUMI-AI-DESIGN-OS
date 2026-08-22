@@ -106,7 +106,6 @@ def main() -> int:
     pipeline = require(
         "apps/agent-runtime/src/lumi_agent_runtime/memory_engine/pipeline.py",
         "REJECT_SENSITIVE",
-        "REJECT_SCOPE",
         "BRAND_RULE_PROPOSAL",
         "REQUIRE_CONFIRMATION",
         "DEDUPLICATE_CONFIRM",
@@ -128,6 +127,7 @@ def main() -> int:
 
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/memory_engine/policy.py",
+        "MemoryCandidateOutcome.REJECT_SCOPE",
         "MEMORY_AGENT_SCOPE_DENIED",
         "MEMORY_AGENT_BRAND_WRITE_DENIED",
         "MEMORY_USER_SCOPE_DENIED",
