@@ -1,6 +1,6 @@
 # NODE-73 Canonical UV Lock Regeneration Failure
 
-- trigger_sha: `2e8074ce9e4dfe796576356374f61835ef8e86f1`
+- trigger_sha: `75dd0e032663f0e0f5e0a1c2395fd73f5d8b91de`
 - failed_stage: `release-action-pins`
 - workflow: `regenerate-uv-lock-one-shot.yml`
 
@@ -23,7 +23,7 @@ NODE-73 canonical uv-lock two-phase bootstrap contract: PASS
 PASS: canonical-regeneration-contract
 
 ===== release-action-pins =====
-release action pin contract failed: action docker/setup-buildx-action@v4.2.0 must use a full lowercase SHA40
+release action pin contract failed: .github/workflows/build-runtime-image-set.yml:99: malformed or unauditable uses line
 FAIL(1): release-action-pins
 
 resolver_ok=false
