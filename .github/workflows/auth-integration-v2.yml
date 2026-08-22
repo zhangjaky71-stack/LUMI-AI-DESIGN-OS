@@ -50,7 +50,7 @@ jobs:
       - name: Upgrade empty database to current head
         run: make db-upgrade
       - name: Check ORM / Alembic drift
-        run: bash scripts/db-local check
+        run: bash scripts/db-local schema-check
       - name: Complete Auth/Tenant PostgreSQL suite
         env:
           LUMI_AUTH_INTEGRATION: "1"
