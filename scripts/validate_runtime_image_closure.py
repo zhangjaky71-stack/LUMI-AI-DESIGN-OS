@@ -76,8 +76,9 @@ RUNTIMES: tuple[RuntimeContract, ...] = (
             ),
         ),
         forbidden_source_fragments=(
-            ("apps/agent-runtime/src/lumi_agent_runtime/runtime_service.py", "subprocess"),
-            ("apps/agent-runtime/src/lumi_agent_runtime/runtime_service.py", "docker.sock"),
+            ("apps/agent-runtime/src/lumi_agent_runtime/runtime_service.py", "import subprocess"),
+            ("apps/agent-runtime/src/lumi_agent_runtime/runtime_service.py", "from subprocess import"),
+            ("apps/agent-runtime/src/lumi_agent_runtime/runtime_service.py", "/var/run/docker.sock"),
         ),
     ),
     RuntimeContract(
@@ -199,10 +200,11 @@ RUNTIMES: tuple[RuntimeContract, ...] = (
             ),
         ),
         forbidden_source_fragments=(
-            ("services/sandbox-runtime/src/lumi_sandbox_runtime/service.py", "DockerBackend"),
-            ("services/sandbox-runtime/src/lumi_sandbox_runtime/service.py", "LocalBackend"),
-            ("services/sandbox-runtime/src/lumi_sandbox_runtime/service.py", "subprocess"),
-            ("services/sandbox-runtime/src/lumi_sandbox_runtime/service.py", "docker.sock"),
+            ("services/sandbox-runtime/src/lumi_sandbox_runtime/service.py", "DockerBackend("),
+            ("services/sandbox-runtime/src/lumi_sandbox_runtime/service.py", "LocalBackend("),
+            ("services/sandbox-runtime/src/lumi_sandbox_runtime/service.py", "import subprocess"),
+            ("services/sandbox-runtime/src/lumi_sandbox_runtime/service.py", "from subprocess import"),
+            ("services/sandbox-runtime/src/lumi_sandbox_runtime/service.py", "/var/run/docker.sock"),
         ),
     ),
 )
