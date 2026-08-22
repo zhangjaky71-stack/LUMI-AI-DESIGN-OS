@@ -15,6 +15,15 @@ variable "command" {
   type    = list(string)
   default = ["alembic", "-c", "apps/api/alembic.ini", "upgrade", "head"]
 }
-variable "cpu" { type = number, default = 1024 }
-variable "memory" { type = number, default = 2048 }
-variable "tags" { type = map(string), default = {} }
+variable "cpu" {
+  type    = number
+  default = 1024
+}
+variable "memory" {
+  type    = number
+  default = 2048
+}
+variable "tags" {
+  type    = map(string)
+  default = {}
+}

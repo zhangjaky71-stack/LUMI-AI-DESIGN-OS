@@ -1,7 +1,10 @@
 variable "account_id" { type = string }
 variable "region" { type = string }
 variable "core_state_bucket" { type = string }
-variable "core_state_key" { type = string, default = "lumi/production/core/terraform.tfstate" }
+variable "core_state_key" {
+  type    = string
+  default = "lumi/production/core/terraform.tfstate"
+}
 variable "certificate_arn" { type = string }
 variable "domain_name" { type = string }
 variable "hosted_zone_id" { type = string }
@@ -22,4 +25,7 @@ variable "video_model_profile" {
   }
 }
 
-variable "waf_rate_limit_requests_per_5m" { type = number, default = 1500 }
+variable "waf_rate_limit_requests_per_5m" {
+  type    = number
+  default = 1500
+}

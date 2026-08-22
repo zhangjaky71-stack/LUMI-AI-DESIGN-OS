@@ -16,11 +16,26 @@ variable "availability_zones" {
   }
 }
 variable "postgres_engine_version" { type = string }
-variable "db_instance_class" { type = string, default = "db.r6g.large" }
+variable "db_instance_class" {
+  type    = string
+  default = "db.r6g.large"
+}
 variable "redis_engine_version" { type = string }
-variable "redis_node_type" { type = string, default = "cache.r6g.large" }
+variable "redis_node_type" {
+  type    = string
+  default = "cache.r6g.large"
+}
 variable "rabbitmq_engine_version" { type = string }
 variable "rabbitmq_instance_type" { type = string }
-variable "redis_auth_token" { type = string, sensitive = true }
-variable "rabbitmq_username" { type = string, sensitive = true }
-variable "rabbitmq_password" { type = string, sensitive = true }
+variable "redis_auth_token" {
+  type      = string
+  sensitive = true
+}
+variable "rabbitmq_username" {
+  type      = string
+  sensitive = true
+}
+variable "rabbitmq_password" {
+  type      = string
+  sensitive = true
+}

@@ -26,9 +26,16 @@ variable "services" {
     environment              = optional(map(string), {})
     secret_arns              = optional(map(string), {})
     s3_bucket_arns           = optional(list(string), [])
-    autoscale_metric_name    = string
-    autoscale_target_value   = number
+    autoscaling_enabled      = optional(bool, false)
+    autoscale_metric_name    = optional(string, "")
+    autoscale_target_value   = optional(number, 0)
   }))
 }
-variable "waf_rate_limit_requests_per_5m" { type = number, default = 2000 }
-variable "tags" { type = map(string), default = {} }
+variable "waf_rate_limit_requests_per_5m" {
+  type    = number
+  default = 2000
+}
+variable "tags" {
+  type    = map(string)
+  default = {}
+}

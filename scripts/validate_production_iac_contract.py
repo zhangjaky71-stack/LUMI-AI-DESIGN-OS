@@ -93,6 +93,12 @@ def assert_provider_secret_boundary(app: str, *, environment: str) -> None:
     )
     require_hcl_assignment(
         dispatcher,
+        "LUMI_ROLE",
+        '"outbox-dispatcher"',
+        f"{environment} outbox dispatcher must bind its explicit runtime identity",
+    )
+    require_hcl_assignment(
+        dispatcher,
         "LUMI_DATABASE_URL",
         'local.secret_arns["database/app"]',
         f"{environment} outbox dispatcher must receive the application database credential",
@@ -170,7 +176,18 @@ def main() -> int:
     require("AmazonECSInfrastructureRolePolicyForLoadBalancers" in compute, "ECS load-balancer infrastructure role missing")
     require("public_canary_5xx" in compute and "public_canary_unhealthy" in compute, "canary rollback alarms missing")
     require("from_port       = 8000" in network and "to_port         = 8000" in network, "ALB-to-API security group port must be 8000")
-    require("container_port    = 8000" in staging_app and "container_port    = 8000" in production_app, "API container port must match lumi_api CLI port 8000")
+    require_hcl_assignment(
+        hcl_block(staging_app, "api = {"),
+        "container_port",
+        "8000",
+        "staging API container port must match lumi_api CLI port 8000",
+    )
+    require_hcl_assignment(
+        hcl_block(production_app, "api = {"),
+        "container_port",
+        "8000",
+        "production API container port must match lumi_api CLI port 8000",
+    )
     require("publicly_accessible = false" in data, "RDS must be private")
     require("multi_az" in data, "RDS Multi-AZ contract missing")
     require("transit_encryption_enabled = true" in data, "Redis transit encryption missing")

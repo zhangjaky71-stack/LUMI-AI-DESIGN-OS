@@ -20,6 +20,12 @@ output "postgres_instance_id" { value = module.platform_core.postgres_instance_i
 output "postgres_backup_retention_days" { value = module.platform_core.postgres_backup_retention_days }
 output "postgres_db_subnet_group_name" { value = module.platform_core.postgres_db_subnet_group_name }
 output "postgres_security_group_id" { value = module.platform_core.postgres_security_group_id }
-output "postgres_master_secret_arn" { value = module.platform_core.postgres_master_secret_arn, sensitive = true }
+output "postgres_master_secret_arn" {
+  value     = module.platform_core.postgres_master_secret_arn
+  sensitive = true
+}
 output "redis_primary_endpoint" { value = module.platform_core.redis_primary_endpoint }
-output "rabbitmq_instances" { value = module.platform_core.rabbitmq_instances, sensitive = true }
+output "rabbitmq_instances" {
+  value     = module.platform_core.rabbitmq_instances
+  sensitive = true
+}

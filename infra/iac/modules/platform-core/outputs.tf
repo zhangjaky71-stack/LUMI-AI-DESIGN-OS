@@ -16,6 +16,12 @@ output "postgres_instance_id" { value = module.data.postgres_instance_id }
 output "postgres_backup_retention_days" { value = module.data.postgres_backup_retention_days }
 output "postgres_db_subnet_group_name" { value = module.data.postgres_db_subnet_group_name }
 output "postgres_security_group_id" { value = module.data.postgres_security_group_id }
-output "postgres_master_secret_arn" { value = module.data.postgres_master_secret_arn, sensitive = true }
+output "postgres_master_secret_arn" {
+  value     = module.data.postgres_master_secret_arn
+  sensitive = true
+}
 output "redis_primary_endpoint" { value = module.data.redis_primary_endpoint }
-output "rabbitmq_instances" { value = module.data.rabbitmq_instances, sensitive = true }
+output "rabbitmq_instances" {
+  value     = module.data.rabbitmq_instances
+  sensitive = true
+}
