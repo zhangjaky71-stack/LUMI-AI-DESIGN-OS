@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
@@ -57,7 +58,7 @@ class ECSRemoteSandboxBackend:
         self._sandboxes: dict[UUID, _SandboxRecord] = {}
 
     @classmethod
-    def from_env(cls) -> "ECSRemoteSandboxBackend":
+    def from_env(cls) -> ECSRemoteSandboxBackend:
         region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
         return cls(
             cluster=_required_env("LUMI_SANDBOX_CHILD_CLUSTER"),
@@ -160,10 +161,8 @@ class ECSRemoteSandboxBackend:
             raise ECSRemoteSandboxError("SANDBOX_REMOTE_EXECUTION_FAILED") from exc
         finally:
             for key in (request_key, result_key):
-                try:
+                with suppress(BotoCoreError, ClientError):
                     self._s3.delete_object(Bucket=self._bucket, Key=key)
-                except (BotoCoreError, ClientError):
-                    pass
 
     def _start_child(self, *, request_key: str, result_key: str) -> str:
         response = self._ecs.run_task(
