@@ -6,8 +6,8 @@ import re
 import shutil
 import stat
 import zipfile
+from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
-from typing import Iterable
 
 _ALLOWED_ZONES = frozenset({"input", "work", "output"})
 _WRITABLE_ZONES = frozenset({"work", "output"})
