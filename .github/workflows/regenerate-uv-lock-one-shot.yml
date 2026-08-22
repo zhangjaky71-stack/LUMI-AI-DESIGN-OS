@@ -49,7 +49,7 @@ jobs:
         shell: bash
         run: |
           set -u
-          log="node73-uv-lock-regeneration.log"
+          log="$RUNNER_TEMP/node73-uv-lock-regeneration.log"
           : > "$log"
           resolver_ok=true
           failed_stage=""
@@ -100,7 +100,7 @@ jobs:
           name: node73-one-shot-uv-lock-${{ github.sha }}
           path: |
             uv.lock
-            node73-uv-lock-regeneration.log
+            ${{ runner.temp }}/node73-uv-lock-regeneration.log
           if-no-files-found: error
           retention-days: 7
 
