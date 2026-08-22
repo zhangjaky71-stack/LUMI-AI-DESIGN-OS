@@ -43,6 +43,8 @@ EXPECTED_TABLES = {
     "asset_metadata",
     "asset_embeddings",
     "asset_rights",
+    "asset_upload_sessions",
+    "asset_validation_runs",
     "design_documents",
     "design_document_versions",
     "artifacts",
@@ -53,28 +55,58 @@ EXPECTED_TABLES = {
     "artifact_provenance",
     "agent_runs",
     "agent_run_steps",
+    "agent_run_provenance",
     "tasks",
     "task_dependencies",
+    "task_graph_instances",
+    "task_attempts",
     "approvals",
     "generations",
+    "video_generation_jobs",
+    "video_provider_jobs",
     "provider_requests",
     "cost_ledger",
+    "cost_budget_limits",
+    "cost_reservations",
+    "usage_ledger",
     "usage_counters",
+    "quota_limits",
+    "quota_leases",
+    "platform_provider_cost_guard",
+    "model_registry_versions",
+    "model_registry_models",
+    "model_capability_claims",
+    "model_pricing_snapshots",
+    "model_benchmark_scores",
+    "model_routing_profiles",
+    "organization_model_policies",
     "idempotency_operations",
     "outbox_events",
     "inbox_events",
+    "dead_letter_records",
     "audit_events",
+    "memory_records",
+    "memory_candidates",
+    "knowledge_documents",
+    "knowledge_chunks",
 }
 
-GLOBAL_IDENTITY_TABLES = {
+GLOBAL_TABLES = {
     "users",
     "organizations",
     "auth_identities",
     "password_credentials",
     "email_verification_tokens",
     "password_reset_tokens",
+    "model_registry_versions",
+    "model_registry_models",
+    "model_capability_claims",
+    "model_pricing_snapshots",
+    "model_benchmark_scores",
+    "model_routing_profiles",
+    "platform_provider_cost_guard",
 }
-TENANT_TABLES = EXPECTED_TABLES - GLOBAL_IDENTITY_TABLES
+TENANT_TABLES = EXPECTED_TABLES - GLOBAL_TABLES
 IMMUTABLE_HISTORY_TABLES = {
     "project_brief_versions",
     "design_document_versions",
@@ -89,7 +121,7 @@ IMMUTABLE_HISTORY_TABLES = {
 
 def test_all_current_tables_are_registered() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
-    assert len(Base.metadata.tables) == 48
+    assert len(Base.metadata.tables) == 73
 
 
 def test_tenant_tables_carry_organization_id() -> None:
@@ -106,11 +138,11 @@ def test_business_ids_have_no_database_generated_uuid_default() -> None:
         assert id_column.server_default is None, table.name
 
 
-def test_only_recoverable_project_and_asset_use_soft_delete_in_p0() -> None:
+def test_only_governed_recoverable_records_use_soft_delete() -> None:
     tables_with_deleted_at = {
         table.name for table in Base.metadata.sorted_tables if "deleted_at" in table.c
     }
-    assert tables_with_deleted_at == {"projects", "assets"}
+    assert tables_with_deleted_at == {"projects", "assets", "memory_records"}
 
 
 def test_immutable_history_tables_have_no_updated_at() -> None:
@@ -163,7 +195,9 @@ def test_migrations_are_frozen_and_chained_without_live_metadata_execution() -> 
     assert 'down_revision = "0003_runtime_privilege_hardening"' in auth
     assert 'down_revision = "0004_auth_security"' in auth_roles
     assert 'down_revision = "0005_auth_role_hardening"' in projects
-    assert "CREATE TRIGGER trg_cost_ledger_immutable" in hardening
+    assert '"cost_ledger"' in hardening
+    assert "CREATE TRIGGER trg_{table}_immutable" in hardening
+    assert "BEFORE UPDATE OR DELETE ON {table}" in hardening
     assert "GRANT UPDATE (status, quality_score) ON artifact_versions" in hardening
     assert "password_credentials" in auth
     assert "api_tokens" in auth
@@ -204,7 +238,13 @@ def test_auth_secrets_are_hashed_and_sessions_have_csrf_revocation_fields() -> N
     assert "prefix" in api_columns
 
     session_columns = Base.metadata.tables["sessions"].c
-    for required in ("token_hash", "csrf_token_hash", "expires_at", "last_seen_at", "revoked_at"):
+    for required in (
+        "token_hash",
+        "csrf_token_hash",
+        "expires_at",
+        "last_seen_at",
+        "revoked_at",
+    ):
         assert required in session_columns
 
 
