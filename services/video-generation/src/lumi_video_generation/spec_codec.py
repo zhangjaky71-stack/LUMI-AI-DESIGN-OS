@@ -246,9 +246,15 @@ def _decode_audio(value: object) -> AudioTrackSpec:
 
 
 def _object(value: object, error: str) -> dict[str, Any]:
-    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+    if not isinstance(value, dict):
         raise ValueError(error)
-    return value
+    raw = cast(dict[object, object], value)
+    payload: dict[str, Any] = {}
+    for key, item in raw.items():
+        if not isinstance(key, str):
+            raise ValueError(error)
+        payload[key] = item
+    return payload
 
 
 def _exact_fields(payload: dict[str, Any], expected: set[str], label: str) -> None:
@@ -305,15 +311,21 @@ def _decimal(value: object, error: str) -> Decimal:
 def _list(value: object, error: str) -> list[object]:
     if not isinstance(value, list):
         raise ValueError(error)
-    return value
+    return cast(list[object], value)
 
 
 def _json_object(value: object, *, label: str, depth: int = 0) -> dict[str, Any]:
-    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+    if not isinstance(value, dict):
         raise ValueError(f"{label}_OBJECT_REQUIRED")
+    raw = cast(dict[object, object], value)
     if depth > 12:
         raise ValueError(f"{label}_TOO_DEEP")
-    return {key: _json_value(item, label=label, depth=depth + 1) for key, item in value.items()}
+    payload: dict[str, Any] = {}
+    for key, item in raw.items():
+        if not isinstance(key, str):
+            raise ValueError(f"{label}_OBJECT_REQUIRED")
+        payload[key] = _json_value(item, label=label, depth=depth + 1)
+    return payload
 
 
 def _json_value(value: object, *, label: str, depth: int) -> Any:
@@ -326,9 +338,11 @@ def _json_value(value: object, *, label: str, depth: int) -> Any:
             raise ValueError(f"{label}_NON_FINITE")
         return value
     if isinstance(value, list):
-        return [_json_value(item, label=label, depth=depth + 1) for item in value]
+        items = cast(list[object], value)
+        return [_json_value(item, label=label, depth=depth + 1) for item in items]
     if isinstance(value, tuple):
-        return [_json_value(item, label=label, depth=depth + 1) for item in value]
+        items = cast(tuple[object, ...], value)
+        return [_json_value(item, label=label, depth=depth + 1) for item in items]
     if isinstance(value, dict):
-        return _json_object(value, label=label, depth=depth + 1)
+        return _json_object(cast(dict[object, object], value), label=label, depth=depth + 1)
     raise ValueError(f"{label}_VALUE_INVALID:{type(value).__name__}")

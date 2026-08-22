@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, is_dataclass
 from decimal import Decimal
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 VideoMode = Literal["TEXT_TO_VIDEO", "IMAGE_TO_VIDEO", "STORYBOARD_MULTI_SHOT"]
 JobStatus = Literal[
@@ -37,9 +37,12 @@ def _jsonable(value: object) -> object:
     if is_dataclass(value) and not isinstance(value, type):
         return _jsonable(asdict(value))
     if isinstance(value, Mapping):
-        return {str(key): _jsonable(item) for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))}
+        mapping = cast(Mapping[object, object], value)
+        normalized = ((str(key), _jsonable(item)) for key, item in mapping.items())
+        return dict(sorted(normalized, key=lambda pair: pair[0]))
     if isinstance(value, (tuple, list)):
-        return [_jsonable(item) for item in value]
+        sequence = cast(tuple[object, ...] | list[object], value)
+        return [_jsonable(item) for item in sequence]
     if isinstance(value, Decimal):
         return _decimal_text(value)
     return value
