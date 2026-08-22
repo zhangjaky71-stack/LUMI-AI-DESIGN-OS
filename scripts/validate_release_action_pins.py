@@ -13,7 +13,7 @@ PINS_PATH = ROOT / "production" / "release-actions" / "pins-v1.json"
 DISPATCH_REGISTRY_CONTRACT = ROOT / "scripts" / "validate_release_dispatch_registry_contract.py"
 WORKFLOW_ROOT = ROOT / ".github" / "workflows"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
-USES_LINE = re.compile(r"^\s*-\s+uses:\s+([^\s#]+)(?:\s+#\s*(\S+))?\s*$")
+USES_LINE = re.compile(r"^\s*(?:-\s+)?uses:\s+([^\s#]+)(?:\s+#\s*(\S+))?\s*$")
 PRODUCTION_ENVIRONMENT = re.compile(r"(?m)^\s*environment:\s*production\s*$")
 STAGING_ENVIRONMENT = re.compile(r"(?m)^\s*environment:\s*staging\s*$")
 ID_TOKEN_WRITE = re.compile(r"(?m)^\s*id-token:\s*write\s*$")
@@ -229,6 +229,9 @@ def _negative_drills(policy: dict[str, Any]) -> None:
     good = "    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0\n"
     if validate_workflow_text(policy=policy, workflow="fixture.yml", text=good) != 1:
         raise ReleaseActionPinError("clean full-SHA fixture did not pass")
+    named_step = "    - name: Checkout\n      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0\n"
+    if validate_workflow_text(policy=policy, workflow="named-step-fixture.yml", text=named_step) != 1:
+        raise ReleaseActionPinError("clean named-step full-SHA fixture did not pass")
     subaction = "    - uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7\n"
     if validate_workflow_text(policy=policy, workflow="subaction-fixture.yml", text=subaction) != 1:
         raise ReleaseActionPinError("clean pinned sub-action fixture did not pass")
