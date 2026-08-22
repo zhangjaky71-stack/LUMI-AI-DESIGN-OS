@@ -216,7 +216,12 @@ locals {
         "--interval",
         "1",
       ]
-      environment = merge(local.common_environment, { LUMI_ROLE = "outbox-dispatcher" })
+      environment = merge(
+        local.common_environment,
+        {
+          LUMI_ROLE = "outbox-dispatcher"
+        },
+      )
       secret_arns = {
         LUMI_DATABASE_URL = local.secret_arns["database/app"]
         LUMI_RABBITMQ_URL = local.secret_arns["rabbitmq/url"]
