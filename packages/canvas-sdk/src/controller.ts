@@ -63,8 +63,8 @@ export class CanvasController {
   readonly selection = new CanvasSelectionModel();
   readonly #spatial = new CanvasSpatialIndex();
   readonly #commands: CanvasCommandBus;
-  readonly #renderer?: CanvasRendererAdapter;
-  readonly #assetResidency?: CanvasAssetResidencyPort;
+  readonly #renderer: CanvasRendererAdapter | undefined;
+  readonly #assetResidency: CanvasAssetResidencyPort | undefined;
   readonly #compiler: CanvasSceneCompilerPort;
   readonly #requestFrame: (callback: FrameRequestCallback) => number;
   readonly #cancelFrame: (id: number) => void;
