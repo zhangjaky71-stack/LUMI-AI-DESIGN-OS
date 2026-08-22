@@ -78,7 +78,11 @@ def main() -> int:
         "if failure is not None",
         "async def health_snapshot(self) -> MediaJobOutboxHealth:",
         "exchange=JOBS_EXCHANGE.name",
-        "routing_key=IMAGE_TRANSFORM_ROUTING_KEY",
+        "_ROUTE_BY_TASK: dict[str, tuple[str, str]]",
+        "IMAGE_TRANSFORM_TASK_NAME: (IMAGE_TRANSFORM_QUEUE, IMAGE_TRANSFORM_ROUTING_KEY)",
+        "VIDEO_RENDER_TASK_NAME: (VIDEO_RENDER_QUEUE, VIDEO_RENDER_ROUTING_KEY)",
+        "routing_key = _validate_media_dispatch(dispatch)",
+        "routing_key=routing_key",
     )
     require(
         "apps/worker-media/src/lumi_worker_media/app.py",
