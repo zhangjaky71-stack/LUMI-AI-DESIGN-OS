@@ -101,7 +101,7 @@ button:disabled { opacity: .42; cursor: not-allowed; }
 .colorCard { padding: 10px; border: 1px solid rgba(20,22,18,.08); border-radius: 13px; display: grid; gap: 7px; }
 .colorCard[data-warning="true"] { border-color: #dfb85d; background: #fffbf0; }
 .swatch { height: 92px; border: 1px solid rgba(0,0,0,.08); border-radius: 9px; }
-.colorCard input, .formGrid input, .formGrid textarea, .assetRow input, select, .complianceControls select, .proposalList select {
+.colorCard input, .formGrid input, .formGrid textarea, .assetRow input, .page select, .complianceControls select, .proposalList select {
   box-sizing: border-box;
   width: 100%;
   border: 1px solid rgba(20,22,18,.11);

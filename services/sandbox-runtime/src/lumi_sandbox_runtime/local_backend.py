@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -310,10 +311,8 @@ class DockerSandboxBackend:
                 exit_code = process.wait(timeout=timeout)
             except subprocess.TimeoutExpired as exc:
                 process.kill()
-                try:
+                with suppress(subprocess.TimeoutExpired):
                     process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    pass
                 self._best_effort_kill(record.container_name)
                 stdout_thread.join(timeout=5)
                 stderr_thread.join(timeout=5)
@@ -739,20 +738,16 @@ class DockerSandboxBackend:
         return result
 
     def _best_effort_remove(self, container: str) -> None:
-        try:
+        with suppress(Exception):
             self._docker(
                 ["rm", "-f", "-v", container],
                 timeout=20,
                 allow_failure=True,
             )
-        except Exception:
-            pass
 
     def _best_effort_kill(self, container: str) -> None:
-        try:
+        with suppress(Exception):
             self._docker(["kill", container], timeout=10, allow_failure=True)
-        except Exception:
-            pass
 
 
 def _host_uid() -> int:
