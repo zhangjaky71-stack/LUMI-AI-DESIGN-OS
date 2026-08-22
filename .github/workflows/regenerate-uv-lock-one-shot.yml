@@ -14,7 +14,6 @@ concurrency:
 
 env:
   TARGET_REF: release-closure-p0
-  EXPECTED_TRIGGER_MESSAGE: "ci(release): one-shot regenerate canonical uv lock"
 
 jobs:
   regenerate-lock:
@@ -24,8 +23,10 @@ jobs:
     permissions:
       contents: read
     outputs:
-      changed: ${{ steps.lock_meta.outputs.changed }}
-      lock_sha256: ${{ steps.lock_meta.outputs.lock_sha256 }}
+      changed: ${{ steps.resolve.outputs.changed }}
+      lock_sha256: ${{ steps.resolve.outputs.lock_sha256 }}
+      resolver_ok: ${{ steps.resolve.outputs.resolver_ok }}
+      failed_stage: ${{ steps.resolve.outputs.failed_stage }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -43,99 +44,71 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
-      - name: Require exact immutable trigger revision
+      - name: Run canonical resolver with fail-closed diagnostics
+        id: resolve
         shell: bash
         run: |
-          set -euo pipefail
-          test "$GITHUB_REPOSITORY" = "zhangjaky71-stack/LUMI-AI-DESIGN-OS"
-          test "$GITHUB_REF" = "refs/heads/${TARGET_REF}"
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain)"
+          set -u
+          log="node73-uv-lock-regeneration.log"
+          : > "$log"
+          resolver_ok=true
+          failed_stage=""
 
-      - name: Preserve canonical regeneration contract
-        run: |
-          python3 scripts/validate_uv_lock_regeneration_contract.py
-          python3 scripts/validate_release_action_pins.py
+          run_stage() {
+            local label="$1"
+            shift
+            printf '\n===== %s =====\n' "$label" | tee -a "$log"
+            if "$@" >>"$log" 2>&1; then
+              printf 'PASS: %s\n' "$label" | tee -a "$log"
+              return 0
+            fi
+            local rc=$?
+            printf 'FAIL(%s): %s\n' "$rc" "$label" | tee -a "$log"
+            resolver_ok=false
+            failed_stage="$label"
+            return "$rc"
+          }
 
-      - name: Regenerate uv.lock with pinned resolver
-        run: uv lock
+          run_stage "exact-trigger-sha" bash -c 'test "$GITHUB_REPOSITORY" = "zhangjaky71-stack/LUMI-AI-DESIGN-OS" && test "$GITHUB_REF" = "refs/heads/release-closure-p0" && test "$(git rev-parse HEAD)" = "$GITHUB_SHA" && test -z "$(git status --porcelain)"' || true
+          if [ "$resolver_ok" = true ]; then run_stage "canonical-regeneration-contract" python3 scripts/validate_uv_lock_regeneration_contract.py || true; fi
+          if [ "$resolver_ok" = true ]; then run_stage "release-action-pins" python3 scripts/validate_release_action_pins.py || true; fi
+          if [ "$resolver_ok" = true ]; then run_stage "uv-lock" uv lock || true; fi
+          if [ "$resolver_ok" = true ]; then run_stage "uv-lock-only-diff" bash -c 'mapfile -t changed < <(git diff --name-only); { [ "${#changed[@]}" -eq 0 ] || { [ "${#changed[@]}" -eq 1 ] && [ "${changed[0]}" = "uv.lock" ]; }; } && git diff --check -- uv.lock' || true; fi
+          if [ "$resolver_ok" = true ]; then run_stage "workspace-membership" python3 scripts/validate_uv_workspace_lock.py || true; fi
+          if [ "$resolver_ok" = true ]; then run_stage "uv-lock-check" uv lock --check || true; fi
+          if [ "$resolver_ok" = true ]; then run_stage "frozen-all-workspace-sync" uv sync --all-packages --frozen || true; fi
+          if [ "$resolver_ok" = true ]; then run_stage "release-critical-compile" uv run --frozen python -m compileall -q scripts/validate_release_action_pins.py scripts/validate_uv_lock_regeneration_contract.py scripts/validate_uv_workspace_lock.py scripts/staging-acceptance-gate.py scripts/validate_staging_acceptance_contract.py scripts/final-acceptance-gate.py scripts/validate_final_acceptance_contract.py apps/api/src/lumi_api/product_app.py apps/api/src/lumi_api/generations apps/api/src/lumi_api/media_dispatch.py || true; fi
+          if [ "$resolver_ok" = true ]; then run_stage "post-resolver-worktree-guard" bash -c 'test -z "$(git ls-files --others --exclude-standard)" && mapfile -t changed < <(git diff --name-only); { [ "${#changed[@]}" -eq 0 ] || { [ "${#changed[@]}" -eq 1 ] && [ "${changed[0]}" = "uv.lock" ]; }; } && git diff --check -- uv.lock' || true; fi
 
-      - name: Require uv.lock to be the only generated path
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t changed < <(git diff --name-only)
-          if [ "${#changed[@]}" -gt 1 ]; then
-            printf 'unexpected generated path: %s\n' "${changed[@]}" >&2
-            exit 1
-          fi
-          if [ "${#changed[@]}" -eq 1 ] && [ "${changed[0]}" != "uv.lock" ]; then
-            printf 'unexpected generated path: %s\n' "${changed[0]}" >&2
-            exit 1
-          fi
-          git diff --check -- uv.lock
-
-      - name: Verify regenerated workspace lock
-        run: |
-          python3 scripts/validate_uv_workspace_lock.py
-          uv lock --check
-          uv sync --all-packages --frozen
-
-      - name: Compile release-critical Python under frozen lock
-        env:
-          PYTHONPYCACHEPREFIX: ${{ runner.temp }}/node73-one-shot-compileall
-        run: >-
-          uv run --frozen python -m compileall -q
-          scripts/validate_uv_lock_regeneration_contract.py
-          scripts/validate_uv_workspace_lock.py
-          scripts/staging-acceptance-gate.py
-          scripts/validate_staging_acceptance_contract.py
-          scripts/final-acceptance-gate.py
-          scripts/validate_final_acceptance_contract.py
-          apps/api/src/lumi_api/product_app.py
-          apps/api/src/lumi_api/generations
-          apps/api/src/lumi_api/media_dispatch.py
-
-      - name: Require no post-resolver workspace mutation outside uv.lock
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -z "$(git ls-files --others --exclude-standard)"
-          mapfile -t changed < <(git diff --name-only)
-          if [ "${#changed[@]}" -gt 1 ]; then
-            printf 'unexpected post-resolver path: %s\n' "${changed[@]}" >&2
-            exit 1
-          fi
-          if [ "${#changed[@]}" -eq 1 ] && [ "${changed[0]}" != "uv.lock" ]; then
-            printf 'unexpected post-resolver path: %s\n' "${changed[0]}" >&2
-            exit 1
-          fi
-          git diff --check -- uv.lock
-
-      - name: Freeze regenerated lock identity
-        id: lock_meta
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git diff --quiet -- uv.lock; then
-            changed=false
-          else
-            changed=true
-          fi
+          if git diff --quiet -- uv.lock; then changed=false; else changed=true; fi
           lock_sha256="$(sha256sum uv.lock | awk '{print $1}')"
+          echo "resolver_ok=$resolver_ok" >> "$GITHUB_OUTPUT"
+          echo "failed_stage=$failed_stage" >> "$GITHUB_OUTPUT"
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
           echo "lock_sha256=$lock_sha256" >> "$GITHUB_OUTPUT"
-          printf 'changed=%s\nlock_sha256=%s\n' "$changed" "$lock_sha256"
+          printf '\nresolver_ok=%s\nfailed_stage=%s\nchanged=%s\nlock_sha256=%s\n' "$resolver_ok" "$failed_stage" "$changed" "$lock_sha256" | tee -a "$log"
+          cat "$log"
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - name: Upload resolver output and diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: node73-one-shot-uv-lock-${{ github.sha }}
-          path: uv.lock
+          path: |
+            uv.lock
+            node73-uv-lock-regeneration.log
           if-no-files-found: error
           retention-days: 7
 
+      - name: Fail closed when resolver verification failed
+        if: steps.resolve.outputs.resolver_ok != 'true'
+        shell: bash
+        run: |
+          echo "canonical uv-lock regeneration failed at stage: ${{ steps.resolve.outputs.failed_stage }}" >&2
+          exit 1
+
   commit-lock:
-    if: needs.regenerate-lock.result == 'success' && needs.regenerate-lock.outputs.changed == 'true'
+    if: needs.regenerate-lock.result == 'success' && needs.regenerate-lock.outputs.resolver_ok == 'true' && needs.regenerate-lock.outputs.changed == 'true'
     needs: [regenerate-lock]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -164,7 +137,6 @@ jobs:
           artifact="_node73-one-shot-lock/uv.lock"
           test -f "$artifact"
           test ! -L "$artifact"
-          test "$(find _node73-one-shot-lock -type f | wc -l)" -eq 1
           test "$(sha256sum "$artifact" | awk '{print $1}')" = "$EXPECTED_LOCK_SHA256"
           test "$(sha256sum uv.lock | awk '{print $1}')" != "$EXPECTED_LOCK_SHA256"
           cp "$artifact" uv.lock
@@ -188,5 +160,58 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- uv.lock
           test "$(git diff --cached --name-only)" = "uv.lock"
-          git commit -m "chore(release): regenerate canonical uv lock"
+          git commit -m "chore(release): refresh canonical dependency lock"
+          git -c http.https://github.com/.extraheader="$auth_header" push origin "HEAD:${TARGET_REF}"
+
+  publish-failure-diagnostic:
+    if: always() && needs.regenerate-lock.result == 'failure'
+    needs: [regenerate-lock]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: node73-one-shot-uv-lock-${{ github.sha }}
+          path: _node73-one-shot-diagnostic
+
+      - name: Freeze resolver failure diagnostic if branch did not move
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FAILED_STAGE: ${{ needs.regenerate-lock.outputs.failed_stage }}
+        run: |
+          set -euo pipefail
+          test -n "$GITHUB_TOKEN"
+          log="_node73-one-shot-diagnostic/node73-uv-lock-regeneration.log"
+          test -f "$log"
+          basic="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          auth_header="AUTHORIZATION: basic $basic"
+          git -c http.https://github.com/.extraheader="$auth_header" fetch --no-tags origin "+refs/heads/${TARGET_REF}:refs/remotes/origin/${TARGET_REF}"
+          test "$(git rev-parse "origin/${TARGET_REF}")" = "$GITHUB_SHA"
+          mkdir -p docs/release-evidence
+          report="docs/release-evidence/NODE-73-UV-LOCK-REGEN-LAST-FAILURE.md"
+          {
+            echo "# NODE-73 Canonical UV Lock Regeneration Failure"
+            echo
+            echo "- trigger_sha: \`$GITHUB_SHA\`"
+            echo "- failed_stage: \`$FAILED_STAGE\`"
+            echo "- workflow: \`regenerate-uv-lock-one-shot.yml\`"
+            echo
+            echo '```text'
+            cat "$log"
+            echo '```'
+          } > "$report"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "$report"
+          test "$(git diff --cached --name-only)" = "$report"
+          git commit -m "docs(release): capture uv lock regeneration failure"
           git -c http.https://github.com/.extraheader="$auth_header" push origin "HEAD:${TARGET_REF}"
