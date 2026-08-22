@@ -251,8 +251,7 @@ def _execute(payload: dict[str, Any], *, s3: Any, bucket: str) -> dict[str, Any]
                 rewritten_command,
                 cwd=sandbox_root / cwd,
                 stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 timeout=timeout,
                 check=False,
                 env={
