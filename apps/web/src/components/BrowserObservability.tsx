@@ -85,7 +85,12 @@ export function BrowserObservability() {
         }
         if (longest > 0) reportWebVital("inp_ms", longest, route());
       });
-      observer.observe({ type: "event", buffered: true, durationThreshold: 40 });
+      const eventObserverInit: PerformanceObserverInit & { durationThreshold: number } = {
+        type: "event",
+        buffered: true,
+        durationThreshold: 40,
+      };
+      observer.observe(eventObserverInit);
       observers.push(observer);
     }
 
