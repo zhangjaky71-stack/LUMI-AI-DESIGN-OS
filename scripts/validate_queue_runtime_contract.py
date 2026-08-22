@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +18,43 @@ def forbid(path: str, *needles: str) -> None:
     for needle in needles:
         if needle in text:
             raise SystemExit(f"{path}: forbidden contract marker: {needle}")
+
+
+def _celery_task_function(path: str, function_name: str, task_name: str) -> ast.FunctionDef:
+    source_path = ROOT / path
+    tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
+    function = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == function_name
+        ),
+        None,
+    )
+    if function is None:
+        raise SystemExit(f"{path}: missing task function: {function_name}")
+
+    for decorator in function.decorator_list:
+        if not isinstance(decorator, ast.Call):
+            continue
+        if not isinstance(decorator.func, ast.Attribute) or decorator.func.attr != "task":
+            continue
+        for keyword in decorator.keywords:
+            if (
+                keyword.arg == "name"
+                and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value == task_name
+            ):
+                return function
+    raise SystemExit(f"{path}: {function_name} is not registered as {task_name}")
+
+
+def _forbid_task_string(function: ast.FunctionDef, value: str, *, path: str) -> None:
+    if any(
+        isinstance(node, ast.Constant) and node.value == value
+        for node in ast.walk(function)
+    ):
+        raise SystemExit(f"{path}: {function.name} contains forbidden placeholder: {value}")
 
 
 def main() -> int:
@@ -84,8 +122,9 @@ def main() -> int:
         "routing_key = _validate_media_dispatch(dispatch)",
         "routing_key=routing_key",
     )
+    app_path = "apps/worker-media/src/lumi_worker_media/app.py"
     require(
-        "apps/worker-media/src/lumi_worker_media/app.py",
+        app_path,
         "task_acks_late=False",
         "task_reject_on_worker_lost=False",
         '"lumi.assets.validate"',
@@ -98,15 +137,17 @@ def main() -> int:
         "outcome.state == JobState.FAILED",
         'os.getenv("LUMI_DATABASE_URL")',
     )
-    app = (ROOT / "apps/worker-media/src/lumi_worker_media/app.py").read_text(encoding="utf-8")
-    image_start = app.index('name="lumi.jobs.image.transform"')
-    video_start = app.index('@celery_app.task(name="lumi.jobs.video.render"')
-    image_block = app[image_start:video_start]
-    if '"status": "accepted"' in image_block:
-        raise SystemExit(
-            "apps/worker-media/src/lumi_worker_media/app.py: "
-            "image.transform must not regress to accepted placeholder"
-        )
+    image_task = _celery_task_function(
+        app_path,
+        "image_transform",
+        "lumi.jobs.image.transform",
+    )
+    _celery_task_function(
+        app_path,
+        "video_render",
+        "lumi.jobs.video.render",
+    )
+    _forbid_task_string(image_task, "accepted", path=app_path)
     require(
         "apps/worker-media/src/lumi_worker_media/task_base.py",
         "RuntimeTask",
