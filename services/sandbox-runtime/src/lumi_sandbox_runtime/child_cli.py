@@ -10,9 +10,6 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-import boto3
-from botocore.exceptions import BotoCoreError, ClientError
-
 _MAX_REQUEST_BYTES = 128 * 1024
 _MAX_RESULT_BYTES = 64 * 1024 * 1024
 _MAX_EXCHANGE_FILE_BYTES = 8 * 1024 * 1024 * 1024
@@ -302,6 +299,9 @@ def _execute(payload: dict[str, Any], *, s3: Any, bucket: str) -> dict[str, Any]
 
 
 def main() -> int:
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError
+
     bucket = _required_env("LUMI_SANDBOX_EXCHANGE_BUCKET", max_length=255)
     request_key = _required_env("LUMI_SANDBOX_REQUEST_KEY", max_length=1024)
     result_key = _required_env("LUMI_SANDBOX_RESULT_KEY", max_length=1024)
