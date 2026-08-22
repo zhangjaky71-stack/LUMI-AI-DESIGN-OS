@@ -147,15 +147,24 @@ def validate_source_chain() -> None:
         "side_effect_ref=asset_ref",
         'resource_refs=(f"asset://',
         'resource_refs=(f"artifact://',
+        '"organization_id": str(request.organization_id)',
+        '"agent_run_id": str(request.agent_run_id)',
+        '"task_id": str(request.task_id)',
     ):
         if fragment not in gateway_client:
             raise ToolDataProvenanceError(
                 f"Tool Gateway data client is missing boundary: {fragment}"
             )
-    if "project_id =" in gateway_client or 'arguments.get("project_id")' in gateway_client:
-        raise ToolDataProvenanceError(
-            "Tool Gateway project query must derive project scope from canonical Task"
-        )
+    for forbidden in (
+        'request.arguments.get("project_id")',
+        'request.arguments["project_id"]',
+        'request.arguments.get(\'project_id\')',
+        "request.arguments['project_id']",
+    ):
+        if forbidden in gateway_client:
+            raise ToolDataProvenanceError(
+                "Tool Gateway project query must derive project scope from canonical Task"
+            )
 
     catalog = (ROOT / "services/tool-gateway/src/lumi_tool_gateway/catalog.py").read_text(
         encoding="utf-8"
