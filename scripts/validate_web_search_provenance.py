@@ -48,7 +48,7 @@ def _tool_gateway_sources(payload: dict[str, Any]) -> set[str]:
         isinstance(item, str) and item for item in source_paths
     ):
         raise WebSearchProvenanceError(
-            "tool-gateway image provenance source_paths is invalid"
+            "container_image_set.provenance.tool-gateway.source_paths is invalid"
         )
     return set(source_paths)
 
@@ -191,7 +191,7 @@ def validate_source_chain() -> None:
 
     compute = COMPUTE_MODULE.read_text(encoding="utf-8")
     for fragment in (
-        'name == "sandbox-runtime"',
+        'contains(["sandbox-runtime", "outbox-dispatcher"], name)',
         "var.app_internet_egress_security_group_id",
         "var.sandbox_egress_security_group_id",
     ):
