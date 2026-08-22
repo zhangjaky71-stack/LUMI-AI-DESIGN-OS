@@ -311,45 +311,44 @@ class KombuEventConsumer:
 
     def consume_one(self, handler: EventHandler, *, timeout: float = 1.0) -> str:
         queue = domain_queue(self.runtime.consumer, self.binding_key)
-        with Connection(self.broker_url) as connection:
-            with connection.SimpleQueue(queue) as simple_queue:
-                message = simple_queue.get(block=True, timeout=timeout)
-                envelope = message.payload
-                try:
-                    result = asyncio.run(self.runtime.process(envelope, handler))
-                except Exception as exc:
-                    category = classify_error(
-                        code=getattr(exc, "code", type(exc).__name__),
-                        retryable=(
-                            False
-                            if isinstance(exc, EventValidationError)
-                            else getattr(exc, "retryable", None)
-                        ),
-                    )
-                    if category == ErrorCategory.TRANSIENT:
-                        message.reject(requeue=True)
-                    else:
-                        attempts = _death_attempts(message.headers)
-                        asyncio.run(
-                            self.dead_letters.record(
-                                envelope=(
-                                    envelope if isinstance(envelope, dict) else {"data": envelope}
-                                ),
-                                source_queue=queue.name,
-                                consumer=self.runtime.consumer,
-                                exchange_name=DOMAIN_EXCHANGE.name,
-                                routing_key=str(message.delivery_info.get("routing_key", "#")),
-                                category=category,
-                                error_code=str(getattr(exc, "code", type(exc).__name__)),
-                                error_message=str(exc),
-                                attempts=attempts,
-                            )
-                        )
-                        message.reject(requeue=False)
-                    raise
+        with Connection(self.broker_url) as connection, connection.SimpleQueue(queue) as simple_queue:
+            message = simple_queue.get(block=True, timeout=timeout)
+            envelope = message.payload
+            try:
+                result = asyncio.run(self.runtime.process(envelope, handler))
+            except Exception as exc:
+                category = classify_error(
+                    code=getattr(exc, "code", type(exc).__name__),
+                    retryable=(
+                        False
+                        if isinstance(exc, EventValidationError)
+                        else getattr(exc, "retryable", None)
+                    ),
+                )
+                if category == ErrorCategory.TRANSIENT:
+                    message.reject(requeue=True)
                 else:
-                    message.ack()
-                    return result
+                    attempts = _death_attempts(message.headers)
+                    asyncio.run(
+                        self.dead_letters.record(
+                            envelope=(
+                                envelope if isinstance(envelope, dict) else {"data": envelope}
+                            ),
+                            source_queue=queue.name,
+                            consumer=self.runtime.consumer,
+                            exchange_name=DOMAIN_EXCHANGE.name,
+                            routing_key=str(message.delivery_info.get("routing_key", "#")),
+                            category=category,
+                            error_code=str(getattr(exc, "code", type(exc).__name__)),
+                            error_message=str(exc),
+                            attempts=attempts,
+                        )
+                    )
+                    message.reject(requeue=False)
+                raise
+            else:
+                message.ack()
+                return result
 
 
 def validate_event_envelope(envelope: dict[str, Any]) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import hmac
 import json
@@ -372,14 +373,12 @@ class SandboxExchangeMediaRuntime:
         keys = tuple(self._staged_exchange_keys)
         self._staged_exchange_keys.clear()
         for key in keys:
-            try:
+            # Cleanup failure must not overwrite the primary execution result.
+            with contextlib.suppress(Exception):
                 await self.object_store.delete_candidate(
                     bucket=self.exchange_bucket,
                     object_key=key,
                 )
-            except Exception:
-                # Cleanup failure must not overwrite the primary execution result.
-                pass
 
 
 def _durable_object_key(value: str) -> str:

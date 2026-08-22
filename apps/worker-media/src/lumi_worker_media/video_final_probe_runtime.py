@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 from dataclasses import replace
 from decimal import Decimal
@@ -19,7 +20,6 @@ from .video_generation_ports import (
     _head_sha256,
     _sandbox_request,
 )
-import contextlib
 
 _MAX_FINAL_VIDEO_BYTES = 8 * 1024 * 1024 * 1024
 _ALLOWED_MP4_CONTAINERS = frozenset({"mp4", "mov,mp4,m4a,3gp,3g2,mj2"})

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import hmac
 import json
@@ -28,7 +29,6 @@ from lumi_video_generation.model import (
 )
 
 from .video_sandbox_runtime import SandboxExchangeMediaRuntime
-import contextlib
 
 _MAX_PROVIDER_VIDEO_BYTES = 4 * 1024 * 1024 * 1024
 _EXECUTE_PATH = "/internal/v1/sandbox/execute"
