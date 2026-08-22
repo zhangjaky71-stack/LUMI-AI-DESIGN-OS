@@ -52,7 +52,8 @@ def discover_remote_backend() -> ECSRemoteSandboxBackend:
 
     child_family = f"lumi-{environment}-sandbox-child"
     try:
-        child_definition = ecs.describe_task_definition(taskDefinition=child_family).get("taskDefinition")
+        child_response = ecs.describe_task_definition(taskDefinition=child_family)
+        child_definition = child_response.get("taskDefinition")
     except (BotoCoreError, ClientError) as exc:
         raise ECSDiscoveryError("SANDBOX_CHILD_TASK_DEFINITION_MISSING") from exc
     if not isinstance(child_definition, dict) or child_definition.get("status") != "ACTIVE":
