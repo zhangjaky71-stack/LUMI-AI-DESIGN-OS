@@ -14,13 +14,17 @@ PIPELINE = ROOT / "apps/agent-runtime/src/lumi_agent_runtime/memory_engine/pipel
 class MemoryPostgresContractTests(unittest.TestCase):
     def test_migration_is_stacked_on_task_graph_and_has_two_memory_tables(self) -> None:
         text = MIGRATION.read_text(encoding="utf-8")
+        normalized_sql = " ".join(text.split())
         self.assertIn('down_revision = "0015_task_graph_runtime"', text)
         self.assertIn("CREATE TABLE memory_records", text)
         self.assertIn("CREATE TABLE memory_candidates", text)
         for scope in ("SESSION", "USER", "PROJECT", "BRAND", "AGENT", "ORGANIZATION"):
             self.assertIn(scope, text)
         self.assertIn("embedding vector", text)
-        self.assertIn("REVOKE DELETE ON memory_records, memory_candidates FROM lumi_app", text)
+        self.assertIn(
+            "REVOKE DELETE ON memory_records, memory_candidates FROM lumi_app",
+            normalized_sql,
+        )
 
     def test_orm_matches_migration_identity(self) -> None:
         text = ORM.read_text(encoding="utf-8")
