@@ -27,7 +27,7 @@ class _FakeConnection:
     async def fetch(self, sql: str, *args: object) -> list[dict[str, object]]:
         self.calls.append((sql, args))
         if "FROM video_generation_jobs" in sql:
-            rows = [{"organization_id": self.organization_id}]
+            rows: list[dict[str, object]] = [{"organization_id": self.organization_id}]
             if self.duplicate_scope:
                 rows.append({"organization_id": uuid4()})
             return rows

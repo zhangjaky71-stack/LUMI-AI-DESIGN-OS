@@ -126,7 +126,7 @@ class _Runtime(HostedVideoGenerationRuntime):
         assert message == _message()
         return self.spec
 
-    def _build_pipeline(self, spec: VideoTaskSpec, repository):
+    def _build_pipeline(self, spec: VideoTaskSpec, repository):  # pyright: ignore[reportIncompatibleMethodOverride]
         assert spec == self.spec
         assert isinstance(repository, _Repository)
         return self.pipeline, object(), object()

@@ -40,6 +40,11 @@ class _Publisher:
         del dispatch
 
 
+class _DomainPublisher:
+    def publish(self, record: OutboxRecord) -> None:
+        del record
+
+
 def test_job_dispatch_health_reads_only_oldest_pending_row(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -89,7 +94,7 @@ def test_domain_dispatch_health_reads_only_oldest_pending_row(
 
     monkeypatch.setattr(event_module.asyncpg, "connect", fake_connect)
     snapshot = asyncio.run(
-        OutboxDispatcher("postgresql://test", _Publisher()).health_snapshot()
+        OutboxDispatcher("postgresql://test", _DomainPublisher()).health_snapshot()
     )
 
     assert snapshot == DomainOutboxHealth(
@@ -189,9 +194,11 @@ def test_domain_outbox_failed_publish_attempt_commits_before_fail_closed(
         async def close(self) -> None:
             self.closed = True
 
+    expected_event_id = record.event_id
+
     class FailingPublisher:
-        def publish(self, outbox_record: OutboxRecord) -> None:
-            assert outbox_record.event_id == record.event_id
+        def publish(self, record: OutboxRecord) -> None:
+            assert record.event_id == expected_event_id
             raise RuntimeError("broker unavailable")
 
     connection = FakeConnection()

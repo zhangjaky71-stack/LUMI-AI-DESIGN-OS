@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from uuid import uuid4
 
 from lumi_domain.job_dispatch import JobMessage
-from lumi_worker_media.job_runtime import ExternalWait
+from lumi_worker_media.job_runtime import ExternalWait, TaskJobStore
 from lumi_worker_media.queue_contracts import ErrorCategory, JobState
 from lumi_worker_media.video_job_runtime import execute_video_job
 
@@ -104,8 +105,8 @@ def test_video_cancel_request_stays_waiting_when_provider_cancel_is_unproven() -
             execute_result={"status": "COMPLETED"},
             cancellation_result=_wait(),
         )
-        outcome = await execute_video_job(  # type: ignore[arg-type]
-            store=store,
+        outcome = await execute_video_job(
+            store=cast(TaskJobStore, store),
             message=_message(),
             runtime=runtime,
         )
@@ -127,8 +128,8 @@ def test_video_cancel_request_marks_cancelled_only_after_runtime_confirms() -> N
             execute_result={"status": "COMPLETED"},
             cancellation_result={"status": "CANCELLED", "video_job_id": "video-job:test"},
         )
-        outcome = await execute_video_job(  # type: ignore[arg-type]
-            store=store,
+        outcome = await execute_video_job(
+            store=cast(TaskJobStore, store),
             message=_message(),
             runtime=runtime,
         )
@@ -147,8 +148,8 @@ def test_provider_terminal_success_wins_race_with_late_cancel_request() -> None:
             execute_result={"status": "COMPLETED", "video_job_id": "video-job:test"},
             cancellation_result={"status": "COMPLETED", "video_job_id": "video-job:test"},
         )
-        outcome = await execute_video_job(  # type: ignore[arg-type]
-            store=store,
+        outcome = await execute_video_job(
+            store=cast(TaskJobStore, store),
             message=_message(),
             runtime=runtime,
         )
@@ -169,8 +170,8 @@ def test_invalid_video_cancellation_resolution_fails_closed() -> None:
             execute_result={"status": "COMPLETED"},
             cancellation_result={"status": "UNKNOWN"},
         )
-        outcome = await execute_video_job(  # type: ignore[arg-type]
-            store=store,
+        outcome = await execute_video_job(
+            store=cast(TaskJobStore, store),
             message=_message(),
             runtime=runtime,
         )
