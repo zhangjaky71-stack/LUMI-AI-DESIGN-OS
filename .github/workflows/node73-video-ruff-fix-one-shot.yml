@@ -1,4 +1,4 @@
-name: NODE-73 Video Ruff Safe Fix One Shot
+name: NODE-73 Video Ruff Residual Fix One Shot
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  scoped-safe-fix:
+  scoped-residual-fix:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -29,84 +29,46 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Frozen workspace install
         run: uv sync --all-packages --frozen
-      - name: Apply only Ruff safe fixes in Video gate scope
+      - name: Apply reviewed residual Video Ruff fixes
         shell: bash
         run: |
           set -euo pipefail
-          targets=(
-            services/video-generation/src
-            services/video-generation/tests
-            apps/worker-media/src/lumi_worker_media/app.py
-            apps/worker-media/src/lumi_worker_media/cli.py
-            apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py
-            apps/worker-media/src/lumi_worker_media/event_runtime.py
-            apps/worker-media/src/lumi_worker_media/external_wait_runtime.py
-            apps/worker-media/src/lumi_worker_media/video_*.py
-            apps/worker-media/tests/test_video_*.py
-            apps/worker-media/tests/test_job_dispatch_observability.py
-            apps/worker-media/tests/integration/test_video_*.py
-            apps/api/src/lumi_api/generations/gateway.py
-            apps/api/src/lumi_api/generations/video_service.py
-            apps/api/src/lumi_api/media_dispatch.py
-            apps/api/src/lumi_api/provider_output_store.py
-            apps/api/tests/integration/test_video_generation_control_plane_postgres.py
-            apps/api/tests/integration/test_video_outbox_dispatch_postgres.py
-            apps/api/tests/test_provider_output_store.py
-            scripts/validate_video_generation.py
-            scripts/validate_video_generation_producer_binding.py
-            scripts/validate_video_worker_hosted_binding.py
-            scripts/validate_video_cancellation_contract.py
-            scripts/validate_video_final_probe_binding.py
-            scripts/validate_outbox_dispatcher_observability.py
-            scripts/benchmark_video_generation.py
-          )
-          uv run ruff check --ignore E501 --fix "${targets[@]}" || true
+          uv run ruff check --ignore E501 --select SIM105,SIM117 --fix --unsafe-fixes \
+            apps/worker-media/src/lumi_worker_media/event_runtime.py \
+            apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py \
+            apps/worker-media/src/lumi_worker_media/video_generation_ports.py \
+            apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py || true
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("apps/worker-media/src/lumi_worker_media/app.py")
+          text = path.read_text()
+          old = "        raise retry(exc=exc, countdown=countdown)\n"
+          new = "        raise retry(exc=exc, countdown=countdown) from exc\n"
+          if text.count(old) != 1:
+              raise SystemExit("expected exactly one Celery asset retry raise to patch")
+          path.write_text(text.replace(old, new, 1))
+          PY
           git diff --check
           python - <<'PY'
-          from __future__ import annotations
-
-          import fnmatch
           import subprocess
 
-          allowed = (
-              "services/video-generation/src/*",
-              "services/video-generation/tests/*",
+          allowed = {
               "apps/worker-media/src/lumi_worker_media/app.py",
-              "apps/worker-media/src/lumi_worker_media/cli.py",
-              "apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py",
               "apps/worker-media/src/lumi_worker_media/event_runtime.py",
-              "apps/worker-media/src/lumi_worker_media/external_wait_runtime.py",
-              "apps/worker-media/src/lumi_worker_media/video_*.py",
-              "apps/worker-media/tests/test_video_*.py",
-              "apps/worker-media/tests/test_job_dispatch_observability.py",
-              "apps/worker-media/tests/integration/test_video_*.py",
-              "apps/api/src/lumi_api/generations/gateway.py",
-              "apps/api/src/lumi_api/generations/video_service.py",
-              "apps/api/src/lumi_api/media_dispatch.py",
-              "apps/api/src/lumi_api/provider_output_store.py",
-              "apps/api/tests/integration/test_video_generation_control_plane_postgres.py",
-              "apps/api/tests/integration/test_video_outbox_dispatch_postgres.py",
-              "apps/api/tests/test_provider_output_store.py",
-              "scripts/validate_video_generation.py",
-              "scripts/validate_video_generation_producer_binding.py",
-              "scripts/validate_video_worker_hosted_binding.py",
-              "scripts/validate_video_cancellation_contract.py",
-              "scripts/validate_video_final_probe_binding.py",
-              "scripts/validate_outbox_dispatcher_observability.py",
-              "scripts/benchmark_video_generation.py",
+              "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py",
+              "apps/worker-media/src/lumi_worker_media/video_generation_ports.py",
+              "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py",
+          }
+          changed = set(
+              subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
           )
-          changed = subprocess.check_output(
-              ["git", "diff", "--name-only"], text=True
-          ).splitlines()
-          unexpected = [
-              path for path in changed
-              if not any(fnmatch.fnmatchcase(path, pattern) for pattern in allowed)
-          ]
+          unexpected = sorted(changed - allowed)
           if unexpected:
-              raise SystemExit(f"unexpected Ruff changes outside Video gate: {unexpected}")
-          print(f"safe-fix changed {len(changed)} scoped files")
+              raise SystemExit(f"unexpected residual fix paths: {unexpected}")
+          print(f"residual-fix changed {len(changed)} reviewed files")
           PY
-      - name: Show residual scoped Ruff findings
+      - name: Report full scoped Ruff result
         shell: bash
         run: |
           uv run ruff check --ignore E501 \
@@ -135,14 +97,14 @@ jobs:
             scripts/validate_video_final_probe_binding.py \
             scripts/validate_outbox_dispatcher_observability.py \
             scripts/benchmark_video_generation.py || true
-      - name: Commit scoped safe fixes only if branch head is unchanged
+      - name: Commit reviewed residual fixes if branch head is unchanged
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if git diff --quiet; then
-            echo "No safe Ruff changes to commit."
+            echo "No residual changes to commit."
             exit 0
           fi
           remote_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
@@ -151,5 +113,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add --update
-          git commit -m "style(video): apply scoped ruff safe fixes"
+          git commit -m "style(video): close scoped ruff residuals"
           git push "$remote_url" HEAD:release-closure-p0
