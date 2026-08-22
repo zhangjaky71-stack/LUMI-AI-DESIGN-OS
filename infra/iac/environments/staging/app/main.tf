@@ -65,7 +65,7 @@ locals {
       container_port      = 8000
       publicly_routed     = true
       health_check_path   = "/health/ready"
-      environment = merge(local.common_environment, { LUMI_ROLE = "api" })
+      environment         = merge(local.common_environment, { LUMI_ROLE = "api" })
       secret_arns = {
         LUMI_DATABASE_URL                    = local.secret_arns["database/app"]
         LUMI_REDIS_URL                       = local.secret_arns["redis/url"]
@@ -233,7 +233,7 @@ locals {
       max_capacity        = 2
       autoscaling_enabled = false
       container_port      = 8080
-      environment = merge(local.common_environment, { LUMI_ROLE = "sandbox-runtime" })
+      environment         = merge(local.common_environment, { LUMI_ROLE = "sandbox-runtime" })
       secret_arns = {
         LUMI_REDIS_URL                   = local.secret_arns["redis/url"]
         LUMI_RABBITMQ_URL                = local.secret_arns["rabbitmq/url"]
@@ -252,16 +252,16 @@ module "platform_app" {
   vpc_id                                = local.core.vpc_id
   public_subnet_ids                     = local.core.public_subnet_ids
   private_subnet_ids                    = local.core.private_subnet_ids
-  app_security_group_id                  = local.core.app_security_group_id
+  app_security_group_id                 = local.core.app_security_group_id
   app_internet_egress_security_group_id = local.core.app_internet_egress_security_group_id
-  sandbox_egress_security_group_id       = local.core.sandbox_egress_security_group_id
-  alb_security_group_id                  = local.core.alb_security_group_id
-  certificate_arn                        = var.certificate_arn
-  kms_key_arn                            = local.core.kms_key_arn
-  domain_name                            = var.domain_name
-  hosted_zone_id                         = var.hosted_zone_id
-  services                               = local.services
-  waf_rate_limit_requests_per_5m         = var.waf_rate_limit_requests_per_5m
+  sandbox_egress_security_group_id      = local.core.sandbox_egress_security_group_id
+  alb_security_group_id                 = local.core.alb_security_group_id
+  certificate_arn                       = var.certificate_arn
+  kms_key_arn                           = local.core.kms_key_arn
+  domain_name                           = var.domain_name
+  hosted_zone_id                        = var.hosted_zone_id
+  services                              = local.services
+  waf_rate_limit_requests_per_5m        = var.waf_rate_limit_requests_per_5m
   tags = {
     Owner       = "platform"
     DataClass   = "synthetic-only"

@@ -37,11 +37,11 @@ resource "aws_s3_bucket" "object_dr" {
 
   bucket = each.value
   tags = merge(local.tags, {
-    Name            = each.value
-    Purpose         = "${each.key}-cross-region-dr"
-    SourceRegion    = var.region
-    RecoveryRegion  = var.object_dr_region
-    RecoveryClass   = "critical"
+    Name           = each.value
+    Purpose        = "${each.key}-cross-region-dr"
+    SourceRegion   = var.region
+    RecoveryRegion = var.object_dr_region
+    RecoveryClass  = "critical"
   })
 }
 
@@ -136,7 +136,7 @@ data "aws_iam_policy_document" "object_replication_assume" {
 resource "aws_iam_role" "object_replication" {
   name               = "lumi-production-object-dr-replication"
   assume_role_policy = data.aws_iam_policy_document.object_replication_assume.json
-  tags                = local.tags
+  tags               = local.tags
 }
 
 data "aws_iam_policy_document" "object_replication" {

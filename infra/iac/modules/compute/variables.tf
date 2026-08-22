@@ -31,22 +31,22 @@ variable "public_canary_bake_time_minutes" {
 variable "services" {
   description = "Production deployment units. Exactly one service must be publicly_routed. Dynamic autoscaling remains release-blocked until NODE-69 has measured capacity plus a production metric emitter."
   type = map(object({
-    image                    = string
-    cpu                      = number
-    memory                   = number
-    desired_count            = number
-    min_capacity             = number
-    max_capacity             = number
-    container_port           = optional(number, 8080)
-    command                  = optional(list(string), [])
-    publicly_routed          = optional(bool, false)
-    health_check_path        = optional(string, "/health/ready")
-    environment              = optional(map(string), {})
-    secret_arns              = optional(map(string), {})
-    s3_bucket_arns           = optional(list(string), [])
-    autoscaling_enabled      = optional(bool, false)
-    autoscale_metric_name    = optional(string, "")
-    autoscale_target_value   = optional(number, 0)
+    image                  = string
+    cpu                    = number
+    memory                 = number
+    desired_count          = number
+    min_capacity           = number
+    max_capacity           = number
+    container_port         = optional(number, 8080)
+    command                = optional(list(string), [])
+    publicly_routed        = optional(bool, false)
+    health_check_path      = optional(string, "/health/ready")
+    environment            = optional(map(string), {})
+    secret_arns            = optional(map(string), {})
+    s3_bucket_arns         = optional(list(string), [])
+    autoscaling_enabled    = optional(bool, false)
+    autoscale_metric_name  = optional(string, "")
+    autoscale_target_value = optional(number, 0)
   }))
 
   validation {
