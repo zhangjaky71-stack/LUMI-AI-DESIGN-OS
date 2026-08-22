@@ -59,7 +59,7 @@
     "docker/setup-buildx-action": [
       {
         "version": "v4.2.0",
-        "sha": "bb05f3f5519dd87d3ba754cc423b6525edd6d2c"
+        "sha": "bb05f3f5519dd87d3ba754cc423b652a5edd6d2c"
       }
     ],
     "docker/build-push-action": [
