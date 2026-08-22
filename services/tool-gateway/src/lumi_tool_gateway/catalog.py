@@ -96,7 +96,9 @@ def p0_tool_definitions() -> tuple[ToolDefinition, ...]:
         ToolDefinition(
             name="asset.write-derived",
             version="1.0.0",
-            description="Create a tenant-scoped derived Asset through the trusted storage boundary.",
+            description=(
+                "Create a tenant-scoped derived Asset through the trusted storage boundary."
+            ),
             input_schema={
                 "type": "object",
                 "required": ["source_asset_id", "artifact_ref"],
@@ -154,7 +156,9 @@ def p0_tool_definitions() -> tuple[ToolDefinition, ...]:
         ToolDefinition(
             name="artifact.query",
             version="1.0.0",
-            description="Read Artifact metadata and resource references inside the tenant boundary.",
+            description=(
+                "Read Artifact metadata and resource references inside the tenant boundary."
+            ),
             input_schema={
                 "type": "object",
                 "required": ["artifact_id"],
