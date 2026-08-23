@@ -82,6 +82,34 @@ with open(target, "wb") as handle:
         handle.write(chunk)
 """.strip()
 
+_EXPORT_FILE_SCRIPT = r"""
+import os, stat, sys
+target = sys.argv[1]
+limit = int(sys.argv[2])
+flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+try:
+    fd = os.open(target, flags)
+except OSError:
+    raise SystemExit(43)
+try:
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode):
+        raise SystemExit(43)
+    if st.st_size > limit:
+        raise SystemExit(47)
+    total = 0
+    while True:
+        chunk = os.read(fd, 64 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise SystemExit(47)
+        sys.stdout.buffer.write(chunk)
+finally:
+    os.close(fd)
+""".strip()
+
 _LIST_SCRIPT = r"""
 import json, os, stat, sys
 root = os.path.realpath(sys.argv[1])
@@ -409,12 +437,29 @@ class DockerSandboxBackend:
                 raise ValueError("SANDBOX_READ_LIMIT_INVALID")
             with tempfile.TemporaryDirectory(dir=record.root / "staging") as temp_dir:
                 target = Path(temp_dir) / "file"
-                self._docker(
-                    ["cp", f"{record.container_name}:{resolved}", str(target)],
+                result = self._docker_to_file(
+                    [
+                        "exec",
+                        record.container_name,
+                        "python",
+                        "-c",
+                        _EXPORT_FILE_SCRIPT,
+                        resolved,
+                        str(limit),
+                    ],
+                    target=target,
                     timeout=30,
+                    allow_failure=True,
                 )
-                if target.is_symlink() or not target.is_file():
+                if result.returncode == 43:
                     raise SandboxPolicyError("SANDBOX_FILE_TYPE_FORBIDDEN")
+                if result.returncode == 47:
+                    raise SandboxPolicyError("SANDBOX_FILE_TOO_LARGE")
+                if result.returncode != 0:
+                    message = redact_text(
+                        result.stderr.decode("utf-8", errors="replace").strip()
+                    )[:2000]
+                    raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
                 if target.stat().st_size > limit:
                     raise SandboxPolicyError("SANDBOX_FILE_TOO_LARGE")
                 data = target.read_bytes()
@@ -531,16 +576,35 @@ class DockerSandboxBackend:
             if zone != "output" or not relative:
                 raise SandboxPolicyError("SANDBOX_ARTIFACT_MUST_BE_OUTPUT_FILE")
             resolved = self._resolve_container_path(record, path, expected="file")
+            max_bytes = record.spec.disk_limit_mb * 1024 * 1024
             with tempfile.TemporaryDirectory(dir=record.root / "staging") as temp_dir:
                 staged = Path(temp_dir) / safe_filename(Path(relative).name)
-                self._docker(
-                    ["cp", f"{record.container_name}:{resolved}", str(staged)],
+                result = self._docker_to_file(
+                    [
+                        "exec",
+                        record.container_name,
+                        "python",
+                        "-c",
+                        _EXPORT_FILE_SCRIPT,
+                        resolved,
+                        str(max_bytes),
+                    ],
+                    target=staged,
                     timeout=60,
+                    allow_failure=True,
                 )
-                if staged.is_symlink() or not staged.is_file():
+                if result.returncode == 43:
+                    raise SandboxPolicyError("SANDBOX_ARTIFACT_FILE_TYPE_INVALID")
+                if result.returncode == 47:
+                    raise SandboxPolicyError("SANDBOX_ARTIFACT_TOO_LARGE")
+                if result.returncode != 0:
+                    message = redact_text(
+                        result.stderr.decode("utf-8", errors="replace").strip()
+                    )[:2000]
+                    raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
+                if not staged.is_file():
                     raise SandboxPolicyError("SANDBOX_ARTIFACT_FILE_TYPE_INVALID")
                 size = staged.stat().st_size
-                max_bytes = record.spec.disk_limit_mb * 1024 * 1024
                 if size > max_bytes:
                     raise SandboxPolicyError("SANDBOX_ARTIFACT_TOO_LARGE")
                 checksum = sha256_file(staged)
@@ -783,6 +847,31 @@ class DockerSandboxBackend:
             timeout=timeout,
             check=False,
         )
+        if result.returncode != 0 and not allow_failure:
+            message = redact_text(result.stderr.decode("utf-8", errors="replace").strip())[
+                :2000
+            ]
+            raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
+        return result
+
+    def _docker_to_file(
+        self,
+        args: list[str],
+        *,
+        target: Path,
+        timeout: int,
+        allow_failure: bool = False,
+    ) -> subprocess.CompletedProcess[bytes]:
+        with target.open("wb") as output:
+            result = subprocess.run(
+                [self.docker_binary, *args],
+                stdin=subprocess.DEVNULL,
+                stdout=output,
+                stderr=subprocess.PIPE,
+                shell=False,
+                timeout=timeout,
+                check=False,
+            )
         if result.returncode != 0 and not allow_failure:
             message = redact_text(result.stderr.decode("utf-8", errors="replace").strip())[
                 :2000
