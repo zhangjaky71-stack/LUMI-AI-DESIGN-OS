@@ -41,9 +41,12 @@ def assert_model_chat_boundary() -> None:
             roots = {alias.name.split(".", 1)[0] for alias in node.names}
             if roots & forbidden_modules:
                 raise SystemExit(f"{path}: provider/direct HTTP import bypasses NODE-22")
-        if isinstance(node, ast.ImportFrom) and node.module:
-            if node.module.split(".", 1)[0] in forbidden_modules:
-                raise SystemExit(f"{path}: provider/direct HTTP import bypasses NODE-22")
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and node.module.split(".", 1)[0] in forbidden_modules
+        ):
+            raise SystemExit(f"{path}: provider/direct HTTP import bypasses NODE-22")
     for credential in (
         "OPENAI_API_KEY",
         "ANTHROPIC_API_KEY",
