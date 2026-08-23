@@ -167,7 +167,8 @@ def validate_ecs_secret_materialization() -> None:
         compute,
         (
             "services_with_secrets = {",
-            "for name, service in var.services : name => service if length(service.secret_arns) > 0",
+            "for name, service in var.services : name => service "
+            "if length(service.secret_arns) > 0",
             'sid       = "ReadDeclaredSecrets"',
             "resources = values(each.value.secret_arns)",
             "for key, arn in each.value.secret_arns",
@@ -200,7 +201,8 @@ def validate_secret_source_ownership() -> None:
     require(
         architecture.find("if path not in MODEL_GATEWAY_HOST_SECRET_FILES:")
         < architecture.find("composite Provider secret is outside Hosted Model Gateway"),
-        "Provider secret ownership scanner must guard the rejection behind the exact Hosted host allowlist",
+        "Provider secret ownership scanner must guard the rejection behind "
+        "the exact Hosted host allowlist",
     )
 
 
