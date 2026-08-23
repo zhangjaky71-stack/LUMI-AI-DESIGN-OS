@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 import re
 from dataclasses import dataclass
@@ -111,7 +109,7 @@ class LumiToolGatewayProvider:
 
         async def call(
             payload: dict[str, Any],
-            tool_call_id: str,
+            tool_call_id: Annotated[str, injected_type],
         ) -> Any:
             if not isinstance(payload, dict):
                 raise DeepAgentToolScopeError("Deep Agent tool payload must be an object")
@@ -128,13 +126,9 @@ class LumiToolGatewayProvider:
                 idempotency_key=idempotency_key,
             )
 
-        # LangChain hides InjectedToolCallId from the model-facing schema while still
-        # supplying the stable framework tool-call identity at execution time.
-        call.__annotations__ = {
-            "payload": dict[str, Any],
-            "tool_call_id": Annotated[str, injected_type],
-            "return": Any,
-        }
+        # The dynamically imported InjectedToolCallId is present in the function
+        # signature at definition time, so LangChain excludes it from model-facing
+        # JSON schema while still injecting the stable framework call identity.
         call.__name__ = _langchain_name(definition.name)
         call.__doc__ = _trusted_description(definition)
         try:
