@@ -173,13 +173,13 @@ def create_tool_gateway_app(runtime: ToolGatewayServiceRuntime) -> FastAPI:
         try:
             result = await runtime.api.invoke(decoded)
         except ToolPermissionDeniedError as exc:
-            return _error(403, exc.code, str(exc))
+            return _error(403, exc.code, "tool permission denied")
         except (ToolNotFoundError, ToolVersionError, ToolDisabledError) as exc:
-            return _error(404, exc.code, str(exc))
+            return _error(404, exc.code, "tool is unavailable")
         except ToolIdempotencyInProgressError as exc:
-            return _error(425, exc.code, str(exc))
+            return _error(425, exc.code, "tool operation is already in progress")
         except (ToolIdempotencyConflictError, ToolPriorSideEffectFailedError) as exc:
-            return _error(409, exc.code, str(exc))
+            return _error(409, exc.code, "tool operation conflicts with prior state")
         except (
             ToolAmbiguousSideEffectError,
             ToolApprovalControlUnavailableError,
@@ -189,12 +189,14 @@ def create_tool_gateway_app(runtime: ToolGatewayServiceRuntime) -> FastAPI:
             ToolSideEffectControlUnavailableError,
             ToolWebSearchUnavailableError,
         ) as exc:
-            return _error(503, exc.code, str(exc))
+            return _error(503, exc.code, "tool dependency is unavailable")
         except ToolInputValidationError as exc:
-            return _error(422, exc.code, str(exc))
+            return _error(422, exc.code, "invalid tool request")
         except ToolGatewayError as exc:
-            message = str(exc)
-            status = 503 if message.startswith("TOOL_ADAPTER_NOT_REGISTERED:") else 422
+            internal_message = str(exc)
+            adapter_missing = internal_message.startswith("TOOL_ADAPTER_NOT_REGISTERED:")
+            status = 503 if adapter_missing else 422
+            message = "tool adapter is unavailable" if adapter_missing else "tool gateway request failed"
             return _error(status, exc.code, message)
         except Exception:
             return _error(
@@ -246,14 +248,33 @@ async def _decode_internal_tool_request(
             signature=request.headers.get(AUTH_SIGNATURE_HEADER),
         )
     except InternalToolGatewayAuthError as exc:
-        return _error(401, str(exc), "internal Tool Gateway authentication failed")
+        return _error(
+            401,
+            _auth_error_code(exc),
+            "internal Tool Gateway authentication failed",
+        )
     try:
         payload = json.loads(body.decode("utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("TOOL_GATEWAY_HTTP_REQUEST_OBJECT_REQUIRED")
         return decode_tool_request(payload)
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        return _error(422, "TOOL_GATEWAY_REQUEST_INVALID", str(exc))
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return _error(422, "TOOL_GATEWAY_REQUEST_INVALID", "invalid Tool Gateway request")
+
+
+def _auth_error_code(exc: InternalToolGatewayAuthError) -> str:
+    candidate = str(exc)
+    if candidate == "TOOL_GATEWAY_CALLER_FORBIDDEN":
+        return "TOOL_GATEWAY_CALLER_FORBIDDEN"
+    if candidate == "TOOL_GATEWAY_AUTH_TIMESTAMP_REQUIRED":
+        return "TOOL_GATEWAY_AUTH_TIMESTAMP_REQUIRED"
+    if candidate == "TOOL_GATEWAY_AUTH_TIMESTAMP_INVALID":
+        return "TOOL_GATEWAY_AUTH_TIMESTAMP_INVALID"
+    if candidate == "TOOL_GATEWAY_AUTH_TIMESTAMP_EXPIRED":
+        return "TOOL_GATEWAY_AUTH_TIMESTAMP_EXPIRED"
+    if candidate == "TOOL_GATEWAY_AUTH_SIGNATURE_INVALID":
+        return "TOOL_GATEWAY_AUTH_SIGNATURE_INVALID"
+    return "TOOL_GATEWAY_AUTH_FAILED"
 
 
 def _build_hosted_adapters() -> dict[str, ToolAdapter]:
