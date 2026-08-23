@@ -1,22 +1,23 @@
 name: Release Model Gateway Ruff Autofix
 
 on:
-  push:
+  pull_request:
     branches:
-      - release-closure-p0
+      - node-73-final-acceptance-release
     paths:
       - ".github/workflows/release-model-gateway-ruff-autofix.yml"
 
 permissions:
   contents: write
+  pull-requests: read
 
 concurrency:
   group: release-model-gateway-ruff-autofix
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   autofix:
-    if: github.actor == github.repository_owner
+    if: github.event.pull_request.head.ref == 'release-closure-p0' && github.actor == github.repository_owner
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
