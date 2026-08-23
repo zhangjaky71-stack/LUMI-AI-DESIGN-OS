@@ -378,7 +378,8 @@ class OpenAIVideoGenerationAdapter:
         self._provider_request_id(provider_request_id)
         raise ProviderInvocationError(
             ErrorCategory.CAPABILITY_TEMP_UNAVAILABLE,
-            "OpenAI Videos exposes delete but this adapter does not equate deletion with proven cancellation",
+            "OpenAI Videos exposes delete, but this adapter does not equate "
+            "deletion with proven cancellation",
             provider=self._descriptor.provider,
             model=self._descriptor.model,
             delivery_state=DeliveryState.NOT_ACCEPTED,
