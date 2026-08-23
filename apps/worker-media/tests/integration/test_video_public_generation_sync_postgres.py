@@ -54,6 +54,13 @@ def _spec(*, task_id: UUID, operation_id: UUID) -> VideoTaskSpec:
     )
 
 
+def _json_object(value: object) -> dict[str, object]:
+    decoded = json.loads(value) if isinstance(value, str) else value
+    assert isinstance(decoded, dict)
+    assert all(isinstance(key, str) for key in decoded)
+    return dict(decoded)
+
+
 async def _acceptance() -> None:
     task_id = uuid4()
     operation_id = uuid4()
@@ -79,6 +86,24 @@ async def _acceptance() -> None:
                 task_id,
                 ORG,
                 PROJECT,
+            )
+            await connection.execute(
+                """
+                INSERT INTO idempotency_operations (
+                    id, organization_id, idempotency_key, operation_type,
+                    business_scope_id, status, request_hash, lease_owner,
+                    lease_expires_at, attempt_count, result_json,
+                    created_at, updated_at, version
+                ) VALUES (
+                    $1,$2,$3,'api.v1.generation.create',$4,'succeeded',$5,NULL,
+                    NULL,1,'{}'::jsonb,now(),now(),1
+                )
+                """,
+                operation_id,
+                ORG,
+                f"video-public-sync:{operation_id}",
+                task_id,
+                spec.semantic_hash,
             )
             await connection.execute(
                 """
@@ -149,15 +174,17 @@ async def _acceptance() -> None:
         await connection.close()
 
     assert row is not None
+    request_json = _json_object(row["request_json"])
+    result_json = _json_object(row["result_json"])
     assert row["provider"] == "openai"
     assert row["model"] == "sora-2"
     assert row["capability"] == "video.generate"
     assert row["status"] == "waiting_external"
-    assert row["request_json"] == encode_spec(spec)
-    assert row["result_json"]["schema_version"] == 1
-    assert row["result_json"]["video_job_id"] == job.video_job_id
-    assert row["result_json"]["status"] == "WAITING_EXTERNAL"
-    assert row["result_json"]["shots"] == [
+    assert request_json == encode_spec(spec)
+    assert result_json["schema_version"] == 1
+    assert result_json["video_job_id"] == job.video_job_id
+    assert result_json["status"] == "WAITING_EXTERNAL"
+    assert result_json["shots"] == [
         {
             "shot_id": "hero",
             "status": "WAITING_EXTERNAL",
@@ -168,7 +195,7 @@ async def _acceptance() -> None:
             "error_code": None,
         }
     ]
-    assert provider_request_id not in json.dumps(row["result_json"], sort_keys=True)
+    assert provider_request_id not in json.dumps(result_json, sort_keys=True)
 
 
 def test_worker_syncs_public_video_generation_without_provider_request_leak() -> None:
