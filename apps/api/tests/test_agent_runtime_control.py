@@ -188,3 +188,20 @@ def test_expired_signature_is_rejected_before_ledger(monkeypatch) -> None:
     assert response.status_code == 401
     assert response.json()["code"] == "AGENT_CONTROL_TIMESTAMP_EXPIRED"
     assert fake.claim_calls == []
+
+
+def test_invalid_json_does_not_expose_parser_details(monkeypatch) -> None:
+    monkeypatch.setattr("lumi_api.agent_runtime_control.time.time", lambda: float(_NOW))
+    fake = _FakeGateway()
+    body = b'{"organization_id":"do-not-reflect", invalid}'
+
+    with _client(fake) as client:
+        response = client.post(_PATH, content=body, headers=_signed_headers(body))
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "code": "AGENT_CONTROL_JSON_INVALID",
+        "message": "invalid JSON request body",
+    }
+    assert "do-not-reflect" not in response.text
+    assert fake.claim_calls == []
