@@ -61,11 +61,14 @@ jobs:
               "run_tool_gateway_p0_staging_e2e_ecs.py",
               "verify_tool_gateway_p0_offload_s3.py",
               "validate_tool_gateway_p0_offload_probe.py",
-              "configure-aws-credentials@v6.2.3",
+              "aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3",
               "AWS_DEPLOY_ROLE_ARN",
           ):
               if marker not in collector:
                   raise SystemExit(f"collector workflow missing boundary: {marker}")
+
+          if "aws-actions/configure-aws-credentials@v6.2.3" in collector:
+              raise SystemExit("collector must pin configure-aws-credentials by immutable commit SHA")
 
           for marker in (
               "FREEZE_STAGING_TOOL_GATEWAY_P0:${RC_SHA}",
