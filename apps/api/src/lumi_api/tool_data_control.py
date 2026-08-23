@@ -391,10 +391,14 @@ def create_tool_data_control_router(runtime: ToolDataControlRuntime) -> APIRoute
                 task_id=UUID(_required_string(payload, "task_id", 36)),
                 query=_required_string(payload, "query", 128),
             )
-        except ValueError as exc:
-            return _error(422, "TOOL_DATA_QUERY_INVALID", str(exc))
-        except KeyError as exc:
-            return _error(404, "TOOL_DATA_NOT_FOUND_OR_FORBIDDEN", str(exc))
+        except ValueError:
+            return _error(422, "TOOL_DATA_QUERY_INVALID", "invalid tool data query")
+        except KeyError:
+            return _error(
+                404,
+                "TOOL_DATA_NOT_FOUND_OR_FORBIDDEN",
+                "resource not found or forbidden",
+            )
         except Exception:
             return _error(
                 503,
@@ -452,10 +456,18 @@ def create_tool_data_control_router(runtime: ToolDataControlRuntime) -> APIRoute
                 artifact_ref=_required_string(payload, "artifact_ref", 128),
                 metadata=_optional_object(payload, "metadata"),
             )
-        except ValueError as exc:
-            return _error(422, "TOOL_DATA_WRITE_INVALID", str(exc))
-        except KeyError as exc:
-            return _error(404, "TOOL_DATA_NOT_FOUND_OR_FORBIDDEN", str(exc))
+        except ValueError:
+            return _error(
+                422,
+                "TOOL_DATA_WRITE_INVALID",
+                "invalid derived asset write request",
+            )
+        except KeyError:
+            return _error(
+                404,
+                "TOOL_DATA_NOT_FOUND_OR_FORBIDDEN",
+                "resource not found or forbidden",
+            )
         except Exception:
             return _error(
                 503,
@@ -480,10 +492,14 @@ async def _resource_response(
             task_id=UUID(_required_string(payload, "task_id", 36)),
             **{resource_key: UUID(_required_string(payload, resource_key, 36))},
         )
-    except ValueError as exc:
-        return _error(422, "TOOL_DATA_QUERY_INVALID", str(exc))
-    except KeyError as exc:
-        return _error(404, "TOOL_DATA_NOT_FOUND_OR_FORBIDDEN", str(exc))
+    except ValueError:
+        return _error(422, "TOOL_DATA_QUERY_INVALID", "invalid tool data query")
+    except KeyError:
+        return _error(
+            404,
+            "TOOL_DATA_NOT_FOUND_OR_FORBIDDEN",
+            "resource not found or forbidden",
+        )
     except Exception:
         return _error(
             503,
@@ -510,8 +526,8 @@ async def _authenticated_json(request: Request, secret: str) -> dict[str, Any] |
         return auth_error
     try:
         payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return _error(422, "TOOL_DATA_JSON_INVALID", str(exc))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return _error(422, "TOOL_DATA_JSON_INVALID", "invalid JSON request body")
     if not isinstance(payload, dict):
         return _error(422, "TOOL_DATA_OBJECT_REQUIRED", "request body must be an object")
     return dict(payload)
