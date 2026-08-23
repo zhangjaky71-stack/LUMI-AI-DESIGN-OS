@@ -98,6 +98,80 @@ jobs:
             services/model-gateway/src/lumi_model_gateway/telemetry.py
           )
           uv run ruff check --fix --unsafe-fixes "${TARGETS[@]}" || true
+          python3 - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              "apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py": [
+                  (
+                      "        with patch.dict(os.environ, {}, clear=True):\n"
+                      "            with self.assertRaises(DeepAgentModelBoundaryError):\n"
+                      "                HttpProfileModelProvider.from_env()\n",
+                      "        with patch.dict(os.environ, {}, clear=True), self.assertRaises(\n"
+                      "            DeepAgentModelBoundaryError\n"
+                      "        ):\n"
+                      "            HttpProfileModelProvider.from_env()\n",
+                  ),
+              ],
+              "scripts/validate_deep_agents_model_gateway_contract.py": [
+                  (
+                      "        if isinstance(node, ast.ImportFrom) and node.module:\n"
+                      "            if node.module.split(\".\", 1)[0] in forbidden_modules:\n"
+                      "                raise SystemExit(f\"{path}: provider/direct HTTP import bypasses NODE-22\")\n",
+                      "        if (\n"
+                      "            isinstance(node, ast.ImportFrom)\n"
+                      "            and node.module\n"
+                      "            and node.module.split(\".\", 1)[0] in forbidden_modules\n"
+                      "        ):\n"
+                      "            raise SystemExit(f\"{path}: provider/direct HTTP import bypasses NODE-22\")\n",
+                  ),
+              ],
+              "services/model-gateway/src/lumi_model_gateway/models.py": [
+                  (
+                      "        if self.amount_usd is not None:\n"
+                      "            if not self.amount_usd.is_finite() or self.amount_usd < 0:\n"
+                      "                raise ValueError(\"MODEL_COST_AMOUNT_INVALID\")\n",
+                      "        if self.amount_usd is not None and (\n"
+                      "            not self.amount_usd.is_finite() or self.amount_usd < 0\n"
+                      "        ):\n"
+                      "            raise ValueError(\"MODEL_COST_AMOUNT_INVALID\")\n",
+                  ),
+              ],
+              "services/model-gateway/src/lumi_model_gateway/routing.py": [
+                  (
+                      "        if requested_region and descriptor.regions:\n"
+                      "            if requested_region not in descriptor.regions:\n"
+                      "                reasons.append(\"REGION_UNAVAILABLE\")\n",
+                      "        if (\n"
+                      "            requested_region\n"
+                      "            and descriptor.regions\n"
+                      "            and requested_region not in descriptor.regions\n"
+                      "        ):\n"
+                      "            reasons.append(\"REGION_UNAVAILABLE\")\n",
+                  ),
+                  (
+                      "        if policy.allowed_regions and descriptor.regions:\n"
+                      "            if not descriptor.regions.intersection(policy.allowed_regions):\n"
+                      "                reasons.append(\"ORG_REGION_POLICY_MISMATCH\")\n",
+                      "        if (\n"
+                      "            policy.allowed_regions\n"
+                      "            and descriptor.regions\n"
+                      "            and not descriptor.regions.intersection(policy.allowed_regions)\n"
+                      "        ):\n"
+                      "            reasons.append(\"ORG_REGION_POLICY_MISMATCH\")\n",
+                  ),
+              ],
+          }
+
+          for raw_path, edits in replacements.items():
+              path = Path(raw_path)
+              source = path.read_text(encoding="utf-8")
+              for old, new in edits:
+                  if old not in source:
+                      raise SystemExit(f"expected SIM target not found: {raw_path}: {old}")
+                  source = source.replace(old, new, 1)
+              path.write_text(source, encoding="utf-8")
+          PY
           uv run ruff format "${TARGETS[@]}"
           uv run ruff check "${TARGETS[@]}"
       - name: Run focused Model Gateway tests
