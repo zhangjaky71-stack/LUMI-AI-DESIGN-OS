@@ -12,7 +12,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, cast
 from uuid import UUID, uuid4
 
 from .audit import JsonlAuditSink
@@ -305,8 +305,15 @@ class DockerSandboxBackend:
                 shell=False,
             )
             log_cap = min(record.spec.max_output_bytes * 8, 64 * 1024 * 1024)
-            stdout_thread = _stream_to_file(process.stdout, stdout_path, log_cap)
-            stderr_thread = _stream_to_file(process.stderr, stderr_path, log_cap)
+            if process.stdout is None or process.stderr is None:
+                process.kill()
+                raise SandboxError("SANDBOX_EXEC_PIPE_MISSING")
+            stdout_thread = _stream_to_file(
+                cast(BinaryIO, process.stdout), stdout_path, log_cap
+            )
+            stderr_thread = _stream_to_file(
+                cast(BinaryIO, process.stderr), stderr_path, log_cap
+            )
             try:
                 exit_code = process.wait(timeout=timeout)
             except subprocess.TimeoutExpired as exc:
