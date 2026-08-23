@@ -77,7 +77,7 @@ class MediaExternalWaitWakeScheduler:
                         aggregate_type="task",
                         aggregate_id=task["id"],
                         schema_version=int(dispatch_row["schema_version"]),
-                        payload=dict(dispatch_row["payload_json"]),
+                        payload=_json_object(dispatch_row["payload_json"]),
                     )
                     dispatch = record.dispatch()
                     if dispatch.message.project_id != task["project_id"]:
@@ -140,3 +140,10 @@ class MediaExternalWaitWakeScheduler:
             return tuple(wakes)
         finally:
             await connection.close()
+
+
+def _json_object(value: object) -> dict[str, object]:
+    decoded = json.loads(value) if isinstance(value, str) else value
+    if not isinstance(decoded, dict) or not all(isinstance(key, str) for key in decoded):
+        raise RuntimeError("EXTERNAL_WAIT_DISPATCH_PAYLOAD_INVALID")
+    return dict(decoded)
