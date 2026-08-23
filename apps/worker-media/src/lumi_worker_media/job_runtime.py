@@ -192,7 +192,7 @@ class TaskJobStore:
                     raise RuntimeError("JOB_NOT_FOUND")
                 if row["status"] != JobState.RUNNING.value:
                     raise RuntimeError("JOB_EXTERNAL_WAIT_REQUIRES_RUNNING")
-                output = dict(row["output_json"] or {})
+                output = _json_object(row["output_json"])
                 output.update(wait.output)
                 output["external_wait"] = {
                     "reason": wait.wait_reason,
@@ -271,7 +271,7 @@ class TaskJobStore:
                 max_attempts = int(row["max_attempts"])
                 retry = category == ErrorCategory.TRANSIENT and attempt_count < max_attempts
                 state = JobState.RETRYING if retry else JobState.FAILED
-                output = dict(row["output_json"] or {})
+                output = _json_object(row["output_json"])
                 output["last_error"] = {
                     "category": category.value,
                     "code": error_code,
@@ -304,6 +304,16 @@ def _json(value: dict[str, Any]) -> str:
         return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     except (TypeError, ValueError) as exc:
         raise ValueError("JOB_OUTPUT_JSON_INVALID") from exc
+
+
+def _json_object(value: object) -> dict[str, Any]:
+    try:
+        decoded = json.loads(value) if isinstance(value, str) else value
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("JOB_OUTPUT_JSON_OBJECT_REQUIRED") from exc
+    if not isinstance(decoded, dict) or not all(isinstance(key, str) for key in decoded):
+        raise RuntimeError("JOB_OUTPUT_JSON_OBJECT_REQUIRED")
+    return dict(decoded)
 
 
 def _datetime_unix_ns(value: datetime) -> int:
