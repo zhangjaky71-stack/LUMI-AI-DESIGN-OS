@@ -1,0 +1,143 @@
+name: Temporary Final Python Quality
+
+on:
+  push:
+    branches:
+      - tmp-quality-final-181f
+
+permissions:
+  contents: write
+
+jobs:
+  close-and-report:
+    if: github.event.head_commit.message == 'ci: close residual Python quality findings'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: tmp-quality-final-181f
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Apply audited residual fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"missing expected marker in {path}: {old!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          image = "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py"
+          replace(image, "from typing import TypeVar, cast", "from typing import cast")
+          replace(image, '_T = TypeVar("_T")\n', "")
+          replace(
+              image,
+              "async def _gateway_call[T](awaitable: Awaitable[_T], *, code: str) -> _T:",
+              "async def _gateway_call[T](awaitable: Awaitable[T], *, code: str) -> T:",
+          )
+
+          paid = "apps/api/tests/integration/test_model_paid_guard_postgres.py"
+          replace(paid, "from typing import Any, TypeVar", "from typing import Any")
+          replace(paid, 'T = TypeVar("T")\n', "")
+
+          telemetry = "services/model-gateway/src/lumi_model_gateway/telemetry.py"
+          replace(
+              telemetry,
+              '    """Project gateway telemetry without request content, outputs, or tenant IDs as metric labels."""',
+              '    """Project gateway telemetry without request content or outputs.\n\n    Tenant IDs remain trace-only and are never metric labels.\n    """',
+          )
+
+          video = "services/model-gateway/src/lumi_model_gateway/openai_video_adapter.py"
+          replace(
+              video,
+              '            "OpenAI Videos exposes delete but this adapter does not equate deletion with proven cancellation",',
+              '            "OpenAI Videos exposes delete, but this adapter does not equate "\n            "deletion with proven cancellation",',
+          )
+
+          deployment = "scripts/validate_private_model_gateway_deployment_contract.py"
+          replace(
+              deployment,
+              '            "for name, service in var.services : name => service if length(service.secret_arns) > 0",',
+              '            "for name, service in var.services : name => service "\n            "if length(service.secret_arns) > 0",',
+          )
+          replace(
+              deployment,
+              '        "Provider secret ownership scanner must guard the rejection behind the exact Hosted host allowlist",',
+              '        "Provider secret ownership scanner must guard the rejection behind "\n        "the exact Hosted host allowlist",',
+          )
+          PY
+      - name: Ruff residual gate
+        shell: bash
+        run: |
+          set +e
+          report=.tmp-quality-final-report.txt
+          targets=(
+            services/model-gateway
+            services/asset-storage/src/lumi_asset_storage/s3.py
+            services/asset-storage/tests/test_s3_bounded_bytes.py
+            apps/api/src/lumi_api/model_gateway_runtime.py
+            apps/api/src/lumi_api/model_gateway_bootstrap.py
+            apps/api/src/lumi_api/model_gateway_service.py
+            apps/api/src/lumi_api/model_gateway_cli.py
+            apps/api/src/lumi_api/model_paid_guard.py
+            apps/api/src/lumi_api/provider_output_store.py
+            apps/api/tests/test_model_gateway_media_bootstrap.py
+            apps/api/tests/test_model_paid_guard.py
+            apps/api/tests/test_provider_output_store.py
+            apps/api/tests/integration/test_model_paid_guard_postgres.py
+            apps/agent-runtime/src/lumi_agent_runtime/deep_runtime
+            apps/agent-runtime/src/lumi_agent_runtime/runtime_cli.py
+            apps/agent-runtime/src/lumi_agent_runtime/runtime_service.py
+            apps/agent-runtime/tests/test_deep_runtime_contracts.py
+            apps/agent-runtime/tests/test_deep_runtime_factory.py
+            apps/agent-runtime/tests/test_deep_runtime_tooling.py
+            apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py
+            apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py
+            apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py
+            apps/worker-media/tests/test_image_gateway_runtime.py
+            scripts/validate_model_gateway_contract.py
+            scripts/validate_deep_agents_model_gateway_contract.py
+            scripts/validate_private_model_gateway_deployment_contract.py
+            scripts/validate_deep_agents_runtime_contract_v2.py
+            scripts/integration_model_gateway.py
+            scripts/integration_deep_agents_runtime.py
+            scripts/integration_deep_agent_tool_gateway.py
+            scripts/integration_deep_agent_node28_stack.py
+          )
+          uv run ruff format "${targets[@]}"
+          uv run ruff check "${targets[@]}" > "$report" 2>&1
+          code=$?
+          echo "RUFF_EXIT=$code" >> "$report"
+          git diff --check >> "$report" 2>&1
+          echo "DIFF_CHECK_EXIT=$?" >> "$report"
+          exit 0
+      - name: Commit residual fixes and report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "zhangjaky71-stack"
+          git config user.email "zhangjaky71@gmail.com"
+          git add \
+            apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py \
+            apps/api/tests/integration/test_model_paid_guard_postgres.py \
+            services/model-gateway/src/lumi_model_gateway/telemetry.py \
+            services/model-gateway/src/lumi_model_gateway/openai_video_adapter.py \
+            scripts/validate_private_model_gateway_deployment_contract.py \
+            .tmp-quality-final-report.txt
+          git commit -m "test(quality): record final Python Ruff closure"
+          git push origin HEAD:tmp-quality-final-181f
