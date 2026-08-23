@@ -4,7 +4,7 @@ import asyncio
 import os
 from collections.abc import Coroutine
 from decimal import Decimal
-from typing import Any, TypeVar
+from typing import Any
 from uuid import UUID, uuid4
 
 import asyncpg
@@ -31,7 +31,6 @@ from lumi_model_gateway import (
 if os.environ.get("LUMI_DB_INTEGRATION") != "1":
     pytest.skip("set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests", allow_module_level=True)
 
-T = TypeVar("T")
 _PROVIDER = "fixture-provider"
 _MODEL = "fixture-model"
 
