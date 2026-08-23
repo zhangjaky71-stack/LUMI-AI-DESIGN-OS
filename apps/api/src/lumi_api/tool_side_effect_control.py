@@ -71,12 +71,16 @@ def create_tool_side_effect_control_router(
             )
             lease_owner = _required_string(payload, "lease_owner", max_length=200)
             result = await runtime.gateway.claim(context, lease_owner=lease_owner)
-        except ValueError as exc:
-            return _error(422, "SIDE_EFFECT_CONTROL_REQUEST_INVALID", str(exc))
+        except ValueError:
+            return _error(
+                422,
+                "SIDE_EFFECT_CONTROL_REQUEST_INVALID",
+                "invalid side-effect control request",
+            )
         except Exception as exc:
             code = getattr(exc, "code", "SIDE_EFFECT_CONTROL_CLAIM_FAILED")
             status = int(getattr(exc, "http_status", 409))
-            return _error(status, str(code), str(exc))
+            return _error(status, str(code), "side-effect claim was rejected")
         snapshot = result.snapshot
         return JSONResponse(
             status_code=200,
@@ -106,13 +110,17 @@ def create_tool_side_effect_control_router(
                     max_length=200,
                 ),
             )
-        except ValueError as exc:
-            return _error(422, "SIDE_EFFECT_CONTROL_REQUEST_INVALID", str(exc))
+        except ValueError:
+            return _error(
+                422,
+                "SIDE_EFFECT_CONTROL_REQUEST_INVALID",
+                "invalid side-effect control request",
+            )
         except Exception as exc:
             return _error(
                 409,
                 str(getattr(exc, "code", "SIDE_EFFECT_CONTROL_ATTEMPT_FAILED")),
-                str(exc),
+                "side-effect attempt could not be recorded",
             )
         return JSONResponse(status_code=200, content={"status": "attempt_started"})
 
@@ -142,13 +150,17 @@ def create_tool_side_effect_control_router(
                     ),
                 ),
             )
-        except ValueError as exc:
-            return _error(422, "SIDE_EFFECT_CONTROL_REQUEST_INVALID", str(exc))
+        except ValueError:
+            return _error(
+                422,
+                "SIDE_EFFECT_CONTROL_REQUEST_INVALID",
+                "invalid side-effect control request",
+            )
         except Exception as exc:
             return _error(
                 409,
                 str(getattr(exc, "code", "SIDE_EFFECT_CONTROL_SUCCEED_FAILED")),
-                str(exc),
+                "side-effect success could not be committed",
             )
         return JSONResponse(status_code=200, content={"status": "succeeded"})
 
@@ -164,13 +176,17 @@ def create_tool_side_effect_control_router(
                 lease_owner=_required_string(payload, "lease_owner", max_length=200),
                 reason=_required_string(payload, "reason", max_length=2000),
             )
-        except ValueError as exc:
-            return _error(422, "SIDE_EFFECT_CONTROL_REQUEST_INVALID", str(exc))
+        except ValueError:
+            return _error(
+                422,
+                "SIDE_EFFECT_CONTROL_REQUEST_INVALID",
+                "invalid side-effect control request",
+            )
         except Exception as exc:
             return _error(
                 409,
                 str(getattr(exc, "code", "SIDE_EFFECT_CONTROL_AMBIGUOUS_FAILED")),
-                str(exc),
+                "side-effect ambiguity could not be committed",
             )
         return JSONResponse(status_code=200, content={"status": "ambiguous"})
 
@@ -209,8 +225,12 @@ async def _authenticated_json(
         return auth_error
     try:
         payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return _error(422, "SIDE_EFFECT_CONTROL_JSON_INVALID", str(exc))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return _error(
+            422,
+            "SIDE_EFFECT_CONTROL_JSON_INVALID",
+            "invalid JSON request body",
+        )
     if not isinstance(payload, dict):
         return _error(
             422,
