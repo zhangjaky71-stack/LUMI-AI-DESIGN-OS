@@ -189,12 +189,18 @@ class ModelRouter:
         if descriptor.key in policy.denied_models or descriptor.model in policy.denied_models:
             reasons.append("ORG_MODEL_DENIED")
         requested_region = request.constraints.get("region")
-        if requested_region and descriptor.regions:
-            if requested_region not in descriptor.regions:
-                reasons.append("REGION_UNAVAILABLE")
-        if policy.allowed_regions and descriptor.regions:
-            if not descriptor.regions.intersection(policy.allowed_regions):
-                reasons.append("ORG_REGION_POLICY_MISMATCH")
+        if (
+            requested_region
+            and descriptor.regions
+            and requested_region not in descriptor.regions
+        ):
+            reasons.append("REGION_UNAVAILABLE")
+        if (
+            policy.allowed_regions
+            and descriptor.regions
+            and not descriptor.regions.intersection(policy.allowed_regions)
+        ):
+            reasons.append("ORG_REGION_POLICY_MISMATCH")
         if not self.health.healthy(descriptor.provider, descriptor.model):
             reasons.append("PROVIDER_UNHEALTHY")
         return reasons
