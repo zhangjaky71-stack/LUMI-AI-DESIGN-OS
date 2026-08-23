@@ -33,11 +33,12 @@ class Gateway:
 
 class FakeStructuredTool:
     @classmethod
-    def from_function(cls, *, coroutine, name, description):
+    def from_function(cls, *, coroutine, name, description, args_schema):
         instance = cls()
         instance.coroutine = coroutine
         instance.name = name
         instance.description = description
+        instance.args_schema = args_schema
         return instance
 
 
@@ -56,15 +57,23 @@ class DeepRuntimeToolingTests(unittest.IsolatedAsyncioTestCase):
             granted_permissions=frozenset({"tools:write"}),
             allowed_tools=("asset.write-derived",),
         )
-        with patch(
-            "lumi_agent_runtime.deep_runtime.tooling._langchain_tool_types",
-            return_value=(object(), FakeStructuredTool),
+        fake_schema = SimpleNamespace(name="payload-only")
+        with (
+            patch(
+                "lumi_agent_runtime.deep_runtime.tooling._langchain_tool_types",
+                return_value=(object(), FakeStructuredTool),
+            ),
+            patch(
+                "lumi_agent_runtime.deep_runtime.tooling._langchain_payload_schema",
+                return_value=fake_schema,
+            ),
         ):
             tools = await provider.tools_for_root(
                 context=context,
                 allowed_tools=("asset.write-derived",),
             )
         tool = tools[0]
+        self.assertIs(tool.args_schema, fake_schema)
         first = await tool.coroutine(
             {"source": "asset-1"},
             tool_call_id="call-stable-42",
@@ -100,14 +109,22 @@ class DeepRuntimeToolingTests(unittest.IsolatedAsyncioTestCase):
             parent_allowed_tools=("web.search", "artifact.query"),
             allowed_tools=("web.search",),
         )
-        with patch(
-            "lumi_agent_runtime.deep_runtime.tooling._langchain_tool_types",
-            return_value=(object(), FakeStructuredTool),
+        fake_schema = SimpleNamespace(name="payload-only")
+        with (
+            patch(
+                "lumi_agent_runtime.deep_runtime.tooling._langchain_tool_types",
+                return_value=(object(), FakeStructuredTool),
+            ),
+            patch(
+                "lumi_agent_runtime.deep_runtime.tooling._langchain_payload_schema",
+                return_value=fake_schema,
+            ),
         ):
             tools = await provider.tools_for_subagent(
                 context=context,
                 allowed_tools=("web.search",),
             )
+        self.assertIs(tools[0].args_schema, fake_schema)
         await tools[0].coroutine({"query": "LUMI"}, tool_call_id="call-1")
         self.assertEqual(
             gateway.calls[0]["parent_allowed_tools"],
