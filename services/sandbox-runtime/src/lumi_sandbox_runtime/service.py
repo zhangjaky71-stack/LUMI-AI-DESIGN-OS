@@ -136,8 +136,8 @@ def create_sandbox_runtime_app(runtime: HostedSandboxRuntime) -> FastAPI:
                 exchange_inputs=exchange_inputs,
                 exchange_outputs=exchange_outputs,
             )
-        except (ValueError, TypeError) as exc:
-            return _error(422, "SANDBOX_REQUEST_INVALID", str(exc))
+        except (ValueError, TypeError):
+            return _error(422, "SANDBOX_REQUEST_INVALID", "invalid sandbox request")
 
         sandbox_id: UUID | None = None
         try:
