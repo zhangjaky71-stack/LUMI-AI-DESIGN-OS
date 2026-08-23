@@ -196,8 +196,12 @@ def create_tool_approval_control_router(runtime: ToolApprovalControlRuntime) -> 
                 request_hash=request_hash,
                 approval_id=approval_id,
             )
-        except ValueError as exc:
-            return _error(422, "TOOL_APPROVAL_REQUEST_INVALID", str(exc))
+        except ValueError:
+            return _error(
+                422,
+                "TOOL_APPROVAL_REQUEST_INVALID",
+                "invalid tool approval request",
+            )
         except Exception:
             return _error(
                 503,
@@ -408,8 +412,12 @@ async def _authenticated_json(
         return auth_error
     try:
         payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return _error(422, "TOOL_APPROVAL_JSON_INVALID", str(exc))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return _error(
+            422,
+            "TOOL_APPROVAL_JSON_INVALID",
+            "invalid JSON request body",
+        )
     if not isinstance(payload, dict):
         return _error(
             422,
