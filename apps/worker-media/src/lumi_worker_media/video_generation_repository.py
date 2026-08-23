@@ -415,9 +415,13 @@ def _json(value: dict[str, object]) -> str:
 
 
 def _json_object(value: object) -> dict[str, object]:
-    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+    try:
+        decoded = json.loads(value) if isinstance(value, str) else value
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("VIDEO_RUNTIME_JSON_OBJECT_REQUIRED") from exc
+    if not isinstance(decoded, dict) or not all(isinstance(key, str) for key in decoded):
         raise RuntimeError("VIDEO_RUNTIME_JSON_OBJECT_REQUIRED")
-    return dict(value)
+    return dict(decoded)
 
 
 def _optional_uuid(value: str | None) -> UUID | None:
