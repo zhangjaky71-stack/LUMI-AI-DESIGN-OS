@@ -82,11 +82,14 @@ jobs:
               ],
               "apps/web/src/components/projects/projects-dashboard.tsx": [
                   (
-                      "  const load = useCallback(async () => {\n"
-                      "    setLoading(true);\n",
-                      "  const load = useCallback(async () => {\n"
-                      "    await Promise.resolve();\n"
-                      "    setLoading(true);\n",
+                      "  useEffect(() => {\n"
+                      "    void load();\n"
+                      "  }, [load]);\n",
+                      "  useEffect(() => {\n"
+                      "    queueMicrotask(() => {\n"
+                      "      void load();\n"
+                      "    });\n"
+                      "  }, [load]);\n",
                   ),
                   (
                       "      <NewProjectDialog\n"
@@ -111,11 +114,14 @@ jobs:
               ],
               "apps/web/src/components/projects/project-detail.tsx": [
                   (
-                      "  const load = useCallback(async () => {\n"
-                      "    setLoading(true);\n",
-                      "  const load = useCallback(async () => {\n"
-                      "    await Promise.resolve();\n"
-                      "    setLoading(true);\n",
+                      "  useEffect(() => {\n"
+                      "    void load();\n"
+                      "  }, [load]);\n",
+                      "  useEffect(() => {\n"
+                      "    queueMicrotask(() => {\n"
+                      "      void load();\n"
+                      "    });\n"
+                      "  }, [load]);\n",
                   ),
               ],
           }
