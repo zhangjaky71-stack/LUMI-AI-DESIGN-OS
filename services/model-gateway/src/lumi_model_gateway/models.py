@@ -178,9 +178,10 @@ class CostEstimate:
     def __post_init__(self) -> None:
         if isinstance(self.amount_usd, float):
             raise ValueError("MODEL_COST_FLOAT_FORBIDDEN")
-        if self.amount_usd is not None:
-            if not self.amount_usd.is_finite() or self.amount_usd < 0:
-                raise ValueError("MODEL_COST_AMOUNT_INVALID")
+        if self.amount_usd is not None and (
+            not self.amount_usd.is_finite() or self.amount_usd < 0
+        ):
+            raise ValueError("MODEL_COST_AMOUNT_INVALID")
         if self.price_snapshot_id is not None and len(self.price_snapshot_id) > 128:
             raise ValueError("MODEL_PRICE_SNAPSHOT_INVALID")
         for key, value in self.detail.items():
