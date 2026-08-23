@@ -778,8 +778,7 @@ class DockerSandboxBackend:
         result = subprocess.run(
             [self.docker_binary, *args],
             input=input_data,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             shell=False,
             timeout=timeout,
             check=False,
