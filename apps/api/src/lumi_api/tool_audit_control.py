@@ -128,10 +128,14 @@ def create_tool_audit_control_router(runtime: ToolAuditControlRuntime) -> APIRou
         try:
             event = _canonical_event(payload_or_error)
             created = await runtime.writer.write(event)
-        except ToolAuditConflictError as exc:
-            return _error(409, "TOOL_AUDIT_EVENT_CONFLICT", str(exc))
-        except ValueError as exc:
-            return _error(422, "TOOL_AUDIT_EVENT_INVALID", str(exc))
+        except ToolAuditConflictError:
+            return _error(
+                409,
+                "TOOL_AUDIT_EVENT_CONFLICT",
+                "audit event conflicts with existing canonical event",
+            )
+        except ValueError:
+            return _error(422, "TOOL_AUDIT_EVENT_INVALID", "invalid tool audit event")
         except Exception:
             return _error(
                 503,
@@ -242,8 +246,8 @@ async def _authenticated_json(
         return auth_error
     try:
         payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return _error(422, "TOOL_AUDIT_JSON_INVALID", str(exc))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return _error(422, "TOOL_AUDIT_JSON_INVALID", "invalid JSON request body")
     if not isinstance(payload, dict):
         return _error(422, "TOOL_AUDIT_OBJECT_REQUIRED", "request body must be an object")
     return dict(payload)
