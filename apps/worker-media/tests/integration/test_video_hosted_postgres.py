@@ -89,6 +89,13 @@ def _migration_dsn() -> str:
     )
 
 
+def _json_object(value: object) -> dict[str, object]:
+    decoded = json.loads(value) if isinstance(value, str) else value
+    assert isinstance(decoded, dict)
+    assert all(isinstance(key, str) for key in decoded)
+    return dict(decoded)
+
+
 async def _insert_task(scope: _Scope) -> None:
     """Create only mutable task state; later Alembic columns use their DB defaults."""
     connection = await asyncpg.connect(_migration_dsn())
@@ -552,7 +559,7 @@ def test_cost_outbox_artifact_and_external_wait_recovery_use_canonical_postgres(
         assert task_row["retry_not_before"] is None
         assert len(event_rows) == 1
         assert event_rows[0]["event_name"] == "video_generation.waiting_external"
-        assert event_rows[0]["payload_json"]["shot_id"] == SHOT_ID
+        assert _json_object(event_rows[0]["payload_json"])["shot_id"] == SHOT_ID
 
         assert artifact_row is not None
         assert artifact_row["kind"] == "VIDEO"
