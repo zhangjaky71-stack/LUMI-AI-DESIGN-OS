@@ -98,8 +98,8 @@ def create_agent_runtime_control_router(runtime: AgentRuntimeControlRuntime) -> 
             )
         except IdempotencyError as exc:
             return _error(exc.http_status, exc.code, "agent control operation was rejected")
-        except (ValueError, TypeError) as exc:
-            return _error(422, "AGENT_CONTROL_REQUEST_INVALID", str(exc))
+        except (ValueError, TypeError):
+            return _error(422, "AGENT_CONTROL_REQUEST_INVALID", "invalid agent control request")
         except Exception:
             return _error(
                 503,
@@ -141,8 +141,8 @@ def create_agent_runtime_control_router(runtime: AgentRuntimeControlRuntime) -> 
             )
         except IdempotencyError as exc:
             return _error(exc.http_status, exc.code, "agent control success could not be committed")
-        except (ValueError, TypeError) as exc:
-            return _error(422, "AGENT_CONTROL_REQUEST_INVALID", str(exc))
+        except (ValueError, TypeError):
+            return _error(422, "AGENT_CONTROL_REQUEST_INVALID", "invalid agent control request")
         except Exception:
             return _error(
                 503,
@@ -168,8 +168,8 @@ def create_agent_runtime_control_router(runtime: AgentRuntimeControlRuntime) -> 
             )
         except IdempotencyError as exc:
             return _error(exc.http_status, exc.code, "agent control failure could not be committed")
-        except (ValueError, TypeError) as exc:
-            return _error(422, "AGENT_CONTROL_REQUEST_INVALID", str(exc))
+        except (ValueError, TypeError):
+            return _error(422, "AGENT_CONTROL_REQUEST_INVALID", "invalid agent control request")
         except Exception:
             return _error(
                 503,
@@ -195,8 +195,8 @@ def create_agent_runtime_control_router(runtime: AgentRuntimeControlRuntime) -> 
             )
         except IdempotencyError as exc:
             return _error(exc.http_status, exc.code, "agent control ambiguity could not be committed")
-        except (ValueError, TypeError) as exc:
-            return _error(422, "AGENT_CONTROL_REQUEST_INVALID", str(exc))
+        except (ValueError, TypeError):
+            return _error(422, "AGENT_CONTROL_REQUEST_INVALID", "invalid agent control request")
         except Exception:
             return _error(
                 503,
@@ -216,8 +216,8 @@ def create_agent_runtime_control_router(runtime: AgentRuntimeControlRuntime) -> 
                 approval = await session.scalar(select(Approval).where(Approval.id == approval_id))
             if approval is None or approval.agent_run_id is None:
                 return _error(404, "AGENT_CONTROL_APPROVAL_NOT_FOUND", "approval was not found")
-        except (ValueError, TypeError) as exc:
-            return _error(422, "AGENT_CONTROL_REQUEST_INVALID", str(exc))
+        except (ValueError, TypeError):
+            return _error(422, "AGENT_CONTROL_REQUEST_INVALID", "invalid agent control request")
         except Exception:
             return _error(
                 503,
@@ -298,8 +298,8 @@ def create_agent_runtime_control_router(runtime: AgentRuntimeControlRuntime) -> 
                 )
                 await session.execute(statement)
                 await session.commit()
-        except (ValueError, TypeError) as exc:
-            return _error(422, "AGENT_CONTROL_REQUEST_INVALID", str(exc))
+        except (ValueError, TypeError):
+            return _error(422, "AGENT_CONTROL_REQUEST_INVALID", "invalid agent control request")
         except Exception:
             return _error(
                 503,
@@ -334,8 +334,8 @@ async def _authenticated_json(
         return auth_error
     try:
         payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return _error(422, "AGENT_CONTROL_JSON_INVALID", str(exc))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return _error(422, "AGENT_CONTROL_JSON_INVALID", "invalid JSON request body")
     if not isinstance(payload, dict):
         return _error(422, "AGENT_CONTROL_OBJECT_REQUIRED", "request body must be an object")
     return dict(payload)
