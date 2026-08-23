@@ -9,9 +9,10 @@ permissions:
   contents: write
 
 jobs:
-  generate-quality-fixes:
+  validate-quality-fixes:
+    if: github.event.head_commit.message == 'ci: validate isolated quality closure'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
         with:
@@ -27,10 +28,13 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Frozen workspace install
         run: uv sync --all-packages --frozen
-      - name: Generate isolated Ruff fixes
+      - name: Validate generated fixes and write report
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
+          report=.tmp-quality-report.txt
+          : > "$report"
+          failed=0
           targets=(
             services/model-gateway
             services/asset-storage/src/lumi_asset_storage/s3.py
@@ -64,50 +68,71 @@ jobs:
             scripts/integration_deep_agent_tool_gateway.py
             scripts/integration_deep_agent_node28_stack.py
           )
-          uv run ruff check "${targets[@]}" --fix --unsafe-fixes || true
-          uv run ruff format "${targets[@]}"
-          git diff --check
-      - name: Commit generated source fixes
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "zhangjaky71-stack"
-          git config user.email "zhangjaky71@gmail.com"
-          git add \
+          check() {
+            name="$1"
+            shift
+            echo "===== $name =====" >> "$report"
+            "$@" >> "$report" 2>&1
+            code=$?
+            echo "EXIT=$code" >> "$report"
+            echo >> "$report"
+            if [ "$code" -ne 0 ]; then failed=1; fi
+          }
+          check RUFF uv run ruff check "${targets[@]}"
+          check MODEL_CONTRACT uv run python scripts/validate_model_gateway_contract.py
+          check PRIVATE_DEPLOYMENT uv run python scripts/validate_private_model_gateway_deployment_contract.py
+          check DEEP_CONTRACT env PYTHONPATH=apps/agent-runtime/src uv run python scripts/validate_deep_agents_runtime_contract_v2.py
+          check DEEP_MODEL_GATEWAY uv run python scripts/validate_deep_agents_model_gateway_contract.py
+          check MODEL_PYRIGHT uv run pyright \
             services/model-gateway \
             services/asset-storage/src/lumi_asset_storage/s3.py \
-            services/asset-storage/tests/test_s3_bounded_bytes.py \
             apps/api/src/lumi_api/model_gateway_runtime.py \
             apps/api/src/lumi_api/model_gateway_bootstrap.py \
             apps/api/src/lumi_api/model_gateway_service.py \
             apps/api/src/lumi_api/model_gateway_cli.py \
             apps/api/src/lumi_api/model_paid_guard.py \
             apps/api/src/lumi_api/provider_output_store.py \
+            apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/model_gateway_chat.py \
+            apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/runtime_factory.py \
+            apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py \
+            apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py \
+            apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py \
+            apps/worker-media/tests/test_image_gateway_runtime.py \
             apps/api/tests/test_model_gateway_media_bootstrap.py \
             apps/api/tests/test_model_paid_guard.py \
             apps/api/tests/test_provider_output_store.py \
-            apps/api/tests/integration/test_model_paid_guard_postgres.py \
+            apps/api/tests/integration/test_model_paid_guard_postgres.py
+          check DEEP_PYRIGHT uv run pyright \
             apps/agent-runtime/src/lumi_agent_runtime/deep_runtime \
             apps/agent-runtime/src/lumi_agent_runtime/runtime_cli.py \
             apps/agent-runtime/src/lumi_agent_runtime/runtime_service.py \
             apps/agent-runtime/tests/test_deep_runtime_contracts.py \
             apps/agent-runtime/tests/test_deep_runtime_factory.py \
             apps/agent-runtime/tests/test_deep_runtime_tooling.py \
-            apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py \
-            apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py \
-            apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py \
+            apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py
+          check MODEL_UNIT uv run python -m unittest discover -s services/model-gateway/tests -p 'test_*.py'
+          check BOUNDARY_TESTS uv run pytest \
+            services/asset-storage/tests/test_s3_bounded_bytes.py \
+            apps/api/tests/test_model_gateway_media_bootstrap.py \
+            apps/api/tests/test_provider_output_store.py \
             apps/worker-media/tests/test_image_gateway_runtime.py \
-            scripts/validate_model_gateway_contract.py \
-            scripts/validate_deep_agents_model_gateway_contract.py \
-            scripts/validate_private_model_gateway_deployment_contract.py \
-            scripts/validate_deep_agents_runtime_contract_v2.py \
-            scripts/integration_model_gateway.py \
-            scripts/integration_deep_agents_runtime.py \
-            scripts/integration_deep_agent_tool_gateway.py \
-            scripts/integration_deep_agent_node28_stack.py
-          if git diff --cached --quiet; then
-            echo "No generated source changes"
-            exit 0
-          fi
-          git commit -m "chore(quality): generate model gateway and deep runtime Ruff fixes"
+            apps/api/tests/test_model_paid_guard.py \
+            apps/agent-runtime/tests/test_deep_runtime_contracts.py \
+            apps/agent-runtime/tests/test_deep_runtime_factory.py \
+            apps/agent-runtime/tests/test_deep_runtime_tooling.py \
+            apps/agent-runtime/tests/test_deep_runtime_model_gateway_chat.py \
+            -q
+          check MODEL_INTEGRATION uv run python scripts/integration_model_gateway.py
+          check DEEP_INTEGRATION env PYTHONPATH=apps/agent-runtime/src uv run python scripts/integration_deep_agents_runtime.py
+          check TOOLCALL_INTEGRATION env PYTHONPATH=apps/agent-runtime/src uv run python scripts/integration_deep_agent_tool_gateway.py
+          echo "OVERALL=$([ "$failed" -eq 0 ] && echo PASS || echo FAIL)" >> "$report"
+          exit 0
+      - name: Commit validation report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "zhangjaky71-stack"
+          git config user.email "zhangjaky71@gmail.com"
+          git add .tmp-quality-report.txt
+          git commit -m "test(quality): record isolated closure validation"
           git push origin HEAD:tmp-quality-closure-181f
