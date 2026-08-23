@@ -271,7 +271,6 @@ class OpenAIImageGenerationAdapter:
 
     def stream(self, request: ModelRequest) -> AsyncIterator[StreamChunk]:
         async def unsupported() -> AsyncIterator[StreamChunk]:
-            del request
             raise ProviderInvocationError(
                 ErrorCategory.CAPABILITY_TEMP_UNAVAILABLE,
                 "hosted image streaming is not enabled",
