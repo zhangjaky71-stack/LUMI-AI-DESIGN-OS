@@ -69,7 +69,10 @@ jobs:
               'audit.get("cross_tenant_rows") != 0',
               's3.get("object_head_verified") is not True',
               'search.get("live_request_observed") is not True',
-              'tool_call_id != calls["sandbox.execute"]["tool_call_id"]',
+              'call_id == calls["sandbox.execute"]["tool_call_id"]',
+              'db.get("offload_tool_call_id")',
+              'call_id != db_offload_call_id',
+              '"sandbox.execute result offload"',
           )
           for marker in required:
               if marker not in assembler:
