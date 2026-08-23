@@ -30,7 +30,7 @@ class FakeAsyncClient(HttpModelGatewayAsyncClient):
     ) -> dict[str, object]:
         self.calls.append((path, json.loads(body.decode("utf-8")), auth_headers))
         return {
-            "status": "PENDING",
+            "status": "pending",
             "provider": "provider-a",
             "model": "video-a",
             "provider_request_id": "provider-job-123",
@@ -48,7 +48,7 @@ class FakeAsyncClient(HttpModelGatewayAsyncClient):
             "timing": {"total_ms": 5, "ttft_ms": None, "queue_ms": None},
             "cost": {
                 "amount_usd": "0.01000000",
-                "confidence": "EXACT",
+                "confidence": "exact",
                 "price_snapshot_id": "price-v1",
                 "detail": {},
             },
