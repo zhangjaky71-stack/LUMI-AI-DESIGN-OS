@@ -207,9 +207,10 @@ class ModelGatewayChatTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sub_model.model_profile, "reasoning.fast")
 
     def test_missing_internal_gateway_config_fails_closed(self) -> None:
-        with patch.dict(os.environ, {}, clear=True):
-            with self.assertRaises(DeepAgentModelBoundaryError):
-                HttpProfileModelProvider.from_env()
+        with patch.dict(os.environ, {}, clear=True), self.assertRaises(
+            DeepAgentModelBoundaryError
+        ):
+            HttpProfileModelProvider.from_env()
 
     def test_hosted_factory_does_not_expose_model_injection(self) -> None:
         parameters = inspect.signature(HostedDeepAgentRuntimeFactory).parameters
