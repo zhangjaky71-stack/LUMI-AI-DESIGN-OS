@@ -115,9 +115,9 @@ def create_model_gateway_app(runtime: ModelGatewayServiceRuntime) -> FastAPI:
         try:
             candidate = await runtime.api.estimate(decoded)
         except NoRouteError as exc:
-            return _error(503, exc.code, str(exc))
+            return _error(503, exc.code, "model route is unavailable")
         except ModelGatewayError as exc:
-            return _error(503, exc.code, str(exc))
+            return _error(503, exc.code, "model estimate failed")
         except Exception:
             return _error(
                 500,
@@ -134,11 +134,11 @@ def create_model_gateway_app(runtime: ModelGatewayServiceRuntime) -> FastAPI:
         try:
             result = await runtime.api.invoke(decoded)
         except BudgetExceededError as exc:
-            return _error(402, exc.code, str(exc))
+            return _error(402, exc.code, "model invocation budget exceeded")
         except NoRouteError as exc:
-            return _error(503, exc.code, str(exc))
+            return _error(503, exc.code, "model route is unavailable")
         except PaidInvocationGuardRequiredError as exc:
-            return _error(503, exc.code, str(exc))
+            return _error(503, exc.code, "paid invocation guard is required")
         except ProviderInvocationError as exc:
             status = 422 if exc.category.value in {
                 "INVALID_REQUEST",
@@ -149,7 +149,7 @@ def create_model_gateway_app(runtime: ModelGatewayServiceRuntime) -> FastAPI:
                 status_code=status,
                 content={
                     "code": exc.category.value,
-                    "message": str(exc),
+                    "message": "provider invocation failed",
                     "provider": exc.provider,
                     "model": exc.model,
                     "delivery_state": exc.delivery_state.value,
@@ -157,7 +157,7 @@ def create_model_gateway_app(runtime: ModelGatewayServiceRuntime) -> FastAPI:
                 },
             )
         except ModelGatewayError as exc:
-            return _error(503, exc.code, str(exc))
+            return _error(503, exc.code, "model invocation failed")
         except Exception:
             return _error(
                 500,
@@ -180,7 +180,7 @@ def create_model_gateway_app(runtime: ModelGatewayServiceRuntime) -> FastAPI:
         except ProviderInvocationError as exc:
             return _provider_control_error(exc)
         except ModelGatewayError as exc:
-            return _error(503, exc.code, str(exc))
+            return _error(503, exc.code, "model provider status lookup failed")
         except Exception:
             return _error(
                 500,
@@ -203,7 +203,7 @@ def create_model_gateway_app(runtime: ModelGatewayServiceRuntime) -> FastAPI:
         except ProviderInvocationError as exc:
             return _provider_control_error(exc)
         except ModelGatewayError as exc:
-            return _error(503, exc.code, str(exc))
+            return _error(503, exc.code, "model provider cancel failed")
         except Exception:
             return _error(
                 500,
@@ -227,8 +227,12 @@ async def _decode_internal_model_request(
         if not isinstance(payload, dict):
             raise ValueError("MODEL_GATEWAY_HTTP_REQUEST_OBJECT_REQUIRED")
         return decode_model_request(payload)
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        return _error(422, "MODEL_GATEWAY_REQUEST_INVALID", str(exc))
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return _error(
+            422,
+            "MODEL_GATEWAY_REQUEST_INVALID",
+            "invalid model gateway request",
+        )
 
 
 async def _decode_internal_async_control_request(
@@ -241,8 +245,12 @@ async def _decode_internal_async_control_request(
     try:
         payload = json.loads(body.decode("utf-8"))
         return decode_async_control_request(payload)
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        return _error(422, "MODEL_GATEWAY_ASYNC_REQUEST_INVALID", str(exc))
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return _error(
+            422,
+            "MODEL_GATEWAY_ASYNC_REQUEST_INVALID",
+            "invalid async provider control request",
+        )
 
 
 async def _read_verified_body(
@@ -286,10 +294,25 @@ async def _read_verified_body(
     except InternalModelGatewayAuthError as exc:
         return _error(
             401,
-            str(exc),
+            _auth_error_code(exc),
             "internal model gateway authentication failed",
         )
     return body
+
+
+def _auth_error_code(exc: InternalModelGatewayAuthError) -> str:
+    candidate = str(exc)
+    if candidate == "MODEL_GATEWAY_CALLER_FORBIDDEN":
+        return "MODEL_GATEWAY_CALLER_FORBIDDEN"
+    if candidate == "MODEL_GATEWAY_AUTH_TIMESTAMP_REQUIRED":
+        return "MODEL_GATEWAY_AUTH_TIMESTAMP_REQUIRED"
+    if candidate == "MODEL_GATEWAY_AUTH_TIMESTAMP_INVALID":
+        return "MODEL_GATEWAY_AUTH_TIMESTAMP_INVALID"
+    if candidate == "MODEL_GATEWAY_AUTH_TIMESTAMP_EXPIRED":
+        return "MODEL_GATEWAY_AUTH_TIMESTAMP_EXPIRED"
+    if candidate == "MODEL_GATEWAY_AUTH_SIGNATURE_INVALID":
+        return "MODEL_GATEWAY_AUTH_SIGNATURE_INVALID"
+    return "MODEL_GATEWAY_AUTH_FAILED"
 
 
 def _provider_control_error(exc: ProviderInvocationError) -> JSONResponse:
@@ -297,7 +320,7 @@ def _provider_control_error(exc: ProviderInvocationError) -> JSONResponse:
         status_code=503,
         content={
             "code": exc.category.value,
-            "message": str(exc),
+            "message": "provider control request failed",
             "provider": exc.provider,
             "model": exc.model,
             "delivery_state": exc.delivery_state.value,
