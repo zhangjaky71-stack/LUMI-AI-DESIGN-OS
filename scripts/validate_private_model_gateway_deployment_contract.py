@@ -215,9 +215,9 @@ def validate_private_clients() -> None:
         (
             "class HttpProfileModelProvider(ProfileModelProvider)",
             "HttpModelGatewayClient",
-            'LUMI_MODEL_GATEWAY_URL',
-            'LUMI_MODEL_GATEWAY_AUTH_SECRET',
-            'caller_service=_DEFAULT_CALLER_SERVICE',
+            "LUMI_MODEL_GATEWAY_URL",
+            "LUMI_MODEL_GATEWAY_AUTH_SECRET",
+            "caller_service=_DEFAULT_CALLER_SERVICE",
         ),
         "Agent Runtime private Model Gateway client",
     )

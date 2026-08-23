@@ -75,9 +75,7 @@ class S3ProviderOutputStore:
     ) -> str:
         normalized_extension = extension.strip().lower()
         if (content_type, normalized_extension) not in _ALLOWED_IMAGE_MEDIA:
-            raise ProviderOutputStoreError(
-                "provider output byte media type is not allowed"
-            )
+            raise ProviderOutputStoreError("provider output byte media type is not allowed")
         _validate_identity(provider=provider, model=model)
         digest = hashlib.sha256(data).hexdigest()
         object_key = (
@@ -152,9 +150,7 @@ class S3ProviderOutputStore:
         )
         _validate_identity(provider=provider, model=model)
         if not _SAFE_ID.fullmatch(provider_request_id):
-            raise ProviderOutputStoreError(
-                "provider output async request identity is invalid"
-            )
+            raise ProviderOutputStoreError("provider output async request identity is invalid")
         digest = _sha256_path(path, max_bytes=max_bytes)
         normalized_extension = extension.strip().lower()
         request_hash = hashlib.sha256(provider_request_id.encode("utf-8")).hexdigest()[:32]
@@ -183,9 +179,7 @@ def _validate_file_input(
 ) -> None:
     normalized_extension = extension.strip().lower()
     if (content_type, normalized_extension) not in _ALLOWED_FILE_MEDIA:
-        raise ProviderOutputStoreError(
-            "provider output file media type is not allowed"
-        )
+        raise ProviderOutputStoreError("provider output file media type is not allowed")
     if not 1 <= max_bytes <= configured_max:
         raise ProviderOutputStoreError("provider output file byte limit is invalid")
     if not path.is_file():

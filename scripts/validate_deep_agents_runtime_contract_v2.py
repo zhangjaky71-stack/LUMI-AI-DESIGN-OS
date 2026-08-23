@@ -56,9 +56,8 @@ def assert_public_exports_are_bounded() -> None:
     public_exports: set[str] | None = None
     lazy_exports: dict[str, tuple[str, str]] | None = None
     for node in tree.body:
-        if (
-            isinstance(node, ast.Assign)
-            and any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets)
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets
         ):
             value = ast.literal_eval(node.value)
             public_exports = set(value)
@@ -85,6 +84,7 @@ def assert_public_exports_are_bounded() -> None:
     if "DeepAgentRuntimeFactory" in public_exports or "DeepAgentRuntimeFactory" in lazy_exports:
         raise SystemExit("unbounded raw DeepAgentRuntimeFactory must not be exported")
 
+
 def assert_hosted_model_provider_is_fixed() -> None:
     path = ROOT / "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/runtime_factory.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -92,8 +92,7 @@ def assert_hosted_model_provider_is_fixed() -> None:
         (
             node
             for node in tree.body
-            if isinstance(node, ast.ClassDef)
-            and node.name == "HostedDeepAgentRuntimeFactory"
+            if isinstance(node, ast.ClassDef) and node.name == "HostedDeepAgentRuntimeFactory"
         ),
         None,
     )

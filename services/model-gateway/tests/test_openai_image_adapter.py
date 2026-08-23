@@ -122,9 +122,7 @@ def _body(raw: bytes = b"fake-png") -> bytes:
 
 class OpenAIImageAdapterTests(unittest.IsolatedAsyncioTestCase):
     async def test_image_bytes_are_staged_and_only_asset_ref_crosses_gateway(self) -> None:
-        transport = FakeTransport(
-            [HttpResponse(200, {"x-request-id": "req_image_1"}, _body())]
-        )
+        transport = FakeTransport([HttpResponse(200, {"x-request-id": "req_image_1"}, _body())])
         output_store = FakeOutputStore()
         adapter = OpenAIImageGenerationAdapter(
             api_key="test-key-not-real",
@@ -166,9 +164,7 @@ class OpenAIImageAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Negative constraints: no text", payload["prompt"])
 
     async def test_transparent_generation_uses_transparent_background(self) -> None:
-        transport = FakeTransport(
-            [HttpResponse(200, {"x-request-id": "req_transparent"}, _body())]
-        )
+        transport = FakeTransport([HttpResponse(200, {"x-request-id": "req_transparent"}, _body())])
         adapter = OpenAIImageGenerationAdapter(
             api_key="test-key-not-real",
             model="gpt-image-test",

@@ -141,8 +141,7 @@ class ModelRouter:
             )
         if not accepted:
             details = ";".join(
-                f"{key}={','.join(reasons)}"
-                for key, reasons in sorted(rejected.items())
+                f"{key}={','.join(reasons)}" for key, reasons in sorted(rejected.items())
             )
             raise NoRouteError(f"no eligible model route: {details}"[:2000])
         accepted.sort(
@@ -169,7 +168,9 @@ class ModelRouter:
         if request.capability not in descriptor.capabilities:
             reasons.append("CAPABILITY_MISMATCH")
         required = _required_capabilities(request)
-        missing = [capability.value for capability in required if capability not in descriptor.capabilities]
+        missing = [
+            capability.value for capability in required if capability not in descriptor.capabilities
+        ]
         if missing:
             reasons.append("ADDITIONAL_CAPABILITY_MISMATCH:" + ",".join(sorted(missing)))
         allowed_keys = _provider_key_filter(request, "allowed_provider_keys")

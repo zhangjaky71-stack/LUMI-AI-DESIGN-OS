@@ -46,12 +46,10 @@ class Node25ToolGatewayInvoker:
     ) -> Any:
         try:
             contracts = import_module("lumi_tool_gateway.contracts")
-            permission_type = getattr(contracts, "ToolPermissionContext")
-            request_type = getattr(contracts, "ToolRequest")
+            permission_type = contracts.ToolPermissionContext
+            request_type = contracts.ToolRequest
         except (ImportError, AttributeError) as exc:
-            raise DeepAgentToolScopeError(
-                "NODE-25 Tool Gateway contracts are unavailable"
-            ) from exc
+            raise DeepAgentToolScopeError("NODE-25 Tool Gateway contracts are unavailable") from exc
 
         permission_kwargs = {
             "organization_id": context.organization_id,
@@ -96,8 +94,7 @@ def _construct_supported(type_: Any, values: dict[str, Any]) -> Any:
         for name, parameter in parameters.items()
         if name != "self"
         and parameter.default is inspect.Parameter.empty
-        and parameter.kind
-        not in {inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD}
+        and parameter.kind not in {inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD}
     }
     missing = required - set(values)
     if missing:

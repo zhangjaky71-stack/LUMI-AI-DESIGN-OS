@@ -9,6 +9,7 @@ from typing import Any
 import asyncpg
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+
 from lumi_model_gateway import (
     BudgetExceededError,
     ModelGatewayAPI,
@@ -140,11 +141,16 @@ def create_model_gateway_app(runtime: ModelGatewayServiceRuntime) -> FastAPI:
         except PaidInvocationGuardRequiredError as exc:
             return _error(503, exc.code, str(exc))
         except ProviderInvocationError as exc:
-            status = 422 if exc.category.value in {
-                "INVALID_REQUEST",
-                "HARD_CONSTRAINT_INVALID",
-                "USER_CONTENT_POLICY_BLOCK",
-            } else 503
+            status = (
+                422
+                if exc.category.value
+                in {
+                    "INVALID_REQUEST",
+                    "HARD_CONSTRAINT_INVALID",
+                    "USER_CONTENT_POLICY_BLOCK",
+                }
+                else 503
+            )
             return JSONResponse(
                 status_code=status,
                 content={

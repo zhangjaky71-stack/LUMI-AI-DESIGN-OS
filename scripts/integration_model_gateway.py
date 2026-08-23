@@ -103,10 +103,7 @@ async def stream_acceptance() -> None:
     provider = MockProvider()
     stream_guard = RecordingPaidStreamGuard()
     gateway = build_gateway(provider, stream_guard=stream_guard)
-    chunks = [
-        chunk
-        async for chunk in gateway.stream(model_request(Capability.LLM_REASONING))
-    ]
+    chunks = [chunk async for chunk in gateway.stream(model_request(Capability.LLM_REASONING))]
     assert chunks[-1].kind == "completed"
     assert chunks[-1].usage is not None
     assert len(stream_guard.calls) == 1

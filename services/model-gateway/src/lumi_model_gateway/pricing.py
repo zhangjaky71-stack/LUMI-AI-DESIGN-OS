@@ -82,9 +82,7 @@ class PriceCard:
             if self.embedding_usd_per_million_tokens is None:
                 return unknown_cost(self.snapshot_id)
             input_tokens = estimate_input_tokens(request.inputs)
-            amount = (
-                Decimal(input_tokens) * self.embedding_usd_per_million_tokens
-            ) / _MILLION
+            amount = (Decimal(input_tokens) * self.embedding_usd_per_million_tokens) / _MILLION
             return CostEstimate(
                 amount_usd=amount,
                 confidence=CostConfidence.ESTIMATED,

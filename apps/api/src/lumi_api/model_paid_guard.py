@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import math
+from collections.abc import Awaitable, Callable
 from decimal import Decimal
-from typing import Any, Awaitable, Callable
+from typing import Any
 from uuid import UUID, uuid4
 
 from lumi_model_gateway import (
@@ -162,7 +163,7 @@ class PostgresModelPaidInvocationGuard:
 
 
 def _paid_operation_key(operation_id: UUID, provider: str, model: str) -> str:
-    identity = hashlib.sha256(f"{provider}\x00{model}".encode("utf-8")).hexdigest()[:24]
+    identity = hashlib.sha256(f"{provider}\x00{model}".encode()).hexdigest()[:24]
     return f"model-paid:{operation_id}:{identity}"
 
 
@@ -203,13 +204,9 @@ def _encode_model_result(result: ModelResult) -> dict[str, Any]:
             "image_input_tokens": result.usage.image_input_tokens,
             "image_output_tokens": result.usage.image_output_tokens,
             "seconds": (
-                format(result.usage.seconds, "f")
-                if result.usage.seconds is not None
-                else None
+                format(result.usage.seconds, "f") if result.usage.seconds is not None else None
             ),
-            "units": {
-                key: format(value, "f") for key, value in result.usage.units.items()
-            },
+            "units": {key: format(value, "f") for key, value in result.usage.units.items()},
         },
         "timing": {
             "total_ms": result.timing.total_ms,
@@ -218,9 +215,7 @@ def _encode_model_result(result: ModelResult) -> dict[str, Any]:
         },
         "cost": {
             "amount_usd": (
-                format(result.cost.amount_usd, "f")
-                if result.cost.amount_usd is not None
-                else None
+                format(result.cost.amount_usd, "f") if result.cost.amount_usd is not None else None
             ),
             "confidence": result.cost.confidence.value,
             "price_snapshot_id": result.cost.price_snapshot_id,
@@ -257,8 +252,7 @@ def _decode_model_result(payload: dict[str, Any]) -> ModelResult:
     if not isinstance(units_payload, dict):
         raise ValueError("MODEL_PAID_GUARD_USAGE_UNITS_INVALID")
     units = {
-        str(key): Decimal(_require_string_value(value))
-        for key, value in units_payload.items()
+        str(key): Decimal(_require_string_value(value)) for key, value in units_payload.items()
     }
 
     detail = _unpack(cost_payload.get("detail"))

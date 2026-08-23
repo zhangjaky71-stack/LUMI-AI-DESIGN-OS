@@ -23,7 +23,10 @@ class HostedVideoGateway:
             not model_profile
             or len(model_profile) > 100
             or model_profile != model_profile.strip()
-            or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.+-" for char in model_profile)
+            or any(
+                char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.+-"
+                for char in model_profile
+            )
         ):
             raise ValueError("VIDEO_MODEL_PROFILE_INVALID")
         self.client = client

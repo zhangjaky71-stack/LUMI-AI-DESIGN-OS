@@ -192,9 +192,7 @@ class S3ObjectStore:
         if download_name:
             disposition = "attachment" if attachment else "inline"
             safe_name = quote(download_name, safe="")
-            params["ResponseContentDisposition"] = (
-                f"{disposition}; filename*=UTF-8''{safe_name}"
-            )
+            params["ResponseContentDisposition"] = f"{disposition}; filename*=UTF-8''{safe_name}"
         url = await asyncio.to_thread(
             self.client.generate_presigned_url,
             "get_object",

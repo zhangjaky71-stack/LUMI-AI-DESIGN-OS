@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-from typing import Awaitable, TypeVar, cast
+from collections.abc import Awaitable
+from typing import TypeVar, cast
 from urllib.parse import urlsplit
 
 from lumi_asset_storage.s3 import S3ObjectStore
@@ -143,7 +144,7 @@ class S3ProviderOutputFetcher:
         )
 
 
-async def _gateway_call(awaitable: Awaitable[_T], *, code: str) -> _T:
+async def _gateway_call[T](awaitable: Awaitable[_T], *, code: str) -> _T:
     try:
         return await awaitable
     except ModelGatewayHttpError as exc:

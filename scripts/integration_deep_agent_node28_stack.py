@@ -32,9 +32,7 @@ class Model(BaseChatModel):
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
         del messages, stop, run_manager, kwargs
-        return ChatResult(
-            generations=[ChatGeneration(message=AIMessage(content="stack-ok"))]
-        )
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content="stack-ok"))])
 
 
 class Models:
@@ -65,7 +63,7 @@ class Tools:
 class Backends:
     async def backend_for_run(self, *, context, virtual_files_enabled):
         del context, virtual_files_enabled
-        backend_type = getattr(import_module("deepagents.backends"), "StateBackend")
+        backend_type = import_module("deepagents.backends").StateBackend
 
         def factory(runtime):
             parameters = inspect.signature(backend_type).parameters

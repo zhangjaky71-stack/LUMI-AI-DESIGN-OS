@@ -61,9 +61,7 @@ def build_hosted_model_gateway_from_secret(
         else None
     )
     if media_config is not None and provider_output_store is None:
-        raise ModelGatewayBootstrapError(
-            "media provider secret requires a provider output store"
-        )
+        raise ModelGatewayBootstrapError("media provider secret requires a provider output store")
 
     registry = InMemoryProviderRegistry()
     profile_routes: dict[str, set[str]] = {}
@@ -97,9 +95,7 @@ def build_hosted_model_gateway_from_secret(
     router = ModelProfileRouter(
         registry=registry,
         health=health,
-        profile_routes={
-            profile: frozenset(keys) for profile, keys in profile_routes.items()
-        },
+        profile_routes={profile: frozenset(keys) for profile, keys in profile_routes.items()},
     )
     text_models = config["models"]
     assert isinstance(text_models, list)
@@ -208,9 +204,7 @@ def _register_image_models(
         quality_score = _quality_score(raw_model.get("quality_score", 92), label="image")
         raw_price = raw_model.get("price")
         if not isinstance(raw_price, dict):
-            raise ModelGatewayBootstrapError(
-                f"image price config is required for model {model}"
-            )
+            raise ModelGatewayBootstrapError(f"image price config is required for model {model}")
         _reject_unknown_keys(
             raw_price,
             {
@@ -294,9 +288,7 @@ def _register_video_models(
         quality_score = _quality_score(raw_model.get("quality_score", 94), label="video")
         raw_price = raw_model.get("price")
         if not isinstance(raw_price, dict):
-            raise ModelGatewayBootstrapError(
-                f"video price config is required for model {model}"
-            )
+            raise ModelGatewayBootstrapError(f"video price config is required for model {model}")
         _reject_unknown_keys(
             raw_price,
             {"snapshot_id", "usd_per_second_by_size"},
@@ -469,9 +461,7 @@ def _required_profiles(payload: dict[str, Any]) -> tuple[str, ...]:
 def _video_price_map(payload: dict[str, Any]) -> dict[str, Decimal]:
     raw = payload.get("usd_per_second_by_size")
     if not isinstance(raw, dict) or not 1 <= len(raw) <= _MAX_VIDEO_PRICE_SIZES:
-        raise ModelGatewayBootstrapError(
-            "usd_per_second_by_size must contain 1..16 entries"
-        )
+        raise ModelGatewayBootstrapError("usd_per_second_by_size must contain 1..16 entries")
     result: dict[str, Decimal] = {}
     for size, amount in raw.items():
         if not isinstance(size, str) or not size or len(size) > 32 or "x" not in size:
@@ -481,9 +471,7 @@ def _video_price_map(payload: dict[str, Any]) -> dict[str, Decimal]:
         try:
             value = Decimal(amount)
         except InvalidOperation as exc:
-            raise ModelGatewayBootstrapError(
-                "video price values must be decimal strings"
-            ) from exc
+            raise ModelGatewayBootstrapError("video price values must be decimal strings") from exc
         if not value.is_finite() or value <= 0:
             raise ModelGatewayBootstrapError(
                 "video price values must be finite and greater than zero"
@@ -538,9 +526,7 @@ def _timeout_seconds(value: Any, *, maximum: int) -> float:
         raise ModelGatewayBootstrapError("provider timeout_seconds must be numeric")
     timeout = float(value)
     if not 1 <= timeout <= maximum:
-        raise ModelGatewayBootstrapError(
-            f"provider timeout_seconds must be within 1..{maximum}"
-        )
+        raise ModelGatewayBootstrapError(f"provider timeout_seconds must be within 1..{maximum}")
     return timeout
 
 

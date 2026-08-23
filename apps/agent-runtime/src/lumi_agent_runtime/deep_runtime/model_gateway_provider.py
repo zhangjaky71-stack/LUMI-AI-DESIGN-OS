@@ -4,9 +4,10 @@ import asyncio
 import hashlib
 import json
 import os
+from collections.abc import Awaitable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, InvalidOperation
-from typing import Any, Awaitable, Sequence
+from typing import Any
 from uuid import UUID, uuid5
 
 from langchain_core.callbacks.manager import (
@@ -18,9 +19,10 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
+from pydantic import ConfigDict
+
 from lumi_model_gateway import Capability, ModelRequest, ModelResult
 from lumi_model_gateway.http_transport import HttpModelGatewayClient
-from pydantic import ConfigDict
 
 from .contracts import DeepAgentInvocationContext, SubagentInvocationContext
 from .providers import ProfileModelProvider, mark_model_gateway_bound
@@ -108,7 +110,9 @@ class ModelGatewayChatModel(BaseChatModel):
         if kwargs:
             names = ",".join(sorted(kwargs))
             raise ValueError(f"MODEL_GATEWAY_LANGCHAIN_CALL_OPTION_UNSUPPORTED:{names}")
-        wire_messages = [_encode_message(message, index=index) for index, message in enumerate(messages)]
+        wire_messages = [
+            _encode_message(message, index=index) for index, message in enumerate(messages)
+        ]
         inputs: dict[str, Any] = {"messages": wire_messages}
         if self.bound_tools:
             inputs["tools"] = list(self.bound_tools)
@@ -169,10 +173,7 @@ def _normalize_langchain_tool(tool: Any, *, strict: Any) -> dict[str, Any]:
     if not isinstance(converted, dict) or converted.get("type") != "function":
         raise ValueError("MODEL_GATEWAY_LANGCHAIN_ONLY_FUNCTION_TOOLS_SUPPORTED")
     function = converted.get("function")
-    if isinstance(function, dict):
-        definition = function
-    else:
-        definition = converted
+    definition = function if isinstance(function, dict) else converted
     name = definition.get("name")
     description = definition.get("description", "")
     parameters = definition.get("parameters", {"type": "object", "properties": {}})
@@ -271,7 +272,11 @@ def _decode_result(result: ModelResult) -> AIMessage:
             call_id = output.value.get("id")
             name = output.value.get("name")
             args = output.value.get("args")
-            if not isinstance(call_id, str) or not isinstance(name, str) or not isinstance(args, dict):
+            if (
+                not isinstance(call_id, str)
+                or not isinstance(name, str)
+                or not isinstance(args, dict)
+            ):
                 raise ValueError("MODEL_GATEWAY_LANGCHAIN_TOOL_OUTPUT_INVALID")
             tool_calls.append({"id": call_id, "name": name, "args": args, "type": "tool_call"})
             continue

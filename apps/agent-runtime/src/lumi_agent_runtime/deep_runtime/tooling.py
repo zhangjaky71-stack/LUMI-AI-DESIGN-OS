@@ -153,8 +153,8 @@ class LumiToolGatewayProvider:
 def _langchain_tool_types() -> tuple[Any, Any]:
     try:
         tools_module = import_module("langchain_core.tools")
-        injected = getattr(tools_module, "InjectedToolCallId")
-        structured = getattr(tools_module, "StructuredTool")
+        injected = tools_module.InjectedToolCallId
+        structured = tools_module.StructuredTool
     except (ImportError, AttributeError) as exc:
         raise DeepAgentToolScopeError(
             "current langchain-core StructuredTool/InjectedToolCallId is required"
@@ -165,8 +165,8 @@ def _langchain_tool_types() -> tuple[Any, Any]:
 def _langchain_payload_schema(tool_name: str) -> Any:
     try:
         pydantic_module = import_module("pydantic")
-        config_dict = getattr(pydantic_module, "ConfigDict")
-        create_model = getattr(pydantic_module, "create_model")
+        config_dict = pydantic_module.ConfigDict
+        create_model = pydantic_module.create_model
     except (ImportError, AttributeError) as exc:
         raise DeepAgentToolScopeError(
             "current pydantic create_model/ConfigDict is required for LangChain tool schema"

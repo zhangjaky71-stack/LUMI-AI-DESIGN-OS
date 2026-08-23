@@ -149,10 +149,7 @@ class AdaptiveProviderHealthRegistry:
                 if record.half_open_inflight > 0:
                     record.half_open_inflight -= 1
                 record.half_open_successes += 1
-                if (
-                    record.half_open_successes
-                    >= self.policy.half_open_successes_to_close
-                ):
+                if record.half_open_successes >= self.policy.half_open_successes_to_close:
                     self._close(record, now)
                     return
             self._evaluate(record, now)
@@ -251,9 +248,7 @@ class AdaptiveProviderHealthRegistry:
             failures = sum(1 for item in record.samples if not item.success)
             sample_count = len(record.samples)
             failure_rate = failures / sample_count if sample_count else 0.0
-            latency_p95 = _p95(
-                [item.latency_ms for item in record.samples if item.success]
-            )
+            latency_p95 = _p95([item.latency_ms for item in record.samples if item.success])
             score = self._score(
                 state=record.state,
                 failure_rate=failure_rate,
@@ -310,28 +305,18 @@ class AdaptiveProviderHealthRegistry:
         samples = len(record.samples)
         failures = sum(1 for item in record.samples if not item.success)
         failure_rate = failures / samples if samples else 0.0
-        latency_p95 = _p95(
-            [item.latency_ms for item in record.samples if item.success]
-        )
+        latency_p95 = _p95([item.latency_ms for item in record.samples if item.success])
         if record.consecutive_failures >= self.policy.consecutive_failures_open:
             self._open(record, now)
             return
-        if (
-            samples >= self.policy.minimum_samples
-            and failure_rate >= self.policy.open_failure_rate
-        ):
+        if samples >= self.policy.minimum_samples and failure_rate >= self.policy.open_failure_rate:
             self._open(record, now)
             return
         degraded = (
             samples >= self.policy.minimum_samples
             and failure_rate >= self.policy.degraded_failure_rate
-        ) or (
-            latency_p95 is not None
-            and latency_p95 >= self.policy.degraded_latency_ms
-        )
-        record.state = (
-            ProviderHealthState.DEGRADED if degraded else ProviderHealthState.HEALTHY
-        )
+        ) or (latency_p95 is not None and latency_p95 >= self.policy.degraded_latency_ms)
+        record.state = ProviderHealthState.DEGRADED if degraded else ProviderHealthState.HEALTHY
         record.updated_at = now
 
     def _refresh_state(self, record: _HealthRecord, now: float) -> None:

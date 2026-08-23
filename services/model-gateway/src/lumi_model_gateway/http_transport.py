@@ -130,9 +130,7 @@ def encode_model_request(request: ModelRequest) -> dict[str, Any]:
         "quality_profile": request.quality_profile.value,
         "latency_profile": request.latency_profile.value,
         "budget_limit_usd": (
-            format(request.budget_limit_usd, "f")
-            if request.budget_limit_usd is not None
-            else None
+            format(request.budget_limit_usd, "f") if request.budget_limit_usd is not None else None
         ),
         "inputs": _json_value(request.inputs),
         "structured_output_schema": _json_value(request.structured_output_schema),
@@ -202,9 +200,7 @@ def encode_model_result(result: ModelResult) -> dict[str, Any]:
         },
         "cost": {
             "amount_usd": (
-                format(result.cost.amount_usd, "f")
-                if result.cost.amount_usd is not None
-                else None
+                format(result.cost.amount_usd, "f") if result.cost.amount_usd is not None else None
             ),
             "confidence": result.cost.confidence.value,
             "price_snapshot_id": result.cost.price_snapshot_id,
@@ -393,7 +389,7 @@ def _canonical_auth_message(
     if not method_name or "\n" in method_name:
         raise InternalModelGatewayAuthError("MODEL_GATEWAY_AUTH_METHOD_INVALID")
     body_hash = hashlib.sha256(body).hexdigest()
-    return f"{service}\n{timestamp}\n{method_name}\n{path}\n{body_hash}".encode("utf-8")
+    return f"{service}\n{timestamp}\n{method_name}\n{path}\n{body_hash}".encode()
 
 
 def _secret_bytes(secret: str) -> bytes:
@@ -431,10 +427,7 @@ def _json_value(value: Any, *, depth: int = 0) -> Any:
     if isinstance(value, dict):
         if not all(isinstance(key, str) for key in value):
             raise ValueError("MODEL_GATEWAY_HTTP_DICT_KEY_INVALID")
-        return {
-            key: _json_value(child, depth=depth + 1)
-            for key, child in value.items()
-        }
+        return {key: _json_value(child, depth=depth + 1) for key, child in value.items()}
     raise ValueError(f"MODEL_GATEWAY_HTTP_VALUE_UNSUPPORTED:{type(value).__name__}")
 
 

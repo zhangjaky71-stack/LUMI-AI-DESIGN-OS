@@ -112,9 +112,7 @@ class OpenAIAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("test-key-not-a-real-secret", repr(adapter))
 
     async def test_structured_output_uses_text_format_json_schema(self) -> None:
-        transport = FakeTransport(
-            [HttpResponse(200, {}, completed_body('{"answer":"ok"}'))]
-        )
+        transport = FakeTransport([HttpResponse(200, {}, completed_body('{"answer":"ok"}'))])
         adapter = OpenAIResponsesAdapter(
             api_key="test-key-not-a-real-secret",
             model="gpt-5",
@@ -141,12 +139,8 @@ class OpenAIAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(payload["text"]["format"]["strict"])
 
     async def test_429_is_safe_not_accepted_with_retry_after(self) -> None:
-        body = json.dumps(
-            {"error": {"message": "rate limited", "code": "rate_limit"}}
-        ).encode()
-        transport = FakeTransport(
-            [HttpResponse(429, {"retry-after": "2.5"}, body)]
-        )
+        body = json.dumps({"error": {"message": "rate limited", "code": "rate_limit"}}).encode()
+        transport = FakeTransport([HttpResponse(429, {"retry-after": "2.5"}, body)])
         adapter = OpenAIResponsesAdapter(
             api_key="test-key-not-a-real-secret",
             model="gpt-5",

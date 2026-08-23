@@ -122,9 +122,7 @@ class ModelRequest:
             "quality_profile": self.quality_profile.value,
             "latency_profile": self.latency_profile.value,
             "budget_limit_usd": (
-                format(self.budget_limit_usd, "f")
-                if self.budget_limit_usd is not None
-                else None
+                format(self.budget_limit_usd, "f") if self.budget_limit_usd is not None else None
             ),
             "inputs": self.inputs,
             "structured_output_schema": self.structured_output_schema,

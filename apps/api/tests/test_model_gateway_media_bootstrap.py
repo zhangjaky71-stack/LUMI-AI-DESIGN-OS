@@ -3,14 +3,13 @@ from __future__ import annotations
 import json
 import unittest
 
-from lumi_model_gateway.openai_image_adapter import OpenAIImageGenerationAdapter
-from lumi_model_gateway.openai_tool_adapter import OpenAIResponsesToolAdapter
-from lumi_model_gateway.openai_video_adapter import OpenAIVideoGenerationAdapter
-
 from lumi_api.model_gateway_bootstrap import (
     ModelGatewayBootstrapError,
     build_hosted_model_gateway_from_secret,
 )
+from lumi_model_gateway.openai_image_adapter import OpenAIImageGenerationAdapter
+from lumi_model_gateway.openai_tool_adapter import OpenAIResponsesToolAdapter
+from lumi_model_gateway.openai_video_adapter import OpenAIVideoGenerationAdapter
 
 
 class FakeOutputStore:

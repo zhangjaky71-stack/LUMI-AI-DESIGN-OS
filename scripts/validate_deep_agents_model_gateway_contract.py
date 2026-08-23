@@ -65,8 +65,7 @@ def assert_hosted_runtime_composition() -> None:
         (
             node
             for node in tree.body
-            if isinstance(node, ast.ClassDef)
-            and node.name == "HostedDeepAgentRuntimeFactory"
+            if isinstance(node, ast.ClassDef) and node.name == "HostedDeepAgentRuntimeFactory"
         ),
         None,
     )
@@ -91,9 +90,7 @@ def assert_hosted_runtime_composition() -> None:
         )
     }
     if "models" in argument_names:
-        raise SystemExit(
-            f"{path}: hosted runtime must not expose model-provider injection"
-        )
+        raise SystemExit(f"{path}: hosted runtime must not expose model-provider injection")
     has_http_provider = False
     for node in ast.walk(initializer):
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
@@ -124,12 +121,12 @@ def main() -> int:
         "class ModelGatewayChatModel(BaseChatModel)",
         "class HttpProfileModelProvider(ProfileModelProvider)",
         "HttpModelGatewayClient",
-        '_lumi_model_gateway_bound: ClassVar[bool] = True',
+        "_lumi_model_gateway_bound: ClassVar[bool] = True",
         'constraints: dict[str, Any] = {"model_profile": self.model_profile}',
         'uuid5(parent_operation_id, f"lumi-model-turn-v1:{digest}")',
-        'LUMI_MODEL_GATEWAY_URL',
-        'LUMI_MODEL_GATEWAY_AUTH_SECRET',
-        'caller_service=_DEFAULT_CALLER_SERVICE',
+        "LUMI_MODEL_GATEWAY_URL",
+        "LUMI_MODEL_GATEWAY_AUTH_SECRET",
+        "caller_service=_DEFAULT_CALLER_SERVICE",
         "convert_to_openai_tool",
         '"role": "tool"',
         'output.kind == "tool_call"',
