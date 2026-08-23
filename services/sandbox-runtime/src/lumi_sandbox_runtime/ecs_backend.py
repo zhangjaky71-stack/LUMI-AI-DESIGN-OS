@@ -264,6 +264,8 @@ class ECSRemoteSandboxBackend:
                 raise ECSRemoteSandboxError("SANDBOX_REMOTE_RESULT_OUTPUT_INVALID")
             key = raw.get("exchange_key")
             path = raw.get("path")
+            if not isinstance(key, str) or not isinstance(path, str):
+                raise ECSRemoteSandboxError("SANDBOX_REMOTE_RESULT_OUTPUT_IDENTITY_INVALID")
             identity = (key, path)
             item = expected.get(identity)
             if item is None or identity in seen:
