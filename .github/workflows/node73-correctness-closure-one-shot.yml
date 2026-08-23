@@ -1,9 +1,9 @@
 name: NODE-73 Correctness Closure One-Shot
 
 on:
-  pull_request:
+  push:
     branches:
-      - node-73-final-acceptance-release
+      - release-closure-p0
     paths:
       - .github/workflows/node73-correctness-closure-one-shot.yml
 
@@ -12,9 +12,7 @@ permissions:
 
 jobs:
   closure:
-    if: >-
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'release-closure-p0'
+    if: github.ref_name == 'release-closure-p0'
     runs-on: ubuntu-24.04
     steps:
       - name: Check out release closure branch
