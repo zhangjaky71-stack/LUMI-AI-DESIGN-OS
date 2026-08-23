@@ -7,6 +7,7 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from merge_tool_gateway_e2e_into_staging_evidence import merge
@@ -98,7 +99,13 @@ def _contains_sensitive_storage(value: Any) -> bool:
         return any(_contains_sensitive_storage(child) for child in value)
     if isinstance(value, str):
         lowered = value.lower()
-        return "x-amz-signature=" in lowered or "amazonaws.com/" in lowered
+        if "x-amz-signature=" in lowered:
+            return True
+        try:
+            hostname = (urlsplit(value).hostname or "").lower().rstrip(".")
+        except ValueError:
+            return False
+        return hostname == "amazonaws.com" or hostname.endswith(".amazonaws.com")
     return False
 
 
@@ -450,6 +457,7 @@ def _assemble_replay(
 def _assemble_offload(
     probe: dict[str, Any],
     s3: dict[str, Any],
+    calls: dict[str, dict[str, Any]],
     probe_ref: str,
     s3_ref: str,
 ) -> dict[str, Any]:
@@ -457,6 +465,8 @@ def _assemble_offload(
     if not isinstance(offload, dict):
         raise AssembleError("probe result_offload is missing")
     call_id = _uuid(offload.get("tool_call_id"), "offload tool_call_id")
+    if call_id != calls["sandbox.execute"]["tool_call_id"]:
+        raise AssembleError("offload tool_call_id differs from sandbox.execute probe")
     result_ref = _required_string(offload.get("result_ref"), "probe offload result_ref")
     if offload.get("inline_data_present") is not False:
         raise AssembleError("oversized sandbox result must not remain inline")
@@ -584,6 +594,7 @@ def assemble(
         "result_offload": _assemble_offload(
             probe,
             s3,
+            calls,
             refs["probe"],
             refs["s3"],
         ),
