@@ -3,7 +3,6 @@ from __future__ import annotations
 from .contracts import DeepAgentDefinition, DeepAgentInvocationContext
 from .factory import CompiledDeepAgent, DeepAgentRuntimeFactory
 from .graph_limits import LimitedCompiledDeepAgent
-from .model_gateway_chat import HttpProfileModelProvider
 from .ports import (
     DeepAgentBackendProvider,
     DeepAgentCheckpointerProvider,
@@ -47,6 +46,8 @@ class HostedDeepAgentRuntimeFactory(BoundedDeepAgentRuntimeFactory):
         checkpointers: DeepAgentCheckpointerProvider,
         stores: DeepAgentStoreProvider | None = None,
     ) -> None:
+        from .model_gateway_chat import HttpProfileModelProvider
+
         super().__init__(
             models=HttpProfileModelProvider.from_env(),
             tools=tools,
