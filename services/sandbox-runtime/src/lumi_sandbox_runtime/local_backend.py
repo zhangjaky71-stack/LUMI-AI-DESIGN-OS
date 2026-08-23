@@ -67,6 +67,21 @@ if resolved != root and not resolved.startswith(root + os.sep):
 print(resolved)
 """.strip()
 
+_WRITE_FILE_SCRIPT = r"""
+import os, stat, sys
+target = sys.argv[1]
+if os.path.lexists(target):
+    st = os.lstat(target)
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode):
+        raise SystemExit(43)
+with open(target, "wb") as handle:
+    while True:
+        chunk = sys.stdin.buffer.read(64 * 1024)
+        if not chunk:
+            break
+        handle.write(chunk)
+""".strip()
+
 _LIST_SCRIPT = r"""
 import json, os, stat, sys
 root = os.path.realpath(sys.argv[1])
@@ -421,19 +436,27 @@ class DockerSandboxBackend:
             zone, _ = normalize_workspace_path(path, writable=True)
             target = workspace_absolute(path, writable=True)
             resolved = self._prepare_write_path(record, zone=zone, target=target)
-            with tempfile.NamedTemporaryFile(
-                dir=record.root / "staging",
-                delete=False,
-            ) as handle:
-                handle.write(data)
-                staged = Path(handle.name)
-            try:
-                self._docker(
-                    ["cp", str(staged), f"{record.container_name}:{resolved}"],
-                    timeout=30,
-                )
-            finally:
-                staged.unlink(missing_ok=True)
+            result = self._docker_with_input(
+                [
+                    "exec",
+                    "-i",
+                    record.container_name,
+                    "python",
+                    "-c",
+                    _WRITE_FILE_SCRIPT,
+                    resolved,
+                ],
+                input_data=data,
+                timeout=30,
+                allow_failure=True,
+            )
+            if result.returncode == 43:
+                raise SandboxPolicyError("SANDBOX_FILE_TYPE_FORBIDDEN")
+            if result.returncode != 0:
+                message = redact_text(result.stderr.decode("utf-8", errors="replace").strip())[
+                    :2000
+                ]
+                raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
             self._audit(
                 record,
                 "sandbox.file.written",
@@ -741,6 +764,30 @@ class DockerSandboxBackend:
         )
         if result.returncode != 0 and not allow_failure:
             message = redact_text(result.stderr.strip())[:2000]
+            raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
+        return result
+
+    def _docker_with_input(
+        self,
+        args: list[str],
+        *,
+        input_data: bytes,
+        timeout: int,
+        allow_failure: bool = False,
+    ) -> subprocess.CompletedProcess[bytes]:
+        result = subprocess.run(
+            [self.docker_binary, *args],
+            input=input_data,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=False,
+            timeout=timeout,
+            check=False,
+        )
+        if result.returncode != 0 and not allow_failure:
+            message = redact_text(result.stderr.decode("utf-8", errors="replace").strip())[
+                :2000
+            ]
             raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
         return result
 
