@@ -456,6 +456,7 @@ def _assemble_replay(
 
 def _assemble_offload(
     probe: dict[str, Any],
+    db: dict[str, Any],
     s3: dict[str, Any],
     calls: dict[str, dict[str, Any]],
     probe_ref: str,
@@ -465,8 +466,16 @@ def _assemble_offload(
     if not isinstance(offload, dict):
         raise AssembleError("probe result_offload is missing")
     call_id = _uuid(offload.get("tool_call_id"), "offload tool_call_id")
-    if call_id != calls["sandbox.execute"]["tool_call_id"]:
-        raise AssembleError("offload tool_call_id differs from sandbox.execute probe")
+    if call_id == calls["sandbox.execute"]["tool_call_id"]:
+        raise AssembleError("offload must use a separate sandbox.execute tool_call_id")
+    db_offload_call_id = _uuid(db.get("offload_tool_call_id"), "DB offload tool_call_id")
+    if call_id != db_offload_call_id:
+        raise AssembleError("probe offload tool_call_id differs from PostgreSQL evidence")
+    audit_event_id = _audit_event(
+        _audit_ids(db),
+        call_id,
+        "sandbox.execute result offload",
+    )
     result_ref = _required_string(offload.get("result_ref"), "probe offload result_ref")
     if offload.get("inline_data_present") is not False:
         raise AssembleError("oversized sandbox result must not remain inline")
@@ -489,6 +498,7 @@ def _assemble_offload(
         "status": "PASS",
         "tool": "sandbox.execute",
         "tool_call_id": call_id,
+        "audit_event_id": audit_event_id,
         "inline_limit_bytes": inline_limit,
         "serialized_result_bytes": content_length,
         "inline_data_present": False,
@@ -593,6 +603,7 @@ def assemble(
         ),
         "result_offload": _assemble_offload(
             probe,
+            db,
             s3,
             calls,
             refs["probe"],
