@@ -38,14 +38,36 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          target = Path("apps/web/src/components/export-ui/export-ui.tsx")
-          source = target.read_text(encoding="utf-8")
+          export_ui = Path("apps/web/src/components/export-ui/export-ui.tsx")
+          source = export_ui.read_text(encoding="utf-8")
           residue = "  ExportSourceOption,\n"
           if source.count(residue) != 1:
               raise SystemExit(
                   f"expected exactly one ExportSourceOption import residue, found {source.count(residue)}"
               )
-          target.write_text(source.replace(residue, "", 1), encoding="utf-8")
+          export_ui.write_text(source.replace(residue, "", 1), encoding="utf-8")
+
+          versions = Path("apps/web/src/components/versions-ui/versions-ui.tsx")
+          source = versions.read_text(encoding="utf-8")
+          nullable_head_calls = (
+              "      chooseCompareTo(next.head_version_id);\n"
+              "      chooseProvenance(next.head_version_id);\n"
+          )
+          guarded_head_calls = (
+              "      if (next.head_version_id) {\n"
+              "        chooseCompareTo(next.head_version_id);\n"
+              "        chooseProvenance(next.head_version_id);\n"
+              "      }\n"
+          )
+          if source.count(nullable_head_calls) != 1:
+              raise SystemExit(
+                  "expected exactly one nullable head-version call pair, "
+                  f"found {source.count(nullable_head_calls)}"
+              )
+          versions.write_text(
+              source.replace(nullable_head_calls, guarded_head_calls, 1),
+              encoding="utf-8",
+          )
           PY
       - name: Verify targeted ESLint
         run: |
