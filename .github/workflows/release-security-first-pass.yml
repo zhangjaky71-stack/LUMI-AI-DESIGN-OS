@@ -151,20 +151,40 @@ jobs:
         working-directory: apps/web
         run: |
           node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
           const { createRequire } = require('node:module');
+
           const requireFromWeb = createRequire(process.cwd() + '/package.json');
           const nextPackage = requireFromWeb.resolve('next/package.json');
           const requireFromNext = createRequire(nextPackage);
 
-          const sharpPackage = requireFromNext.resolve('sharp/package.json');
-          const sharpVersion = require(sharpPackage).version;
+          function resolvedPackageVersion(packageName) {
+            const entry = requireFromNext.resolve(packageName);
+            let directory = path.dirname(entry);
+            while (true) {
+              const candidate = path.join(directory, 'package.json');
+              if (fs.existsSync(candidate)) {
+                const metadata = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+                if (metadata.name === packageName && typeof metadata.version === 'string') {
+                  return metadata.version;
+                }
+              }
+              const parent = path.dirname(directory);
+              if (parent === directory) {
+                throw new Error(`Unable to locate package metadata for ${packageName}`);
+              }
+              directory = parent;
+            }
+          }
+
+          const sharpVersion = resolvedPackageVersion('sharp');
           console.log(`Next resolves sharp ${sharpVersion}`);
           if (sharpVersion !== '0.35.3') {
             throw new Error(`Expected Next to resolve sharp 0.35.3, got ${sharpVersion}`);
           }
 
-          const postcssPackage = requireFromNext.resolve('postcss/package.json');
-          const postcssVersion = require(postcssPackage).version;
+          const postcssVersion = resolvedPackageVersion('postcss');
           console.log(`Next resolves postcss ${postcssVersion}`);
           if (postcssVersion !== '8.5.26') {
             throw new Error(`Expected Next to resolve postcss 8.5.26, got ${postcssVersion}`);
