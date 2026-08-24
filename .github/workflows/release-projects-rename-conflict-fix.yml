@@ -1,0 +1,93 @@
+name: Release Projects Rename Conflict Fix
+
+on:
+  pull_request:
+    branches:
+      - node-73-final-acceptance-release
+    paths:
+      - ".github/workflows/release-projects-rename-conflict-fix.yml"
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: release-projects-rename-conflict-fix
+  cancel-in-progress: true
+
+jobs:
+  remediate:
+    if: github.event.pull_request.head.ref == 'release-closure-p0' && github.actor == github.repository_owner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      LUMI_SHELL_E2E_AUTH: "1"
+      LUMI_PROJECTS_E2E: "1"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release-closure-p0
+          fetch-depth: 1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Apply exact rename conflict ordering fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("apps/web/src/components/projects/projects-dashboard.tsx")
+          source = path.read_text(encoding="utf-8")
+          old = '''    } catch (renameError) {
+              setProjects(previous);
+              setError(projectUiError(renameError));
+              if (isVersionConflict(renameError)) {
+                queryCache.clear();
+                void load();
+              }
+'''
+          new = '''    } catch (renameError) {
+              setProjects(previous);
+              if (isVersionConflict(renameError)) {
+                queryCache.clear();
+                void load();
+              }
+              setError(projectUiError(renameError));
+'''
+          if source.count(old) != 1:
+              raise SystemExit(f"expected exactly one rename conflict block, found {source.count(old)}")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          PY
+          git diff --check
+      - name: Validate Projects architecture and quality
+        run: |
+          python scripts/validate_app_shell.py
+          python scripts/validate_projects_ui.py
+          pnpm --filter @lumi/web typecheck
+          pnpm --filter @lumi/web lint
+          pnpm exec prettier --check "apps/web/src/components/projects/projects-dashboard.tsx" "apps/web/e2e/projects.spec.ts"
+          pnpm --filter @lumi/web exec vitest run src/lib/projects
+          pnpm --filter @lumi/web exec vitest run src/lib/app-shell/api-client.test.ts src/lib/app-shell/query-cache.test.ts
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Validate Projects browser scenarios
+        run: pnpm exec playwright test apps/web/e2e/projects.spec.ts
+      - name: Validate App Shell browser regression
+        run: pnpm exec playwright test apps/web/e2e/app-shell.spec.ts
+      - name: Commit verified rename conflict fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/components/projects/projects-dashboard.tsx
+          git diff --cached --quiet && { echo 'No verified Projects rename conflict change to commit' >&2; exit 1; }
+          git commit -m "fix(projects): preserve rename conflict feedback"
+          git push origin HEAD:release-closure-p0
