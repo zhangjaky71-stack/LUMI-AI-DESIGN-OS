@@ -467,7 +467,7 @@ export function ProjectsDashboard({
                 <Link
                   href={`/app/projects/${project.id}`}
                   className={styles.projectPreview}
-                  aria-label={`打开项目 ${project.name}`}
+                  aria-label="打开项目详情"
                 >
                   <span className={styles.previewLabel}>
                     {project.preview_label ?? "LUMI Project"}
