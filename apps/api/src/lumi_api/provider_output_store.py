@@ -6,6 +6,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from lumi_asset_storage.s3 import S3ObjectStore
 from lumi_model_gateway import ModelRequest
@@ -22,13 +23,36 @@ _BUCKET = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,511}$")
 
 
+class _ProviderObjectStore(Protocol):
+    async def put_bytes(
+        self,
+        *,
+        bucket: str,
+        object_key: str,
+        data: bytes,
+        content_type: str,
+        max_bytes: int,
+        metadata: dict[str, str] | None = None,
+    ) -> object: ...
+
+    async def upload_from_path(
+        self,
+        *,
+        bucket: str,
+        object_key: str,
+        path: str,
+        content_type: str,
+        checksum_sha256_b64: str,
+    ) -> object: ...
+
+
 class ProviderOutputStoreError(RuntimeError):
     code = "PROVIDER_OUTPUT_STORE_INVALID"
 
 
 @dataclass(slots=True)
 class S3ProviderOutputStore:
-    object_store: S3ObjectStore
+    object_store: _ProviderObjectStore
     bucket: str
     max_image_bytes: int = _MAX_IMAGE_BYTES
     max_video_bytes: int = _MAX_VIDEO_BYTES
@@ -75,9 +99,7 @@ class S3ProviderOutputStore:
     ) -> str:
         normalized_extension = extension.strip().lower()
         if (content_type, normalized_extension) not in _ALLOWED_IMAGE_MEDIA:
-            raise ProviderOutputStoreError(
-                "provider output byte media type is not allowed"
-            )
+            raise ProviderOutputStoreError("provider output byte media type is not allowed")
         _validate_identity(provider=provider, model=model)
         digest = hashlib.sha256(data).hexdigest()
         object_key = (
@@ -152,9 +174,7 @@ class S3ProviderOutputStore:
         )
         _validate_identity(provider=provider, model=model)
         if not _SAFE_ID.fullmatch(provider_request_id):
-            raise ProviderOutputStoreError(
-                "provider output async request identity is invalid"
-            )
+            raise ProviderOutputStoreError("provider output async request identity is invalid")
         digest = _sha256_path(path, max_bytes=max_bytes)
         normalized_extension = extension.strip().lower()
         request_hash = hashlib.sha256(provider_request_id.encode("utf-8")).hexdigest()[:32]
@@ -183,9 +203,7 @@ def _validate_file_input(
 ) -> None:
     normalized_extension = extension.strip().lower()
     if (content_type, normalized_extension) not in _ALLOWED_FILE_MEDIA:
-        raise ProviderOutputStoreError(
-            "provider output file media type is not allowed"
-        )
+        raise ProviderOutputStoreError("provider output file media type is not allowed")
     if not 1 <= max_bytes <= configured_max:
         raise ProviderOutputStoreError("provider output file byte limit is invalid")
     if not path.is_file():

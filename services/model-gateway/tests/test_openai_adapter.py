@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 from decimal import Decimal
+from typing import cast
 from uuid import uuid4
 
 from lumi_model_gateway import Capability, ModelRequest, ResultStatus
@@ -103,18 +104,16 @@ class OpenAIAdapterTests(unittest.IsolatedAsyncioTestCase):
         call = transport.calls[0]
         self.assertEqual(call["method"], "POST")
         self.assertEqual(call["url"], "https://api.openai.com/v1/responses")
-        payload = json.loads(call["body"])
+        payload = json.loads(cast(bytes, call["body"]))
         self.assertIs(payload["store"], False)
         self.assertEqual(payload["model"], "gpt-5")
         self.assertEqual(payload["input"], "Hello")
-        headers = call["headers"]
+        headers = cast(dict[str, str], call["headers"])
         self.assertEqual(headers["authorization"], "Bearer test-key-not-a-real-secret")
         self.assertNotIn("test-key-not-a-real-secret", repr(adapter))
 
     async def test_structured_output_uses_text_format_json_schema(self) -> None:
-        transport = FakeTransport(
-            [HttpResponse(200, {}, completed_body('{"answer":"ok"}'))]
-        )
+        transport = FakeTransport([HttpResponse(200, {}, completed_body('{"answer":"ok"}'))])
         adapter = OpenAIResponsesAdapter(
             api_key="test-key-not-a-real-secret",
             model="gpt-5",
@@ -136,17 +135,13 @@ class OpenAIAdapterTests(unittest.IsolatedAsyncioTestCase):
         result = await adapter.invoke(request)
         self.assertEqual(result.outputs[0].kind, "json")
         self.assertEqual(result.outputs[0].value, {"answer": "ok"})
-        payload = json.loads(transport.calls[0]["body"])
+        payload = json.loads(cast(bytes, transport.calls[0]["body"]))
         self.assertEqual(payload["text"]["format"]["type"], "json_schema")
         self.assertTrue(payload["text"]["format"]["strict"])
 
     async def test_429_is_safe_not_accepted_with_retry_after(self) -> None:
-        body = json.dumps(
-            {"error": {"message": "rate limited", "code": "rate_limit"}}
-        ).encode()
-        transport = FakeTransport(
-            [HttpResponse(429, {"retry-after": "2.5"}, body)]
-        )
+        body = json.dumps({"error": {"message": "rate limited", "code": "rate_limit"}}).encode()
+        transport = FakeTransport([HttpResponse(429, {"retry-after": "2.5"}, body)])
         adapter = OpenAIResponsesAdapter(
             api_key="test-key-not-a-real-secret",
             model="gpt-5",

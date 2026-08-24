@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from lumi_agent_runtime.deep_runtime.contracts import (
     DeepAgentInvocationContext,
+    DeepSubagentDefinition,
     SubagentInvocationContext,
 )
 from lumi_agent_runtime.deep_runtime.errors import DeepAgentModelBoundaryError
@@ -118,11 +119,14 @@ class ModelGatewayChatTests(unittest.IsolatedAsyncioTestCase):
         ):
             chat_result = await model._agenerate([HumanMessage(content="find x")])
 
-        request = invoke.await_args.args[0]
+        invoke_args = invoke.await_args
+        assert invoke_args is not None
+        request = invoke_args.args[0]
         self.assertEqual(request.inputs["tools"][0]["name"], "lookup")
         self.assertNotIn("function", request.inputs["tools"][0])
         self.assertEqual(request.inputs["tool_choice"], "auto")
         ai = chat_result.generations[0].message
+        assert isinstance(ai, AIMessage)
         self.assertEqual(ai.tool_calls[0]["id"], "call_1")
         self.assertEqual(ai.tool_calls[0]["name"], "lookup")
         self.assertEqual(ai.tool_calls[0]["args"], {"query": "x"})
@@ -142,7 +146,9 @@ class ModelGatewayChatTests(unittest.IsolatedAsyncioTestCase):
                     ToolMessage(content="value-x", tool_call_id="call_1"),
                 ]
             )
-        second_request = second_invoke.await_args.args[0]
+        second_invoke_args = second_invoke.await_args
+        assert second_invoke_args is not None
+        second_request = second_invoke_args.args[0]
         self.assertEqual(
             second_request.inputs["messages"][-1],
             {"role": "tool", "tool_call_id": "call_1", "content": "value-x"},
@@ -159,7 +165,7 @@ class ModelGatewayChatTests(unittest.IsolatedAsyncioTestCase):
             base_url="http://model-gateway.test.internal:8080",
             auth_secret=_SECRET,
         )
-        shared = dict(
+        root = DeepAgentInvocationContext(
             organization_id=uuid4(),
             project_id=uuid4(),
             agent_run_id=uuid4(),
@@ -172,7 +178,6 @@ class ModelGatewayChatTests(unittest.IsolatedAsyncioTestCase):
             trace_id="trace-budget",
             budget_limit_usd="2.50",
         )
-        root = DeepAgentInvocationContext(**shared)
         root_model = await provider.model_for_root(
             model_profile="reasoning.high",
             context=root,
@@ -196,7 +201,13 @@ class ModelGatewayChatTests(unittest.IsolatedAsyncioTestCase):
             budget_limit_usd=root.budget_limit_usd,
         )
         sub_model = await provider.model_for_subagent(
-            definition=type("Definition", (), {"model_profile": "reasoning.fast"})(),
+            definition=DeepSubagentDefinition(
+                name="researcher",
+                description="Research project evidence",
+                system_prompt="Research only within the granted project scope.",
+                allowed_tools=root.allowed_tools,
+                model_profile="reasoning.fast",
+            ),
             context=sub,
         )
         self.assertEqual(sub_model.budget_limit_usd, "2.50")

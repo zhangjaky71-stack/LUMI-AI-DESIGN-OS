@@ -349,8 +349,9 @@ async def _database_ready(database_dsn: str) -> tuple[bool, str]:
     dsn = database_dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
     connection: asyncpg.Connection | None = None
     try:
-        connection = await asyncpg.connect(dsn, timeout=3.0)
-        barrier_exists = await connection.fetchval(
+        active_connection = await asyncpg.connect(dsn, timeout=3)
+        connection = active_connection
+        barrier_exists = await active_connection.fetchval(
             """
             SELECT EXISTS (
                 SELECT 1
@@ -363,7 +364,7 @@ async def _database_ready(database_dsn: str) -> tuple[bool, str]:
         )
         if not barrier_exists:
             return False, "provider_attempt_barrier_missing"
-        policy = await connection.fetchrow(
+        policy = await active_connection.fetchrow(
             """
             SELECT daily_cap_usd, enabled, fail_closed, currency, window
             FROM platform_provider_cost_guard

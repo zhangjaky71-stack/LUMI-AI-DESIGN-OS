@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Awaitable
-from typing import TypeVar, cast
+from typing import cast
 from urllib.parse import urlsplit
 
 from lumi_asset_storage.s3 import S3ObjectStore
@@ -23,7 +23,6 @@ from lumi_model_gateway.models import ModelResult
 _MAX_IMAGE_BYTES = 100 * 1024 * 1024
 _PROVIDER_OUTPUT_PREFIX = "provider-output/v1/"
 _TRANSIENT_HTTP_STATUSES = frozenset({408, 425, 429})
-_T = TypeVar("_T")
 
 
 class HostedImageModelGatewayAdapter:
@@ -144,7 +143,7 @@ class S3ProviderOutputFetcher:
         )
 
 
-async def _gateway_call[T](awaitable: Awaitable[_T], *, code: str) -> _T:
+async def _gateway_call[T](awaitable: Awaitable[T], *, code: str) -> T:
     try:
         return await awaitable
     except ModelGatewayHttpError as exc:

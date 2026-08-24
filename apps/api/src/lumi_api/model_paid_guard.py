@@ -356,10 +356,10 @@ def _unpack(value: Any) -> Any:
         raw = value.get("v")
         if not isinstance(raw, (int, float)) or isinstance(raw, bool):
             raise ValueError("MODEL_PAID_GUARD_FLOAT_INVALID")
-        decoded = float(raw)
-        if not math.isfinite(decoded):
+        decoded_float = float(raw)
+        if not math.isfinite(decoded_float):
             raise ValueError("MODEL_PAID_GUARD_NON_FINITE_FLOAT")
-        return decoded
+        return decoded_float
     if kind == "str":
         return _require_string_value(value.get("v"))
     if kind == "decimal":

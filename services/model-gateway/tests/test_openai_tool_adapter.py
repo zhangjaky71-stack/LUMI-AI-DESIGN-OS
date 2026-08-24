@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 from decimal import Decimal
+from typing import cast
 from uuid import uuid4
 
 from lumi_model_gateway import Capability, ModelRequest
@@ -105,7 +106,7 @@ class OpenAIResponsesToolAdapterTests(unittest.IsolatedAsyncioTestCase):
             result.outputs[0].value,
             {"id": "call_123", "name": "lookup_asset", "args": {"asset_id": "asset-42"}},
         )
-        payload = json.loads(transport.calls[0]["body"])
+        payload = json.loads(cast(bytes, transport.calls[0]["body"]))
         self.assertEqual(payload["tools"][0]["type"], "function")
         self.assertEqual(payload["tools"][0]["name"], "lookup_asset")
         self.assertTrue(payload["tools"][0]["strict"])
@@ -158,7 +159,7 @@ class OpenAIResponsesToolAdapterTests(unittest.IsolatedAsyncioTestCase):
         result = await adapter.invoke(request)
         self.assertEqual(result.outputs[0].kind, "text")
         self.assertEqual(result.outputs[0].value, "Asset found")
-        payload = json.loads(transport.calls[0]["body"])
+        payload = json.loads(cast(bytes, transport.calls[0]["body"]))
         self.assertEqual(
             payload["input"][1],
             {

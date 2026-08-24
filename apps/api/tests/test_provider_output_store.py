@@ -5,6 +5,7 @@ import hashlib
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 from lumi_api.provider_output_store import (
@@ -19,19 +20,53 @@ class FakeObjectStore:
         self.calls: list[dict[str, object]] = []
         self.file_calls: list[dict[str, object]] = []
 
-    async def put_bytes(self, **kwargs: object) -> object:
-        self.calls.append(dict(kwargs))
+    async def put_bytes(
+        self,
+        *,
+        bucket: str,
+        object_key: str,
+        data: bytes,
+        content_type: str,
+        max_bytes: int,
+        metadata: dict[str, str] | None = None,
+    ) -> object:
+        self.calls.append(
+            {
+                "bucket": bucket,
+                "object_key": object_key,
+                "data": data,
+                "content_type": content_type,
+                "max_bytes": max_bytes,
+                "metadata": metadata,
+            }
+        )
         return object()
 
-    async def upload_from_path(self, **kwargs: object) -> object:
-        self.file_calls.append(dict(kwargs))
+    async def upload_from_path(
+        self,
+        *,
+        bucket: str,
+        object_key: str,
+        path: str,
+        content_type: str,
+        checksum_sha256_b64: str,
+    ) -> object:
+        self.file_calls.append(
+            {
+                "bucket": bucket,
+                "object_key": object_key,
+                "path": path,
+                "content_type": content_type,
+                "checksum_sha256_b64": checksum_sha256_b64,
+            }
+        )
         return object()
 
 
 class ProviderOutputStoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_ref_is_opaque_deterministic_and_contains_no_provider_text(self) -> None:
         object_store = FakeObjectStore()
-        store = S3ProviderOutputStore(  # type: ignore[arg-type]
+        store = S3ProviderOutputStore(
             object_store=object_store,
             bucket="lumi-assets-test",
         )
@@ -65,11 +100,12 @@ class ProviderOutputStoreTests(unittest.IsolatedAsyncioTestCase):
         call = object_store.calls[0]
         self.assertEqual(call["max_bytes"], 100 * 1024 * 1024)
         self.assertEqual(call["content_type"], "image/png")
-        self.assertEqual(call["metadata"]["lumi-kind"], "provider-output")
+        metadata = cast(dict[str, str], call["metadata"])
+        self.assertEqual(metadata["lumi-kind"], "provider-output")
 
     async def test_async_video_path_uses_existing_s3_checksum_contract(self) -> None:
         object_store = FakeObjectStore()
-        store = S3ProviderOutputStore(  # type: ignore[arg-type]
+        store = S3ProviderOutputStore(
             object_store=object_store,
             bucket="lumi-assets-test",
         )
@@ -101,7 +137,7 @@ class ProviderOutputStoreTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_video_path_size_bound_fails_before_s3_upload(self) -> None:
         object_store = FakeObjectStore()
-        store = S3ProviderOutputStore(  # type: ignore[arg-type]
+        store = S3ProviderOutputStore(
             object_store=object_store,
             bucket="lumi-assets-test",
         )
@@ -122,7 +158,7 @@ class ProviderOutputStoreTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_non_image_media_is_rejected_before_object_store(self) -> None:
         object_store = FakeObjectStore()
-        store = S3ProviderOutputStore(  # type: ignore[arg-type]
+        store = S3ProviderOutputStore(
             object_store=object_store,
             bucket="lumi-assets-test",
         )
@@ -145,7 +181,7 @@ class ProviderOutputStoreTests(unittest.IsolatedAsyncioTestCase):
 
     def test_invalid_bucket_fails_closed(self) -> None:
         with self.assertRaises(ProviderOutputStoreError):
-            S3ProviderOutputStore(  # type: ignore[arg-type]
+            S3ProviderOutputStore(
                 object_store=FakeObjectStore(),
                 bucket="INVALID_BUCKET_NAME",
             )

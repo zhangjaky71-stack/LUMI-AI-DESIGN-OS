@@ -4,6 +4,8 @@ import base64
 import json
 import unittest
 from decimal import Decimal
+from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 from lumi_model_gateway import Capability, ModelRequest, QualityProfile, ResultStatus
@@ -47,10 +49,53 @@ class FakeOutputStore:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
 
-    async def store_bytes(self, **kwargs: object) -> str:
-        self.calls.append(dict(kwargs))
-        request = kwargs["request"]
+    async def store_bytes(
+        self,
+        *,
+        request: ModelRequest,
+        provider: str,
+        model: str,
+        data: bytes,
+        content_type: str,
+        extension: str,
+    ) -> str:
+        self.calls.append(
+            {
+                "request": request,
+                "provider": provider,
+                "model": model,
+                "data": data,
+                "content_type": content_type,
+                "extension": extension,
+            }
+        )
         return f"s3://assets/provider-output/v1/{request.operation_id}/image.png"
+
+    async def store_path(
+        self,
+        *,
+        request: ModelRequest,
+        provider: str,
+        model: str,
+        path: Path,
+        content_type: str,
+        extension: str,
+        max_bytes: int,
+    ) -> str:
+        raise AssertionError("image adapter must not stage a file path")
+
+    async def store_async_path(
+        self,
+        *,
+        provider: str,
+        model: str,
+        provider_request_id: str,
+        path: Path,
+        content_type: str,
+        extension: str,
+        max_bytes: int,
+    ) -> str:
+        raise AssertionError("image adapter must not stage an async file path")
 
 
 def _price_card() -> OpenAIImagePriceCard:
@@ -122,9 +167,7 @@ def _body(raw: bytes = b"fake-png") -> bytes:
 
 class OpenAIImageAdapterTests(unittest.IsolatedAsyncioTestCase):
     async def test_image_bytes_are_staged_and_only_asset_ref_crosses_gateway(self) -> None:
-        transport = FakeTransport(
-            [HttpResponse(200, {"x-request-id": "req_image_1"}, _body())]
-        )
+        transport = FakeTransport([HttpResponse(200, {"x-request-id": "req_image_1"}, _body())])
         output_store = FakeOutputStore()
         adapter = OpenAIImageGenerationAdapter(
             api_key="test-key-not-real",
@@ -156,7 +199,7 @@ class OpenAIImageAdapterTests(unittest.IsolatedAsyncioTestCase):
         call = transport.calls[0]
         self.assertEqual(call["method"], "POST")
         self.assertEqual(call["url"], "https://api.openai.com/v1/images/generations")
-        payload = json.loads(call["body"])
+        payload = json.loads(cast(bytes, call["body"]))
         self.assertEqual(payload["model"], "gpt-image-test")
         self.assertEqual(payload["size"], "1024x1024")
         self.assertEqual(payload["quality"], "high")
@@ -166,9 +209,7 @@ class OpenAIImageAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Negative constraints: no text", payload["prompt"])
 
     async def test_transparent_generation_uses_transparent_background(self) -> None:
-        transport = FakeTransport(
-            [HttpResponse(200, {"x-request-id": "req_transparent"}, _body())]
-        )
+        transport = FakeTransport([HttpResponse(200, {"x-request-id": "req_transparent"}, _body())])
         adapter = OpenAIImageGenerationAdapter(
             api_key="test-key-not-real",
             model="gpt-image-test",
@@ -182,7 +223,7 @@ class OpenAIImageAdapterTests(unittest.IsolatedAsyncioTestCase):
                 capability=Capability.IMAGE_TRANSPARENT_BACKGROUND,
             )
         )
-        payload = json.loads(transport.calls[0]["body"])
+        payload = json.loads(cast(bytes, transport.calls[0]["body"]))
         self.assertEqual(payload["background"], "transparent")
 
     async def test_arbitrary_exact_size_fails_before_transport(self) -> None:
