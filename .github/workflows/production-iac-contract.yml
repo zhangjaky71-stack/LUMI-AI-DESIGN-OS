@@ -58,6 +58,7 @@ jobs:
             scripts/validate_release_workflow_permissions.py
       - name: Shell syntax
         run: |
+          bash -n scripts/aws_release_bootstrap_cloudshell.sh
           bash -n scripts/check-aws-secret-versions.sh
           bash -n scripts/create-predeploy-rds-snapshot.sh
           bash -n scripts/ecs-run-one-shot-task.sh
