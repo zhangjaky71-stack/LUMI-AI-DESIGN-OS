@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 from uuid import UUID
 
 import asyncpg
+
 from lumi_domain import new_uuid7
 
 from .contracts import (
@@ -624,8 +626,9 @@ class SideEffectGateway:
             row = await connection.fetchrow(
                 """
                 UPDATE idempotency_operations
-                SET status = $3, error_category = $4, error_code = $5,
-                    completed_at = CASE WHEN $3 = 'failed_final' THEN now() ELSE NULL END,
+                SET status = $3::varchar(32), error_category = $4, error_code = $5,
+                    completed_at = CASE
+                        WHEN $3::varchar(32) = 'failed_final' THEN now() ELSE NULL END,
                     provider_attempt_started_at = CASE
                         WHEN $6::boolean THEN NULL ELSE provider_attempt_started_at END,
                     lease_owner = NULL, lease_expires_at = NULL,
@@ -707,7 +710,7 @@ def _snapshot(row: asyncpg.Record) -> OperationSnapshot:
         provider_attempt_started_at=row["provider_attempt_started_at"],
         provider_request_id=row["provider_request_id"],
         result_ref=row["result_ref"],
-        result_json=dict(row["result_json"] or {}),
+        result_json=_json_object(row["result_json"]),
         response_status=row["response_status"],
         error_code=row["error_code"],
         error_category=row["error_category"],
@@ -727,7 +730,21 @@ def _response(snapshot: OperationSnapshot, *, replayed: bool) -> GatewayResponse
     )
 
 
-def _json(value: dict[str, Any]) -> str:
-    import json
+def _json_object(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return dict(value)
+    if isinstance(value, (str, bytes, bytearray)):
+        try:
+            decoded = json.loads(value)
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError) as exc:
+            raise ValueError("IDEMPOTENCY_RESULT_JSON_INVALID") from exc
+        if not isinstance(decoded, dict):
+            raise ValueError("IDEMPOTENCY_RESULT_JSON_INVALID")
+        return decoded
+    raise ValueError("IDEMPOTENCY_RESULT_JSON_INVALID")
 
+
+def _json(value: dict[str, Any]) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
