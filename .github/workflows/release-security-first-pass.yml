@@ -125,13 +125,13 @@ jobs:
 
           workspace = Path("pnpm-workspace.yaml")
           source = workspace.read_text(encoding="utf-8")
-          if "next@16.2.12>sharp" in source:
-              raise SystemExit("sharp override already exists unexpectedly")
+          if "next@16.2.12>sharp" in source or "next@16.2.12>postcss" in source:
+              raise SystemExit("Next security overrides already exist unexpectedly")
           insertion = (
-              "# Security override: Next 16.2.12 declares sharp ^0.34.5, but sharp <0.35.0\n"
-              "# inherits patched libvips vulnerabilities. Scope the override to Next only.\n"
+              "# Security overrides: scope patched native/CSS dependencies to Next 16.2.12.\n"
               "overrides:\n"
-              "  \"next@16.2.12>sharp\": \"0.35.3\"\n\n"
+              "  \"next@16.2.12>sharp\": \"0.35.3\"\n"
+              "  \"next@16.2.12>postcss\": \"8.5.26\"\n\n"
           )
           anchor = "# pnpm 11 blocks dependency lifecycle scripts by default."
           if anchor not in source:
@@ -147,7 +147,7 @@ jobs:
           pnpm install --lockfile-only
           pnpm install --frozen-lockfile
           pnpm audit --prod --audit-level high
-      - name: Verify Next resolves patched sharp
+      - name: Verify Next resolves patched dependencies
         working-directory: apps/web
         run: |
           node <<'NODE'
@@ -155,11 +155,19 @@ jobs:
           const requireFromWeb = createRequire(process.cwd() + '/package.json');
           const nextPackage = requireFromWeb.resolve('next/package.json');
           const requireFromNext = createRequire(nextPackage);
+
           const sharpPackage = requireFromNext.resolve('sharp/package.json');
           const sharpVersion = require(sharpPackage).version;
           console.log(`Next resolves sharp ${sharpVersion}`);
           if (sharpVersion !== '0.35.3') {
             throw new Error(`Expected Next to resolve sharp 0.35.3, got ${sharpVersion}`);
+          }
+
+          const postcssPackage = requireFromNext.resolve('postcss/package.json');
+          const postcssVersion = require(postcssPackage).version;
+          console.log(`Next resolves postcss ${postcssVersion}`);
+          if (postcssVersion !== '8.5.26') {
+            throw new Error(`Expected Next to resolve postcss 8.5.26, got ${postcssVersion}`);
           }
           NODE
       - name: Verify network and MinIO source contracts
