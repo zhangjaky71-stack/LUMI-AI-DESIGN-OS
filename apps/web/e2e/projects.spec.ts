@@ -101,7 +101,9 @@ test.describe("NODE-53 Projects UI", () => {
     await projectCard.getByRole("button", { name: "重命名" }).click();
     await page.getByLabel("项目名称").fill("门店物料升级 2.0");
     await page.getByRole("button", { name: "保存", exact: true }).click();
-    await expect(page.getByRole("alert")).toContainText("项目已在其他位置更新");
+    await expect(
+      page.getByRole("alert").filter({ hasText: "项目已在其他位置更新" }),
+    ).toContainText("项目已在其他位置更新");
     await expect(
       page.getByRole("link", { name: "门店物料升级", exact: true }),
     ).toBeVisible();
