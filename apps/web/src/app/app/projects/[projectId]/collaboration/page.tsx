@@ -7,5 +7,10 @@ export default async function CollaborationPage({
   params,
 }: Readonly<{ params: Promise<{ projectId: string }> }>) {
   const { projectId } = await params;
-  return <Collaboration projectId={projectId} bootstrap={getCollaborationBootstrap(projectId)} />;
+  return (
+    <Collaboration
+      projectId={projectId}
+      bootstrap={getCollaborationBootstrap(projectId)}
+    />
+  );
 }

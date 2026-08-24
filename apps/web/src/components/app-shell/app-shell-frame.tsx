@@ -16,11 +16,21 @@ interface NavItem {
 }
 
 const NAVIGATION: readonly NavItem[] = [
-  { href: "/app/projects", label: "项目", flag: "projects", platformAdmin: false },
+  {
+    href: "/app/projects",
+    label: "项目",
+    flag: "projects",
+    platformAdmin: false,
+  },
   { href: "/app/brands", label: "品牌", flag: "brands", platformAdmin: false },
   { href: "/app/assets", label: "素材", flag: "assets", platformAdmin: false },
   { href: "/app/team", label: "团队", flag: "team", platformAdmin: false },
-  { href: "/app/billing", label: "用量", flag: "billing", platformAdmin: false },
+  {
+    href: "/app/billing",
+    label: "用量",
+    flag: "billing",
+    platformAdmin: false,
+  },
   { href: "/app/admin", label: "平台管理", flag: null, platformAdmin: true },
   { href: "/app/settings", label: "设置", flag: null, platformAdmin: false },
 ];
@@ -93,7 +103,12 @@ export function AppShellFrame({
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [closeCommandPalette, commandPaletteOpen, flags.commandPalette, openCommandPalette]);
+  }, [
+    closeCommandPalette,
+    commandPaletteOpen,
+    flags.commandPalette,
+    openCommandPalette,
+  ]);
 
   const trapDialogFocus = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Tab") return;
@@ -108,19 +123,25 @@ export function AppShellFrame({
 
   return (
     <div className="lumi-app-shell">
-      <a className="skip-link" href="#main-content">跳到主要内容</a>
+      <a className="skip-link" href="#main-content">
+        跳到主要内容
+      </a>
       <aside className="lumi-sidebar" aria-label="产品导航栏">
         <div className="brand-lockup">
-          <span className="brand-mark" aria-hidden="true">L</span>
+          <span className="brand-mark" aria-hidden="true">
+            L
+          </span>
           <span>LUMI</span>
         </div>
         <nav className="nav-stack" aria-label="主导航">
           {NAVIGATION.filter((item) => {
             const featureEnabled = item.flag === null || flags[item.flag];
-            const adminVisible = !item.platformAdmin || Boolean(session.platform_admin);
+            const adminVisible =
+              !item.platformAdmin || Boolean(session.platform_admin);
             return featureEnabled && adminVisible;
           }).map((item) => {
-            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const active =
+              pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link
                 key={item.href}
@@ -144,7 +165,9 @@ export function AppShellFrame({
       <div className="lumi-shell-body">
         <header className="lumi-topbar">
           <div className="organization-control">
-            <label className="sr-only" htmlFor="organization-switcher">切换组织</label>
+            <label className="sr-only" htmlFor="organization-switcher">
+              切换组织
+            </label>
             <select
               id="organization-switcher"
               aria-label="切换组织"
@@ -158,7 +181,9 @@ export function AppShellFrame({
               ))}
             </select>
             <span className="role-pill">{activeOrganization.role}</span>
-            {session.platform_admin ? <span className="role-pill">PLATFORM ADMIN</span> : null}
+            {session.platform_admin ? (
+              <span className="role-pill">PLATFORM ADMIN</span>
+            ) : null}
           </div>
           <div className="topbar-actions">
             {flags.commandPalette ? (
@@ -188,7 +213,9 @@ export function AppShellFrame({
             当前处于离线状态。已加载内容可继续查看，网络恢复后再重试服务端操作。
           </div>
         ) : null}
-        <main id="main-content" className="lumi-main" tabIndex={-1}>{children}</main>
+        <main id="main-content" className="lumi-main" tabIndex={-1}>
+          {children}
+        </main>
       </div>
 
       {flags.commandPalette && commandPaletteOpen ? (
@@ -201,10 +228,23 @@ export function AppShellFrame({
             onKeyDown={trapDialogFocus}
           >
             <div className="command-row">
-              <input ref={inputRef} aria-label="搜索命令" placeholder="搜索项目、命令或素材…" />
-              <button ref={closeRef} type="button" onClick={closeCommandPalette} aria-label="关闭命令面板">Esc</button>
+              <input
+                ref={inputRef}
+                aria-label="搜索命令"
+                placeholder="搜索项目、命令或素材…"
+              />
+              <button
+                ref={closeRef}
+                type="button"
+                onClick={closeCommandPalette}
+                aria-label="关闭命令面板"
+              >
+                Esc
+              </button>
             </div>
-            <div className="command-empty">输入关键词开始搜索。后续工作区命令会在这里统一注册。</div>
+            <div className="command-empty">
+              输入关键词开始搜索。后续工作区命令会在这里统一注册。
+            </div>
           </div>
         </div>
       ) : null}

@@ -15,7 +15,9 @@ import { reportCanvasError } from "../../lib/observability/browser";
 import { PIXI_CDN_URL } from "../canvas-spike/pixi-runtime";
 
 type CanvasDocument = ConstructorParameters<typeof CanvasController>[0];
-type CanvasConstraint = Parameters<CanvasController["setConstraints"]>[0][number];
+type CanvasConstraint = Parameters<
+  CanvasController["setConstraints"]
+>[0][number];
 
 interface BrowserPixiApplication {
   readonly canvas: HTMLCanvasElement;
@@ -151,10 +153,17 @@ export default function CanvasEngineClient() {
       const appHost: PixiApplicationHost = {
         stage: app.stage,
         resize(widthCssPx, heightCssPx) {
-          app.renderer.resize(Math.max(1, widthCssPx), Math.max(1, heightCssPx));
+          app.renderer.resize(
+            Math.max(1, widthCssPx),
+            Math.max(1, heightCssPx),
+          );
         },
         destroy() {
-          app.destroy(true, { children: true, texture: true, textureSource: true });
+          app.destroy(true, {
+            children: true,
+            texture: true,
+            textureSource: true,
+          });
         },
       };
       const bindings = createPixiV8Bindings(pixi, appHost, {
@@ -210,7 +219,10 @@ export default function CanvasEngineClient() {
           controller.selection.set(["shape"]);
           const session = controller.beginTransform("browser-locked-move");
           session.previewMove(dx, 0);
-          const result = controller.commitTransform(session, "browser-locked-move");
+          const result = controller.commitTransform(
+            session,
+            "browser-locked-move",
+          );
           publish(result.guarded.preflight.decision);
           return result.accepted;
         },
@@ -226,7 +238,8 @@ export default function CanvasEngineClient() {
 
     void initialize().catch((error: unknown) => {
       reportCanvasError("canvas_initialization_failed");
-      const message = error instanceof Error ? error.message : "Canvas initialization failed";
+      const message =
+        error instanceof Error ? error.message : "Canvas initialization failed";
       decisionRef.current = `ERROR:${message}`;
       setDecision(decisionRef.current);
     });
@@ -240,16 +253,35 @@ export default function CanvasEngineClient() {
   }, [scriptReady]);
 
   return (
-    <main style={{ minHeight: "100vh", background: "#0f0f0f", color: "white", padding: 24 }}>
-      <Script src={PIXI_CDN_URL} strategy="afterInteractive" onLoad={() => setScriptReady(true)} />
-      <header style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+    <main
+      style={{
+        minHeight: "100vh",
+        background: "#0f0f0f",
+        color: "white",
+        padding: 24,
+      }}
+    >
+      <Script
+        src={PIXI_CDN_URL}
+        strategy="afterInteractive"
+        onLoad={() => setScriptReady(true)}
+      />
+      <header
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: 16,
+        }}
+      >
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>NODE-40 Canvas Engine</h1>
           <p style={{ margin: "6px 0 0", opacity: 0.65 }}>
             Design IR → Constraint → PixiJS v8
           </p>
         </div>
-        <div data-testid="canvas-engine-status">{ready ? "READY" : decision}</div>
+        <div data-testid="canvas-engine-status">
+          {ready ? "READY" : decision}
+        </div>
       </header>
       <div
         ref={hostRef}
@@ -262,7 +294,13 @@ export default function CanvasEngineClient() {
           overflow: "hidden",
         }}
       />
-      <dl style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+      <dl
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          gap: 12,
+        }}
+      >
         <div>
           <dt>Shape X</dt>
           <dd data-testid="shape-x">{snapshot.shape_x}</dd>

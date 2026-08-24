@@ -10,7 +10,9 @@ export default function SettingsPage() {
     >
       <div className="empty-state">
         <h2>Audit & Governance</h2>
-        <p>查看组织审计记录、Retention、Legal Hold、数据删除工作流与审计导出。</p>
+        <p>
+          查看组织审计记录、Retention、Legal Hold、数据删除工作流与审计导出。
+        </p>
         <Link className="command-trigger" href="/app/settings/governance">
           打开 Governance Center →
         </Link>

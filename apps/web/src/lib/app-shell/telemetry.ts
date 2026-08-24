@@ -39,10 +39,7 @@ export class SafeTelemetry {
     this.#adapter = adapter;
   }
 
-  emit(
-    event: TelemetryEventName,
-    properties: TelemetryProperties = {},
-  ): void {
+  emit(event: TelemetryEventName, properties: TelemetryProperties = {}): void {
     const safeProperties = sanitizeTelemetryProperties(properties);
     void Promise.resolve(this.#adapter.emit(event, safeProperties)).catch(
       () => undefined,

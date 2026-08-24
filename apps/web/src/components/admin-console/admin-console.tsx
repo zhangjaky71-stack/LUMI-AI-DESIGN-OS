@@ -118,11 +118,7 @@ export function AdminConsole({
       }
       if (pending.kind === "queue") await gateway.requeue(pending.id, input);
       if (pending.kind === "registry") {
-        await gateway.setRegistryEnabled(
-          pending.item,
-          pending.enabled,
-          input,
-        );
+        await gateway.setRegistryEnabled(pending.item, pending.enabled, input);
       }
       if (pending.kind === "billing") {
         await gateway.adjustBilling(pending.id, pending.delta, input);
@@ -305,10 +301,7 @@ export function AdminConsole({
                 <button
                   disabled={busy || !user.organization_ids[0]}
                   onClick={() =>
-                    void startView(
-                      user.user_id,
-                      user.organization_ids[0] ?? "",
-                    )
+                    void startView(user.user_id, user.organization_ids[0] ?? "")
                   }
                 >
                   View-as readonly
@@ -387,10 +380,13 @@ export function AdminConsole({
                 <span className={styles.state}>{provider.health}</span>
               </div>
               <p>
-                Circuit {provider.circuit} · Synthetic {provider.synthetic_health} ·
-                Routing {formatBasisPoints(provider.routing_weight_basis_points)}
+                Circuit {provider.circuit} · Synthetic{" "}
+                {provider.synthetic_health} · Routing{" "}
+                {formatBasisPoints(provider.routing_weight_basis_points)}
               </p>
-              <p>Pricing snapshot: {provider.pricing_snapshot_id ?? "unknown"}</p>
+              <p>
+                Pricing snapshot: {provider.pricing_snapshot_id ?? "unknown"}
+              </p>
               {permission("admin.provider.manage") ? (
                 <button
                   disabled={provider.health === "DISABLED"}
@@ -464,7 +460,8 @@ export function AdminConsole({
                 </span>
               </div>
               <p>
-                {item.kind} · traffic {formatBasisPoints(item.traffic_basis_points)}
+                {item.kind} · traffic{" "}
+                {formatBasisPoints(item.traffic_basis_points)}
               </p>
               <p>Read-only deploy diff: {item.deploy_diff_summary}</p>
               <button
@@ -491,8 +488,8 @@ export function AdminConsole({
           <article className={styles.card}>
             <h2>Billing support</h2>
             <p>
-              Subscription / invoice provider state is read-only. Credit correction
-              is an immutable NODE-63 ADJUSTMENT ledger entry.
+              Subscription / invoice provider state is read-only. Credit
+              correction is an immutable NODE-63 ADJUSTMENT ledger entry.
             </p>
             {permission("admin.billing.adjust") ? (
               <button
@@ -541,8 +538,8 @@ export function AdminConsole({
       <aside className={styles.guardrail}>
         <strong>Guardrails</strong>
         <span>
-          No arbitrary SQL · no kill-process button · no queue payload editor · no
-          direct payment-provider state mutation.
+          No arbitrary SQL · no kill-process button · no queue payload editor ·
+          no direct payment-provider state mutation.
         </span>
         <span>
           PII is masked by default. View-as is readonly. Provider disable is
@@ -615,10 +612,7 @@ export function AdminConsole({
   );
 }
 
-function Metric({
-  label,
-  value,
-}: Readonly<{ label: string; value: string }>) {
+function Metric({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <article className={styles.card}>
       <span className={styles.label}>{label}</span>

@@ -48,18 +48,16 @@ test.describe("NODE-52 App Shell", () => {
       page.getByRole("link", { name: "跳到主要内容" }),
     ).toBeFocused();
     await page.keyboard.press("Control+K");
-    await expect(
-      page.getByRole("dialog", { name: "命令面板" }),
-    ).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "命令面板" })).toBeVisible();
     await expect(page.getByLabel("搜索命令")).toBeFocused();
     await page.keyboard.press("Escape");
-    await expect(
-      page.getByRole("dialog", { name: "命令面板" }),
-    ).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "命令面板" })).toHaveCount(0);
     await expect(page.getByLabel("打开命令面板")).toBeFocused();
   });
 
-  test("mobile viewport keeps primary navigation reachable", async ({ page }) => {
+  test("mobile viewport keeps primary navigation reachable", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/app/projects");
     await expect(

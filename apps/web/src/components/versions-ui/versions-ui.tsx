@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 import { useShell } from "@/components/app-shell/shell-context";
 import { getVersionsGateway } from "@/lib/versions-ui/versions-gateway";
 import type {
@@ -16,7 +22,9 @@ import type {
 import styles from "./versions-ui.module.css";
 
 function uiError(error: unknown): string {
-  return error instanceof Error ? error.message : "Version history operation failed.";
+  return error instanceof Error
+    ? error.message
+    : "Version history operation failed.";
 }
 
 function creatorLabel(item: VersionTimelineItem): string {
@@ -59,7 +67,9 @@ function branchHistory(
 ): readonly VersionTimelineItem[] {
   const branch = snapshot.branches.find((item) => item.id === branchId);
   if (!branch?.head_version_id) return [];
-  const byId = new Map(snapshot.versions.map((item) => [item.version.id, item]));
+  const byId = new Map(
+    snapshot.versions.map((item) => [item.version.id, item]),
+  );
   const rows: VersionTimelineItem[] = [];
   const seen = new Set<string>();
   let cursor: string | null = branch.head_version_id;
@@ -90,8 +100,13 @@ export function VersionsUI({
   bootstrap: VersionsBootstrap;
 }>) {
   const { activeOrganization, api, queryCache } = useShell();
-  const gateway = useMemo(() => getVersionsGateway(api, bootstrap), [api, bootstrap]);
-  const [snapshot, setSnapshot] = useState<VersionWorkspaceSnapshot | null>(null);
+  const gateway = useMemo(
+    () => getVersionsGateway(api, bootstrap),
+    [api, bootstrap],
+  );
+  const [snapshot, setSnapshot] = useState<VersionWorkspaceSnapshot | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,40 +114,54 @@ export function VersionsUI({
   const [compareFromId, setCompareFromId] = useState<string | null>(null);
   const [compareToId, setCompareToId] = useState<string | null>(null);
   const [compare, setCompare] = useState<VersionCompareResult | null>(null);
-  const [compareMode, setCompareMode] = useState<CompareViewMode>("SIDE_BY_SIDE");
+  const [compareMode, setCompareMode] =
+    useState<CompareViewMode>("SIDE_BY_SIDE");
   const [wipe, setWipe] = useState(52);
   const [forkName, setForkName] = useState("dark-direction");
   const [restoreSourceId, setRestoreSourceId] = useState<string | null>(null);
-  const [provenanceVersionId, setProvenanceVersionId] = useState<string | null>(null);
-  const [provenance, setProvenance] = useState<SafeVersionProvenance | null>(null);
+  const [provenanceVersionId, setProvenanceVersionId] = useState<string | null>(
+    null,
+  );
+  const [provenance, setProvenance] = useState<SafeVersionProvenance | null>(
+    null,
+  );
   const [provenanceError, setProvenanceError] = useState<string | null>(null);
 
-  const applyWorkspaceSnapshot = useCallback((next: VersionWorkspaceSnapshot, preserveSelection = true) => {
-    const ids = new Set(next.versions.map((item) => item.version.id));
-    const fallbackTo = next.versions[0]?.version.id ?? null;
-    const fallbackFrom = next.versions[1]?.version.id ?? fallbackTo;
-    setSnapshot(next);
-    setSelectedBranchId((current) =>
-      preserveSelection && current && next.branches.some((branch) => branch.id === current)
-        ? current
-        : next.active_branch_id,
-    );
-    setCompareToId((current) =>
-      preserveSelection && current && ids.has(current) ? current : fallbackTo,
-    );
-    setCompareFromId((current) =>
-      preserveSelection && current && ids.has(current) ? current : fallbackFrom,
-    );
-    setRestoreSourceId((current) =>
-      preserveSelection && current && ids.has(current) ? current : fallbackFrom,
-    );
-    setProvenanceVersionId((current) =>
-      preserveSelection && current && ids.has(current) ? current : fallbackTo,
-    );
-    setCompare(null);
-    setProvenance(null);
-    setProvenanceError(null);
-  }, []);
+  const applyWorkspaceSnapshot = useCallback(
+    (next: VersionWorkspaceSnapshot, preserveSelection = true) => {
+      const ids = new Set(next.versions.map((item) => item.version.id));
+      const fallbackTo = next.versions[0]?.version.id ?? null;
+      const fallbackFrom = next.versions[1]?.version.id ?? fallbackTo;
+      setSnapshot(next);
+      setSelectedBranchId((current) =>
+        preserveSelection &&
+        current &&
+        next.branches.some((branch) => branch.id === current)
+          ? current
+          : next.active_branch_id,
+      );
+      setCompareToId((current) =>
+        preserveSelection && current && ids.has(current) ? current : fallbackTo,
+      );
+      setCompareFromId((current) =>
+        preserveSelection && current && ids.has(current)
+          ? current
+          : fallbackFrom,
+      );
+      setRestoreSourceId((current) =>
+        preserveSelection && current && ids.has(current)
+          ? current
+          : fallbackFrom,
+      );
+      setProvenanceVersionId((current) =>
+        preserveSelection && current && ids.has(current) ? current : fallbackTo,
+      );
+      setCompare(null);
+      setProvenance(null);
+      setProvenanceError(null);
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -143,7 +172,13 @@ export function VersionsUI({
       void queryCache
         .fetchQuery(
           ["versions-ui", projectId],
-          (signal) => gateway.getWorkspace(activeOrganization.id, projectId, null, signal),
+          (signal) =>
+            gateway.getWorkspace(
+              activeOrganization.id,
+              projectId,
+              null,
+              signal,
+            ),
           0,
         )
         .then((next) => {
@@ -159,7 +194,13 @@ export function VersionsUI({
     return () => {
       cancelled = true;
     };
-  }, [activeOrganization.id, applyWorkspaceSnapshot, gateway, projectId, queryCache]);
+  }, [
+    activeOrganization.id,
+    applyWorkspaceSnapshot,
+    gateway,
+    projectId,
+    queryCache,
+  ]);
 
   useEffect(() => {
     if (!snapshot || !compareFromId || !compareToId) return;
@@ -227,7 +268,11 @@ export function VersionsUI({
     setBusy(true);
     setError(null);
     try {
-      const next = await gateway.getWorkspace(activeOrganization.id, projectId, artifactId);
+      const next = await gateway.getWorkspace(
+        activeOrganization.id,
+        projectId,
+        artifactId,
+      );
       applyWorkspaceSnapshot(next, false);
       setCompareMode("SIDE_BY_SIDE");
     } catch (switchError) {
@@ -257,7 +302,9 @@ export function VersionsUI({
 
   const restore = async () => {
     if (!snapshot || !restoreSourceId || !selectedBranchId || busy) return;
-    const branch = snapshot.branches.find((item) => item.id === selectedBranchId);
+    const branch = snapshot.branches.find(
+      (item) => item.id === selectedBranchId,
+    );
     if (!branch) return;
     setBusy(true);
     setError(null);
@@ -301,27 +348,35 @@ export function VersionsUI({
     }
   };
 
-  if (loading) return <div className={styles.loading}>正在加载不可变版本历史…</div>;
+  if (loading)
+    return <div className={styles.loading}>正在加载不可变版本历史…</div>;
   if (!snapshot) {
     return (
       <div className={styles.loading} role="alert">
         <div>
           <p>{error ?? "Version history unavailable."}</p>
-          <Link href={`/app/projects/${encodeURIComponent(projectId)}`}>返回项目</Link>
+          <Link href={`/app/projects/${encodeURIComponent(projectId)}`}>
+            返回项目
+          </Link>
         </div>
       </div>
     );
   }
 
   const selectedBranch =
-    snapshot.branches.find((branch) => branch.id === selectedBranchId) ?? snapshot.branches[0];
+    snapshot.branches.find((branch) => branch.id === selectedBranchId) ??
+    snapshot.branches[0];
   const timeline = selectedBranch
     ? branchHistory(snapshot, selectedBranch.id)
     : snapshot.versions;
-  const versionById = new Map(snapshot.versions.map((item) => [item.version.id, item]));
-  const restoreSource = restoreSourceId ? versionById.get(restoreSourceId) ?? null : null;
+  const versionById = new Map(
+    snapshot.versions.map((item) => [item.version.id, item]),
+  );
+  const restoreSource = restoreSourceId
+    ? (versionById.get(restoreSourceId) ?? null)
+    : null;
   const provenanceItem = provenanceVersionId
-    ? versionById.get(provenanceVersionId) ?? null
+    ? (versionById.get(provenanceVersionId) ?? null)
     : null;
 
   const preview = (item: VersionTimelineItem, label: string) => (
@@ -343,10 +398,14 @@ export function VersionsUI({
       <header className={styles.header}>
         <div className={styles.headerTitle}>
           <div>
-            <Link href={`/app/projects/${encodeURIComponent(projectId)}/workspace`}>
+            <Link
+              href={`/app/projects/${encodeURIComponent(projectId)}/workspace`}
+            >
               ← AI Workspace
             </Link>
-            <span className={styles.eyebrow}>ARTIFACT HISTORY · NODE-42 CANONICAL</span>
+            <span className={styles.eyebrow}>
+              ARTIFACT HISTORY · NODE-42 CANONICAL
+            </span>
             <h1>{snapshot.project_name} · Versions</h1>
           </div>
         </div>
@@ -360,7 +419,8 @@ export function VersionsUI({
           >
             {snapshot.artifact_options.map((artifact) => (
               <option key={artifact.artifact_id} value={artifact.artifact_id}>
-                {artifact.title} · {artifact.type} · {artifact.version_count} versions
+                {artifact.title} · {artifact.type} · {artifact.version_count}{" "}
+                versions
               </option>
             ))}
           </select>
@@ -372,7 +432,10 @@ export function VersionsUI({
           >
             检查更新
           </button>
-          <Link href={`/app/projects/${encodeURIComponent(projectId)}`} className={styles.button}>
+          <Link
+            href={`/app/projects/${encodeURIComponent(projectId)}`}
+            className={styles.button}
+          >
             Project Brief
           </Link>
         </div>
@@ -415,7 +478,8 @@ export function VersionsUI({
               </select>
             </label>
             <div className={styles.breadcrumb}>
-              {selectedBranch?.name ?? "branch"} ← {selectedBranch?.base_version_id ?? "root"} · head{" "}
+              {selectedBranch?.name ?? "branch"} ←{" "}
+              {selectedBranch?.base_version_id ?? "root"} · head{" "}
               {selectedBranch?.head_version_id ?? "empty"}
             </div>
           </div>
@@ -427,15 +491,23 @@ export function VersionsUI({
                 className={styles.versionCard}
                 data-head={selectedBranch?.head_version_id === item.version.id}
               >
-                <div className={styles.miniPreview} style={previewStyle(item.preview)} />
+                <div
+                  className={styles.miniPreview}
+                  style={previewStyle(item.preview)}
+                />
                 <div className={styles.versionMeta}>
                   <div className={styles.versionTop}>
                     <strong>v{item.version.version_number}</strong>
-                    <span className={styles.badge} data-status={item.version.status}>
+                    <span
+                      className={styles.badge}
+                      data-status={item.version.status}
+                    >
                       {item.version.status}
                     </span>
                     <span className={styles.badge}>
-                      {item.quality.score == null ? item.quality.label : `Q ${item.quality.score}`}
+                      {item.quality.score == null
+                        ? item.quality.label
+                        : `Q ${item.quality.score}`}
                     </span>
                     {selectedBranch?.head_version_id === item.version.id ? (
                       <span className={styles.badge}>HEAD</span>
@@ -443,20 +515,33 @@ export function VersionsUI({
                   </div>
                   <p>{item.safe_change_summary}</p>
                   <small>
-                    {creatorLabel(item)} · {item.branch_name} · {timeLabel(item.version.created_at)}
+                    {creatorLabel(item)} · {item.branch_name} ·{" "}
+                    {timeLabel(item.version.created_at)}
                   </small>
                 </div>
                 <div className={styles.cardActions}>
-                  <button type="button" onClick={() => chooseCompareFrom(item.version.id)}>
+                  <button
+                    type="button"
+                    onClick={() => chooseCompareFrom(item.version.id)}
+                  >
                     设为 Before
                   </button>
-                  <button type="button" onClick={() => chooseCompareTo(item.version.id)}>
+                  <button
+                    type="button"
+                    onClick={() => chooseCompareTo(item.version.id)}
+                  >
                     设为 After
                   </button>
-                  <button type="button" onClick={() => setRestoreSourceId(item.version.id)}>
+                  <button
+                    type="button"
+                    onClick={() => setRestoreSourceId(item.version.id)}
+                  >
                     恢复此版本
                   </button>
-                  <button type="button" onClick={() => chooseProvenance(item.version.id)}>
+                  <button
+                    type="button"
+                    onClick={() => chooseProvenance(item.version.id)}
+                  >
                     Provenance
                   </button>
                 </div>
@@ -466,7 +551,10 @@ export function VersionsUI({
 
           <div className={styles.actionBox}>
             <h4>Restore</h4>
-            <p>恢复会创建一个新的 DRAFT 版本，不删除后来历史，也不会把 branch head 回拨。</p>
+            <p>
+              恢复会创建一个新的 DRAFT 版本，不删除后来历史，也不会把 branch
+              head 回拨。
+            </p>
             <div className={styles.actionRow}>
               <select
                 className={styles.select}
@@ -514,7 +602,10 @@ export function VersionsUI({
           </div>
         </aside>
 
-        <section className={`${styles.panel} ${styles.comparePanel}`} aria-label="Version compare">
+        <section
+          className={`${styles.panel} ${styles.comparePanel}`}
+          aria-label="Version compare"
+        >
           <div className={styles.compareToolbar}>
             <div className={styles.versionPickers}>
               <select
@@ -577,7 +668,10 @@ export function VersionsUI({
                     {preview(compare.after, "After")}
                   </div>
                 ) : compareMode === "OVERLAY" ? (
-                  <div className={styles.overlayWrap} aria-label="Overlay compare">
+                  <div
+                    className={styles.overlayWrap}
+                    aria-label="Overlay compare"
+                  >
                     <div className={styles.overlayLayer}>
                       <PreviewArt preview={compare.before.preview} />
                     </div>
@@ -607,7 +701,9 @@ export function VersionsUI({
                         min="0"
                         max="100"
                         value={wipe}
-                        onChange={(event) => setWipe(Number(event.target.value))}
+                        onChange={(event) =>
+                          setWipe(Number(event.target.value))
+                        }
                       />
                       After · {wipe}%
                     </label>
@@ -618,8 +714,8 @@ export function VersionsUI({
                   <div className={styles.changesHeader}>
                     <strong>Semantic diff</strong>
                     <span>
-                      {compare.semantic_changes.length} structured changes · {compare.from_version_id} →{" "}
-                      {compare.to_version_id}
+                      {compare.semantic_changes.length} structured changes ·{" "}
+                      {compare.from_version_id} → {compare.to_version_id}
                     </span>
                   </div>
                   {compare.semantic_changes.length ? (
@@ -630,8 +726,11 @@ export function VersionsUI({
                           {change.node_name ?? "Artifact"} · {change.property}
                         </strong>
                         <span className={styles.changeValues}>
-                          {String(change.before ?? "∅")} → {String(change.after ?? "∅")}
-                          {change.protected_identity ? " · protected identity" : ""}
+                          {String(change.before ?? "∅")} →{" "}
+                          {String(change.after ?? "∅")}
+                          {change.protected_identity
+                            ? " · protected identity"
+                            : ""}
                         </span>
                       </div>
                     ))
@@ -639,7 +738,9 @@ export function VersionsUI({
                     <div className={styles.changeRow}>
                       <span className={styles.changeKind}>NO CHANGE</span>
                       <strong>Same exact version</strong>
-                      <span className={styles.changeValues}>No semantic delta.</span>
+                      <span className={styles.changeValues}>
+                        No semantic delta.
+                      </span>
                     </div>
                   )}
                 </div>
@@ -652,19 +753,27 @@ export function VersionsUI({
           </div>
         </section>
 
-        <aside className={`${styles.panel} ${styles.provenancePanel}`} aria-label="Version provenance">
+        <aside
+          className={`${styles.panel} ${styles.provenancePanel}`}
+          aria-label="Version provenance"
+        >
           <div className={styles.panelHeader}>
             <div>
               <span className={styles.eyebrow}>TRACEABILITY</span>
               <h3>Provenance</h3>
             </div>
-            <small>{provenanceItem ? `v${provenanceItem.version.version_number}` : "—"}</small>
+            <small>
+              {provenanceItem
+                ? `v${provenanceItem.version.version_number}`
+                : "—"}
+            </small>
           </div>
           <div className={styles.provenanceBody}>
             {!snapshot.can_view_provenance || provenanceError ? (
               <div className={styles.provenanceEmpty} role="status">
-                Provenance access is restricted for this project. Raw prompts, system prompts, tool payloads
-                and private reasoning are never exposed here.
+                Provenance access is restricted for this project. Raw prompts,
+                system prompts, tool payloads and private reasoning are never
+                exposed here.
                 {provenanceError ? (
                   <>
                     <br />
@@ -676,7 +785,10 @@ export function VersionsUI({
               <>
                 <div className={styles.provenanceGroup}>
                   <h4>Creation</h4>
-                  {fact("Created by", `${provenance.created_by_type} · ${provenance.created_by_id}`)}
+                  {fact(
+                    "Created by",
+                    `${provenance.created_by_type} · ${provenance.created_by_id}`,
+                  )}
                   {fact("Agent run", provenance.agent_run_id)}
                   {fact("Task", provenance.task_id)}
                   {fact("Model", provenance.model)}
@@ -707,14 +819,21 @@ export function VersionsUI({
                     <code>{provenance.constraint_snapshot_hash}</code>
                   </div>
                   <p className={styles.hash}>
-                    Only safe summaries/hashes are shown. No raw system prompt or chain-of-thought.
+                    Only safe summaries/hashes are shown. No raw system prompt
+                    or chain-of-thought.
                   </p>
                 </div>
                 <div className={styles.provenanceGroup}>
                   <h4>Compiler & inputs</h4>
-                  {fact("Compiler", provenance.compiler?.compiler_version ?? null)}
+                  {fact(
+                    "Compiler",
+                    provenance.compiler?.compiler_version ?? null,
+                  )}
                   {fact("Document", provenance.compiler?.document_id ?? null)}
-                  {fact("Compile hash", provenance.compiler?.compile_hash ?? null)}
+                  {fact(
+                    "Compile hash",
+                    provenance.compiler?.compile_hash ?? null,
+                  )}
                   {fact("Git SHA", provenance.code_git_sha)}
                   {provenance.input_asset_ids.map((id) => (
                     <div className={styles.fact} key={id}>

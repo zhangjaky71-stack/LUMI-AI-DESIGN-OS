@@ -78,7 +78,6 @@ export function NewProjectDialog({
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<ProjectDetail | null>(null);
 
-
   const appendFiles = (files: readonly File[]) => {
     const rejected = files.find(
       (file) => !isAcceptedReference(file) || file.size > MAX_REFERENCE_BYTES,
@@ -130,22 +129,19 @@ export function NewProjectDialog({
           }),
         );
         try {
-          const reference = await gateway.uploadReference(
-            organizationId,
-            {
-              project_id: detail.summary.id,
-              file: item.file,
-              role: item.role,
-              on_progress: (progress, status) => {
-                setReferences((current) =>
-                  updateStaged(current, item.client_id, {
-                    ui_status: status,
-                    progress,
-                  }),
-                );
-              },
+          const reference = await gateway.uploadReference(organizationId, {
+            project_id: detail.summary.id,
+            file: item.file,
+            role: item.role,
+            on_progress: (progress, status) => {
+              setReferences((current) =>
+                updateStaged(current, item.client_id, {
+                  ui_status: status,
+                  progress,
+                }),
+              );
             },
-          );
+          });
           setReferences((current) =>
             updateStaged(current, item.client_id, {
               asset_id: reference.asset_id,
@@ -274,10 +270,7 @@ export function NewProjectDialog({
             </div>
 
             {references.length > 0 ? (
-              <div
-                className={styles.referenceList}
-                aria-label="待上传参考文件"
-              >
+              <div className={styles.referenceList} aria-label="待上传参考文件">
                 {references.map((item) => (
                   <div key={item.client_id} className={styles.referenceRow}>
                     <div className={styles.referenceName}>
@@ -329,8 +322,8 @@ export function NewProjectDialog({
 
             {bootstrap.mode === "http" ? (
               <p className={styles.dependencyNote}>
-                当前环境尚未连接 NODE-17/18
-                写端；提交时会以真实 API 结果为准，不会在浏览器伪造成功。
+                当前环境尚未连接 NODE-17/18 写端；提交时会以真实 API
+                结果为准，不会在浏览器伪造成功。
               </p>
             ) : null}
           </div>
@@ -419,10 +412,7 @@ export function NewProjectDialog({
                   </select>
                 </div>
                 <div>
-                  <label
-                    className={styles.fieldLabel}
-                    htmlFor="project-budget"
-                  >
+                  <label className={styles.fieldLabel} htmlFor="project-budget">
                     预算上限（USD）
                   </label>
                   <input

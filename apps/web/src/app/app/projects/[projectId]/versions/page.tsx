@@ -9,5 +9,10 @@ export default async function VersionsPage({
   params: Promise<{ projectId: string }>;
 }>) {
   const { projectId } = await params;
-  return <VersionsUI projectId={projectId} bootstrap={getVersionsBootstrap(projectId)} />;
+  return (
+    <VersionsUI
+      projectId={projectId}
+      bootstrap={getVersionsBootstrap(projectId)}
+    />
+  );
 }

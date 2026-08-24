@@ -166,7 +166,9 @@
   background: var(--ui-surface-2);
   color: var(--ui-fg);
   text-decoration: none;
-  transition: transform var(--motion-base), border-color var(--motion-base);
+  transition:
+    transform var(--motion-base),
+    border-color var(--motion-base);
 }
 
 .recentCard:hover {
@@ -291,7 +293,11 @@
   justify-content: space-between;
   padding: 16px;
   background:
-    radial-gradient(circle at 78% 20%, color-mix(in srgb, var(--ui-accent) 20%, transparent), transparent 34%),
+    radial-gradient(
+      circle at 78% 20%,
+      color-mix(in srgb, var(--ui-accent) 20%, transparent),
+      transparent 34%
+    ),
     linear-gradient(145deg, #1d1d20, #101013 58%, #25221d);
   color: #fff;
   text-decoration: none;
@@ -481,7 +487,9 @@
 }
 
 @keyframes projectShimmer {
-  to { background-position-x: -200%; }
+  to {
+    background-position-x: -200%;
+  }
 }
 
 .loadMoreRow {

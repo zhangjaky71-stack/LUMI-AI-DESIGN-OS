@@ -386,7 +386,11 @@
   left: 31%;
   top: 22%;
   border-radius: 44% 44% 32% 32%;
-  background: linear-gradient(145deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #fff));
+  background: linear-gradient(
+    145deg,
+    var(--accent),
+    color-mix(in srgb, var(--accent) 55%, #fff)
+  );
   box-shadow: 70px 80px 0 -54px var(--secondary);
 }
 
@@ -467,7 +471,7 @@
   grid-template-columns: 76px minmax(120px, 0.8fr) minmax(0, 1.2fr);
   gap: 10px;
   padding: 11px 14px;
-  border-bottom: 1px solid #ededE9;
+  border-bottom: 1px solid #edede9;
   font-size: 11px;
 }
 

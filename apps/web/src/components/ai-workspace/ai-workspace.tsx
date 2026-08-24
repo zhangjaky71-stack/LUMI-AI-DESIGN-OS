@@ -6,7 +6,10 @@ import { AgentTimeline } from "@/components/agent-timeline/agent-timeline";
 import { useShell } from "@/components/app-shell/shell-context";
 import { InfiniteCanvasProduct } from "@/components/infinite-canvas/infinite-canvas";
 import { LayersInspector } from "@/components/layers-inspector/layers-inspector";
-import { applyWorkspaceEvent, isApprovalActionable } from "@/lib/ai-workspace/contracts";
+import {
+  applyWorkspaceEvent,
+  isApprovalActionable,
+} from "@/lib/ai-workspace/contracts";
 import { getAIWorkspaceGateway } from "@/lib/ai-workspace/workspace-gateway";
 import type {
   AIWorkspaceBootstrap,
@@ -20,7 +23,11 @@ import type {
   CanvasSyncState,
   InfiniteCanvasBootstrap,
 } from "@/lib/infinite-canvas/types";
-import type { CanvasEditorApi, CanvasEditorState, LayerTreeNode } from "@/lib/layers-inspector/types";
+import type {
+  CanvasEditorApi,
+  CanvasEditorState,
+  LayerTreeNode,
+} from "@/lib/layers-inspector/types";
 import styles from "./ai-workspace.module.css";
 
 const RUN_LABEL: Readonly<Record<string, string>> = {
@@ -38,8 +45,13 @@ function uiError(error: unknown): string {
   return "AI Workspace 操作失败，请重试。";
 }
 
-function containsLayer(layers: readonly LayerTreeNode[], nodeId: string): boolean {
-  return layers.some((layer) => layer.id === nodeId || containsLayer(layer.children, nodeId));
+function containsLayer(
+  layers: readonly LayerTreeNode[],
+  nodeId: string,
+): boolean {
+  return layers.some(
+    (layer) => layer.id === nodeId || containsLayer(layer.children, nodeId),
+  );
 }
 
 export function AIWorkspace({
@@ -56,21 +68,36 @@ export function AIWorkspace({
   requestedBrandRuleVersion?: string | null;
 }>) {
   const { activeOrganization, api, queryCache } = useShell();
-  const gateway = useMemo(() => getAIWorkspaceGateway(api, bootstrap), [api, bootstrap]);
+  const gateway = useMemo(
+    () => getAIWorkspaceGateway(api, bootstrap),
+    [api, bootstrap],
+  );
   const [snapshot, setSnapshot] = useState<AIWorkspaceSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [canvasDocumentVersion, setCanvasDocumentVersion] = useState(0);
-  const [canvasSyncState, setCanvasSyncState] = useState<CanvasSyncState>("SAVED");
-  const [canvasEditorState, setCanvasEditorState] = useState<CanvasEditorState | null>(null);
-  const [selectedReferenceIds, setSelectedReferenceIds] = useState<string[]>([]);
-  const [artifactReferenceIds, setArtifactReferenceIds] = useState<string[]>([]);
+  const [canvasSyncState, setCanvasSyncState] =
+    useState<CanvasSyncState>("SAVED");
+  const [canvasEditorState, setCanvasEditorState] =
+    useState<CanvasEditorState | null>(null);
+  const [selectedReferenceIds, setSelectedReferenceIds] = useState<string[]>(
+    [],
+  );
+  const [artifactReferenceIds, setArtifactReferenceIds] = useState<string[]>(
+    [],
+  );
   const [busy, setBusy] = useState(false);
-  const [streamState, setStreamState] = useState<"idle" | "connected" | "reconnecting" | "offline">("idle");
-  const [mobilePanel, setMobilePanel] = useState<"agent" | "canvas" | "context">("agent");
-  const [approvalNotes, setApprovalNotes] = useState<Record<string, string>>({});
+  const [streamState, setStreamState] = useState<
+    "idle" | "connected" | "reconnecting" | "offline"
+  >("idle");
+  const [mobilePanel, setMobilePanel] = useState<
+    "agent" | "canvas" | "context"
+  >("agent");
+  const [approvalNotes, setApprovalNotes] = useState<Record<string, string>>(
+    {},
+  );
   const streamAbortRef = useRef<AbortController | null>(null);
   const reducerRef = useRef<WorkspaceReducerState | null>(null);
   const canvasEditorRef = useRef<CanvasEditorApi | null>(null);
@@ -79,7 +106,8 @@ export function AIWorkspace({
   const refreshCanonical = useCallback(async () => {
     const next = await queryCache.fetchQuery(
       ["ai-workspace", projectId],
-      (signal) => gateway.getWorkspace(activeOrganization.id, projectId, signal),
+      (signal) =>
+        gateway.getWorkspace(activeOrganization.id, projectId, signal),
       0,
     );
     reducerRef.current = { snapshot: next, seen_event_ids: [] };
@@ -136,7 +164,9 @@ export function AIWorkspace({
           if (controller.signal.aborted) return;
           if (attempt === 3) {
             setStreamState("offline");
-            setError(`实时连接中断：${uiError(streamError)}。页面中的状态可能不是最新值。`);
+            setError(
+              `实时连接中断：${uiError(streamError)}。页面中的状态可能不是最新值。`,
+            );
             return;
           }
         }
@@ -148,7 +178,9 @@ export function AIWorkspace({
   const startRun = async () => {
     if (!snapshot || !prompt.trim() || busy) return;
     if (canvasSyncState !== "SAVED") {
-      setError(`Canvas 当前为 ${canvasSyncState}。请先完成 autosave / conflict 处理，再启动 AI Edit。`);
+      setError(
+        `Canvas 当前为 ${canvasSyncState}。请先完成 autosave / conflict 处理，再启动 AI Edit。`,
+      );
       return;
     }
     setBusy(true);
@@ -161,7 +193,8 @@ export function AIWorkspace({
         document_version: canvasDocumentVersion || snapshot.document.version,
         reference_asset_ids: selectedReferenceIds,
         reference_artifact_version_ids: artifactReferenceIds,
-        brand_rule_set_version: snapshot.brand_binding?.resolved_rule_set_version ?? null,
+        brand_rule_set_version:
+          snapshot.brand_binding?.resolved_rule_set_version ?? null,
       });
       setPrompt("");
       reducerRef.current = { snapshot: next, seen_event_ids: [] };
@@ -181,7 +214,10 @@ export function AIWorkspace({
     const current = snapshot.run;
     if (action !== "resume") streamAbortRef.current?.abort();
     try {
-      const input = { run_id: current.run_id, expected_run_version: current.version };
+      const input = {
+        run_id: current.run_id,
+        expected_run_version: current.version,
+      };
       const run =
         action === "pause"
           ? await gateway.pauseRun(activeOrganization.id, input)
@@ -189,7 +225,10 @@ export function AIWorkspace({
             ? await gateway.resumeRun(activeOrganization.id, input)
             : await gateway.stopRun(activeOrganization.id, input);
       const next = { ...snapshot, run };
-      reducerRef.current = { snapshot: next, seen_event_ids: reducerRef.current?.seen_event_ids ?? [] };
+      reducerRef.current = {
+        snapshot: next,
+        seen_event_ids: reducerRef.current?.seen_event_ids ?? [],
+      };
       setSnapshot(next);
       if (action === "resume") void connectRun(run.run_id, run.last_event_id);
     } catch (runError) {
@@ -213,7 +252,10 @@ export function AIWorkspace({
       });
       const next = { ...snapshot, run };
       setSnapshot(next);
-      reducerRef.current = { snapshot: next, seen_event_ids: reducerRef.current?.seen_event_ids ?? [] };
+      reducerRef.current = {
+        snapshot: next,
+        seen_event_ids: reducerRef.current?.seen_event_ids ?? [],
+      };
       void connectRun(run.run_id, run.last_event_id);
     } catch (retryError) {
       setError(uiError(retryError));
@@ -223,8 +265,12 @@ export function AIWorkspace({
     }
   };
 
-  const decideApproval = async (approval: WorkspaceApproval, decision: ApprovalDecision) => {
-    if (!snapshot?.run || busy || !isApprovalActionable(approval, snapshot.run)) return;
+  const decideApproval = async (
+    approval: WorkspaceApproval,
+    decision: ApprovalDecision,
+  ) => {
+    if (!snapshot?.run || busy || !isApprovalActionable(approval, snapshot.run))
+      return;
     setBusy(true);
     setError(null);
     try {
@@ -234,9 +280,14 @@ export function AIWorkspace({
         expected_run_version: approval.expected_run_version,
         decision,
         request_changes_note:
-          decision === "REQUEST_CHANGES" ? approvalNotes[approval.approval_id] ?? null : null,
+          decision === "REQUEST_CHANGES"
+            ? (approvalNotes[approval.approval_id] ?? null)
+            : null,
       });
-      reducerRef.current = { snapshot: next, seen_event_ids: reducerRef.current?.seen_event_ids ?? [] };
+      reducerRef.current = {
+        snapshot: next,
+        seen_event_ids: reducerRef.current?.seen_event_ids ?? [],
+      };
       setSnapshot(next);
     } catch (approvalError) {
       setError(uiError(approvalError));
@@ -259,7 +310,10 @@ export function AIWorkspace({
         artifact_id: artifactId,
         artifact_version_id: versionId,
       });
-      reducerRef.current = { snapshot: next, seen_event_ids: reducerRef.current?.seen_event_ids ?? [] };
+      reducerRef.current = {
+        snapshot: next,
+        seen_event_ids: reducerRef.current?.seen_event_ids ?? [],
+      };
       setSnapshot(next);
       setCanvasDocumentVersion(next.document.version);
     } catch (placementError) {
@@ -273,7 +327,9 @@ export function AIWorkspace({
 
   const toggleReference = (assetId: string) => {
     setSelectedReferenceIds((current) =>
-      current.includes(assetId) ? current.filter((value) => value !== assetId) : [...current, assetId],
+      current.includes(assetId)
+        ? current.filter((value) => value !== assetId)
+        : [...current, assetId],
     );
   };
 
@@ -303,7 +359,9 @@ export function AIWorkspace({
 
   const handleJumpToCanvas = useCallback((artifactVersionId: string) => {
     setArtifactReferenceIds((current) =>
-      current.includes(artifactVersionId) ? current : [...current, artifactVersionId],
+      current.includes(artifactVersionId)
+        ? current
+        : [...current, artifactVersionId],
     );
     setMobilePanel("canvas");
     canvasEditorRef.current?.fitSelection();
@@ -326,12 +384,15 @@ export function AIWorkspace({
     });
   }, [canvasEditorState, focusNodeId]);
 
-  if (loading) return <div className={styles.loading}>正在加载 AI Workspace…</div>;
+  if (loading)
+    return <div className={styles.loading}>正在加载 AI Workspace…</div>;
   if (!snapshot) {
     return (
       <div className={styles.loading} role="alert">
         <p>{error ?? "无法打开 AI Workspace。"}</p>
-        <Link href={`/app/projects/${encodeURIComponent(projectId)}`}>返回项目</Link>
+        <Link href={`/app/projects/${encodeURIComponent(projectId)}`}>
+          返回项目
+        </Link>
       </div>
     );
   }
@@ -340,12 +401,17 @@ export function AIWorkspace({
     selectedNodeIds.includes(node.node_id),
   );
   const knownNodeIds = new Set(selectedNodes.map((node) => node.node_id));
-  const unknownSelectedNodeIds = selectedNodeIds.filter((nodeId) => !knownNodeIds.has(nodeId));
-  const effectiveDocumentVersion = canvasDocumentVersion || snapshot.document.version;
+  const unknownSelectedNodeIds = selectedNodeIds.filter(
+    (nodeId) => !knownNodeIds.has(nodeId),
+  );
+  const effectiveDocumentVersion =
+    canvasDocumentVersion || snapshot.document.version;
   const run = snapshot.run;
-  const runLabel = run ? RUN_LABEL[run.status] ?? run.status : "待开始";
-  const resolvedBrandVersion = snapshot.brand_binding?.resolved_rule_set_version ?? null;
-  const effectiveRunBrandVersion = run?.brand_rule_set_version ?? resolvedBrandVersion;
+  const runLabel = run ? (RUN_LABEL[run.status] ?? run.status) : "待开始";
+  const resolvedBrandVersion =
+    snapshot.brand_binding?.resolved_rule_set_version ?? null;
+  const effectiveRunBrandVersion =
+    run?.brand_rule_set_version ?? resolvedBrandVersion;
 
   const agentPanel = (
     <section className={styles.agentPanel} aria-label="Agent 对话与运行">
@@ -368,18 +434,37 @@ export function AIWorkspace({
         {run ? <span>Run v{run.version}</span> : null}
         {effectiveRunBrandVersion ? (
           <span>
-            Brand v{effectiveRunBrandVersion}{run?.brand_rule_set_version ? " · frozen" : " · next Run"}
+            Brand v{effectiveRunBrandVersion}
+            {run?.brand_rule_set_version ? " · frozen" : " · next Run"}
           </span>
         ) : null}
         <div className={styles.runActions}>
           {run?.status === "RUNNING" ? (
-            <button type="button" onClick={() => void updateRun("pause")} disabled={busy}>暂停</button>
+            <button
+              type="button"
+              onClick={() => void updateRun("pause")}
+              disabled={busy}
+            >
+              暂停
+            </button>
           ) : null}
           {run?.status === "PAUSED" ? (
-            <button type="button" onClick={() => void updateRun("resume")} disabled={busy}>Resume</button>
+            <button
+              type="button"
+              onClick={() => void updateRun("resume")}
+              disabled={busy}
+            >
+              Resume
+            </button>
           ) : null}
           {run && ["RUNNING", "PAUSED", "QUEUED"].includes(run.status) ? (
-            <button type="button" onClick={() => void updateRun("stop")} disabled={busy}>Stop</button>
+            <button
+              type="button"
+              onClick={() => void updateRun("stop")}
+              disabled={busy}
+            >
+              Stop
+            </button>
           ) : null}
         </div>
       </div>
@@ -392,8 +477,12 @@ export function AIWorkspace({
         onApprovalNoteChange={(approvalId, note) =>
           setApprovalNotes((current) => ({ ...current, [approvalId]: note }))
         }
-        onDecideApproval={(approval, decision) => void decideApproval(approval, decision)}
-        onPlaceArtifact={(artifactId, versionId) => void placeArtifact(artifactId, versionId)}
+        onDecideApproval={(approval, decision) =>
+          void decideApproval(approval, decision)
+        }
+        onPlaceArtifact={(artifactId, versionId) =>
+          void placeArtifact(artifactId, versionId)
+        }
         onToggleArtifactReference={toggleArtifactReference}
         onRetryTask={(taskId) => void retryTask(taskId)}
         onJumpToCanvas={handleJumpToCanvas}
@@ -406,18 +495,28 @@ export function AIWorkspace({
           <span>Canvas {canvasSyncState}</span>
           {effectiveRunBrandVersion ? (
             <span>
-              Brand v{effectiveRunBrandVersion}{run?.brand_rule_set_version ? " · frozen" : ""}
+              Brand v{effectiveRunBrandVersion}
+              {run?.brand_rule_set_version ? " · frozen" : ""}
             </span>
           ) : null}
-          {requestedBrandRuleVersion ? <span>Compliance source v{requestedBrandRuleVersion}</span> : null}
+          {requestedBrandRuleVersion ? (
+            <span>Compliance source v{requestedBrandRuleVersion}</span>
+          ) : null}
           {selectedNodes.map((node) => (
             <span key={node.node_id}>
-              {node.label}{node.locked_identity ? " · locked identity" : ""}
+              {node.label}
+              {node.locked_identity ? " · locked identity" : ""}
             </span>
           ))}
-          {unknownSelectedNodeIds.map((nodeId) => <span key={nodeId}>{nodeId}</span>)}
-          {selectedReferenceIds.length ? <span>{selectedReferenceIds.length} references</span> : null}
-          {artifactReferenceIds.length ? <span>{artifactReferenceIds.length} artifact refs</span> : null}
+          {unknownSelectedNodeIds.map((nodeId) => (
+            <span key={nodeId}>{nodeId}</span>
+          ))}
+          {selectedReferenceIds.length ? (
+            <span>{selectedReferenceIds.length} references</span>
+          ) : null}
+          {artifactReferenceIds.length ? (
+            <span>{artifactReferenceIds.length} artifact refs</span>
+          ) : null}
         </div>
         <textarea
           aria-label="给 LUMI Agent 的指令"
@@ -425,11 +524,14 @@ export function AIWorkspace({
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           onKeyDown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") void startRun();
+            if ((event.metaKey || event.ctrlKey) && event.key === "Enter")
+              void startRun();
           }}
         />
         <div className={styles.composerFooter}>
-          <span>⌘/Ctrl + Enter 发送 · Canvas 必须先完成保存 · 不展示内部推理</span>
+          <span>
+            ⌘/Ctrl + Enter 发送 · Canvas 必须先完成保存 · 不展示内部推理
+          </span>
           <button
             type="button"
             className={styles.primary}
@@ -462,9 +564,11 @@ export function AIWorkspace({
     <LayersInspector
       state={canvasEditorState}
       editorRef={canvasEditorRef}
-      brandName={snapshot.brand_binding
-        ? `${snapshot.brand_binding.brand_name} · v${resolvedBrandVersion ?? "unpublished"}`
-        : snapshot.brand_name}
+      brandName={
+        snapshot.brand_binding
+          ? `${snapshot.brand_binding.brand_name} · v${resolvedBrandVersion ?? "unpublished"}`
+          : snapshot.brand_name
+      }
       references={snapshot.references}
       selectedReferenceIds={selectedReferenceIds}
       onToggleReference={toggleReference}
@@ -476,28 +580,71 @@ export function AIWorkspace({
     <div className={styles.workspace}>
       <header className={styles.workspaceHeader}>
         <div>
-          <Link href={`/app/projects/${encodeURIComponent(projectId)}`}>← Project Brief</Link>
+          <Link href={`/app/projects/${encodeURIComponent(projectId)}`}>
+            ← Project Brief
+          </Link>
           <h1>{snapshot.project_name}</h1>
           <p>
             {snapshot.brand_name ?? "No Brand Kit"}
-            {resolvedBrandVersion ? ` · BrandRuleSet v${resolvedBrandVersion}` : ""}
-            {requestedBrandRuleVersion ? ` · reviewing compliance v${requestedBrandRuleVersion}` : ""}
+            {resolvedBrandVersion
+              ? ` · BrandRuleSet v${resolvedBrandVersion}`
+              : ""}
+            {requestedBrandRuleVersion
+              ? ` · reviewing compliance v${requestedBrandRuleVersion}`
+              : ""}
             {" · Timeline + Infinite Canvas + Layers / Inspector"}
           </p>
         </div>
-        {error ? <p role="alert" className={styles.error}>{error}</p> : null}
+        {error ? (
+          <p role="alert" className={styles.error}>
+            {error}
+          </p>
+        ) : null}
       </header>
 
       <nav className={styles.mobileTabs} aria-label="移动工作区面板">
-        <button type="button" data-active={mobilePanel === "agent"} onClick={() => setMobilePanel("agent")}>Agent</button>
-        <button type="button" data-active={mobilePanel === "canvas"} onClick={() => setMobilePanel("canvas")}>Canvas</button>
-        <button type="button" data-active={mobilePanel === "context"} onClick={() => setMobilePanel("context")}>Inspector</button>
+        <button
+          type="button"
+          data-active={mobilePanel === "agent"}
+          onClick={() => setMobilePanel("agent")}
+        >
+          Agent
+        </button>
+        <button
+          type="button"
+          data-active={mobilePanel === "canvas"}
+          onClick={() => setMobilePanel("canvas")}
+        >
+          Canvas
+        </button>
+        <button
+          type="button"
+          data-active={mobilePanel === "context"}
+          onClick={() => setMobilePanel("context")}
+        >
+          Inspector
+        </button>
       </nav>
 
       <main className={styles.desktopGrid}>
-        <div className={styles.mobilePanel} data-mobile-active={mobilePanel === "agent"}>{agentPanel}</div>
-        <div className={styles.mobilePanel} data-mobile-active={mobilePanel === "canvas"}>{canvasPanel}</div>
-        <div className={styles.mobilePanel} data-mobile-active={mobilePanel === "context"}>{contextPanel}</div>
+        <div
+          className={styles.mobilePanel}
+          data-mobile-active={mobilePanel === "agent"}
+        >
+          {agentPanel}
+        </div>
+        <div
+          className={styles.mobilePanel}
+          data-mobile-active={mobilePanel === "canvas"}
+        >
+          {canvasPanel}
+        </div>
+        <div
+          className={styles.mobilePanel}
+          data-mobile-active={mobilePanel === "context"}
+        >
+          {contextPanel}
+        </div>
       </main>
     </div>
   );
