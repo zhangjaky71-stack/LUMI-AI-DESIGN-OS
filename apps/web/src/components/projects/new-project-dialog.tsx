@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   isAcceptedReference,
@@ -31,7 +31,6 @@ const DELIVERABLES = [
 ] as const;
 
 interface NewProjectDialogProps {
-  readonly open: boolean;
   readonly organizationId: string;
   readonly bootstrap: ProjectsBootstrap;
   readonly gateway: ProjectsGateway;
@@ -58,7 +57,6 @@ function uiStatusForScan(
 }
 
 export function NewProjectDialog({
-  open,
   organizationId,
   bootstrap,
   gateway,
@@ -80,23 +78,6 @@ export function NewProjectDialog({
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<ProjectDetail | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    setStep(1);
-    setIntent("");
-    setName("");
-    setBrandId("");
-    setDeliverables([]);
-    setLocale("zh-CN");
-    setQualityProfile("");
-    setBudget("");
-    setReferences([]);
-    setError(null);
-    setBusy(false);
-    setCreated(null);
-  }, [open, organizationId]);
-
-  if (!open) return null;
 
   const appendFiles = (files: readonly File[]) => {
     const rejected = files.find(

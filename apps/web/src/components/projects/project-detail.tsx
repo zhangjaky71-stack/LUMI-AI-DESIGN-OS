@@ -61,7 +61,9 @@ export function ProjectDetail({
   }, [activeOrganization.id, gateway, projectId, queryCache]);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const beginEdit = () => {

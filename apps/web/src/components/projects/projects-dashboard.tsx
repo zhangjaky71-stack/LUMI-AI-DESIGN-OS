@@ -113,7 +113,9 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
   }, [activeOrganization.id, effectiveFilters, gateway, queryCache]);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const loadMore = async () => {
@@ -422,14 +424,16 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
         ) : null}
       </section>
 
-      <NewProjectDialog
-        open={newProjectOpen}
-        organizationId={activeOrganization.id}
-        bootstrap={bootstrap}
-        gateway={gateway}
-        onClose={() => setNewProjectOpen(false)}
-        onCreated={handleCreated}
-      />
+      {newProjectOpen ? (
+        <NewProjectDialog
+          key={activeOrganization.id}
+          organizationId={activeOrganization.id}
+          bootstrap={bootstrap}
+          gateway={gateway}
+          onClose={() => setNewProjectOpen(false)}
+          onCreated={handleCreated}
+        />
+      ) : null}
 
       {renameTarget ? (
         <div className={styles.modalBackdrop}>
