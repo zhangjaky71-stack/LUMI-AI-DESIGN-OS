@@ -15,19 +15,21 @@ def replace_once(path: str, old: str, new: str) -> None:
     target.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
-# Keep the Python audit frozen while omitting only local workspace packages that
-# pip-audit cannot hash/install as editable directories. All third-party locked
-# dependencies emitted by those workspace packages remain in the export.
-replace_once(
-    ".github/workflows/security-release-gate.yml",
-    "uv export --all-packages --frozen --no-dev --format requirements-txt > /tmp/requirements.txt",
-    "uv export --all-packages --frozen --no-dev --no-emit-workspace --format requirements-txt > /tmp/requirements.txt",
+# The release workflow itself is landed through the authorized repository
+# connection because GitHub Actions' GITHUB_TOKEN is not allowed to modify
+# workflow files. Fail closed unless the exact verified audit/Trivy settings are
+# already present before this patch touches any non-workflow source.
+security_gate = (ROOT / ".github/workflows/security-release-gate.yml").read_text(encoding="utf-8")
+required_audit = (
+    "uv export --all-packages --frozen --no-dev --no-emit-workspace "
+    "--format requirements-txt > /tmp/requirements.txt"
 )
-replace_once(
-    ".github/workflows/security-release-gate.yml",
-    "          ignore-unfixed: false\n",
-    "          ignore-unfixed: false\n          trivyignores: .trivyignore.yaml\n",
-)
+if required_audit not in security_gate:
+    raise SystemExit("security release gate missing verified no-emit-workspace audit input")
+if "          trivyignores: .trivyignore.yaml\n" not in security_gate:
+    raise SystemExit("security release gate missing scoped Trivy ignorefile binding")
+if "uv export --all-packages --frozen --no-dev --format requirements-txt" in security_gate:
+    raise SystemExit("security release gate still contains the legacy workspace-emitting audit input")
 
 # Replace unrestricted S3 provisioning with the explicit bucket-control actions
 # used by the storage and cross-region object-DR Terraform resources.
