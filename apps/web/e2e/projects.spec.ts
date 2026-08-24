@@ -8,9 +8,7 @@ test.describe("NODE-53 Projects UI", () => {
     await expect(
       page.getByRole("heading", { name: "项目", exact: true }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "加载更多" }),
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "加载更多" })).toBeVisible();
 
     const before = await page.locator("article").count();
     await page.getByRole("button", { name: "加载更多" }).click();
@@ -69,9 +67,7 @@ test.describe("NODE-53 Projects UI", () => {
       mimeType: "image/png",
       buffer: Buffer.from("fixture"),
     });
-    await page
-      .getByLabel("scan-fail-logo.png 参考类型")
-      .selectOption("logo");
+    await page.getByLabel("scan-fail-logo.png 参考类型").selectOption("logo");
     await page.getByRole("button", { name: "直接开始" }).click();
     await expect(page.getByText("不可用 · SCAN_FAILED")).toBeVisible();
   });
@@ -106,9 +102,7 @@ test.describe("NODE-53 Projects UI", () => {
     await page.getByRole("button", { name: "重命名" }).click();
     await page.getByLabel("项目名称").fill("门店物料升级 2.0");
     await page.getByRole("button", { name: "保存", exact: true }).click();
-    await expect(page.getByRole("alert")).toContainText(
-      "项目已在其他位置更新",
-    );
+    await expect(page.getByRole("alert")).toContainText("项目已在其他位置更新");
     await expect(
       page.getByRole("link", { name: "门店物料升级", exact: true }),
     ).toBeVisible();
@@ -135,14 +129,14 @@ test.describe("NODE-53 Projects UI", () => {
     );
   });
 
-  test("significant Brief edits create a new BriefVersion", async ({ page }) => {
+  test("significant Brief edits create a new BriefVersion", async ({
+    page,
+  }) => {
     await page.goto("/app/projects/project-summer-launch");
     await expect(page.getByText("Brief v2")).toBeVisible();
     await page.getByRole("button", { name: "编辑 Brief" }).click();
     await page.getByLabel("Objective").fill("更新后的夏季新品发布目标");
-    await page
-      .getByRole("button", { name: "保存为新 BriefVersion" })
-      .click();
+    await page.getByRole("button", { name: "保存为新 BriefVersion" }).click();
     await expect(page.getByRole("status")).toContainText("v3");
     await expect(page.getByText("更新后的夏季新品发布目标")).toBeVisible();
   });

@@ -11,7 +11,12 @@ export type ReferenceRole =
   | "other";
 
 export type AssetScanStatus = "QUEUED" | "SCANNING" | "READY" | "REJECTED";
-export type UploadUiStatus = "LOCAL" | "UPLOADING" | "SCANNING" | "READY" | "FAILED";
+export type UploadUiStatus =
+  | "LOCAL"
+  | "UPLOADING"
+  | "SCANNING"
+  | "READY"
+  | "FAILED";
 
 export interface ProjectBrandSummary {
   readonly id: string;

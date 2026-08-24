@@ -102,9 +102,12 @@ export class HttpProjectsGateway implements ProjectsGateway {
     query.set("sort", safe.sort);
     query.set("limit", String(safe.limit));
     if (safe.cursor) query.set("cursor", safe.cursor);
-    return this.#api.get<CursorPage<ProjectSummary>>(`/projects?${query.toString()}`, {
-      ...(signal ? { signal } : {}),
-    });
+    return this.#api.get<CursorPage<ProjectSummary>>(
+      `/projects?${query.toString()}`,
+      {
+        ...(signal ? { signal } : {}),
+      },
+    );
   }
 
   getProject(
@@ -112,9 +115,12 @@ export class HttpProjectsGateway implements ProjectsGateway {
     projectId: string,
     signal?: AbortSignal,
   ): Promise<ProjectDetail> {
-    return this.#api.get<ProjectDetail>(`/projects/${encodeURIComponent(projectId)}`, {
-      ...(signal ? { signal } : {}),
-    });
+    return this.#api.get<ProjectDetail>(
+      `/projects/${encodeURIComponent(projectId)}`,
+      {
+        ...(signal ? { signal } : {}),
+      },
+    );
   }
 
   createProject(
@@ -215,7 +221,10 @@ export class HttpProjectsGateway implements ProjectsGateway {
     signal?: AbortSignal,
   ): Promise<ProjectReference> {
     input.on_progress?.(4, "UPLOADING");
-    const session = await this.#api.post<UploadSessionResponse, Record<string, unknown>>(
+    const session = await this.#api.post<
+      UploadSessionResponse,
+      Record<string, unknown>
+    >(
       "/assets/uploads",
       {
         project_id: input.project_id,
@@ -253,7 +262,11 @@ export class HttpProjectsGateway implements ProjectsGateway {
 
     input.on_progress?.(
       100,
-      completed.scan_status === "REJECTED" ? "FAILED" : completed.scan_status === "READY" ? "READY" : "SCANNING",
+      completed.scan_status === "REJECTED"
+        ? "FAILED"
+        : completed.scan_status === "READY"
+          ? "READY"
+          : "SCANNING",
     );
     return {
       id: `reference:${completed.asset_id}`,
@@ -279,7 +292,11 @@ function cursorOffset(cursor: string | null): number {
   return Number(match[1]);
 }
 
-function compareProjects(a: ProjectSummary, b: ProjectSummary, sort: ProjectListFilters["sort"]): number {
+function compareProjects(
+  a: ProjectSummary,
+  b: ProjectSummary,
+  sort: ProjectListFilters["sort"],
+): number {
   if (sort === "name") return a.name.localeCompare(b.name, "zh-CN");
   if (sort === "created") return b.created_at.localeCompare(a.created_at);
   return b.last_activity_at.localeCompare(a.last_activity_at);
@@ -308,13 +325,25 @@ export class DeterministicProjectsGateway implements ProjectsGateway {
     const rows = [...this.#projects.values()]
       .map((detail) => detail.summary)
       .filter((project) => project.organization_id === organizationId)
-      .filter((project) => safe.status === "ALL" || project.status === safe.status)
-      .filter((project) => !safe.workspace_id || project.workspace_id === safe.workspace_id)
-      .filter((project) => !safe.brand_id || project.brand?.id === safe.brand_id)
-      .filter((project) => !query || project.name.toLocaleLowerCase("zh-CN").includes(query))
+      .filter(
+        (project) => safe.status === "ALL" || project.status === safe.status,
+      )
+      .filter(
+        (project) =>
+          !safe.workspace_id || project.workspace_id === safe.workspace_id,
+      )
+      .filter(
+        (project) => !safe.brand_id || project.brand?.id === safe.brand_id,
+      )
+      .filter(
+        (project) =>
+          !query || project.name.toLocaleLowerCase("zh-CN").includes(query),
+      )
       .sort((a, b) => compareProjects(a, b, safe.sort));
     const start = cursorOffset(safe.cursor);
-    const items = rows.slice(start, start + safe.limit).map((project) => ({ ...project }));
+    const items = rows
+      .slice(start, start + safe.limit)
+      .map((project) => ({ ...project }));
     const next = start + items.length;
     return {
       items,
@@ -345,17 +374,25 @@ export class DeterministicProjectsGateway implements ProjectsGateway {
     const safe = validateCreateProjectInput(input);
     this.#counter += 1;
     const id = `project-e2e-${this.#counter}`;
-    const now = new Date(Date.UTC(2026, 7, 15, 1, 0, this.#counter % 60)).toISOString();
+    const now = new Date(
+      Date.UTC(2026, 7, 15, 1, 0, this.#counter % 60),
+    ).toISOString();
     const summary: ProjectSummary = {
       id,
       organization_id: organizationId,
-      workspace_id: organizationId === "org-northstar" ? "workspace-northstar" : "workspace-lumi",
+      workspace_id:
+        organizationId === "org-northstar"
+          ? "workspace-northstar"
+          : "workspace-lumi",
       name: safe.name ?? safe.intent.slice(0, 42),
       status: "ACTIVE",
       version: 1,
       created_at: now,
       last_activity_at: now,
-      brand: safe.brand_id && safe.brand_name ? { id: safe.brand_id, name: safe.brand_name } : null,
+      brand:
+        safe.brand_id && safe.brand_name
+          ? { id: safe.brand_id, name: safe.brand_name }
+          : null,
       active_run_count: 0,
       artifact_count: 0,
       preview_label: "Brief ready",
@@ -365,7 +402,9 @@ export class DeterministicProjectsGateway implements ProjectsGateway {
       audience: "待 Brief Agent 进一步确认",
       deliverables: safe.deliverables,
       constraints: [],
-      assumptions: ["当前结构化 Brief 来自确定性 E2E adapter，生产由 Brief Agent 生成。"],
+      assumptions: [
+        "当前结构化 Brief 来自确定性 E2E adapter，生产由 Brief Agent 生成。",
+      ],
       locale: safe.locale,
       brand_context: safe.brand_name,
       notes: "",
@@ -386,14 +425,22 @@ export class DeterministicProjectsGateway implements ProjectsGateway {
     input: RenameProjectInput,
     signal?: AbortSignal,
   ): Promise<ProjectMutationResult> {
-    const detail = await this.getProject(organizationId, input.project_id, signal);
-    if (detail.summary.version !== input.expected_version) throw projectProblem("VERSION_CONFLICT");
-    if (this.#renameConflictIds.delete(input.project_id)) throw projectProblem("VERSION_CONFLICT");
+    const detail = await this.getProject(
+      organizationId,
+      input.project_id,
+      signal,
+    );
+    if (detail.summary.version !== input.expected_version)
+      throw projectProblem("VERSION_CONFLICT");
+    if (this.#renameConflictIds.delete(input.project_id))
+      throw projectProblem("VERSION_CONFLICT");
     const next: ProjectSummary = {
       ...detail.summary,
       name: normalizeProjectName(input.name),
       version: detail.summary.version + 1,
-      last_activity_at: new Date(Date.UTC(2026, 7, 15, 2, 0, detail.summary.version)).toISOString(),
+      last_activity_at: new Date(
+        Date.UTC(2026, 7, 15, 2, 0, detail.summary.version),
+      ).toISOString(),
     };
     this.#projects.set(input.project_id, { ...detail, summary: next });
     return { project: { ...next } };
@@ -406,7 +453,8 @@ export class DeterministicProjectsGateway implements ProjectsGateway {
     signal?: AbortSignal,
   ): Promise<ProjectMutationResult> {
     const detail = await this.getProject(organizationId, projectId, signal);
-    if (detail.summary.version !== expectedVersion) throw projectProblem("VERSION_CONFLICT");
+    if (detail.summary.version !== expectedVersion)
+      throw projectProblem("VERSION_CONFLICT");
     const next: ProjectSummary = {
       ...detail.summary,
       status: "ARCHIVED",
@@ -424,7 +472,8 @@ export class DeterministicProjectsGateway implements ProjectsGateway {
     signal?: AbortSignal,
   ): Promise<ProjectMutationResult> {
     const detail = await this.getProject(organizationId, projectId, signal);
-    if (detail.summary.version !== expectedVersion) throw projectProblem("VERSION_CONFLICT");
+    if (detail.summary.version !== expectedVersion)
+      throw projectProblem("VERSION_CONFLICT");
     const next: ProjectSummary = {
       ...detail.summary,
       status: "ACTIVE",
@@ -440,7 +489,11 @@ export class DeterministicProjectsGateway implements ProjectsGateway {
     input: UpdateBriefInput,
     signal?: AbortSignal,
   ): Promise<BriefMutationResult> {
-    const detail = await this.getProject(organizationId, input.project_id, signal);
+    const detail = await this.getProject(
+      organizationId,
+      input.project_id,
+      signal,
+    );
     if (
       detail.summary.version !== input.expected_project_version ||
       detail.brief_version !== input.expected_brief_version
@@ -449,7 +502,9 @@ export class DeterministicProjectsGateway implements ProjectsGateway {
     }
     const brief = validateStructuredBrief(input.brief);
     const briefVersion = detail.brief_version + 1;
-    const now = new Date(Date.UTC(2026, 7, 15, 3, briefVersion, 0)).toISOString();
+    const now = new Date(
+      Date.UTC(2026, 7, 15, 3, briefVersion, 0),
+    ).toISOString();
     const project = {
       ...detail.summary,
       version: detail.summary.version + 1,
@@ -460,7 +515,10 @@ export class DeterministicProjectsGateway implements ProjectsGateway {
       summary: project,
       brief,
       brief_version: briefVersion,
-      brief_history: [...detail.brief_history, { version: briefVersion, created_at: now, brief }],
+      brief_history: [
+        ...detail.brief_history,
+        { version: briefVersion, created_at: now, brief },
+      ],
     });
     return { project: { ...project }, brief_version: briefVersion, brief };
   }
@@ -470,7 +528,11 @@ export class DeterministicProjectsGateway implements ProjectsGateway {
     input: UploadReferenceInput,
     signal?: AbortSignal,
   ): Promise<ProjectReference> {
-    const detail = await this.getProject(organizationId, input.project_id, signal);
+    const detail = await this.getProject(
+      organizationId,
+      input.project_id,
+      signal,
+    );
     input.on_progress?.(12, "UPLOADING");
     await Promise.resolve();
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
@@ -493,7 +555,9 @@ export class DeterministicProjectsGateway implements ProjectsGateway {
     const project = {
       ...detail.summary,
       version: detail.summary.version + 1,
-      last_activity_at: new Date(Date.UTC(2026, 7, 15, 4, this.#counter % 60, 0)).toISOString(),
+      last_activity_at: new Date(
+        Date.UTC(2026, 7, 15, 4, this.#counter % 60, 0),
+      ).toISOString(),
     };
     this.#projects.set(input.project_id, {
       ...detail,
