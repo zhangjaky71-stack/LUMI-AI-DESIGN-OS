@@ -98,9 +98,7 @@ def scan_callers() -> None:
 
 def private_deployment_wiring_contract() -> None:
     if not PRIVATE_DEPLOYMENT_CONTRACT.is_file():
-        raise SystemExit(
-            f"{PRIVATE_DEPLOYMENT_CONTRACT}: private deployment contract is missing"
-        )
+        raise SystemExit(f"{PRIVATE_DEPLOYMENT_CONTRACT}: private deployment contract is missing")
     marker = PRIVATE_DEPLOYMENT_CONTRACT.relative_to(ROOT).as_posix()
     for workflow, minimum_count in PRIVATE_DEPLOYMENT_WORKFLOWS:
         if not workflow.is_file():
@@ -120,8 +118,7 @@ def hosted_composition_contract() -> None:
         (
             node
             for node in tree.body
-            if isinstance(node, ast.FunctionDef)
-            and node.name == "build_hosted_model_gateway"
+            if isinstance(node, ast.FunctionDef) and node.name == "build_hosted_model_gateway"
         ),
         None,
     )
@@ -147,16 +144,19 @@ def hosted_composition_contract() -> None:
     model_gateway_paid_guard_is_bound = False
     model_gateway_stream_guard_is_injected = False
     for node in ast.walk(factory):
-        if isinstance(node, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id == "paid_guard"
-            for target in node.targets
-        ):
-            if (
+        if (
+            isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "paid_guard"
+                for target in node.targets
+            )
+            and (
                 isinstance(node.value, ast.Call)
                 and isinstance(node.value.func, ast.Name)
                 and node.value.func.id == "PostgresModelPaidInvocationGuard"
-            ):
-                has_postgres_guard = True
+            )
+        ):
+            has_postgres_guard = True
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
@@ -165,16 +165,13 @@ def hosted_composition_contract() -> None:
             for keyword in node.keywords:
                 if keyword.arg == "paid_guard":
                     model_gateway_paid_guard_is_bound = (
-                        isinstance(keyword.value, ast.Name)
-                        and keyword.value.id == "paid_guard"
+                        isinstance(keyword.value, ast.Name) and keyword.value.id == "paid_guard"
                     )
                 if keyword.arg == "paid_stream_guard":
                     model_gateway_stream_guard_is_injected = True
 
     if not has_postgres_guard or not model_gateway_paid_guard_is_bound:
-        raise SystemExit(
-            f"{path}: hosted Model Gateway must bind PostgresModelPaidInvocationGuard"
-        )
+        raise SystemExit(f"{path}: hosted Model Gateway must bind PostgresModelPaidInvocationGuard")
     if model_gateway_stream_guard_is_injected:
         raise SystemExit(
             f"{path}: hosted streaming must remain fail-closed until a durable stream guard exists"
@@ -184,13 +181,13 @@ def hosted_composition_contract() -> None:
 def hosted_media_contract() -> None:
     require(
         "services/model-gateway/src/lumi_model_gateway/openai_image_adapter.py",
-        'https://api.openai.com/v1/images/generations',
-        '_MAX_IMAGE_BYTES = 100 * 1024 * 1024',
-        '_MAX_B64_CHARS',
-        'base64.b64decode(b64_value, validate=True)',
+        "https://api.openai.com/v1/images/generations",
+        "_MAX_IMAGE_BYTES = 100 * 1024 * 1024",
+        "_MAX_B64_CHARS",
+        "base64.b64decode(b64_value, validate=True)",
         'response.headers.get("x-request-id")',
-        'delivery_state=DeliveryState.ACCEPTED',
-        'ProviderBinaryOutputStore',
+        "delivery_state=DeliveryState.ACCEPTED",
+        "ProviderBinaryOutputStore",
         'ModelOutput(kind="asset_ref", value=asset_ref, mime_type=mime_type)',
         '_SUPPORTED_SIZES = frozenset({"1024x1024", "1024x1536", "1536x1024"})',
     )
@@ -218,7 +215,7 @@ def hosted_media_contract() -> None:
         '_ESTIMATE_PATH = "/internal/v1/models/estimate"',
         "candidate = await runtime.api.estimate(decoded)",
         "encode_route_candidate(candidate)",
-        'LUMI_MEDIA_PROVIDER_SECRET',
+        "LUMI_MEDIA_PROVIDER_SECRET",
         "S3ProviderOutputStore.from_env()",
         "media_provider_secret=media_provider_secret",
         "provider_output_store=S3ProviderOutputStore.from_env()",
@@ -255,7 +252,7 @@ def hosted_media_contract() -> None:
         "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py",
         "class HostedImageModelGatewayAdapter",
         "HttpModelGatewayEstimateClient",
-        "caller_service=\"worker-media\"",
+        'caller_service="worker-media"',
         "class S3ProviderOutputFetcher",
         '"provider-output/v1/"',
         "PROVIDER_OUTPUT_BUCKET_MISMATCH",
@@ -341,9 +338,9 @@ def main() -> int:
     )
     require(
         "services/model-gateway/src/lumi_model_gateway/openai_adapter.py",
-        'https://api.openai.com/v1/responses',
+        "https://api.openai.com/v1/responses",
         '"store": False',
-        'Capability.LLM_STRUCTURED_OUTPUT',
+        "Capability.LLM_STRUCTURED_OUTPUT",
         'part.get("type") == "output_text"',
         'os.getenv("OPENAI_API_KEY"',
     )

@@ -108,9 +108,7 @@ class UrllibVideoContentTransport:
         request = urllib.request.Request(url, headers=headers, method="GET")
         try:
             with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-                response_headers = {
-                    key.lower(): value for key, value in response.headers.items()
-                }
+                response_headers = {key.lower(): value for key, value in response.headers.items()}
                 content_length = response_headers.get("content-length")
                 if content_length is not None:
                     try:
@@ -380,7 +378,10 @@ class OpenAIVideoGenerationAdapter:
         self._provider_request_id(provider_request_id)
         raise ProviderInvocationError(
             ErrorCategory.CAPABILITY_TEMP_UNAVAILABLE,
-            "OpenAI Videos exposes delete but this adapter does not equate deletion with proven cancellation",
+            (
+                "OpenAI Videos exposes delete but this adapter does not equate "
+                "deletion with proven cancellation"
+            ),
             provider=self._descriptor.provider,
             model=self._descriptor.model,
             delivery_state=DeliveryState.NOT_ACCEPTED,

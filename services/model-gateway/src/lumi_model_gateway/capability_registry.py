@@ -9,7 +9,7 @@ from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol
-from uuid import UUID, NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from .models import Capability
 
@@ -148,11 +148,7 @@ class RegistrySnapshot:
 
     def price_snapshot(self, price_snapshot_id: str) -> PricingSnapshot | None:
         return next(
-            (
-                item
-                for item in self.pricing
-                if item.price_snapshot_id == price_snapshot_id
-            ),
+            (item for item in self.pricing if item.price_snapshot_id == price_snapshot_id),
             None,
         )
 
@@ -194,9 +190,7 @@ class RegistrySnapshot:
         organization_id: UUID,
     ) -> RegistryOrganizationPolicy | None:
         rows = [
-            item
-            for item in self.organization_policies
-            if item.organization_id == organization_id
+            item for item in self.organization_policies if item.organization_id == organization_id
         ]
         if not rows:
             return None
@@ -247,11 +241,7 @@ class RegistrySnapshot:
         organization_id: UUID | None = None,
     ) -> tuple[str, ...]:
         profile = next(
-            (
-                item
-                for item in self.routing_profiles
-                if item.profile == profile_name
-            ),
+            (item for item in self.routing_profiles if item.profile == profile_name),
             None,
         )
         if profile is None:
@@ -281,15 +271,9 @@ class RegistrySnapshot:
                 for name in _quality_profiles_for_route(profile_name)
             ]
             measured = [item.score for item in scores if item is not None]
-            quality = (
-                sum(measured, Decimal("0")) / len(measured)
-                if measured
-                else Decimal("0")
-            )
+            quality = sum(measured, Decimal("0")) / len(measured) if measured else Decimal("0")
             preferred = (
-                Decimal("1000")
-                if policy and model_key in policy.preferred_models
-                else Decimal("0")
+                Decimal("1000") if policy and model_key in policy.preferred_models else Decimal("0")
             )
             ranked.append((preferred + quality, -index, model_key))
         ranked.sort(reverse=True)
@@ -376,9 +360,7 @@ def compile_registry_seed(
                     observed_at=observed_at,
                     source_ref=source_ref,
                     regions=regions,
-                    benchmark_status=str(
-                        raw.get("benchmark_status", "NOT_MEASURED")
-                    ),
+                    benchmark_status=str(raw.get("benchmark_status", "NOT_MEASURED")),
                 )
             )
             for capability, limits in _capability_map(raw):
@@ -395,9 +377,7 @@ def compile_registry_seed(
                 )
             for raw_price in raw.get("pricing", []):
                 unit, price = _price(raw_price)
-                key_payload = (
-                    f"{source_registry_version}|{model_key}|{unit}|{price}"
-                )
+                key_payload = f"{source_registry_version}|{model_key}|{unit}|{price}"
                 price_id = hashlib.sha256(key_payload.encode()).hexdigest()[:32]
                 pricing.append(
                     PricingSnapshot(
@@ -406,9 +386,7 @@ def compile_registry_seed(
                         currency="USD",
                         unit=unit,
                         price=price,
-                        minimum_charge=(
-                            price if "minimum" in str(raw_price["metric"]) else None
-                        ),
+                        minimum_charge=(price if "minimum" in str(raw_price["metric"]) else None),
                         effective_from=observed_at,
                         valid_until=valid_until,
                         observed_at=observed_at,
@@ -456,9 +434,7 @@ def compile_registry_seed(
         ),
         pricing=tuple(sorted(pricing, key=lambda item: (item.model_key, item.unit))),
         benchmarks=(),
-        routing_profiles=tuple(
-            sorted(routing_profiles, key=lambda item: item.profile)
-        ),
+        routing_profiles=tuple(sorted(routing_profiles, key=lambda item: item.profile)),
     )
 
 
@@ -487,14 +463,9 @@ def _capability_map(
         mapped.add(Capability.LLM_STRUCTURED_OUTPUT)
     if "video_generation" in modalities and "image" in inputs:
         mapped.add(Capability.VIDEO_IMAGE_TO_VIDEO)
-    if "embedding" in modalities and inputs.intersection(
-        {"image", "video", "audio", "pdf"}
-    ):
+    if "embedding" in modalities and inputs.intersection({"image", "video", "audio", "pdf"}):
         mapped.add(Capability.EMBEDDING_MULTIMODAL)
-    return tuple(
-        (capability, limits)
-        for capability in sorted(mapped, key=lambda item: item.value)
-    )
+    return tuple((capability, limits) for capability in sorted(mapped, key=lambda item: item.value))
 
 
 def _price(raw: dict[str, Any]) -> tuple[str, Decimal]:
@@ -584,10 +555,7 @@ def _snapshot_payload(
     return {
         "registry_version": seed["registry_version"],
         "models": [item.model_key for item in models],
-        "claims": [
-            (item.model_key, item.capability.value, item.support.value)
-            for item in claims
-        ],
+        "claims": [(item.model_key, item.capability.value, item.support.value) for item in claims],
         "pricing": [
             (
                 item.price_snapshot_id,
@@ -597,9 +565,7 @@ def _snapshot_payload(
             )
             for item in pricing
         ],
-        "profiles": [
-            (item.profile, list(item.candidate_models)) for item in profiles
-        ],
+        "profiles": [(item.profile, list(item.candidate_models)) for item in profiles],
     }
 
 

@@ -19,9 +19,10 @@ from langchain_core.messages import (
 )
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.utils.function_calling import convert_to_openai_tool
+from pydantic import Field
+
 from lumi_model_gateway import Capability, ModelRequest, ResultStatus
 from lumi_model_gateway.http_transport import HttpModelGatewayClient
-from pydantic import Field
 
 from .contracts import DeepAgentInvocationContext, SubagentInvocationContext
 from .errors import DeepAgentModelBoundaryError
@@ -78,8 +79,7 @@ class ModelGatewayChatModel(BaseChatModel):
     ) -> ModelGatewayChatModel:
         if kwargs:
             raise DeepAgentModelBoundaryError(
-                "unsupported model-gateway bind_tools options: "
-                + ",".join(sorted(kwargs))
+                "unsupported model-gateway bind_tools options: " + ",".join(sorted(kwargs))
             )
         normalized = tuple(_normalize_tool(tool) for tool in tools)
         if len(normalized) > _MAX_TOOL_COUNT:
@@ -131,8 +131,7 @@ class ModelGatewayChatModel(BaseChatModel):
             constraints["max_output_tokens"] = max_output_tokens
         if kwargs:
             raise DeepAgentModelBoundaryError(
-                "unsupported model-gateway generation options: "
-                + ",".join(sorted(kwargs))
+                "unsupported model-gateway generation options: " + ",".join(sorted(kwargs))
             )
 
         wire_messages = [_message_to_wire(message) for message in messages]
@@ -247,9 +246,7 @@ class HttpProfileModelProvider(ProfileModelProvider):
         if not base_url:
             raise DeepAgentModelBoundaryError("LUMI_MODEL_GATEWAY_URL is required")
         if not auth_secret:
-            raise DeepAgentModelBoundaryError(
-                "LUMI_MODEL_GATEWAY_AUTH_SECRET is required"
-            )
+            raise DeepAgentModelBoundaryError("LUMI_MODEL_GATEWAY_AUTH_SECRET is required")
         self.base_url = base_url
         self.auth_secret = auth_secret
         self.caller_service = caller_service
@@ -297,10 +294,7 @@ def _normalize_tool(tool: Any) -> dict[str, Any]:
             "Deep Agents may bind function tools only through NODE-22"
         )
     function = converted.get("function")
-    if isinstance(function, dict):
-        source = function
-    else:
-        source = converted
+    source = function if isinstance(function, dict) else converted
     name = source.get("name")
     description = source.get("description", "")
     parameters = source.get("parameters")
@@ -381,9 +375,7 @@ def _message_to_wire(message: BaseMessage) -> dict[str, Any]:
 
 def _string_content(message: BaseMessage, role: str) -> str:
     if not isinstance(message.content, str):
-        raise DeepAgentModelBoundaryError(
-            f"multimodal {role} content is not enabled on NODE-22"
-        )
+        raise DeepAgentModelBoundaryError(f"multimodal {role} content is not enabled on NODE-22")
     return message.content
 
 

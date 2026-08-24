@@ -4,6 +4,13 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+
+from lumi_api.model_paid_guard import (
+    _decode_model_result,
+    _encode_model_result,
+    _pack,
+    _paid_operation_key,
+)
 from lumi_model_gateway import (
     CostConfidence,
     CostEstimate,
@@ -12,13 +19,6 @@ from lumi_model_gateway import (
     ResultStatus,
     Timing,
     Usage,
-)
-
-from lumi_api.model_paid_guard import (
-    _decode_model_result,
-    _encode_model_result,
-    _pack,
-    _paid_operation_key,
 )
 
 

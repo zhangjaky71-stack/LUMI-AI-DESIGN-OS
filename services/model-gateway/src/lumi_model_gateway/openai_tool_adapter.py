@@ -57,9 +57,7 @@ class OpenAIResponsesToolAdapter(OpenAIResponsesAdapter):
                         )
                     content = message.get("content")
                     if not isinstance(content, str):
-                        raise self._input_error(
-                            f"messages[{index}] requires string content"
-                        )
+                        raise self._input_error(f"messages[{index}] requires string content")
                     formatted.append({"role": role, "content": content})
                     continue
                 if role == "assistant":
@@ -75,14 +73,15 @@ class OpenAIResponsesToolAdapter(OpenAIResponsesAdapter):
                     if isinstance(content, str) and content:
                         formatted.append({"role": "assistant", "content": content})
                     tool_calls = message.get("tool_calls", [])
-                    if not isinstance(tool_calls, list) or len(tool_calls) > _MAX_TOOL_CALLS_PER_MESSAGE:
+                    if (
+                        not isinstance(tool_calls, list)
+                        or len(tool_calls) > _MAX_TOOL_CALLS_PER_MESSAGE
+                    ):
                         raise self._input_error(
                             f"messages[{index}] tool_calls must be a bounded list"
                         )
                     if not content and not tool_calls:
-                        raise self._input_error(
-                            f"messages[{index}] assistant message is empty"
-                        )
+                        raise self._input_error(f"messages[{index}] assistant message is empty")
                     for call_index, call in enumerate(tool_calls):
                         call_id, name, arguments = self._tool_call(
                             call,
@@ -113,13 +112,9 @@ class OpenAIResponsesToolAdapter(OpenAIResponsesAdapter):
                     call_id = message.get("tool_call_id")
                     content = message.get("content")
                     if not isinstance(call_id, str) or not call_id or len(call_id) > 512:
-                        raise self._input_error(
-                            f"messages[{index}] requires tool_call_id"
-                        )
+                        raise self._input_error(f"messages[{index}] requires tool_call_id")
                     if not isinstance(content, str):
-                        raise self._input_error(
-                            f"messages[{index}] tool content must be string"
-                        )
+                        raise self._input_error(f"messages[{index}] tool content must be string")
                     formatted.append(
                         {
                             "type": "function_call_output",
@@ -157,9 +152,7 @@ class OpenAIResponsesToolAdapter(OpenAIResponsesAdapter):
                         or not name
                         or not isinstance(arguments_text, str)
                     ):
-                        raise self._accepted_parse_error(
-                            "OpenAI returned an invalid function call"
-                        )
+                        raise self._accepted_parse_error("OpenAI returned an invalid function call")
                     try:
                         arguments = json.loads(arguments_text)
                     except json.JSONDecodeError as exc:

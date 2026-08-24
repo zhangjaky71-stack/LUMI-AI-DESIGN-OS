@@ -8,15 +8,6 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-from lumi_model_gateway import (
-    CostConfidence,
-    CostEstimate,
-    ModelOutput,
-    ModelResult,
-    ResultStatus,
-    Timing,
-    Usage,
-)
 
 from lumi_agent_runtime.deep_runtime.contracts import (
     DeepAgentInvocationContext,
@@ -28,6 +19,15 @@ from lumi_agent_runtime.deep_runtime.model_gateway_chat import (
     ModelGatewayChatModel,
 )
 from lumi_agent_runtime.deep_runtime.runtime_factory import HostedDeepAgentRuntimeFactory
+from lumi_model_gateway import (
+    CostConfidence,
+    CostEstimate,
+    ModelOutput,
+    ModelResult,
+    ResultStatus,
+    Timing,
+    Usage,
+)
 
 _SECRET = "x" * 32
 
@@ -75,9 +75,7 @@ class ModelGatewayChatTests(unittest.IsolatedAsyncioTestCase):
         ):
             await model._agenerate([HumanMessage(content="hello")])
             await model._agenerate([HumanMessage(content="hello")])
-            await model._agenerate(
-                [HumanMessage(content="hello"), AIMessage(content="next")]
-            )
+            await model._agenerate([HumanMessage(content="hello"), AIMessage(content="next")])
 
         first = invoke.await_args_list[0].args[0]
         second = invoke.await_args_list[1].args[0]
@@ -139,9 +137,7 @@ class ModelGatewayChatTests(unittest.IsolatedAsyncioTestCase):
                     HumanMessage(content="find x"),
                     AIMessage(
                         content="",
-                        tool_calls=[
-                            {"id": "call_1", "name": "lookup", "args": {"query": "x"}}
-                        ],
+                        tool_calls=[{"id": "call_1", "name": "lookup", "args": {"query": "x"}}],
                     ),
                     ToolMessage(content="value-x", tool_call_id="call_1"),
                 ]
@@ -207,9 +203,7 @@ class ModelGatewayChatTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sub_model.model_profile, "reasoning.fast")
 
     def test_missing_internal_gateway_config_fails_closed(self) -> None:
-        with patch.dict(os.environ, {}, clear=True), self.assertRaises(
-            DeepAgentModelBoundaryError
-        ):
+        with patch.dict(os.environ, {}, clear=True), self.assertRaises(DeepAgentModelBoundaryError):
             HttpProfileModelProvider.from_env()
 
     def test_hosted_factory_does_not_expose_model_injection(self) -> None:
@@ -222,12 +216,14 @@ class ModelGatewayChatTests(unittest.IsolatedAsyncioTestCase):
     async def test_refusal_only_result_fails_closed(self) -> None:
         model = _model()
         invoke = AsyncMock(return_value=_result(ModelOutput(kind="refusal", value="no")))
-        with patch(
-            "lumi_agent_runtime.deep_runtime.model_gateway_chat.HttpModelGatewayClient.invoke",
-            new=invoke,
+        with (
+            patch(
+                "lumi_agent_runtime.deep_runtime.model_gateway_chat.HttpModelGatewayClient.invoke",
+                new=invoke,
+            ),
+            self.assertRaises(DeepAgentModelBoundaryError),
         ):
-            with self.assertRaises(DeepAgentModelBoundaryError):
-                await model._agenerate([HumanMessage(content="hello")])
+            await model._agenerate([HumanMessage(content="hello")])
 
 
 if __name__ == "__main__":
