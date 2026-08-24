@@ -1,3 +1,46 @@
+data "aws_caller_identity" "current" {}
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+resource "aws_iam_openid_connect_provider" "github" {
+  count = var.github_oidc_provider_arn == null ? 1 : 0
+
+  url = "https://token.actions.githubusercontent.com"
+  client_id_list = [
+    "sts.amazonaws.com",
+  ]
+
+  tags = {
+    Name = "lumi-github-actions-oidc"
+  }
+}
+
+locals {
+  state_bucket_name = coalesce(
+    var.state_bucket_name,
+    "lumi-terraform-state-${data.aws_caller_identity.current.account_id}-${var.region}",
+  )
+  github_oidc_provider_arn = coalesce(
+    var.github_oidc_provider_arn,
+    one(aws_iam_openid_connect_provider.github[*].arn),
+  )
+  default_availability_zones = slice(
+    data.aws_availability_zones.available.names,
+    0,
+    min(3, length(data.aws_availability_zones.available.names)),
+  )
+  deployment_roles = {
+    staging = {
+      subject = "repo:${var.github_repository}:environment:staging"
+    }
+    production = {
+      subject = "repo:${var.github_repository}:environment:production"
+    }
+  }
+}
+
 resource "aws_kms_key" "terraform_state" {
   description             = "LUMI Terraform state encryption"
   enable_key_rotation     = true
@@ -10,7 +53,7 @@ resource "aws_kms_alias" "terraform_state" {
 }
 
 resource "aws_s3_bucket" "terraform_state" {
-  bucket = var.state_bucket_name
+  bucket = local.state_bucket_name
 }
 
 resource "aws_s3_bucket_public_access_block" "terraform_state" {
@@ -73,19 +116,6 @@ resource "aws_s3_bucket_policy" "terraform_state" {
   policy = data.aws_iam_policy_document.terraform_state.json
 }
 
-data "aws_caller_identity" "current" {}
-
-locals {
-  deployment_roles = {
-    staging = {
-      subject = "repo:${var.github_repository}:environment:staging"
-    }
-    production = {
-      subject = "repo:${var.github_repository}:environment:production"
-    }
-  }
-}
-
 data "aws_iam_policy_document" "github_assume" {
   for_each = local.deployment_roles
 
@@ -93,7 +123,7 @@ data "aws_iam_policy_document" "github_assume" {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [var.github_oidc_provider_arn]
+      identifiers = [local.github_oidc_provider_arn]
     }
     condition {
       test     = "StringEquals"
@@ -235,6 +265,18 @@ resource "aws_iam_role_policy" "github_platform_provisioner" {
   policy   = data.aws_iam_policy_document.github_platform_provisioner.json
 }
 
+output "aws_account_id" {
+  value = data.aws_caller_identity.current.account_id
+}
+
+output "aws_region" {
+  value = var.region
+}
+
+output "github_oidc_provider_arn" {
+  value = local.github_oidc_provider_arn
+}
+
 output "state_bucket" {
   value = aws_s3_bucket.terraform_state.bucket
 }
@@ -245,4 +287,24 @@ output "state_kms_key_arn" {
 
 output "github_deploy_role_arns" {
   value = { for environment, role in aws_iam_role.github_deploy : environment => role.arn }
+}
+
+output "staging_environment_bootstrap" {
+  value = {
+    AWS_ACCOUNT_ID              = data.aws_caller_identity.current.account_id
+    AWS_AVAILABILITY_ZONES_JSON = jsonencode(local.default_availability_zones)
+    AWS_DEPLOY_ROLE_ARN         = aws_iam_role.github_deploy["staging"].arn
+    AWS_REGION                  = var.region
+    TERRAFORM_STATE_BUCKET      = aws_s3_bucket.terraform_state.bucket
+  }
+}
+
+output "production_environment_bootstrap" {
+  value = {
+    AWS_ACCOUNT_ID              = data.aws_caller_identity.current.account_id
+    AWS_AVAILABILITY_ZONES_JSON = jsonencode(local.default_availability_zones)
+    AWS_DEPLOY_ROLE_ARN         = aws_iam_role.github_deploy["production"].arn
+    AWS_REGION                  = var.region
+    TERRAFORM_STATE_BUCKET      = aws_s3_bucket.terraform_state.bucket
+  }
 }
