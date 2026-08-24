@@ -65,7 +65,8 @@ jobs:
           )
           new_failure_status = (
               "                SET status = $3::varchar(32), error_category = $4, error_code = $5,\n"
-              "                    completed_at = CASE WHEN $3::varchar(32) = 'failed_final' THEN now() ELSE NULL END,\n"
+              "                    completed_at = CASE\n"
+              "                        WHEN $3::varchar(32) = 'failed_final' THEN now() ELSE NULL END,\n"
           )
           if source.count(old_failure_status) != 1:
               raise SystemExit("expected exactly one ambiguous failure-status SQL boundary")
@@ -104,7 +105,7 @@ jobs:
 
           source = Path("apps/api/src/lumi_api/idempotency/gateway.py").read_text(encoding="utf-8")
           assert "SET status = $3::varchar(32)" in source
-          assert "CASE WHEN $3::varchar(32) = 'failed_final'" in source
+          assert "$3::varchar(32) = 'failed_final'" in source
           print("idempotency PostgreSQL paid-guard boundaries: PASS")
           PY
 
