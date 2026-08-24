@@ -253,6 +253,27 @@ def main() -> int:
     sandbox_sg = hcl_block(network, 'resource "aws_security_group" "sandbox_egress" {')
     require('cidr_blocks = ["0.0.0.0/0"]' not in app_sg, "app identity SG grants public egress")
     require('cidr_blocks = ["0.0.0.0/0"]' in internet_sg, "explicit app Internet egress SG missing")
+    require_hcl_assignment(internet_sg, "protocol", '"tcp"', "app Internet egress must be TCP-only")
+    require_hcl_assignment(internet_sg, "from_port", "443", "app Internet egress must start at HTTPS/443")
+    require_hcl_assignment(internet_sg, "to_port", "443", "app Internet egress must end at HTTPS/443")
+    require("#trivy:ignore:AVD-AWS-0104" in network, "public HTTPS egress exception must be resource-scoped")
+    require("#trivy:ignore:AVD-AWS-0053" in compute, "public ALB exception must be resource-scoped")
+    platform_provisioner = hcl_block(
+        bootstrap,
+        'data "aws_iam_policy_document" "github_platform_provisioner" {',
+    )
+    require('"s3:*"' not in platform_provisioner, "bootstrap platform provisioner must not grant unrestricted S3 actions")
+    for s3_action in (
+        "s3:CreateBucket",
+        "s3:PutBucketOwnershipControls",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutBucketVersioning",
+        "s3:PutEncryptionConfiguration",
+        "s3:PutLifecycleConfiguration",
+        "s3:PutBucketPolicy",
+        "s3:PutReplicationConfiguration",
+    ):
+        require(f'"{s3_action}"' in platform_provisioner, f"bootstrap platform provisioner missing {s3_action}")
     require('cidr_blocks = ["0.0.0.0/0"]' not in sandbox_sg, "restricted runtime SG grants public egress")
     require("prefix_list_ids = [data.aws_prefix_list.s3.id]" in sandbox_sg, "restricted runtime S3 transport allowance missing")
     require(

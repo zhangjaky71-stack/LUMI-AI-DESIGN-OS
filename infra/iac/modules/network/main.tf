@@ -191,15 +191,18 @@ resource "aws_security_group" "app" {
 
 # General application services need provider/webhook/package egress. Keeping this
 # permission in a separate SG means sandbox-runtime can omit it entirely.
+# Public provider/webhook egress is intentionally isolated from the base app identity SG.
+# Only TLS/443 is permitted, and this SG is never attached to sandbox-runtime or outbox-dispatcher.
+#trivy:ignore:AVD-AWS-0104
 resource "aws_security_group" "app_internet_egress" {
   name        = "${local.name}-app-internet-egress"
   description = "Explicit Internet egress capability for non-sandbox services."
   vpc_id      = aws_vpc.this.id
 
   egress {
-    protocol    = "-1"
-    from_port   = 0
-    to_port     = 0
+    protocol    = "tcp"
+    from_port   = 443
+    to_port     = 443
     cidr_blocks = ["0.0.0.0/0"]
   }
 

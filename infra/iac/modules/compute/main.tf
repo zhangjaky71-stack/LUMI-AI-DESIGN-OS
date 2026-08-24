@@ -170,6 +170,9 @@ resource "aws_iam_role_policy" "task_s3" {
   policy = data.aws_iam_policy_document.task_s3[each.key].json
 }
 
+# Public HTTPS ingress is intentional; ECS tasks remain private behind this ALB.
+# The listener is certificate-backed and restricted to the pinned TLS policy below.
+#trivy:ignore:AVD-AWS-0053
 resource "aws_lb" "this" {
   name               = substr("${local.name}-alb", 0, 32)
   internal           = false
