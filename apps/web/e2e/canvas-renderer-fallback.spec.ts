@@ -285,7 +285,7 @@ test.describe("NODE-08 renderer fallback stress", () => {
       timeout: 30_000,
     });
     const fabricMetrics = await page.evaluate(async () => {
-      type FabricObject = object;
+      type FabricObject = Record<string, unknown>;
       interface FabricCanvas {
         add(...objects: FabricObject[]): number;
         renderAll(): void;
