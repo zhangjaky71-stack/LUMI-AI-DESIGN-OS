@@ -1,0 +1,64 @@
+name: Release App Shell Batch 3 Fix
+
+on:
+  pull_request:
+    branches:
+      - node-73-final-acceptance-release
+    paths:
+      - ".github/workflows/release-app-shell-batch3-fix.yml"
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: release-app-shell-batch3-fix
+  cancel-in-progress: true
+
+jobs:
+  remediate:
+    if: github.event.pull_request.head.ref == 'release-closure-p0' && github.actor == github.repository_owner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: release-closure-p0
+          fetch-depth: 1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install frozen JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Apply auditable Infinite Canvas batch 3 patch
+        run: python3 scripts/release_app_shell_batch3_fix.py
+      - name: Format exact batch 3 targets
+        run: |
+          pnpm exec prettier --write \
+            apps/web/src/components/infinite-canvas/infinite-canvas.tsx \
+            apps/web/src/lib/infinite-canvas/canvas-gateway.ts \
+            apps/web/e2e/canvas-renderer-fallback.spec.ts
+      - name: Verify full Web ESLint
+        run: pnpm --filter @lumi/web exec eslint . --max-warnings=0
+      - name: Verify Web typecheck
+        run: pnpm --filter @lumi/web typecheck
+      - name: Verify full Web unit suite
+        run: pnpm --filter @lumi/web test
+      - name: Verify Infinite Canvas regression explicitly
+        run: pnpm --filter @lumi/web exec vitest run src/lib/infinite-canvas
+      - name: Commit verified batch 3 and self-remove
+        run: |
+          rm .github/workflows/release-app-shell-batch3-fix.yml
+          rm scripts/release_app_shell_batch3_fix.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/release-app-shell-batch3-fix.yml \
+            scripts/release_app_shell_batch3_fix.py \
+            apps/web/src/components/infinite-canvas/infinite-canvas.tsx \
+            apps/web/src/lib/infinite-canvas/canvas-gateway.ts \
+            apps/web/e2e/canvas-renderer-fallback.spec.ts
+          git commit -m "fix(app-shell): close Infinite Canvas React 19 backlog"
+          git push origin HEAD:release-closure-p0
