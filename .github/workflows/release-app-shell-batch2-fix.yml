@@ -1,0 +1,67 @@
+name: Release App Shell Batch 2 Fix
+
+on:
+  pull_request:
+    branches:
+      - node-73-final-acceptance-release
+    paths:
+      - ".github/workflows/release-app-shell-batch2-fix.yml"
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: release-app-shell-batch2-fix
+  cancel-in-progress: true
+
+jobs:
+  remediate:
+    if: github.event.pull_request.head.ref == 'release-closure-p0' && github.actor == github.repository_owner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: release-closure-p0
+          fetch-depth: 1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install frozen JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Apply auditable batch 2 patch
+        run: python3 scripts/release_app_shell_batch2_fix.py
+      - name: Verify targeted ESLint
+        run: |
+          pnpm --filter @lumi/web exec eslint \
+            src/components/ai-workspace/ai-workspace.tsx \
+            src/components/brand-kit/brand-kit.tsx \
+            src/components/export-ui/export-ui.tsx \
+            src/components/versions-ui/versions-ui.tsx \
+            src/lib/admin-console/admin-gateway.ts \
+            src/lib/approval-ui/contracts.test.ts \
+            --max-warnings=0
+      - name: Verify Web typecheck
+        run: pnpm --filter @lumi/web typecheck
+      - name: Verify Web unit tests
+        run: pnpm --filter @lumi/web test
+      - name: Commit verified batch 2 and self-remove
+        run: |
+          rm .github/workflows/release-app-shell-batch2-fix.yml
+          rm scripts/release_app_shell_batch2_fix.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/release-app-shell-batch2-fix.yml \
+            scripts/release_app_shell_batch2_fix.py \
+            apps/web/src/components/ai-workspace/ai-workspace.tsx \
+            apps/web/src/components/brand-kit/brand-kit.tsx \
+            apps/web/src/components/export-ui/export-ui.tsx \
+            apps/web/src/components/versions-ui/versions-ui.tsx \
+            apps/web/src/lib/admin-console/admin-gateway.ts \
+            apps/web/src/lib/approval-ui/contracts.test.ts
+          git commit -m "fix(app-shell): close React 19 batch 2 lint backlog"
+          git push origin HEAD:release-closure-p0
