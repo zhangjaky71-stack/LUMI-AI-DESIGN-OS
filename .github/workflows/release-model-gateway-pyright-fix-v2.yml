@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: release-closure-p0
-          fetch-depth: 1
+          fetch-depth: 3
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
@@ -41,48 +41,47 @@ jobs:
           import subprocess
           import yaml
 
-          workflow_path = Path('.github/workflows/release-model-gateway-pyright-fix.yml')
-          workflow = yaml.safe_load(workflow_path.read_text(encoding='utf-8'))
-          steps = workflow['jobs']['remediate']['steps']
+          original = subprocess.run(
+              [
+                  "git",
+                  "show",
+                  "5eed9cc0a6fd2e82d3fe2e47736fad78fb03924e:.github/workflows/release-model-gateway-pyright-fix.yml",
+              ],
+              check=True,
+              capture_output=True,
+              text=True,
+          ).stdout
+          workflow = yaml.safe_load(original)
+          steps = workflow["jobs"]["remediate"]["steps"]
           script = next(
-              step['run']
+              step["run"]
               for step in steps
-              if step.get('name') == 'Apply behavior-equivalent type boundary fixes'
+              if step.get("name") == "Apply behavior-equivalent type boundary fixes"
           )
 
-          old_generic_patch = (
-              '          image_runtime = "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py"\n'
-              '          replace(\n'
-              '              image_runtime,\n'
-              '              "async def _gateway_call[T](awaitable: Awaitable[_T], *, code: str) -> _T:\\n",\n'
-              '              "async def _gateway_call(awaitable: Awaitable[_T], *, code: str) -> _T:\\n",\n'
-              '          )\n'
-          )
-          new_generic_patch = (
-              '          image_runtime = "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py"\n'
-              '          replace(\n'
-              '              image_runtime,\n'
-              '              "from typing import TypeVar, cast\\n",\n'
-              '              "from typing import cast\\n",\n'
-              '          )\n'
-              '          replace(\n'
-              '              image_runtime,\n'
-              '              "\\n_T = TypeVar(\\\"_T\\\")\\n",\n'
-              '              "\\n",\n'
-              '          )\n'
-              '          replace(\n'
-              '              image_runtime,\n'
-              '              "async def _gateway_call[T](awaitable: Awaitable[_T], *, code: str) -> _T:\\n",\n'
-              '              "async def _gateway_call[T](awaitable: Awaitable[T], *, code: str) -> T:\\n",\n'
-              '          )\n'
-          )
-          if old_generic_patch not in script:
-              raise SystemExit('validated V1 generic patch block was not found')
-          script = script.replace(old_generic_patch, new_generic_patch, 1)
+          old_output = '"async def _gateway_call(awaitable: Awaitable[_T], *, code: str) -> _T:\\n",'
+          new_output = '"async def _gateway_call[T](awaitable: Awaitable[T], *, code: str) -> T:\\n",'
+          if script.count(old_output) != 1:
+              raise SystemExit(
+                  f"expected exactly one V1 generic output, found {script.count(old_output)}"
+              )
+          script = script.replace(old_output, new_output, 1)
           subprocess.run(
-              ['bash', '-e', '-u', '-o', 'pipefail', '-c', script],
+              ["bash", "-e", "-u", "-o", "pipefail", "-c", script],
               check=True,
           )
+
+          runtime = Path("apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py")
+          source = runtime.read_text(encoding="utf-8")
+          old_import = "from typing import TypeVar, cast\n"
+          if source.count(old_import) != 1:
+              raise SystemExit("expected TypeVar import after V1 patch")
+          source = source.replace(old_import, "from typing import cast\n", 1)
+          old_typevar = '\n_T = TypeVar("_T")\n'
+          if source.count(old_typevar) != 1:
+              raise SystemExit("expected legacy _T declaration after V1 patch")
+          source = source.replace(old_typevar, "\n", 1)
+          runtime.write_text(source, encoding="utf-8")
           PY
       - name: Format and lint touched Model Gateway boundary
         run: |
