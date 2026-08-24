@@ -1,15 +1,14 @@
 name: Release Projects Rename Conflict Fix
 
 on:
-  pull_request:
+  push:
     branches:
-      - node-73-final-acceptance-release
+      - release-closure-p0
     paths:
       - ".github/workflows/release-projects-rename-conflict-fix.yml"
 
 permissions:
   contents: write
-  pull-requests: read
 
 concurrency:
   group: release-projects-rename-conflict-fix
@@ -17,7 +16,7 @@ concurrency:
 
 jobs:
   remediate:
-    if: github.event.pull_request.head.ref == 'release-closure-p0' && github.actor == github.repository_owner
+    if: github.ref == 'refs/heads/release-closure-p0'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
@@ -45,25 +44,24 @@ jobs:
 
           path = Path("apps/web/src/components/projects/projects-dashboard.tsx")
           source = path.read_text(encoding="utf-8")
-          old = '''    } catch (renameError) {
-              setProjects(previous);
-              setError(projectUiError(renameError));
-              if (isVersionConflict(renameError)) {
-                queryCache.clear();
-                void load();
-              }
-'''
-          new = '''    } catch (renameError) {
-              setProjects(previous);
-              if (isVersionConflict(renameError)) {
-                queryCache.clear();
-                void load();
-              }
-              setError(projectUiError(renameError));
-'''
-          if source.count(old) != 1:
-              raise SystemExit(f"expected exactly one rename conflict block, found {source.count(old)}")
-          path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          error_line = "      setError(projectUiError(renameError));\n"
+          conflict_block = (
+              "      if (isVersionConflict(renameError)) {\n"
+              "        queryCache.clear();\n"
+              "        void load();\n"
+              "      }\n"
+          )
+          if source.count(error_line) != 1:
+              raise SystemExit(f"expected exactly one rename error line, found {source.count(error_line)}")
+          if source.count(conflict_block) != 1:
+              raise SystemExit(f"expected exactly one rename conflict block, found {source.count(conflict_block)}")
+          source = source.replace(error_line, "", 1)
+          source = source.replace(
+              conflict_block,
+              conflict_block + error_line,
+              1,
+          )
+          path.write_text(source, encoding="utf-8")
           PY
           git diff --check
       - name: Validate Projects architecture and quality
