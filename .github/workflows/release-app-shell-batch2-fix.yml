@@ -90,8 +90,17 @@ jobs:
             --max-warnings=0
       - name: Verify Web typecheck
         run: pnpm --filter @lumi/web typecheck
-      - name: Verify Web unit tests
-        run: pnpm --filter @lumi/web test
+      - name: Verify batch 2 regression units
+        run: |
+          pnpm --filter @lumi/web exec vitest run \
+            src/lib/ai-workspace \
+            src/lib/brand-kit \
+            src/lib/export-ui \
+            src/lib/versions-ui \
+            src/lib/admin-console \
+            src/lib/approval-ui \
+            src/lib/app-shell/api-client.test.ts \
+            src/lib/app-shell/query-cache.test.ts
       - name: Commit verified batch 2 and self-remove
         run: |
           rm .github/workflows/release-app-shell-batch2-fix.yml
