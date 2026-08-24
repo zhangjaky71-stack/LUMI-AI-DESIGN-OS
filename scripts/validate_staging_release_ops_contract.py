@@ -96,14 +96,20 @@ def main() -> int:
         require(bridge, marker, "release-staging-dispatch-bridge")
 
     critical = set(pins.get("release_critical_workflows", []))
-    required_workflows = {
-        ".github/workflows/deploy-staging-infrastructure.yml",
+    evidence = set(pins.get("release_evidence_workflows", []))
+    governed = critical | evidence
+    canonical_deploy = ".github/workflows/deploy-staging-infrastructure.yml"
+    if canonical_deploy not in governed:
+        raise SystemExit("release action pin policy must govern canonical Staging deploy workflow")
+    if canonical_deploy in critical:
+        raise SystemExit("Staging deploy must remain outside the fixed default-branch dispatch-critical registry")
+    non_dispatch_helpers = {
         ".github/workflows/release-staging-dispatch-bridge.yml",
         ".github/workflows/staging-release-ops-contract.yml",
     }
-    missing = sorted(required_workflows - critical)
-    if missing:
-        raise SystemExit("release action pin policy missing Staging workflows: " + ", ".join(missing))
+    unexpected = sorted(non_dispatch_helpers & critical)
+    if unexpected:
+        raise SystemExit("push-only Staging helpers must not enter the workflow_dispatch critical registry: " + ", ".join(unexpected))
 
     print(
         json.dumps(
@@ -113,6 +119,7 @@ def main() -> int:
                 "runtime_repository_count": 6,
                 "digest_preserving_promotion": True,
                 "stale_image_vars_rejected": True,
+                "canonical_deploy_action_pin_governed": True,
             },
             sort_keys=True,
         )
