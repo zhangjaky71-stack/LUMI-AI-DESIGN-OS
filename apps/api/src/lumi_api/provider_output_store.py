@@ -23,6 +23,8 @@ _BUCKET = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,511}$")
 
 
+# Keep this boundary structural: production uses S3ObjectStore while tests use
+# capability-equivalent fakes without weakening the provider-output contract.
 class _ProviderObjectStore(Protocol):
     async def put_bytes(
         self,
