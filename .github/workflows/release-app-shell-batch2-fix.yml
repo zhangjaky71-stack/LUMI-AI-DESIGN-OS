@@ -33,7 +33,20 @@ jobs:
       - name: Install frozen JS workspace
         run: pnpm install --frozen-lockfile
       - name: Apply auditable batch 2 patch
-        run: python3 scripts/release_app_shell_batch2_fix.py
+        run: |
+          python3 scripts/release_app_shell_batch2_fix.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          target = Path("apps/web/src/components/export-ui/export-ui.tsx")
+          source = target.read_text(encoding="utf-8")
+          residue = "  ExportSourceOption,\n"
+          if source.count(residue) != 1:
+              raise SystemExit(
+                  f"expected exactly one ExportSourceOption import residue, found {source.count(residue)}"
+              )
+          target.write_text(source.replace(residue, "", 1), encoding="utf-8")
+          PY
       - name: Verify targeted ESLint
         run: |
           pnpm --filter @lumi/web exec eslint \
