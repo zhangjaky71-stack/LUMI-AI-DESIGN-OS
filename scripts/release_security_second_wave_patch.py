@@ -111,7 +111,9 @@ ignore_path.write_text(
 )
 
 # Turn the intentional egress/ALB boundaries and S3 least-privilege change into
-# durable production-IaC contract assertions.
+# durable production-IaC contract assertions. The S3 assertion is deliberately
+# scoped to the platform-provisioner policy block so unrelated state/bootstrap
+# policies can retain their own deny/action semantics without masking this gate.
 replace_once(
     "scripts/validate_production_iac_contract.py",
     '    require(\'cidr_blocks = ["0.0.0.0/0"]\' in internet_sg, "explicit app Internet egress SG missing")\n',
@@ -121,7 +123,11 @@ replace_once(
     '    require_hcl_assignment(internet_sg, "to_port", "443", "app Internet egress must end at HTTPS/443")\n'
     '    require("#trivy:ignore:AVD-AWS-0104" in network, "public HTTPS egress exception must be resource-scoped")\n'
     '    require("#trivy:ignore:AVD-AWS-0053" in compute, "public ALB exception must be resource-scoped")\n'
-    '    require(\'"s3:*"\' not in bootstrap, "bootstrap platform provisioner must not grant unrestricted S3 actions")\n'
+    '    platform_provisioner = hcl_block(\n'
+    '        bootstrap,\n'
+    '        \'data "aws_iam_policy_document" "github_platform_provisioner" {\',\n'
+    '    )\n'
+    '    require(\'"s3:*"\' not in platform_provisioner, "bootstrap platform provisioner must not grant unrestricted S3 actions")\n'
     '    for s3_action in (\n'
     '        "s3:CreateBucket",\n'
     '        "s3:PutBucketOwnershipControls",\n'
@@ -132,7 +138,7 @@ replace_once(
     '        "s3:PutBucketPolicy",\n'
     '        "s3:PutReplicationConfiguration",\n'
     '    ):\n'
-    '        require(f\'"{s3_action}"\' in bootstrap, f"bootstrap platform provisioner missing {s3_action}")\n',
+    '        require(f\'"{s3_action}"\' in platform_provisioner, f"bootstrap platform provisioner missing {s3_action}")\n',
 )
 
 # Bind the recovery-root exception to a verified privilege-boundary contract.
