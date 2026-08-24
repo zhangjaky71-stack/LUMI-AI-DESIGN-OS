@@ -38,7 +38,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
-      - name: Patch fail-closed JSONB decode boundary
+      - name: Patch fail-closed PostgreSQL paid-guard boundaries
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -59,6 +59,18 @@ jobs:
               raise SystemExit("expected exactly one legacy result_json snapshot decode")
           source = source.replace(old_snapshot, new_snapshot, 1)
 
+          old_failure_status = (
+              "                SET status = $3, error_category = $4, error_code = $5,\n"
+              "                    completed_at = CASE WHEN $3 = 'failed_final' THEN now() ELSE NULL END,\n"
+          )
+          new_failure_status = (
+              "                SET status = $3::varchar(32), error_category = $4, error_code = $5,\n"
+              "                    completed_at = CASE WHEN $3::varchar(32) = 'failed_final' THEN now() ELSE NULL END,\n"
+          )
+          if source.count(old_failure_status) != 1:
+              raise SystemExit("expected exactly one ambiguous failure-status SQL boundary")
+          source = source.replace(old_failure_status, new_failure_status, 1)
+
           old_json = '''def _json(value: dict[str, Any]) -> str:\n    import json\n\n    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))\n'''
           new_json = '''def _json_object(value: Any) -> dict[str, Any]:\n    if value is None:\n        return {}\n    if isinstance(value, dict):\n        return dict(value)\n    if isinstance(value, (str, bytes, bytearray)):\n        try:\n            decoded = json.loads(value)\n        except (json.JSONDecodeError, UnicodeDecodeError, TypeError) as exc:\n            raise ValueError("IDEMPOTENCY_RESULT_JSON_INVALID") from exc\n        if not isinstance(decoded, dict):\n            raise ValueError("IDEMPOTENCY_RESULT_JSON_INVALID")\n        return decoded\n    raise ValueError("IDEMPOTENCY_RESULT_JSON_INVALID")\n\n\ndef _json(value: dict[str, Any]) -> str:\n    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))\n'''
           if source.count(old_json) != 1:
@@ -74,6 +86,8 @@ jobs:
           uv run ruff check apps/api/src/lumi_api/idempotency/gateway.py apps/api/tests/integration/test_model_paid_guard_postgres.py
           uv run pyright apps/api/src/lumi_api/idempotency/gateway.py
           uv run python - <<'PY'
+          from pathlib import Path
+
           from lumi_api.idempotency.gateway import _json_object
 
           assert _json_object(None) == {}
@@ -87,7 +101,11 @@ jobs:
                   assert str(exc) == "IDEMPOTENCY_RESULT_JSON_INVALID"
               else:
                   raise AssertionError(f"invalid JSON boundary accepted: {invalid!r}")
-          print("idempotency JSON object decode boundary: PASS")
+
+          source = Path("apps/api/src/lumi_api/idempotency/gateway.py").read_text(encoding="utf-8")
+          assert "SET status = $3::varchar(32)" in source
+          assert "CASE WHEN $3::varchar(32) = 'failed_final'" in source
+          print("idempotency PostgreSQL paid-guard boundaries: PASS")
           PY
 
       - name: Prepare PostgreSQL acceptance environment
@@ -113,10 +131,10 @@ jobs:
             .github/workflows/release-model-gateway-postgres-json-fix.yml \
             apps/api/src/lumi_api/idempotency/gateway.py
           if git diff --cached --quiet; then
-            echo "No verified PostgreSQL JSON boundary changes were produced" >&2
+            echo "No verified PostgreSQL paid-guard changes were produced" >&2
             exit 1
           fi
-          git commit -m "fix(model-gateway): decode durable JSONB results safely"
+          git commit -m "fix(model-gateway): harden durable paid guard postgres boundary"
           git push origin HEAD:release-closure-p0
 
       - name: Cleanup
