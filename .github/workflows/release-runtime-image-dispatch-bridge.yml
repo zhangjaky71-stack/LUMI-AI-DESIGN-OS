@@ -1,0 +1,106 @@
+name: Release Runtime Image Dispatch Bridge
+
+on:
+  push:
+    branches:
+      - release-closure-p0
+    paths:
+      - production/runtime-images/release-request-v1.json
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+concurrency:
+  group: release-runtime-image-dispatch-bridge-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: github.ref_type == 'branch' && github.ref_name == 'release-closure-p0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate exact release request
+        env:
+          EXPECTED_PARENT: ${{ github.event.before }}
+          REQUEST_PATH: production/runtime-images/release-request-v1.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["REQUEST_PATH"])
+          payload = json.loads(path.read_text(encoding="utf-8"))
+          expected = {
+              "schema_version": 1,
+              "operation": "build-and-freeze-six-runtime-rc",
+              "requested_branch": "release-closure-p0",
+              "source_parent": os.environ["EXPECTED_PARENT"],
+          }
+          for key, value in expected.items():
+              if payload.get(key) != value:
+                  raise SystemExit(f"release request {key} mismatch: {payload.get(key)!r} != {value!r}")
+          request_id = payload.get("request_id")
+          purpose = payload.get("purpose")
+          if not isinstance(request_id, str) or not request_id.startswith("node-73-rc-"):
+              raise SystemExit("release request_id must use node-73-rc-* namespace")
+          if not isinstance(purpose, str) or not purpose.strip():
+              raise SystemExit("release request purpose is required")
+          print(f"validated release request {request_id}")
+          PY
+
+      - name: Dispatch canonical runtime image build and record run identity
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUEST_PATH: production/runtime-images/release-request-v1.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/build-runtime-image-set.yml/dispatches" \
+            -f ref="$GITHUB_REF_NAME" \
+            -F return_run_details=true)"
+
+          run_id="$(printf '%s' "$response" | python3 -c 'import json,sys; p=json.load(sys.stdin); v=p.get("workflow_run_id"); assert isinstance(v,int) and v>0, p; print(v)')"
+          html_url="$(printf '%s' "$response" | python3 -c 'import json,sys; p=json.load(sys.stdin); v=p.get("html_url"); assert isinstance(v,str) and v.startswith("https://github.com/"), p; print(v)')"
+          request_id="$(python3 -c 'import json; print(json.load(open("production/runtime-images/release-request-v1.json", encoding="utf-8"))["request_id"])')"
+
+          title="[Release Bridge] Runtime image set ${GITHUB_SHA:0:12}"
+          body="$(cat <<EOF
+          Canonical six-runtime RC build dispatched.
+
+          - request_id: \`${request_id}\`
+          - source_sha: \`${GITHUB_SHA}\`
+          - source_ref: \`${GITHUB_REF}\`
+          - canonical_workflow: \`.github/workflows/build-runtime-image-set.yml\`
+          - workflow_run_id: \`${run_id}\`
+          - run: ${html_url}
+          - state: \`DISPATCHED\`
+
+          This bridge is dispatch evidence only. Do **not** treat this issue as a PASS; the canonical build run and its frozen \`runtime-image-set-${GITHUB_SHA}\` artifact must complete successfully and be independently inspected before NODE-71 binding.
+          EOF
+          )"
+
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/${GITHUB_REPOSITORY}/issues" \
+            -f title="$title" \
+            -f body="$body" >/dev/null
+
+          echo "canonical_runtime_image_run_id=${run_id}"
+          echo "canonical_runtime_image_run_url=${html_url}"
