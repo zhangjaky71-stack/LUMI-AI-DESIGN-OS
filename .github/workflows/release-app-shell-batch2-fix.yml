@@ -68,6 +68,14 @@ jobs:
               source.replace(nullable_head_calls, guarded_head_calls, 1),
               encoding="utf-8",
           )
+
+          vitest = Path("apps/web/vitest.config.ts")
+          expected = '''import { defineConfig } from "vitest/config";\n\nexport default defineConfig({\n  test: {\n    include: ["src/**/*.{test,spec}.{ts,tsx}"],\n  },\n});\n'''
+          replacement = '''import { fileURLToPath, URL } from "node:url";\nimport { defineConfig } from "vitest/config";\n\nexport default defineConfig({\n  resolve: {\n    alias: {\n      "@": fileURLToPath(new URL("./src", import.meta.url)),\n      "@lumi/artifact-sdk": fileURLToPath(\n        new URL("../../packages/artifact-sdk/src/index.ts", import.meta.url),\n      ),\n      "@lumi/brand-rules": fileURLToPath(\n        new URL("../../packages/brand-rules/src/index.ts", import.meta.url),\n      ),\n      "@lumi/canvas-sdk": fileURLToPath(\n        new URL("../../packages/canvas-sdk/src/index.ts", import.meta.url),\n      ),\n      "@lumi/design-ir": fileURLToPath(\n        new URL("../../packages/design-ir/src/index.ts", import.meta.url),\n      ),\n    },\n  },\n  test: {\n    include: ["src/**/*.{test,spec}.{ts,tsx}"],\n  },\n});\n'''
+          source = vitest.read_text(encoding="utf-8")
+          if source != expected:
+              raise SystemExit("unexpected apps/web/vitest.config.ts baseline")
+          vitest.write_text(replacement, encoding="utf-8")
           PY
       - name: Verify targeted ESLint
         run: |
@@ -78,6 +86,7 @@ jobs:
             src/components/versions-ui/versions-ui.tsx \
             src/lib/admin-console/admin-gateway.ts \
             src/lib/approval-ui/contracts.test.ts \
+            vitest.config.ts \
             --max-warnings=0
       - name: Verify Web typecheck
         run: pnpm --filter @lumi/web typecheck
@@ -92,6 +101,7 @@ jobs:
           git add \
             .github/workflows/release-app-shell-batch2-fix.yml \
             scripts/release_app_shell_batch2_fix.py \
+            apps/web/vitest.config.ts \
             apps/web/src/components/ai-workspace/ai-workspace.tsx \
             apps/web/src/components/brand-kit/brand-kit.tsx \
             apps/web/src/components/export-ui/export-ui.tsx \
