@@ -103,6 +103,7 @@ class DeterministicAdminGateway implements AdminGateway {
   }
 
   async retryRun(runId: string, _input: SensitiveActionInput): Promise<AdminRun> {
+    void _input;
     const current = this.workspace.runs.find((item) => item.run_id === runId);
     if (!current) throw new Error("ADMIN_RUN_NOT_FOUND");
     const updated: AdminRun = { ...current, status: "QUEUED", retryable: false };
@@ -111,6 +112,7 @@ class DeterministicAdminGateway implements AdminGateway {
   }
 
   async cancelRun(runId: string, _input: SensitiveActionInput): Promise<AdminRun> {
+    void _input;
     const current = this.workspace.runs.find((item) => item.run_id === runId);
     if (!current) throw new Error("ADMIN_RUN_NOT_FOUND");
     const updated: AdminRun = { ...current, status: "CANCELLED", cancellable: false };
@@ -119,6 +121,7 @@ class DeterministicAdminGateway implements AdminGateway {
   }
 
   async disableProvider(providerId: string, expiresAt: string, _input: SensitiveActionInput): Promise<AdminProvider> {
+    void _input;
     const current = this.workspace.providers.find((item) => item.provider_id === providerId);
     if (!current) throw new Error("ADMIN_PROVIDER_NOT_FOUND");
     const updated: AdminProvider = { ...current, health: "DISABLED", routing_weight_basis_points: 0, disabled_until: expiresAt, disabled_reason: "confirmed admin action" };
@@ -127,6 +130,7 @@ class DeterministicAdminGateway implements AdminGateway {
   }
 
   async requeue(queueItemId: string, _input: SensitiveActionInput): Promise<AdminQueueItem> {
+    void _input;
     const current = this.workspace.queue.find((item) => item.queue_item_id === queueItemId);
     if (!current) throw new Error("ADMIN_QUEUE_ITEM_NOT_FOUND");
     const updated: AdminQueueItem = { ...current, state: "READY", attempts: current.attempts + 1 };
@@ -135,20 +139,26 @@ class DeterministicAdminGateway implements AdminGateway {
   }
 
   async setRegistryEnabled(item: AdminRegistryItem, enabled: boolean, _input: SensitiveActionInput): Promise<AdminRegistryItem> {
+    void _input;
     const updated: AdminRegistryItem = { ...item, enabled };
     this.workspace = { ...this.workspace, registry: this.workspace.registry.map((value) => value.registry_id === item.registry_id && value.kind === item.kind ? updated : value) };
     return updated;
   }
 
   async adjustBilling(organizationId: string, deltaCredits: number, _input: SensitiveActionInput): Promise<AdminBillingView> {
+    void _input;
     return { organization_id: organizationId, plan_version_id: "pro-v2", subscription_state: "ACTIVE", credit_balance: 1200 + deltaCredits, invoice_refs: ["inv-6401"] };
   }
 
   async revealPii(userId: string, _reason: string, _ticketRef: string): Promise<RevealedPii> {
+    void _reason;
+    void _ticketRef;
     return { user_id: userId, email: `${userId}@example.test`, phone: "+81 •• •••• 6401" };
   }
 
   async startViewAs(userId: string, organizationId: string, _reason: string, _ticketRef: string): Promise<ViewAsSession> {
+    void _reason;
+    void _ticketRef;
     const started = new Date();
     return { session_id: "view-node64", admin_actor_id: this.workspace.actor.actor_id, target_user_id: userId, target_organization_id: organizationId, readonly: true, started_at: started.toISOString(), expires_at: new Date(started.getTime() + 10 * 60_000).toISOString(), ended_at: null };
   }

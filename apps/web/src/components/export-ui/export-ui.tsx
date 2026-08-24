@@ -18,7 +18,6 @@ import type {
   ExportDownloadLease,
   ExportHistoryItem,
   ExportJobView,
-  ExportSourceOption,
   ExportWorkspaceSnapshot,
 } from "@/lib/export-ui/types";
 import styles from "./export-ui.module.css";
@@ -33,10 +32,6 @@ function bytes(value: number): string {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function exactLabel(source: ExportSourceOption): string {
-  return `${source.artifact_version_id} · ${source.design_document_version_id}`;
 }
 
 export function ExportUI({ projectId, bootstrap }: { projectId: string; bootstrap: ExportBootstrap }) {
@@ -62,15 +57,17 @@ export function ExportUI({ projectId, bootstrap }: { projectId: string; bootstra
   useEffect(() => {
     if (bootstrap.workspace) return;
     const controller = new AbortController();
-    setLoading(true);
-    gatewayRef.current.loadWorkspace(projectId, controller.signal)
-      .then((snapshot) => {
-        setWorkspace(snapshot);
-        setSourceId(snapshot.active_source_id ?? snapshot.sources[0]?.id ?? "");
-        setHistory(snapshot.history);
-      })
-      .catch(() => setError("Export workspace could not be loaded."))
-      .finally(() => setLoading(false));
+    queueMicrotask(() => {
+      if (controller.signal.aborted) return;
+      gatewayRef.current.loadWorkspace(projectId, controller.signal)
+        .then((snapshot) => {
+          setWorkspace(snapshot);
+          setSourceId(snapshot.active_source_id ?? snapshot.sources[0]?.id ?? "");
+          setHistory(snapshot.history);
+        })
+        .catch(() => setError("Export workspace could not be loaded."))
+        .finally(() => setLoading(false));
+    });
     return () => controller.abort();
   }, [bootstrap.workspace, projectId]);
 
@@ -84,15 +81,34 @@ export function ExportUI({ projectId, bootstrap }: { projectId: string; bootstra
   );
   const selectedCapability = capabilities.find((item) => item.format === format) ?? capabilities[0] ?? null;
 
-  useEffect(() => {
-    if (!source) return;
-    if (sizeMode === "ORIGINAL") { setWidth(source.width); setHeight(source.height); }
-    if (sizeMode === "2X") { setWidth(source.width * 2); setHeight(source.height * 2); }
-  }, [sizeMode, source]);
+  const effectiveFormat = selectedCapability?.format ?? format;
 
-  useEffect(() => {
-    if (!selectedCapability && capabilities[0]) setFormat(capabilities[0].format);
-  }, [capabilities, selectedCapability]);
+  const selectSource = (nextSourceId: string) => {
+    setSourceId(nextSourceId);
+    setJob(null);
+    setLease(null);
+    const nextSource = workspace?.sources.find((item) => item.id === nextSourceId) ?? null;
+    if (!nextSource) return;
+    if (sizeMode === "ORIGINAL") {
+      setWidth(nextSource.width);
+      setHeight(nextSource.height);
+    } else if (sizeMode === "2X") {
+      setWidth(nextSource.width * 2);
+      setHeight(nextSource.height * 2);
+    }
+  };
+
+  const selectSizeMode = (mode: "ORIGINAL" | "2X" | "CUSTOM" | "PRESET") => {
+    setSizeMode(mode);
+    if (!source) return;
+    if (mode === "ORIGINAL") {
+      setWidth(source.width);
+      setHeight(source.height);
+    } else if (mode === "2X") {
+      setWidth(source.width * 2);
+      setHeight(source.height * 2);
+    }
+  };
 
   useEffect(() => {
     if (!job || ["READY", "FAILED", "EXPIRED"].includes(job.status)) return;
@@ -173,7 +189,7 @@ export function ExportUI({ projectId, bootstrap }: { projectId: string; bootstra
         <section className={styles.panel}>
           <div className={styles.sectionTitle}><span>01</span><div><h2>Exact source</h2><p>No floating latest/head/current resolution.</p></div></div>
           <label className={styles.field}>Source
-            <select value={source.id} onChange={(event) => { setSourceId(event.target.value); setJob(null); setLease(null); }} data-testid="source-select">
+            <select value={source.id} onChange={(event) => selectSource(event.target.value)} data-testid="source-select">
               {workspace.sources.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
           </label>
@@ -189,7 +205,7 @@ export function ExportUI({ projectId, bootstrap }: { projectId: string; bootstra
           <div className={styles.sectionTitle}><span>02</span><div><h2>Format</h2><p>Only verified capabilities are shown.</p></div></div>
           <div className={styles.formatGrid} data-testid="format-options">
             {capabilities.map((item) => (
-              <button key={item.format} className={format === item.format ? styles.formatActive : styles.formatButton} onClick={() => setFormat(item.format)}>{item.label}</button>
+              <button key={item.format} className={effectiveFormat === item.format ? styles.formatActive : styles.formatButton} onClick={() => setFormat(item.format)}>{item.label}</button>
             ))}
           </div>
           <p className={styles.micro} data-testid="unsupported-hidden">CMYK · Display P3 · PSD · bleed · crop marks are hidden until verified.</p>
@@ -198,7 +214,7 @@ export function ExportUI({ projectId, bootstrap }: { projectId: string; bootstra
         <section className={styles.panel}>
           <div className={styles.sectionTitle}><span>03</span><div><h2>Size & geometry</h2><p>Export only scales or crops. Adapt creates a new version first.</p></div></div>
           <div className={styles.segmented}>
-            {(["ORIGINAL", "2X", "CUSTOM", "PRESET"] as const).map((mode) => <button key={mode} className={sizeMode === mode ? styles.segmentActive : ""} onClick={() => setSizeMode(mode)}>{mode === "2X" ? "2×" : mode[0] + mode.slice(1).toLowerCase()}</button>)}
+            {(["ORIGINAL", "2X", "CUSTOM", "PRESET"] as const).map((mode) => <button key={mode} className={sizeMode === mode ? styles.segmentActive : ""} onClick={() => selectSizeMode(mode)}>{mode === "2X" ? "2×" : mode[0] + mode.slice(1).toLowerCase()}</button>)}
           </div>
           {sizeMode === "PRESET" && <label className={styles.field}>Preset<select onChange={(event) => { const preset = PRESETS.find((item) => item.id === event.target.value) ?? PRESETS[0]; setWidth(preset.width); setHeight(preset.height); }} defaultValue={PRESETS[0].id}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label} · {preset.width}×{preset.height}</option>)}</select></label>}
           {(sizeMode === "CUSTOM" || sizeMode === "PRESET") && <div className={styles.dimensionRow}><label>W<input type="number" min={1} value={width} onChange={(event) => setWidth(Number(event.target.value))} /></label><span>×</span><label>H<input type="number" min={1} value={height} onChange={(event) => setHeight(Number(event.target.value))} /></label></div>}

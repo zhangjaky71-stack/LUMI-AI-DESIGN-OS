@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useShell } from "@/components/app-shell/shell-context";
 import { getVersionsGateway } from "@/lib/versions-ui/versions-gateway";
 import type {
@@ -107,51 +107,62 @@ export function VersionsUI({
   const [provenance, setProvenance] = useState<SafeVersionProvenance | null>(null);
   const [provenanceError, setProvenanceError] = useState<string | null>(null);
 
+  const applyWorkspaceSnapshot = useCallback((next: VersionWorkspaceSnapshot, preserveSelection = true) => {
+    const ids = new Set(next.versions.map((item) => item.version.id));
+    const fallbackTo = next.versions[0]?.version.id ?? null;
+    const fallbackFrom = next.versions[1]?.version.id ?? fallbackTo;
+    setSnapshot(next);
+    setSelectedBranchId((current) =>
+      preserveSelection && current && next.branches.some((branch) => branch.id === current)
+        ? current
+        : next.active_branch_id,
+    );
+    setCompareToId((current) =>
+      preserveSelection && current && ids.has(current) ? current : fallbackTo,
+    );
+    setCompareFromId((current) =>
+      preserveSelection && current && ids.has(current) ? current : fallbackFrom,
+    );
+    setRestoreSourceId((current) =>
+      preserveSelection && current && ids.has(current) ? current : fallbackFrom,
+    );
+    setProvenanceVersionId((current) =>
+      preserveSelection && current && ids.has(current) ? current : fallbackTo,
+    );
+    setCompare(null);
+    setProvenance(null);
+    setProvenanceError(null);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    void queryCache
-      .fetchQuery(
-        ["versions-ui", projectId],
-        (signal) => gateway.getWorkspace(activeOrganization.id, projectId, null, signal),
-        0,
-      )
-      .then((next) => {
-        if (!cancelled) setSnapshot(next);
-      })
-      .catch((loadError) => {
-        if (!cancelled) setError(uiError(loadError));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
+      void queryCache
+        .fetchQuery(
+          ["versions-ui", projectId],
+          (signal) => gateway.getWorkspace(activeOrganization.id, projectId, null, signal),
+          0,
+        )
+        .then((next) => {
+          if (!cancelled) applyWorkspaceSnapshot(next, false);
+        })
+        .catch((loadError) => {
+          if (!cancelled) setError(uiError(loadError));
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    });
     return () => {
       cancelled = true;
     };
-  }, [activeOrganization.id, gateway, projectId, queryCache]);
+  }, [activeOrganization.id, applyWorkspaceSnapshot, gateway, projectId, queryCache]);
 
   useEffect(() => {
-    if (!snapshot) return;
-    setSelectedBranchId((current) =>
-      current && snapshot.branches.some((branch) => branch.id === current)
-        ? current
-        : snapshot.active_branch_id,
-    );
-    const ids = new Set(snapshot.versions.map((item) => item.version.id));
-    const fallbackTo = snapshot.versions[0]?.version.id ?? null;
-    const fallbackFrom = snapshot.versions[1]?.version.id ?? fallbackTo;
-    setCompareToId((current) => (current && ids.has(current) ? current : fallbackTo));
-    setCompareFromId((current) => (current && ids.has(current) ? current : fallbackFrom));
-    setRestoreSourceId((current) => (current && ids.has(current) ? current : fallbackFrom));
-    setProvenanceVersionId((current) => (current && ids.has(current) ? current : fallbackTo));
-  }, [snapshot]);
-
-  useEffect(() => {
-    if (!snapshot || !compareFromId || !compareToId) {
-      setCompare(null);
-      return;
-    }
+    if (!snapshot || !compareFromId || !compareToId) return;
     let cancelled = false;
     void gateway
       .compare(
@@ -172,16 +183,15 @@ export function VersionsUI({
   }, [activeOrganization.id, compareFromId, compareToId, gateway, snapshot]);
 
   useEffect(() => {
-    if (!snapshot || !provenanceVersionId) {
-      setProvenance(null);
-      return;
-    }
+    if (!snapshot || !provenanceVersionId) return;
     let cancelled = false;
-    setProvenance(null);
-    setProvenanceError(null);
     if (!snapshot.can_view_provenance) {
-      setProvenanceError("PROVENANCE_FORBIDDEN");
-      return;
+      queueMicrotask(() => {
+        if (!cancelled) setProvenanceError("PROVENANCE_FORBIDDEN");
+      });
+      return () => {
+        cancelled = true;
+      };
     }
     void gateway
       .getProvenance(activeOrganization.id, provenanceVersionId)
@@ -196,18 +206,29 @@ export function VersionsUI({
     };
   }, [activeOrganization.id, gateway, provenanceVersionId, snapshot]);
 
+  const chooseCompareFrom = (versionId: string) => {
+    setCompareFromId(versionId);
+    setCompare(null);
+  };
+
+  const chooseCompareTo = (versionId: string) => {
+    setCompareToId(versionId);
+    setCompare(null);
+  };
+
+  const chooseProvenance = (versionId: string) => {
+    setProvenanceVersionId(versionId);
+    setProvenance(null);
+    setProvenanceError(null);
+  };
+
   const switchArtifact = async (artifactId: string) => {
     if (!snapshot || artifactId === snapshot.active_artifact.id || busy) return;
     setBusy(true);
     setError(null);
     try {
       const next = await gateway.getWorkspace(activeOrganization.id, projectId, artifactId);
-      setSnapshot(next);
-      setSelectedBranchId(next.active_branch_id);
-      setCompareFromId(null);
-      setCompareToId(null);
-      setRestoreSourceId(null);
-      setProvenanceVersionId(null);
+      applyWorkspaceSnapshot(next, false);
       setCompareMode("SIDE_BY_SIDE");
     } catch (switchError) {
       setError(uiError(switchError));
@@ -218,8 +239,6 @@ export function VersionsUI({
 
   const checkUpdates = async () => {
     if (!snapshot || busy) return;
-    const beforeFrom = compareFromId;
-    const beforeTo = compareToId;
     setBusy(true);
     setError(null);
     try {
@@ -228,10 +247,7 @@ export function VersionsUI({
         projectId,
         snapshot.active_artifact.id,
       );
-      setSnapshot(next);
-      const ids = new Set(next.versions.map((item) => item.version.id));
-      if (beforeFrom && ids.has(beforeFrom)) setCompareFromId(beforeFrom);
-      if (beforeTo && ids.has(beforeTo)) setCompareToId(beforeTo);
+      applyWorkspaceSnapshot(next, true);
     } catch (updateError) {
       setError(uiError(updateError));
     } finally {
@@ -252,10 +268,12 @@ export function VersionsUI({
         source_version_id: restoreSourceId,
         expected_head_version_id: branch.head_version_id,
       });
-      setSnapshot(next);
+      applyWorkspaceSnapshot(next, true);
       setSelectedBranchId(next.active_branch_id);
-      setCompareToId(next.head_version_id);
-      setProvenanceVersionId(next.head_version_id);
+      if (next.head_version_id) {
+        chooseCompareTo(next.head_version_id);
+        chooseProvenance(next.head_version_id);
+      }
     } catch (restoreError) {
       setError(uiError(restoreError));
     } finally {
@@ -273,7 +291,7 @@ export function VersionsUI({
         source_version_id: compareToId,
         name: forkName,
       });
-      setSnapshot(next);
+      applyWorkspaceSnapshot(next, true);
       setSelectedBranchId(next.active_branch_id);
       setForkName("");
     } catch (forkError) {
@@ -429,16 +447,16 @@ export function VersionsUI({
                   </small>
                 </div>
                 <div className={styles.cardActions}>
-                  <button type="button" onClick={() => setCompareFromId(item.version.id)}>
+                  <button type="button" onClick={() => chooseCompareFrom(item.version.id)}>
                     设为 Before
                   </button>
-                  <button type="button" onClick={() => setCompareToId(item.version.id)}>
+                  <button type="button" onClick={() => chooseCompareTo(item.version.id)}>
                     设为 After
                   </button>
                   <button type="button" onClick={() => setRestoreSourceId(item.version.id)}>
                     恢复此版本
                   </button>
-                  <button type="button" onClick={() => setProvenanceVersionId(item.version.id)}>
+                  <button type="button" onClick={() => chooseProvenance(item.version.id)}>
                     Provenance
                   </button>
                 </div>
@@ -503,7 +521,7 @@ export function VersionsUI({
                 className={styles.select}
                 aria-label="Compare before"
                 value={compareFromId ?? ""}
-                onChange={(event) => setCompareFromId(event.target.value)}
+                onChange={(event) => chooseCompareFrom(event.target.value)}
               >
                 {snapshot.versions.map((item) => (
                   <option key={item.version.id} value={item.version.id}>
@@ -516,7 +534,7 @@ export function VersionsUI({
                 className={styles.select}
                 aria-label="Compare after"
                 value={compareToId ?? ""}
-                onChange={(event) => setCompareToId(event.target.value)}
+                onChange={(event) => chooseCompareTo(event.target.value)}
               >
                 {snapshot.versions.map((item) => (
                   <option key={item.version.id} value={item.version.id}>

@@ -13,7 +13,6 @@ import type {
   BrandKitDetail,
   BrandLogoAsset,
   BrandProjectBinding,
-  BrandVisualAsset,
   FontRole,
   LogoBackground,
   LogoVariant,
@@ -92,15 +91,18 @@ export function BrandKitProduct({ bootstrap }: Readonly<{ bootstrap: BrandKitBoo
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    void load()
-      .catch((loadError) => {
-        if (!cancelled) setError(uiError(loadError));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
+      void load()
+        .catch((loadError) => {
+          if (!cancelled) setError(uiError(loadError));
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    });
     return () => { cancelled = true; };
   }, [load]);
 

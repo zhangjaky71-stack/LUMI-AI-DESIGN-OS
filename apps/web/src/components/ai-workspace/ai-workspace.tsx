@@ -90,15 +90,18 @@ export function AIWorkspace({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    void refreshCanonical()
-      .catch((loadError) => {
-        if (!cancelled) setError(uiError(loadError));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
+      void refreshCanonical()
+        .catch((loadError) => {
+          if (!cancelled) setError(uiError(loadError));
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    });
     return () => {
       cancelled = true;
       streamAbortRef.current?.abort();
@@ -309,14 +312,18 @@ export function AIWorkspace({
   useEffect(() => {
     if (!focusNodeId || focusAppliedRef.current || !canvasEditorState) return;
     if (!containsLayer(canvasEditorState.layers, focusNodeId)) {
-      setError(`Brand compliance 指向的 Canvas node 不存在：${focusNodeId}`);
       focusAppliedRef.current = true;
+      queueMicrotask(() => {
+        setError(`Brand compliance 指向的 Canvas node 不存在：${focusNodeId}`);
+      });
       return;
     }
     canvasEditorRef.current?.select([focusNodeId], focusNodeId);
     canvasEditorRef.current?.fitSelection();
-    setMobilePanel("canvas");
     focusAppliedRef.current = true;
+    queueMicrotask(() => {
+      setMobilePanel("canvas");
+    });
   }, [canvasEditorState, focusNodeId]);
 
   if (loading) return <div className={styles.loading}>正在加载 AI Workspace…</div>;

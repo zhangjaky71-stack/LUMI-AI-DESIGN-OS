@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { assertExactApprovalSubject, historyApprovals, pendingApprovals, policyLabel } from "./contracts";
 import type { ApprovalRecord, ApprovalWorkspace } from "./types";
 
