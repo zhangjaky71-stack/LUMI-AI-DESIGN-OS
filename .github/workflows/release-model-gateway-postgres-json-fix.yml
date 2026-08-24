@@ -70,6 +70,7 @@ jobs:
       - name: Frozen install and static verification
         run: |
           uv sync --all-packages --frozen
+          uv run ruff check --fix --select I apps/api/src/lumi_api/idempotency/gateway.py
           uv run ruff check apps/api/src/lumi_api/idempotency/gateway.py apps/api/tests/integration/test_model_paid_guard_postgres.py
           uv run pyright apps/api/src/lumi_api/idempotency/gateway.py
           uv run python - <<'PY'
