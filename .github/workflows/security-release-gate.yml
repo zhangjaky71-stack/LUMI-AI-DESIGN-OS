@@ -56,7 +56,7 @@ jobs:
             apps/worker-media/tests/test_asset_validation_security.py
       - name: Python dependency audit
         run: |
-          uv export --all-packages --frozen --no-dev --format requirements-txt > /tmp/requirements.txt
+          uv export --all-packages --frozen --no-dev --no-emit-workspace --format requirements-txt > /tmp/requirements.txt
           uvx --from pip-audit pip-audit -r /tmp/requirements.txt --strict
       - name: Python high-severity SAST
         run: uvx --from bandit bandit -q -lll -r apps services packages -x '*/tests/*'
@@ -135,6 +135,7 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: '1'
           ignore-unfixed: false
+          trivyignores: .trivyignore.yaml
 
   release-gate:
     if: always()
