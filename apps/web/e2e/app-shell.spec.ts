@@ -26,7 +26,9 @@ test.describe("NODE-52 App Shell", () => {
     await expect(
       page.getByRole("navigation", { name: "主导航" }),
     ).toBeVisible();
-    await expect(page.getByRole("heading", { name: "项目" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "项目", exact: true }),
+    ).toBeVisible();
     await expect(page.getByLabel("切换组织")).toHaveValue("org-lumi");
   });
 
@@ -72,7 +74,9 @@ test.describe("NODE-52 App Shell", () => {
     await page.goto("/app/projects");
     await page.context().setOffline(true);
     await expect(page.getByText("当前处于离线状态")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "项目" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "项目", exact: true }),
+    ).toBeVisible();
   });
 
   test("invite entry does not trust client-side membership state", async ({
