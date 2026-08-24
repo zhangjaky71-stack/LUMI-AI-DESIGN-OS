@@ -9,6 +9,8 @@ output "sandbox_egress_security_group_id" { value = module.platform_core.sandbox
 output "kms_key_arn" { value = module.platform_core.kms_key_arn }
 output "bucket_arns" { value = module.platform_core.bucket_arns }
 output "bucket_names" { value = module.platform_core.bucket_names }
+output "runtime_repository_urls" { value = module.platform_core.runtime_repository_urls }
+output "runtime_repository_arns" { value = module.platform_core.runtime_repository_arns }
 output "object_dr_region" { value = var.object_dr_region }
 output "object_dr_bucket_names" { value = { for purpose, bucket in aws_s3_bucket.object_dr : purpose => bucket.id } }
 output "object_dr_bucket_arns" { value = { for purpose, bucket in aws_s3_bucket.object_dr : purpose => bucket.arn } }

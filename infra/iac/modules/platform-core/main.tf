@@ -21,6 +21,15 @@ module "storage" {
   tags        = var.tags
 }
 
+module "container_registry" {
+  source = "../container-registry"
+
+  project       = var.project
+  environment   = var.environment
+  runtime_names = var.runtime_repository_names
+  tags          = var.tags
+}
+
 module "data" {
   source = "../data"
 

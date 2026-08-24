@@ -27,6 +27,19 @@ variable "rabbitmq_password" {
   sensitive = true
 }
 variable "secret_names" { type = set(string) }
+
+variable "runtime_repository_names" {
+  type = set(string)
+  default = [
+    "api",
+    "agent-runtime",
+    "model-gateway",
+    "tool-gateway",
+    "worker-media",
+    "sandbox-runtime",
+  ]
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

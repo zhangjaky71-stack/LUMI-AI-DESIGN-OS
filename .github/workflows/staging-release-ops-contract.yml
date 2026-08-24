@@ -1,0 +1,70 @@
+name: Staging Release Ops Contract
+
+on:
+  push:
+    branches:
+      - release-closure-p0
+    paths:
+      - ".github/workflows/deploy-staging-infrastructure.yml"
+      - ".github/workflows/release-staging-dispatch-bridge.yml"
+      - ".github/workflows/staging-release-ops-contract.yml"
+      - "infra/iac/modules/container-registry/**"
+      - "infra/iac/modules/platform-core/**"
+      - "infra/iac/environments/staging/core/**"
+      - "infra/iac/environments/production/core/**"
+      - "scripts/validate_staging_release_ops_contract.py"
+      - "production/release-actions/pins-v1.json"
+  pull_request:
+    paths:
+      - ".github/workflows/deploy-staging-infrastructure.yml"
+      - ".github/workflows/release-staging-dispatch-bridge.yml"
+      - ".github/workflows/staging-release-ops-contract.yml"
+      - "infra/iac/modules/container-registry/**"
+      - "infra/iac/modules/platform-core/**"
+      - "infra/iac/environments/staging/core/**"
+      - "infra/iac/environments/production/core/**"
+      - "scripts/validate_staging_release_ops_contract.py"
+      - "production/release-actions/pins-v1.json"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+
+      - name: Validate Staging release operations contract
+        run: python3 scripts/validate_staging_release_ops_contract.py
+
+      - name: Terraform formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform fmt -check -recursive infra/iac/modules/container-registry
+          terraform fmt -check -recursive infra/iac/modules/platform-core
+          terraform fmt -check -recursive infra/iac/environments/staging/core
+          terraform fmt -check -recursive infra/iac/environments/production/core
+
+      - name: Terraform init and validate release roots
+        shell: bash
+        run: |
+          set -euo pipefail
+          for root in \
+            infra/iac/environments/staging/core \
+            infra/iac/environments/staging/migration \
+            infra/iac/environments/staging/app \
+            infra/iac/environments/production/core
+          do
+            terraform -chdir="$root" init -backend=false -input=false
+            terraform -chdir="$root" validate
+          done
