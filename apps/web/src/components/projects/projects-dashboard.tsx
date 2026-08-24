@@ -189,11 +189,11 @@ export function ProjectsDashboard({
       setNotice("项目名称已更新。");
     } catch (renameError) {
       setProjects(previous);
-      setError(projectUiError(renameError));
       if (isVersionConflict(renameError)) {
         queryCache.clear();
         void load();
       }
+      setError(projectUiError(renameError));
     } finally {
       setMutationBusy(false);
     }
