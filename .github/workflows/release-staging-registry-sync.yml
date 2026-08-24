@@ -1,0 +1,131 @@
+name: Release Staging Registry Sync
+
+on:
+  push:
+    branches:
+      - release-closure-p0
+    paths:
+      - .github/workflows/release-staging-registry-sync.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: release-closure-p0
+
+      - name: Synchronize release dispatch governance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          pins_path = Path("production/release-actions/pins-v1.json")
+          registry_path = Path("production/release-actions/default-branch-dispatch-registry-v1.json")
+          action_validator_path = Path("scripts/validate_release_action_pins.py")
+          staging_validator_path = Path("scripts/validate_staging_release_ops_contract.py")
+
+          deploy = ".github/workflows/deploy-staging-infrastructure.yml"
+          bridge = ".github/workflows/release-staging-dispatch-bridge.yml"
+          contract = ".github/workflows/staging-release-ops-contract.yml"
+
+          pins = json.loads(pins_path.read_text(encoding="utf-8"))
+          critical = pins["release_critical_workflows"]
+          critical = [item for item in critical if item not in {bridge, contract}]
+          if deploy not in critical:
+              critical.append(deploy)
+          if len(critical) != 13 or len(set(critical)) != 13:
+              raise SystemExit(f"expected exactly 13 release-critical workflows, got {len(critical)}")
+          pins["release_critical_workflows"] = critical
+          pins_path.write_text(json.dumps(pins, indent=2) + "\n", encoding="utf-8")
+
+          registry = json.loads(registry_path.read_text(encoding="utf-8"))
+          entries = registry["workflows"]
+          entries = [entry for entry in entries if entry.get("path") not in {bridge, contract}]
+          if not any(entry.get("path") == deploy for entry in entries):
+              entries.append({
+                  "path": deploy,
+                  "default_branch_mode": "FAIL_CLOSED_REGISTRY_STUB",
+              })
+          registry["workflows"] = entries
+          registry_path.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")
+
+          text = action_validator_path.read_text(encoding="utf-8")
+          old_count = 'if result.get("workflow_count") != 12:'
+          new_count = 'if result.get("workflow_count") != 13:'
+          old_message = 'default-branch dispatch registry must cover exactly twelve release-critical workflows'
+          new_message = 'default-branch dispatch registry must cover exactly thirteen release-critical workflows'
+          if text.count(old_count) != 1 or text.count(old_message) != 1:
+              raise SystemExit("release action pin validator count markers drifted")
+          text = text.replace(old_count, new_count).replace(old_message, new_message)
+          action_validator_path.write_text(text, encoding="utf-8")
+
+          text = staging_validator_path.read_text(encoding="utf-8")
+          old = '''    critical = set(pins.get("release_critical_workflows", []))
+    required_workflows = {
+        ".github/workflows/deploy-staging-infrastructure.yml",
+        ".github/workflows/release-staging-dispatch-bridge.yml",
+        ".github/workflows/staging-release-ops-contract.yml",
+    }
+    missing = sorted(required_workflows - critical)
+    if missing:
+        raise SystemExit("release action pin policy missing Staging workflows: " + ", ".join(missing))
+'''
+          new = '''    critical = set(pins.get("release_critical_workflows", []))
+    required_critical = {".github/workflows/deploy-staging-infrastructure.yml"}
+    missing = sorted(required_critical - critical)
+    if missing:
+        raise SystemExit("release action pin policy missing canonical Staging deploy workflow: " + ", ".join(missing))
+    non_dispatch_helpers = {
+        ".github/workflows/release-staging-dispatch-bridge.yml",
+        ".github/workflows/staging-release-ops-contract.yml",
+    }
+    unexpected = sorted(non_dispatch_helpers & critical)
+    if unexpected:
+        raise SystemExit("push-only Staging helpers must not enter the workflow_dispatch critical registry: " + ", ".join(unexpected))
+'''
+          if text.count(old) != 1:
+              raise SystemExit("Staging release ops validator governance block drifted")
+          staging_validator_path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
+
+      - name: Validate synchronized release governance fail-closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m compileall -q \
+            scripts/validate_release_action_pins.py \
+            scripts/validate_release_dispatch_registry_contract.py \
+            scripts/validate_staging_release_ops_contract.py
+          python3 -m json.tool production/release-actions/pins-v1.json >/dev/null
+          python3 -m json.tool production/release-actions/default-branch-dispatch-registry-v1.json >/dev/null
+          python3 scripts/validate_staging_release_ops_contract.py
+          python3 scripts/validate_release_dispatch_registry_contract.py
+          python3 scripts/validate_release_action_pins.py
+          python3 scripts/validate_runtime_image_closure.py
+          python3 scripts/runtime_image_set.py validate-manifest
+          git diff --check
+
+      - name: Commit verified permanent synchronization and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -- .github/workflows/release-staging-registry-sync.yml
+          git add -- \
+            production/release-actions/pins-v1.json \
+            production/release-actions/default-branch-dispatch-registry-v1.json \
+            scripts/validate_release_action_pins.py \
+            scripts/validate_staging_release_ops_contract.py \
+            .github/workflows/release-staging-registry-sync.yml
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(release): synchronize Staging dispatch governance"
+          git push origin HEAD:release-closure-p0
