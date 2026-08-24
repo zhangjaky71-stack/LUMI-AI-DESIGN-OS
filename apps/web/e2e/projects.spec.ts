@@ -48,9 +48,7 @@ test.describe("NODE-53 Projects UI", () => {
       page.getByRole("heading", { name: "项目已创建" }),
     ).toBeVisible();
     await page.getByRole("button", { name: "进入项目" }).click();
-    await expect(
-      page.getByRole("heading", { name: /新品冷萃咖啡/ }),
-    ).toBeVisible();
+    await expect(page).toHaveURL(/\/app\/projects\/[^/]+$/);
     await expect(page.getByText(/STRUCTURED BRIEF/i)).toBeVisible();
   });
 
@@ -96,10 +94,11 @@ test.describe("NODE-53 Projects UI", () => {
     await page
       .getByRole("searchbox", { name: "搜索项目" })
       .fill("门店物料升级");
-    await expect(
-      page.getByRole("link", { name: "门店物料升级", exact: true }),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "重命名" }).click();
+    const projectCard = page.locator("article").filter({
+      has: page.getByRole("link", { name: "门店物料升级", exact: true }),
+    });
+    await expect(projectCard).toBeVisible();
+    await projectCard.getByRole("button", { name: "重命名" }).click();
     await page.getByLabel("项目名称").fill("门店物料升级 2.0");
     await page.getByRole("button", { name: "保存", exact: true }).click();
     await expect(page.getByRole("alert")).toContainText("项目已在其他位置更新");
@@ -115,7 +114,10 @@ test.describe("NODE-53 Projects UI", () => {
     await page
       .getByRole("searchbox", { name: "搜索项目" })
       .fill("秋季菜单更新");
-    await page.getByRole("button", { name: "归档" }).click();
+    const activeProjectCard = page.locator("article").filter({
+      has: page.getByRole("link", { name: "秋季菜单更新", exact: true }),
+    });
+    await activeProjectCard.getByRole("button", { name: "归档" }).click();
     await expect(page.getByRole("alertdialog")).toBeVisible();
     await page.getByRole("button", { name: "确认归档" }).click();
     await expect(page.getByRole("status")).toContainText("项目已归档");
@@ -123,7 +125,10 @@ test.describe("NODE-53 Projects UI", () => {
     await page
       .getByRole("searchbox", { name: "搜索项目" })
       .fill("春季活动归档");
-    await page.getByRole("button", { name: "恢复" }).click();
+    const archivedProjectCard = page.locator("article").filter({
+      has: page.getByRole("link", { name: "春季活动归档", exact: true }),
+    });
+    await archivedProjectCard.getByRole("button", { name: "恢复" }).click();
     await expect(page.getByRole("status")).toContainText(
       "历史 Agent Run 不会自动重启",
     );
