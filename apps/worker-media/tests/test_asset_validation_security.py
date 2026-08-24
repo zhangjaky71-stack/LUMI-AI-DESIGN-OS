@@ -8,7 +8,12 @@ import pytest
 from lumi_worker_media.media_tools import inspect_media
 
 
-@pytest.mark.asyncio
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+@pytest.mark.anyio
 async def test_production_media_path_rejects_active_svg_content() -> None:
     payload = (
         b'<svg xmlns="http://www.w3.org/2000/svg">'
@@ -30,7 +35,7 @@ async def test_production_media_path_rejects_active_svg_content() -> None:
             )
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_production_media_path_emits_sanitized_svg_derivative() -> None:
     payload = (
         b'<svg xmlns="http://www.w3.org/2000/svg">'

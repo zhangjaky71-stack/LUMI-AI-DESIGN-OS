@@ -157,7 +157,7 @@ resource "aws_security_group" "alb" {
     protocol    = "-1"
     from_port   = 0
     to_port     = 0
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [aws_vpc.this.cidr_block]
   }
 
   tags = merge(local.tags, { Name = "${local.name}-alb-sg" })

@@ -6,10 +6,15 @@ ENV CGO_ENABLED=0
 RUN mkdir -p /out && GOBIN=/out go install "github.com/minio/minio@${MINIO_RELEASE}"
 
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -S -g 10001 minio \
+    && adduser -S -D -H -u 10001 -G minio minio \
+    && mkdir -p /data \
+    && chown minio:minio /data
 COPY --from=builder /out/minio /usr/local/bin/minio
 
 EXPOSE 9000 9001
 VOLUME ["/data"]
+USER minio
 ENTRYPOINT ["/usr/local/bin/minio"]
 CMD ["server", "/data", "--console-address", ":9001"]
