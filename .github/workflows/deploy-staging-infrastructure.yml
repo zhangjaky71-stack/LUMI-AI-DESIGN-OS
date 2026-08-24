@@ -1,0 +1,60 @@
+name: Deploy Staging Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Staging infrastructure operation"
+        required: true
+        type: choice
+        options:
+          - plan-core
+          - apply-core
+          - promote-runtime-images
+          - plan-migration
+          - apply-migration
+          - run-migration
+          - plan-app
+          - apply-app
+      apply_ack:
+        description: "Required for apply/run/promotion mutations: APPLY_STAGING"
+        required: false
+        type: string
+      release_git_sha:
+        description: "Exact frozen runtime RC SHA for promotion/migration/app operations"
+        required: false
+        type: string
+      runtime_image_set_run_id:
+        description: "Successful Build and Freeze RC Runtime Image Set workflow run id"
+        required: false
+        type: string
+      runtime_image_set_artifact_id:
+        description: "Frozen runtime-image-set artifact id"
+        required: false
+        type: string
+      runtime_image_set_artifact_digest:
+        description: "Frozen runtime-image-set GitHub artifact digest (sha256:...)"
+        required: false
+        type: string
+      promoted_image_set_json:
+        description: "Exact six-image ECR digest map emitted by a successful promotion run"
+        required: false
+        type: string
+      video_model_profile:
+        description: "Logical media video model profile for app plan/apply"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  default-branch-registry-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Refuse default-branch execution
+        run: |
+          echo "This file is a workflow_dispatch registry stub only." >&2
+          echo "Run this workflow with ref=release-closure-p0 so GitHub uses the hardened release-ref workflow definition." >&2
+          exit 64
