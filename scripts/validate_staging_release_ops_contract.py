@@ -26,6 +26,18 @@ PINNED_ACTIONS = {
     "actions/upload-artifact": "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
 }
 
+EXPECTED_GENERATED_INTERNAL_SECRETS = {
+    "auth/signing",
+    "internal/model-gateway",
+    "internal/tool-gateway",
+    "internal/sandbox-runtime",
+    "internal/side-effect-control",
+    "internal/tool-audit",
+    "internal/tool-approval",
+    "internal/tool-data",
+    "internal/agent-control",
+}
+
 
 def require(text: str, marker: str, label: str) -> None:
     if marker not in text:
@@ -35,6 +47,26 @@ def require(text: str, marker: str, label: str) -> None:
 def reject(text: str, marker: str, label: str) -> None:
     if marker in text:
         raise SystemExit(f"{label} contains forbidden marker: {marker}")
+
+
+def parse_toset_string_block(text: str, assignment: str) -> set[str]:
+    marker = f"{assignment} = toset(["
+    start = text.find(marker)
+    if start < 0:
+        raise SystemExit(f"missing set assignment: {assignment}")
+    start += len(marker)
+    end = text.find("])\n", start)
+    if end < 0:
+        raise SystemExit(f"unterminated set assignment: {assignment}")
+    values: set[str] = set()
+    for raw in text[start:end].splitlines():
+        value = raw.strip().rstrip(",")
+        if not value:
+            continue
+        if not (value.startswith('"') and value.endswith('"')):
+            raise SystemExit(f"{assignment} contains non-literal entry: {raw!r}")
+        values.add(value[1:-1])
+    return values
 
 
 def main() -> int:
@@ -111,8 +143,18 @@ def main() -> int:
         "secret_string_wo_version = 1",
         '"rediss://:%s@%s:6379/0"',
         '"amqps://${local.rabbitmq_username}:${random_password.rabbitmq_password.result}@"',
+        'ephemeral "random_password" "internal_secret"',
+        'resource "aws_secretsmanager_secret_version" "internal_secret"',
+        "secret_string_wo         = ephemeral.random_password.internal_secret[each.key].result",
     ):
         require(staging_main, marker, "staging core generated infrastructure secrets")
+
+    generated_internal = parse_toset_string_block(staging_main, "generated_internal_secret_names")
+    if generated_internal != EXPECTED_GENERATED_INTERNAL_SECRETS:
+        raise SystemExit(
+            "generated internal secret set mismatch: "
+            f"expected={sorted(EXPECTED_GENERATED_INTERNAL_SECRETS)!r} actual={sorted(generated_internal)!r}"
+        )
 
     for stale in (
         'variable "redis_auth_token"',
@@ -165,6 +207,8 @@ def main() -> int:
                 "generated_staging_infrastructure_credentials": True,
                 "write_only_runtime_connection_secret_versions": True,
                 "manual_staging_redis_rabbitmq_tfvars_rejected": True,
+                "ephemeral_internal_secret_count": len(EXPECTED_GENERATED_INTERNAL_SECRETS),
+                "external_provider_and_database_secrets_not_synthesized": True,
             },
             sort_keys=True,
         )

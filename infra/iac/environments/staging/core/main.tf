@@ -26,6 +26,17 @@ locals {
     "internal/tool-data",
     "internal/agent-control",
   ])
+  generated_internal_secret_names = toset([
+    "auth/signing",
+    "internal/model-gateway",
+    "internal/tool-gateway",
+    "internal/sandbox-runtime",
+    "internal/side-effect-control",
+    "internal/tool-audit",
+    "internal/tool-approval",
+    "internal/tool-data",
+    "internal/agent-control",
+  ])
 }
 
 resource "random_password" "redis_auth_token" {
@@ -38,6 +49,16 @@ resource "random_password" "redis_auth_token" {
 
 resource "random_password" "rabbitmq_password" {
   length      = 48
+  special     = false
+  min_upper   = 8
+  min_lower   = 8
+  min_numeric = 8
+}
+
+ephemeral "random_password" "internal_secret" {
+  for_each = local.generated_internal_secret_names
+
+  length      = 64
   special     = false
   min_upper   = 8
   min_lower   = 8
@@ -87,5 +108,13 @@ resource "aws_secretsmanager_secret_version" "rabbitmq_url" {
     "amqps://",
     "amqps://${local.rabbitmq_username}:${random_password.rabbitmq_password.result}@",
   )
+  secret_string_wo_version = 1
+}
+
+resource "aws_secretsmanager_secret_version" "internal_secret" {
+  for_each = local.generated_internal_secret_names
+
+  secret_id                = module.platform_core.secret_arns[each.key]
+  secret_string_wo         = ephemeral.random_password.internal_secret[each.key].result
   secret_string_wo_version = 1
 }
