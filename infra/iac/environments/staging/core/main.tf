@@ -1,6 +1,7 @@
 locals {
-  project     = "lumi"
-  environment = "staging"
+  project           = "lumi"
+  environment       = "staging"
+  rabbitmq_username = "lumi_app"
   tags = {
     Owner       = "platform"
     DataClass   = "synthetic-only"
@@ -27,6 +28,22 @@ locals {
   ])
 }
 
+resource "random_password" "redis_auth_token" {
+  length      = 64
+  special     = false
+  min_upper   = 8
+  min_lower   = 8
+  min_numeric = 8
+}
+
+resource "random_password" "rabbitmq_password" {
+  length      = 48
+  special     = false
+  min_upper   = 8
+  min_lower   = 8
+  min_numeric = 8
+}
+
 module "platform_core" {
   source = "../../../modules/platform-core"
 
@@ -44,11 +61,31 @@ module "platform_core" {
   db_multi_az             = true
   redis_engine_version    = var.redis_engine_version
   redis_node_type         = var.redis_node_type
-  redis_auth_token        = var.redis_auth_token
+  redis_auth_token        = random_password.redis_auth_token.result
   rabbitmq_engine_version = var.rabbitmq_engine_version
   rabbitmq_instance_type  = var.rabbitmq_instance_type
-  rabbitmq_username       = var.rabbitmq_username
-  rabbitmq_password       = var.rabbitmq_password
+  rabbitmq_username       = local.rabbitmq_username
+  rabbitmq_password       = random_password.rabbitmq_password.result
   secret_names            = local.secret_names
   tags                    = local.tags
+}
+
+resource "aws_secretsmanager_secret_version" "redis_url" {
+  secret_id = module.platform_core.secret_arns["redis/url"]
+  secret_string_wo = format(
+    "rediss://:%s@%s:6379/0",
+    random_password.redis_auth_token.result,
+    module.platform_core.redis_primary_endpoint,
+  )
+  secret_string_wo_version = 1
+}
+
+resource "aws_secretsmanager_secret_version" "rabbitmq_url" {
+  secret_id = module.platform_core.secret_arns["rabbitmq/url"]
+  secret_string_wo = replace(
+    module.platform_core.rabbitmq_instances[0].endpoints[0],
+    "amqps://",
+    "amqps://${local.rabbitmq_username}:${random_password.rabbitmq_password.result}@",
+  )
+  secret_string_wo_version = 1
 }

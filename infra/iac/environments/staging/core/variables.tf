@@ -19,15 +19,3 @@ variable "redis_node_type" {
 }
 variable "rabbitmq_engine_version" { type = string }
 variable "rabbitmq_instance_type" { type = string }
-variable "redis_auth_token" {
-  type      = string
-  sensitive = true
-}
-variable "rabbitmq_username" {
-  type      = string
-  sensitive = true
-}
-variable "rabbitmq_password" {
-  type      = string
-  sensitive = true
-}
