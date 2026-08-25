@@ -46,7 +46,10 @@ def main() -> int:
 
     require("aws sts get-caller-identity" in script, "AWS caller identity preflight is missing")
     require("aws ec2 describe-regions" in script, "AWS Region preflight is missing")
-    require("git checkout -q --detach FETCH_HEAD" in script, "bootstrap source checkout is not detached")
+    require(
+        'git -C "$WORKDIR" checkout -q --detach FETCH_HEAD' in script,
+        "bootstrap source checkout is not detached",
+    )
     require(
         '[[ "$(git -C "$WORKDIR" rev-parse HEAD)" == "$BOOTSTRAP_REF" ]]' in script,
         "bootstrap source SHA equality check is missing",
