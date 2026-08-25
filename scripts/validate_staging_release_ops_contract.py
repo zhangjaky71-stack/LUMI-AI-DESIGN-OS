@@ -11,6 +11,10 @@ BRIDGE = ROOT / ".github/workflows/release-staging-dispatch-bridge.yml"
 REGISTRY = ROOT / "infra/iac/modules/container-registry/main.tf"
 PLATFORM_MAIN = ROOT / "infra/iac/modules/platform-core/main.tf"
 PLATFORM_OUTPUTS = ROOT / "infra/iac/modules/platform-core/outputs.tf"
+STAGING_MAIN = ROOT / "infra/iac/environments/staging/core/main.tf"
+STAGING_VARS = ROOT / "infra/iac/environments/staging/core/variables.tf"
+STAGING_VERSIONS = ROOT / "infra/iac/environments/staging/core/versions.tf"
+STAGING_TFVARS = ROOT / "infra/iac/environments/staging/core/terraform.tfvars.example"
 STAGING_OUTPUTS = ROOT / "infra/iac/environments/staging/core/outputs.tf"
 PRODUCTION_OUTPUTS = ROOT / "infra/iac/environments/production/core/outputs.tf"
 PINS = ROOT / "production/release-actions/pins-v1.json"
@@ -39,6 +43,10 @@ def main() -> int:
     registry = REGISTRY.read_text(encoding="utf-8")
     platform_main = PLATFORM_MAIN.read_text(encoding="utf-8")
     platform_outputs = PLATFORM_OUTPUTS.read_text(encoding="utf-8")
+    staging_main = STAGING_MAIN.read_text(encoding="utf-8")
+    staging_vars = STAGING_VARS.read_text(encoding="utf-8")
+    staging_versions = STAGING_VERSIONS.read_text(encoding="utf-8")
+    staging_tfvars = STAGING_TFVARS.read_text(encoding="utf-8")
     staging_outputs = STAGING_OUTPUTS.read_text(encoding="utf-8")
     production_outputs = PRODUCTION_OUTPUTS.read_text(encoding="utf-8")
     pins = json.loads(PINS.read_text(encoding="utf-8"))
@@ -87,6 +95,40 @@ def main() -> int:
     require(production_outputs, 'output "runtime_repository_urls"', "production core outputs")
 
     for marker in (
+        'source  = "hashicorp/random"',
+        'version = "= 3.9.0"',
+    ):
+        require(staging_versions, marker, "staging core providers")
+
+    for marker in (
+        'resource "random_password" "redis_auth_token"',
+        'resource "random_password" "rabbitmq_password"',
+        'rabbitmq_username = "lumi_app"',
+        'module.platform_core.secret_arns["redis/url"]',
+        'module.platform_core.secret_arns["rabbitmq/url"]',
+        'secret_string_wo = format(',
+        'secret_string_wo = replace(',
+        "secret_string_wo_version = 1",
+        '"rediss://:%s@%s:6379/0"',
+        '"amqps://${local.rabbitmq_username}:${random_password.rabbitmq_password.result}@"',
+    ):
+        require(staging_main, marker, "staging core generated infrastructure secrets")
+
+    for stale in (
+        'variable "redis_auth_token"',
+        'variable "rabbitmq_username"',
+        'variable "rabbitmq_password"',
+    ):
+        reject(staging_vars, stale, "staging core variables")
+
+    for stale in (
+        "TF_VAR_redis_auth_token",
+        "TF_VAR_rabbitmq_username",
+        "TF_VAR_rabbitmq_password",
+    ):
+        reject(staging_tfvars, stale, "staging core tfvars example")
+
+    for marker in (
         "production/staging/release-request-v1.json",
         "deploy-staging-infrastructure.yml/dispatches",
         "return_run_details",
@@ -120,6 +162,9 @@ def main() -> int:
                 "digest_preserving_promotion": True,
                 "stale_image_vars_rejected": True,
                 "canonical_deploy_action_pin_governed": True,
+                "generated_staging_infrastructure_credentials": True,
+                "write_only_runtime_connection_secret_versions": True,
+                "manual_staging_redis_rabbitmq_tfvars_rejected": True,
             },
             sort_keys=True,
         )
