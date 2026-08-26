@@ -4,7 +4,7 @@ output "database_bootstrap_task_definition_arn" {
 
 output "database_bootstrap_network" {
   value = {
-    cluster_arn = aws_ecs_cluster.database_bootstrap.arn
+    cluster_arn        = aws_ecs_cluster.database_bootstrap.arn
     private_subnet_ids = local.core.private_subnet_ids
     security_group_ids = [
       local.core.app_security_group_id,
