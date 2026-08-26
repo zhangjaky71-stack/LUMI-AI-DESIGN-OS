@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 DEPLOY = ROOT / ".github/workflows/deploy-staging-infrastructure.yml"
 BRIDGE = ROOT / ".github/workflows/release-staging-dispatch-bridge.yml"
+PREFLIGHT = ROOT / "scripts/validate_staging_environment_preflight.py"
 REGISTRY = ROOT / "infra/iac/modules/container-registry/main.tf"
 PLATFORM_MAIN = ROOT / "infra/iac/modules/platform-core/main.tf"
 PLATFORM_OUTPUTS = ROOT / "infra/iac/modules/platform-core/outputs.tf"
@@ -72,6 +73,7 @@ def parse_toset_string_block(text: str, assignment: str) -> set[str]:
 def main() -> int:
     deploy = DEPLOY.read_text(encoding="utf-8")
     bridge = BRIDGE.read_text(encoding="utf-8")
+    preflight = PREFLIGHT.read_text(encoding="utf-8")
     registry = REGISTRY.read_text(encoding="utf-8")
     platform_main = PLATFORM_MAIN.read_text(encoding="utf-8")
     platform_outputs = PLATFORM_OUTPUTS.read_text(encoding="utf-8")
@@ -82,6 +84,8 @@ def main() -> int:
     staging_outputs = STAGING_OUTPUTS.read_text(encoding="utf-8")
     production_outputs = PRODUCTION_OUTPUTS.read_text(encoding="utf-8")
     pins = json.loads(PINS.read_text(encoding="utf-8"))
+
+    compile(preflight, str(PREFLIGHT), "exec")
 
     for action, sha in PINNED_ACTIONS.items():
         require(deploy, f"{action}@{sha}", "deploy-staging-infrastructure")
@@ -98,8 +102,16 @@ def main() -> int:
         "destination_manifest_raw_digest",
         "digest_preserved",
         "ImageNotFoundException",
+        "Validate protected Staging environment preflight",
+        "python3 scripts/validate_staging_environment_preflight.py",
+        "AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}",
     ):
         require(deploy, marker, "deploy-staging-infrastructure")
+
+    preflight_step = deploy.find("Validate protected Staging environment preflight")
+    aws_step = deploy.find("aws-actions/configure-aws-credentials@")
+    if preflight_step < 0 or aws_step < 0 or preflight_step >= aws_step:
+        raise SystemExit("Staging environment preflight must execute before AWS credential configuration")
 
     for stale in (
         "vars.API_IMAGE_DIGEST",
@@ -108,9 +120,34 @@ def main() -> int:
         "vars.TOOL_GATEWAY_IMAGE_DIGEST",
         "vars.WORKER_MEDIA_IMAGE_DIGEST",
         "vars.SANDBOX_RUNTIME_IMAGE_DIGEST",
+        "TF_VAR_redis_auth_token",
+        "TF_VAR_rabbitmq_username",
+        "TF_VAR_rabbitmq_password",
+        "secrets.REDIS_AUTH_TOKEN",
+        "secrets.RABBITMQ_USERNAME",
+        "secrets.RABBITMQ_PASSWORD",
         "continue-on-error",
     ):
         reject(deploy, stale, "deploy-staging-infrastructure")
+
+    for marker in (
+        '"kind": "LUMI_STAGING_ENVIRONMENT_PREFLIGHT_V1"',
+        '"secret_values_recorded": False',
+        '"plan-core", "apply-core"',
+        '"plan-migration", "apply-migration", "run-migration"',
+        '"plan-app", "apply-app"',
+        'operation == "promote-runtime-images"',
+        '"AWS_DEPLOY_ROLE_ARN"',
+        '"TF_STATE_BUCKET"',
+        '"TF_VAR_account_id"',
+        '"TF_VAR_availability_zones"',
+        '"TF_VAR_certificate_arn"',
+        '"TF_VAR_hosted_zone_id"',
+        '"VIDEO_MODEL_PROFILE_INPUT"',
+        '"VIDEO_MODEL_PROFILE_DEFAULT"',
+        'return 0 if payload["status"] == "PASS" else 64',
+    ):
+        require(preflight, marker, "Staging environment preflight")
 
     for marker in (
         'resource "aws_ecr_repository" "runtime"',
@@ -204,6 +241,9 @@ def main() -> int:
                 "digest_preserving_promotion": True,
                 "stale_image_vars_rejected": True,
                 "canonical_deploy_action_pin_governed": True,
+                "environment_preflight_before_aws_oidc": True,
+                "environment_preflight_secret_values_recorded": False,
+                "stale_manual_credential_env_rejected": True,
                 "generated_staging_infrastructure_credentials": True,
                 "write_only_runtime_connection_secret_versions": True,
                 "manual_staging_redis_rabbitmq_tfvars_rejected": True,
