@@ -27,6 +27,7 @@ jobs:
           python3 scripts/validate_production_deployment_contract.py
           python3 scripts/validate_production_iac_contract.py
           python3 scripts/validate_aws_release_bootstrap_contract.py
+          python3 scripts/validate_staging_database_identity_contract.py
           python3 scripts/validate_private_model_gateway_deployment_contract.py
           python3 scripts/validate_outbox_dispatcher_observability.py
           python3 scripts/validate_production_readiness_contract.py
@@ -50,6 +51,7 @@ jobs:
             scripts/validate_production_iac_contract.py \
             scripts/validate_aws_release_bootstrap_contract.py \
             scripts/validate_staging_environment_preflight.py \
+            scripts/validate_staging_database_identity_contract.py \
             scripts/validate_private_model_gateway_deployment_contract.py \
             scripts/validate_outbox_dispatcher_observability.py \
             scripts/validate_production_readiness_contract.py \
@@ -62,6 +64,7 @@ jobs:
       - name: Shell syntax
         run: |
           bash -n scripts/aws_release_bootstrap_cloudshell.sh
+          bash -n scripts/ecs-run-database-bootstrap-task.sh
           bash -n scripts/check-aws-secret-versions.sh
           bash -n scripts/create-predeploy-rds-snapshot.sh
           bash -n scripts/ecs-run-one-shot-task.sh
@@ -91,6 +94,7 @@ jobs:
           roots=(
             infra/iac/bootstrap
             infra/iac/environments/staging/core
+            infra/iac/environments/staging/database-bootstrap
             infra/iac/environments/staging/migration
             infra/iac/environments/staging/app
             infra/iac/environments/production/core

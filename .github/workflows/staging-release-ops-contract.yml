@@ -11,7 +11,10 @@ on:
       - "infra/iac/modules/container-registry/**"
       - "infra/iac/modules/platform-core/**"
       - "infra/iac/environments/staging/core/**"
+      - "infra/iac/environments/staging/database-bootstrap/**"
       - "infra/iac/environments/production/core/**"
+      - "scripts/ecs-run-database-bootstrap-task.sh"
+      - "scripts/validate_staging_database_identity_contract.py"
       - "scripts/validate_staging_release_ops_contract.py"
       - "production/release-actions/pins-v1.json"
   pull_request:
@@ -22,7 +25,10 @@ on:
       - "infra/iac/modules/container-registry/**"
       - "infra/iac/modules/platform-core/**"
       - "infra/iac/environments/staging/core/**"
+      - "infra/iac/environments/staging/database-bootstrap/**"
       - "infra/iac/environments/production/core/**"
+      - "scripts/ecs-run-database-bootstrap-task.sh"
+      - "scripts/validate_staging_database_identity_contract.py"
       - "scripts/validate_staging_release_ops_contract.py"
       - "production/release-actions/pins-v1.json"
 
@@ -44,7 +50,10 @@ jobs:
           terraform_wrapper: false
 
       - name: Validate Staging release operations contract
-        run: python3 scripts/validate_staging_release_ops_contract.py
+        run: |
+          python3 scripts/validate_staging_release_ops_contract.py
+          python3 scripts/validate_staging_database_identity_contract.py
+          bash -n scripts/ecs-run-database-bootstrap-task.sh
 
       - name: Terraform formatting
         shell: bash
@@ -53,6 +62,7 @@ jobs:
           terraform fmt -check -recursive infra/iac/modules/container-registry
           terraform fmt -check -recursive infra/iac/modules/platform-core
           terraform fmt -check -recursive infra/iac/environments/staging/core
+          terraform fmt -check -recursive infra/iac/environments/staging/database-bootstrap
           terraform fmt -check -recursive infra/iac/environments/production/core
 
       - name: Terraform init and validate release roots
@@ -61,6 +71,7 @@ jobs:
           set -euo pipefail
           for root in \
             infra/iac/environments/staging/core \
+            infra/iac/environments/staging/database-bootstrap \
             infra/iac/environments/staging/migration \
             infra/iac/environments/staging/app \
             infra/iac/environments/production/core
