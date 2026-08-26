@@ -22,6 +22,24 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(f"AWS release bootstrap contract invalid: {message}")
 
 
+def terraform_resource_body(text: str, resource_type: str, name: str) -> str:
+    header = f'resource "{resource_type}" "{name}" {{'
+    start = text.find(header)
+    require(start >= 0, f"missing Terraform resource {resource_type}.{name}")
+    body_start = start + len(header)
+    depth = 1
+    index = body_start
+    while index < len(text) and depth:
+        char = text[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+        index += 1
+    require(depth == 0, f"unterminated Terraform resource {resource_type}.{name}")
+    return text[body_start : index - 1]
+
+
 def main() -> int:
     require(SCRIPT.is_file(), "missing CloudShell bootstrap script")
     require(BOOTSTRAP_MAIN.is_file(), "missing bootstrap main.tf")
@@ -96,12 +114,23 @@ def main() -> int:
     for marker in forbidden_script_markers:
         require(marker not in script, f"forbidden bootstrap side effect detected: {marker}")
 
+    oidc_body = terraform_resource_body(main_tf, "aws_iam_openid_connect_provider", "github")
+    oidc_urls = re.findall(r'^\s*url\s*=\s*"([^"]+)"\s*$', oidc_body, flags=re.MULTILINE)
     require(
-        'resource "aws_iam_openid_connect_provider" "github"' in main_tf,
-        "bootstrap cannot create the GitHub Actions OIDC provider",
+        oidc_urls == ["https://token.actions.githubusercontent.com"],
+        "GitHub OIDC provider URL must be exactly the canonical HTTPS issuer",
     )
-    require("token.actions.githubusercontent.com" in main_tf, "GitHub OIDC provider URL/trust is missing")
-    require("sts.amazonaws.com" in main_tf, "GitHub OIDC audience is missing")
+    client_id_block = re.search(
+        r"^\s*client_id_list\s*=\s*\[(.*?)^\s*\]\s*$",
+        oidc_body,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    require(client_id_block is not None, "GitHub OIDC client_id_list is missing")
+    client_ids = re.findall(r'"([^"]+)"', client_id_block.group(1))
+    require(
+        client_ids == ["sts.amazonaws.com"],
+        "GitHub OIDC audience must be exactly the AWS STS audience",
+    )
     require("environment:staging" in main_tf and "environment:production" in main_tf, "environment-scoped OIDC subjects are missing")
     require("enable_key_rotation     = true" in main_tf, "Terraform-state KMS key rotation is not enabled")
     require("BucketOwnerEnforced" in main_tf, "Terraform-state bucket ownership enforcement is missing")
