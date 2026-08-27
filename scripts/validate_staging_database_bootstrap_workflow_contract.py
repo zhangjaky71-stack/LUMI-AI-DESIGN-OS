@@ -38,6 +38,7 @@ def main() -> int:
     bridge = BRIDGE.read_text(encoding="utf-8")
     preflight = PREFLIGHT.read_text(encoding="utf-8")
     runner = RUNNER.read_text(encoding="utf-8")
+    tf_main = (TF_ROOT / "main.tf").read_text(encoding="utf-8")
 
     for operation in (
         "plan-database-bootstrap",
@@ -75,11 +76,21 @@ def main() -> int:
     forbid(bridge, "environment: staging", "bridge AWS environment access")
     forbid(bridge, "id-token: write", "bridge OIDC access")
 
+    # Secret names are defined at the Terraform ownership boundary. The runner
+    # intentionally receives only Terraform's typed app/migration ARN map and
+    # must never retrieve secret values on the GitHub-hosted runner.
+    require(tf_main, 'secret_key = "database/app"', "App secret boundary")
+    require(tf_main, 'secret_key = "database/migration"', "migration secret boundary")
+    require(tf_main, 'local.core.secret_arns["database/app"]', "App secret binding")
+    require(tf_main, 'local.core.secret_arns["database/migration"]', "migration secret binding")
+
     require(runner, "assignPublicIp=DISABLED", "private task networking")
     require(runner, "LUMI_STAGING_DATABASE_IDENTITY_BOOTSTRAP_V1", "inner database evidence")
     require(runner, "master_role_distinct == true", "master/runtime role separation")
-    require(runner, "database/app", "App secret boundary")
-    require(runner, "database/migration", "migration secret boundary")
+    require(runner, 'APP_SECRET_ARN="$(jq -r \'.app\'', "App secret ARN handoff")
+    require(runner, 'MIGRATION_SECRET_ARN="$(jq -r \'.migration\'', "migration secret ARN handoff")
+    require(runner, "secrets:{app:{arn:$app_secret_arn", "App secret evidence")
+    require(runner, "migration:{arn:$migration_secret_arn", "migration secret evidence")
     forbid(runner, "get-secret-value", "GitHub-runner secret value retrieval")
 
     print("staging database identity workflow contract: PASS")
