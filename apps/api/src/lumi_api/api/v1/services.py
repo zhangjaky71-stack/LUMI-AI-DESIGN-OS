@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol, TypeVar
+from typing import Never, Protocol, TypeVar, cast
 from uuid import UUID
 
 from fastapi import Request
@@ -160,16 +161,31 @@ class ApiV1Gateway(Protocol):
     ) -> list[UsageSummaryResource]: ...
 
 
+def _application_service_not_installed_problem() -> ApiProblem:
+    return ApiProblem(
+        status=501,
+        code="APPLICATION_SERVICE_NOT_INSTALLED",
+        title="Application service not installed",
+        detail=(
+            "The HTTP contract is active, but the application-service adapter for this "
+            "operation is owned by a later implementation node."
+        ),
+    )
+
+
+class _UninstalledApiV1Gateway:
+    def __getattr__(self, _name: str) -> Callable[..., Awaitable[Never]]:
+        async def missing(*_args: object, **_kwargs: object) -> Never:
+            raise _application_service_not_installed_problem()
+
+        return missing
+
+
+_UNINSTALLED_API_V1_GATEWAY = cast(ApiV1Gateway, _UninstalledApiV1Gateway())
+
+
 def get_api_v1_gateway(request: Request) -> ApiV1Gateway:
     gateway = getattr(request.app.state, "api_v1_gateway", None)
     if gateway is None:
-        raise ApiProblem(
-            status=501,
-            code="APPLICATION_SERVICE_NOT_INSTALLED",
-            title="Application service not installed",
-            detail=(
-                "The HTTP contract is active, but the application-service adapter for this "
-                "operation is owned by a later implementation node."
-            ),
-        )
-    return gateway
+        return _UNINSTALLED_API_V1_GATEWAY
+    return cast(ApiV1Gateway, gateway)

@@ -29,6 +29,9 @@ EXPECTED_OPERATION_IDS = {
     "createGeneration",
     "getGeneration",
     "decideApproval",
+    "getCostSummary",
+    "getProjectCostSummary",
+    "getUsageSummary",
 }
 
 
