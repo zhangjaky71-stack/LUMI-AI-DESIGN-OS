@@ -7,6 +7,8 @@ on:
     paths:
       - ".github/workflows/deploy-staging-infrastructure.yml"
       - ".github/workflows/release-staging-dispatch-bridge.yml"
+      - ".github/workflows/staging-database-identity-bootstrap.yml"
+      - ".github/workflows/release-staging-database-identity-bridge.yml"
       - ".github/workflows/staging-release-ops-contract.yml"
       - "infra/iac/modules/container-registry/**"
       - "infra/iac/modules/platform-core/**"
@@ -14,13 +16,17 @@ on:
       - "infra/iac/environments/staging/database-bootstrap/**"
       - "infra/iac/environments/production/core/**"
       - "scripts/ecs-run-database-bootstrap-task.sh"
+      - "scripts/validate_staging_database_bootstrap_preflight.py"
       - "scripts/validate_staging_database_identity_contract.py"
+      - "scripts/validate_staging_database_bootstrap_workflow_contract.py"
       - "scripts/validate_staging_release_ops_contract.py"
       - "production/release-actions/pins-v1.json"
   pull_request:
     paths:
       - ".github/workflows/deploy-staging-infrastructure.yml"
       - ".github/workflows/release-staging-dispatch-bridge.yml"
+      - ".github/workflows/staging-database-identity-bootstrap.yml"
+      - ".github/workflows/release-staging-database-identity-bridge.yml"
       - ".github/workflows/staging-release-ops-contract.yml"
       - "infra/iac/modules/container-registry/**"
       - "infra/iac/modules/platform-core/**"
@@ -28,7 +34,9 @@ on:
       - "infra/iac/environments/staging/database-bootstrap/**"
       - "infra/iac/environments/production/core/**"
       - "scripts/ecs-run-database-bootstrap-task.sh"
+      - "scripts/validate_staging_database_bootstrap_preflight.py"
       - "scripts/validate_staging_database_identity_contract.py"
+      - "scripts/validate_staging_database_bootstrap_workflow_contract.py"
       - "scripts/validate_staging_release_ops_contract.py"
       - "production/release-actions/pins-v1.json"
 
@@ -53,6 +61,8 @@ jobs:
         run: |
           python3 scripts/validate_staging_release_ops_contract.py
           python3 scripts/validate_staging_database_identity_contract.py
+          python3 scripts/validate_staging_database_bootstrap_workflow_contract.py
+          python3 -m py_compile scripts/validate_staging_database_bootstrap_preflight.py
           bash -n scripts/ecs-run-database-bootstrap-task.sh
 
       - name: Terraform formatting
