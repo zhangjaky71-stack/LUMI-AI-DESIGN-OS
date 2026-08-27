@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -47,6 +48,121 @@ def require_order(text: str, markers: tuple[str, ...], message: str) -> None:
         require(position >= 0, f"{message}: missing marker {marker!r}")
         positions.append(position)
     require(positions == sorted(positions), message)
+
+
+def python_heredoc_containing(text: str, marker: str) -> str:
+    opener = "python3 - <<'PY'\n"
+    terminator = "\nPY\n"
+    search_from = 0
+    while True:
+        start = text.find(opener, search_from)
+        require(start >= 0, f"missing Python heredoc containing {marker!r}")
+        body_start = start + len(opener)
+        body_end = text.find(terminator, body_start)
+        require(body_end >= 0, "unterminated Python heredoc")
+        body = text[body_start:body_end]
+        if marker in body:
+            return body
+        search_from = body_end + len(terminator)
+
+
+def _is_named_assignment(node: ast.AST, target_name: str, mapping_name: str, key: str) -> bool:
+    if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+        return False
+    target = node.targets[0]
+    value = node.value
+    return (
+        isinstance(target, ast.Name)
+        and target.id == target_name
+        and isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Attribute)
+        and isinstance(value.func.value, ast.Name)
+        and value.func.value.id == mapping_name
+        and value.func.attr == "get"
+        and len(value.args) == 1
+        and isinstance(value.args[0], ast.Constant)
+        and value.args[0].value == key
+        and not value.keywords
+    )
+
+
+def require_existing_oidc_validation(block: str) -> None:
+    tree = ast.parse(block)
+    nodes = list(ast.walk(tree))
+
+    require(
+        any(_is_named_assignment(node, "url", "p", "Url") for node in nodes),
+        "existing OIDC validation must read the issuer from the AWS Url field",
+    )
+    require(
+        any(_is_named_assignment(node, "client_ids", "p", "ClientIDList") for node in nodes),
+        "existing OIDC validation must read the AWS ClientIDList field",
+    )
+
+    expected_issuers = {
+        "token.actions.githubusercontent.com",
+        "https://token.actions.githubusercontent.com",
+    }
+    issuer_checks = []
+    audience_checks = 0
+    list_type_checks = 0
+
+    for node in nodes:
+        if not isinstance(node, ast.Compare) or len(node.ops) != 1 or len(node.comparators) != 1:
+            continue
+
+        comparator = node.comparators[0]
+        if (
+            isinstance(node.left, ast.Name)
+            and node.left.id == "url"
+            and isinstance(node.ops[0], ast.NotIn)
+            and isinstance(comparator, ast.Set)
+        ):
+            values = {
+                element.value
+                for element in comparator.elts
+                if isinstance(element, ast.Constant) and isinstance(element.value, str)
+            }
+            if len(values) == len(comparator.elts):
+                issuer_checks.append(values)
+
+        if (
+            isinstance(node.left, ast.Constant)
+            and node.left.value == "sts.amazonaws.com"
+            and isinstance(node.ops[0], ast.NotIn)
+            and isinstance(comparator, ast.Name)
+            and comparator.id == "client_ids"
+        ):
+            audience_checks += 1
+
+    for node in nodes:
+        if not isinstance(node, ast.UnaryOp) or not isinstance(node.op, ast.Not):
+            continue
+        operand = node.operand
+        if not (
+            isinstance(operand, ast.Call)
+            and isinstance(operand.func, ast.Name)
+            and operand.func.id == "isinstance"
+            and len(operand.args) == 2
+        ):
+            continue
+        value, expected_type = operand.args
+        if (
+            isinstance(value, ast.Name)
+            and value.id == "client_ids"
+            and isinstance(expected_type, ast.Name)
+            and expected_type.id == "list"
+        ):
+            list_type_checks += 1
+
+    require(
+        issuer_checks == [expected_issuers],
+        "existing OIDC issuer validation must use only the canonical GitHub Actions issuer forms",
+    )
+    require(
+        audience_checks == 1 and list_type_checks == 1,
+        "existing OIDC audience validation must require a ClientIDList containing the exact AWS STS audience",
+    )
 
 
 def main() -> int:
@@ -115,12 +231,11 @@ def main() -> int:
         "externally pre-existing provider; reusing validated ARN" in script,
         "external OIDC reuse path is missing",
     )
-    require(
-        "token.actions.githubusercontent.com" in script
-        and "sts.amazonaws.com" in script
-        and "ClientIDList" in script,
-        "existing OIDC issuer/audience validation is missing",
+    oidc_validation = python_heredoc_containing(
+        script,
+        "lumi-bootstrap-existing-oidc.json",
     )
+    require_existing_oidc_validation(oidc_validation)
 
     require("BUCKET_EXISTS=0" in script, "state bucket existence classification is missing")
     require(
