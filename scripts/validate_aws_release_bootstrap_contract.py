@@ -40,6 +40,15 @@ def terraform_resource_body(text: str, resource_type: str, name: str) -> str:
     return text[body_start : index - 1]
 
 
+def require_order(text: str, markers: tuple[str, ...], message: str) -> None:
+    positions = []
+    for marker in markers:
+        position = text.find(marker)
+        require(position >= 0, f"{message}: missing marker {marker!r}")
+        positions.append(position)
+    require(positions == sorted(positions), message)
+
+
 def main() -> int:
     require(SCRIPT.is_file(), "missing CloudShell bootstrap script")
     require(BOOTSTRAP_MAIN.is_file(), "missing bootstrap main.tf")
@@ -50,8 +59,12 @@ def main() -> int:
     variables_tf = BOOTSTRAP_VARIABLES.read_text(encoding="utf-8")
 
     require(
-        f'BOOTSTRAP_REF="${{LUMI_BOOTSTRAP_REF:-{EXPECTED_BOOTSTRAP_REF}}}"' in script,
-        "CloudShell bootstrap source SHA is not pinned to the hosted-validated bootstrap",
+        f'BOOTSTRAP_REF="{EXPECTED_BOOTSTRAP_REF}"' in script,
+        "CloudShell bootstrap source SHA is not exactly pinned to the hosted-validated bootstrap",
+    )
+    require(
+        "LUMI_BOOTSTRAP_REF" not in script,
+        "bootstrap source SHA must not be runtime-overridable",
     )
     require(
         f'TERRAFORM_VERSION="{EXPECTED_TERRAFORM_VERSION}"' in script,
@@ -60,7 +73,10 @@ def main() -> int:
     for arch, checksum in EXPECTED_TERRAFORM_SHA256.items():
         require(checksum in script, f"missing pinned Terraform SHA-256 for {arch}")
     require("sha256sum --check --status" in script, "Terraform archive checksum is not enforced")
-    require("https://releases.hashicorp.com/terraform/" in script, "Terraform download is not bound to HashiCorp releases")
+    require(
+        "https://releases.hashicorp.com/terraform/" in script,
+        "Terraform download is not bound to HashiCorp releases",
+    )
 
     require("aws sts get-caller-identity" in script, "AWS caller identity preflight is missing")
     require("aws ec2 describe-regions" in script, "AWS Region preflight is missing")
@@ -73,22 +89,106 @@ def main() -> int:
         "bootstrap source SHA equality check is missing",
     )
 
-    require("terraform -chdir=\"$ROOT\" plan" in script, "bootstrap Terraform plan is missing")
-    require("terraform -chdir=\"$ROOT\" show -json tfplan" in script, "machine-readable plan inspection is missing")
+    require('RECOVERY_STATE="$HOME/lumi-aws-bootstrap-recovery.tfstate"' in script, "local bootstrap recovery state is missing")
+    require("REMOTE_STATE_EXISTS=0" in script, "remote-state existence classification is missing")
+    require("OIDC_MANAGED_BY_STATE=0" in script, "OIDC Terraform-ownership classification is missing")
+    require(
+        "aws_iam_openid_connect_provider.github[0]" in script,
+        "Terraform-managed OIDC state address is not inspected",
+    )
+    require_order(
+        script,
+        (
+            "# Restore state before deciding OIDC ownership.",
+            'terraform -chdir="$ROOT" init -backend=false -input=false',
+            "OIDC_MANAGED_BY_STATE=0",
+            "aws iam get-open-id-connect-provider",
+            'TF_ARGS=("-var=region=${REGION}")',
+        ),
+        "bootstrap must restore/init/inspect state before deciding OIDC reuse",
+    )
+    require(
+        "Never convert a Terraform-managed provider into an external input on rerun." in script,
+        "Terraform-owned OIDC rerun invariant is missing",
+    )
+    require(
+        "externally pre-existing provider; reusing validated ARN" in script,
+        "external OIDC reuse path is missing",
+    )
+    require(
+        "token.actions.githubusercontent.com" in script
+        and "sts.amazonaws.com" in script
+        and "ClientIDList" in script,
+        "existing OIDC issuer/audience validation is missing",
+    )
+
+    require("BUCKET_EXISTS=0" in script, "state bucket existence classification is missing")
+    require(
+        "refusing a possible foreign bucket collision" in script,
+        "foreign state-bucket collision must fail closed",
+    )
+    require(
+        "local recovery state diverges from remote bootstrap state" in script,
+        "remote/local state divergence must fail closed",
+    )
+    require(
+        "refusing an unaudited import/overwrite" in script,
+        "pre-existing bucket without trusted state must fail closed",
+    )
+
+    require('terraform -chdir="$ROOT" plan' in script, "bootstrap Terraform plan is missing")
+    require(
+        'terraform -chdir="$ROOT" show -json tfplan' in script,
+        "machine-readable plan inspection is missing",
+    )
     require("if 'delete' in actions:" in script, "delete/replace plan rejection is missing")
-    require("bootstrap plan contains delete/replace actions" in script, "delete/replace plan failure is not explicit")
+    require(
+        "bootstrap plan contains delete/replace actions" in script,
+        "delete/replace plan failure is not explicit",
+    )
     require('APPLY_TOKEN="APPLY_AWS_BOOTSTRAP"' in script, "explicit bootstrap apply token is missing")
     require(
         '"${LUMI_BOOTSTRAP_APPLY:-}" != "$APPLY_TOKEN"' in script,
         "bootstrap apply is not gated by explicit acknowledgement",
     )
-    require("terraform -chdir=\"$ROOT\" apply -input=false tfplan" in script, "apply does not consume the reviewed plan")
+    require(
+        'terraform -chdir="$ROOT" apply -input=false tfplan' in script,
+        "apply does not consume the reviewed plan",
+    )
 
     require('STATE_KEY="lumi/bootstrap/terraform.tfstate"' in script, "bootstrap state key is not fixed")
     require("--sse aws:kms" in script, "bootstrap state upload does not require KMS encryption")
     require("--sse-kms-key-id" in script, "bootstrap state upload is not bound to the created KMS key")
-    require("head-object" in script and "head-bucket" in script, "bootstrap rerun state guards are missing")
-    require("refusing an unaudited import/overwrite" in script, "foreign/pre-existing state bucket fail-closed guard is missing")
+    require(
+        'cp "$ROOT/terraform.tfstate" "$RECOVERY_STATE"' in script
+        and 'chmod 600 "$RECOVERY_STATE"' in script,
+        "post-apply local recovery state is not persisted securely before upload",
+    )
+    require(
+        'cmp -s "$RECOVERY_STATE" /tmp/lumi-bootstrap-state-verify.tfstate' in script,
+        "remote state is not independently compared with the post-apply recovery state",
+    )
+    require(
+        "Remote encrypted bootstrap state verified; local recovery copy removed." in script,
+        "recovery state removal is not bound to remote verification",
+    )
+    apply_pos = script.find('terraform -chdir="$ROOT" apply -input=false tfplan')
+    recovery_pos = script.find('cp "$ROOT/terraform.tfstate" "$RECOVERY_STATE"', apply_pos)
+    upload_pos = script.find(
+        'aws s3 cp \\\n  "$RECOVERY_STATE" \\\n  "s3://${STATE_BUCKET}/${STATE_KEY}"',
+        recovery_pos,
+    )
+    verify_pos = script.find('/tmp/lumi-bootstrap-state-verify.tfstate', upload_pos)
+    remove_pos = script.find('rm -f "$RECOVERY_STATE"', verify_pos)
+    require(
+        min(apply_pos, recovery_pos, upload_pos, verify_pos, remove_pos) >= 0
+        and apply_pos < recovery_pos < upload_pos < verify_pos < remove_pos,
+        "post-apply recovery state must precede remote upload/verification/removal",
+    )
+    require(
+        "ServerSideEncryption" in script and "SSEKMSKeyId" in script,
+        "remote bootstrap state KMS metadata is not verified",
+    )
 
     for marker in (
         "aws rds describe-db-engine-versions",
@@ -98,8 +198,12 @@ def main() -> int:
     ):
         require(marker in script, f"real Region capability query missing: {marker}")
     require("lumi-aws-bootstrap-handoff.json" in script, "bootstrap handoff artifact is missing")
-    require("LUMI_AWS_RELEASE_BOOTSTRAP_HANDOFF_V1" in script, "bootstrap handoff schema is missing")
-    require("No Staging/Production application resources were deployed" in script, "bootstrap scope declaration is missing")
+    require("LUMI_AWS_RELEASE_BOOTSTRAP_HANDOFF_V2" in script, "bootstrap handoff V2 schema is missing")
+    require("'remote_verified': True" in script, "handoff does not attest remote-state verification")
+    require(
+        "No Staging/Production application resources were deployed" in script,
+        "bootstrap scope declaration is missing",
+    )
 
     forbidden_script_markers = (
         "git push",
@@ -131,22 +235,39 @@ def main() -> int:
         client_ids == ["sts.amazonaws.com"],
         "GitHub OIDC audience must be exactly the AWS STS audience",
     )
-    require("environment:staging" in main_tf and "environment:production" in main_tf, "environment-scoped OIDC subjects are missing")
+    require(
+        "environment:staging" in main_tf and "environment:production" in main_tf,
+        "environment-scoped OIDC subjects are missing",
+    )
     require("enable_key_rotation     = true" in main_tf, "Terraform-state KMS key rotation is not enabled")
     require("BucketOwnerEnforced" in main_tf, "Terraform-state bucket ownership enforcement is missing")
     require("block_public_acls       = true" in main_tf, "Terraform-state public ACL block is missing")
-    require("restrict_public_buckets = true" in main_tf, "Terraform-state public bucket restriction is missing")
+    require(
+        "restrict_public_buckets = true" in main_tf,
+        "Terraform-state public bucket restriction is missing",
+    )
     require('status = "Enabled"' in main_tf, "Terraform-state versioning is not enabled")
-    require('sse_algorithm     = "aws:kms"' in main_tf, "Terraform-state bucket does not require KMS encryption")
+    require(
+        'sse_algorithm     = "aws:kms"' in main_tf,
+        "Terraform-state bucket does not require KMS encryption",
+    )
     require("aws:SecureTransport" in main_tf, "Terraform-state TLS-only bucket policy is missing")
 
     require('default     = null' in variables_tf, "optional bootstrap inputs are not nullable/defaulted")
     require(
-        re.search(r'variable "github_oidc_provider_arn"[\s\S]+?default\s*=\s*null', variables_tf) is not None,
+        re.search(
+            r'variable "github_oidc_provider_arn"[\s\S]+?default\s*=\s*null',
+            variables_tf,
+        )
+        is not None,
         "existing GitHub OIDC provider reuse is not optional",
     )
     require(
-        re.search(r'variable "state_bucket_name"[\s\S]+?default\s*=\s*null', variables_tf) is not None,
+        re.search(
+            r'variable "state_bucket_name"[\s\S]+?default\s*=\s*null',
+            variables_tf,
+        )
+        is not None,
         "state bucket name is not auto-derivable",
     )
 

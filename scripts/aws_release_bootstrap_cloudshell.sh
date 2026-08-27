@@ -4,14 +4,24 @@ set -euo pipefail
 # LUMI AWS account bootstrap for AWS CloudShell.
 #
 # This script deliberately applies only the account bootstrap root from the
-# already-hosted-validated release commit below. It does not deploy Staging or
+# hosted-validated release commit below. It does not deploy Staging or
 # Production application resources.
+#
+# Rerun safety:
+# - existing Terraform state is restored before OIDC ownership is decided;
+# - Terraform-managed OIDC remains Terraform-managed on later runs;
+# - an externally pre-existing canonical OIDC provider is reused;
+# - any delete/replace plan is rejected;
+# - post-apply state is copied to a local recovery file before remote upload,
+#   and the recovery copy is removed only after the encrypted remote state is
+#   independently downloaded and byte-for-byte verified.
 
-BOOTSTRAP_REF="${LUMI_BOOTSTRAP_REF:-070315c2d3dd697bc87bc3a70acd7a3338175e40}"
+BOOTSTRAP_REF="070315c2d3dd697bc87bc3a70acd7a3338175e40"
 TERRAFORM_VERSION="1.14.6"
 REPOSITORY="zhangjaky71-stack/LUMI-AI-DESIGN-OS"
 STATE_KEY="lumi/bootstrap/terraform.tfstate"
 APPLY_TOKEN="APPLY_AWS_BOOTSTRAP"
+RECOVERY_STATE="$HOME/lumi-aws-bootstrap-recovery.tfstate"
 
 fail() {
   printf 'LUMI AWS bootstrap failed: %s\n' "$*" >&2
@@ -119,40 +129,112 @@ ROOT="$WORKDIR/infra/iac/bootstrap"
 [[ -f "$ROOT/main.tf" && -f "$ROOT/variables.tf" && -f "$ROOT/versions.tf" ]] \
   || fail "bootstrap Terraform root is incomplete"
 
-# Reuse the account-level GitHub provider if it already exists. If it does not,
-# the validated Terraform bootstrap root creates it.
-TF_ARGS=("-var=region=${REGION}")
+# Determine whether the derived state bucket exists without treating an
+# authorization failure or foreign global-name collision as "not found".
+BUCKET_EXISTS=0
+if aws s3api head-bucket \
+  --bucket "$STATE_BUCKET" \
+  >/tmp/lumi-bootstrap-bucket-head.json \
+  2>/tmp/lumi-bootstrap-bucket-head.err; then
+  BUCKET_EXISTS=1
+else
+  if grep -Eq '\(404\)|Not Found|NoSuchBucket' /tmp/lumi-bootstrap-bucket-head.err; then
+    BUCKET_EXISTS=0
+  else
+    cat /tmp/lumi-bootstrap-bucket-head.err >&2
+    fail "unable to prove derived state bucket is absent; refusing a possible foreign bucket collision"
+  fi
+fi
+
+REMOTE_STATE_EXISTS=0
+if [[ "$BUCKET_EXISTS" -eq 1 ]]; then
+  if aws s3api head-object \
+    --bucket "$STATE_BUCKET" \
+    --key "$STATE_KEY" \
+    >/tmp/lumi-bootstrap-state-head.json \
+    2>/tmp/lumi-bootstrap-state-head.err; then
+    REMOTE_STATE_EXISTS=1
+  elif grep -Eq '\(404\)|Not Found|NoSuchKey' /tmp/lumi-bootstrap-state-head.err; then
+    REMOTE_STATE_EXISTS=0
+  else
+    cat /tmp/lumi-bootstrap-state-head.err >&2
+    fail "unable to inspect existing bootstrap state object"
+  fi
+fi
+
+# Restore state before deciding OIDC ownership. Remote state is authoritative.
+# A local recovery copy is used only when remote state is absent.
+if [[ "$REMOTE_STATE_EXISTS" -eq 1 ]]; then
+  aws s3 cp \
+    "s3://${STATE_BUCKET}/${STATE_KEY}" \
+    "$ROOT/terraform.tfstate" \
+    --only-show-errors
+  printf 'Restored existing encrypted bootstrap state.\n'
+
+  if [[ -f "$RECOVERY_STATE" ]]; then
+    if cmp -s "$RECOVERY_STATE" "$ROOT/terraform.tfstate"; then
+      rm -f "$RECOVERY_STATE"
+      printf 'Removed a stale recovery state after remote-state equality verification.\n'
+    else
+      fail "local recovery state diverges from remote bootstrap state; refusing to choose one automatically"
+    fi
+  fi
+elif [[ -f "$RECOVERY_STATE" ]]; then
+  cp "$RECOVERY_STATE" "$ROOT/terraform.tfstate"
+  chmod 600 "$ROOT/terraform.tfstate"
+  printf 'Restored local bootstrap recovery state because remote state is absent.\n'
+elif [[ "$BUCKET_EXISTS" -eq 1 ]]; then
+  fail "derived state bucket already exists but has no ${STATE_KEY}; refusing an unaudited import/overwrite"
+fi
+
+terraform -chdir="$ROOT" init -backend=false -input=false
+terraform -chdir="$ROOT" validate
+
+OIDC_MANAGED_BY_STATE=0
+if terraform -chdir="$ROOT" state list 2>/dev/null \
+  | grep -Fxq 'aws_iam_openid_connect_provider.github[0]'; then
+  OIDC_MANAGED_BY_STATE=1
+fi
+
+OIDC_EXISTS=0
 if aws iam get-open-id-connect-provider \
   --open-id-connect-provider-arn "$OIDC_ARN" \
-  >/tmp/lumi-bootstrap-existing-oidc.json 2>/tmp/lumi-bootstrap-existing-oidc.err; then
-  TF_ARGS+=("-var=github_oidc_provider_arn=${OIDC_ARN}")
+  >/tmp/lumi-bootstrap-existing-oidc.json \
+  2>/tmp/lumi-bootstrap-existing-oidc.err; then
+  OIDC_EXISTS=1
+  python3 - <<'PY'
+import json
+p=json.load(open('/tmp/lumi-bootstrap-existing-oidc.json', encoding='utf-8'))
+url=p.get('Url')
+if url not in {'token.actions.githubusercontent.com', 'https://token.actions.githubusercontent.com'}:
+    raise SystemExit(f"existing GitHub OIDC provider has unexpected issuer URL: {url!r}")
+client_ids=p.get('ClientIDList')
+if not isinstance(client_ids, list) or 'sts.amazonaws.com' not in client_ids:
+    raise SystemExit(f"existing GitHub OIDC provider does not trust sts.amazonaws.com: {client_ids!r}")
+PY
 else
-  if ! grep -Eq 'NoSuchEntity|not found|NoSuchEntityException' /tmp/lumi-bootstrap-existing-oidc.err; then
+  if grep -Eq 'NoSuchEntity|not found|NoSuchEntityException' /tmp/lumi-bootstrap-existing-oidc.err; then
+    OIDC_EXISTS=0
+  else
     cat /tmp/lumi-bootstrap-existing-oidc.err >&2
     fail "unable to determine whether the GitHub OIDC provider already exists"
   fi
 fi
 
-# Bootstrap state is intentionally local for the first creation. After a
-# successful apply it is copied into the new encrypted/versioned state bucket.
-# On a later CloudShell rerun, restore that exact state before planning.
-if aws s3api head-bucket --bucket "$STATE_BUCKET" 2>/dev/null; then
-  if aws s3api head-object \
-    --bucket "$STATE_BUCKET" \
-    --key "$STATE_KEY" \
-    >/tmp/lumi-bootstrap-state-head.json 2>/dev/null; then
-    aws s3 cp \
-      "s3://${STATE_BUCKET}/${STATE_KEY}" \
-      "$ROOT/terraform.tfstate" \
-      --only-show-errors
-    printf 'Restored existing encrypted bootstrap state.\n'
-  else
-    fail "derived state bucket already exists but has no ${STATE_KEY}; refusing an unaudited import/overwrite"
-  fi
+TF_ARGS=("-var=region=${REGION}")
+if [[ "$OIDC_MANAGED_BY_STATE" -eq 1 ]]; then
+  # Never convert a Terraform-managed provider into an external input on rerun.
+  # If the provider was deleted out-of-band, Terraform will recreate it.
+  printf 'GitHub OIDC ownership: Terraform-managed bootstrap state.\n'
+elif [[ "$OIDC_EXISTS" -eq 1 ]]; then
+  # Only providers that predate/unrelated to this bootstrap state are treated
+  # as externally managed and reused.
+  TF_ARGS+=("-var=github_oidc_provider_arn=${OIDC_ARN}")
+  printf 'GitHub OIDC ownership: externally pre-existing provider; reusing validated ARN.\n'
+else
+  printf 'GitHub OIDC ownership: absent; Terraform will create the canonical provider.\n'
 fi
 
-terraform -chdir="$ROOT" init -backend=false -input=false
-terraform -chdir="$ROOT" validate
 terraform -chdir="$ROOT" plan \
   -input=false \
   -out=tfplan \
@@ -163,7 +245,7 @@ python3 - <<'PY'
 import json
 p=json.load(open('/tmp/lumi-bootstrap-plan.json', encoding='utf-8'))
 bad=[]
-counts={'create':0,'update':0,'delete':0,'replace':0,'no-op':0,'read':0}
+counts={'create':0,'update':0,'delete':0,'replace':0,'no-op':0,'read':0,'other':0}
 for item in p.get('resource_changes', []):
     address=item.get('address','?')
     actions=item.get('change',{}).get('actions',[])
@@ -181,6 +263,8 @@ for item in p.get('resource_changes', []):
         counts['no-op'] += 1
     elif actions == ['read']:
         counts['read'] += 1
+    else:
+        counts['other'] += 1
 if bad:
     raise SystemExit('bootstrap plan contains delete/replace actions: ' + repr(bad))
 print('LUMI bootstrap plan safety summary:', json.dumps(counts, sort_keys=True))
@@ -210,8 +294,13 @@ PY
 [[ "$OUTPUT_STATE_BUCKET" == "$STATE_BUCKET" ]] || fail "bootstrap state bucket output mismatch"
 [[ "$OUTPUT_KMS_KEY" == arn:aws:kms:* ]] || fail "bootstrap KMS output is invalid"
 
+# Preserve a local state recovery copy before attempting remote state upload.
+# The EXIT trap removes only WORKDIR, never RECOVERY_STATE.
+cp "$ROOT/terraform.tfstate" "$RECOVERY_STATE"
+chmod 600 "$RECOVERY_STATE"
+
 aws s3 cp \
-  "$ROOT/terraform.tfstate" \
+  "$RECOVERY_STATE" \
   "s3://${STATE_BUCKET}/${STATE_KEY}" \
   --sse aws:kms \
   --sse-kms-key-id "$OUTPUT_KMS_KEY" \
@@ -220,6 +309,27 @@ aws s3api head-object \
   --bucket "$STATE_BUCKET" \
   --key "$STATE_KEY" \
   >/tmp/lumi-bootstrap-state-head-after.json
+
+OUTPUT_KMS_KEY="$OUTPUT_KMS_KEY" python3 - <<'PY'
+import json
+import os
+p=json.load(open('/tmp/lumi-bootstrap-state-head-after.json', encoding='utf-8'))
+if p.get('ServerSideEncryption') != 'aws:kms':
+    raise SystemExit(f"remote bootstrap state is not KMS encrypted: {p.get('ServerSideEncryption')!r}")
+key=p.get('SSEKMSKeyId')
+expected=os.environ['OUTPUT_KMS_KEY']
+if not isinstance(key, str) or key != expected:
+    raise SystemExit(f"remote bootstrap state KMS key mismatch: expected {expected!r}, got {key!r}")
+PY
+
+aws s3 cp \
+  "s3://${STATE_BUCKET}/${STATE_KEY}" \
+  /tmp/lumi-bootstrap-state-verify.tfstate \
+  --only-show-errors
+cmp -s "$RECOVERY_STATE" /tmp/lumi-bootstrap-state-verify.tfstate \
+  || fail "remote bootstrap state does not match the post-apply local state"
+rm -f "$RECOVERY_STATE"
+printf 'Remote encrypted bootstrap state verified; local recovery copy removed.\n'
 
 # Query the real target Region rather than guessing service pins.
 aws rds describe-db-engine-versions \
@@ -256,8 +366,8 @@ def value(name):
     return out[name]['value']
 
 payload={
-    'schema_version': 1,
-    'kind': 'LUMI_AWS_RELEASE_BOOTSTRAP_HANDOFF_V1',
+    'schema_version': 2,
+    'kind': 'LUMI_AWS_RELEASE_BOOTSTRAP_HANDOFF_V2',
     'status': 'PASS',
     'captured_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
     'bootstrap_source_sha': os.environ['BOOTSTRAP_REF'],
@@ -282,6 +392,7 @@ payload={
         'bucket': value('state_bucket'),
         'key': 'lumi/bootstrap/terraform.tfstate',
         'encrypted_with': value('state_kms_key_arn'),
+        'remote_verified': True,
     },
 }
 print(json.dumps(payload, indent=2, sort_keys=True))
