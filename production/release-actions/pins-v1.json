@@ -125,6 +125,7 @@
     ".github/workflows/collect-staging-tool-gateway-p0-e2e.yml",
     ".github/workflows/freeze-staging-tool-gateway-p0-e2e.yml",
     ".github/workflows/deploy-staging-infrastructure.yml",
+    ".github/workflows/staging-database-identity-bootstrap.yml",
     ".github/workflows/production-dr-rehearsal.yml",
     ".github/workflows/freeze-production-evidence.yml",
     ".github/workflows/freeze-production-recovery-evidence.yml",
