@@ -1,0 +1,173 @@
+name: Release Staging Database Identity Dispatch Bridge
+
+on:
+  push:
+    branches:
+      - release-closure-p0
+    paths:
+      - production/staging/database-bootstrap-request-v1.json
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+concurrency:
+  group: release-staging-database-identity-bridge-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: github.ref_type == 'branch' && github.ref_name == 'release-closure-p0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate exact database identity release request
+        env:
+          EXPECTED_PARENT: ${{ github.event.before }}
+          REQUEST_PATH: production/staging/database-bootstrap-request-v1.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          payload = json.loads(Path(os.environ["REQUEST_PATH"]).read_text(encoding="utf-8"))
+          allowed = {
+              "plan-database-bootstrap",
+              "apply-database-bootstrap",
+              "run-database-bootstrap",
+          }
+          if payload.get("schema_version") != 1:
+              raise SystemExit("database bootstrap request schema_version must be 1")
+          if payload.get("requested_branch") != "release-closure-p0":
+              raise SystemExit("database bootstrap request branch mismatch")
+          if payload.get("source_parent") != os.environ["EXPECTED_PARENT"]:
+              raise SystemExit("database bootstrap request source_parent mismatch")
+          request_id = payload.get("request_id")
+          if not isinstance(request_id, str) or not request_id.startswith("node-71-db-identity-"):
+              raise SystemExit("request_id must use node-71-db-identity-* namespace")
+
+          operation = payload.get("operation")
+          if operation not in allowed:
+              raise SystemExit(f"unsupported database bootstrap operation: {operation!r}")
+          release_sha = payload.get("release_git_sha")
+          if not isinstance(release_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", release_sha):
+              raise SystemExit("release_git_sha must be an exact lowercase SHA40")
+
+          if operation in {"apply-database-bootstrap", "run-database-bootstrap"}:
+              if payload.get("mutation_ack") != "APPLY_STAGING_DATABASE_BOOTSTRAP":
+                  raise SystemExit(
+                      "mutating database bootstrap operation requires "
+                      "mutation_ack=APPLY_STAGING_DATABASE_BOOTSTRAP"
+                  )
+
+          generation = payload.get("credential_generation", 1)
+          if not isinstance(generation, int) or isinstance(generation, bool) or generation < 1:
+              raise SystemExit("credential_generation must be a positive integer")
+
+          promoted = payload.get("promoted_image_set")
+          required = {
+              "api",
+              "agent-runtime",
+              "model-gateway",
+              "tool-gateway",
+              "worker-media",
+              "sandbox-runtime",
+          }
+          if not isinstance(promoted, dict) or set(promoted) != required:
+              raise SystemExit("promoted_image_set must contain exactly six runtime services")
+          for service, image in promoted.items():
+              if not isinstance(image, str) or not re.fullmatch(
+                  r"[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/"
+                  + re.escape(f"lumi-staging-{service}")
+                  + r"@sha256:[0-9a-f]{64}",
+                  image,
+              ):
+                  raise SystemExit(f"invalid promoted image for {service}: {image!r}")
+
+          print(f"validated database identity request {request_id}: {operation}")
+          PY
+
+      - name: Dispatch canonical database identity workflow and record run identity
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUEST_PATH: production/staging/database-bootstrap-request-v1.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          request = json.loads(Path(os.environ["REQUEST_PATH"]).read_text(encoding="utf-8"))
+          dispatch = {
+              "ref": os.environ["GITHUB_REF_NAME"],
+              "inputs": {
+                  "operation": request["operation"],
+                  "apply_ack": request.get("mutation_ack", ""),
+                  "release_git_sha": request["release_git_sha"],
+                  "promoted_image_set_json": json.dumps(
+                      request["promoted_image_set"],
+                      sort_keys=True,
+                      separators=(",", ":"),
+                  ),
+                  "credential_generation": str(request.get("credential_generation", 1)),
+              },
+              "return_run_details": True,
+          }
+          Path("/tmp/database-bootstrap-dispatch.json").write_text(
+              json.dumps(dispatch, sort_keys=True),
+              encoding="utf-8",
+          )
+          PY
+
+          response="$(gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/staging-database-identity-bootstrap.yml/dispatches" \
+            --input /tmp/database-bootstrap-dispatch.json)"
+
+          run_id="$(printf '%s' "$response" | python3 -c 'import json,sys; p=json.load(sys.stdin); v=p.get("workflow_run_id"); assert isinstance(v,int) and v>0, p; print(v)')"
+          html_url="$(printf '%s' "$response" | python3 -c 'import json,sys; p=json.load(sys.stdin); v=p.get("html_url"); assert isinstance(v,str) and v.startswith("https://github.com/"), p; print(v)')"
+          request_id="$(python3 -c 'import json; print(json.load(open("production/staging/database-bootstrap-request-v1.json", encoding="utf-8"))["request_id"])')"
+          operation="$(python3 -c 'import json; print(json.load(open("production/staging/database-bootstrap-request-v1.json", encoding="utf-8"))["operation"])')"
+          release_sha="$(python3 -c 'import json; print(json.load(open("production/staging/database-bootstrap-request-v1.json", encoding="utf-8"))["release_git_sha"])')"
+
+          title="[NODE-71 DB Identity] ${operation} ${release_sha:0:12}"
+          body="$(cat <<EOF
+          Canonical Staging database identity operation dispatched.
+
+          - request_id: \`${request_id}\`
+          - operation: \`${operation}\`
+          - release_git_sha: \`${release_sha}\`
+          - orchestration_head_sha: \`${GITHUB_SHA}\`
+          - canonical_workflow: \`.github/workflows/staging-database-identity-bootstrap.yml\`
+          - workflow_run_id: \`${run_id}\`
+          - run: ${html_url}
+          - state: \`DISPATCHED\`
+
+          This issue records dispatch identity only. It is **not** database identity PASS, NODE-71 Staging PASS, or Final Acceptance evidence. The canonical run and immutable evidence artifact must complete successfully and be independently inspected.
+          EOF
+          )"
+
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/${GITHUB_REPOSITORY}/issues" \
+            -f title="$title" \
+            -f body="$body" >/dev/null
+
+          echo "canonical_database_identity_run_id=${run_id}"
+          echo "canonical_database_identity_run_url=${html_url}"
