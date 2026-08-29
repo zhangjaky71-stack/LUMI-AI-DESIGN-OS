@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 import json
 import os
-from collections.abc import Awaitable, Sequence
+from collections.abc import Coroutine, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -368,7 +368,7 @@ def _required_env(name: str, *, max_length: int) -> str:
     return value
 
 
-def _run_sync(awaitable: Awaitable[ChatResult]) -> ChatResult:
+def _run_sync(awaitable: Coroutine[Any, Any, ChatResult]) -> ChatResult:
     try:
         asyncio.get_running_loop()
     except RuntimeError:

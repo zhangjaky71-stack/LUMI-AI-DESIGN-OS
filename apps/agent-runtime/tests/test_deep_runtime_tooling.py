@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -32,6 +33,11 @@ class Gateway:
 
 
 class FakeStructuredTool:
+    coroutine: Any
+    name: str
+    description: str
+    args_schema: Any
+
     @classmethod
     def from_function(cls, *, coroutine, name, description, args_schema):
         instance = cls()
