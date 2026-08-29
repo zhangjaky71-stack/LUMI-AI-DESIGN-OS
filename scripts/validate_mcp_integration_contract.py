@@ -109,8 +109,8 @@ def main() -> int:
         "policy = policy_by_name.get(tool.remote_name)",
         "if policy is None:",
         "MCP_TOOL_NAMESPACE_COLLISION",
+        "_ALLOWED_SCHEMA_KEYS",
         "unsupported schema keywords",
-        "x-mcp-header",
         "risk=policy.risk",
         "idempotency=policy.idempotency",
     )

@@ -48,7 +48,11 @@ async def _acceptance() -> None:
     try:
         async with engine.connect() as connection:
             transaction = await connection.begin()
-            factory = async_sessionmaker(bind=connection, expire_on_commit=False)
+            factory = async_sessionmaker(
+                bind=connection,
+                expire_on_commit=False,
+                join_transaction_mode="create_savepoint",
+            )
             try:
                 async with factory.begin() as setup:
                     agent_run = AgentRun(
