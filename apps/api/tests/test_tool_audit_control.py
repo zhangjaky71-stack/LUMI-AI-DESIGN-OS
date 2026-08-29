@@ -63,7 +63,7 @@ def _body(payload: dict[str, Any]) -> bytes:
 
 def _headers(body: bytes, *, service: str = "tool-gateway") -> dict[str, str]:
     body_hash = hashlib.sha256(body).hexdigest()
-    message = f"{service}\n{_NOW}\nPOST\n{_PATH}\n{body_hash}".encode("utf-8")
+    message = f"{service}\n{_NOW}\nPOST\n{_PATH}\n{body_hash}".encode()
     signature = hmac.new(_SECRET.encode("utf-8"), message, hashlib.sha256).hexdigest()
     return {
         "Content-Type": "application/json",
