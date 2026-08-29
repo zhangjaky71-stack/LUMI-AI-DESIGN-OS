@@ -42,7 +42,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with: { version: "0.10.9" }
       - name: Sync locked Python workspace
-        run: uv sync --frozen
+        run: uv sync --all-packages --frozen
       - name: Validate architecture chain through NODE-62
         run: |
           python scripts/validate_collaboration.py
@@ -62,7 +62,7 @@ jobs:
         with: { python-version: "3.12" }
       - uses: astral-sh/setup-uv@v7
         with: { version: "0.10.9" }
-      - run: uv sync --frozen
+      - run: uv sync --all-packages --frozen
       - name: Run Approval domain, API and Graph bridge tests
         run: uv run pytest services/project-core/tests/test_approval.py apps/api/tests/test_approval_router.py apps/agent-runtime/tests/test_approval_bridge.py
       - name: Correctness lint
