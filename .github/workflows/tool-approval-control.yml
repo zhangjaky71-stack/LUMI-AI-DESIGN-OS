@@ -88,6 +88,9 @@ jobs:
     needs: approval-source-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    env:
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -102,13 +105,6 @@ jobs:
         run: uv sync --all-packages --frozen
       - name: Prepare canonical local infrastructure
         run: make infra-env
-      - name: Load local database URL
-        shell: bash
-        run: |
-          set -a
-          source infra/compose/.env
-          set +a
-          printf 'DATABASE_URL=%s\n' "$DATABASE_URL" >> "$GITHUB_ENV"
       - name: Start canonical local infrastructure
         run: make infra-up
       - name: Migrate through exact tool approval scope

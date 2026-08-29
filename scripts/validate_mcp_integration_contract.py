@@ -91,7 +91,7 @@ def main() -> int:
         '"io.modelcontextprotocol/protocolVersion": protocol_version',
         '"io.modelcontextprotocol/clientCapabilities"',
         '"io.modelcontextprotocol/clientInfo"',
-        "auth.organization_id != organization_id",
+        "validate_request_auth(",
         "MCP_PROTOCOL_2025_11_25",
     )
     forbid(
@@ -134,6 +134,8 @@ def main() -> int:
         '"mcp-name"',
         '"mcp-session-id"',
         "organization_id: UUID",
+        "auth.organization_id != organization_id",
+        "MCP credential tenant mismatch",
     )
     require(
         "services/tool-gateway/src/lumi_tool_gateway/mcp/transport.py",
