@@ -9,6 +9,7 @@ const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
 const HASH_C = "c".repeat(64);
 const GIT_SHA = "1".repeat(40);
+const PNG_SIGNATURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 function seedArtifactEngine(): ArtifactEngine {
   const engine = new ArtifactEngine();
@@ -83,7 +84,7 @@ describe("NODE-49 Artifact integration", () => {
     const store = new InMemoryExportObjectStore();
     const renderer: ExportRendererPort = {
       async render() {
-        return { bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]), mime_type: "image/png", width: 100, height: 80 };
+        return { bytes: Uint8Array.from(PNG_SIGNATURE), mime_type: "image/png", width: 100, height: 80 };
       },
     };
     const artifacts = new ArtifactEngineExportAdapter({ engine: artifactEngine, store, code_git_sha: GIT_SHA });
@@ -114,7 +115,11 @@ describe("NODE-49 Artifact integration", () => {
     source.add(sourceSnapshot());
     const jobs = new InMemoryExportJobRepository();
     const store = new InMemoryExportObjectStore();
-    const renderer: ExportRendererPort = { async render() { return { bytes: new Uint8Array([1]), mime_type: "image/png", width: 1, height: 1 }; } };
+    const renderer: ExportRendererPort = {
+      async render() {
+        return { bytes: Uint8Array.from(PNG_SIGNATURE), mime_type: "image/png", width: 1, height: 1 };
+      },
+    };
     const artifacts = new ArtifactEngineExportAdapter({ engine: artifactEngine, store, code_git_sha: GIT_SHA });
     artifactEngine.versions.set("artifact-version-0001", { ...artifactEngine.versions.get("artifact-version-0001")!, content_hash: "d".repeat(64) });
     const exportEngine = new ExportEngine({ source, jobs, renderer, store, artifacts, events: new RecordingExportEvents(), now: () => "2026-08-14T00:00:00.000Z" });

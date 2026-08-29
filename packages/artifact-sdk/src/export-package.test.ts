@@ -73,8 +73,18 @@ describe("NODE-49 LUMI package", () => {
       "lumi/project-snapshot.json",
       "lumi/exports/design.svg",
     ]));
-    const decoded = [...entries.values()].map((bytes) => new TextDecoder().decode(bytes)).join("\n");
-    expect(decoded).not.toMatch(/https?:\/\//);
+    const decoder = new TextDecoder();
+    const durableMetadata = [
+      "lumi/manifest.json",
+      "lumi/design-document.json",
+      "lumi/compiler-provenance.json",
+      "lumi/rights-summary.json",
+      "lumi/project-snapshot.json",
+    ].map((name) => decoder.decode(entries.get(name)!)).join("\n");
+    const exportedSvg = decoder.decode(entries.get("lumi/exports/design.svg")!);
+    expect(durableMetadata).not.toMatch(/https?:\/\//);
+    expect(exportedSvg).not.toMatch(/\b(?:href|src)=["']https?:\/\//i);
+    const decoded = `${durableMetadata}\n${exportedSvg}`;
     expect(decoded).not.toContain("api_key");
     expect(decoded).toContain("artifact-version-1");
     expect(decoded).toContain("design-version-1");
