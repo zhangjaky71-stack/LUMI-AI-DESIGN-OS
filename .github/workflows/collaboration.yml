@@ -44,7 +44,7 @@ jobs:
         with:
           version: "0.10.9"
       - name: Sync locked Python workspace
-        run: uv sync --frozen
+        run: uv sync --all-packages --frozen
       - name: Validate architecture chain through NODE-61
         run: |
           python scripts/validate_app_shell.py
@@ -76,7 +76,7 @@ jobs:
         with:
           version: "0.10.9"
       - name: Sync locked Python workspace
-        run: uv sync --frozen
+        run: uv sync --all-packages --frozen
       - name: Run collaboration engine and transport tests
         run: uv run pytest services/project-core/tests/test_collaboration.py apps/api/tests/test_collaboration_router.py
       - name: Check collaboration backend for correctness-class lint issues
