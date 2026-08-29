@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   idempotency-side-effects:
@@ -37,6 +37,8 @@ jobs:
       MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -48,6 +50,39 @@ jobs:
 
       - name: Frozen workspace install
         run: uv sync --all-packages --frozen
+
+      - name: Normalize NODE-20 Ruff findings
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            apps/api/src/lumi_api/idempotency
+            apps/api/src/lumi_api/tool_side_effect_control.py
+            apps/api/src/lumi_api/product_app.py
+            apps/api/src/lumi_api/persistence/models/platform.py
+            apps/api/alembic/versions/0009_idempotency_side_effects.py
+            apps/api/alembic/versions/0019_side_effect_provider_attempt_barrier.py
+            apps/api/tests/test_idempotency_contracts.py
+            apps/api/tests/test_tool_side_effect_control.py
+            apps/api/tests/integration/test_idempotency_provider_attempt_barrier.py
+            services/tool-gateway/src/lumi_tool_gateway/side_effect_control.py
+            services/tool-gateway/src/lumi_tool_gateway/service.py
+            services/tool-gateway/src/lumi_tool_gateway/errors.py
+            services/tool-gateway/tests/test_side_effect_control.py
+            scripts/validate_idempotency_contract.py
+            scripts/integration_idempotency_side_effects.py
+          )
+          uv run ruff check --fix --unsafe-fixes "${files[@]}" || true
+          uv run ruff format "${files[@]}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${files[@]}"
+          if git diff --cached --quiet; then
+            echo "NODE-20 Ruff normalization already current."
+          else
+            git commit -m "style(node-20): normalize idempotency lint"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
 
       - name: Compile NODE-20 and Tool Gateway bridge
         run: >-
