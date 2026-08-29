@@ -146,7 +146,8 @@ class CostLedgerGateway:
                     or existing["cost_basis"] != entry.cost_basis
                 ):
                     raise LedgerConflictError(
-                        "same operation/entry_type/entry_key was reused with different ledger semantics"
+                        "same operation/entry_type/entry_key was reused "
+                        "with different ledger semantics"
                     )
                 return existing["id"], False
         finally:

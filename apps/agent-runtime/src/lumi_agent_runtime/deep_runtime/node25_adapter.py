@@ -46,8 +46,8 @@ class Node25ToolGatewayInvoker:
     ) -> Any:
         try:
             contracts = import_module("lumi_tool_gateway.contracts")
-            permission_type = getattr(contracts, "ToolPermissionContext")
-            request_type = getattr(contracts, "ToolRequest")
+            permission_type = contracts.ToolPermissionContext
+            request_type = contracts.ToolRequest
         except (ImportError, AttributeError) as exc:
             raise DeepAgentToolScopeError(
                 "NODE-25 Tool Gateway contracts are unavailable"

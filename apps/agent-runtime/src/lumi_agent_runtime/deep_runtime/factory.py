@@ -219,7 +219,7 @@ def _ordered_intersection(
 def _load_create_deep_agent():
     try:
         module = import_module("deepagents")
-        factory = getattr(module, "create_deep_agent")
+        factory = module.create_deep_agent
     except (ImportError, AttributeError) as exc:
         raise DeepAgentFactoryError(
             "current deepagents package with create_deep_agent is required"

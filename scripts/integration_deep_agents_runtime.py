@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 from importlib import import_module
-from typing import Any
 from uuid import uuid4
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -71,7 +70,7 @@ class StateBackendProvider:
         del context
         assert virtual_files_enabled is True
         try:
-            backend_type = getattr(import_module("deepagents.backends"), "StateBackend")
+            backend_type = import_module("deepagents.backends").StateBackend
         except (ImportError, AttributeError) as exc:
             raise AssertionError("current Deep Agents StateBackend is unavailable") from exc
 

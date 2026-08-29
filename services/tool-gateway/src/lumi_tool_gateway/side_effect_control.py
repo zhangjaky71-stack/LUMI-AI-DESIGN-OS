@@ -233,8 +233,8 @@ class RemoteSideEffectGuard:
                         operation_id,
                         lease_owner=lease_owner,
                         reason=(
-                            "generic Tool Gateway side effect has no provider-native reconciliation "
-                            "adapter; automatic re-execution is forbidden"
+                            "generic Tool Gateway side effect has no provider-native "
+                            "reconciliation adapter; automatic re-execution is forbidden"
                         ),
                     )
             raise ToolAmbiguousSideEffectError(
@@ -249,7 +249,7 @@ class RemoteSideEffectGuard:
         try:
             output = await invoke()
         except Exception as exc:
-            try:
+            with contextlib.suppress(Exception):
                 await self.client.ambiguous(
                     operation_id,
                     lease_owner=lease_owner,
@@ -258,10 +258,8 @@ class RemoteSideEffectGuard:
                         f"automatic re-execution is forbidden: {type(exc).__name__}"
                     ),
                 )
-            except Exception:
-                # The durable attempt barrier is already set. If the ambiguity write also
-                # fails, a later stale-lease claim in NODE-20 converts the row to ambiguous.
-                pass
+            # The durable attempt barrier is already set. If the ambiguity write also
+            # fails, a later stale-lease claim in NODE-20 converts the row to ambiguous.
             raise ToolAmbiguousSideEffectError(
                 "tool side effect failed after the durable external-attempt barrier"
             ) from exc
