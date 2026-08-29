@@ -313,7 +313,7 @@ def _canonical_auth_message(
     body: bytes,
 ) -> bytes:
     body_hash = hashlib.sha256(body).hexdigest()
-    return f"{service}\n{timestamp}\n{method.upper()}\n{path}\n{body_hash}".encode("utf-8")
+    return f"{service}\n{timestamp}\n{method.upper()}\n{path}\n{body_hash}".encode()
 
 
 def _secret_bytes(secret: str) -> bytes:

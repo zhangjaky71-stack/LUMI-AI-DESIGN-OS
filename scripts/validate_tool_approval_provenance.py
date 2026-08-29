@@ -139,7 +139,8 @@ def validate_source_chain() -> None:
                 )
         if source.count("LUMI_TOOL_APPROVAL_AUTH_SECRET") != 2:
             raise ToolApprovalProvenanceError(
-                f"{path.relative_to(ROOT)} must inject approval secret only into API and Tool Gateway"
+                f"{path.relative_to(ROOT)} must inject approval secret only into "
+                "API and Tool Gateway"
             )
 
     deny = PUBLIC_DENY.read_text(encoding="utf-8")

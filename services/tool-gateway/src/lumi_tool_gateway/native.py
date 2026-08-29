@@ -138,7 +138,12 @@ class SafeWebFetchAdapter:
                     raise ToolRedirectLimitError("web redirect limit exceeded")
                 current_url = urljoin(current_url, location)
                 continue
-            content_type = _header(response.headers, "content-type").split(";", 1)[0].strip().lower()
+            content_type = (
+                _header(response.headers, "content-type")
+                .split(";", 1)[0]
+                .strip()
+                .lower()
+            )
             if content_type not in self.allowed_content_types:
                 raise ToolUnsupportedContentTypeError(
                     f"blocked web content type: {content_type or 'unknown'}"

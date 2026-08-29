@@ -120,4 +120,4 @@ class HttpSandboxExecutor:
 
 def _auth_message(service: str, timestamp: int, method: str, path: str, body: bytes) -> bytes:
     body_hash = hashlib.sha256(body).hexdigest()
-    return f"{service}\n{timestamp}\n{method.upper()}\n{path}\n{body_hash}".encode("utf-8")
+    return f"{service}\n{timestamp}\n{method.upper()}\n{path}\n{body_hash}".encode()
