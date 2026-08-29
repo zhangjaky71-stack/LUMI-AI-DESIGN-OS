@@ -11,6 +11,7 @@ from lumi_tool_gateway.contracts import (
     ToolRequest,
     ToolRisk,
 )
+from lumi_tool_gateway.errors import ToolSSRFBlockedError
 from lumi_tool_gateway.gateway import ToolGateway
 from lumi_tool_gateway.mcp.auth import MCPRequestAuth
 from lumi_tool_gateway.mcp.client import MCPClient
@@ -469,7 +470,7 @@ class ModernMCPTests(unittest.IsolatedAsyncioTestCase):
             allowed_tool_patterns=("*",),
             protocol_versions=(MCP_PROTOCOL_2026_07_28,),
         )
-        with self.assertRaises(Exception):
+        with self.assertRaises(ToolSSRFBlockedError):
             MCPServerRegistry(
                 (definition,),
                 ssrf_policy=SSRFPolicy(resolver=StaticResolver()),
