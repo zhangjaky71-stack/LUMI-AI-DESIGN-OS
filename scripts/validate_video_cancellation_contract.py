@@ -215,7 +215,6 @@ def validate_repo() -> None:
         provider,
         (
             "async def cancel(self, provider_request_id: str) -> ModelResult:",
-            "OpenAI Videos exposes delete but this adapter does not equate deletion with proven cancellation",
             "ErrorCategory.CAPABILITY_TEMP_UNAVAILABLE",
             "delivery_state=DeliveryState.NOT_ACCEPTED",
         ),
@@ -228,9 +227,19 @@ def validate_repo() -> None:
         "OpenAI video cancel boundary missing",
     )
     provider_cancel_block = provider[provider_cancel_start:stream_start]
+    raise_at = provider_cancel_block.find("raise ProviderInvocationError(")
+    category_at = provider_cancel_block.find("ErrorCategory.CAPABILITY_TEMP_UNAVAILABLE", raise_at)
+    delivery_at = provider_cancel_block.find(
+        "delivery_state=DeliveryState.NOT_ACCEPTED", category_at
+    )
+    require(
+        0 <= raise_at < category_at < delivery_at,
+        "OpenAI Hosted video cancellation must fail closed as unavailable/not-accepted",
+    )
     require(
         'method="DELETE"' not in provider_cancel_block
-        and "delete_object" not in provider_cancel_block,
+        and "delete_object" not in provider_cancel_block
+        and "_transport.request" not in provider_cancel_block,
         "OpenAI Hosted video must not equate provider deletion with proven cancellation",
     )
 
