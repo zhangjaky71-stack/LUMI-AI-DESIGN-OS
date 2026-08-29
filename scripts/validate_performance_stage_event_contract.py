@@ -159,9 +159,13 @@ def validate_worker_producers() -> None:
 
 def validate_enqueue_lifecycle_producer() -> None:
     source = JOB_RUNTIME.read_text(encoding="utf-8")
+    claim_source = source.split("async def claim", 1)[1].split(
+        "async def cancellation_requested",
+        1,
+    )[0]
+    normalized_claim = " ".join(claim_source.split())
     for marker in (
         "PerformanceTelemetryContext.from_environ()",
-        "RETURNING attempt_count, created_at, started_at",
         "attempt_count == 1",
         "stage=PerformanceStage.ENQUEUE",
         "started_at_unix_ns=_datetime_unix_ns(row[\"created_at\"])",
@@ -170,7 +174,11 @@ def validate_enqueue_lifecycle_producer() -> None:
         "PERFORMANCE_TIMESTAMP_MUST_BE_TIMEZONE_AWARE",
     ):
         require(marker in source, f"enqueue lifecycle producer lost marker: {marker}")
-    claim_source = source.split("async def claim", 1)[1].split("async def cancellation_requested", 1)[0]
+    require(
+        "RETURNING task.attempt_count, task.created_at, task.started_at, candidate.prior_status"
+        in normalized_claim,
+        "enqueue lifecycle must return durable attempt, created/start timestamps and prior status",
+    )
     require(
         "datetime.now(UTC)" not in claim_source,
         "enqueue duration must come from durable task lifecycle timestamps, not local wall-clock now",
