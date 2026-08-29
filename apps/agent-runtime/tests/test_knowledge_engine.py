@@ -17,8 +17,8 @@ from lumi_agent_runtime.knowledge_engine import (
     KnowledgeAccessContext,
     KnowledgeContextSource,
     KnowledgeExtractionResult,
-    KnowledgeIndexRequest,
     KnowledgeIndexer,
+    KnowledgeIndexRequest,
     KnowledgePermissionScope,
     KnowledgeRetriever,
     KnowledgeSearchQuery,
@@ -105,10 +105,7 @@ class FixtureEmbedder:
     async def embed(self, chunks, *, embedding_space_id: str):
         output = []
         for chunk in chunks:
-            if "unrelated prose" in chunk.text:
-                vector = (1.0, 0.0)
-            else:
-                vector = (0.7, 0.7)
+            vector = (1.0, 0.0) if "unrelated prose" in chunk.text else (0.7, 0.7)
             output.append(
                 replace(
                     chunk,
