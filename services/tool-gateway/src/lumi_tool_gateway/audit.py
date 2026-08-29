@@ -65,7 +65,10 @@ def redact_arguments(
             for key, child in value.items():
                 child_path = f"{path}.{key}" if path else key
                 normalized_key = key.lower().replace("-", "_")
-                if child_path in explicit or any(token in normalized_key for token in _SECRET_TOKENS):
+                should_redact = child_path in explicit or any(
+                    token in normalized_key for token in _SECRET_TOKENS
+                )
+                if should_redact:
                     result[key] = "[REDACTED]"
                 else:
                     result[key] = visit(child, path=child_path)
