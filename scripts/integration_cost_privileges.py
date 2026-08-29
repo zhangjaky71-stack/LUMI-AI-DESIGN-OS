@@ -33,10 +33,20 @@ async def main_async() -> None:
             "UPDATE usage_ledger SET quantity=quantity WHERE false",
             "DELETE FROM usage_ledger WHERE false",
             "DELETE FROM cost_reservations WHERE false",
-            "INSERT INTO cost_budget_limits (id, organization_id, scope_type, period_key, amount_limit, currency) SELECT gen_random_uuid(), id, 'organization', 'lifetime', 1, 'USD' FROM organizations WHERE false",
+            (
+                "INSERT INTO cost_budget_limits "
+                "(id, organization_id, scope_type, period_key, amount_limit, currency) "
+                "SELECT gen_random_uuid(), id, 'organization', 'lifetime', 1, 'USD' "
+                "FROM organizations WHERE false"
+            ),
             "UPDATE cost_budget_limits SET amount_limit=amount_limit WHERE false",
             "DELETE FROM cost_budget_limits WHERE false",
-            "INSERT INTO quota_limits (id, organization_id, scope_type, metric, period_key, quantity_limit, unit) SELECT gen_random_uuid(), id, 'organization', 'test', 'lifetime', 1, 'units' FROM organizations WHERE false",
+            (
+                "INSERT INTO quota_limits "
+                "(id, organization_id, scope_type, metric, period_key, quantity_limit, unit) "
+                "SELECT gen_random_uuid(), id, 'organization', 'test', 'lifetime', 1, 'units' "
+                "FROM organizations WHERE false"
+            ),
             "UPDATE quota_limits SET quantity_limit=quantity_limit WHERE false",
             "DELETE FROM quota_limits WHERE false",
             "DELETE FROM quota_leases WHERE false",

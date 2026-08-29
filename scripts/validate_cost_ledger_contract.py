@@ -30,9 +30,12 @@ def assert_model_gateway_cost_port_has_no_db_sdk() -> None:
             roots = {alias.name.split(".", 1)[0] for alias in node.names}
             if roots & forbidden_roots:
                 raise SystemExit("Model Gateway CostAccountingPort imports a DB SDK")
-        if isinstance(node, ast.ImportFrom) and node.module:
-            if node.module.split(".", 1)[0] in forbidden_roots:
-                raise SystemExit("Model Gateway CostAccountingPort imports a DB SDK")
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and node.module.split(".", 1)[0] in forbidden_roots
+        ):
+            raise SystemExit("Model Gateway CostAccountingPort imports a DB SDK")
 
 
 def assert_hosted_budget_guard_not_injectable(source: str) -> None:
