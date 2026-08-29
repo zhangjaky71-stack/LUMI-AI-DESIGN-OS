@@ -36,7 +36,7 @@ class ToolClientBoundaryTests(unittest.IsolatedAsyncioTestCase):
             actor_agent="planner",
             name=definition.name,
             version=definition.version,
-            arguments={"query": "project.summary", "parameters": {}},
+            arguments={"query": "project.summary"},
             purpose="read project summary",
             permission_context=ToolPermissionContext(
                 organization_id=organization_id,
