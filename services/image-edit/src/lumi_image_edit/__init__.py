@@ -1,5 +1,10 @@
 from .artifact_adapter import ArtifactHistoryImageEditAdapter
-from .mask import NormalizedRect, assert_no_hard_protected_overlap, build_mask_spec, normalized_to_pixels
+from .mask import (
+    NormalizedRect,
+    assert_no_hard_protected_overlap,
+    build_mask_spec,
+    normalized_to_pixels,
+)
 from .model import (
     EditConstraint,
     EditFinding,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from lumi_artifacts.history import ArtifactHistory, ArtifactHistoryError
 from lumi_artifacts.model import ArtifactFile, ArtifactVersion, LineageEdge, ProvenanceRecord
@@ -52,7 +52,7 @@ class ArtifactHistoryImageEditAdapter:
             constraint_snapshot_hash=provenance.constraint_snapshot_hash,
             created_by_type="AGENT",
             created_by_id=spec.agent_run_id or spec.task_id,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             primary_file_id=file_id,
             brand_rule_set_version=spec.brand_rule_set_version,
             identity_validation_snapshot_id=validation.identity_validation_snapshot_id,

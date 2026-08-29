@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Literal, Mapping
+from typing import Literal
 
 EditRoute = Literal[
     "STRUCTURAL_IR_EDIT",
