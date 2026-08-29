@@ -87,7 +87,7 @@ describe("NODE-49 LUMI package", () => {
     const marker = new TextEncoder().encode("hello");
     const index = tampered.findIndex((value, offset) => marker.every((item, i) => tampered[offset + i] === item));
     expect(index).toBeGreaterThan(0);
-    tampered[index] ^= 0xff;
+    tampered[index] = tampered[index]! ^ 0xff;
     expect(() => readStoreZipEntries(tampered)).toThrow("EXPORT_ZIP_CRC_MISMATCH");
   });
 });

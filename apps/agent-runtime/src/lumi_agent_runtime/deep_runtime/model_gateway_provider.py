@@ -25,9 +25,10 @@ from langchain_core.messages import (
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
+from pydantic import ConfigDict
+
 from lumi_model_gateway import Capability, ModelRequest, ModelResult
 from lumi_model_gateway.http_transport import HttpModelGatewayClient
-from pydantic import ConfigDict
 
 from .contracts import DeepAgentInvocationContext, SubagentInvocationContext
 from .providers import ProfileModelProvider, mark_model_gateway_bound

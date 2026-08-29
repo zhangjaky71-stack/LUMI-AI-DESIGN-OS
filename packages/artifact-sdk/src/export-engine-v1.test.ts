@@ -5,6 +5,7 @@ import {
   InMemoryExportJobRepository,
   InMemoryExportObjectStore,
   RecordingExportArtifacts,
+  RecordingExportDownloadAudit,
   RecordingExportEvents,
   RecordingExportSigner,
   StaticExportAuthorization,
@@ -154,9 +155,10 @@ describe("NODE-49 exact Export Engine", () => {
     const ready = await h.engine.execute("org-1", (await h.engine.start(spec())).export_job_id);
     const file = ready.files[0]!;
     const signer = new RecordingExportSigner();
-    const denied = new ExportDownloadService({ jobs: h.jobs, authorization: new StaticExportAuthorization(false), signer, now: () => "2026-08-14T00:10:00.000Z" });
+    const audit = new RecordingExportDownloadAudit();
+    const denied = new ExportDownloadService({ jobs: h.jobs, authorization: new StaticExportAuthorization(false), signer, audit, now: () => "2026-08-14T00:10:00.000Z" });
     await expect(denied.download({ organization_id: "org-1", actor_id: "u", export_job_id: ready.export_job_id, file_id: file.file_id })).rejects.toThrow("EXPORT_DOWNLOAD_FORBIDDEN");
-    const allowed = new ExportDownloadService({ jobs: h.jobs, authorization: new StaticExportAuthorization(true), signer, now: () => "2026-08-14T00:10:00.000Z" });
+    const allowed = new ExportDownloadService({ jobs: h.jobs, authorization: new StaticExportAuthorization(true), signer, audit, now: () => "2026-08-14T00:10:00.000Z" });
     await allowed.download({ organization_id: "org-1", actor_id: "u", export_job_id: ready.export_job_id, file_id: file.file_id, expires_seconds: 120 });
     await allowed.download({ organization_id: "org-1", actor_id: "u", export_job_id: ready.export_job_id, file_id: file.file_id, expires_seconds: 120 });
     expect(signer.calls).toHaveLength(2);
