@@ -50,6 +50,8 @@ jobs:
         run: corepack enable && corepack prepare pnpm@11.4.0 --activate
       - name: Install JS workspace
         run: pnpm install --frozen-lockfile
+      - name: Install Python test dependency
+        run: python -m pip install pytest==9.1.1
       - name: Run Artifact SDK tests
         run: pnpm --filter @lumi/artifact-sdk test
       - name: Run Python Artifact history tests
