@@ -21,13 +21,9 @@ def upgrade() -> None:
     # provider_request_id is durably bound, a later stale-lease claimant must
     # fail closed instead of executing the paid side effect again.
     op.execute(
-        "ALTER TABLE idempotency_operations "
-        "ADD COLUMN provider_attempt_started_at timestamptz"
+        "ALTER TABLE idempotency_operations ADD COLUMN provider_attempt_started_at timestamptz"
     )
 
 
 def downgrade() -> None:
-    op.execute(
-        "ALTER TABLE idempotency_operations "
-        "DROP COLUMN provider_attempt_started_at"
-    )
+    op.execute("ALTER TABLE idempotency_operations DROP COLUMN provider_attempt_started_at")

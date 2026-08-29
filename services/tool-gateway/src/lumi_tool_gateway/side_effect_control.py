@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import socket
@@ -206,9 +207,7 @@ class RemoteSideEffectGuard:
         if decision == "replay":
             result_json = claim.get("result_json")
             if not isinstance(result_json, dict):
-                raise ToolSideEffectControlUnavailableError(
-                    "NODE-20 replay payload is invalid"
-                )
+                raise ToolSideEffectControlUnavailableError("NODE-20 replay payload is invalid")
             encoded = result_json.get("tool_adapter_output")
             if not isinstance(encoded, dict):
                 raise ToolSideEffectControlUnavailableError(
@@ -229,7 +228,7 @@ class RemoteSideEffectGuard:
             )
         if decision in {"ambiguous", "reconcile"}:
             if decision == "reconcile":
-                try:
+                with contextlib.suppress(Exception):
                     await self.client.ambiguous(
                         operation_id,
                         lease_owner=lease_owner,
@@ -238,8 +237,6 @@ class RemoteSideEffectGuard:
                             "adapter; automatic re-execution is forbidden"
                         ),
                     )
-                except Exception:
-                    pass
             raise ToolAmbiguousSideEffectError(
                 str(claim.get("ambiguity_reason") or "tool side-effect outcome is ambiguous")
             )

@@ -108,10 +108,7 @@ def deterministic_operation_key(*parts: object, prefix: str = "op") -> str:
         raise ValueError("OPERATION_KEY_PARTS_REQUIRED")
     if not prefix or len(prefix) > 64:
         raise ValueError("OPERATION_KEY_PREFIX_INVALID")
-    normalized = [
-        _normalize(part, path=f"$[{index}]", depth=0)
-        for index, part in enumerate(parts)
-    ]
+    normalized = [_normalize(part, path=f"$[{index}]", depth=0) for index, part in enumerate(parts)]
     encoded = json.dumps(
         normalized,
         ensure_ascii=False,

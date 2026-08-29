@@ -18,7 +18,8 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..base import Base, CreatedAtMixin, IdMixin, MutableTimestampMixin
@@ -421,7 +422,9 @@ class IdempotencyOperation(IdMixin, MutableTimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="new")
     request_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     provider_attempt_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

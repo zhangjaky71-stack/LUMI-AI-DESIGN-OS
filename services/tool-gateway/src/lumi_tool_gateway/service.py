@@ -196,7 +196,9 @@ def create_tool_gateway_app(runtime: ToolGatewayServiceRuntime) -> FastAPI:
             internal_message = str(exc)
             adapter_missing = internal_message.startswith("TOOL_ADAPTER_NOT_REGISTERED:")
             status = 503 if adapter_missing else 422
-            message = "tool adapter is unavailable" if adapter_missing else "tool gateway request failed"
+            message = (
+                "tool adapter is unavailable" if adapter_missing else "tool gateway request failed"
+            )
             return _error(status, exc.code, message)
         except Exception:
             return _error(

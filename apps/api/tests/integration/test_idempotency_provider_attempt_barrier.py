@@ -25,7 +25,7 @@ if os.environ.get("LUMI_DB_INTEGRATION") != "1":
 T = TypeVar("T")
 
 
-def run(coroutine: Coroutine[Any, Any, T]) -> T:
+def run[T](coroutine: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coroutine)
 
 

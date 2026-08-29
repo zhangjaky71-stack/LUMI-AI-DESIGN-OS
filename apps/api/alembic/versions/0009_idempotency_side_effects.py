@@ -15,8 +15,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute(
-        "ALTER TABLE idempotency_operations "
-        "DROP CONSTRAINT uq_idempotency_operations_org_key"
+        "ALTER TABLE idempotency_operations DROP CONSTRAINT uq_idempotency_operations_org_key"
     )
     op.execute(
         """

@@ -8,6 +8,7 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+
 from lumi_domain import new_uuid7
 
 

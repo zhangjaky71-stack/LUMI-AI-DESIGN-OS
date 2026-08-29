@@ -92,9 +92,7 @@ async def concurrent_claim_test(gateway: SideEffectGateway, org_id: UUID) -> UUI
     decisions = Counter(claim.decision for claim in claims)
     assert decisions[ClaimDecision.EXECUTE] == 1, decisions
     assert decisions[ClaimDecision.WAIT] == 11, decisions
-    execute_claim = next(
-        claim for claim in claims if claim.decision == ClaimDecision.EXECUTE
-    )
+    execute_claim = next(claim for claim in claims if claim.decision == ClaimDecision.EXECUTE)
     await gateway.succeed(
         execute_claim.snapshot.id,
         lease_owner=execute_claim.snapshot.lease_owner or "",

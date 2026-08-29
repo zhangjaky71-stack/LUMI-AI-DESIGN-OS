@@ -53,9 +53,7 @@ else:
 _audit_secret_present = bool(os.getenv("LUMI_TOOL_AUDIT_AUTH_SECRET", ""))
 if _internal_controls_required or _audit_secret_present:
     app.include_router(
-        create_tool_audit_control_router(
-            build_tool_audit_control_runtime(session_factory)
-        )
+        create_tool_audit_control_router(build_tool_audit_control_runtime(session_factory))
     )
     app.state.tool_audit_control_enabled = True
 else:
@@ -64,9 +62,7 @@ else:
 _approval_secret_present = bool(os.getenv("LUMI_TOOL_APPROVAL_AUTH_SECRET", ""))
 if _internal_controls_required or _approval_secret_present:
     app.include_router(
-        create_tool_approval_control_router(
-            build_tool_approval_control_runtime(session_factory)
-        )
+        create_tool_approval_control_router(build_tool_approval_control_runtime(session_factory))
     )
     app.state.tool_approval_control_enabled = True
 else:
@@ -75,9 +71,7 @@ else:
 _data_secret_present = bool(os.getenv("LUMI_TOOL_DATA_AUTH_SECRET", ""))
 if _internal_controls_required or _data_secret_present:
     app.include_router(
-        create_tool_data_control_router(
-            build_tool_data_control_runtime(session_factory)
-        )
+        create_tool_data_control_router(build_tool_data_control_runtime(session_factory))
     )
     app.state.tool_data_control_enabled = True
 else:
