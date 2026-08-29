@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import copy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "playwright.performance.config.ts"
 SPEC = ROOT / "apps" / "web" / "e2e" / "performance" / "canvas-large-document.release.spec.ts"
 HARNESS = ROOT / "apps" / "web" / "e2e" / "performance" / "node69-multipage-harness.ts"
+
+_IMAGE_SCENARIO_MARKER = 'return metric("image-heavy-1000", count, true, values);'
 
 
 def require(condition: bool, message: str) -> None:
@@ -36,7 +37,7 @@ def validate_sources(config: str, spec: str, harness: str) -> None:
         'profile.duration_seconds).toBe(600)',
         'simple-500',
         'simple-1000',
-        'image-heavy-1000',
+        _IMAGE_SCENARIO_MARKER,
         'installNode69MultiPageHarness(page)',
         'readNode69MultiPageShape(page)',
         'page_count: 4',
@@ -77,7 +78,16 @@ def negative_drills(config: str, spec: str, harness: str) -> int:
         ("external-origin-not-blocked", config, spec.replace('await route.abort("blockedbyclient")', 'await route.continue()', 1), harness),
         ("cpu-throttle-drift", config, spec.replace('rate: 4', 'rate: 1', 1), harness),
         ("long-session-shortened", config, spec.replace('profile.duration_seconds).toBe(600)', 'profile.duration_seconds).toBe(60)', 1), harness),
-        ("image-scenario-removed", config, spec.replace('"image-heavy-1000"', '"image-heavy-disabled"', 1), harness),
+        (
+            "image-scenario-removed",
+            config,
+            spec.replace(
+                _IMAGE_SCENARIO_MARKER,
+                'return metric("image-heavy-disabled", count, true, values);',
+                1,
+            ),
+            harness,
+        ),
         ("multi-page-reduced", config, spec, harness.replace("pageCount = 4", "pageCount = 1", 1)),
         ("missing-inp", config, spec.replace('"inp_ms"', '"inp_disabled"', 1), harness),
     ]
