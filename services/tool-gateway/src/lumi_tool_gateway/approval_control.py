@@ -8,7 +8,13 @@ import urllib.request
 from typing import Any
 from urllib.parse import urlparse
 
-from .contracts import ApprovalDecision, ToolApproval, ToolDefinition, ToolRequest, canonical_json_bytes
+from .contracts import (
+    ApprovalDecision,
+    ToolApproval,
+    ToolDefinition,
+    ToolRequest,
+    canonical_json_bytes,
+)
 from .errors import ToolApprovalControlUnavailableError
 from .http_transport import sign_internal_request
 

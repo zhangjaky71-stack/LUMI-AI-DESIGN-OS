@@ -7,12 +7,11 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
-from lumi_domain import new_uuid7
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -20,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lumi_api.api.v1.context import RequestContext, get_request_context
 from lumi_api.persistence.models import Approval, Task
+from lumi_domain import new_uuid7
 
 _MAX_BODY_BYTES = 2 * 1024 * 1024
 _MAX_SKEW_SECONDS = 90
@@ -235,7 +235,7 @@ def create_tool_approval_public_router(
     async def get_tool_approval(
         project_id: UUID,
         approval_id: UUID,
-        context: RequestContext = Depends(get_request_context),
+        context: Annotated[RequestContext, Depends(get_request_context)],
     ) -> JSONResponse:
         async with session_factory() as session:
             approval = await session.scalar(
@@ -259,7 +259,7 @@ def create_tool_approval_public_router(
         project_id: UUID,
         approval_id: UUID,
         body: ToolApprovalDecisionBody,
-        context: RequestContext = Depends(get_request_context),
+        context: Annotated[RequestContext, Depends(get_request_context)],
         idempotency_key: str = Header(alias="Idempotency-Key"),
     ) -> JSONResponse:
         if "artifact.approve" not in context.permissions:
@@ -459,7 +459,7 @@ def _verify_auth(request: Request, body: bytes, secret: str) -> JSONResponse | N
     body_hash = hashlib.sha256(body).hexdigest()
     message = (
         f"{service}\n{timestamp}\n{request.method.upper()}\n{request.url.path}\n{body_hash}"
-    ).encode("utf-8")
+    ).encode()
     expected = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(signature.lower(), expected):
         return _error(
