@@ -117,8 +117,16 @@ jobs:
         env:
           PGPASSWORD: lumi
         run: |
-          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.tables where table_name in ('collaboration_threads','collaboration_comments','collaboration_operation_commits','collaboration_audit_events','collaboration_notifications');\")" = "5"
-          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.tables where table_name like 'collaboration%presence%';\")" = "0"
+          collaboration_table_count="$(
+            psql -h 127.0.0.1 -U lumi -d lumi -Atc \
+              "select count(*) from information_schema.tables where table_name in ('collaboration_threads','collaboration_comments','collaboration_operation_commits','collaboration_audit_events','collaboration_notifications');"
+          )"
+          durable_presence_table_count="$(
+            psql -h 127.0.0.1 -U lumi -d lumi -Atc \
+              "select count(*) from information_schema.tables where table_name like 'collaboration%presence%';"
+          )"
+          test "$collaboration_table_count" = "5"
+          test "$durable_presence_table_count" = "0"
           psql -h 127.0.0.1 -U lumi -d lumi -Atc "select data_type from information_schema.columns where table_name='collaboration_threads' and column_name='anchor';" | grep -qx jsonb
 
   collaboration-quality:

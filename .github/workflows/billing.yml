@@ -91,9 +91,21 @@ jobs:
       - name: Verify Billing schema
         env: { PGPASSWORD: lumi }
         run: |
-          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.tables where table_name in ('billing_plan_versions','billing_pricing_policies','billing_accounts','billing_subscriptions','billing_credit_ledger','billing_usage_records','billing_invoices','billing_payment_events');\")" = "8"
-          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.views where table_name='billing_credit_balances';\")" = "1"
-          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.columns where table_name like 'billing%' and column_name in ('card_number','cvc','cvv','pan');\")" = "0"
+          billing_table_count="$(
+            psql -h 127.0.0.1 -U lumi -d lumi -Atc \
+              "select count(*) from information_schema.tables where table_name in ('billing_plan_versions','billing_pricing_policies','billing_accounts','billing_subscriptions','billing_credit_ledger','billing_usage_records','billing_invoices','billing_payment_events');"
+          )"
+          billing_view_count="$(
+            psql -h 127.0.0.1 -U lumi -d lumi -Atc \
+              "select count(*) from information_schema.views where table_name='billing_credit_balances';"
+          )"
+          raw_card_column_count="$(
+            psql -h 127.0.0.1 -U lumi -d lumi -Atc \
+              "select count(*) from information_schema.columns where table_name like 'billing%' and column_name in ('card_number','cvc','cvv','pan');"
+          )"
+          test "$billing_table_count" = "8"
+          test "$billing_view_count" = "1"
+          test "$raw_card_column_count" = "0"
 
   billing-quality:
     needs: billing-contract
