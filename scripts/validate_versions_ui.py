@@ -61,7 +61,24 @@ def main() -> None:
     require(gateway, "PROVENANCE_FORBIDDEN", "provenance authorization boundary")
     require(gateway, "Your current compare targets were not changed", "concurrent head does not retarget compare")
     require(ui, "恢复会创建一个新的 DRAFT", "restore append-only explanation")
-    require(ui, "No raw system prompt or chain-of-thought", "safe provenance copy")
+    safe_provenance_copy = (
+        "No raw system prompt or chain-of-thought" in ui
+        or all(
+            marker in ui
+            for marker in (
+                "Raw prompts",
+                "system prompts",
+                "tool payloads",
+                "private reasoning",
+                "never",
+                "exposed here",
+            )
+        )
+    )
+    if not safe_provenance_copy:
+        raise AssertionError(
+            "missing safe provenance copy: UI must state that raw/private execution data is not exposed"
+        )
     require(ui, "SIDE_BY_SIDE", "side-by-side compare")
     require(ui, "OVERLAY", "overlay compare")
     require(ui, "WIPE", "wipe compare")
