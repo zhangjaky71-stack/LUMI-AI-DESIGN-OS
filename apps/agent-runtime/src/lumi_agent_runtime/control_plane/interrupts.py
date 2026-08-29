@@ -37,7 +37,7 @@ def approval_interrupt(
         "risk": risk,
         "subject_ref": subject_ref,
     }
-    interrupt = getattr(import_module("langgraph.types"), "interrupt")
+    interrupt = import_module("langgraph.types").interrupt
     return interrupt(payload)
 
 
@@ -58,5 +58,5 @@ def input_interrupt(
         "prompt": prompt,
         "schema": schema or {"type": "string"},
     }
-    interrupt = getattr(import_module("langgraph.types"), "interrupt")
+    interrupt = import_module("langgraph.types").interrupt
     return interrupt(payload)

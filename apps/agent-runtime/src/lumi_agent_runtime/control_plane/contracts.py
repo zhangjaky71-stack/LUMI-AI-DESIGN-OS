@@ -118,9 +118,11 @@ class GraphRunRequest:
             raise ValueError("GRAPH_THREAD_ID_INVALID")
         if self.trace_id is not None and len(self.trace_id) > 128:
             raise ValueError("GRAPH_TRACE_ID_INVALID")
-        if self.budget_limit_usd is not None:
-            if not self.budget_limit_usd or len(self.budget_limit_usd) > 64:
-                raise ValueError("GRAPH_BUDGET_INVALID")
+        if (
+            self.budget_limit_usd is not None
+            and (not self.budget_limit_usd or len(self.budget_limit_usd) > 64)
+        ):
+            raise ValueError("GRAPH_BUDGET_INVALID")
         _validate_json(self.input, path="$.input", depth=0)
 
 

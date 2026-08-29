@@ -118,16 +118,15 @@ class PostgresGraphRunStore:
                         f"AgentRun control not found: {snapshot.agent_run_id}"
                     )
                 _assert_snapshot_identity(row, snapshot)
-                if expected_checkpoint is not None:
-                    if (
-                        row["thread_id"] != expected_checkpoint.thread_id
-                        or row["checkpoint_namespace"]
-                        != expected_checkpoint.checkpoint_namespace
-                        or row["checkpoint_id"] != expected_checkpoint.checkpoint_id
-                    ):
-                        raise GraphCheckpointConflictError(
-                            "checkpoint advanced before control-plane persist"
-                        )
+                if expected_checkpoint is not None and (
+                    row["thread_id"] != expected_checkpoint.thread_id
+                    or row["checkpoint_namespace"]
+                    != expected_checkpoint.checkpoint_namespace
+                    or row["checkpoint_id"] != expected_checkpoint.checkpoint_id
+                ):
+                    raise GraphCheckpointConflictError(
+                        "checkpoint advanced before control-plane persist"
+                    )
                 await connection.execute(
                     """
                     UPDATE agent_run_control

@@ -104,7 +104,7 @@ class LangGraphExecutor:
         # Resolve graph identity from the current thread's state. LUMI never asks the
         # caller to choose a new graph version while resuming an existing AgentRun.
         definition, graph = await self._definition_for_thread(request.thread_id)
-        command_type = getattr(import_module("langgraph.types"), "Command")
+        command_type = import_module("langgraph.types").Command
         config = _thread_config(request.thread_id, trace_id=request.trace_id)
         try:
             await graph.ainvoke(command_type(resume=normalized_value), config=config)
@@ -243,7 +243,7 @@ class LangGraphExecutor:
         # does not infer a graph from arbitrary state content. There must be exactly one
         # registered compiled graph whose current checkpoint contains this thread.
         matches: list[tuple[GraphDefinition, Any]] = []
-        for key, definition in self.definitions.items():
+        for _key, definition in self.definitions.items():
             graph = self.graphs.resolve(definition)
             try:
                 state = await graph.aget_state(_thread_config(thread_id, trace_id=None))

@@ -6,6 +6,7 @@ import os
 import urllib.error
 import urllib.request
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
@@ -129,7 +130,9 @@ class HttpAgentControlClient:
         try:
             payload = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise AgentControlUnavailableError("private Agent control returned invalid JSON") from exc
+            raise AgentControlUnavailableError(
+                "private Agent control returned invalid JSON"
+            ) from exc
         if not isinstance(payload, dict):
             raise AgentControlUnavailableError("private Agent control response must be an object")
         if not 200 <= status < 300:
@@ -215,7 +218,7 @@ class RemoteControlPlaneOperationGuard:
                 },
             )
         except Exception as exc:
-            try:
+            with suppress(Exception):
                 await self.client.post(
                     f"{_BASE_PATH}/operations/ambiguous",
                     {
@@ -227,8 +230,6 @@ class RemoteControlPlaneOperationGuard:
                         ),
                     },
                 )
-            except Exception:
-                pass
             raise AgentControlUnavailableError(
                 "graph command completed but canonical idempotency success was not confirmed"
             ) from exc

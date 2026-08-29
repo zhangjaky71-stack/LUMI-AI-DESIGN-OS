@@ -45,13 +45,16 @@ def upgrade() -> None:
             CONSTRAINT uq_agent_graph_definitions_identity UNIQUE (graph_key, graph_version),
             CONSTRAINT ck_agent_graph_definitions_hash CHECK (content_hash ~ '^[0-9a-f]{64}$'),
             CONSTRAINT ck_agent_graph_definitions_schema_versions CHECK (
-                state_schema_version >= 1 AND input_schema_version >= 1 AND output_schema_version >= 1
+                state_schema_version >= 1
+                AND input_schema_version >= 1
+                AND output_schema_version >= 1
             )
         )
         """
     )
     op.execute(
-        "CREATE INDEX ix_agent_graph_definitions_enabled ON agent_graph_definitions (enabled, graph_key)"
+        "CREATE INDEX ix_agent_graph_definitions_enabled "
+        "ON agent_graph_definitions (enabled, graph_key)"
     )
 
     op.execute(
@@ -81,7 +84,9 @@ def upgrade() -> None:
                 graph_definition_hash ~ '^[0-9a-f]{64}$'
             ),
             CONSTRAINT ck_agent_run_control_status CHECK (
-                control_status IN ('pending','running','interrupted','succeeded','failed','cancelled')
+                control_status IN (
+                    'pending','running','interrupted','succeeded','failed','cancelled'
+                )
             ),
             CONSTRAINT ck_agent_run_control_version CHECK (version >= 1)
         )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from uuid import uuid4
 
+from lumi_agent_runtime.control_plane.api import GraphControlPlaneAPI
 from lumi_agent_runtime.control_plane.client import GraphControlPlaneClient
 from lumi_agent_runtime.control_plane.contracts import (
     GraphDefinition,
@@ -10,7 +11,6 @@ from lumi_agent_runtime.control_plane.contracts import (
     GraphRunStatus,
 )
 from lumi_agent_runtime.control_plane.control_plane import LangGraphControlPlane
-from lumi_agent_runtime.control_plane.api import GraphControlPlaneAPI
 from lumi_agent_runtime.control_plane.registry import GraphRegistry
 from lumi_agent_runtime.control_plane.testing import (
     MemoryEventSink,
