@@ -41,6 +41,15 @@ jobs:
         run: uv run python scripts/export_api_v1_contract.py
       - name: Regenerate TypeScript operation map
         run: uv run python scripts/generate_api_v1_client.py
+      - name: Upload generated API contract evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: api-contract-generated-${{ github.sha }}
+          path: |
+            contracts/api/openapi-v1.json
+            packages/api-client-v1/src/generated.ts
+          if-no-files-found: error
+          retention-days: 1
       - name: Generated contract must be committed and current
         shell: bash
         run: |
