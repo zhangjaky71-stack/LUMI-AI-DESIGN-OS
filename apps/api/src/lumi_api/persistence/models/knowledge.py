@@ -188,4 +188,4 @@ class KnowledgeChunkModel(IdMixin, MutableTimestampMixin, Base):
         default=dict,
     )
 
-# release-closure read-only Ruff diagnostic trigger
+# release-closure read-only Ruff diagnostic trigger-v2
