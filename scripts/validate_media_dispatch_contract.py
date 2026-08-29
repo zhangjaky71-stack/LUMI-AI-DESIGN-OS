@@ -58,7 +58,9 @@ def main() -> int:
         "MEDIA_DISPATCH_GENERATION_PROJECT_MISMATCH",
         "MEDIA_DISPATCH_GENERATION_OPERATION_REQUIRED",
         "MEDIA_DISPATCH_GENERATION_SPEC_MISMATCH",
-        "id=_dispatch_event_id(operation_id, dispatch.message.job_id)",
+        "id=_dispatch_event_id(",
+        "namespace=namespace",
+        'if namespace not in {"image-transform", "video-render"}:',
         "session.add(event)",
         "never touch the broker",
     )
