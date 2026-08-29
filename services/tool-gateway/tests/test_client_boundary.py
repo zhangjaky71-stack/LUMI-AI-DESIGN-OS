@@ -21,7 +21,13 @@ class ToolClientBoundaryTests(unittest.IsolatedAsyncioTestCase):
         definition = next(
             item for item in p0_tool_definitions() if item.name == "project.query"
         )
-        adapter = CountingAdapter(ToolAdapterOutput(data={"rows": []}))
+        expected = {
+            "project_id": "01900000-0000-7000-8000-000000000002",
+            "name": "Client boundary project",
+            "status": "active",
+            "summary": {"rows": []},
+        }
+        adapter = CountingAdapter(ToolAdapterOutput(data=expected))
         gateway = ToolGateway(
             registry=ToolRegistry((definition,)),
             adapters={definition.key: adapter},
@@ -46,7 +52,7 @@ class ToolClientBoundaryTests(unittest.IsolatedAsyncioTestCase):
             ),
         )
         result = await client.invoke(request)
-        self.assertEqual(result.data, {"rows": []})
+        self.assertEqual(result.data, expected)
         self.assertEqual(adapter.calls, 1)
         self.assertFalse(hasattr(client, "registry"))
         self.assertFalse(hasattr(client, "adapters"))
