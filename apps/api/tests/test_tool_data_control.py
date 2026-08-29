@@ -40,7 +40,7 @@ def _body() -> bytes:
         },
         sort_keys=True,
         separators=(",", ":"),
-    ).encode("utf-8")
+    ).encode()
 
 
 def _headers(body: bytes, *, service: str = "tool-gateway") -> dict[str, str]:

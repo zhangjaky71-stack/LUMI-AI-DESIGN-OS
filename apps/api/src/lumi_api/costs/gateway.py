@@ -905,6 +905,8 @@ class PostgresCostGateway:
             """,
             *args,
         )
+        if value is None:
+            raise CostLedgerConflict("cost aggregate unavailable")
         return Decimal(value)
 
     async def _scope_active_reservations(
@@ -931,6 +933,8 @@ class PostgresCostGateway:
             """,
             *args,
         )
+        if value is None:
+            raise CostLedgerConflict("active reservation aggregate unavailable")
         return Decimal(value)
 
     def _scope_clause(

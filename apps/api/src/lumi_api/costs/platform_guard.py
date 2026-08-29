@@ -128,6 +128,10 @@ class PlatformGuardedCostGateway(PostgresCostGateway):
               AND expires_at > now()
             """
         )
+        if spent is None or active is None:
+            raise PlatformProviderCostGuardUnavailable(
+                "platform provider cost aggregate unavailable"
+            )
         return (
             Decimal(policy["daily_cap_usd"]),
             Decimal(spent),
