@@ -265,9 +265,13 @@ def validate_python_contract() -> None:
         "task DB snapshot/scope validation missing",
     )
 
-    image_task_block = worker_app.split("def image_transform", 1)[1].split(
-        '@celery_app.task(name="lumi.jobs.video.render"', 1
-    )[0]
+    image_task_start = worker_app.find("def image_transform")
+    video_task_start = worker_app.find("def video_render", image_task_start)
+    require(
+        image_task_start >= 0 and video_task_start > image_task_start,
+        "image.transform task function boundary missing",
+    )
+    image_task_block = worker_app[image_task_start:video_task_start]
     require(
         '"status": "accepted"' not in image_task_block,
         "image.transform must not regress to accepted-only placeholder",
