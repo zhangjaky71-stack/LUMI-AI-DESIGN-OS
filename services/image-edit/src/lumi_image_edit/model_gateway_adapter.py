@@ -29,7 +29,7 @@ def _capability(plan: EditPlan) -> Capability:
 def _request(spec: ImageEditSpec, plan: EditPlan, mask: MaskSpec | None) -> ModelRequest:
     if plan.requires_mask and mask is None:
         raise ValueError("IMAGE_EDIT_PROVIDER_MASK_REQUIRED")
-    required_capabilities = []
+    required_capabilities: list[str] = []
     if spec.protected_regions or spec.identity_requirement_ids:
         required_capabilities.append(Capability.IMAGE_REFERENCE_CONSISTENCY.value)
     inputs: dict[str, Any] = {

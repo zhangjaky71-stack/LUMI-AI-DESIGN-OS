@@ -49,6 +49,10 @@ def _require_text(value: str, code: str) -> None:
         raise ValueError(code)
 
 
+def _empty_object_mapping() -> dict[str, object]:
+    return {}
+
+
 @dataclass(frozen=True, slots=True)
 class PixelRect:
     x: int
@@ -143,7 +147,7 @@ class EditConstraint:
     constraint_type: str
     severity: Severity
     snapshot_hash: str
-    parameters: Mapping[str, object] = field(default_factory=dict)
+    parameters: Mapping[str, object] = field(default_factory=_empty_object_mapping)
 
     def __post_init__(self) -> None:
         if len(self.snapshot_hash) != 64:
