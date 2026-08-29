@@ -123,8 +123,13 @@ class FixtureExtractor:
         self.native = native
         self.ocr_calls = 0
 
-    async def extract_native(self, source_ref, *, access):
-        del source_ref, access
+    async def extract_native(
+        self,
+        source: KnowledgeSourceRef,
+        *,
+        access: KnowledgeAccessContext,
+    ) -> KnowledgeExtractionResult | None:
+        del source, access
         if not self.native:
             return None
         return KnowledgeExtractionResult(
@@ -135,8 +140,13 @@ class FixtureExtractor:
             used_ocr=False,
         )
 
-    async def extract_ocr(self, source_ref, *, access):
-        del source_ref, access
+    async def extract_ocr(
+        self,
+        source: KnowledgeSourceRef,
+        *,
+        access: KnowledgeAccessContext,
+    ) -> KnowledgeExtractionResult | None:
+        del source, access
         self.ocr_calls += 1
         return KnowledgeExtractionResult(
             normalized_text="ocr document text",

@@ -100,7 +100,8 @@ async def main_async() -> None:
         # Idempotent cleanup from any interrupted prior run uses no fixed operation IDs;
         # this run therefore owns only the UUIDs created below.
         task_id = await migration.fetchval(
-            "SELECT id FROM tasks WHERE organization_id=$1 AND project_id=$2 ORDER BY created_at LIMIT 1",
+            "SELECT id FROM tasks WHERE organization_id=$1 AND project_id=$2 "
+            "ORDER BY created_at LIMIT 1",
             ORG_ID,
             PROJECT_A_ID,
         )

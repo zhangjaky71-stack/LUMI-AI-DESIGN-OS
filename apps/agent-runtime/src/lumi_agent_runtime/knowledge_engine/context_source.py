@@ -193,6 +193,8 @@ def _optional_text(value: object) -> str | None:
 def _optional_positive_int(value: object) -> int | None:
     if value is None:
         return None
+    if not isinstance(value, (str, int, float)):
+        raise ValueError("KNOWLEDGE_CONTEXT_FRESHNESS_WINDOW_INVALID")
     parsed = int(value)
     if parsed < 1:
         raise ValueError("KNOWLEDGE_CONTEXT_FRESHNESS_WINDOW_INVALID")

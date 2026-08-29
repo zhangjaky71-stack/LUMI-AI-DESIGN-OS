@@ -18,7 +18,6 @@ from lumi_api.costs import (
 )
 from lumi_api.persistence.seed import ORG_ID
 
-
 MAX_PLATFORM_DAILY_CAP = Decimal("100.00000000")
 
 
@@ -144,7 +143,8 @@ async def main_async() -> None:
         if test_cap > MAX_PLATFORM_DAILY_CAP:
             raise AssertionError(
                 "platform provider-cost acceptance requires less than $99.70 "
-                f"of pre-existing guarded usage; observed baseline={baseline_spent + baseline_active}"
+                "of pre-existing guarded usage; observed "
+                f"baseline={baseline_spent + baseline_active}"
             )
         await migration.execute(
             """

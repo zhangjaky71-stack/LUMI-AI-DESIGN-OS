@@ -91,7 +91,8 @@ def upgrade() -> None:
     )
     op.execute(
         "CREATE UNIQUE INDEX uq_cost_budget_limits_identity ON cost_budget_limits "
-        "(organization_id, scope_type, COALESCE(scope_id, '00000000-0000-0000-0000-000000000000'::uuid), period_key, currency)"
+        "(organization_id, scope_type, COALESCE(scope_id, "
+        "'00000000-0000-0000-0000-000000000000'::uuid), period_key, currency)"
     )
     op.execute(
         "CREATE INDEX ix_cost_budget_limits_org_scope ON cost_budget_limits "
@@ -127,7 +128,9 @@ def upgrade() -> None:
             version integer NOT NULL DEFAULT 1,
             CONSTRAINT uq_cost_reservations_identity UNIQUE (operation_id, reservation_key),
             CONSTRAINT ck_cost_reservations_estimate CHECK (estimated_amount >= 0),
-            CONSTRAINT ck_cost_reservations_actual CHECK (actual_amount IS NULL OR actual_amount >= 0),
+            CONSTRAINT ck_cost_reservations_actual CHECK (
+                actual_amount IS NULL OR actual_amount >= 0
+            ),
             CONSTRAINT ck_cost_reservations_currency CHECK (currency ~ '^[A-Z]{3}$'),
             CONSTRAINT ck_cost_reservations_confidence CHECK (
                 confidence IN ('exact','estimated','unknown')
@@ -227,7 +230,8 @@ def upgrade() -> None:
     )
     op.execute(
         "CREATE UNIQUE INDEX uq_quota_limits_identity ON quota_limits "
-        "(organization_id, scope_type, COALESCE(scope_id, '00000000-0000-0000-0000-000000000000'::uuid), metric, period_key)"
+        "(organization_id, scope_type, COALESCE(scope_id, "
+        "'00000000-0000-0000-0000-000000000000'::uuid), metric, period_key)"
     )
     op.execute(
         "CREATE INDEX ix_quota_limits_org_metric ON quota_limits "
