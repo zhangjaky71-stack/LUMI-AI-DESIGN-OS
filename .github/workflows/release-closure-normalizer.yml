@@ -1,0 +1,212 @@
+name: Release Closure Deterministic Normalizer
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    if: github.event.pull_request.head.ref == 'release-closure-p0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 2
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Apply deterministic non-semantic fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one match in {path}, got {count}: {old!r}")
+              file.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace_exact(
+              "scripts/validate_tool_approval_provenance.py",
+              '                f"{path.relative_to(ROOT)} must inject approval secret only into API and Tool Gateway"\n',
+              '                f"{path.relative_to(ROOT)} must inject approval secret only into "\n'
+              '                "API and Tool Gateway"\n',
+          )
+          replace_exact(
+              "services/tool-gateway/src/lumi_tool_gateway/native.py",
+              '            content_type = _header(response.headers, "content-type").split(";", 1)[0].strip().lower()\n',
+              '            content_type = (\n'
+              '                _header(response.headers, "content-type")\n'
+              '                .split(";", 1)[0]\n'
+              '                .strip()\n'
+              '                .lower()\n'
+              '            )\n',
+          )
+          replace_exact(
+              "services/tool-gateway/tests/test_mcp_modern.py",
+              'from lumi_tool_gateway.gateway import ToolGateway\n',
+              'from lumi_tool_gateway.errors import ToolSSRFBlockedError\n'
+              'from lumi_tool_gateway.gateway import ToolGateway\n',
+          )
+          replace_exact(
+              "services/tool-gateway/tests/test_mcp_modern.py",
+              '        with self.assertRaises(Exception):\n            MCPServerRegistry(\n',
+              '        with self.assertRaises(ToolSSRFBlockedError):\n            MCPServerRegistry(\n',
+          )
+
+          replace_exact(
+              "apps/api/alembic/versions/0011_cost_ledger_budget_quota.py",
+              '        "(organization_id, scope_type, COALESCE(scope_id, \'00000000-0000-0000-0000-000000000000\'::uuid), period_key, currency)"\n',
+              '        "(organization_id, scope_type, COALESCE(scope_id, "\n'
+              '        "\'00000000-0000-0000-0000-000000000000\'::uuid), period_key, currency)"\n',
+          )
+          replace_exact(
+              "apps/api/alembic/versions/0011_cost_ledger_budget_quota.py",
+              "            CONSTRAINT ck_cost_reservations_actual CHECK (actual_amount IS NULL OR actual_amount >= 0),\n",
+              "            CONSTRAINT ck_cost_reservations_actual CHECK (\n"
+              "                actual_amount IS NULL OR actual_amount >= 0\n"
+              "            ),\n",
+          )
+          replace_exact(
+              "apps/api/alembic/versions/0011_cost_ledger_budget_quota.py",
+              '        "(organization_id, scope_type, COALESCE(scope_id, \'00000000-0000-0000-0000-000000000000\'::uuid), metric, period_key)"\n',
+              '        "(organization_id, scope_type, COALESCE(scope_id, "\n'
+              '        "\'00000000-0000-0000-0000-000000000000\'::uuid), metric, period_key)"\n',
+          )
+          replace_exact(
+              "scripts/integration_cost_ledger.py",
+              '            "SELECT id FROM tasks WHERE organization_id=$1 AND project_id=$2 ORDER BY created_at LIMIT 1",\n',
+              '            "SELECT id FROM tasks WHERE organization_id=$1 AND project_id=$2 "\n'
+              '            "ORDER BY created_at LIMIT 1",\n',
+          )
+          replace_exact(
+              "scripts/integration_platform_provider_cost_guard.py",
+              '                f"of pre-existing guarded usage; observed baseline={baseline_spent + baseline_active}"\n',
+              '                "of pre-existing guarded usage; observed "\n'
+              '                f"baseline={baseline_spent + baseline_active}"\n',
+          )
+
+          old_benchmark = '''      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run planning/mask benchmark
+        env:
+          PYTHONPATH: services/image-edit/src
+        run: python scripts/benchmark_image_edit.py
+'''
+          new_benchmark = '''      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --all-packages --frozen
+      - name: Run planning/mask benchmark
+        env:
+          PYTHONPATH: services/image-edit/src:services/image-generation/src:services/model-gateway/src:services/artifact-history/src:services/identity-engine/src:services/brand-rules/src
+        run: uv run python scripts/benchmark_image_edit.py
+'''
+          replace_exact(".github/workflows/image-edit.yml", old_benchmark, new_benchmark)
+          PY
+      - name: Apply Ruff canonical fixes
+        run: |
+          uv run ruff check --fix --select I001 \
+            apps/api/src/lumi_api/persistence/models/knowledge.py \
+            apps/api/src/lumi_api/api/v1/services.py \
+            apps/api/src/lumi_api/costs/gateway.py \
+            scripts/integration_platform_provider_cost_guard.py \
+            services/tool-gateway/tests/test_mcp_modern.py
+          uv run ruff check --fix --unsafe-fixes --select UP046,F401 \
+            apps/api/src/lumi_api/api/v1/contracts.py
+          uv run ruff check --fix --select UP012 \
+            services/tool-gateway/src/lumi_tool_gateway/http_transport.py \
+            services/tool-gateway/src/lumi_tool_gateway/sandbox_transport.py
+          uv run ruff check --fix --select SIM102 \
+            services/tool-gateway/src/lumi_tool_gateway/contracts.py
+      - name: Verify Ruff gates
+        run: |
+          uv run ruff check \
+            apps/api/src/lumi_api/persistence/models/knowledge.py \
+            apps/api/src/lumi_api/api/v1/contracts.py \
+            apps/api/src/lumi_api/api/v1/services.py \
+            apps/api/src/lumi_api/costs/gateway.py \
+            apps/api/alembic/versions/0011_cost_ledger_budget_quota.py \
+            scripts/integration_cost_ledger.py \
+            scripts/integration_platform_provider_cost_guard.py \
+            scripts/validate_tool_approval_provenance.py \
+            services/tool-gateway/src/lumi_tool_gateway/contracts.py \
+            services/tool-gateway/src/lumi_tool_gateway/http_transport.py \
+            services/tool-gateway/src/lumi_tool_gateway/native.py \
+            services/tool-gateway/src/lumi_tool_gateway/sandbox_transport.py \
+            services/tool-gateway/tests/test_mcp_modern.py
+      - name: Knowledge regression
+        run: uv run pytest services/knowledge/tests -q
+      - name: Tool Gateway targeted regression
+        run: uv run pytest services/tool-gateway/tests/test_tool_gateway.py services/tool-gateway/tests/test_mcp_modern.py -q
+      - name: Cost regression
+        run: uv run pytest apps/api/tests/test_cost_contracts.py apps/api/tests/test_cost_api_contract.py services/model-gateway/tests/test_cost_accounting.py -q
+      - name: API contract regression
+        run: uv run pytest apps/api/tests/test_api_v1_contract.py -q
+      - name: Image Edit planning benchmark
+        env:
+          PYTHONPATH: services/image-edit/src:services/image-generation/src:services/model-gateway/src:services/artifact-history/src:services/identity-engine/src:services/brand-rules/src
+        run: uv run python scripts/benchmark_image_edit.py
+      - name: Verify allowed change set and self-remove
+        run: |
+          git rm .github/workflows/release-closure-normalizer.yml
+          python - <<'PY'
+          import subprocess
+
+          allowed = {
+              ".github/workflows/image-edit.yml",
+              ".github/workflows/release-closure-normalizer.yml",
+              "apps/api/alembic/versions/0011_cost_ledger_budget_quota.py",
+              "apps/api/src/lumi_api/api/v1/contracts.py",
+              "apps/api/src/lumi_api/api/v1/services.py",
+              "apps/api/src/lumi_api/costs/gateway.py",
+              "apps/api/src/lumi_api/persistence/models/knowledge.py",
+              "scripts/integration_cost_ledger.py",
+              "scripts/integration_platform_provider_cost_guard.py",
+              "scripts/validate_tool_approval_provenance.py",
+              "services/tool-gateway/src/lumi_tool_gateway/contracts.py",
+              "services/tool-gateway/src/lumi_tool_gateway/http_transport.py",
+              "services/tool-gateway/src/lumi_tool_gateway/native.py",
+              "services/tool-gateway/src/lumi_tool_gateway/sandbox_transport.py",
+              "services/tool-gateway/tests/test_mcp_modern.py",
+          }
+          changed = set(
+              subprocess.check_output(["git", "diff", "--name-only", "HEAD"], text=True).splitlines()
+          )
+          unexpected = changed - allowed
+          if unexpected:
+              raise SystemExit(f"unexpected normalizer changes: {sorted(unexpected)}")
+          required = allowed - {".github/workflows/release-closure-normalizer.yml"}
+          missing = required - changed
+          if missing:
+              raise SystemExit(f"expected normalizer changes missing: {sorted(missing)}")
+          print("allowed deterministic change set:", *sorted(changed), sep="\n- ")
+          PY
+          git diff --check
+      - name: Commit deterministic fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(release): close deterministic quality and benchmark gates"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
