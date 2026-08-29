@@ -152,3 +152,46 @@ jobs:
       - name: Reset infrastructure
         if: always()
         run: CONFIRM=1 make infra-reset || true
+
+  release-closure-ruff-diff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Apply targeted Ruff fixes in runner only
+        run: |
+          uv run ruff check --fix --select I001 \
+            apps/api/src/lumi_api/persistence/models/knowledge.py \
+            apps/api/src/lumi_api/api/v1/services.py \
+            apps/api/src/lumi_api/costs/gateway.py \
+            scripts/integration_platform_provider_cost_guard.py || true
+          uv run ruff check --fix --unsafe-fixes --select UP046,F401 \
+            apps/api/src/lumi_api/api/v1/contracts.py || true
+          uv run ruff check --fix --select UP012 \
+            services/tool-gateway/src/lumi_tool_gateway/http_transport.py \
+            services/tool-gateway/src/lumi_tool_gateway/sandbox_transport.py || true
+          uv run ruff check --fix --select SIM102 \
+            services/tool-gateway/src/lumi_tool_gateway/contracts.py || true
+      - name: Print canonical Ruff diff
+        run: |
+          echo '=== RELEASE_CLOSURE_RUFF_DIFF_BEGIN ==='
+          git diff -- \
+            apps/api/src/lumi_api/persistence/models/knowledge.py \
+            apps/api/src/lumi_api/api/v1/services.py \
+            apps/api/src/lumi_api/costs/gateway.py \
+            scripts/integration_platform_provider_cost_guard.py \
+            apps/api/src/lumi_api/api/v1/contracts.py \
+            services/tool-gateway/src/lumi_tool_gateway/http_transport.py \
+            services/tool-gateway/src/lumi_tool_gateway/sandbox_transport.py \
+            services/tool-gateway/src/lumi_tool_gateway/contracts.py
+          echo '=== RELEASE_CLOSURE_RUFF_DIFF_END ==='
