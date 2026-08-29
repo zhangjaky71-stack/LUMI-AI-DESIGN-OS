@@ -4,6 +4,7 @@ import json
 import unittest
 from typing import Any
 from unittest.mock import patch
+from urllib.request import Request
 
 from lumi_tool_gateway.errors import ToolInputValidationError
 from lumi_tool_gateway.search_backend import (
@@ -129,7 +130,7 @@ class BraveSearchBackendTests(unittest.IsolatedAsyncioTestCase):
     def test_redirect_handler_never_creates_followup_request(self) -> None:
         handler = _NoRedirectHandler()
         redirected = handler.redirect_request(
-            object(),
+            Request("https://example.com/original"),
             None,
             302,
             "Found",

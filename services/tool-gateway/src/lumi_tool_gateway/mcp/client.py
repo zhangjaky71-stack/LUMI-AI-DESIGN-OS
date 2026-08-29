@@ -327,6 +327,8 @@ def _parse_discovered_tool(raw: Any) -> MCPDiscoveredTool:
     if not isinstance(raw, dict):
         raise MCPSchemaInvalidError("MCP tool descriptor must be an object")
     input_schema = raw.get("inputSchema")
+    if not isinstance(input_schema, dict):
+        raise MCPSchemaInvalidError("MCP tool inputSchema must be an object")
     output_schema = raw.get("outputSchema")
     annotations = raw.get("annotations")
     try:

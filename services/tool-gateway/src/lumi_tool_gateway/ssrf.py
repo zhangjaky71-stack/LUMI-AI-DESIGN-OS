@@ -30,7 +30,7 @@ class SystemHostResolver:
             rows = socket.getaddrinfo(hostname, None, type=socket.SOCK_STREAM)
         except (OSError, UnicodeError) as exc:
             raise ToolSSRFBlockedError("TOOL_DNS_RESOLUTION_FAILED") from exc
-        addresses = sorted({row[4][0] for row in rows})
+        addresses = sorted({str(row[4][0]) for row in rows})
         if not addresses:
             raise ToolSSRFBlockedError("TOOL_DNS_EMPTY")
         return tuple(addresses)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from typing import Any
 from uuid import uuid4
 
 from lumi_tool_gateway.contracts import (
@@ -64,7 +65,7 @@ class TenantCredentialProvider:
 class ModernTransport:
     def __init__(self, *, auth_failure: bool = False) -> None:
         self.auth_failure = auth_failure
-        self.calls: list[dict[str, object]] = []
+        self.calls: list[dict[str, Any]] = []
         self.instances = ["instance-a", "instance-b"]
         self.tool_calls = 0
 

@@ -132,7 +132,7 @@ class SafeWebFetchAdapter:
             if response.status in self._REDIRECTS:
                 location = _header(response.headers, "location")
                 if not location:
-                    break
+                    raise ToolRedirectLimitError("web redirect missing location")
                 redirects += 1
                 if redirects > self.max_redirects:
                     raise ToolRedirectLimitError("web redirect limit exceeded")

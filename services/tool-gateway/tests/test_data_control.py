@@ -227,6 +227,7 @@ class ToolDataControlTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.resource_refs, (result.side_effect_ref,))
         self.assertIsNotNone(result.side_effect_ref)
+        assert result.side_effect_ref is not None
         self.assertTrue(result.side_effect_ref.startswith("asset://"))
 
     async def test_client_rejects_unsupported_project_query(self) -> None:

@@ -247,18 +247,18 @@ def _parse_tools(result: dict[str, Any]) -> tuple[MCPDiscoveredTool, ...]:
     for raw in raw_tools:
         if not isinstance(raw, dict):
             raise MCPSchemaInvalidError("MCP tool descriptor must be an object")
+        input_schema = raw.get("inputSchema")
+        if not isinstance(input_schema, dict):
+            raise MCPSchemaInvalidError("MCP tool inputSchema must be an object")
+        annotations = raw.get("annotations")
         try:
             tools.append(
                 MCPDiscoveredTool(
                     remote_name=str(raw.get("name", "")),
                     description=str(raw.get("description", "")),
-                    input_schema=raw.get("inputSchema"),
+                    input_schema=input_schema,
                     output_schema=raw.get("outputSchema"),
-                    annotations=(
-                        raw.get("annotations")
-                        if isinstance(raw.get("annotations"), dict)
-                        else {}
-                    ),
+                    annotations=annotations if isinstance(annotations, dict) else {},
                 )
             )
         except (TypeError, ValueError) as exc:

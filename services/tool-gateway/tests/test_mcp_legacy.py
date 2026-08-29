@@ -148,16 +148,20 @@ class LegacyMCPTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call.result_type, "complete")
         self.assertEqual(call.structured_content, {"ok": True})
         self.assertEqual(transport.initialize_count, 1)
-        methods = [call["body"].get("method") for call in transport.calls]
+        methods: list[object] = []
+        modern_headers: list[dict[object, object]] = []
+        for recorded_call in transport.calls:
+            body = recorded_call["body"]
+            headers = recorded_call["headers"]
+            assert isinstance(body, dict)
+            assert isinstance(headers, dict)
+            methods.append(body.get("method"))
+            if body.get("method") != "initialize":
+                modern_headers.append(headers)
         self.assertEqual(
             methods,
             ["initialize", "notifications/initialized", "tools/list", "tools/call"],
         )
-        modern_headers = [
-            call["headers"]
-            for call in transport.calls
-            if call["body"].get("method") != "initialize"
-        ]
         self.assertTrue(all("Mcp-Session-Id" in item for item in modern_headers))
 
 
