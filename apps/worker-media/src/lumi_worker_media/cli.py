@@ -174,7 +174,7 @@ async def _replay_dead_letter(dsn: str, *, broker_url: str, record_id: UUID) -> 
                 raise RuntimeError("DEAD_LETTER_NOT_FOUND")
             if row["replayed_at"] is not None:
                 raise RuntimeError("DEAD_LETTER_ALREADY_REPLAYED")
-            payload = dict(row["payload_json"])
+            payload = _json_object(row["payload_json"])
             if row["message_kind"] == "domain_event":
                 await asyncio.to_thread(
                     _publish_domain_replay,
@@ -207,8 +207,8 @@ def _publish_domain_replay(
     payload: dict[str, object],
     routing_key: str,
 ) -> None:
-    with Connection(broker_url) as connection, connection.channel() as channel:
-        Producer(channel, serializer="json").publish(
+    with Connection(broker_url) as connection:
+        Producer(connection, serializer="json").publish(
             payload,
             exchange=DOMAIN_EXCHANGE,
             routing_key=routing_key,
@@ -241,6 +241,17 @@ def _publish_job_replay(
         queue=queue,
         routing_key=routing_key,
     )
+
+
+def _json_object(value: object) -> dict[str, object]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("DEAD_LETTER_PAYLOAD_INVALID") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError("DEAD_LETTER_PAYLOAD_INVALID")
+    return dict(value)
 
 
 def _database_dsn() -> str:
