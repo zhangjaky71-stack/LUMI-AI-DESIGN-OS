@@ -148,7 +148,7 @@ class ProjectService:
                     "IDEMPOTENCY_KEY_REUSED",
                     "idempotency key was already used for a different request",
                 )
-            if existing.status == "completed" and existing.result_ref:
+            if existing.status == "succeeded" and existing.result_ref:
                 try:
                     project_id = UUID(existing.result_ref)
                 except ValueError as exc:
@@ -164,7 +164,7 @@ class ProjectService:
             organization_id=organization_id,
             idempotency_key=idempotency_key,
             operation_type="project.create",
-            status="pending",
+            status="new",
             request_hash=request_hash,
         )
         project = Project(
@@ -218,7 +218,7 @@ class ProjectService:
             action="project.created",
             metadata={"workspace_id": str(workspace_id)},
         )
-        operation.status = "completed"
+        operation.status = "succeeded"
         operation.result_ref = str(project.id)
         await self.session.flush()
         return project
