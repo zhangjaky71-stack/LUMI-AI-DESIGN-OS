@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -155,7 +156,7 @@ def test_domain_outbox_commits_failed_publish_attempt_without_marking_published(
                     "aggregate_type": record.aggregate_type,
                     "aggregate_id": record.aggregate_id,
                     "schema_version": record.schema_version,
-                    "payload_json": record.payload,
+                    "payload_json": json.dumps(record.payload),
                     "created_at": record.created_at,
                 }
             ]
@@ -170,6 +171,7 @@ def test_domain_outbox_commits_failed_publish_attempt_without_marking_published(
     class FailingPublisher:
         def publish(self, outbox_record: OutboxRecord) -> None:
             assert outbox_record.event_id == record.event_id
+            assert outbox_record.payload == record.payload
             raise RuntimeError("broker unavailable")
 
     connection = FakeConnection()
