@@ -118,10 +118,18 @@ async def execute_image_team_flow(
 def _child_objective(child_id: str, state: AgentTeamFlowState) -> str:
     stage = {
         "brand-strategist": "Derive source-backed brand constraints for the objective.",
-        "research-agent": "Find source-backed evidence relevant to the objective and brand constraints.",
-        "prompt-engineer": "Translate the approved objective, constraints, and evidence into a generation spec.",
+        "research-agent": (
+            "Find source-backed evidence relevant to the objective and brand constraints."
+        ),
+        "prompt-engineer": (
+            "Translate the approved objective, constraints, and evidence into a generation spec."
+        ),
         "image-generator": "Generate the requested image from the approved generation spec.",
-        "critic-agent": "Critique the generated candidate against the brief and constraints without writing.",
-        "image-editor": "Apply only the approved corrective edits identified by the brief and critique.",
+        "critic-agent": (
+            "Critique the generated candidate against the brief and constraints without writing."
+        ),
+        "image-editor": (
+            "Apply only the approved corrective edits identified by the brief and critique."
+        ),
     }.get(child_id, f"Execute the assigned {child_id} specialist stage.")
     return f"{stage} Overall objective: {state.objective}"
