@@ -36,6 +36,14 @@ def _require(path: str, *needles: str) -> None:
             raise SystemExit(f"NODE-43 contract missing {needle!r} in {path}")
 
 
+def _require_compact(path: str, needle: str) -> None:
+    """Match a formatter-sensitive expression while ignoring whitespace only."""
+    text = "".join(_read(path).split())
+    compact_needle = "".join(needle.split())
+    if compact_needle not in text:
+        raise SystemExit(f"NODE-43 contract missing {needle!r} in {path}")
+
+
 def main() -> None:
     for path in REQUIRED_FILES:
         _read(path)
@@ -75,6 +83,9 @@ def main() -> None:
         "packages/artifact-sdk/src/hashing.ts",
         "brand_rule_set_version",
         "brand rule set version mismatch between ArtifactVersion and provenance",
+    )
+    _require_compact(
+        "packages/artifact-sdk/src/hashing.ts",
         "...(brandRuleSetVersion ? { brand_rule_set_version: brandRuleSetVersion } : {})",
     )
     _require(
