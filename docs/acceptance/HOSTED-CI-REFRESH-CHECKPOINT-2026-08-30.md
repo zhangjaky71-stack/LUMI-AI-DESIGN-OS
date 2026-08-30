@@ -34,3 +34,21 @@ A green result is evidence only for the hosted CI gate on this PR head. It does 
 Until the hosted run completes successfully, the branch is not considered clean-head validated.
 
 Even after hosted CI succeeds, final product acceptance remains governed by `docs/acceptance/NODE-73-FINAL-ACCEPTANCE-RUNBOOK.md` and remains blocked until all required runtime/cloud/governance and human approval evidence is real and complete.
+
+## Repair-batch refresh — later 2026-08-30
+
+A second hosted refresh is intentionally triggered after the following additional code-addressable repairs:
+
+- Agent Team Ruff formatting was restored after compatibility edits; the subsequent hosted `agent-team-quality` job proved pytest, Ruff and Pyright PASS.
+- TypeScript Brand Rules allowlist diagnostics were isolated from font-rights diagnostics and the subsequent hosted TypeScript suite proved PASS.
+- The analogous Python Brand Rules fixture was aligned after hosted Python tests exposed the same ambiguous fixture.
+- Domain Outbox RabbitMQ publishing was corrected so Kombu's JSON serializer, rather than an explicit pre-encoded content type, owns body encoding. This specifically targets the prior live RabbitMQ failure `struct.error: argument for 's' must be a bytes object`.
+- Six small-file Task Graph Ruff residuals were normalized without changing scheduling behavior. Four remaining Ruff-only findings in the large PostgreSQL store are deliberately not hidden or weakened; they remain eligible for a safer follow-up repair.
+
+Validation identity for this refresh:
+
+- pre-refresh branch head: `6da4677aef762eb92ae236ad113390281424c94f`
+- PR: `#135`
+- branch: `release-closure-p0`
+
+The purpose of this refresh is to obtain hosted evidence for the exact accumulated repair state, especially the live Queue Event Runtime path and the Python Brand Rules suite. It remains non-final evidence and must not be interpreted as NODE-73 product acceptance.
