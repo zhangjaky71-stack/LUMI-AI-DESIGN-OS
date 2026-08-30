@@ -1,0 +1,78 @@
+name: Release Closure Autoformat
+
+on:
+  push:
+    branches: [release-closure-p0]
+    paths:
+      - .github/workflows/release-closure-autoformat.yml
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: "24"
+  PNPM_VERSION: "11.4.0"
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  autoformat:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release-closure-p0
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python workspace
+        run: uv sync --all-packages --frozen
+
+      - name: Format Python
+        run: uv run ruff format apps services evals
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+
+      - name: Install frontend workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Format frontend
+        run: |
+          pnpm exec prettier --write "apps/**/*.{json,js,mjs,ts,tsx,css}" "packages/**/*.{json,ts}" package.json pnpm-workspace.yaml turbo.json tsconfig.base.json playwright.config.ts
+
+      - name: Verify patch sanity
+        run: |
+          git diff --check
+          git status --short
+
+      - name: Commit formatting changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No formatting changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps services evals packages package.json pnpm-workspace.yaml turbo.json tsconfig.base.json playwright.config.ts
+          git commit -m "style: normalize release closure formatting"
+          git push origin HEAD:release-closure-p0
