@@ -55,17 +55,17 @@ jobs:
       - name: Revalidate NODE-25 Tool Gateway boundary
         run: >-
           PYTHONPATH=services/tool-gateway/src
-          python scripts/validate_tool_gateway_contract.py
+          uv run python scripts/validate_tool_gateway_contract.py
       - name: Tool Gateway and MCP deterministic tests
         run: >-
           PYTHONPATH=services/tool-gateway/src
-          python -m unittest discover
+          uv run python -m unittest discover
           -s services/tool-gateway/tests
           -p 'test_*.py'
       - name: MCP to Tool Gateway integration
         run: >-
           PYTHONPATH=services/tool-gateway/src
-          python scripts/integration_mcp_tool_gateway.py
+          uv run python scripts/integration_mcp_tool_gateway.py
 
   mcp-quality:
     needs: mcp-security
