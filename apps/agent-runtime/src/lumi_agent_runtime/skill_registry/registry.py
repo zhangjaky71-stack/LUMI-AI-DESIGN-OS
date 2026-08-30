@@ -146,7 +146,7 @@ class SkillRegistry:
             if version is None:
                 raise SkillVersionResolutionError(
                     f"no production Skill matches: {skill_id}@{selector}"
-                )
+                ) from None
             return version, self._release(skill_id, version)
         release = self._release(skill_id, selector)
         if release.status in {

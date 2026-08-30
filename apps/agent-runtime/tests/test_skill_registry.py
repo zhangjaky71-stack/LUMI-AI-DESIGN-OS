@@ -8,6 +8,7 @@ from lumi_agent_runtime.agent_registry.requirements import SkillRequirement
 from lumi_agent_runtime.skill_registry import (
     SkillCapabilityError,
     SkillDefinition,
+    SkillDefinitionInvalidError,
     SkillDependencyCycleError,
     SkillExecutionContext,
     SkillPermissionError,
@@ -181,7 +182,7 @@ class SkillRegistryTests(unittest.TestCase):
                 "---\nname: wrong\ndescription: Expected summary\n---\nbody",
                 encoding="utf-8",
             )
-            with self.assertRaises(Exception):
+            with self.assertRaises(SkillDefinitionInvalidError):
                 load_skill(version_dir)
 
 
