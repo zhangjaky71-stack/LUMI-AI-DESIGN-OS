@@ -70,9 +70,13 @@ class AgentRegistryTests(unittest.TestCase):
         self.assertEqual(resolved.provenance.release_status.value, "PRODUCTION")
 
     def test_production_alias_freezes_exact_version(self) -> None:
-        resolved = _registry().resolve("creative-director@production")
+        registry = _registry()
+        resolved = registry.resolve("creative-director@production")
         self.assertEqual(resolved.provenance.exact_version, "1.1.0")
-        self.assertEqual(resolved.provenance.release_manifest_revision, 1)
+        self.assertEqual(
+            resolved.provenance.release_manifest_revision,
+            registry.release_manifest.revision,
+        )
         self.assertEqual(len(resolved.provenance.freeze_hash), 64)
 
     def test_deprecated_exact_version_remains_resumable(self) -> None:
