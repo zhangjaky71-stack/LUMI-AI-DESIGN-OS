@@ -46,7 +46,7 @@ class AgentReleaseTests(unittest.TestCase):
             self.manifest,
             candidate,
         )
-        self.assertEqual(promoted.revision, 2)
+        self.assertEqual(promoted.revision, self.manifest.revision + 1)
         self.assertEqual(
             promoted.aliases["creative-director"]["production"],
             "1.2.0",
@@ -76,7 +76,7 @@ class AgentReleaseTests(unittest.TestCase):
             "creative-director",
             "1.1.0",
         )
-        self.assertEqual(rolled.revision, 3)
+        self.assertEqual(rolled.revision, self.manifest.revision + 2)
         self.assertEqual(
             rolled.aliases["creative-director"]["production"],
             "1.1.0",
