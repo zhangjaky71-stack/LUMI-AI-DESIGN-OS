@@ -32,7 +32,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Validate AI release contract
-        run: python3 scripts/validate_ai_release_contract.py
+        run: PYTHONPATH=. python3 scripts/validate_ai_release_contract.py
       - name: Python syntax
         run: |
           python3 -m py_compile \
