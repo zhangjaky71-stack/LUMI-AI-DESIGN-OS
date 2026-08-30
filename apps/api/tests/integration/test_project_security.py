@@ -59,6 +59,10 @@ async def _prepare_security_fixtures():
                 status="active",
             )
         )
+        # These models intentionally do not declare ORM relationships. Flush the
+        # user explicitly so the database FK, not SQLAlchemy insertion ordering,
+        # is the source of truth for the membership fixture.
+        await session.flush()
         session.add(
             OrganizationMember(
                 id=new_uuid7(),
