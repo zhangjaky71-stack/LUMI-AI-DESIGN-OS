@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "production" / "release-actions" / "default-branch-dispatch-registry-v1.json"

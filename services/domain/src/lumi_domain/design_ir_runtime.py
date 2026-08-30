@@ -3,9 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 JsonObject = dict[str, Any]
 Migration = Callable[[JsonObject], JsonObject]

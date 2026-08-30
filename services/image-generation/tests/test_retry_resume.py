@@ -6,6 +6,7 @@ import zlib
 from decimal import Decimal
 
 import pytest
+
 from lumi_image_generation.errors import ImageGenerationTransientError
 from lumi_image_generation.inmemory import (
     InMemoryCostReconciliation,

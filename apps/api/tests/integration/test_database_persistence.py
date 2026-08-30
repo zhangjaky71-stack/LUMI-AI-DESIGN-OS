@@ -8,7 +8,6 @@ from decimal import Decimal
 from typing import Any, TypeVar
 
 import pytest
-from lumi_domain import DomainEvent, Project as DomainProject, ProjectStatus, new_uuid7
 from sqlalchemy import select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +21,8 @@ from lumi_api.persistence.repositories import (
 )
 from lumi_api.persistence.seed import ORG_ID, USER_OWNER_ID, WORKSPACE_ID
 from lumi_api.persistence.session import create_engine
+from lumi_domain import DomainEvent, ProjectStatus, new_uuid7
+from lumi_domain import Project as DomainProject
 
 if os.environ.get("LUMI_DB_INTEGRATION") != "1":
     pytest.skip("set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests", allow_module_level=True)

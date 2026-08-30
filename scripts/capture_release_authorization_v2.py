@@ -9,9 +9,10 @@ import re
 import tempfile
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_REPOSITORY = "zhangjaky71-stack/LUMI-AI-DESIGN-OS"
@@ -317,7 +318,7 @@ def build_authorization(request_path: Path, request: Mapping[str, Any], policy_p
         "kind": AUTHORIZATION_KIND,
         "status": "PASS",
         "authorization_id": f"release-auth-v2-{release_id}-{evidence[:12]}",
-        "authorized_at": datetime.now(timezone.utc).isoformat(),
+        "authorized_at": datetime.now(UTC).isoformat(),
         "release_id": release_id,
         "source_release_candidate": {
             "git_sha": str(source_sha),

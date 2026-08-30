@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import Mapping
 
 from .history import ArtifactHistory, ArtifactHistoryError
 

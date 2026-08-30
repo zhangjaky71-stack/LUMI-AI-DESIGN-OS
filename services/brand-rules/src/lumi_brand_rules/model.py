@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal, Mapping
+from typing import Any, Literal
 
 Severity = Literal["HARD", "SOFT", "ADVISORY"]
 Source = Literal["USER_EXPLICIT", "APPROVED_GUIDE_EXTRACTION", "MANUAL_ADMIN", "INFERRED_PROPOSAL"]

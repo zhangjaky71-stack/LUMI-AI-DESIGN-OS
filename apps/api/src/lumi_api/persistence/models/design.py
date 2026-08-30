@@ -4,7 +4,8 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..base import Base, CreatedAtMixin, IdMixin, MutableTimestampMixin

@@ -4,11 +4,13 @@ from collections.abc import Sequence
 from typing import Any, cast
 from uuid import UUID
 
-from lumi_domain import CostEntry as DomainCostEntry
-from lumi_domain import DomainEvent, Money, Project as DomainProject, ProjectStatus
 from sqlalchemy import Select, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase
+
+from lumi_domain import CostEntry as DomainCostEntry
+from lumi_domain import DomainEvent, Money, ProjectStatus
+from lumi_domain import Project as DomainProject
 
 from .models import CostLedger, OutboxEvent, Project
 
@@ -30,7 +32,7 @@ class TenantRepository[ModelT: DeclarativeBase]:
         return statement.where(organization_column == self.organization_id)
 
     async def get_model(self, object_id: UUID) -> ModelT | None:
-        id_column = getattr(self.model, "id")
+        id_column = self.model.id
         result = await self._session.execute(
             self.scoped(select(self.model)).where(id_column == object_id)
         )

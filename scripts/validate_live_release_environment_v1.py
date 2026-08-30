@@ -7,8 +7,9 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "final" / "acceptance" / "release-environment-policy-template.json"

@@ -5,7 +5,7 @@ import argparse
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -88,7 +88,7 @@ def build_payload(
             "run_attempt": int(run_attempt),
             "run_url": expected_url,
         },
-        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "captured_at": datetime.now(UTC).isoformat(),
     }
 
 

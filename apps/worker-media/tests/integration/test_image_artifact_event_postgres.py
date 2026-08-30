@@ -7,6 +7,7 @@ from uuid import UUID
 
 import asyncpg
 import pytest
+
 from lumi_image_generation.model import (
     GenerationCandidate,
     GenerationProvenanceSnapshot,

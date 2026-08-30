@@ -12,8 +12,8 @@ from lumi_asset_intelligence.duplicates import classify_similarity
 from lumi_asset_intelligence.events import AssetReadyEvent, plan_analysis_job
 from lumi_asset_intelligence.identity_adapter import identity_evidence_from_analysis
 from lumi_asset_intelligence.index_catalog import (
-    InMemoryIndexCatalog,
     IndexPromotionDecision,
+    InMemoryIndexCatalog,
     compare_index_coverage,
 )
 from lumi_asset_intelligence.ingestion import AssetIntelligenceIngestor

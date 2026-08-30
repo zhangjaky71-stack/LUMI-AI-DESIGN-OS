@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 _T = TypeVar("_T")
 _ALLOWED_TRACING_MODES = frozenset({"langsmith", "otel", "hybrid"})

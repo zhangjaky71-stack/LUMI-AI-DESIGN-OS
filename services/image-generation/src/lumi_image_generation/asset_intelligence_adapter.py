@@ -6,6 +6,8 @@ from lumi_asset_intelligence.model import (
     AccessScope,
     AssetIndexRepository,
     AssetSearchFilters,
+)
+from lumi_asset_intelligence.model import (
     Rights as AssetRights,
 )
 

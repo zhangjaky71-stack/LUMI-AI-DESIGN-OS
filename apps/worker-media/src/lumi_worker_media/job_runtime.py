@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 import asyncpg
+
 from lumi_domain.performance_events import (
     PerformanceStage,
     PerformanceTelemetryContext,

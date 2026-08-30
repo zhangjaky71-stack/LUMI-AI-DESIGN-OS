@@ -3,9 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, is_dataclass
 from decimal import Decimal
-from typing import Any, Literal, Mapping
+from typing import Any, Literal
 from uuid import UUID
 
 GenerationMode = Literal[

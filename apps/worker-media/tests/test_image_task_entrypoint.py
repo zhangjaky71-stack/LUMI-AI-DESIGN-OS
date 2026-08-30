@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 import pytest
+
 from lumi_worker_media import app
 from lumi_worker_media.job_runtime import JobOutcome
 from lumi_worker_media.queue_contracts import JobState
@@ -49,13 +50,15 @@ def test_image_task_failed_outcome_raises_for_celery_dlq() -> None:
         attempt_count=4,
         output={"error": "GENERATION_NO_READY_CANDIDATES"},
     )
-    with patch.object(
-        app,
-        "_execute_image_generation_job",
-        new=AsyncMock(return_value=outcome),
+    with (
+        patch.object(
+            app,
+            "_execute_image_generation_job",
+            new=AsyncMock(return_value=outcome),
+        ),
+        pytest.raises(RuntimeError, match="IMAGE_GENERATION_JOB_FAILED"),
     ):
-        with pytest.raises(RuntimeError, match="IMAGE_GENERATION_JOB_FAILED"):
-            app.image_transform.run(MESSAGE)
+        app.image_transform.run(MESSAGE)
 
 
 def test_image_task_retrying_outcome_calls_celery_retry() -> None:
@@ -75,9 +78,9 @@ def test_image_task_retrying_outcome_calls_celery_retry() -> None:
             "retry",
             side_effect=RuntimeError("retry-called"),
         ) as retry,
+        pytest.raises(RuntimeError, match="retry-called"),
     ):
-        with pytest.raises(RuntimeError, match="retry-called"):
-            app.image_transform.run(MESSAGE)
+        app.image_transform.run(MESSAGE)
     assert retry.call_count == 1
     kwargs = retry.call_args.kwargs
     assert isinstance(kwargs["exc"], RuntimeError)

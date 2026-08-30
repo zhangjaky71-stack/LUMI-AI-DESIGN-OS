@@ -8,9 +8,10 @@ import importlib.util
 import json
 import re
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Mapping
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DB_VALIDATOR = ROOT / "scripts" / "validate_staging_database_parity_evidence.py"

@@ -359,7 +359,7 @@ def _verify_auth(request: Request, body: bytes, secret: str) -> JSONResponse | N
     body_hash = hashlib.sha256(body).hexdigest()
     message = (
         f"{service}\n{timestamp}\n{request.method.upper()}\n{request.url.path}\n{body_hash}"
-    ).encode("utf-8")
+    ).encode()
     expected = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(signature.lower(), expected):
         return _error(401, "AGENT_CONTROL_SIGNATURE_INVALID", "internal authentication failed")

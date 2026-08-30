@@ -5,13 +5,13 @@ import json
 import re
 import secrets
 import threading
+from collections.abc import Mapping
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from time import time
-from typing import Any, Mapping
+from typing import Any
 
 from lumi_api.security import redact_secrets
-
 
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _TRACEPARENT_RE = re.compile(

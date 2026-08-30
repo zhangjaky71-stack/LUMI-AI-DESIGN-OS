@@ -4,6 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response, status
+
 from lumi_project_core import ProjectListFilter
 
 from .context import (

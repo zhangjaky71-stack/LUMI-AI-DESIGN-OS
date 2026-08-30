@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 KIND = "LUMI_RELEASE_GOVERNANCE_POLICY_V1"

@@ -10,8 +10,8 @@ from .model import (
 )
 from .override import OverrideDenied, create_override_audit
 from .postflight import postflight
-from .preflight import preflight
 from .precedence import detect_conflicts, effective_constraints, precedence_key
+from .preflight import preflight
 from .registry import CONSTRAINT_TYPES, EVALUATORS, SOURCE_PRECEDENCE
 from .snapshot import constraint_snapshot_hash, constraint_snapshot_payload
 

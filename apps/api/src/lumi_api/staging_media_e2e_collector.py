@@ -13,10 +13,6 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from lumi_asset_storage.s3 import S3ObjectStore
-from lumi_domain.job_dispatch import JobDispatch
-from lumi_image_generation.model import ImageGenerationSpec, OutputRequirements
-from lumi_image_generation.spec_codec import encode_spec
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -36,6 +32,10 @@ from lumi_api.persistence.models import (
     Workspace,
 )
 from lumi_api.persistence.session import create_engine, create_session_factory
+from lumi_asset_storage.s3 import S3ObjectStore
+from lumi_domain.job_dispatch import JobDispatch
+from lumi_image_generation.model import ImageGenerationSpec, OutputRequirements
+from lumi_image_generation.spec_codec import encode_spec
 
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 _JOB_KIND = "image.transform"

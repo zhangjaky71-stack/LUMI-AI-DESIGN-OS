@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from fontTools.ttLib import TTFont
-from lumi_asset_storage import sanitize_svg, sniff_media_type
 from PIL import Image, ImageOps
+
+from lumi_asset_storage import sanitize_svg, sniff_media_type
 
 
 @dataclass(frozen=True, slots=True)

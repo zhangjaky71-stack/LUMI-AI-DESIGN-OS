@@ -6,19 +6,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from lumi_auth import (
-    InMemorySlidingWindowRateLimiter,
-    Membership,
-    RateLimiter,
-    SessionRecord,
-    SingleUseTokenRecord,
-    build_request_context,
-    consume_single_use_token,
-    hash_token,
-    issue_opaque_token,
-    validate_csrf,
-)
-from lumi_domain import new_uuid7
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +22,19 @@ from lumi_api.persistence.models import (
     User,
     Workspace,
 )
+from lumi_auth import (
+    InMemorySlidingWindowRateLimiter,
+    Membership,
+    RateLimiter,
+    SessionRecord,
+    SingleUseTokenRecord,
+    build_request_context,
+    consume_single_use_token,
+    hash_token,
+    issue_opaque_token,
+    validate_csrf,
+)
+from lumi_domain import new_uuid7
 
 from .errors import (
     InvalidCredentials,

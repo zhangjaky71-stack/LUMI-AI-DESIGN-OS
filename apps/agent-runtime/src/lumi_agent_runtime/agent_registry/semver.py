@@ -18,7 +18,7 @@ class SemVer:
     text: str = ""
 
     @classmethod
-    def parse(cls, value: str) -> "SemVer":
+    def parse(cls, value: str) -> SemVer:
         match = _SEMVER.fullmatch(value)
         if match is None:
             raise ValueError(f"AGENT_SEMVER_INVALID:{value}")

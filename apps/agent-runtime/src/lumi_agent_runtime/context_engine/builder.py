@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from collections import defaultdict
-from dataclasses import replace
-from typing import Iterable
+from collections.abc import Iterable
 
 from .budget import TokenCounter, conservative_token_estimate, layer_caps, with_token_estimate
 from .cache import InMemoryContextCache

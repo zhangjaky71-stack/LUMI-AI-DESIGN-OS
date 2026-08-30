@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Mapping
 
 from lumi_agent_runtime.agent_registry.definition import AgentDefinition
 
-from .contracts import AgentTeamProfile, DelegationGrant, team_profile
+from .contracts import DelegationGrant, team_profile
 
 
 @dataclass(frozen=True, slots=True)

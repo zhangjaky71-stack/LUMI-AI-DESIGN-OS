@@ -4,11 +4,12 @@ import base64
 import csv
 import io
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from threading import RLock
-from typing import Literal, Mapping, Protocol
+from typing import Literal, Protocol
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
@@ -380,9 +381,7 @@ def sanitize_metadata(metadata: Mapping[str, object] | None) -> tuple[tuple[str,
         value = "" if raw_value is None else str(raw_value)
         if any(fragment in normalized for fragment in _SECRET_KEY_FRAGMENTS):
             rendered = "[REDACTED]"
-        elif normalized in _HASH_ONLY_KEYS:
-            rendered = _hash_text(value)
-        elif normalized in _IP_KEYS:
+        elif normalized in _HASH_ONLY_KEYS or normalized in _IP_KEYS:
             rendered = _hash_text(value)
         elif "url" in normalized:
             rendered = _safe_url(value)
@@ -1396,12 +1395,12 @@ class Node64AdminAuditSink:
         self._repository = repository
 
     def emit(self, event: object) -> None:
-        event_type = str(getattr(event, "event_type"))
-        actor_id = str(getattr(event, "actor_id"))
-        target_type = str(getattr(event, "target_type"))
-        target_id = str(getattr(event, "target_id"))
-        reason = str(getattr(event, "reason"))
-        ticket_ref = str(getattr(event, "ticket_ref"))
+        event_type = str(event.event_type)
+        actor_id = str(event.actor_id)
+        target_type = str(event.target_type)
+        target_id = str(event.target_id)
+        reason = str(event.reason)
+        ticket_ref = str(event.ticket_ref)
         safe_metadata = dict(getattr(event, "safe_metadata", ()))
         organization_id = safe_metadata.get("organization_id")
         if target_type == "ORGANIZATION":
@@ -1425,7 +1424,7 @@ class Node64AdminAuditSink:
                 "reason_hash": _hash_text(reason),
             },
             organization_id=organization_id,
-            occurred_at=str(getattr(event, "created_at")),
+            occurred_at=str(event.created_at),
         )
 
     def recent(self) -> tuple[object, ...]:

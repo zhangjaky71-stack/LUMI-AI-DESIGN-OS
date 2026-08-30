@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 from .cache import InMemoryContextCache
 
-
 _INVALIDATING_EVENTS = frozenset(
     {
         "project.summary.updated",

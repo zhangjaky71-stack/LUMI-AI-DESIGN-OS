@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 from decimal import Decimal, InvalidOperation
-from typing import Annotated, Awaitable, Callable
+from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel

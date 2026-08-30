@@ -9,8 +9,6 @@ from typing import Annotated, Any, TypeVar
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-from lumi_auth import issue_opaque_token
-from lumi_domain import new_uuid7
 from sqlalchemy import delete
 
 from lumi_api.api.v1.context import RequestContext
@@ -18,6 +16,8 @@ from lumi_api.persistence.models import Organization, OrganizationMember, Sessio
 from lumi_api.persistence.seed import ORG_ID, USER_OWNER_ID
 from lumi_api.persistence.session import create_engine, create_session_factory
 from lumi_api.projects.security import get_secure_project_context
+from lumi_auth import issue_opaque_token
+from lumi_domain import new_uuid7
 
 if os.environ.get("LUMI_DB_INTEGRATION") != "1":
     pytest.skip("set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests", allow_module_level=True)
@@ -41,62 +41,61 @@ async def _prepare_security_fixtures():
     tenant_b = new_uuid7()
     owner_session_id = new_uuid7()
     viewer_session_id = new_uuid7()
-    async with factory() as session:
-        async with session.begin():
-            session.add(
-                Organization(
-                    id=tenant_b,
-                    name="Security Tenant B",
-                    slug=f"security-tenant-b-{str(tenant_b)[-8:]}",
-                    status="active",
-                    plan="test",
-                    settings_json={},
-                )
+    async with factory() as session, session.begin():
+        session.add(
+            Organization(
+                id=tenant_b,
+                name="Security Tenant B",
+                slug=f"security-tenant-b-{str(tenant_b)[-8:]}",
+                status="active",
+                plan="test",
+                settings_json={},
             )
-            session.add(
-                User(
-                    id=viewer_id,
-                    email=f"viewer-{viewer_id}@lumi.local",
-                    display_name="Project Security Viewer",
-                    status="active",
-                )
+        )
+        session.add(
+            User(
+                id=viewer_id,
+                email=f"viewer-{viewer_id}@lumi.local",
+                display_name="Project Security Viewer",
+                status="active",
             )
-            session.add(
-                OrganizationMember(
-                    id=new_uuid7(),
+        )
+        session.add(
+            OrganizationMember(
+                id=new_uuid7(),
+                organization_id=ORG_ID,
+                user_id=viewer_id,
+                role="VIEWER",
+                status="active",
+            )
+        )
+        now = datetime.now(UTC)
+        session.add_all(
+            [
+                Session(
+                    id=owner_session_id,
+                    user_id=USER_OWNER_ID,
                     organization_id=ORG_ID,
+                    token_hash=owner_session.token_hash,
+                    csrf_token_hash=owner_csrf.token_hash,
+                    expires_at=now + timedelta(hours=1),
+                    last_seen_at=now,
+                    revoked=False,
+                    ip_risk_metadata={},
+                ),
+                Session(
+                    id=viewer_session_id,
                     user_id=viewer_id,
-                    role="VIEWER",
-                    status="active",
-                )
-            )
-            now = datetime.now(UTC)
-            session.add_all(
-                [
-                    Session(
-                        id=owner_session_id,
-                        user_id=USER_OWNER_ID,
-                        organization_id=ORG_ID,
-                        token_hash=owner_session.token_hash,
-                        csrf_token_hash=owner_csrf.token_hash,
-                        expires_at=now + timedelta(hours=1),
-                        last_seen_at=now,
-                        revoked=False,
-                        ip_risk_metadata={},
-                    ),
-                    Session(
-                        id=viewer_session_id,
-                        user_id=viewer_id,
-                        organization_id=ORG_ID,
-                        token_hash=viewer_session.token_hash,
-                        csrf_token_hash=viewer_csrf.token_hash,
-                        expires_at=now + timedelta(hours=1),
-                        last_seen_at=now,
-                        revoked=False,
-                        ip_risk_metadata={},
-                    ),
-                ]
-            )
+                    organization_id=ORG_ID,
+                    token_hash=viewer_session.token_hash,
+                    csrf_token_hash=viewer_csrf.token_hash,
+                    expires_at=now + timedelta(hours=1),
+                    last_seen_at=now,
+                    revoked=False,
+                    ip_risk_metadata={},
+                ),
+            ]
+        )
     return (
         engine,
         factory,
@@ -119,16 +118,15 @@ async def _cleanup_security_fixtures(
     owner_session_id,
     viewer_session_id,
 ) -> None:
-    async with factory() as session:
-        async with session.begin():
-            await session.execute(
-                delete(Session).where(Session.id.in_([owner_session_id, viewer_session_id]))
-            )
-            await session.execute(
-                delete(OrganizationMember).where(OrganizationMember.user_id == viewer_id)
-            )
-            await session.execute(delete(User).where(User.id == viewer_id))
-            await session.execute(delete(Organization).where(Organization.id == tenant_b))
+    async with factory() as session, session.begin():
+        await session.execute(
+            delete(Session).where(Session.id.in_([owner_session_id, viewer_session_id]))
+        )
+        await session.execute(
+            delete(OrganizationMember).where(OrganizationMember.user_id == viewer_id)
+        )
+        await session.execute(delete(User).where(User.id == viewer_id))
+        await session.execute(delete(Organization).where(Organization.id == tenant_b))
 
 
 def test_project_security_requires_real_principal_tenant_membership_and_csrf() -> None:

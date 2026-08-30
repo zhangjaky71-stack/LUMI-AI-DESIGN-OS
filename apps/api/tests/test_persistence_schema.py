@@ -4,11 +4,11 @@ from pathlib import Path
 from typing import cast
 from uuid import UUID
 
-import lumi_api.persistence.models  # noqa: F401
 from sqlalchemy import Numeric, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import lumi_api.persistence.models  # noqa: F401
 from lumi_api.config import Settings
 from lumi_api.persistence.base import Base
 from lumi_api.persistence.models import CostLedger, Project

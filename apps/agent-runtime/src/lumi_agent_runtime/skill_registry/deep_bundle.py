@@ -32,10 +32,7 @@ class DeepAgentsSkillBundle:
 
     def deep_agents_files(self) -> dict[str, Any]:
         try:
-            helper = getattr(
-                import_module("deepagents.backends.utils"),
-                "create_file_data",
-            )
+            helper = import_module("deepagents.backends.utils").create_file_data
         except (ImportError, AttributeError) as exc:
             raise SkillDefinitionInvalidError(
                 "current Deep Agents create_file_data is unavailable"

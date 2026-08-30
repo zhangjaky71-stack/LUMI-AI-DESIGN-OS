@@ -6,8 +6,6 @@ from collections.abc import Coroutine
 from typing import Any, TypeVar
 
 import pytest
-from lumi_domain import new_uuid7
-from lumi_project_core import ProjectListFilter
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +24,8 @@ from lumi_api.persistence.seed import ORG_ID, USER_OWNER_ID, WORKSPACE_ID
 from lumi_api.persistence.session import create_engine
 from lumi_api.projects.errors import ProjectConflict, ProjectNotFound
 from lumi_api.projects.service import ProjectService
+from lumi_domain import new_uuid7
+from lumi_project_core import ProjectListFilter
 
 if os.environ.get("LUMI_DB_INTEGRATION") != "1":
     pytest.skip("set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests", allow_module_level=True)

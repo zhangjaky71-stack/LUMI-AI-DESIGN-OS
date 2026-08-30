@@ -10,7 +10,6 @@ from lumi_domain.performance_events import (
     measure_performance_stage,
 )
 
-
 SHA = "1" * 40
 
 
@@ -100,15 +99,17 @@ def test_interval_rejects_clock_reversal() -> None:
 def test_measured_stage_records_error_without_swallowing_exception() -> None:
     context = PerformanceTelemetryContext("run-1", "D", SHA)
     captured = []
-    with pytest.raises(RuntimeError, match="boom"):
-        with measure_performance_stage(
+    with (
+        pytest.raises(RuntimeError, match="boom"),
+        measure_performance_stage(
             context,
             stage=PerformanceStage.VALIDATION,
             service="worker-media",
             operation_id="operation:1",
             sink=captured.append,
-        ):
-            raise RuntimeError("boom")
+        ),
+    ):
+        raise RuntimeError("boom")
     assert len(captured) == 1
     assert captured[0].outcome is PerformanceOutcome.ERROR
     assert captured[0].duration_ms >= 0

@@ -87,22 +87,21 @@ def create_auth_router(
         payload: RegisterRequest, request: Request
     ) -> AcceptedResponse | JSONResponse:
         try:
-            async with session_factory() as session:
-                async with session.begin():
-                    service = AuthService(session)
-                    result = await service.register_local(
-                        email=payload.email,
-                        password=payload.password,
-                        display_name=payload.display_name,
-                        organization_name=payload.organization_name,
-                        organization_slug=payload.organization_slug,
-                        client_key=_client_key(request),
-                        request_id=_request_id(request),
-                    )
-                    await notifications.send_email_verification(
-                        email=payload.email,
-                        token=result.email_verification_token,
-                    )
+            async with session_factory() as session, session.begin():
+                service = AuthService(session)
+                result = await service.register_local(
+                    email=payload.email,
+                    password=payload.password,
+                    display_name=payload.display_name,
+                    organization_name=payload.organization_name,
+                    organization_slug=payload.organization_slug,
+                    client_key=_client_key(request),
+                    request_id=_request_id(request),
+                )
+                await notifications.send_email_verification(
+                    email=payload.email,
+                    token=result.email_verification_token,
+                )
         except RegistrationRejected:
             # Deliberately indistinguishable from accepted registration to reduce account enumeration.
             return AcceptedResponse()
@@ -122,9 +121,8 @@ def create_auth_router(
         payload: VerifyEmailRequest, request: Request
     ) -> AcceptedResponse | JSONResponse:
         try:
-            async with session_factory() as session:
-                async with session.begin():
-                    await AuthService(session).verify_email(payload.token)
+            async with session_factory() as session, session.begin():
+                await AuthService(session).verify_email(payload.token)
         except TokenInvalid:
             return _problem(
                 400, "TOKEN_INVALID_OR_EXPIRED", "Verification token is invalid or expired", request
@@ -136,16 +134,15 @@ def create_auth_router(
         payload: LoginRequest, request: Request, response: Response
     ) -> LoginResponse | JSONResponse:
         try:
-            async with session_factory() as session:
-                async with session.begin():
-                    result = await AuthService(session).login_local(
-                        email=payload.email,
-                        password=payload.password,
-                        client_key=_client_key(request),
-                        requested_organization_id=payload.organization_id,
-                        user_agent=request.headers.get("user-agent"),
-                        request_id=_request_id(request),
-                    )
+            async with session_factory() as session, session.begin():
+                result = await AuthService(session).login_local(
+                    email=payload.email,
+                    password=payload.password,
+                    client_key=_client_key(request),
+                    requested_organization_id=payload.organization_id,
+                    user_agent=request.headers.get("user-agent"),
+                    request_id=_request_id(request),
+                )
         except InvalidCredentials:
             return _problem(401, "INVALID_CREDENTIALS", "Invalid email or password", request)
         except AuthError:
@@ -176,15 +173,14 @@ def create_auth_router(
         if not session_token:
             return _problem(401, "SESSION_INVALID", "Session is invalid", request)
         try:
-            async with session_factory() as session:
-                async with session.begin():
-                    await AuthService(session).logout(
-                        session_token=session_token,
-                        csrf_token=x_csrf_token,
-                        origin=request.headers.get("origin"),
-                        allowed_origins=allowed_origins,
-                        request_id=_request_id(request),
-                    )
+            async with session_factory() as session, session.begin():
+                await AuthService(session).logout(
+                    session_token=session_token,
+                    csrf_token=x_csrf_token,
+                    origin=request.headers.get("origin"),
+                    allowed_origins=allowed_origins,
+                    request_id=_request_id(request),
+                )
         except SessionInvalid:
             return _problem(401, "SESSION_INVALID", "Session is invalid", request)
         response.delete_cookie(
@@ -202,14 +198,13 @@ def create_auth_router(
         payload: PasswordResetRequest, request: Request
     ) -> AcceptedResponse | JSONResponse:
         try:
-            async with session_factory() as session:
-                async with session.begin():
-                    token = await AuthService(session).request_password_reset(
-                        email=payload.email,
-                        client_key=_client_key(request),
-                    )
-                    if token is not None:
-                        await notifications.send_password_reset(email=payload.email, token=token)
+            async with session_factory() as session, session.begin():
+                token = await AuthService(session).request_password_reset(
+                    email=payload.email,
+                    client_key=_client_key(request),
+                )
+                if token is not None:
+                    await notifications.send_password_reset(email=payload.email, token=token)
         except AuthNotificationNotConfigured:
             return _problem(
                 503,
@@ -232,12 +227,11 @@ def create_auth_router(
         request: Request,
     ) -> AcceptedResponse | JSONResponse:
         try:
-            async with session_factory() as session:
-                async with session.begin():
-                    await AuthService(session).reset_password(
-                        plaintext_token=payload.token,
-                        new_password=payload.new_password,
-                    )
+            async with session_factory() as session, session.begin():
+                await AuthService(session).reset_password(
+                    plaintext_token=payload.token,
+                    new_password=payload.new_password,
+                )
         except TokenInvalid:
             return _problem(
                 400, "TOKEN_INVALID_OR_EXPIRED", "Reset token is invalid or expired", request
@@ -314,34 +308,33 @@ def create_auth_router(
         x_csrf_token: str | None = Header(default=None, alias=CSRF_HEADER),
     ) -> AcceptedResponse | JSONResponse:
         try:
-            async with session_factory() as session:
-                async with session.begin():
-                    resolved = await _session_principal(session, request, organization_id)
-                    if isinstance(resolved, JSONResponse):
-                        return resolved
-                    principal, session_token = resolved
-                    csrf_problem = _require_csrf(
-                        csrf_token_hash=principal.csrf_token_hash,
-                        session_token_hash=session_token,
-                        user_id=principal.context.actor_id,
-                        organization_id=principal.context.organization_id,
-                        request=request,
-                        csrf_token=x_csrf_token,
-                    )
-                    if csrf_problem is not None:
-                        return csrf_problem
-                    token = await AuthService(session).create_invite(
-                        actor_id=UUID(principal.context.actor_id),
-                        organization_id=organization_id,
-                        email=payload.email,
-                        role=payload.role,
-                        client_key=_client_key(request),
-                    )
-                    await notifications.send_organization_invite(
-                        email=payload.email,
-                        organization_id=str(organization_id),
-                        token=token,
-                    )
+            async with session_factory() as session, session.begin():
+                resolved = await _session_principal(session, request, organization_id)
+                if isinstance(resolved, JSONResponse):
+                    return resolved
+                principal, session_token = resolved
+                csrf_problem = _require_csrf(
+                    csrf_token_hash=principal.csrf_token_hash,
+                    session_token_hash=session_token,
+                    user_id=principal.context.actor_id,
+                    organization_id=principal.context.organization_id,
+                    request=request,
+                    csrf_token=x_csrf_token,
+                )
+                if csrf_problem is not None:
+                    return csrf_problem
+                token = await AuthService(session).create_invite(
+                    actor_id=UUID(principal.context.actor_id),
+                    organization_id=organization_id,
+                    email=payload.email,
+                    role=payload.role,
+                    client_key=_client_key(request),
+                )
+                await notifications.send_organization_invite(
+                    email=payload.email,
+                    organization_id=str(organization_id),
+                    token=token,
+                )
         except PermissionDenied:
             return _problem(403, "PERMISSION_DENIED", "Permission denied", request)
         except AuthNotificationNotConfigured:
@@ -362,26 +355,25 @@ def create_auth_router(
         x_csrf_token: str | None = Header(default=None, alias=CSRF_HEADER),
     ) -> AcceptedResponse | JSONResponse:
         try:
-            async with session_factory() as session:
-                async with session.begin():
-                    resolved = await _session_principal(session, request, None)
-                    if isinstance(resolved, JSONResponse):
-                        return resolved
-                    principal, session_token = resolved
-                    csrf_problem = _require_csrf(
-                        csrf_token_hash=principal.csrf_token_hash,
-                        session_token_hash=session_token,
-                        user_id=principal.context.actor_id,
-                        organization_id=principal.context.organization_id,
-                        request=request,
-                        csrf_token=x_csrf_token,
-                    )
-                    if csrf_problem is not None:
-                        return csrf_problem
-                    await AuthService(session).accept_invite(
-                        actor_id=UUID(principal.context.actor_id),
-                        plaintext_token=payload.token,
-                    )
+            async with session_factory() as session, session.begin():
+                resolved = await _session_principal(session, request, None)
+                if isinstance(resolved, JSONResponse):
+                    return resolved
+                principal, session_token = resolved
+                csrf_problem = _require_csrf(
+                    csrf_token_hash=principal.csrf_token_hash,
+                    session_token_hash=session_token,
+                    user_id=principal.context.actor_id,
+                    organization_id=principal.context.organization_id,
+                    request=request,
+                    csrf_token=x_csrf_token,
+                )
+                if csrf_problem is not None:
+                    return csrf_problem
+                await AuthService(session).accept_invite(
+                    actor_id=UUID(principal.context.actor_id),
+                    plaintext_token=payload.token,
+                )
         except TokenInvalid:
             return _problem(
                 400, "TOKEN_INVALID_OR_EXPIRED", "Invite is invalid or expired", request
@@ -401,29 +393,28 @@ def create_auth_router(
         x_csrf_token: str | None = Header(default=None, alias=CSRF_HEADER),
     ) -> ApiTokenCreateResponse | JSONResponse:
         try:
-            async with session_factory() as session:
-                async with session.begin():
-                    resolved = await _session_principal(session, request, organization_id)
-                    if isinstance(resolved, JSONResponse):
-                        return resolved
-                    principal, session_token = resolved
-                    csrf_problem = _require_csrf(
-                        csrf_token_hash=principal.csrf_token_hash,
-                        session_token_hash=session_token,
-                        user_id=principal.context.actor_id,
-                        organization_id=principal.context.organization_id,
-                        request=request,
-                        csrf_token=x_csrf_token,
-                    )
-                    if csrf_problem is not None:
-                        return csrf_problem
-                    result = await AuthService(session).create_api_token(
-                        actor_id=UUID(principal.context.actor_id),
-                        organization_id=organization_id,
-                        name=payload.name,
-                        scopes=frozenset(payload.scopes),
-                        expires_at=payload.expires_at,
-                    )
+            async with session_factory() as session, session.begin():
+                resolved = await _session_principal(session, request, organization_id)
+                if isinstance(resolved, JSONResponse):
+                    return resolved
+                principal, session_token = resolved
+                csrf_problem = _require_csrf(
+                    csrf_token_hash=principal.csrf_token_hash,
+                    session_token_hash=session_token,
+                    user_id=principal.context.actor_id,
+                    organization_id=principal.context.organization_id,
+                    request=request,
+                    csrf_token=x_csrf_token,
+                )
+                if csrf_problem is not None:
+                    return csrf_problem
+                result = await AuthService(session).create_api_token(
+                    actor_id=UUID(principal.context.actor_id),
+                    organization_id=organization_id,
+                    name=payload.name,
+                    scopes=frozenset(payload.scopes),
+                    expires_at=payload.expires_at,
+                )
         except PermissionDenied:
             return _problem(403, "PERMISSION_DENIED", "Permission denied", request)
         return ApiTokenCreateResponse(
@@ -444,28 +435,27 @@ def create_auth_router(
         x_csrf_token: str | None = Header(default=None, alias=CSRF_HEADER),
     ) -> AcceptedResponse | JSONResponse:
         try:
-            async with session_factory() as session:
-                async with session.begin():
-                    resolved = await _session_principal(session, request, organization_id)
-                    if isinstance(resolved, JSONResponse):
-                        return resolved
-                    principal, session_token = resolved
-                    csrf_problem = _require_csrf(
-                        csrf_token_hash=principal.csrf_token_hash,
-                        session_token_hash=session_token,
-                        user_id=principal.context.actor_id,
-                        organization_id=principal.context.organization_id,
-                        request=request,
-                        csrf_token=x_csrf_token,
-                    )
-                    if csrf_problem is not None:
-                        return csrf_problem
-                    await PrincipalResolver(session).revoke_api_token(
-                        actor_id=UUID(principal.context.actor_id),
-                        organization_id=organization_id,
-                        token_id=token_id,
-                        now=datetime.now(UTC),
-                    )
+            async with session_factory() as session, session.begin():
+                resolved = await _session_principal(session, request, organization_id)
+                if isinstance(resolved, JSONResponse):
+                    return resolved
+                principal, session_token = resolved
+                csrf_problem = _require_csrf(
+                    csrf_token_hash=principal.csrf_token_hash,
+                    session_token_hash=session_token,
+                    user_id=principal.context.actor_id,
+                    organization_id=principal.context.organization_id,
+                    request=request,
+                    csrf_token=x_csrf_token,
+                )
+                if csrf_problem is not None:
+                    return csrf_problem
+                await PrincipalResolver(session).revoke_api_token(
+                    actor_id=UUID(principal.context.actor_id),
+                    organization_id=organization_id,
+                    token_id=token_id,
+                    now=datetime.now(UTC),
+                )
         except PermissionDenied:
             return _problem(403, "PERMISSION_DENIED", "Permission denied", request)
         return AcceptedResponse()
@@ -483,28 +473,27 @@ def create_auth_router(
         x_csrf_token: str | None = Header(default=None, alias=CSRF_HEADER),
     ) -> AcceptedResponse | JSONResponse:
         try:
-            async with session_factory() as session:
-                async with session.begin():
-                    resolved = await _session_principal(session, request, organization_id)
-                    if isinstance(resolved, JSONResponse):
-                        return resolved
-                    principal, session_token = resolved
-                    csrf_problem = _require_csrf(
-                        csrf_token_hash=principal.csrf_token_hash,
-                        session_token_hash=session_token,
-                        user_id=principal.context.actor_id,
-                        organization_id=principal.context.organization_id,
-                        request=request,
-                        csrf_token=x_csrf_token,
-                    )
-                    if csrf_problem is not None:
-                        return csrf_problem
-                    await MembershipService(session).change_role(
-                        organization_id=organization_id,
-                        actor_id=UUID(principal.context.actor_id),
-                        target_user_id=user_id,
-                        new_role=payload.role,
-                    )
+            async with session_factory() as session, session.begin():
+                resolved = await _session_principal(session, request, organization_id)
+                if isinstance(resolved, JSONResponse):
+                    return resolved
+                principal, session_token = resolved
+                csrf_problem = _require_csrf(
+                    csrf_token_hash=principal.csrf_token_hash,
+                    session_token_hash=session_token,
+                    user_id=principal.context.actor_id,
+                    organization_id=principal.context.organization_id,
+                    request=request,
+                    csrf_token=x_csrf_token,
+                )
+                if csrf_problem is not None:
+                    return csrf_problem
+                await MembershipService(session).change_role(
+                    organization_id=organization_id,
+                    actor_id=UUID(principal.context.actor_id),
+                    target_user_id=user_id,
+                    new_role=payload.role,
+                )
         except PermissionDenied:
             return _problem(403, "PERMISSION_DENIED", "Permission denied", request)
         except ValueError as exc:
@@ -529,27 +518,26 @@ def create_auth_router(
         x_csrf_token: str | None = Header(default=None, alias=CSRF_HEADER),
     ) -> AcceptedResponse | JSONResponse:
         try:
-            async with session_factory() as session:
-                async with session.begin():
-                    resolved = await _session_principal(session, request, organization_id)
-                    if isinstance(resolved, JSONResponse):
-                        return resolved
-                    principal, session_token = resolved
-                    csrf_problem = _require_csrf(
-                        csrf_token_hash=principal.csrf_token_hash,
-                        session_token_hash=session_token,
-                        user_id=principal.context.actor_id,
-                        organization_id=principal.context.organization_id,
-                        request=request,
-                        csrf_token=x_csrf_token,
-                    )
-                    if csrf_problem is not None:
-                        return csrf_problem
-                    await MembershipService(session).remove_member(
-                        organization_id=organization_id,
-                        actor_id=UUID(principal.context.actor_id),
-                        target_user_id=user_id,
-                    )
+            async with session_factory() as session, session.begin():
+                resolved = await _session_principal(session, request, organization_id)
+                if isinstance(resolved, JSONResponse):
+                    return resolved
+                principal, session_token = resolved
+                csrf_problem = _require_csrf(
+                    csrf_token_hash=principal.csrf_token_hash,
+                    session_token_hash=session_token,
+                    user_id=principal.context.actor_id,
+                    organization_id=principal.context.organization_id,
+                    request=request,
+                    csrf_token=x_csrf_token,
+                )
+                if csrf_problem is not None:
+                    return csrf_problem
+                await MembershipService(session).remove_member(
+                    organization_id=organization_id,
+                    actor_id=UUID(principal.context.actor_id),
+                    target_user_id=user_id,
+                )
         except PermissionDenied:
             return _problem(403, "PERMISSION_DENIED", "Permission denied", request)
         except ValueError:

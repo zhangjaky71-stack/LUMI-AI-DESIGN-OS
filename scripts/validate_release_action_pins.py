@@ -4,9 +4,10 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Mapping
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 PINS_PATH = ROOT / "production" / "release-actions" / "pins-v1.json"

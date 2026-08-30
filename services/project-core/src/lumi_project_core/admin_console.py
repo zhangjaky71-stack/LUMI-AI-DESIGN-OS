@@ -63,7 +63,7 @@ class PlatformAdminActor:
     permissions: frozenset[str]
 
     @classmethod
-    def from_roles(cls, actor_id: str, roles: frozenset[AdminRole]) -> "PlatformAdminActor":
+    def from_roles(cls, actor_id: str, roles: frozenset[AdminRole]) -> PlatformAdminActor:
         if not actor_id.strip() or not roles:
             raise AdminError("ADMIN_ACTOR_INVALID", 401)
         permissions: set[str] = set()

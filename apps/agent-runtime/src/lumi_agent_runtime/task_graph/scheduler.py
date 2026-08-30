@@ -103,9 +103,8 @@ class DurableTaskGraphScheduler:
             )
         except TaskGraphConflictError:
             return False
-        async with self.store.connection_factory() as connection:
-            async with connection.transaction():
-                await _recompute_graph_locked(connection, task.graph_id, now)
+        async with self.store.connection_factory() as connection, connection.transaction():
+            await _recompute_graph_locked(connection, task.graph_id, now)
         return True
 
 

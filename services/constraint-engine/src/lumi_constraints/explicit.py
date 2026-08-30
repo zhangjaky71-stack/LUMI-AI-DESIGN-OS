@@ -4,7 +4,6 @@ from collections.abc import Iterable
 
 from .model import Constraint, ConstraintScope
 
-
 SUPPORTED_PROTECTIONS = frozenset(
     {
         "position",

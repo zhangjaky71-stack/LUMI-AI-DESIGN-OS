@@ -5,13 +5,10 @@ import os
 from collections.abc import Coroutine
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
-from uuid import UUID
 
 import pytest
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from lumi_auth import hash_token
-from lumi_domain import new_uuid7
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +26,8 @@ from lumi_api.persistence.models import (
     User,
 )
 from lumi_api.persistence.session import create_engine
+from lumi_auth import hash_token
+from lumi_domain import new_uuid7
 
 if os.environ.get("LUMI_AUTH_INTEGRATION") != "1":
     pytest.skip("set LUMI_AUTH_INTEGRATION=1 to run auth PostgreSQL tests", allow_module_level=True)

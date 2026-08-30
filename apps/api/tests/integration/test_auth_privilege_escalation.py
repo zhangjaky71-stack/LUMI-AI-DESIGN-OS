@@ -7,7 +7,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
 import pytest
-from lumi_domain import new_uuid7
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +15,7 @@ from lumi_api.auth.secure_service import SecureAuthService
 from lumi_api.auth.service import AuthService
 from lumi_api.persistence.models import OrganizationMember
 from lumi_api.persistence.session import create_engine
+from lumi_domain import new_uuid7
 
 if os.environ.get("LUMI_AUTH_INTEGRATION") != "1":
     pytest.skip("set LUMI_AUTH_INTEGRATION=1 to run auth PostgreSQL tests", allow_module_level=True)

@@ -3,12 +3,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Mapping, cast
+from typing import cast
 from uuid import UUID, uuid5
 
 import asyncpg
+
 from lumi_asset_storage.s3 import S3ObjectStore
 from lumi_image_generation.asset_intelligence_adapter import ReferenceAuthorizationError
 from lumi_image_generation.errors import ImageGenerationTransientError

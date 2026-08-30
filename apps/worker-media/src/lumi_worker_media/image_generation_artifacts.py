@@ -5,6 +5,7 @@ from decimal import Decimal
 from uuid import UUID, uuid5
 
 import asyncpg
+
 from lumi_image_generation.hashing import constraint_snapshot_hash
 from lumi_image_generation.model import (
     GenerationCandidate,

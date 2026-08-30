@@ -7,9 +7,10 @@ import os
 import re
 import shutil
 import subprocess
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 IMAGE_REF = re.compile(r"^[^\s@]+@sha256:[0-9a-f]{64}$")
 REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 _TRACE_ID = re.compile(r"^[0-9a-fA-F]{32}$")
 _SAFE_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")

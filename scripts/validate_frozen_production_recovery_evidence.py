@@ -6,10 +6,10 @@ import importlib.util
 import json
 import re
 import subprocess
-import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Mapping
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DECISION_SCRIPT = ROOT / "scripts" / "production-recovery-decision.py"

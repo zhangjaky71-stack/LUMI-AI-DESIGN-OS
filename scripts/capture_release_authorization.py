@@ -11,9 +11,10 @@ import shutil
 import tempfile
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_REPOSITORY = "zhangjaky71-stack/LUMI-AI-DESIGN-OS"
@@ -351,7 +352,7 @@ def build_authorization(
         "kind": AUTHORIZATION_KIND,
         "status": "PASS",
         "authorization_id": f"release-auth-{release_id}-{git_sha[:12]}",
-        "authorized_at": datetime.now(timezone.utc).isoformat(),
+        "authorized_at": datetime.now(UTC).isoformat(),
         "release_id": release_id,
         "release_candidate": {
             "git_sha": git_sha.lower(),
@@ -487,7 +488,7 @@ def verify_live_authorization(
         "release_candidate": validated["release_candidate"],
         "actors": validated["actors"],
         "distinct_approver_count": validated["distinct_approver_count"],
-        "verified_at": datetime.now(timezone.utc).isoformat(),
+        "verified_at": datetime.now(UTC).isoformat(),
     }
 
 

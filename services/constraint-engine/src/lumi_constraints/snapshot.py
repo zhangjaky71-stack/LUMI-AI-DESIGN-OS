@@ -6,7 +6,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from .model import Constraint
-from .precedence import effective_constraints, precedence_key, scope_key
+from .precedence import effective_constraints, precedence_key
 
 
 def _plain(value: Any) -> Any:

@@ -6,6 +6,8 @@ from typing import Literal, overload
 from .dependencies import (
     StaticNamedCatalog,
     StaticVersionedCatalog,
+)
+from .dependencies import (
     load_bootstrap_catalog as _load_bootstrap_catalog,
 )
 from .errors import AgentDependencyError

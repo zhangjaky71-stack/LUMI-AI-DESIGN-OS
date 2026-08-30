@@ -76,16 +76,15 @@ async def verify_outbox_inbox(broker_url: str) -> None:
 
     runtime = EventConsumerRuntime(_dsn(), consumer=CONSUMER)
     queue = domain_queue(CONSUMER, "asset.*")
-    with Connection(broker_url) as connection:
-        with connection.SimpleQueue(queue) as simple_queue:
-            message = simple_queue.get(block=True, timeout=10)
-            envelope = message.payload
-            assert envelope["id"] == str(event_id)
-            assert envelope["data"]["asset_id"]
-            assert envelope["data"]["kind"] == "image"
-            assert await runtime.process(envelope, _noop_handler) == "PROCESSED"
-            assert await runtime.process(envelope, _noop_handler) == "DUPLICATE"
-            message.ack()
+    with Connection(broker_url) as connection, connection.SimpleQueue(queue) as simple_queue:
+        message = simple_queue.get(block=True, timeout=10)
+        envelope = message.payload
+        assert envelope["id"] == str(event_id)
+        assert envelope["data"]["asset_id"]
+        assert envelope["data"]["kind"] == "image"
+        assert await runtime.process(envelope, _noop_handler) == "PROCESSED"
+        assert await runtime.process(envelope, _noop_handler) == "DUPLICATE"
+        message.ack()
 
     # Simulate the classic crash window: publish happened, published_at did not persist.
     connection = await asyncpg.connect(_dsn())
@@ -97,11 +96,10 @@ async def verify_outbox_inbox(broker_url: str) -> None:
     finally:
         await connection.close()
     assert await dispatcher.dispatch_batch(limit=10) >= 1
-    with Connection(broker_url) as connection:
-        with connection.SimpleQueue(queue) as simple_queue:
-            duplicate = simple_queue.get(block=True, timeout=10)
-            assert await runtime.process(duplicate.payload, _noop_handler) == "DUPLICATE"
-            duplicate.ack()
+    with Connection(broker_url) as connection, connection.SimpleQueue(queue) as simple_queue:
+        duplicate = simple_queue.get(block=True, timeout=10)
+        assert await runtime.process(duplicate.payload, _noop_handler) == "DUPLICATE"
+        duplicate.ack()
 
 
 async def verify_permanent_failure_dlq(broker_url: str) -> None:
@@ -115,15 +113,14 @@ async def verify_permanent_failure_dlq(broker_url: str) -> None:
     )
     queue = domain_queue(CONSUMER, "invalid.*")
     invalid = {"id": str(uuid4()), "data": {"bad": True}}
-    with Connection(broker_url) as connection:
-        with connection.channel() as channel:
-            Producer(channel, serializer="json").publish(
-                invalid,
-                exchange=DOMAIN_EXCHANGE,
-                routing_key="invalid.event",
-                serializer="json",
-                declare=[DOMAIN_EXCHANGE, queue],
-            )
+    with Connection(broker_url) as connection, connection.channel() as channel:
+        Producer(channel, serializer="json").publish(
+            invalid,
+            exchange=DOMAIN_EXCHANGE,
+            routing_key="invalid.event",
+            serializer="json",
+            declare=[DOMAIN_EXCHANGE, queue],
+        )
     try:
         adapter.consume_one(_noop_handler, timeout=10)
     except Exception:

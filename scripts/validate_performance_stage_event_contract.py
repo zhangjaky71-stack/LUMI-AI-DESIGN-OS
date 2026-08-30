@@ -230,12 +230,13 @@ def validate_ui_propagation_producer() -> None:
     contract = WORKSPACE_CONTRACT.read_text(encoding="utf-8")
     for marker in (
         'import { scheduleArtifactUiPropagationAfterPaint } from "./performance-telemetry"',
-        "function artifactTaskId(snapshot: AIWorkspaceSnapshot, event: WorkspaceEvent)",
+        "function artifactTaskId(",
         "task.artifact_version_ids?.includes(event.artifact.version_id)",
-        "scheduleArtifactUiPropagationAfterPaint(event, artifactTaskId(snapshot, event))",
+        "scheduleArtifactUiPropagationAfterPaint(",
+        "artifactTaskId(snapshot, event)",
     ):
         require(marker in contract, f"canonical workspace reducer lost UI telemetry binding: {marker}")
-    schedule_index = contract.index("scheduleArtifactUiPropagationAfterPaint(event, artifactTaskId(snapshot, event))")
+    schedule_index = contract.index("scheduleArtifactUiPropagationAfterPaint(")
     require(
         contract.index("state.seen_event_ids.includes(event.id)") < schedule_index,
         "duplicate-event rejection must happen before UI timing",

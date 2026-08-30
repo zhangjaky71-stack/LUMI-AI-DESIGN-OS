@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any
 from uuid import UUID
 
 _EVENT_TYPE = re.compile(r"^lumi\.[a-z0-9_]+\.[a-z0-9_]+$")
@@ -117,7 +118,7 @@ class EventEnvelope:
         )
 
     @classmethod
-    def from_dict(cls, value: Mapping[str, Any]) -> "EventEnvelope":
+    def from_dict(cls, value: Mapping[str, Any]) -> EventEnvelope:
         return cls(
             id=UUID(str(value["id"])),
             source=str(value["source"]),

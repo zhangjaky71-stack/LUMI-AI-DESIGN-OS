@@ -7,9 +7,10 @@ import os
 import re
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -275,7 +276,7 @@ def capture(repository: str, *, token: str | None) -> dict[str, Any]:
         "kind": KIND,
         "status": "PASS" if all_strongly_protected else "BLOCKED_EXTERNAL",
         "repository": repository,
-        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "captured_at": datetime.now(UTC).isoformat(),
         "branches": branches,
     }
 

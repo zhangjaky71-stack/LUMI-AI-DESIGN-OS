@@ -76,7 +76,7 @@ def _signed_headers(
     timestamp: int = _NOW,
 ) -> dict[str, str]:
     body_hash = hashlib.sha256(body).hexdigest()
-    message = f"{service}\n{timestamp}\nPOST\n{_PATH}\n{body_hash}".encode("utf-8")
+    message = f"{service}\n{timestamp}\nPOST\n{_PATH}\n{body_hash}".encode()
     signature = hmac.new(_SECRET.encode("utf-8"), message, hashlib.sha256).hexdigest()
     return {
         "Content-Type": "application/json",

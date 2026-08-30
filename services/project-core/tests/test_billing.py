@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
-import json
 
 import pytest
 

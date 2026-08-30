@@ -5,7 +5,6 @@ import inspect
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, get_args, get_origin
-from uuid import UUID, uuid4
 
 from lumi_agent_runtime.agent_team.contracts import (
     TeamArtifactRef,

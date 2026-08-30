@@ -25,23 +25,27 @@ class WorkerMediaCliTests(unittest.TestCase):
 
     def test_worker_concurrency_is_bounded(self) -> None:
         for value in ("0", "33", "not-a-number"):
-            with self.subTest(value=value):
-                with patch.dict(
+            with (
+                self.subTest(value=value),
+                patch.dict(
                     os.environ,
                     {"LUMI_WORKER_MEDIA_CONCURRENCY": value},
                     clear=True,
-                ):
-                    with self.assertRaises(RuntimeError):
-                        worker_argv()
+                ),
+                self.assertRaises(RuntimeError),
+            ):
+                worker_argv()
 
     def test_worker_log_level_is_allowlisted(self) -> None:
-        with patch.dict(
-            os.environ,
-            {"LUMI_WORKER_MEDIA_LOG_LEVEL": "trace"},
-            clear=True,
+        with (
+            patch.dict(
+                os.environ,
+                {"LUMI_WORKER_MEDIA_LOG_LEVEL": "trace"},
+                clear=True,
+            ),
+            self.assertRaisesRegex(RuntimeError, "LOG_LEVEL_INVALID"),
         ):
-            with self.assertRaisesRegex(RuntimeError, "LOG_LEVEL_INVALID"):
-                worker_argv()
+            worker_argv()
 
     def test_worker_runtime_tunables_are_applied(self) -> None:
         with patch.dict(

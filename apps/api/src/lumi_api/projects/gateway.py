@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from lumi_domain import ProjectStatus
-from lumi_project_core import ProjectListFilter
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lumi_api.api.v1.context import PageRequest, RequestContext
@@ -29,6 +27,8 @@ from lumi_api.api.v1.contracts import (
 from lumi_api.api.v1.errors import ApiProblem
 from lumi_api.api.v1.services import PageResult
 from lumi_api.persistence.models import Project, ProjectBriefVersion
+from lumi_domain import ProjectStatus
+from lumi_project_core import ProjectListFilter
 
 from .errors import ProjectApplicationError, ProjectConflict, ProjectInvalid, ProjectNotFound
 from .service import ProjectService

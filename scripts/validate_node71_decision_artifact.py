@@ -5,8 +5,9 @@ import argparse
 import copy
 import hashlib
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import urlsplit
 
 MODEL_GATEWAY_VIDEO_REQUIRED_SOURCE_PATHS = {

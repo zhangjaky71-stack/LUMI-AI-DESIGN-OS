@@ -99,16 +99,15 @@ def _record_final_failure(
         )
     broker_url = os.getenv("RABBITMQ_URL")
     if broker_url:
-        with Connection(broker_url) as connection:
-            with connection.channel() as channel:
-                Producer(channel, serializer="json").publish(
-                    dlq_body,
-                    exchange=DEAD_LETTER_EXCHANGE,
-                    routing_key=f"{source_queue}.dead",
-                    serializer="json",
-                    declare=[DEAD_LETTER_EXCHANGE],
-                    retry=True,
-                )
+        with Connection(broker_url) as connection, connection.channel() as channel:
+            Producer(channel, serializer="json").publish(
+                dlq_body,
+                exchange=DEAD_LETTER_EXCHANGE,
+                routing_key=f"{source_queue}.dead",
+                serializer="json",
+                declare=[DEAD_LETTER_EXCHANGE],
+                retry=True,
+            )
 
 
 def _database_dsn() -> str | None:

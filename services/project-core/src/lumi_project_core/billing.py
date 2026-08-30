@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from decimal import Decimal, ROUND_CEILING
+from decimal import ROUND_CEILING, Decimal
 from hashlib import sha256
-import json
 from threading import RLock
-from typing import Any, Callable, Literal, Protocol
+from typing import Any, Literal, Protocol
 from uuid import uuid4
 
 SubscriptionState = Literal[

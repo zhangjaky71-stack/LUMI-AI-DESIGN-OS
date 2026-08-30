@@ -10,26 +10,13 @@ from uuid import UUID
 
 import pytest
 from lumi_artifacts.history import ArtifactHistory
+
 from lumi_asset_intelligence.model import (
     AnalyzerBundleSnapshot,
     AnalyzerModelSnapshot,
     AssetAnalysisRecord,
 )
 from lumi_asset_intelligence.repository import InMemoryAssetIndexRepository
-from lumi_model_gateway import (
-    DeliveryState,
-    ErrorCategory,
-    InMemoryProviderHealthRegistry,
-    InMemoryProviderRegistry,
-    MockFailure,
-    MockProvider,
-    ModelGateway,
-    ModelRouter,
-    ModelRequest,
-    ModelResult,
-    RetryPolicy,
-)
-
 from lumi_image_generation.artifact_adapter import ArtifactHistoryCandidateAdapter
 from lumi_image_generation.asset_intelligence_adapter import (
     AssetIntelligenceReferenceAuthorizer,
@@ -70,6 +57,19 @@ from lumi_image_generation.validation import (
     DelegateValidationResult,
 )
 from lumi_image_generation.variants import GenerationBudgetError
+from lumi_model_gateway import (
+    DeliveryState,
+    ErrorCategory,
+    InMemoryProviderHealthRegistry,
+    InMemoryProviderRegistry,
+    MockFailure,
+    MockProvider,
+    ModelGateway,
+    ModelRequest,
+    ModelResult,
+    ModelRouter,
+    RetryPolicy,
+)
 
 ORG = "00000000-0000-0000-0000-000000000001"
 PROJECT = "00000000-0000-0000-0000-000000000002"

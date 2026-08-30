@@ -2,537 +2,521 @@
 /* eslint-disable */
 
 export type AgentRunCreate = {
-  project_id: string;
-  thread_id: string;
-  graph_version: string;
-  agent_config_version: string;
-  budget?: {
-    [key: string]: unknown;
-  };
+  "project_id": string;
+  "thread_id": string;
+  "graph_version": string;
+  "agent_config_version": string;
+  "budget"?: {
+  [key: string]: unknown;
+};
 };
 export type AgentRunResource = {
-  id: string;
-  organization_id: string;
-  project_id: string;
-  thread_id: string;
-  graph_version: string;
-  agent_config_version: string;
-  status: AgentRunStatus;
-  budget?: {
-    [key: string]: unknown;
-  };
-  started_at?: string | null;
-  finished_at?: string | null;
-  version: number;
+  "id": string;
+  "organization_id": string;
+  "project_id": string;
+  "thread_id": string;
+  "graph_version": string;
+  "agent_config_version": string;
+  "status": AgentRunStatus;
+  "budget"?: {
+  [key: string]: unknown;
+};
+  "started_at"?: string | null;
+  "finished_at"?: string | null;
+  "version": number;
 };
 export type AgentRunResumeRequest = {
-  input?: {
-    [key: string]: unknown;
-  };
+  "input"?: {
+  [key: string]: unknown;
 };
-export type AgentRunStatus =
-  | "pending"
-  | "running"
-  | "waiting_user"
-  | "paused"
-  | "cancel_requested"
-  | "cancelled"
-  | "succeeded"
-  | "failed";
+};
+export type AgentRunStatus = "pending" | "running" | "waiting_user" | "paused" | "cancel_requested" | "cancelled" | "succeeded" | "failed";
 export type ApprovalDecisionRequest = {
-  decision: "approved" | "rejected";
-  reason?: string | null;
+  "decision": "approved" | "rejected";
+  "reason"?: string | null;
 };
 export type ApprovalResource = {
-  id: string;
-  organization_id: string;
-  project_id: string;
-  artifact_version_id?: string | null;
-  agent_run_id?: string | null;
-  status: "pending" | "approved" | "rejected";
-  reason?: string | null;
-  decided_by?: string | null;
-  decided_at?: string | null;
-  version: number;
+  "id": string;
+  "organization_id": string;
+  "project_id": string;
+  "artifact_version_id"?: string | null;
+  "agent_run_id"?: string | null;
+  "status": "pending" | "approved" | "rejected";
+  "reason"?: string | null;
+  "decided_by"?: string | null;
+  "decided_at"?: string | null;
+  "version": number;
 };
 export type ArtifactResource = {
-  id: string;
-  organization_id: string;
-  project_id: string;
-  kind: string;
-  title?: string | null;
-  metadata?: {
-    [key: string]: unknown;
-  };
-  version: number;
-  created_at?: string | null;
-  updated_at?: string | null;
+  "id": string;
+  "organization_id": string;
+  "project_id": string;
+  "kind": string;
+  "title"?: string | null;
+  "metadata"?: {
+  [key: string]: unknown;
+};
+  "version": number;
+  "created_at"?: string | null;
+  "updated_at"?: string | null;
 };
 export type ArtifactVersionCreate = {
-  branch_id: string;
-  content_hash: string;
-  parent_version_id?: string | null;
-  metadata?: {
-    [key: string]: unknown;
-  };
-  created_by_type: "user" | "agent" | "system";
-  created_by_id?: string | null;
+  "branch_id": string;
+  "content_hash": string;
+  "parent_version_id"?: string | null;
+  "metadata"?: {
+  [key: string]: unknown;
+};
+  "created_by_type": "user" | "agent" | "system";
+  "created_by_id"?: string | null;
 };
 export type ArtifactVersionResource = {
-  id: string;
-  organization_id: string;
-  project_id: string;
-  artifact_id: string;
-  branch_id: string;
-  parent_version_id?: string | null;
-  version_number: number;
-  status: ArtifactVersionStatus;
-  content_hash: string;
-  quality_score?: number | null;
-  metadata?: {
-    [key: string]: unknown;
-  };
-  created_at?: string | null;
+  "id": string;
+  "organization_id": string;
+  "project_id": string;
+  "artifact_id": string;
+  "branch_id": string;
+  "parent_version_id"?: string | null;
+  "version_number": number;
+  "status": ArtifactVersionStatus;
+  "content_hash": string;
+  "quality_score"?: number | null;
+  "metadata"?: {
+  [key: string]: unknown;
+};
+  "created_at"?: string | null;
 };
 export type ArtifactVersionStatus = "draft" | "ready" | "approved" | "rejected";
 export type AssetCreate = {
-  project_id?: string | null;
-  kind: string;
-  source?: string;
-  original_name?: string | null;
-  metadata?: {
-    [key: string]: unknown;
-  };
+  "project_id"?: string | null;
+  "kind": string;
+  "source"?: string;
+  "original_name"?: string | null;
+  "metadata"?: {
+  [key: string]: unknown;
+};
 };
 export type AssetResource = {
-  id: string;
-  organization_id: string;
-  project_id?: string | null;
-  kind: string;
-  source: string;
-  original_name?: string | null;
-  metadata?: {
-    [key: string]: unknown;
-  };
-  version: number;
-  created_at?: string | null;
-  updated_at?: string | null;
+  "id": string;
+  "organization_id": string;
+  "project_id"?: string | null;
+  "kind": string;
+  "source": string;
+  "original_name"?: string | null;
+  "metadata"?: {
+  [key: string]: unknown;
+};
+  "version": number;
+  "created_at"?: string | null;
+  "updated_at"?: string | null;
 };
 export type CollectionEnvelope_ArtifactVersionResource_ = {
-  data: Array<ArtifactVersionResource>;
-  meta: PageMeta;
+  "data": Array<ArtifactVersionResource>;
+  "meta": PageMeta;
 };
 export type CollectionEnvelope_AssetResource_ = {
-  data: Array<AssetResource>;
-  meta: PageMeta;
+  "data": Array<AssetResource>;
+  "meta": PageMeta;
 };
 export type CollectionEnvelope_ProjectBriefVersionResource_ = {
-  data: Array<ProjectBriefVersionResource>;
-  meta: PageMeta;
+  "data": Array<ProjectBriefVersionResource>;
+  "meta": PageMeta;
 };
 export type CollectionEnvelope_ProjectResource_ = {
-  data: Array<ProjectResource>;
-  meta: PageMeta;
+  "data": Array<ProjectResource>;
+  "meta": PageMeta;
 };
 export type CollectionEnvelope_UsageSummaryResource_ = {
-  data: Array<UsageSummaryResource>;
-  meta: PageMeta;
+  "data": Array<UsageSummaryResource>;
+  "meta": PageMeta;
 };
 export type CostSummaryResource = {
-  organization_id: string;
-  project_id?: string | null;
-  currency: string;
-  actual_cost: string;
-  adjustments: string;
-  reversals: string;
-  net_provider_cost: string;
-  active_reservations: string;
-  unknown_cost_entries: number;
-  from_time: string;
-  to_time: string;
+  "organization_id": string;
+  "project_id"?: string | null;
+  "currency": string;
+  "actual_cost": string;
+  "adjustments": string;
+  "reversals": string;
+  "net_provider_cost": string;
+  "active_reservations": string;
+  "unknown_cost_entries": number;
+  "from_time": string;
+  "to_time": string;
 };
 export type DataEnvelope_AgentRunResource_ = {
-  data: AgentRunResource;
-  meta: ResponseMeta;
+  "data": AgentRunResource;
+  "meta": ResponseMeta;
 };
 export type DataEnvelope_ApprovalResource_ = {
-  data: ApprovalResource;
-  meta: ResponseMeta;
+  "data": ApprovalResource;
+  "meta": ResponseMeta;
 };
 export type DataEnvelope_ArtifactResource_ = {
-  data: ArtifactResource;
-  meta: ResponseMeta;
+  "data": ArtifactResource;
+  "meta": ResponseMeta;
 };
 export type DataEnvelope_ArtifactVersionResource_ = {
-  data: ArtifactVersionResource;
-  meta: ResponseMeta;
+  "data": ArtifactVersionResource;
+  "meta": ResponseMeta;
 };
 export type DataEnvelope_AssetResource_ = {
-  data: AssetResource;
-  meta: ResponseMeta;
+  "data": AssetResource;
+  "meta": ResponseMeta;
 };
 export type DataEnvelope_CostSummaryResource_ = {
-  data: CostSummaryResource;
-  meta: ResponseMeta;
+  "data": CostSummaryResource;
+  "meta": ResponseMeta;
 };
 export type DataEnvelope_GenerationResource_ = {
-  data: GenerationResource;
-  meta: ResponseMeta;
+  "data": GenerationResource;
+  "meta": ResponseMeta;
 };
 export type DataEnvelope_HealthResource_ = {
-  data: HealthResource;
-  meta: ResponseMeta;
+  "data": HealthResource;
+  "meta": ResponseMeta;
 };
 export type DataEnvelope_ProjectResource_ = {
-  data: ProjectResource;
-  meta: ResponseMeta;
+  "data": ProjectResource;
+  "meta": ResponseMeta;
 };
 export type DataEnvelope_TaskResource_ = {
-  data: TaskResource;
-  meta: ResponseMeta;
+  "data": TaskResource;
+  "meta": ResponseMeta;
 };
 export type GenerationCreate = {
-  project_id: string;
-  task_id?: string | null;
-  agent_run_id?: string | null;
-  capability: string;
-  provider?: string | null;
-  model?: string | null;
-  request?: {
-    [key: string]: unknown;
-  };
+  "project_id": string;
+  "task_id"?: string | null;
+  "agent_run_id"?: string | null;
+  "capability": string;
+  "provider"?: string | null;
+  "model"?: string | null;
+  "request"?: {
+  [key: string]: unknown;
+};
 };
 export type GenerationResource = {
-  id: string;
-  organization_id: string;
-  project_id: string;
-  task_id?: string | null;
-  agent_run_id?: string | null;
-  operation_id?: string | null;
-  capability: string;
-  provider: string;
-  model: string;
-  status: string;
-  request?: {
-    [key: string]: unknown;
-  };
-  result?: {
-    [key: string]: unknown;
-  };
-  created_at?: string | null;
+  "id": string;
+  "organization_id": string;
+  "project_id": string;
+  "task_id"?: string | null;
+  "agent_run_id"?: string | null;
+  "operation_id"?: string | null;
+  "capability": string;
+  "provider": string;
+  "model": string;
+  "status": string;
+  "request"?: {
+  [key: string]: unknown;
+};
+  "result"?: {
+  [key: string]: unknown;
+};
+  "created_at"?: string | null;
 };
 export type HealthResource = {
-  status?: "ok";
-  api_version?: "v1";
+  "status"?: "ok";
+  "api_version"?: "v1";
 };
 export type PageMeta = {
-  request_id: string;
-  next_cursor?: string | null;
-  has_more?: boolean;
+  "request_id": string;
+  "next_cursor"?: string | null;
+  "has_more"?: boolean;
 };
 export type ProblemDetails = {
-  type?: string;
-  title: string;
-  status: number;
-  detail?: string | null;
-  instance?: string | null;
-  code: string;
-  request_id: string;
-  errors?: Array<ProblemField>;
+  "type"?: string;
+  "title": string;
+  "status": number;
+  "detail"?: string | null;
+  "instance"?: string | null;
+  "code": string;
+  "request_id": string;
+  "errors"?: Array<ProblemField>;
 };
 export type ProblemField = {
-  field: string;
-  code: string;
-  message: string;
+  "field": string;
+  "code": string;
+  "message": string;
 };
 export type ProjectBriefVersionResource = {
-  id: string;
-  project_id: string;
-  brief_version: number;
-  brief_hash: string;
-  brief: {
-    [key: string]: unknown;
-  };
-  created_by: string;
-  created_at: string;
+  "id": string;
+  "project_id": string;
+  "brief_version": number;
+  "brief_hash": string;
+  "brief": {
+  [key: string]: unknown;
+};
+  "created_by": string;
+  "created_at": string;
 };
 export type ProjectCreate = {
-  workspace_id: string;
-  name: string;
-  brief?: {
-    [key: string]: unknown;
-  };
-  brand_id?: string | null;
-  settings?: {
-    [key: string]: unknown;
-  };
+  "workspace_id": string;
+  "name": string;
+  "brief"?: {
+  [key: string]: unknown;
+};
+  "brand_id"?: string | null;
+  "settings"?: {
+  [key: string]: unknown;
+};
 };
 export type ProjectPatch = {
-  name?: string | null;
-  status?: ProjectStatus | null;
-  brief?: {
-    [key: string]: unknown;
-  } | null;
-  brand_id?: string | null;
-  active_branch_id?: string | null;
-  settings?: {
-    [key: string]: unknown;
-  } | null;
+  "name"?: string | null;
+  "status"?: ProjectStatus | null;
+  "brief"?: {
+  [key: string]: unknown;
+} | null;
+  "brand_id"?: string | null;
+  "active_branch_id"?: string | null;
+  "settings"?: {
+  [key: string]: unknown;
+} | null;
 };
 export type ProjectResource = {
-  id: string;
-  organization_id: string;
-  workspace_id: string;
-  name: string;
-  status: ProjectStatus;
-  brief?: {
-    [key: string]: unknown;
-  };
-  brief_version: number;
-  brand_id?: string | null;
-  active_branch_id?: string | null;
-  settings?: {
-    [key: string]: unknown;
-  };
-  version: number;
-  created_at?: string | null;
-  updated_at?: string | null;
+  "id": string;
+  "organization_id": string;
+  "workspace_id": string;
+  "name": string;
+  "status": ProjectStatus;
+  "brief"?: {
+  [key: string]: unknown;
+};
+  "brief_version": number;
+  "brand_id"?: string | null;
+  "active_branch_id"?: string | null;
+  "settings"?: {
+  [key: string]: unknown;
+};
+  "version": number;
+  "created_at"?: string | null;
+  "updated_at"?: string | null;
 };
 export type ProjectStatus = "draft" | "active" | "paused" | "archived";
 export type ResponseMeta = {
-  request_id: string;
+  "request_id": string;
 };
 export type TaskResource = {
-  id: string;
-  organization_id: string;
-  project_id: string;
-  agent_run_id?: string | null;
-  parent_task_id?: string | null;
-  type: string;
-  status: TaskStatus;
-  owner_agent_key?: string | null;
-  input?: {
-    [key: string]: unknown;
-  };
-  output?: {
-    [key: string]: unknown;
-  };
-  priority: number;
-  attempt_count: number;
-  max_attempts: number;
-  version: number;
+  "id": string;
+  "organization_id": string;
+  "project_id": string;
+  "agent_run_id"?: string | null;
+  "parent_task_id"?: string | null;
+  "type": string;
+  "status": TaskStatus;
+  "owner_agent_key"?: string | null;
+  "input"?: {
+  [key: string]: unknown;
 };
-export type TaskStatus =
-  | "pending"
-  | "ready"
-  | "running"
-  | "waiting_user"
-  | "waiting_dependency"
-  | "succeeded"
-  | "failed"
-  | "cancelled";
+  "output"?: {
+  [key: string]: unknown;
+};
+  "priority": number;
+  "attempt_count": number;
+  "max_attempts": number;
+  "version": number;
+};
+export type TaskStatus = "pending" | "ready" | "running" | "waiting_user" | "waiting_dependency" | "succeeded" | "failed" | "cancelled";
 export type UsageSummaryResource = {
-  organization_id: string;
-  project_id?: string | null;
-  metric: string;
-  quantity: string;
-  unit: string;
-  from_time: string;
-  to_time: string;
+  "organization_id": string;
+  "project_id"?: string | null;
+  "metric": string;
+  "quantity": string;
+  "unit": string;
+  "from_time": string;
+  "to_time": string;
 };
 
 export interface ApiV1OperationMap {
-  createAgentRun: {
+  "createAgentRun": {
     method: "POST";
     path: "/api/v1/agent-runs";
     pathParams: Record<string, never>;
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-      "Idempotency-Key"?: string | null;
-    };
+  "X-Lumi-Organization-Id": string;
+  "Idempotency-Key"?: string | null;
+};
     body: AgentRunCreate;
     response: DataEnvelope_AgentRunResource_;
   };
-  getAgentRun: {
+  "getAgentRun": {
     method: "GET";
     path: "/api/v1/agent-runs/{agent_run_id}";
     pathParams: {
-      agent_run_id: string;
-    };
+  "agent_run_id": string;
+};
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-    };
+  "X-Lumi-Organization-Id": string;
+};
     body: undefined;
     response: DataEnvelope_AgentRunResource_;
   };
-  cancelAgentRun: {
+  "cancelAgentRun": {
     method: "POST";
     path: "/api/v1/agent-runs/{agent_run_id}:cancel";
     pathParams: {
-      agent_run_id: string;
-    };
+  "agent_run_id": string;
+};
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-      "Idempotency-Key"?: string | null;
-    };
+  "X-Lumi-Organization-Id": string;
+  "Idempotency-Key"?: string | null;
+};
     body: undefined;
     response: DataEnvelope_AgentRunResource_;
   };
-  resumeAgentRun: {
+  "resumeAgentRun": {
     method: "POST";
     path: "/api/v1/agent-runs/{agent_run_id}:resume";
     pathParams: {
-      agent_run_id: string;
-    };
+  "agent_run_id": string;
+};
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-      "Idempotency-Key"?: string | null;
-    };
+  "X-Lumi-Organization-Id": string;
+  "Idempotency-Key"?: string | null;
+};
     body: AgentRunResumeRequest;
     response: DataEnvelope_AgentRunResource_;
   };
-  decideApproval: {
+  "decideApproval": {
     method: "POST";
     path: "/api/v1/approvals/{approval_id}:decide";
     pathParams: {
-      approval_id: string;
-    };
+  "approval_id": string;
+};
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-      "Idempotency-Key"?: string | null;
-      "If-Match"?: string | null;
-    };
+  "X-Lumi-Organization-Id": string;
+  "Idempotency-Key"?: string | null;
+  "If-Match"?: string | null;
+};
     body: ApprovalDecisionRequest;
     response: DataEnvelope_ApprovalResource_;
   };
-  getArtifact: {
+  "getArtifact": {
     method: "GET";
     path: "/api/v1/artifacts/{artifact_id}";
     pathParams: {
-      artifact_id: string;
-    };
+  "artifact_id": string;
+};
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-    };
+  "X-Lumi-Organization-Id": string;
+};
     body: undefined;
     response: DataEnvelope_ArtifactResource_;
   };
-  listArtifactVersions: {
+  "listArtifactVersions": {
     method: "GET";
     path: "/api/v1/artifacts/{artifact_id}/versions";
     pathParams: {
-      artifact_id: string;
-    };
+  "artifact_id": string;
+};
     query: {
-      cursor?: string | null;
-      limit?: number;
-    };
+  "cursor"?: string | null;
+  "limit"?: number;
+};
     headers: {
-      "X-Lumi-Organization-Id": string;
-    };
+  "X-Lumi-Organization-Id": string;
+};
     body: undefined;
     response: CollectionEnvelope_ArtifactVersionResource_;
   };
-  createArtifactVersion: {
+  "createArtifactVersion": {
     method: "POST";
     path: "/api/v1/artifacts/{artifact_id}/versions";
     pathParams: {
-      artifact_id: string;
-    };
+  "artifact_id": string;
+};
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-      "Idempotency-Key"?: string | null;
-    };
+  "X-Lumi-Organization-Id": string;
+  "Idempotency-Key"?: string | null;
+};
     body: ArtifactVersionCreate;
     response: DataEnvelope_ArtifactVersionResource_;
   };
-  listAssets: {
+  "listAssets": {
     method: "GET";
     path: "/api/v1/assets";
     pathParams: Record<string, never>;
     query: {
-      project_id?: string | null;
-      cursor?: string | null;
-      limit?: number;
-    };
+  "project_id"?: string | null;
+  "cursor"?: string | null;
+  "limit"?: number;
+};
     headers: {
-      "X-Lumi-Organization-Id": string;
-    };
+  "X-Lumi-Organization-Id": string;
+};
     body: undefined;
     response: CollectionEnvelope_AssetResource_;
   };
-  createAsset: {
+  "createAsset": {
     method: "POST";
     path: "/api/v1/assets";
     pathParams: Record<string, never>;
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-      "Idempotency-Key"?: string | null;
-    };
+  "X-Lumi-Organization-Id": string;
+  "Idempotency-Key"?: string | null;
+};
     body: AssetCreate;
     response: DataEnvelope_AssetResource_;
   };
-  getAsset: {
+  "getAsset": {
     method: "GET";
     path: "/api/v1/assets/{asset_id}";
     pathParams: {
-      asset_id: string;
-    };
+  "asset_id": string;
+};
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-    };
+  "X-Lumi-Organization-Id": string;
+};
     body: undefined;
     response: DataEnvelope_AssetResource_;
   };
-  getCostSummary: {
+  "getCostSummary": {
     method: "GET";
     path: "/api/v1/costs/summary";
     pathParams: Record<string, never>;
     query: {
-      from_time: string;
-      to_time: string;
-    };
+  "from_time": string;
+  "to_time": string;
+};
     headers: {
-      "X-Lumi-Organization-Id": string;
-    };
+  "X-Lumi-Organization-Id": string;
+};
     body: undefined;
     response: DataEnvelope_CostSummaryResource_;
   };
-  createGeneration: {
+  "createGeneration": {
     method: "POST";
     path: "/api/v1/generations";
     pathParams: Record<string, never>;
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-      "Idempotency-Key"?: string | null;
-    };
+  "X-Lumi-Organization-Id": string;
+  "Idempotency-Key"?: string | null;
+};
     body: GenerationCreate;
     response: DataEnvelope_GenerationResource_;
   };
-  getGeneration: {
+  "getGeneration": {
     method: "GET";
     path: "/api/v1/generations/{generation_id}";
     pathParams: {
-      generation_id: string;
-    };
+  "generation_id": string;
+};
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-    };
+  "X-Lumi-Organization-Id": string;
+};
     body: undefined;
     response: DataEnvelope_GenerationResource_;
   };
-  getApiV1Health: {
+  "getApiV1Health": {
     method: "GET";
     path: "/api/v1/health";
     pathParams: Record<string, never>;
@@ -541,253 +525,253 @@ export interface ApiV1OperationMap {
     body: undefined;
     response: DataEnvelope_HealthResource_;
   };
-  listProjects: {
+  "listProjects": {
     method: "GET";
     path: "/api/v1/projects";
     pathParams: Record<string, never>;
     query: {
-      cursor?: string | null;
-      limit?: number;
-      status?: ProjectStatus | null;
-      workspace_id?: string | null;
-      created_by?: string | null;
-      updated_after?: string | null;
-      updated_before?: string | null;
-      q?: string | null;
-    };
+  "cursor"?: string | null;
+  "limit"?: number;
+  "status"?: ProjectStatus | null;
+  "workspace_id"?: string | null;
+  "created_by"?: string | null;
+  "updated_after"?: string | null;
+  "updated_before"?: string | null;
+  "q"?: string | null;
+};
     headers: {
-      "X-Lumi-Organization-Id": string;
-    };
+  "X-Lumi-Organization-Id": string;
+};
     body: undefined;
     response: CollectionEnvelope_ProjectResource_;
   };
-  createProject: {
+  "createProject": {
     method: "POST";
     path: "/api/v1/projects";
     pathParams: Record<string, never>;
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-      "Idempotency-Key"?: string | null;
-    };
+  "X-Lumi-Organization-Id": string;
+  "Idempotency-Key"?: string | null;
+};
     body: ProjectCreate;
     response: DataEnvelope_ProjectResource_;
   };
-  archiveProject: {
+  "archiveProject": {
     method: "DELETE";
     path: "/api/v1/projects/{project_id}";
     pathParams: {
-      project_id: string;
-    };
+  "project_id": string;
+};
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-      "If-Match"?: string | null;
-    };
+  "X-Lumi-Organization-Id": string;
+  "If-Match"?: string | null;
+};
     body: undefined;
     response: undefined;
   };
-  getProject: {
+  "getProject": {
     method: "GET";
     path: "/api/v1/projects/{project_id}";
     pathParams: {
-      project_id: string;
-    };
+  "project_id": string;
+};
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-    };
+  "X-Lumi-Organization-Id": string;
+};
     body: undefined;
     response: DataEnvelope_ProjectResource_;
   };
-  updateProject: {
+  "updateProject": {
     method: "PATCH";
     path: "/api/v1/projects/{project_id}";
     pathParams: {
-      project_id: string;
-    };
+  "project_id": string;
+};
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-      "If-Match"?: string | null;
-    };
+  "X-Lumi-Organization-Id": string;
+  "If-Match"?: string | null;
+};
     body: ProjectPatch;
     response: DataEnvelope_ProjectResource_;
   };
-  listProjectBriefVersions: {
+  "listProjectBriefVersions": {
     method: "GET";
     path: "/api/v1/projects/{project_id}/brief/versions";
     pathParams: {
-      project_id: string;
-    };
+  "project_id": string;
+};
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-    };
+  "X-Lumi-Organization-Id": string;
+};
     body: undefined;
     response: CollectionEnvelope_ProjectBriefVersionResource_;
   };
-  getProjectCostSummary: {
+  "getProjectCostSummary": {
     method: "GET";
     path: "/api/v1/projects/{project_id}/costs";
     pathParams: {
-      project_id: string;
-    };
+  "project_id": string;
+};
     query: {
-      from_time: string;
-      to_time: string;
-    };
+  "from_time": string;
+  "to_time": string;
+};
     headers: {
-      "X-Lumi-Organization-Id": string;
-    };
+  "X-Lumi-Organization-Id": string;
+};
     body: undefined;
     response: DataEnvelope_CostSummaryResource_;
   };
-  restoreProject: {
+  "restoreProject": {
     method: "POST";
     path: "/api/v1/projects/{project_id}:restore";
     pathParams: {
-      project_id: string;
-    };
+  "project_id": string;
+};
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-      "If-Match"?: string | null;
-    };
+  "X-Lumi-Organization-Id": string;
+  "If-Match"?: string | null;
+};
     body: undefined;
     response: DataEnvelope_ProjectResource_;
   };
-  getTask: {
+  "getTask": {
     method: "GET";
     path: "/api/v1/tasks/{task_id}";
     pathParams: {
-      task_id: string;
-    };
+  "task_id": string;
+};
     query: Record<string, never>;
     headers: {
-      "X-Lumi-Organization-Id": string;
-    };
+  "X-Lumi-Organization-Id": string;
+};
     body: undefined;
     response: DataEnvelope_TaskResource_;
   };
-  getUsageSummary: {
+  "getUsageSummary": {
     method: "GET";
     path: "/api/v1/usage";
     pathParams: Record<string, never>;
     query: {
-      from_time: string;
-      to_time: string;
-      project_id?: string | null;
-    };
+  "from_time": string;
+  "to_time": string;
+  "project_id"?: string | null;
+};
     headers: {
-      "X-Lumi-Organization-Id": string;
-    };
+  "X-Lumi-Organization-Id": string;
+};
     body: undefined;
     response: CollectionEnvelope_UsageSummaryResource_;
   };
 }
 
 export const apiV1OperationSpec = {
-  archiveProject: {
-    method: "DELETE",
-    path: "/api/v1/projects/{project_id}",
+  "archiveProject": {
+    "method": "DELETE",
+    "path": "/api/v1/projects/{project_id}"
   },
-  cancelAgentRun: {
-    method: "POST",
-    path: "/api/v1/agent-runs/{agent_run_id}:cancel",
+  "cancelAgentRun": {
+    "method": "POST",
+    "path": "/api/v1/agent-runs/{agent_run_id}:cancel"
   },
-  createAgentRun: {
-    method: "POST",
-    path: "/api/v1/agent-runs",
+  "createAgentRun": {
+    "method": "POST",
+    "path": "/api/v1/agent-runs"
   },
-  createArtifactVersion: {
-    method: "POST",
-    path: "/api/v1/artifacts/{artifact_id}/versions",
+  "createArtifactVersion": {
+    "method": "POST",
+    "path": "/api/v1/artifacts/{artifact_id}/versions"
   },
-  createAsset: {
-    method: "POST",
-    path: "/api/v1/assets",
+  "createAsset": {
+    "method": "POST",
+    "path": "/api/v1/assets"
   },
-  createGeneration: {
-    method: "POST",
-    path: "/api/v1/generations",
+  "createGeneration": {
+    "method": "POST",
+    "path": "/api/v1/generations"
   },
-  createProject: {
-    method: "POST",
-    path: "/api/v1/projects",
+  "createProject": {
+    "method": "POST",
+    "path": "/api/v1/projects"
   },
-  decideApproval: {
-    method: "POST",
-    path: "/api/v1/approvals/{approval_id}:decide",
+  "decideApproval": {
+    "method": "POST",
+    "path": "/api/v1/approvals/{approval_id}:decide"
   },
-  getAgentRun: {
-    method: "GET",
-    path: "/api/v1/agent-runs/{agent_run_id}",
+  "getAgentRun": {
+    "method": "GET",
+    "path": "/api/v1/agent-runs/{agent_run_id}"
   },
-  getApiV1Health: {
-    method: "GET",
-    path: "/api/v1/health",
+  "getApiV1Health": {
+    "method": "GET",
+    "path": "/api/v1/health"
   },
-  getArtifact: {
-    method: "GET",
-    path: "/api/v1/artifacts/{artifact_id}",
+  "getArtifact": {
+    "method": "GET",
+    "path": "/api/v1/artifacts/{artifact_id}"
   },
-  getAsset: {
-    method: "GET",
-    path: "/api/v1/assets/{asset_id}",
+  "getAsset": {
+    "method": "GET",
+    "path": "/api/v1/assets/{asset_id}"
   },
-  getCostSummary: {
-    method: "GET",
-    path: "/api/v1/costs/summary",
+  "getCostSummary": {
+    "method": "GET",
+    "path": "/api/v1/costs/summary"
   },
-  getGeneration: {
-    method: "GET",
-    path: "/api/v1/generations/{generation_id}",
+  "getGeneration": {
+    "method": "GET",
+    "path": "/api/v1/generations/{generation_id}"
   },
-  getProject: {
-    method: "GET",
-    path: "/api/v1/projects/{project_id}",
+  "getProject": {
+    "method": "GET",
+    "path": "/api/v1/projects/{project_id}"
   },
-  getProjectCostSummary: {
-    method: "GET",
-    path: "/api/v1/projects/{project_id}/costs",
+  "getProjectCostSummary": {
+    "method": "GET",
+    "path": "/api/v1/projects/{project_id}/costs"
   },
-  getTask: {
-    method: "GET",
-    path: "/api/v1/tasks/{task_id}",
+  "getTask": {
+    "method": "GET",
+    "path": "/api/v1/tasks/{task_id}"
   },
-  getUsageSummary: {
-    method: "GET",
-    path: "/api/v1/usage",
+  "getUsageSummary": {
+    "method": "GET",
+    "path": "/api/v1/usage"
   },
-  listArtifactVersions: {
-    method: "GET",
-    path: "/api/v1/artifacts/{artifact_id}/versions",
+  "listArtifactVersions": {
+    "method": "GET",
+    "path": "/api/v1/artifacts/{artifact_id}/versions"
   },
-  listAssets: {
-    method: "GET",
-    path: "/api/v1/assets",
+  "listAssets": {
+    "method": "GET",
+    "path": "/api/v1/assets"
   },
-  listProjectBriefVersions: {
-    method: "GET",
-    path: "/api/v1/projects/{project_id}/brief/versions",
+  "listProjectBriefVersions": {
+    "method": "GET",
+    "path": "/api/v1/projects/{project_id}/brief/versions"
   },
-  listProjects: {
-    method: "GET",
-    path: "/api/v1/projects",
+  "listProjects": {
+    "method": "GET",
+    "path": "/api/v1/projects"
   },
-  restoreProject: {
-    method: "POST",
-    path: "/api/v1/projects/{project_id}:restore",
+  "restoreProject": {
+    "method": "POST",
+    "path": "/api/v1/projects/{project_id}:restore"
   },
-  resumeAgentRun: {
-    method: "POST",
-    path: "/api/v1/agent-runs/{agent_run_id}:resume",
+  "resumeAgentRun": {
+    "method": "POST",
+    "path": "/api/v1/agent-runs/{agent_run_id}:resume"
   },
-  updateProject: {
-    method: "PATCH",
-    path: "/api/v1/projects/{project_id}",
-  },
+  "updateProject": {
+    "method": "PATCH",
+    "path": "/api/v1/projects/{project_id}"
+  }
 } as const;
 
 export type ApiV1OperationId = keyof ApiV1OperationMap;

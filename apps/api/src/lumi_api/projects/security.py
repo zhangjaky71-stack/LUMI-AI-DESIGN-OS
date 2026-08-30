@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import Request
-from lumi_auth import SessionRecord, validate_csrf
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -13,6 +12,7 @@ from lumi_api.api.v1.errors import ApiProblem
 from lumi_api.auth.errors import AuthError, SessionInvalid
 from lumi_api.auth.principal import PrincipalResolver
 from lumi_api.persistence.models import Session
+from lumi_auth import SessionRecord, validate_csrf
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
@@ -107,78 +107,77 @@ async def get_secure_project_context(request: Request) -> RequestContext:
 
     required_permission = "project.read" if request.method in _SAFE_METHODS else "project.write"
     now = datetime.now(UTC)
-    async with factory() as session:
-        async with session.begin():
-            resolver = PrincipalResolver(session)
-            bearer = _bearer_token(request)
-            if bearer is not None:
-                try:
-                    principal = await resolver.from_api_token(
-                        plaintext_token=bearer,
-                        required_scope=required_permission,
-                        now=now,
-                    )
-                except AuthError as exc:
-                    raise ApiProblem(
-                        status=403,
-                        code="PERMISSION_DENIED",
-                        title="Permission denied",
-                    ) from exc
-                if principal.organization_id != organization_id:
-                    raise ApiProblem(
-                        status=404,
-                        code="PROJECT_NOT_FOUND_OR_FORBIDDEN",
-                        title="Resource not found",
-                    )
-                return RequestContext(
-                    organization_id=organization_id,
-                    request_id=_request_id(request),
-                    actor_id=principal.created_by,
-                    actor_type="api_token",
-                    permissions=principal.scopes,
-                    trace_id=_trace_id(request),
-                    api_token_id=principal.token_id,
-                )
-
-            plaintext_session = request.cookies.get("lumi_session")
-            if not plaintext_session:
-                raise ApiProblem(
-                    status=401,
-                    code="AUTH_REQUIRED",
-                    title="Authentication required",
-                )
+    async with factory() as session, session.begin():
+        resolver = PrincipalResolver(session)
+        bearer = _bearer_token(request)
+        if bearer is not None:
             try:
-                principal = await resolver.from_session(
-                    plaintext_session_token=plaintext_session,
-                    request_id=_request_id(request),
-                    trace_id=_trace_id(request),
+                principal = await resolver.from_api_token(
+                    plaintext_token=bearer,
+                    required_scope=required_permission,
                     now=now,
-                    requested_organization_id=organization_id,
                 )
-            except SessionInvalid as exc:
-                raise ApiProblem(
-                    status=401,
-                    code="SESSION_INVALID",
-                    title="Session invalid",
-                ) from exc
-
-            if required_permission not in principal.context.permissions:
+            except AuthError as exc:
                 raise ApiProblem(
                     status=403,
                     code="PERMISSION_DENIED",
                     title="Permission denied",
-                )
-            if request.method not in _SAFE_METHODS:
-                await _validate_browser_csrf(
-                    session,
-                    session_id=principal.session_id,
-                    request=request,
+                ) from exc
+            if principal.organization_id != organization_id:
+                raise ApiProblem(
+                    status=404,
+                    code="PROJECT_NOT_FOUND_OR_FORBIDDEN",
+                    title="Resource not found",
                 )
             return RequestContext(
                 organization_id=organization_id,
                 request_id=_request_id(request),
-                actor_id=UUID(principal.context.actor_id),
-                actor_type="user",
-                permissions=frozenset(principal.context.permissions),
-                trace_id=principal.context.trace_id,
+                actor_id=principal.created_by,
+                actor_type="api_token",
+                permissions=principal.scopes,
+                trace_id=_trace_id(request),
+                api_token_id=principal.token_id,
             )
+
+        plaintext_session = request.cookies.get("lumi_session")
+        if not plaintext_session:
+            raise ApiProblem(
+                status=401,
+                code="AUTH_REQUIRED",
+                title="Authentication required",
+            )
+        try:
+            principal = await resolver.from_session(
+                plaintext_session_token=plaintext_session,
+                request_id=_request_id(request),
+                trace_id=_trace_id(request),
+                now=now,
+                requested_organization_id=organization_id,
+            )
+        except SessionInvalid as exc:
+            raise ApiProblem(
+                status=401,
+                code="SESSION_INVALID",
+                title="Session invalid",
+            ) from exc
+
+        if required_permission not in principal.context.permissions:
+            raise ApiProblem(
+                status=403,
+                code="PERMISSION_DENIED",
+                title="Permission denied",
+            )
+        if request.method not in _SAFE_METHODS:
+            await _validate_browser_csrf(
+                session,
+                session_id=principal.session_id,
+                request=request,
+            )
+        return RequestContext(
+            organization_id=organization_id,
+            request_id=_request_id(request),
+            actor_id=UUID(principal.context.actor_id),
+            actor_type="user",
+            permissions=frozenset(principal.context.permissions),
+            trace_id=principal.context.trace_id,
+        )

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import datetime
-from typing import Any, AsyncIterator, Callable, Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from .contracts import (
@@ -36,9 +37,8 @@ class PostgresMemoryRepository:
 
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator[PostgresMemoryRepositorySession]:
-        async with self.connection_factory() as connection:
-            async with connection.transaction():
-                yield PostgresMemoryRepositorySession(connection)
+        async with self.connection_factory() as connection, connection.transaction():
+            yield PostgresMemoryRepositorySession(connection)
 
 
 class PostgresMemoryRepositorySession:

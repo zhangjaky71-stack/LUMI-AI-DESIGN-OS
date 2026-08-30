@@ -47,7 +47,7 @@ class BenchmarkProfileIdentity:
     version: str
 
     @classmethod
-    def from_dict(cls, suite: str, raw: Any) -> "BenchmarkProfileIdentity":
+    def from_dict(cls, suite: str, raw: Any) -> BenchmarkProfileIdentity:
         if not isinstance(raw, dict):
             raise ReleaseGateError(f"benchmark_profiles.{suite} must be an object")
         return cls(
@@ -75,9 +75,7 @@ class ReleaseManifest:
     source: str
 
     @classmethod
-    def from_dict(
-        cls, raw: dict[str, Any], *, expected_role: str | None = None
-    ) -> "ReleaseManifest":
+    def from_dict(cls, raw: dict[str, Any], *, expected_role: str | None = None) -> ReleaseManifest:
         if not isinstance(raw, dict) or raw.get("schema_version") != 1:
             raise ReleaseGateError("release manifest schema_version must be 1")
         role = _string(raw, "role")

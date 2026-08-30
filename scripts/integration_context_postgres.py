@@ -7,8 +7,8 @@ from contextlib import asynccontextmanager
 from uuid import UUID, uuid5
 
 import asyncpg
-
 from integration_recipe_engine import build_compiler
+
 from lumi_agent_runtime.context_engine import (
     CompositeContextSource,
     ContextBuilder,

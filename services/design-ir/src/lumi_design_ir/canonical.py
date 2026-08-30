@@ -8,7 +8,6 @@ from typing import Any
 
 from .errors import StructuralValidationError
 
-
 EPHEMERAL_METADATA_KEYS = frozenset(
     {
         "hover",

@@ -5,9 +5,10 @@ import argparse
 import json
 import math
 from collections import defaultdict
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILES = ROOT / "perf" / "profiles" / "v1"

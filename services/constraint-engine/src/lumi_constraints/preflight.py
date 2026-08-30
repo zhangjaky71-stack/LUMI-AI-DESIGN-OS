@@ -9,7 +9,6 @@ from .model import Constraint, OverrideAudit, PreflightResult, Violation
 from .precedence import detect_conflicts, effective_constraints
 from .registry import EVALUATORS
 
-
 BROAD_CHANGE_SET = frozenset(
     {
         "existence",

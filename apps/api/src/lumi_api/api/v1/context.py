@@ -7,6 +7,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import Header, Query, Request
+
 from lumi_domain import ProjectStatus
 from lumi_project_core import ProjectListFilter
 

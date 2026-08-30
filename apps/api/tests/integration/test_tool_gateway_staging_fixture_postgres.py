@@ -29,7 +29,7 @@ if os.environ.get("LUMI_DB_INTEGRATION") != "1":
 
 async def _count(factory: async_sessionmaker, model: type[object], row_id: object) -> int:
     async with factory() as session:
-        table_id = getattr(model, "id")
+        table_id = model.id
         return int(
             await session.scalar(select(func.count()).select_from(model).where(table_id == row_id))
             or 0

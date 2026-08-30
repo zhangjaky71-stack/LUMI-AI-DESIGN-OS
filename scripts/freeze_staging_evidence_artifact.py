@@ -5,8 +5,9 @@ import argparse
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 EXPECTED_REPOSITORY = "zhangjaky71-stack/LUMI-AI-DESIGN-OS"
 KIND = "LUMI_STAGING_EVIDENCE_ARTIFACT_V1"

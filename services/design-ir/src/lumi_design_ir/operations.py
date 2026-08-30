@@ -8,7 +8,6 @@ from .canonical import content_hash
 from .errors import DocumentVersionConflict, OperationError
 from .validation import validate_document
 
-
 STRUCTURAL_SET_PROPERTY_ROOTS = frozenset({"id", "kind", "parent_id", "children"})
 
 

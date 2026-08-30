@@ -3,8 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 from .contracts import (
     ContextItem,

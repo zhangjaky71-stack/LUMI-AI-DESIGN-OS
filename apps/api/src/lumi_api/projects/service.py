@@ -7,20 +7,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from lumi_domain import InvalidTransition, Project as DomainProject, ProjectStatus, new_uuid7
-from lumi_project_core import (
-    BriefValidationError,
-    ProjectCursor,
-    ProjectListFilter,
-    ProjectSettingsError,
-    brief_hash,
-    decode_cursor,
-    encode_cursor,
-    normalize_brief,
-    normalize_project_settings,
-    require_paid_command_allowed,
-    restore,
-)
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +20,21 @@ from lumi_api.persistence.models import (
     ProjectBriefVersion,
     ProjectSummary,
     Workspace,
+)
+from lumi_domain import InvalidTransition, ProjectStatus, new_uuid7
+from lumi_domain import Project as DomainProject
+from lumi_project_core import (
+    BriefValidationError,
+    ProjectCursor,
+    ProjectListFilter,
+    ProjectSettingsError,
+    brief_hash,
+    decode_cursor,
+    encode_cursor,
+    normalize_brief,
+    normalize_project_settings,
+    require_paid_command_allowed,
+    restore,
 )
 
 from .errors import ProjectConflict, ProjectInvalid, ProjectNotFound
@@ -349,9 +350,7 @@ class ProjectService:
                     created_by=actor_id,
                 )
             )
-        if not events:
-            events.append(("project.updated", {"fields": sorted(values)}))
-        elif all(event_name != "project.updated" for event_name, _ in events):
+        if not events or all(event_name != "project.updated" for event_name, _ in events):
             events.append(("project.updated", {"fields": sorted(values)}))
         for event_name, payload in events:
             self._append_event(

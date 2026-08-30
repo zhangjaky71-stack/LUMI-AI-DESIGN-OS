@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Callable
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DECISION = ROOT / "scripts/security-release-decision.py"

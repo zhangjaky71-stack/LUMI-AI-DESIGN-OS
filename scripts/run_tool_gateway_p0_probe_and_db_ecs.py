@@ -10,13 +10,12 @@ from typing import Any
 
 from botocore.client import BaseClient
 from botocore.exceptions import BotoCoreError, ClientError
-
 from run_tool_gateway_p0_probe_ecs import (
-    ECSProbeError,
     _CLUSTER,
     _CONTAINER,
     _LOG_GROUP,
     _LOG_PREFIX,
+    ECSProbeError,
     _client,
     _container_exit,
     _discover_private_subnets,

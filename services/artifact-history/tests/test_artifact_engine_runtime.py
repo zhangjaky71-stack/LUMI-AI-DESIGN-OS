@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 
 import pytest
-
 from lumi_artifacts import (
     Artifact,
     ArtifactBranch,

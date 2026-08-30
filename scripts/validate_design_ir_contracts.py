@@ -11,7 +11,6 @@ sys.path.insert(0, str(SERVICE_SRC))
 
 from lumi_design_ir import DesignIRError, validate_document  # noqa: E402
 
-
 EXPECTED_SCHEMA_ID = "https://schemas.lumi.dev/design-ir/v1/design-document.schema.json"
 EXPECTED_OPERATION_SCHEMA_ID = "https://schemas.lumi.dev/design-ir/v1/operation.schema.json"
 FORBIDDEN_PERSISTED_TERMS = ("pixi", "react", "presigned_url", "dom_element_id", "texture_id")

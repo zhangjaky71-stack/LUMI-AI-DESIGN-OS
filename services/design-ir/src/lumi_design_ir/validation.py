@@ -7,7 +7,6 @@ from typing import Any
 from .errors import ResourceReferenceError, StructuralValidationError
 from .unicode_ranges import validate_codepoint_spans
 
-
 NODE_KINDS = frozenset(
     {
         "DOCUMENT_ROOT",

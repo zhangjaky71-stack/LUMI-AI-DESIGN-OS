@@ -36,7 +36,7 @@ class SkillRequirement:
         return f"{self.skill_id}@{self.version_constraint}"
 
     @classmethod
-    def parse(cls, value: str) -> "SkillRequirement":
+    def parse(cls, value: str) -> SkillRequirement:
         if "@" not in value:
             raise ValueError(f"AGENT_SKILL_REF_INVALID:{value}")
         skill_id, selector = value.rsplit("@", 1)

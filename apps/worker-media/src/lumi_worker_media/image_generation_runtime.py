@@ -8,6 +8,7 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+
 from lumi_asset_storage.models import ObjectHead
 from lumi_asset_storage.s3 import S3ObjectStore
 from lumi_domain.performance_events import PerformanceTelemetryContext

@@ -10,7 +10,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "services/design-ir/src"))
 sys.path.insert(0, str(ROOT / "services/constraint-engine/src"))
 
-from lumi_constraints import Constraint, ConstraintScope, PostflightEvidence, postflight, preflight  # noqa: E402
+from lumi_constraints import (  # noqa: E402
+    Constraint,
+    ConstraintScope,
+    PostflightEvidence,
+    postflight,
+    preflight,
+)
 
 MATRIX = ROOT / "benchmarks/constraint-engine/v1/matrix.json"
 CORPUS = ROOT / "contracts/design-ir/v1/fixtures/corpus.json"

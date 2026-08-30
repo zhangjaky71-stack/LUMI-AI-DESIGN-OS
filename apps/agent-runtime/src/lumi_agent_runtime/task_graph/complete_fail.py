@@ -5,8 +5,8 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from .events import TaskGraphEvent
 from .errors import TaskGraphLeaseError, TaskGraphStateError
+from .events import TaskGraphEvent
 from .lifecycle import recompute_graph, refresh_ready_tasks
 from .memory_store import InMemoryTaskGraphStore
 from .state_machine import assert_transition
