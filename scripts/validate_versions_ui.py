@@ -33,6 +33,11 @@ def require(haystack: str, needle: str, label: str) -> None:
         raise AssertionError(f"missing {label}: {needle}")
 
 
+def require_compact(haystack: str, needle: str, label: str) -> None:
+    if "".join(needle.split()) not in "".join(haystack.split()):
+        raise AssertionError(f"missing {label}: {needle}")
+
+
 def forbid(haystack: str, needle: str, label: str) -> None:
     if needle in haystack:
         raise AssertionError(f"forbidden {label}: {needle}")
@@ -105,7 +110,7 @@ def main() -> None:
     unit = text("apps/web/src/lib/versions-ui/versions-gateway.test.ts")
     require(unit, "BRANCH_HEAD_CONFLICT", "stale-head unit coverage")
     require(unit, 'type === "DERIVED_FROM"', "restore lineage unit coverage")
-    require(unit, 'status).toBe("APPROVED")', "approved immutability unit coverage")
+    require_compact(unit, 'status).toBe("APPROVED")', "approved immutability unit coverage")
 
     print("NODE-59 Versions UI static architecture validation: PASS")
 
