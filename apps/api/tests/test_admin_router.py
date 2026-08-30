@@ -143,7 +143,9 @@ class Billing:
     def summary(self, organization_id: str):
         return AdminBillingView(organization_id, "pro-v1", "ACTIVE", self.balance, ("inv-1",))
 
-    def adjust_credits(self, *, organization_id: str, delta_credits: int, idempotency_key: str, source_id: str):
+    def adjust_credits(
+        self, *, organization_id: str, delta_credits: int, idempotency_key: str, source_id: str
+    ):
         assert idempotency_key and source_id.startswith("admin:")
         self.balance += delta_credits
         return self.summary(organization_id)
@@ -203,9 +205,9 @@ def test_console_returns_masked_support_data_and_platform_actor():
 
 def test_tenant_like_support_role_cannot_disable_provider():
     client, _ = make_client()
-    payload = confirmation(
-        "Temporarily disable provider mock-image", "provider:mock-image"
-    ) | {"expires_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat()}
+    payload = confirmation("Temporarily disable provider mock-image", "provider:mock-image") | {
+        "expires_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+    }
     denied = client.post(
         "/admin/providers/mock-image:disable",
         json=payload,
@@ -217,9 +219,9 @@ def test_tenant_like_support_role_cannot_disable_provider():
 
 def test_provider_disable_requires_confirmation_and_audits():
     client, audit = make_client()
-    payload = confirmation(
-        "Temporarily disable provider mock-image", "provider:mock-image"
-    ) | {"expires_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat()}
+    payload = confirmation("Temporarily disable provider mock-image", "provider:mock-image") | {
+        "expires_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+    }
     response = client.post("/admin/providers/mock-image:disable", json=payload)
     assert response.status_code == 200
     assert response.json()["health"] == "DISABLED"

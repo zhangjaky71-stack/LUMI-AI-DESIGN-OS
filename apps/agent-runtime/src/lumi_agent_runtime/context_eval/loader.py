@@ -60,9 +60,7 @@ def _parse_case(value: object) -> ContextEvalCase:
             forbidden_source_ids=_strings(expectation.get("forbidden_source_ids", [])),
             required_facts=_strings(expectation.get("required_facts", [])),
             forbidden_phrases=_strings(expectation.get("forbidden_phrases", [])),
-            required_source_versions=_strings(
-                expectation.get("required_source_versions", [])
-            ),
+            required_source_versions=_strings(expectation.get("required_source_versions", [])),
             max_retrieved_items=(
                 int(expectation["max_retrieved_items"])
                 if expectation.get("max_retrieved_items") is not None

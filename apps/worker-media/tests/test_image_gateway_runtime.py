@@ -138,7 +138,9 @@ class ImageGatewayRuntimeTests(unittest.TestCase):
         self.assertEqual(estimate.amount_usd, Decimal("0.12"))
         self.assertEqual(estimate.provider, "openai")
         self.assertEqual(result.status, "SUCCEEDED")
-        self.assertEqual(result.outputs[0].ref, "s3://lumi-assets/provider-output/v1/org/op/abc.png")
+        self.assertEqual(
+            result.outputs[0].ref, "s3://lumi-assets/provider-output/v1/org/op/abc.png"
+        )
         self.assertEqual(result.routing_reason_codes, ("PROFILE_MATCH", "CAPABILITY_MATCH"))
         self.assertEqual(client.estimated, 2)
         self.assertEqual(client.invoked, 1)

@@ -15,11 +15,7 @@ def anyio_backend() -> str:
 
 @pytest.mark.anyio
 async def test_production_media_path_rejects_active_svg_content() -> None:
-    payload = (
-        b'<svg xmlns="http://www.w3.org/2000/svg">'
-        b'<script>alert(1)</script>'
-        b'</svg>'
-    )
+    payload = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
     with tempfile.TemporaryDirectory() as directory:
         source = Path(directory) / "source.svg"
         source.write_bytes(payload)
@@ -41,7 +37,7 @@ async def test_production_media_path_emits_sanitized_svg_derivative() -> None:
         b'<svg xmlns="http://www.w3.org/2000/svg">'
         b'<defs><path id="mark" d="M0 0 L10 10"/></defs>'
         b'<use href="#mark"/>'
-        b'</svg>'
+        b"</svg>"
     )
     with tempfile.TemporaryDirectory() as directory:
         source = Path(directory) / "source.svg"

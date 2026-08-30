@@ -49,13 +49,31 @@ function pushChange(
   });
 }
 
-function compareNode(before: DesignNode, after: DesignNode, changes: SemanticChange[]): void {
+function compareNode(
+  before: DesignNode,
+  after: DesignNode,
+  changes: SemanticChange[],
+): void {
   const id = before.id;
   if (!equal(before.transform, after.transform)) {
-    pushChange(changes, "GEOMETRY_CHANGED", id, "transform", before.transform, after.transform);
+    pushChange(
+      changes,
+      "GEOMETRY_CHANGED",
+      id,
+      "transform",
+      before.transform,
+      after.transform,
+    );
   }
   if (!equal(before.children, after.children)) {
-    pushChange(changes, "ORDER_CHANGED", id, "children", before.children, after.children);
+    pushChange(
+      changes,
+      "ORDER_CHANGED",
+      id,
+      "children",
+      before.children,
+      after.children,
+    );
   }
   if (!equal(before.constraint_refs, after.constraint_refs)) {
     pushChange(
@@ -68,10 +86,24 @@ function compareNode(before: DesignNode, after: DesignNode, changes: SemanticCha
     );
   }
   if (!equal(before.asset_id, after.asset_id)) {
-    pushChange(changes, "ASSET_REPLACED", id, "asset_id", before.asset_id, after.asset_id);
+    pushChange(
+      changes,
+      "ASSET_REPLACED",
+      id,
+      "asset_id",
+      before.asset_id,
+      after.asset_id,
+    );
   }
   if (!equal(before.content, after.content)) {
-    pushChange(changes, "TEXT_CHANGED", id, "content", before.content, after.content);
+    pushChange(
+      changes,
+      "TEXT_CHANGED",
+      id,
+      "content",
+      before.content,
+      after.content,
+    );
   }
 
   const specialized = new Set([
@@ -90,18 +122,39 @@ function compareNode(before: DesignNode, after: DesignNode, changes: SemanticCha
   }
 }
 
-export function semanticDiff(before: DesignDocument, after: DesignDocument): SemanticDiff {
+export function semanticDiff(
+  before: DesignDocument,
+  after: DesignDocument,
+): SemanticDiff {
   const changes: SemanticChange[] = [];
   const beforeIds = new Set(Object.keys(before.nodes));
   const afterIds = new Set(Object.keys(after.nodes));
   const added = [...afterIds].filter((id) => !beforeIds.has(id)).sort();
   const removed = [...beforeIds].filter((id) => !afterIds.has(id)).sort();
 
-  for (const id of added) pushChange(changes, "NODE_ADDED", id, undefined, undefined, after.nodes[id]);
-  for (const id of removed) pushChange(changes, "NODE_REMOVED", id, undefined, before.nodes[id], undefined);
+  for (const id of added)
+    pushChange(
+      changes,
+      "NODE_ADDED",
+      id,
+      undefined,
+      undefined,
+      after.nodes[id],
+    );
+  for (const id of removed)
+    pushChange(
+      changes,
+      "NODE_REMOVED",
+      id,
+      undefined,
+      before.nodes[id],
+      undefined,
+    );
 
   const changedIds: string[] = [];
-  for (const id of [...beforeIds].filter((value) => afterIds.has(value)).sort()) {
+  for (const id of [...beforeIds]
+    .filter((value) => afterIds.has(value))
+    .sort()) {
     const left = before.nodes[id];
     const right = after.nodes[id];
     if (!left || !right || equal(left, right)) continue;

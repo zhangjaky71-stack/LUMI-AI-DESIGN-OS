@@ -33,7 +33,9 @@ def _problem(error: BillingError, request_id: str | None) -> HTTPException:
     )
 
 
-def create_billing_router(*, engine: BillingEngine, resolve_actor: BillingActorResolver) -> APIRouter:
+def create_billing_router(
+    *, engine: BillingEngine, resolve_actor: BillingActorResolver
+) -> APIRouter:
     router = APIRouter(prefix="/billing", tags=["billing"])
 
     @router.get("")

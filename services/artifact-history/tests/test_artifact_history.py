@@ -243,14 +243,36 @@ class ArtifactHistoryTests(unittest.TestCase):
 
     def test_rights_inheritance_is_conservative(self) -> None:
         owned = RightsRecord(
-            "ASSET", "asset-owned", "org-a", "USER_UPLOAD", "user owns source", "OWNED",
-            "ALLOWED", "ALLOWED", "DENIED", False, None, "ASSERTED"
+            "ASSET",
+            "asset-owned",
+            "org-a",
+            "USER_UPLOAD",
+            "user owns source",
+            "OWNED",
+            "ALLOWED",
+            "ALLOWED",
+            "DENIED",
+            False,
+            None,
+            "ASSERTED",
         )
         restricted = RightsRecord(
-            "ASSET", "asset-third-party", "org-a", "THIRD_PARTY", None, "NONCOMMERCIAL",
-            "DENIED", "UNKNOWN", "UNKNOWN", True, "license-ref", "RESTRICTED"
+            "ASSET",
+            "asset-third-party",
+            "org-a",
+            "THIRD_PARTY",
+            None,
+            "NONCOMMERCIAL",
+            "DENIED",
+            "UNKNOWN",
+            "UNKNOWN",
+            True,
+            "license-ref",
+            "RESTRICTED",
         )
-        result = inherit_rights((owned, restricted), artifact_version_id="v1", organization_id="org-a")
+        result = inherit_rights(
+            (owned, restricted), artifact_version_id="v1", organization_id="org-a"
+        )
         self.assertEqual(result.commercial_use, "DENIED")
         self.assertEqual(result.redistribution, "UNKNOWN")
         self.assertEqual(result.training_use, "DENIED")
@@ -262,7 +284,9 @@ class ArtifactHistoryTests(unittest.TestCase):
         live = StorageObjectState("artifacts/live.png")
         unreferenced = StorageObjectState("artifacts/old.png")
         legal = StorageObjectState("artifacts/legal.png", legal_hold=True)
-        retained = StorageObjectState("artifacts/retained.png", retention_until=NOW + timedelta(days=7))
+        retained = StorageObjectState(
+            "artifacts/retained.png", retention_until=NOW + timedelta(days=7)
+        )
         marked = mark_unreferenced(
             (live, unreferenced, legal, retained),
             live_storage_keys={"artifacts/live.png"},
@@ -318,8 +342,18 @@ class ArtifactHistoryTests(unittest.TestCase):
             input_asset_ids=("asset-logo",),
         )
         rights = RightsRecord(
-            "ARTIFACT_VERSION", "v1", "org-a", "GENERATED", None, "UNKNOWN",
-            "UNKNOWN", "UNKNOWN", "UNKNOWN", False, None, "UNREVIEWED"
+            "ARTIFACT_VERSION",
+            "v1",
+            "org-a",
+            "GENERATED",
+            None,
+            "UNKNOWN",
+            "UNKNOWN",
+            "UNKNOWN",
+            "UNKNOWN",
+            False,
+            None,
+            "UNREVIEWED",
         )
         manifest = build_export_manifest(
             history.versions["v1"], provenance, (file,), (rights,), created_at=NOW

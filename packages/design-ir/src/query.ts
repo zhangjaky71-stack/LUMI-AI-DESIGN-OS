@@ -18,12 +18,22 @@ export interface SpatialBounds {
 }
 
 export interface SpatialIndexAdapter {
-  rebuild(entries: readonly { readonly node_id: string; readonly bounds: SpatialBounds }[]): void;
+  rebuild(
+    entries: readonly {
+      readonly node_id: string;
+      readonly bounds: SpatialBounds;
+    }[],
+  ): void;
   search(bounds: SpatialBounds): readonly string[];
 }
 
-function contains(values: readonly string[] | undefined, value: string | undefined): boolean {
-  return values === undefined || (value !== undefined && values.includes(value));
+function contains(
+  values: readonly string[] | undefined,
+  value: string | undefined,
+): boolean {
+  return (
+    values === undefined || (value !== undefined && values.includes(value))
+  );
 }
 
 function metadataString(node: DesignNode, key: string): string | undefined {
@@ -31,14 +41,25 @@ function metadataString(node: DesignNode, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-export function queryNodes(document: DesignDocument, selector: NodeSelector): readonly DesignNode[] {
+export function queryNodes(
+  document: DesignDocument,
+  selector: NodeSelector,
+): readonly DesignNode[] {
   const idSet = selector.ids ? new Set(selector.ids) : undefined;
   return Object.values(document.nodes).filter((node) => {
     if (idSet && !idSet.has(node.id)) return false;
     if (!contains(selector.roles, node.role)) return false;
     if (!contains(selector.kinds, node.kind)) return false;
-    if (selector.parent_id !== undefined && node.parent_id !== selector.parent_id) return false;
-    if (selector.locked !== undefined && Boolean(node.locked) !== selector.locked) return false;
+    if (
+      selector.parent_id !== undefined &&
+      node.parent_id !== selector.parent_id
+    )
+      return false;
+    if (
+      selector.locked !== undefined &&
+      Boolean(node.locked) !== selector.locked
+    )
+      return false;
     if (
       selector.brand_binding !== undefined &&
       metadataString(node, "brand_binding") !== selector.brand_binding
@@ -56,7 +77,9 @@ export function queryNodes(document: DesignDocument, selector: NodeSelector): re
   });
 }
 
-export function boundsFromTransform(transform: DesignTransform | undefined): SpatialBounds | undefined {
+export function boundsFromTransform(
+  transform: DesignTransform | undefined,
+): SpatialBounds | undefined {
   if (!transform) return undefined;
   const { x, y, width, height } = transform;
   if (
@@ -80,7 +103,11 @@ export function buildSpatialEntries(
       return bounds ? { node_id: node.id, bounds } : undefined;
     })
     .filter(
-      (entry): entry is { readonly node_id: string; readonly bounds: SpatialBounds } =>
-        entry !== undefined,
+      (
+        entry,
+      ): entry is {
+        readonly node_id: string;
+        readonly bounds: SpatialBounds;
+      } => entry !== undefined,
     );
 }

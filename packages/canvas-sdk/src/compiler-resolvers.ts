@@ -1,4 +1,8 @@
-import { canonicalStringify, type DesignDocument, type JsonValue } from "../../design-ir/src/index";
+import {
+  canonicalStringify,
+  type DesignDocument,
+  type JsonValue,
+} from "../../design-ir/src/index";
 import type {
   CompilerAssetResolver,
   CompilerFontResolver,
@@ -10,8 +14,11 @@ import type {
   ResolvedCompilerStyle,
 } from "./compiler-types";
 
-function asRecord(value: JsonValue | undefined): Readonly<Record<string, JsonValue>> | null {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+function asRecord(
+  value: JsonValue | undefined,
+): Readonly<Record<string, JsonValue>> | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return null;
   return value;
 }
 
@@ -52,14 +59,25 @@ export class DocumentCompilerStyleResolver implements CompilerStyleResolver {
       versions[ref] = stringValue(record.version) ?? "unversioned";
       const token = asRecord(record.value) ?? asRecord(record.style) ?? record;
       for (const [key, value] of Object.entries(token)) {
-        if (["uri", "preview_uri", "full_uri", "thumbnail_uri", "version"].includes(key)) continue;
+        if (
+          [
+            "uri",
+            "preview_uri",
+            "full_uri",
+            "thumbnail_uri",
+            "version",
+          ].includes(key)
+        )
+          continue;
         style[key] = structuredClone(value);
       }
     }
     return {
       style,
       missing_refs: missing,
-      versions: Object.fromEntries(Object.entries(versions).sort(([a], [b]) => a.localeCompare(b))),
+      versions: Object.fromEntries(
+        Object.entries(versions).sort(([a], [b]) => a.localeCompare(b)),
+      ),
     };
   }
 }
@@ -102,7 +120,8 @@ export class DocumentCompilerFontResolver implements CompilerFontResolver {
   ): Promise<ResolvedCompilerFont | null> {
     const record = asRecord(document.resources[fontRef]);
     if (!record) return null;
-    const family = stringValue(record.family) ?? stringValue(record.name) ?? fontRef;
+    const family =
+      stringValue(record.family) ?? stringValue(record.name) ?? fontRef;
     const version = stringValue(record.version) ?? "unversioned";
     const uri = stringValue(record.uri) ?? undefined;
     const style = stringValue(record.style) ?? undefined;
@@ -112,7 +131,13 @@ export class DocumentCompilerFontResolver implements CompilerFontResolver {
       family,
       version,
       status: uri ? "READY" : "PENDING",
-      fingerprint: canonicalStringify({ font_ref: fontRef, family, version, style, weight: weightValue }),
+      fingerprint: canonicalStringify({
+        font_ref: fontRef,
+        family,
+        version,
+        style,
+        weight: weightValue,
+      }),
       ...(uri ? { uri } : {}),
       ...(style ? { style } : {}),
       ...(weightValue !== null ? { weight: weightValue } : {}),
@@ -129,18 +154,27 @@ export class DeterministicTextMeasurer implements CompilerTextMeasurer {
     content: string,
     style: ResolvedCompilerStyle,
     font: ResolvedCompilerFont | null,
-  ): Promise<{ readonly width: number; readonly height: number; readonly baseline: number }> {
+  ): Promise<{
+    readonly width: number;
+    readonly height: number;
+    readonly baseline: number;
+  }> {
     const fontSizeValue = style.font_size;
-    const fontSize = typeof fontSizeValue === "number" && Number.isFinite(fontSizeValue)
-      ? Math.max(1, fontSizeValue)
-      : 16;
+    const fontSize =
+      typeof fontSizeValue === "number" && Number.isFinite(fontSizeValue)
+        ? Math.max(1, fontSizeValue)
+        : 16;
     const lineHeightValue = style.line_height;
-    const lineHeight = typeof lineHeightValue === "number" && Number.isFinite(lineHeightValue)
-      ? Math.max(1, lineHeightValue)
-      : fontSize * 1.2;
+    const lineHeight =
+      typeof lineHeightValue === "number" && Number.isFinite(lineHeightValue)
+        ? Math.max(1, lineHeightValue)
+        : fontSize * 1.2;
     const lines = content.split("\n");
     const weightFactor = font?.weight && font.weight >= 600 ? 1.03 : 1;
-    const maxUnits = Math.max(0, ...lines.map((line) => Array.from(line).length));
+    const maxUnits = Math.max(
+      0,
+      ...lines.map((line) => Array.from(line).length),
+    );
     return {
       width: maxUnits * fontSize * 0.6 * weightFactor,
       height: Math.max(1, lines.length) * lineHeight,

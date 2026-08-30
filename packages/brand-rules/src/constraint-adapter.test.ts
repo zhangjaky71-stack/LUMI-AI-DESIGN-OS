@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { DesignConstraint, PostflightContext } from "../../design-constraints/src/types";
+import type {
+  DesignConstraint,
+  PostflightContext,
+} from "../../design-constraints/src/types";
 import type { DesignDocument } from "../../design-ir/src/index";
 import { BrandConstraintAdapter } from "./constraint-adapter";
 import type { BrandAssetSet, BrandRuleSet, BrandTokenSet } from "./types";
@@ -12,7 +15,12 @@ const document: DesignDocument = {
   resources: {},
   metadata: { document_version: 1 },
   nodes: {
-    root: { id: "root", kind: "DOCUMENT_ROOT", parent_id: null, children: ["title"] },
+    root: {
+      id: "root",
+      kind: "DOCUMENT_ROOT",
+      parent_id: null,
+      children: ["title"],
+    },
     title: {
       id: "title",
       kind: "TEXT",
@@ -50,19 +58,24 @@ const ruleSet: BrandRuleSet = {
   status: "PUBLISHED",
   token_set_version: "1.0.0",
   asset_set_version: "1.0.0",
-  rules: [{
-    id: "forbidden-red",
-    category: "COLOR",
-    type: "FORBIDDEN_COLORS",
-    severity: "HARD",
-    source: "MANUAL_ADMIN",
-    priority: 100,
-    scope: { roles: ["headline"] },
-    parameters: { colors: ["#ff0000"] },
-    active: true,
-  }],
+  rules: [
+    {
+      id: "forbidden-red",
+      category: "COLOR",
+      type: "FORBIDDEN_COLORS",
+      severity: "HARD",
+      source: "MANUAL_ADMIN",
+      priority: 100,
+      scope: { roles: ["headline"] },
+      parameters: { colors: ["#ff0000"] },
+      active: true,
+    },
+  ],
   voice: { tone_attributes: [], preferred_vocabulary: [], forbidden_terms: [] },
-  visual_references: { reference_asset_ids: [], negative_reference_asset_ids: [] },
+  visual_references: {
+    reference_asset_ids: [],
+    negative_reference_asset_ids: [],
+  },
   created_at: "2026-08-14T00:00:00Z",
   published_at: "2026-08-14T00:01:00Z",
 };
@@ -71,7 +84,9 @@ const tokenSet: BrandTokenSet = {
   id: "tokens",
   brand_profile_id: "brand",
   version: "1.0.0",
-  colors: [{ id: "primary", name: "Primary", value: "#111111", roles: ["primary"] }],
+  colors: [
+    { id: "primary", name: "Primary", value: "#111111", roles: ["primary"] },
+  ],
   fonts: [],
   spacing_scale: [4, 8],
 };
@@ -89,7 +104,12 @@ describe("NODE-43 BrandConstraintAdapter", () => {
   it("maps deterministic brand diagnostics into NODE-39 violations", async () => {
     const adapter = new BrandConstraintAdapter({
       async resolve() {
-        return { document, rule_set: ruleSet, token_set: tokenSet, asset_set: assetSet };
+        return {
+          document,
+          rule_set: ruleSet,
+          token_set: tokenSet,
+          asset_set: assetSet,
+        };
       },
     });
     const violations = await adapter.validate(postflight, constraint);

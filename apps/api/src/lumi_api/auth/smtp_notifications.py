@@ -18,7 +18,11 @@ class SmtpAuthNotificationPort:
         public_base_url: str,
         use_starttls: bool = False,
     ) -> None:
-        if not smtp_host or not from_address or not public_base_url.startswith(("http://", "https://")):
+        if (
+            not smtp_host
+            or not from_address
+            or not public_base_url.startswith(("http://", "https://"))
+        ):
             raise ValueError("SMTP notification adapter requires host/from/public base URL")
         self.smtp_host = smtp_host
         self.smtp_port = smtp_port

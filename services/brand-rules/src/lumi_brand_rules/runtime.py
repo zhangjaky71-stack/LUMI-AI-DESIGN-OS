@@ -33,7 +33,9 @@ def _string_list(value: Any) -> tuple[str, ...]:
     return tuple(item for item in value if isinstance(item, str))
 
 
-def _applies(rule: BrandRule, node: Mapping[str, Any], channel: str | None, locale: str | None) -> bool:
+def _applies(
+    rule: BrandRule, node: Mapping[str, Any], channel: str | None, locale: str | None
+) -> bool:
     node_ids = _string_list(rule.scope.get("node_ids"))
     roles = _string_list(rule.scope.get("roles"))
     channels = _string_list(rule.scope.get("channels"))
@@ -47,7 +49,9 @@ def _applies(rule: BrandRule, node: Mapping[str, Any], channel: str | None, loca
     return not locales or locale in locales
 
 
-def _repair(document: Mapping[str, Any], node_id: str, path: str, value: Any, rule_id: str) -> Mapping[str, Any]:
+def _repair(
+    document: Mapping[str, Any], node_id: str, path: str, value: Any, rule_id: str
+) -> Mapping[str, Any]:
     metadata = document.get("metadata", {})
     version = metadata.get("document_version", 0) if isinstance(metadata, Mapping) else 0
     return {
@@ -133,87 +137,136 @@ def _evaluate_rule(
             if isinstance(color, str) and color.lower() in forbidden:
                 replacement = next(iter(token_set.colors.values()), None)
                 repairs = (
-                    _repair(document, node_id, "fill", replacement, rule.id),
-                ) if replacement else ()
-                diagnostics.append(_diag(rule, "BRAND_COLOR_FORBIDDEN", node_id, sorted(forbidden), color, repairs))
+                    (_repair(document, node_id, "fill", replacement, rule.id),)
+                    if replacement
+                    else ()
+                )
+                diagnostics.append(
+                    _diag(rule, "BRAND_COLOR_FORBIDDEN", node_id, sorted(forbidden), color, repairs)
+                )
 
         elif rule.type == "ALLOWED_FONT_ASSETS" and node.get("kind") == "TEXT":
-            font_id = _value(node, "font_asset_id", "typography.font_asset_id", "metadata.font_asset_id")
+            font_id = _value(
+                node, "font_asset_id", "typography.font_asset_id", "metadata.font_asset_id"
+            )
             allowed = _string_list(rule.parameters.get("asset_ids"))
-            rights_denied = isinstance(font_id, str) and font_rights_ids is not None and font_id not in font_rights_ids
+            rights_denied = (
+                isinstance(font_id, str)
+                and font_rights_ids is not None
+                and font_id not in font_rights_ids
+            )
             if not isinstance(font_id, str) or font_id not in allowed or rights_denied:
-                replacement = next((item for item in allowed if font_rights_ids is None or item in font_rights_ids), None)
+                replacement = next(
+                    (
+                        item
+                        for item in allowed
+                        if font_rights_ids is None or item in font_rights_ids
+                    ),
+                    None,
+                )
                 repairs = (
-                    _repair(document, node_id, "font_asset_id", replacement, rule.id),
-                ) if replacement else ()
-                diagnostics.append(_diag(
-                    rule,
-                    "BRAND_FONT_RIGHTS_UNAVAILABLE" if rights_denied else "BRAND_FONT_NOT_ALLOWED",
-                    node_id,
-                    allowed,
-                    font_id,
-                    repairs,
-                ))
+                    (_repair(document, node_id, "font_asset_id", replacement, rule.id),)
+                    if replacement
+                    else ()
+                )
+                diagnostics.append(
+                    _diag(
+                        rule,
+                        "BRAND_FONT_RIGHTS_UNAVAILABLE"
+                        if rights_denied
+                        else "BRAND_FONT_NOT_ALLOWED",
+                        node_id,
+                        allowed,
+                        font_id,
+                        repairs,
+                    )
+                )
 
         elif rule.type == "MIN_TEXT_SIZE" and node.get("kind") == "TEXT":
             size = _value(node, "font_size", "typography.font_size", "metadata.font_size")
             minimum = rule.parameters.get("px", 0)
-            if isinstance(size, (int, float)) and isinstance(minimum, (int, float)) and size < minimum:
-                diagnostics.append(_diag(
-                    rule,
-                    "BRAND_TEXT_TOO_SMALL",
-                    node_id,
-                    minimum,
-                    size,
-                    (_repair(document, node_id, "font_size", minimum, rule.id),),
-                ))
+            if (
+                isinstance(size, (int, float))
+                and isinstance(minimum, (int, float))
+                and size < minimum
+            ):
+                diagnostics.append(
+                    _diag(
+                        rule,
+                        "BRAND_TEXT_TOO_SMALL",
+                        node_id,
+                        minimum,
+                        size,
+                        (_repair(document, node_id, "font_size", minimum, rule.id),),
+                    )
+                )
 
         elif rule.type == "REQUIRE_TOKEN_BINDING":
             binding = _value(node, "brand_binding", "metadata.brand_binding")
             prefixes = _string_list(rule.parameters.get("prefixes"))
-            valid = isinstance(binding, str) and (not prefixes or any(binding.startswith(item) for item in prefixes))
+            valid = isinstance(binding, str) and (
+                not prefixes or any(binding.startswith(item) for item in prefixes)
+            )
             if not valid:
                 repairs = (
-                    _repair(document, node_id, "brand_binding", prefixes[0], rule.id),
-                ) if prefixes else ()
-                diagnostics.append(_diag(rule, "BRAND_TOKEN_BINDING_REQUIRED", node_id, prefixes, binding, repairs))
+                    (_repair(document, node_id, "brand_binding", prefixes[0], rule.id),)
+                    if prefixes
+                    else ()
+                )
+                diagnostics.append(
+                    _diag(rule, "BRAND_TOKEN_BINDING_REQUIRED", node_id, prefixes, binding, repairs)
+                )
 
         elif rule.type == "LOGO_FORBID_ROTATION":
             rotation = _value(node, "transform.rotation_deg") or 0
             tolerance = rule.parameters.get("tolerance_deg", 0.01)
-            if isinstance(rotation, (int, float)) and isinstance(tolerance, (int, float)) and abs(rotation) > tolerance:
-                diagnostics.append(_diag(
-                    rule,
-                    "BRAND_LOGO_ROTATED",
-                    node_id,
-                    0,
-                    rotation,
-                    (_repair(document, node_id, "transform.rotation_deg", 0, rule.id),),
-                ))
+            if (
+                isinstance(rotation, (int, float))
+                and isinstance(tolerance, (int, float))
+                and abs(rotation) > tolerance
+            ):
+                diagnostics.append(
+                    _diag(
+                        rule,
+                        "BRAND_LOGO_ROTATED",
+                        node_id,
+                        0,
+                        rotation,
+                        (_repair(document, node_id, "transform.rotation_deg", 0, rule.id),),
+                    )
+                )
 
         elif rule.type == "LOGO_CLEAR_SPACE":
             bounds = _rect(node)
             margin = rule.parameters.get("px", 0)
             if bounds and isinstance(margin, (int, float)) and margin > 0:
                 for other in nodes:
-                    if other is node or other.get("visible") is False or other.get("kind") == "GUIDE":
+                    if (
+                        other is node
+                        or other.get("visible") is False
+                        or other.get("kind") == "GUIDE"
+                    ):
                         continue
                     other_bounds = _rect(other)
                     if other_bounds and _overlap_margin(bounds, other_bounds, float(margin)):
-                        diagnostics.append(_diag(
-                            rule,
-                            "BRAND_LOGO_CLEAR_SPACE_VIOLATION",
-                            node_id,
-                            margin,
-                            other.get("id"),
-                        ))
+                        diagnostics.append(
+                            _diag(
+                                rule,
+                                "BRAND_LOGO_CLEAR_SPACE_VIOLATION",
+                                node_id,
+                                margin,
+                                other.get("id"),
+                            )
+                        )
                         break
 
         elif rule.type in {"ALLOWED_ASSETS", "ALLOWED_LOGO_ASSETS"}:
             asset_id = _value(node, "asset_id", "resource_id", "metadata.asset_id")
             allowed = _string_list(rule.parameters.get("asset_ids"))
             if not isinstance(asset_id, str) or asset_id not in allowed:
-                diagnostics.append(_diag(rule, "BRAND_ASSET_NOT_ALLOWED", node_id, allowed, asset_id))
+                diagnostics.append(
+                    _diag(rule, "BRAND_ASSET_NOT_ALLOWED", node_id, allowed, asset_id)
+                )
             elif verified_asset_ids is not None and asset_id not in verified_asset_ids:
                 diagnostics.append(_diag(rule, "BRAND_ASSET_NOT_VERIFIED", node_id, True, asset_id))
 
@@ -223,7 +276,9 @@ def _evaluate_rule(
             if isinstance(text, str):
                 hit = next((term for term in terms if term.lower() in text.lower()), None)
                 if hit:
-                    diagnostics.append(_diag(rule, "BRAND_VOICE_FORBIDDEN_TERM", node_id, terms, hit))
+                    diagnostics.append(
+                        _diag(rule, "BRAND_VOICE_FORBIDDEN_TERM", node_id, terms, hit)
+                    )
 
     return diagnostics
 
@@ -242,22 +297,30 @@ def evaluate_brand_compliance(
     validate_rule_set(rule_set)
     if rule_set.status != "PUBLISHED":
         raise BrandRuleError("compliance requires a PUBLISHED BrandRuleSet")
-    if token_set.version != rule_set.token_set_version or asset_set.version != rule_set.asset_set_version:
+    if (
+        token_set.version != rule_set.token_set_version
+        or asset_set.version != rule_set.asset_set_version
+    ):
         raise BrandRuleError("brand dependency version mismatch")
-    if token_set.brand_profile_id != rule_set.brand_profile_id or asset_set.brand_profile_id != rule_set.brand_profile_id:
+    if (
+        token_set.brand_profile_id != rule_set.brand_profile_id
+        or asset_set.brand_profile_id != rule_set.brand_profile_id
+    ):
         raise BrandRuleError("brand profile mismatch")
 
     diagnostics: list[BrandDiagnostic] = []
     for rule in sorted(rule_set.rules, key=lambda item: (-item.priority, item.id)):
-        diagnostics.extend(_evaluate_rule(
-            rule,
-            document,
-            token_set,
-            verified_asset_ids,
-            font_rights_allowed_asset_ids,
-            channel,
-            locale,
-        ))
+        diagnostics.extend(
+            _evaluate_rule(
+                rule,
+                document,
+                token_set,
+                verified_asset_ids,
+                font_rights_allowed_asset_ids,
+                channel,
+                locale,
+            )
+        )
     hard = sum(item.severity == "HARD" for item in diagnostics)
     soft = sum(item.severity == "SOFT" for item in diagnostics)
     advisory = sum(item.severity == "ADVISORY" for item in diagnostics)

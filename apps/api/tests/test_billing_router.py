@@ -47,9 +47,7 @@ def make_client() -> tuple[TestClient, BillingEngine, MockPaymentProvider]:
 
     async def resolve_actor(request: Request) -> BillingActor:
         mode = request.headers.get("x-test-role", "owner")
-        permissions = (
-            {"billing.read", "billing.manage"} if mode == "owner" else {"billing.read"}
-        )
+        permissions = {"billing.read", "billing.manage"} if mode == "owner" else {"billing.read"}
         return BillingActor(mode, "org-1", frozenset(permissions), f"{mode}@example.com")
 
     app = FastAPI()

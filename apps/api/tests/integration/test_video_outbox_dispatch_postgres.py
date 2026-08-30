@@ -22,9 +22,7 @@ if os.environ.get("LUMI_DB_INTEGRATION") != "1":
 
 
 def _dsn() -> str:
-    return os.environ["DATABASE_URL"].replace(
-        "postgresql+asyncpg://", "postgresql://", 1
-    )
+    return os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
 def _spec(*, task_id: UUID, operation_id: UUID) -> VideoTaskSpec:

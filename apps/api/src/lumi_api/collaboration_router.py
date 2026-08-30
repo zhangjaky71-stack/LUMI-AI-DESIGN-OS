@@ -211,7 +211,9 @@ def create_collaboration_router(
     ) -> dict[str, Any]:
         actor = await _resolve(resolve_http_context(request))
         return _serialize(
-            engine.reply(actor, project_id, thread_id, payload.body, tuple(payload.mention_actor_ids))
+            engine.reply(
+                actor, project_id, thread_id, payload.body, tuple(payload.mention_actor_ids)
+            )
         )
 
     @router.post("/projects/{project_id}/collaboration/threads/{thread_id}:resolve")

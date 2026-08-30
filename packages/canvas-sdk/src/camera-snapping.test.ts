@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { fitWorldRect, physicalCanvasSize, screenToWorld, worldToScreen } from "./camera";
+import {
+  fitWorldRect,
+  physicalCanvasSize,
+  screenToWorld,
+  worldToScreen,
+} from "./camera";
 import { projectDesignDocument } from "./ir-scene";
 import { snapRect } from "./snapping";
 import type { DesignDocument } from "../../design-ir/src/index";
@@ -12,7 +17,12 @@ function documentFixture(): DesignDocument {
     unit: "px",
     root_id: "root",
     nodes: {
-      root: { id: "root", kind: "DOCUMENT_ROOT", parent_id: null, children: ["frame", "target"] },
+      root: {
+        id: "root",
+        kind: "DOCUMENT_ROOT",
+        parent_id: null,
+        children: ["frame", "target"],
+      },
       frame: {
         id: "frame",
         kind: "FRAME",
@@ -35,7 +45,11 @@ function documentFixture(): DesignDocument {
 
 describe("Canvas camera", () => {
   it("fits world bounds and preserves world/screen round trips", () => {
-    const camera = fitWorldRect({ x: 100, y: 50, width: 800, height: 600 }, { width: 1440, height: 900 }, 50);
+    const camera = fitWorldRect(
+      { x: 100, y: 50, width: 800, height: 600 },
+      { width: 1440, height: 900 },
+      50,
+    );
     const world = { x: 333.5, y: 444.25 };
     const restored = screenToWorld(worldToScreen(world, camera), camera);
     expect(restored.x).toBeCloseTo(world.x, 8);
@@ -43,7 +57,10 @@ describe("Canvas camera", () => {
   });
 
   it("uses DPR only for physical renderer size, not world coordinates", () => {
-    expect(physicalCanvasSize({ width: 750, height: 500 }, 2)).toEqual({ width: 1500, height: 1000 });
+    expect(physicalCanvasSize({ width: 750, height: 500 }, 2)).toEqual({
+      width: 1500,
+      height: 1000,
+    });
   });
 });
 

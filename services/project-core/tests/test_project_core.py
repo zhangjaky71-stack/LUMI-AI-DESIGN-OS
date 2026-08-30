@@ -65,9 +65,7 @@ class ProjectCoreContractTests(unittest.TestCase):
             normalize_brief(unknown)
 
         invalid_key = _brief()
-        invalid_key["deliverables"] = [
-            {"key": "Poster Main", "kind": "poster", "quantity": 1}
-        ]
+        invalid_key["deliverables"] = [{"key": "Poster Main", "kind": "poster", "quantity": 1}]
         with self.assertRaises(BriefValidationError):
             normalize_brief(invalid_key)
 

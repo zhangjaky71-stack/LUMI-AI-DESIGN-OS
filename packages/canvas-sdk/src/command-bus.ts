@@ -61,48 +61,80 @@ function subtree(document: DesignDocument, rootId: string): DesignNode[] {
   return result;
 }
 
-function invertOne(document: DesignDocument, source: DesignOperation, sequence: number): DesignOperation[] {
+function invertOne(
+  document: DesignDocument,
+  source: DesignOperation,
+  sequence: number,
+): DesignOperation[] {
   const prefix = `inverse-${source.operation_id}-${sequence}`;
   switch (source.type) {
     case "MOVE_NODE":
       return source.target_ids.flatMap((id, index) => {
         const node = document.nodes[id];
         return node
-          ? [operation(source, `${prefix}-${index}`, "MOVE_NODE", [id], { x: node.transform?.x ?? 0, y: node.transform?.y ?? 0 })]
+          ? [
+              operation(source, `${prefix}-${index}`, "MOVE_NODE", [id], {
+                x: node.transform?.x ?? 0,
+                y: node.transform?.y ?? 0,
+              }),
+            ]
           : [];
       });
     case "RESIZE_NODE":
       return source.target_ids.flatMap((id, index) => {
         const node = document.nodes[id];
         return node
-          ? [operation(source, `${prefix}-${index}`, "RESIZE_NODE", [id], { width: node.transform?.width ?? 0, height: node.transform?.height ?? 0 })]
+          ? [
+              operation(source, `${prefix}-${index}`, "RESIZE_NODE", [id], {
+                width: node.transform?.width ?? 0,
+                height: node.transform?.height ?? 0,
+              }),
+            ]
           : [];
       });
     case "ROTATE_NODE":
       return source.target_ids.flatMap((id, index) => {
         const node = document.nodes[id];
         return node
-          ? [operation(source, `${prefix}-${index}`, "ROTATE_NODE", [id], { rotation_deg: node.transform?.rotation_deg ?? 0 })]
+          ? [
+              operation(source, `${prefix}-${index}`, "ROTATE_NODE", [id], {
+                rotation_deg: node.transform?.rotation_deg ?? 0,
+              }),
+            ]
           : [];
       });
     case "SET_TEXT":
       return source.target_ids.flatMap((id, index) => {
         const node = document.nodes[id];
         return node
-          ? [operation(source, `${prefix}-${index}`, "SET_TEXT", [id], { content: typeof node.content === "string" ? node.content : "" })]
+          ? [
+              operation(source, `${prefix}-${index}`, "SET_TEXT", [id], {
+                content: typeof node.content === "string" ? node.content : "",
+              }),
+            ]
           : [];
       });
     case "REPLACE_ASSET":
       return source.target_ids.flatMap((id, index) => {
         const node = document.nodes[id];
         if (!node) return [];
-        return [operation(source, `${prefix}-${index}`, "SET_PROPERTY", [id], { path: "asset_id", value: typeof node.asset_id === "string" ? node.asset_id : null })];
+        return [
+          operation(source, `${prefix}-${index}`, "SET_PROPERTY", [id], {
+            path: "asset_id",
+            value: typeof node.asset_id === "string" ? node.asset_id : null,
+          }),
+        ];
       });
     case "APPLY_STYLE":
       return source.target_ids.flatMap((id, index) => {
         const node = document.nodes[id];
         if (!node) return [];
-        return [operation(source, `${prefix}-${index}`, "SET_PROPERTY", [id], { path: "style_refs", value: [...(node.style_refs ?? [])] })];
+        return [
+          operation(source, `${prefix}-${index}`, "SET_PROPERTY", [id], {
+            path: "style_refs",
+            value: [...(node.style_refs ?? [])],
+          }),
+        ];
       });
     case "SET_PROPERTY": {
       const path = source.payload.path;
@@ -110,14 +142,22 @@ function invertOne(document: DesignDocument, source: DesignOperation, sequence: 
       return source.target_ids.flatMap((id, index) => {
         const node = document.nodes[id];
         if (!node) return [];
-        return [operation(source, `${prefix}-${index}`, "SET_PROPERTY", [id], { path, value: structuredClone(readPath(node, path)) ?? null })];
+        return [
+          operation(source, `${prefix}-${index}`, "SET_PROPERTY", [id], {
+            path,
+            value: structuredClone(readPath(node, path)) ?? null,
+          }),
+        ];
       });
     }
     case "CREATE_NODE": {
       const raw = source.payload.node;
-      const id = raw && typeof raw === "object" && typeof (raw as { id?: unknown }).id === "string"
-        ? (raw as { id: string }).id
-        : source.target_ids[0];
+      const id =
+        raw &&
+        typeof raw === "object" &&
+        typeof (raw as { id?: unknown }).id === "string"
+          ? (raw as { id: string }).id
+          : source.target_ids[0];
       return id ? [operation(source, prefix, "DELETE_NODE", [id], {})] : [];
     }
     case "DELETE_NODE": {
@@ -129,11 +169,17 @@ function invertOne(document: DesignDocument, source: DesignOperation, sequence: 
           const parent = document.nodes[node.parent_id];
           const childIndex = parent?.children.indexOf(node.id) ?? -1;
           restored.push(
-            operation(source, `${prefix}-${index++}`, "CREATE_NODE", [node.id], {
-              node: structuredClone(node),
-              parent_id: node.parent_id,
-              ...(childIndex >= 0 ? { index: childIndex } : {}),
-            }),
+            operation(
+              source,
+              `${prefix}-${index++}`,
+              "CREATE_NODE",
+              [node.id],
+              {
+                node: structuredClone(node),
+                parent_id: node.parent_id,
+                ...(childIndex >= 0 ? { index: childIndex } : {}),
+              },
+            ),
           );
         }
       }
@@ -144,14 +190,23 @@ function invertOne(document: DesignDocument, source: DesignOperation, sequence: 
         const node = document.nodes[id];
         if (!node?.parent_id) return [];
         const parent = document.nodes[node.parent_id];
-        return [operation(source, `${prefix}-${index}`, "REORDER_NODE", [id], { index: parent?.children.indexOf(id) ?? 0 })];
+        return [
+          operation(source, `${prefix}-${index}`, "REORDER_NODE", [id], {
+            index: parent?.children.indexOf(id) ?? 0,
+          }),
+        ];
       });
     case "REPARENT_NODE":
       return source.target_ids.flatMap((id, index) => {
         const node = document.nodes[id];
         if (!node?.parent_id) return [];
         const parent = document.nodes[node.parent_id];
-        return [operation(source, `${prefix}-${index}`, "REPARENT_NODE", [id], { parent_id: node.parent_id, index: parent?.children.indexOf(id) ?? 0 })];
+        return [
+          operation(source, `${prefix}-${index}`, "REPARENT_NODE", [id], {
+            parent_id: node.parent_id,
+            index: parent?.children.indexOf(id) ?? 0,
+          }),
+        ];
       });
     case "BATCH": {
       const nested = Array.isArray(source.payload.operations)
@@ -186,7 +241,11 @@ function rehydrateOperations(
       ? {
           payload: {
             ...source.payload,
-            operations: rehydrateOperations(source.payload.operations as DesignOperation[], version, `${replayPrefix}-${index}`),
+            operations: rehydrateOperations(
+              source.payload.operations as DesignOperation[],
+              version,
+              `${replayPrefix}-${index}`,
+            ),
           },
         }
       : {}),
@@ -224,9 +283,15 @@ export class CanvasCommandBus {
   ): CanvasCommandResult {
     if (!operations.length) return this.#noop();
     const version = getDocumentVersion(this.#document);
-    const prepared = rehydrateOperations(operations, version, `dispatch-${version}`);
+    const prepared = rehydrateOperations(
+      operations,
+      version,
+      `dispatch-${version}`,
+    );
     const inverse = invertOperations(this.#document, prepared);
-    const result = guardedExecute(this.#document, prepared, constraints, { overrides });
+    const result = guardedExecute(this.#document, prepared, constraints, {
+      overrides,
+    });
     if (result.preflight.decision === "DENY" || !result.execution?.ok) {
       return { accepted: false, document: this.#document, guarded: result };
     }
@@ -245,7 +310,12 @@ export class CanvasCommandBus {
   ): CanvasCommandResult {
     const entry = this.#undo[this.#undo.length - 1];
     if (!entry) return this.#noop();
-    const result = this.#replay(entry.inverse, `undo-${getDocumentVersion(this.#document)}`, constraints, overrides);
+    const result = this.#replay(
+      entry.inverse,
+      `undo-${getDocumentVersion(this.#document)}`,
+      constraints,
+      overrides,
+    );
     if (result.accepted) {
       this.#undo.pop();
       this.#redo.push(entry);
@@ -259,7 +329,12 @@ export class CanvasCommandBus {
   ): CanvasCommandResult {
     const entry = this.#redo[this.#redo.length - 1];
     if (!entry) return this.#noop();
-    const result = this.#replay(entry.forward, `redo-${getDocumentVersion(this.#document)}`, constraints, overrides);
+    const result = this.#replay(
+      entry.forward,
+      `redo-${getDocumentVersion(this.#document)}`,
+      constraints,
+      overrides,
+    );
     if (result.accepted) {
       this.#redo.pop();
       this.#undo.push(entry);
@@ -281,8 +356,14 @@ export class CanvasCommandBus {
     constraints: readonly DesignConstraint[],
     overrides: readonly ConstraintOverrideToken[],
   ): CanvasCommandResult {
-    const prepared = rehydrateOperations(operations, getDocumentVersion(this.#document), prefix);
-    const guarded = guardedExecute(this.#document, prepared, constraints, { overrides });
+    const prepared = rehydrateOperations(
+      operations,
+      getDocumentVersion(this.#document),
+      prefix,
+    );
+    const guarded = guardedExecute(this.#document, prepared, constraints, {
+      overrides,
+    });
     if (guarded.preflight.decision === "DENY" || !guarded.execution?.ok) {
       return { accepted: false, document: this.#document, guarded };
     }

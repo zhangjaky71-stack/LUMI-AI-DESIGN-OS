@@ -892,7 +892,7 @@ class PostgresCostGateway:
             start, end = _month_bounds(str(limit["period_key"]))
             args.extend([start, end])
             period_clause = (
-                f" AND c.occurred_at >= ${len(args)-1} AND c.occurred_at < ${len(args)}"
+                f" AND c.occurred_at >= ${len(args) - 1} AND c.occurred_at < ${len(args)}"
             )
         value = await connection.fetchval(
             f"""

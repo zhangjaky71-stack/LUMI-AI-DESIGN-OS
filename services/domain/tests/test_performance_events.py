@@ -20,9 +20,7 @@ def test_performance_telemetry_is_disabled_by_default() -> None:
 
 def test_enabled_telemetry_requires_complete_provenance() -> None:
     with pytest.raises(ValueError, match="requires run id"):
-        PerformanceTelemetryContext.from_environ(
-            {"LUMI_PERFORMANCE_TELEMETRY_ENABLED": "true"}
-        )
+        PerformanceTelemetryContext.from_environ({"LUMI_PERFORMANCE_TELEMETRY_ENABLED": "true"})
 
 
 def test_enabled_telemetry_rejects_non_exact_source_sha() -> None:

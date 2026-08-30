@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { DesignDocument, DesignOperation } from "../../design-ir/src/index";
+import type {
+  DesignDocument,
+  DesignOperation,
+} from "../../design-ir/src/index";
 import {
   StructuredContrastEvaluator,
   buildConstraintSnapshot,
@@ -16,7 +19,12 @@ function document(): DesignDocument {
     unit: "px",
     root_id: "root",
     nodes: {
-      root: { id: "root", kind: "DOCUMENT_ROOT", parent_id: null, children: ["frame"] },
+      root: {
+        id: "root",
+        kind: "DOCUMENT_ROOT",
+        parent_id: null,
+        children: ["frame"],
+      },
       frame: {
         id: "frame",
         kind: "FRAME",
@@ -66,7 +74,9 @@ describe("NODE-39 quality helpers", () => {
     };
     const result = guardedExecute(document(), [move], [safeArea()]);
     expect(result.preflight.decision).toBe("DENY");
-    expect(result.preflight.violations[0]?.reason_code).toBe("CONSTRAINT_OUTSIDE_SAFE_AREA");
+    expect(result.preflight.violations[0]?.reason_code).toBe(
+      "CONSTRAINT_OUTSIDE_SAFE_AREA",
+    );
   });
 
   it("computes deterministic structured contrast ratios", () => {
@@ -82,7 +92,11 @@ describe("NODE-39 quality helpers", () => {
       severity: "HARD",
       source: "PROJECT_RULE",
       priority: 100,
-      parameters: { foreground: "#777777", background: "#ffffff", min_ratio: 7 },
+      parameters: {
+        foreground: "#777777",
+        background: "#ffffff",
+        min_ratio: 7,
+      },
       active: true,
     };
     const violations = await evaluator.evaluate(
@@ -100,6 +114,8 @@ describe("NODE-39 quality helpers", () => {
   it("produces a deterministic constraint snapshot hash", async () => {
     const first = buildConstraintSnapshot(document(), [safeArea()]);
     const second = buildConstraintSnapshot(document(), [safeArea()]);
-    expect(await hashConstraintSnapshot(first)).toBe(await hashConstraintSnapshot(second));
+    expect(await hashConstraintSnapshot(first)).toBe(
+      await hashConstraintSnapshot(second),
+    );
   });
 });

@@ -12,7 +12,9 @@ export interface WorkspaceUiPropagationSample {
   readonly duration_ms: number;
 }
 
-export type WorkspaceUiPropagationSink = (sample: WorkspaceUiPropagationSample) => void;
+export type WorkspaceUiPropagationSink = (
+  sample: WorkspaceUiPropagationSample,
+) => void;
 
 declare global {
   interface Window {
@@ -31,7 +33,9 @@ interface ScheduleOptions {
  * message timestamp. Other workspace event types do not currently expose a safe,
  * task-correlated canonical event timestamp and are intentionally not measured.
  */
-export function artifactUiPropagationSourceTimestamp(event: WorkspaceEvent): string | null {
+export function artifactUiPropagationSourceTimestamp(
+  event: WorkspaceEvent,
+): string | null {
   return event.type === "artifact.created" ? event.message.created_at : null;
 }
 
@@ -46,20 +50,29 @@ export function scheduleArtifactUiPropagationAfterPaint(
 
   const sink =
     options.sink ??
-    (typeof window === "undefined" ? undefined : window.__LUMI_PERFORMANCE_UI_PROPAGATION_SINK__);
+    (typeof window === "undefined"
+      ? undefined
+      : window.__LUMI_PERFORMANCE_UI_PROPAGATION_SINK__);
   if (!sink) return false;
 
   const sourceCreatedAtUnixMs = Date.parse(sourceCreatedAt);
-  if (!Number.isSafeInteger(sourceCreatedAtUnixMs) || sourceCreatedAtUnixMs < 0) {
+  if (
+    !Number.isSafeInteger(sourceCreatedAtUnixMs) ||
+    sourceCreatedAtUnixMs < 0
+  ) {
     throw new Error("PERFORMANCE_UI_PROPAGATION_SOURCE_TIMESTAMP_INVALID");
   }
 
-  const requestFrame = options.request_frame ?? globalThis.requestAnimationFrame.bind(globalThis);
+  const requestFrame =
+    options.request_frame ?? globalThis.requestAnimationFrame.bind(globalThis);
   const nowMs = options.now_ms ?? Date.now;
   requestFrame(() => {
     requestFrame(() => {
       const paintedAtUnixMs = nowMs();
-      if (!Number.isSafeInteger(paintedAtUnixMs) || paintedAtUnixMs < sourceCreatedAtUnixMs) {
+      if (
+        !Number.isSafeInteger(paintedAtUnixMs) ||
+        paintedAtUnixMs < sourceCreatedAtUnixMs
+      ) {
         throw new Error("PERFORMANCE_UI_PROPAGATION_CLOCK_REVERSAL");
       }
       sink({

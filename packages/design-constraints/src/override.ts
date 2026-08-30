@@ -25,7 +25,9 @@ export function validateOverride(
     return { valid: false, reason_code: "OVERRIDE_DOCUMENT_MISMATCH" };
   }
   const version =
-    typeof document.metadata.document_version === "number" ? document.metadata.document_version : 0;
+    typeof document.metadata.document_version === "number"
+      ? document.metadata.document_version
+      : 0;
   if (token.document_version !== version) {
     return { valid: false, reason_code: "OVERRIDE_STALE_VERSION" };
   }
@@ -50,10 +52,14 @@ export function isConstraintOverridden(
   tokens: readonly ConstraintOverrideToken[] | undefined = [],
   now = new Date(),
 ): boolean {
-  return (tokens ?? []).some((token) => validateOverride(document, constraint, token, now).valid);
+  return (tokens ?? []).some(
+    (token) => validateOverride(document, constraint, token, now).valid,
+  );
 }
 
 /** Pure lifecycle helper; persistence/audit storage remains outside this package. */
-export function consumeOverrideToken(token: ConstraintOverrideToken): ConstraintOverrideToken {
+export function consumeOverrideToken(
+  token: ConstraintOverrideToken,
+): ConstraintOverrideToken {
   return token.one_time ? { ...token, consumed: true } : { ...token };
 }

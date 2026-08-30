@@ -68,9 +68,7 @@ def _validate_reference_roles(spec: ImageGenerationSpec) -> None:
         item.role == "IDENTITY" for item in spec.references
     ):
         raise ImageGenerationPipelineError("PRODUCT_SCENE_IDENTITY_REFERENCE_REQUIRED")
-    if spec.mode == "STYLE_REFERENCE" and not any(
-        item.role == "STYLE" for item in spec.references
-    ):
+    if spec.mode == "STYLE_REFERENCE" and not any(item.role == "STYLE" for item in spec.references):
         raise ImageGenerationPipelineError("STYLE_REFERENCE_ROLE_REQUIRED")
 
 

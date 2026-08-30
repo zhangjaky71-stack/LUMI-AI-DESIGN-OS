@@ -61,14 +61,18 @@ describe("workspace UI propagation telemetry", () => {
     const callbacks: FrameRequestCallback[] = [];
     const samples: WorkspaceUiPropagationSample[] = [];
     const sourceMs = Date.parse(sourceCreatedAt);
-    const scheduled = scheduleArtifactUiPropagationAfterPaint(artifactEvent(), "task-image-1", {
-      sink: (sample) => samples.push(sample),
-      request_frame: (callback) => {
-        callbacks.push(callback);
-        return callbacks.length;
+    const scheduled = scheduleArtifactUiPropagationAfterPaint(
+      artifactEvent(),
+      "task-image-1",
+      {
+        sink: (sample) => samples.push(sample),
+        request_frame: (callback) => {
+          callbacks.push(callback);
+          return callbacks.length;
+        },
+        now_ms: () => sourceMs + 125,
       },
-      now_ms: () => sourceMs + 125,
-    });
+    );
 
     expect(scheduled).toBe(true);
     expect(samples).toEqual([]);
@@ -100,18 +104,24 @@ describe("workspace UI propagation telemetry", () => {
         sink: (sample) => samples.push(sample),
       }),
     ).toBe(false);
-    expect(scheduleArtifactUiPropagationAfterPaint(artifactEvent(), null, { sink: () => undefined })).toBe(
-      false,
-    );
+    expect(
+      scheduleArtifactUiPropagationAfterPaint(artifactEvent(), null, {
+        sink: () => undefined,
+      }),
+    ).toBe(false);
     expect(samples).toEqual([]);
     expect(artifactUiPropagationSourceTimestamp(messageEvent())).toBeNull();
   });
 
   it("fails closed when the canonical timestamp is invalid", () => {
     expect(() =>
-      scheduleArtifactUiPropagationAfterPaint(artifactEvent("not-a-time"), "task-image-1", {
-        sink: () => undefined,
-      }),
+      scheduleArtifactUiPropagationAfterPaint(
+        artifactEvent("not-a-time"),
+        "task-image-1",
+        {
+          sink: () => undefined,
+        },
+      ),
     ).toThrowError("PERFORMANCE_UI_PROPAGATION_SOURCE_TIMESTAMP_INVALID");
   });
 
@@ -127,6 +137,8 @@ describe("workspace UI propagation telemetry", () => {
       now_ms: () => sourceMs - 1,
     });
     callbacks.shift()?.(0);
-    expect(() => callbacks.shift()?.(16.7)).toThrowError("PERFORMANCE_UI_PROPAGATION_CLOCK_REVERSAL");
+    expect(() => callbacks.shift()?.(16.7)).toThrowError(
+      "PERFORMANCE_UI_PROPAGATION_CLOCK_REVERSAL",
+    );
   });
 });

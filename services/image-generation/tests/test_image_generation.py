@@ -444,7 +444,9 @@ def test_product_scene_requires_identity_role_before_gateway() -> None:
         payloads={},
         references=StaticReferenceAuthorizer({(ASSET, "v1"): authorized}),
     )
-    with pytest.raises(ImageGenerationPipelineError, match="PRODUCT_SCENE_IDENTITY_REFERENCE_REQUIRED"):
+    with pytest.raises(
+        ImageGenerationPipelineError, match="PRODUCT_SCENE_IDENTITY_REFERENCE_REQUIRED"
+    ):
         asyncio.run(
             pipeline.start(
                 _spec(mode="PRODUCT_SCENE", references=(reference,)),
@@ -524,9 +526,7 @@ def test_constraint_snapshot_hash_changes_for_soft_constraint_too() -> None:
         snapshot_hash="f" * 64,
         parameters={"style": "minimal"},
     )
-    assert constraint_snapshot_hash(base) != constraint_snapshot_hash(
-        _spec(constraints=(soft,))
-    )
+    assert constraint_snapshot_hash(base) != constraint_snapshot_hash(_spec(constraints=(soft,)))
 
 
 class PassingIdentityDelegate:

@@ -71,9 +71,7 @@ class SkillRegistry:
                 return
             if definition.identity in visiting:
                 cycle = " -> ".join((*visiting, definition.identity))
-                raise SkillDependencyCycleError(
-                    f"Skill dependency cycle: {cycle}"
-                )
+                raise SkillDependencyCycleError(f"Skill dependency cycle: {cycle}")
             self._validate_context(definition, context)
             visiting.append(definition.identity)
             for dependency in sorted(
@@ -102,23 +100,18 @@ class SkillRegistry:
             raise SkillCompatibilityError(
                 f"{definition.identity} incompatible with {context.agent_id}"
             )
-        missing_tools = {
-            item.name for item in definition.required_tools
-        } - context.allowed_tools
+        missing_tools = {item.name for item in definition.required_tools} - context.allowed_tools
         if missing_tools:
             raise SkillPermissionError(
                 f"Skill requires tools outside Agent scope: {sorted(missing_tools)}"
             )
-        missing_permissions = (
-            set(definition.permissions) - context.granted_permissions
-        )
+        missing_permissions = set(definition.permissions) - context.granted_permissions
         if missing_permissions:
             raise SkillPermissionError(
                 f"Skill expands Agent permissions: {sorted(missing_permissions)}"
             )
         missing_capabilities = (
-            set(definition.required_capabilities)
-            - context.available_capabilities
+            set(definition.required_capabilities) - context.available_capabilities
         )
         if missing_capabilities:
             raise SkillCapabilityError(
@@ -133,13 +126,8 @@ class SkillRegistry:
         alias = self.manifest.aliases.get(skill_id, {}).get(selector)
         if alias is not None:
             release = self._release(skill_id, alias)
-            if (
-                selector == "production"
-                and release.status != SkillReleaseStatus.PRODUCTION
-            ):
-                raise SkillReleaseError(
-                    "production alias must target PRODUCTION"
-                )
+            if selector == "production" and release.status != SkillReleaseStatus.PRODUCTION:
+                raise SkillReleaseError("production alias must target PRODUCTION")
             if release.status == SkillReleaseStatus.DISABLED:
                 raise SkillReleaseError("Skill alias targets DISABLED")
             return alias, release
@@ -149,8 +137,7 @@ class SkillRegistry:
             versions = tuple(
                 row.version
                 for row in self.manifest.releases
-                if row.skill_id == skill_id
-                and row.status == SkillReleaseStatus.PRODUCTION
+                if row.skill_id == skill_id and row.status == SkillReleaseStatus.PRODUCTION
             )
             try:
                 version = select_highest(versions, selector)
@@ -166,9 +153,7 @@ class SkillRegistry:
             SkillReleaseStatus.DRAFT,
             SkillReleaseStatus.DISABLED,
         }:
-            raise SkillReleaseError(
-                f"Skill exact version is not runnable: {skill_id}@{selector}"
-            )
+            raise SkillReleaseError(f"Skill exact version is not runnable: {skill_id}@{selector}")
         return selector, release
 
     def _release(self, skill_id: str, version: str) -> SkillReleaseRecord:
@@ -181,51 +166,32 @@ class SkillRegistry:
             None,
         )
         if row is None:
-            raise SkillReleaseError(
-                f"Skill release metadata missing: {skill_id}@{version}"
-            )
+            raise SkillReleaseError(f"Skill release metadata missing: {skill_id}@{version}")
         return row
 
     def _validate_manifest(self) -> None:
-        if (
-            self.manifest.schema != "lumi.skill-registry.release.v1"
-            or self.manifest.revision < 1
-        ):
-            raise SkillReleaseError(
-                "Skill release manifest schema/revision invalid"
-            )
+        if self.manifest.schema != "lumi.skill-registry.release.v1" or self.manifest.revision < 1:
+            raise SkillReleaseError("Skill release manifest schema/revision invalid")
         definitions = set(self._by_key)
-        releases = {
-            f"{item.skill_id}@{item.version}"
-            for item in self.manifest.releases
-        }
+        releases = {f"{item.skill_id}@{item.version}" for item in self.manifest.releases}
         if definitions != releases:
             raise SkillReleaseError("Skill release/definition set mismatch")
         production: dict[str, int] = defaultdict(int)
         for row in self.manifest.releases:
             definition = self._by_key[f"{row.skill_id}@{row.version}"]
             if row.eval_profile != definition.eval_profile:
-                raise SkillReleaseError(
-                    f"release eval profile mismatch: {definition.identity}"
-                )
+                raise SkillReleaseError(f"release eval profile mismatch: {definition.identity}")
             if row.status == SkillReleaseStatus.PRODUCTION:
                 production[row.skill_id] += 1
         if any(count > 1 for count in production.values()):
-            raise SkillReleaseError(
-                "multiple PRODUCTION versions for one Skill"
-            )
+            raise SkillReleaseError("multiple PRODUCTION versions for one Skill")
         for skill_id, aliases in self.manifest.aliases.items():
             for name, version in aliases.items():
                 release = self._release(skill_id, version)
                 if release.status == SkillReleaseStatus.DISABLED:
                     raise SkillReleaseError("Skill alias targets DISABLED")
-                if (
-                    name == "production"
-                    and release.status != SkillReleaseStatus.PRODUCTION
-                ):
-                    raise SkillReleaseError(
-                        "Skill production alias targets non-production"
-                    )
+                if name == "production" and release.status != SkillReleaseStatus.PRODUCTION:
+                    raise SkillReleaseError("Skill production alias targets non-production")
 
     def _validate_production_dag(self) -> None:
         visiting: list[str] = []
@@ -236,8 +202,7 @@ class SkillRegistry:
                 return
             if definition.identity in visiting:
                 raise SkillDependencyCycleError(
-                    "Skill dependency cycle: "
-                    + " -> ".join((*visiting, definition.identity))
+                    "Skill dependency cycle: " + " -> ".join((*visiting, definition.identity))
                 )
             visiting.append(definition.identity)
             for dependency in sorted(
@@ -258,9 +223,7 @@ class SkillRegistry:
 
 def _split(value: str) -> tuple[str, str]:
     if "@" not in value:
-        raise SkillVersionResolutionError(
-            "Skill reference must include @selector"
-        )
+        raise SkillVersionResolutionError("Skill reference must include @selector")
     skill_id, selector = value.rsplit("@", 1)
     if not skill_id or not selector:
         raise SkillVersionResolutionError("Skill reference incomplete")

@@ -54,27 +54,61 @@ EVALUATORS = {
     "LOCK_POSITION": EvaluatorSpec("PREFLIGHT", "lock_property", frozenset({"position"})),
     "LOCK_SIZE": EvaluatorSpec("PREFLIGHT", "lock_property", frozenset({"size"})),
     "LOCK_ROTATION": EvaluatorSpec("PREFLIGHT", "lock_property", frozenset({"rotation"})),
-    "LOCK_TRANSFORM": EvaluatorSpec("PREFLIGHT", "lock_property", frozenset({"position", "size", "rotation", "transform"})),
+    "LOCK_TRANSFORM": EvaluatorSpec(
+        "PREFLIGHT", "lock_property", frozenset({"position", "size", "rotation", "transform"})
+    ),
     "LOCK_ASPECT_RATIO": EvaluatorSpec("PREFLIGHT", "aspect_ratio", frozenset({"size"})),
-    "LOCK_LAYER_ORDER": EvaluatorSpec("PREFLIGHT", "lock_property", frozenset({"layer_order", "parent"})),
+    "LOCK_LAYER_ORDER": EvaluatorSpec(
+        "PREFLIGHT", "lock_property", frozenset({"layer_order", "parent"})
+    ),
     "LOCK_PARENT": EvaluatorSpec("PREFLIGHT", "lock_property", frozenset({"parent"})),
-    "LOCK_CONTENT": EvaluatorSpec("BOTH", "lock_content", frozenset({"content", "text", "asset", "existence"}), "content_identity"),
-    "LOCK_TEXT": EvaluatorSpec("BOTH", "lock_property", frozenset({"text", "content"}), "text_match"),
+    "LOCK_CONTENT": EvaluatorSpec(
+        "BOTH",
+        "lock_content",
+        frozenset({"content", "text", "asset", "existence"}),
+        "content_identity",
+    ),
+    "LOCK_TEXT": EvaluatorSpec(
+        "BOTH", "lock_property", frozenset({"text", "content"}), "text_match"
+    ),
     "LOCK_ASSET": EvaluatorSpec("PREFLIGHT", "lock_property", frozenset({"asset", "content"})),
-    "LOCK_IDENTITY": EvaluatorSpec("BOTH", "lock_property", frozenset({"asset", "content", "existence"}), "identity"),
+    "LOCK_IDENTITY": EvaluatorSpec(
+        "BOTH", "lock_property", frozenset({"asset", "content", "existence"}), "identity"
+    ),
     "LOCK_STYLE": EvaluatorSpec("PREFLIGHT", "lock_property", frozenset({"style"})),
-    "LOCK_BRAND": EvaluatorSpec("BOTH", "lock_property", frozenset({"style", "brand"}), "brand_compliance"),
-    "PROTECT_REGION": EvaluatorSpec("BOTH", "protected_region", frozenset({"position", "size", "rotation", "content", "asset", "style"}), "protected_region_diff"),
-    "MUST_STAY_INSIDE": EvaluatorSpec("PREFLIGHT", "inside_region", frozenset({"position", "size", "parent"})),
-    "MUST_NOT_OVERLAP": EvaluatorSpec("PREFLIGHT", "non_overlap", frozenset({"position", "size", "parent"})),
-    "MIN_MARGIN": EvaluatorSpec("PREFLIGHT", "min_margin", frozenset({"position", "size", "parent"})),
-    "SAFE_AREA": EvaluatorSpec("PREFLIGHT", "inside_region", frozenset({"position", "size", "parent"})),
+    "LOCK_BRAND": EvaluatorSpec(
+        "BOTH", "lock_property", frozenset({"style", "brand"}), "brand_compliance"
+    ),
+    "PROTECT_REGION": EvaluatorSpec(
+        "BOTH",
+        "protected_region",
+        frozenset({"position", "size", "rotation", "content", "asset", "style"}),
+        "protected_region_diff",
+    ),
+    "MUST_STAY_INSIDE": EvaluatorSpec(
+        "PREFLIGHT", "inside_region", frozenset({"position", "size", "parent"})
+    ),
+    "MUST_NOT_OVERLAP": EvaluatorSpec(
+        "PREFLIGHT", "non_overlap", frozenset({"position", "size", "parent"})
+    ),
+    "MIN_MARGIN": EvaluatorSpec(
+        "PREFLIGHT", "min_margin", frozenset({"position", "size", "parent"})
+    ),
+    "SAFE_AREA": EvaluatorSpec(
+        "PREFLIGHT", "inside_region", frozenset({"position", "size", "parent"})
+    ),
     "REQUIRE_CONTRAST": EvaluatorSpec("POSTFLIGHT", "evidence_threshold", evidence="contrast"),
     "REQUIRE_SCANNABILITY": EvaluatorSpec("POSTFLIGHT", "qr_scannability", evidence="qr"),
-    "REQUIRE_TEXT_READABILITY": EvaluatorSpec("POSTFLIGHT", "evidence_threshold", evidence="text_readability"),
-    "REQUIRE_BRAND_COMPLIANCE": EvaluatorSpec("POSTFLIGHT", "evidence_threshold", evidence="brand_compliance"),
+    "REQUIRE_TEXT_READABILITY": EvaluatorSpec(
+        "POSTFLIGHT", "evidence_threshold", evidence="text_readability"
+    ),
+    "REQUIRE_BRAND_COMPLIANCE": EvaluatorSpec(
+        "POSTFLIGHT", "evidence_threshold", evidence="brand_compliance"
+    ),
     "REQUIRE_RESOLUTION": EvaluatorSpec("POSTFLIGHT", "resolution", evidence="resolution"),
-    "REQUIRE_IDENTITY_SCORE": EvaluatorSpec("POSTFLIGHT", "evidence_threshold", evidence="identity"),
+    "REQUIRE_IDENTITY_SCORE": EvaluatorSpec(
+        "POSTFLIGHT", "evidence_threshold", evidence="identity"
+    ),
 }
 
 assert set(EVALUATORS) == CONSTRAINT_TYPES

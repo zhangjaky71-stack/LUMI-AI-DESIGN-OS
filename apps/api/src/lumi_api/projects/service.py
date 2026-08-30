@@ -260,7 +260,9 @@ class ProjectService:
 
         if "status" in changes and changes["status"] is not None:
             target = changes["status"]
-            target_status = target if isinstance(target, ProjectStatus) else ProjectStatus(str(target))
+            target_status = (
+                target if isinstance(target, ProjectStatus) else ProjectStatus(str(target))
+            )
             if target_status != ProjectStatus(row.status):
                 domain = self._to_domain(row)
                 try:
@@ -289,7 +291,10 @@ class ProjectService:
                 values["brief_version"] = new_brief_version
                 brief_history = (new_brief_version, normalized, new_hash)
                 events.append(
-                    ("project.brief.updated", {"brief_version": new_brief_version, "brief_hash": new_hash})
+                    (
+                        "project.brief.updated",
+                        {"brief_version": new_brief_version, "brief_hash": new_hash},
+                    )
                 )
 
         if "settings" in changes and changes["settings"] is not None:

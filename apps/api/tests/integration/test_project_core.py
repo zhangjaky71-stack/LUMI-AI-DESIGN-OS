@@ -89,14 +89,14 @@ async def _create_transaction_idempotency_and_brief_history() -> None:
                 assert project.status == "draft"
 
                 history_count = await session.scalar(
-                    select(func.count()).select_from(ProjectBriefVersion).where(
-                        ProjectBriefVersion.project_id == project.id
-                    )
+                    select(func.count())
+                    .select_from(ProjectBriefVersion)
+                    .where(ProjectBriefVersion.project_id == project.id)
                 )
                 summary_count = await session.scalar(
-                    select(func.count()).select_from(ProjectSummary).where(
-                        ProjectSummary.project_id == project.id
-                    )
+                    select(func.count())
+                    .select_from(ProjectSummary)
+                    .where(ProjectSummary.project_id == project.id)
                 )
                 outbox = await session.scalar(
                     select(OutboxEvent).where(

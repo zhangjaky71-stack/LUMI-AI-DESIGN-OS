@@ -18,7 +18,12 @@ export async function installNode69MultiPageHarness(page: Page): Promise<void> {
       Graphics: new () => {
         x: number;
         y: number;
-        rect(x: number, y: number, width: number, height: number): {
+        rect(
+          x: number,
+          y: number,
+          width: number,
+          height: number,
+        ): {
           fill(color: number): unknown;
         };
       };
@@ -38,7 +43,8 @@ export async function installNode69MultiPageHarness(page: Page): Promise<void> {
       throw new Error("NODE-69 multi-page harness already installed");
     }
     const pixi = scopedWindow.PIXI;
-    if (!pixi) throw new Error("Pixi runtime unavailable for multi-page harness");
+    if (!pixi)
+      throw new Error("Pixi runtime unavailable for multi-page harness");
 
     const host = document.createElement("div");
     host.dataset.node69MultiPageHarness = "true";
@@ -96,7 +102,9 @@ export async function installNode69MultiPageHarness(page: Page): Promise<void> {
             candidate.y = -((cycleIndex % 10) * 2);
           }
         }
-        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
         cycleIndex += 1;
         return {
           page_index: active,
@@ -105,7 +113,11 @@ export async function installNode69MultiPageHarness(page: Page): Promise<void> {
       },
       destroy() {
         for (const pageRoot of pages) pageRoot.destroy({ children: true });
-        app.destroy(true, { children: true, texture: true, textureSource: true });
+        app.destroy(true, {
+          children: true,
+          texture: true,
+          textureSource: true,
+        });
         host.remove();
         delete scopedWindow.__LUMI_NODE69_MULTI_PAGE__;
       },
@@ -117,12 +129,15 @@ export async function cycleNode69MultiPageHarness(
   page: Page,
 ): Promise<{ page_index: number; latency_ms: number }> {
   return page.evaluate(async () => {
-    const harness = (window as unknown as {
-      __LUMI_NODE69_MULTI_PAGE__?: {
-        cycle(): Promise<{ page_index: number; latency_ms: number }>;
-      };
-    }).__LUMI_NODE69_MULTI_PAGE__;
-    if (!harness) throw new Error("NODE-69 multi-page harness is not installed");
+    const harness = (
+      window as unknown as {
+        __LUMI_NODE69_MULTI_PAGE__?: {
+          cycle(): Promise<{ page_index: number; latency_ms: number }>;
+        };
+      }
+    ).__LUMI_NODE69_MULTI_PAGE__;
+    if (!harness)
+      throw new Error("NODE-69 multi-page harness is not installed");
     return harness.cycle();
   });
 }
@@ -131,13 +146,16 @@ export async function readNode69MultiPageShape(
   page: Page,
 ): Promise<{ page_count: number; node_count: number }> {
   return page.evaluate(() => {
-    const harness = (window as unknown as {
-      __LUMI_NODE69_MULTI_PAGE__?: {
-        readonly page_count: number;
-        readonly node_count: number;
-      };
-    }).__LUMI_NODE69_MULTI_PAGE__;
-    if (!harness) throw new Error("NODE-69 multi-page harness is not installed");
+    const harness = (
+      window as unknown as {
+        __LUMI_NODE69_MULTI_PAGE__?: {
+          readonly page_count: number;
+          readonly node_count: number;
+        };
+      }
+    ).__LUMI_NODE69_MULTI_PAGE__;
+    if (!harness)
+      throw new Error("NODE-69 multi-page harness is not installed");
     return {
       page_count: harness.page_count,
       node_count: harness.node_count,
@@ -147,9 +165,11 @@ export async function readNode69MultiPageShape(
 
 export async function destroyNode69MultiPageHarness(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const harness = (window as unknown as {
-      __LUMI_NODE69_MULTI_PAGE__?: { destroy(): void };
-    }).__LUMI_NODE69_MULTI_PAGE__;
+    const harness = (
+      window as unknown as {
+        __LUMI_NODE69_MULTI_PAGE__?: { destroy(): void };
+      }
+    ).__LUMI_NODE69_MULTI_PAGE__;
     harness?.destroy();
   });
 }

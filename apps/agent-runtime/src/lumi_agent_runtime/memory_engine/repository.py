@@ -121,9 +121,7 @@ class InMemoryMemoryRepository:
     ) -> tuple[MemoryRecord, ...]:
         with self._lock:
             return tuple(
-                item
-                for item in self._records.values()
-                if item.organization_id == organization_id
+                item for item in self._records.values() if item.organization_id == organization_id
             )
 
     async def insert_record(self, record: MemoryRecord) -> MemoryRecord:

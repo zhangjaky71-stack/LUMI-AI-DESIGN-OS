@@ -1,12 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { formatBasisPoints, formatMicrousd, sensitiveAction } from "./contracts";
-
+import {
+  formatBasisPoints,
+  formatMicrousd,
+  sensitiveAction,
+} from "./contracts";
 
 describe("NODE-64 admin contracts", () => {
   it("requires reason, ticket and exact second confirmation", () => {
-    expect(() => sensitiveAction("Disable provider p", "provider:p", "reason", "INC-1", "NO")).toThrow("ADMIN_SECOND_CONFIRMATION_REQUIRED");
-    expect(() => sensitiveAction("Disable provider p", "provider:p", "", "INC-1", "CONFIRM")).toThrow("ADMIN_REASON_TICKET_REQUIRED");
-    expect(sensitiveAction("Disable provider p", "provider:p", "reason", "INC-1", "CONFIRM")).toEqual({
+    expect(() =>
+      sensitiveAction(
+        "Disable provider p",
+        "provider:p",
+        "reason",
+        "INC-1",
+        "NO",
+      ),
+    ).toThrow("ADMIN_SECOND_CONFIRMATION_REQUIRED");
+    expect(() =>
+      sensitiveAction(
+        "Disable provider p",
+        "provider:p",
+        "",
+        "INC-1",
+        "CONFIRM",
+      ),
+    ).toThrow("ADMIN_REASON_TICKET_REQUIRED");
+    expect(
+      sensitiveAction(
+        "Disable provider p",
+        "provider:p",
+        "reason",
+        "INC-1",
+        "CONFIRM",
+      ),
+    ).toEqual({
       action_summary: "Disable provider p",
       impact_scope: "provider:p",
       reason: "reason",

@@ -61,9 +61,7 @@ def discover_remote_backend() -> ECSRemoteSandboxBackend:
     child_arn = child_definition.get("taskDefinitionArn")
     containers = child_definition.get("containerDefinitions", [])
     matches = [
-        row
-        for row in containers
-        if isinstance(row, dict) and row.get("name") == "sandbox-child"
+        row for row in containers if isinstance(row, dict) and row.get("name") == "sandbox-child"
     ]
     if not isinstance(child_arn, str) or len(matches) != 1:
         raise ECSDiscoveryError("SANDBOX_CHILD_TASK_DEFINITION_INVALID")

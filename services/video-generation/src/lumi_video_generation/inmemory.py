@@ -19,7 +19,13 @@ from .model import (
 
 
 class ScriptedVideoGateway:
-    def __init__(self, *, estimate: GatewayEstimate, submits: tuple[GatewayVideoResult, ...], polls: tuple[GatewayVideoResult, ...] = ()) -> None:
+    def __init__(
+        self,
+        *,
+        estimate: GatewayEstimate,
+        submits: tuple[GatewayVideoResult, ...],
+        polls: tuple[GatewayVideoResult, ...] = (),
+    ) -> None:
         self.estimate_result = estimate
         self.submits = deque(submits)
         self.polls = deque(polls)
@@ -129,7 +135,14 @@ class MemoryVideoEvents:
     def __init__(self) -> None:
         self.events: list[tuple[str, str, str, dict[str, object]]] = []
 
-    async def emit(self, event_type: str, *, organization_id: str, video_job_id: str, payload: Mapping[str, object]) -> None:
+    async def emit(
+        self,
+        event_type: str,
+        *,
+        organization_id: str,
+        video_job_id: str,
+        payload: Mapping[str, object],
+    ) -> None:
         self.events.append((event_type, organization_id, video_job_id, dict(payload)))
 
 
@@ -142,7 +155,9 @@ class MemoryMediaSandbox:
         self.render_count += 1
         self.last_timeline = timeline
         duration = sum((item.duration_seconds for item in timeline.clips), Decimal("0"))
-        digest = hashlib.sha256(":".join(item.artifact_version_id for item in timeline.clips).encode()).hexdigest()
+        digest = hashlib.sha256(
+            ":".join(item.artifact_version_id for item in timeline.clips).encode()
+        ).hexdigest()
         video = StoredVideoClip(
             storage_key=f"video/final/{digest}.mp4",
             checksum_sha256=digest,

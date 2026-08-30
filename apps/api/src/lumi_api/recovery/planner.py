@@ -137,10 +137,15 @@ def plan_task_recovery(
         "approval",
     }:
         return _decision(RecoveryAction.PRESERVE_WAIT, "task requires user/approval input")
-    if snapshot.external_ref or snapshot.provider_request_id or status in {
-        "waiting_external",
-        "waiting_for_external",
-    }:
+    if (
+        snapshot.external_ref
+        or snapshot.provider_request_id
+        or status
+        in {
+            "waiting_external",
+            "waiting_for_external",
+        }
+    ):
         return _decision(
             RecoveryAction.RECONCILE_EXTERNAL,
             "task references external/provider state",
@@ -162,7 +167,9 @@ def plan_task_recovery(
             stop_auto_retry=True,
         )
     if status in {"pending", "ready", "retry", "failed_retryable"}:
-        return _decision(RecoveryAction.SAFE_REQUEUE, f"task can be scheduled from DB state: {status}")
+        return _decision(
+            RecoveryAction.SAFE_REQUEUE, f"task can be scheduled from DB state: {status}"
+        )
     if status == "running":
         if snapshot.lease_expires_at is None:
             return _decision(
@@ -172,7 +179,9 @@ def plan_task_recovery(
             )
         if _utc(snapshot.lease_expires_at) > current:
             return _decision(RecoveryAction.NO_ACTION, "task lease is still active")
-        return _decision(RecoveryAction.SAFE_REQUEUE, "task lease expired with no external/paid side effect")
+        return _decision(
+            RecoveryAction.SAFE_REQUEUE, "task lease expired with no external/paid side effect"
+        )
     return _decision(
         RecoveryAction.MANUAL_REVIEW,
         f"unknown task status: {status or '<empty>'}",
@@ -207,7 +216,9 @@ def plan_agent_run_recovery(
         )
     if status == "interrupted":
         if snapshot.checkpoint_id:
-            return _decision(RecoveryAction.RESUME_CHECKPOINT, "interrupted run has durable checkpoint")
+            return _decision(
+                RecoveryAction.RESUME_CHECKPOINT, "interrupted run has durable checkpoint"
+            )
         return _decision(
             RecoveryAction.MANUAL_REVIEW,
             "interrupted run has no checkpoint",

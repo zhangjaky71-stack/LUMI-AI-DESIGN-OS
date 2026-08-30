@@ -124,12 +124,21 @@ class ContextRequest:
     @property
     def semantic_hash(self) -> str:
         payload = {
-            "organization_id": str(self.organization_id), "project_id": str(self.project_id),
-            "agent_run_id": str(self.agent_run_id), "task_id": str(self.task_id) if self.task_id else None,
-            "agent_ref": self.agent_ref, "purpose": self.purpose, "query": self.query,
+            "organization_id": str(self.organization_id),
+            "project_id": str(self.project_id),
+            "agent_run_id": str(self.agent_run_id),
+            "task_id": str(self.task_id) if self.task_id else None,
+            "agent_ref": self.agent_ref,
+            "purpose": self.purpose,
+            "query": self.query,
             "context_budget_tokens": self.context_budget_tokens,
-            "layer_budgets": [{"layer": x.layer.value, "max_tokens": x.max_tokens, "required": x.required} for x in self.layer_budgets],
-            "retrieval_limit": self.retrieval_limit, "required_source_ids": sorted(self.required_source_ids), "metadata": self.metadata,
+            "layer_budgets": [
+                {"layer": x.layer.value, "max_tokens": x.max_tokens, "required": x.required}
+                for x in self.layer_budgets
+            ],
+            "retrieval_limit": self.retrieval_limit,
+            "required_source_ids": sorted(self.required_source_ids),
+            "metadata": self.metadata,
         }
         return _hash(payload)
 
@@ -150,12 +159,35 @@ class ContextManifest:
 
     @property
     def freeze_hash(self) -> str:
-        return _hash({
-            "request_hash": self.request_hash,
-            "items": [{"item_id": x.item_id, "layer": x.layer.value, "kind": x.kind.value, "source": asdict(x.source), "trust": x.trust.value, "priority": x.priority, "token_estimate": x.token_estimate, "relevance_score": x.relevance_score, "content_hash": hashlib.sha256(x.content.encode()).hexdigest()} for x in self.items],
-            "total_tokens": self.total_tokens, "max_tokens": self.max_tokens, "source_versions": self.source_versions, "cache_key": self.cache_key, "warnings": self.warnings,
-        })
+        return _hash(
+            {
+                "request_hash": self.request_hash,
+                "items": [
+                    {
+                        "item_id": x.item_id,
+                        "layer": x.layer.value,
+                        "kind": x.kind.value,
+                        "source": asdict(x.source),
+                        "trust": x.trust.value,
+                        "priority": x.priority,
+                        "token_estimate": x.token_estimate,
+                        "relevance_score": x.relevance_score,
+                        "content_hash": hashlib.sha256(x.content.encode()).hexdigest(),
+                    }
+                    for x in self.items
+                ],
+                "total_tokens": self.total_tokens,
+                "max_tokens": self.max_tokens,
+                "source_versions": self.source_versions,
+                "cache_key": self.cache_key,
+                "warnings": self.warnings,
+            }
+        )
 
 
 def _hash(value: Any) -> str:
-    return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(
+            value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+        ).encode()
+    ).hexdigest()

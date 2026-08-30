@@ -1,8 +1,14 @@
-import { canonicalEngineLabel, VERIFIED_EXPORT_CAPABILITIES } from "./contracts";
+import {
+  canonicalEngineLabel,
+  VERIFIED_EXPORT_CAPABILITIES,
+} from "./contracts";
 import type { ExportBootstrap, ExportWorkspaceSnapshot } from "./types";
 
 function deterministicEnabled(): boolean {
-  return process.env.NODE_ENV !== "production" && process.env.LUMI_EXPORT_UI_E2E === "1";
+  return (
+    process.env.NODE_ENV !== "production" &&
+    process.env.LUMI_EXPORT_UI_E2E === "1"
+  );
 }
 
 function deterministicWorkspace(projectId: string): ExportWorkspaceSnapshot {
@@ -36,7 +42,12 @@ function deterministicWorkspace(projectId: string): ExportWorkspaceSnapshot {
         artifact_id: "artifact-summer-launch-design",
         artifact_version_id: "artifact-summer-launch-design-v4",
         design_document_version_id: "design-summer-launch-v4",
-        frame_ids: ["frame-hero", "frame-story", "frame-square", "frame-banner"],
+        frame_ids: [
+          "frame-hero",
+          "frame-story",
+          "frame-square",
+          "frame-banner",
+        ],
         width: 1080,
         height: 1350,
         supports_vector: true,
@@ -66,13 +77,16 @@ function deterministicWorkspace(projectId: string): ExportWorkspaceSnapshot {
         status: "READY",
         created_at: "2026-08-15T04:20:00.000Z",
         manifest_available: true,
-        files: [{
-          file_id: "export-e2e-ready-file-png",
-          filename: "summer-launch-approved.png",
-          mime_type: "image/png",
-          checksum_sha256: "3d3f0a49b61136d4c78fdd4d6ebaa8a9a382daaf96f68ecba079eaf8ad521e28",
-          size_bytes: 388120,
-        }],
+        files: [
+          {
+            file_id: "export-e2e-ready-file-png",
+            filename: "summer-launch-approved.png",
+            mime_type: "image/png",
+            checksum_sha256:
+              "3d3f0a49b61136d4c78fdd4d6ebaa8a9a382daaf96f68ecba079eaf8ad521e28",
+            size_bytes: 388120,
+          },
+        ],
       },
       {
         export_job_id: "export-e2e-partial-boundary",

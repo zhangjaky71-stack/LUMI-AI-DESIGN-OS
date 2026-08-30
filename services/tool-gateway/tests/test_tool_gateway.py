@@ -222,9 +222,7 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
             risk=ToolRisk.WRITE_EXTERNAL,
             idempotency=ToolIdempotency.REQUIRED,
         )
-        adapter = CountingAdapter(
-            ToolAdapterOutput(data={"ok": True}, side_effect_ref="ext://1")
-        )
+        adapter = CountingAdapter(ToolAdapterOutput(data={"ok": True}, side_effect_ref="ext://1"))
         guard = MemoryIdempotentSideEffectGuard()
         gateway = ToolGateway(
             registry=ToolRegistry((tool,)),
@@ -338,9 +336,7 @@ class ToolGatewayTests(unittest.IsolatedAsyncioTestCase):
             adapters={tool.key: adapter},
             audit_sink=audit,
         )
-        await gateway.invoke(
-            request(tool, arguments={"value": "ok", "api_key": "super-secret"})
-        )
+        await gateway.invoke(request(tool, arguments={"value": "ok", "api_key": "super-secret"}))
         self.assertEqual(audit.records[-1].arguments["api_key"], "[REDACTED]")
         self.assertNotIn("super-secret", repr(audit.records[-1]))
 

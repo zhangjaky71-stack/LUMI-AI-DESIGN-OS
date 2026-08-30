@@ -77,13 +77,9 @@ class PostgresGenerationRepository:
                 if existing is not None:
                     existing_job, pending = existing
                     if existing_job.semantic_hash != job.semantic_hash:
-                        raise OperationSemanticConflict(
-                            "GENERATION_OPERATION_SEMANTIC_CONFLICT"
-                        )
+                        raise OperationSemanticConflict("GENERATION_OPERATION_SEMANTIC_CONFLICT")
                     if existing_job.generation_id != job.generation_id:
-                        raise GenerationRepositoryError(
-                            "GENERATION_OPERATION_REBOUND_FORBIDDEN"
-                        )
+                        raise GenerationRepositoryError("GENERATION_OPERATION_REBOUND_FORBIDDEN")
                 provider, model = _job_provider_model(
                     job,
                     fallback_provider=str(row["provider"]),
@@ -152,9 +148,7 @@ class PostgresGenerationRepository:
                 if row is not None:
                     existing = decode_spec(_json_object(row["request_json"]))
                     if existing.semantic_hash != spec.semantic_hash:
-                        raise OperationSemanticConflict(
-                            "GENERATION_OPERATION_SPEC_CONFLICT"
-                        )
+                        raise OperationSemanticConflict("GENERATION_OPERATION_SPEC_CONFLICT")
                     return
                 await connection.execute(
                     """
@@ -216,20 +210,12 @@ class PostgresGenerationRepository:
                 job, pending = _required_result_snapshot(row["result_json"])
                 existing = pending.get(record.candidate_id)
                 if existing is not None:
-                    if (
-                        existing.result.provider_request_id
-                        != record.result.provider_request_id
-                    ):
+                    if existing.result.provider_request_id != record.result.provider_request_id:
                         raise GenerationRepositoryError(
                             "PENDING_INVOCATION_PROVIDER_REQUEST_CHANGED"
                         )
-                    if (
-                        existing.request.variant_operation_id
-                        != record.request.variant_operation_id
-                    ):
-                        raise GenerationRepositoryError(
-                            "PENDING_INVOCATION_OPERATION_CHANGED"
-                        )
+                    if existing.request.variant_operation_id != record.request.variant_operation_id:
+                        raise GenerationRepositoryError("PENDING_INVOCATION_OPERATION_CHANGED")
                 pending[record.candidate_id] = record
                 await _write_result_snapshot(connection, row, job, pending)
         finally:

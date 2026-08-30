@@ -130,15 +130,12 @@ class ContextBuilder:
                 included_sources.add(candidate.source.source_id)
 
             if policy.required and not any(item.layer == layer for item in selected):
-                raise ContextBudgetError(
-                    f"CONTEXT_REQUIRED_LAYER_BUDGET_EXHAUSTED:{layer.value}"
-                )
+                raise ContextBudgetError(f"CONTEXT_REQUIRED_LAYER_BUDGET_EXHAUSTED:{layer.value}")
 
         missing_required = set(request.required_source_ids) - included_sources
         if missing_required:
             raise ContextBudgetError(
-                "CONTEXT_REQUIRED_SOURCE_NOT_INCLUDED:"
-                + ",".join(sorted(missing_required))
+                "CONTEXT_REQUIRED_SOURCE_NOT_INCLUDED:" + ",".join(sorted(missing_required))
             )
         if total > request.context_budget_tokens:
             raise ContextBudgetError("CONTEXT_TOTAL_BUDGET_EXCEEDED")

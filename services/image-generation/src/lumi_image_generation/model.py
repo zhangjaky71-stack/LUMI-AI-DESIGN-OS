@@ -60,7 +60,10 @@ def _normalize(value: Any) -> Any:
     if is_dataclass(value) and not isinstance(value, type):
         return _normalize(asdict(value))
     if isinstance(value, Mapping):
-        return {str(key): _normalize(item) for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))}
+        return {
+            str(key): _normalize(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
     if isinstance(value, tuple | list):
         return [_normalize(item) for item in value]
     if isinstance(value, bool | int | str) or value is None:
@@ -243,7 +246,9 @@ class ImageGenerationSpec:
             raise ValueError("GENERATION_IDENTITY_REQUIREMENT_LIMIT")
         if len(self.constraints) > 128:
             raise ValueError("GENERATION_CONSTRAINT_LIMIT")
-        if len(self.code_git_sha) != 40 or any(ch not in "0123456789abcdef" for ch in self.code_git_sha):
+        if len(self.code_git_sha) != 40 or any(
+            ch not in "0123456789abcdef" for ch in self.code_git_sha
+        ):
             raise ValueError("GENERATION_GIT_SHA_INVALID")
         if self.seed is not None and not 0 <= self.seed <= 2**63 - 1:
             raise ValueError("GENERATION_SEED_INVALID")

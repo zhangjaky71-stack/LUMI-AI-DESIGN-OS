@@ -9,11 +9,23 @@ import type {
   CompilerArtifactProvenance,
 } from "@lumi/artifact-sdk";
 
-export type { Artifact, ArtifactBranch, ArtifactLineageEdge, ArtifactProvenance, ArtifactVersion };
+export type {
+  Artifact,
+  ArtifactBranch,
+  ArtifactLineageEdge,
+  ArtifactProvenance,
+  ArtifactVersion,
+};
 
 export type VersionPreviewKind = "DESIGN_IR" | "RASTER";
 export type CompareViewMode = "SIDE_BY_SIDE" | "OVERLAY" | "WIPE";
-export type SemanticChangeKind = "TEXT" | "STYLE" | "LAYOUT" | "ASSET" | "IDENTITY" | "OTHER";
+export type SemanticChangeKind =
+  | "TEXT"
+  | "STYLE"
+  | "LAYOUT"
+  | "ASSET"
+  | "IDENTITY"
+  | "OTHER";
 export type VersionNoticeKind = "INFO" | "WARNING" | "CONFLICT";
 
 export interface ArtifactVersionOption {
@@ -146,7 +158,9 @@ export interface VersionsBootstrapSeed {
   readonly versions: readonly ArtifactVersion[];
   readonly lineage: readonly ArtifactLineageEdge[];
   readonly provenance: readonly ArtifactProvenance[];
-  readonly semantic_changes: Readonly<Record<string, readonly VersionSemanticChange[]>>;
+  readonly semantic_changes: Readonly<
+    Record<string, readonly VersionSemanticChange[]>
+  >;
   readonly previews: Readonly<Record<string, VersionPreview>>;
   readonly approval: Readonly<Record<string, VersionApprovalSummary>>;
   readonly quality: Readonly<Record<string, VersionQualitySummary>>;

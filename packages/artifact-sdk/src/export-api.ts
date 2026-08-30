@@ -1,5 +1,9 @@
 import { ExportDownloadService, ExportEngine } from "./export-engine";
-import type { ExportJob, ExportJobRepository, ExportSpec } from "./export-engine-types";
+import type {
+  ExportJob,
+  ExportJobRepository,
+  ExportSpec,
+} from "./export-engine-types";
 
 export interface CreateExportResponse {
   readonly export_job_id: string;
@@ -37,7 +41,11 @@ export class ExportApiFacade {
   readonly #jobs: ExportJobRepository;
   readonly #downloads: ExportDownloadService;
 
-  constructor(args: { readonly engine: ExportEngine; readonly jobs: ExportJobRepository; readonly downloads: ExportDownloadService }) {
+  constructor(args: {
+    readonly engine: ExportEngine;
+    readonly jobs: ExportJobRepository;
+    readonly downloads: ExportDownloadService;
+  }) {
     this.#engine = args.engine;
     this.#jobs = args.jobs;
     this.#downloads = args.downloads;
@@ -47,11 +55,19 @@ export class ExportApiFacade {
     return response(await this.#engine.start(spec));
   }
 
-  async runExport(args: { readonly organization_id: string; readonly export_job_id: string }): Promise<ExportStatusResponse> {
-    return this.#status(await this.#engine.execute(args.organization_id, args.export_job_id));
+  async runExport(args: {
+    readonly organization_id: string;
+    readonly export_job_id: string;
+  }): Promise<ExportStatusResponse> {
+    return this.#status(
+      await this.#engine.execute(args.organization_id, args.export_job_id),
+    );
   }
 
-  async getExport(args: { readonly organization_id: string; readonly export_job_id: string }): Promise<ExportStatusResponse> {
+  async getExport(args: {
+    readonly organization_id: string;
+    readonly export_job_id: string;
+  }): Promise<ExportStatusResponse> {
     const job = await this.#jobs.get(args.organization_id, args.export_job_id);
     if (!job) throw new Error("EXPORT_JOB_NOT_FOUND");
     return this.#status(job);
@@ -63,14 +79,21 @@ export class ExportApiFacade {
     readonly export_job_id: string;
     readonly file_id: string;
     readonly expires_seconds?: number;
-  }): Promise<{ readonly url: string; readonly expires_at: string; readonly filename: string }> {
+  }): Promise<{
+    readonly url: string;
+    readonly expires_at: string;
+    readonly filename: string;
+  }> {
     return this.#downloads.download(args);
   }
 
   #status(job: ExportJob): ExportStatusResponse {
     return {
       ...response(job),
-      files: [...job.files, ...(job.manifest_file ? [job.manifest_file] : [])].map((file) => ({
+      files: [
+        ...job.files,
+        ...(job.manifest_file ? [job.manifest_file] : []),
+      ].map((file) => ({
         file_id: file.file_id,
         filename: file.filename,
         mime_type: file.mime_type,

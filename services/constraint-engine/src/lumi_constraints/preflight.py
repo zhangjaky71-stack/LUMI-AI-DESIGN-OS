@@ -186,7 +186,9 @@ def _rect(document: Mapping[str, Any], node_id: str) -> tuple[float, float, floa
         return None
 
 
-def _contains(container: tuple[float, float, float, float], item: tuple[float, float, float, float]) -> bool:
+def _contains(
+    container: tuple[float, float, float, float], item: tuple[float, float, float, float]
+) -> bool:
     cx, cy, cw, ch = container
     x, y, w, h = item
     return x >= cx and y >= cy and x + w <= cx + cw and y + h <= cy + ch
@@ -263,13 +265,12 @@ def _violation(
         actual=actual,
         message_code=message_code,
         repair_hint=repair_hint or {},
-        overrideable=constraint.source != "SAFETY_SYSTEM" and constraint.override_policy == "AUTHORIZED",
+        overrideable=constraint.source != "SAFETY_SYSTEM"
+        and constraint.override_policy == "AUTHORIZED",
     )
 
 
-def _missing_target_violations(
-    constraint: Constraint, missing: tuple[str, ...]
-) -> list[Violation]:
+def _missing_target_violations(constraint: Constraint, missing: tuple[str, ...]) -> list[Violation]:
     return [
         _violation(
             constraint,
@@ -351,7 +352,11 @@ def _evaluate_constraint(
             for changed_id in changes:
                 changed_rect = _rect(candidate, changed_id)
                 region_rect = _constraint_region(candidate, constraint, changed_id)
-                if changed_rect is not None and region_rect is not None and _overlaps(changed_rect, region_rect):
+                if (
+                    changed_rect is not None
+                    and region_rect is not None
+                    and _overlaps(changed_rect, region_rect)
+                ):
                     violations.append(
                         _violation(
                             constraint,
@@ -379,7 +384,9 @@ def _evaluate_constraint(
         return violations
 
     if spec.evaluator in {"inside_region", "min_margin"}:
-        margin = float(constraint.parameters.get("margin", 0)) if spec.evaluator == "min_margin" else 0.0
+        margin = (
+            float(constraint.parameters.get("margin", 0)) if spec.evaluator == "min_margin" else 0.0
+        )
         for target_id in targets:
             if not changes.get(target_id, frozenset()).intersection(spec.properties):
                 continue
@@ -388,7 +395,12 @@ def _evaluate_constraint(
             if item is None or container is None:
                 continue
             cx, cy, cw, ch = container
-            allowed = (cx + margin, cy + margin, max(0.0, cw - 2 * margin), max(0.0, ch - 2 * margin))
+            allowed = (
+                cx + margin,
+                cy + margin,
+                max(0.0, cw - 2 * margin),
+                max(0.0, ch - 2 * margin),
+            )
             if not _contains(allowed, item):
                 violations.append(
                     _violation(
@@ -449,7 +461,13 @@ def preflight(
     conflicts = detect_conflicts(all_constraints)
     hard_conflicts = tuple(item for item in conflicts if item.severity == "HARD")
     if hard_conflicts:
-        return PreflightResult("DENY", None, None, hard_conflicts, tuple(item for item in conflicts if item.severity != "HARD"))
+        return PreflightResult(
+            "DENY",
+            None,
+            None,
+            hard_conflicts,
+            tuple(item for item in conflicts if item.severity != "HARD"),
+        )
 
     try:
         applied = apply_operation(document, operation, current_version=current_document_version)

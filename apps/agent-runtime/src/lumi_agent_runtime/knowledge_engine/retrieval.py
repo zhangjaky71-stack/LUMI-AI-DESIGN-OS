@@ -68,8 +68,7 @@ class KnowledgeRetriever:
                 continue
 
             lexical = max(
-                _lexical_score(text, chunk.text)
-                for text in (query.text, *query.expanded_queries)
+                _lexical_score(text, chunk.text) for text in (query.text, *query.expanded_queries)
             )
             semantic = _semantic_score(
                 query.query_embedding,
@@ -80,10 +79,7 @@ class KnowledgeRetriever:
             authority = _AUTHORITY[chunk.trust]
             score = min(
                 1.0,
-                0.38 * semantic
-                + 0.34 * lexical
-                + 0.18 * authority
-                + 0.10 * freshness,
+                0.38 * semantic + 0.34 * lexical + 0.18 * authority + 0.10 * freshness,
             )
             citation = KnowledgeCitation(
                 source_type=chunk.source.source_type.value,

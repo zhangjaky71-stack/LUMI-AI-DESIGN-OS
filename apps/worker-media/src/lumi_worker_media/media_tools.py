@@ -222,7 +222,11 @@ async def _inspect_video(
         raise ValueError("FFPROBE_OUTPUT_INVALID") from exc
     streams = payload.get("streams", [])
     video_stream = next(
-        (stream for stream in streams if isinstance(stream, dict) and stream.get("codec_type") == "video"),
+        (
+            stream
+            for stream in streams
+            if isinstance(stream, dict) and stream.get("codec_type") == "video"
+        ),
         None,
     )
     if video_stream is None:

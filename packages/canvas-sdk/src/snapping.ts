@@ -35,7 +35,10 @@ function candidates(node: CanvasSceneNode): {
   };
 }
 
-function rectCandidates(rect: Rect): { readonly x: readonly number[]; readonly y: readonly number[] } {
+function rectCandidates(rect: Rect): {
+  readonly x: readonly number[];
+  readonly y: readonly number[];
+} {
   return {
     x: [rect.x, rect.x + rect.width / 2, rect.x + rect.width],
     y: [rect.y, rect.y + rect.height / 2, rect.y + rect.height],
@@ -44,16 +47,31 @@ function rectCandidates(rect: Rect): { readonly x: readonly number[]; readonly y
 
 function bestDelta(
   sourceValues: readonly number[],
-  targetValues: ReadonlyArray<{ readonly value: number; readonly nodeId?: string }>,
+  targetValues: ReadonlyArray<{
+    readonly value: number;
+    readonly nodeId?: string;
+  }>,
   tolerance: number,
-): { readonly delta: number; readonly value: number; readonly nodeId?: string } | null {
-  let best: { readonly delta: number; readonly value: number; readonly nodeId?: string } | null = null;
+): {
+  readonly delta: number;
+  readonly value: number;
+  readonly nodeId?: string;
+} | null {
+  let best: {
+    readonly delta: number;
+    readonly value: number;
+    readonly nodeId?: string;
+  } | null = null;
   for (const source of sourceValues) {
     for (const target of targetValues) {
       const delta = target.value - source;
       if (Math.abs(delta) > tolerance) continue;
       if (!best || Math.abs(delta) < Math.abs(best.delta)) {
-        best = { delta, value: target.value, ...(target.nodeId ? { nodeId: target.nodeId } : {}) };
+        best = {
+          delta,
+          value: target.value,
+          ...(target.nodeId ? { nodeId: target.nodeId } : {}),
+        };
       }
     }
   }
@@ -74,7 +92,13 @@ export function snapRect(
   for (const id of scene.paint_order) {
     if (ignoreIds.has(id)) continue;
     const node = scene.nodes.get(id);
-    if (!node || !node.visible || node.kind === "DOCUMENT_ROOT" || node.kind === "GUIDE") continue;
+    if (
+      !node ||
+      !node.visible ||
+      node.kind === "DOCUMENT_ROOT" ||
+      node.kind === "GUIDE"
+    )
+      continue;
     const values = candidates(node);
     xTargets.push(...values.x.map((value) => ({ value, nodeId: id })));
     yTargets.push(...values.y.map((value) => ({ value, nodeId: id })));
@@ -87,8 +111,20 @@ export function snapRect(
   let nextY = desired.y + (ySnap?.delta ?? 0);
   const guides: SnapGuide[] = [];
 
-  if (xSnap) guides.push({ axis: "x", value: xSnap.value, kind: "edge", ...(xSnap.nodeId ? { source_node_id: xSnap.nodeId } : {}) });
-  if (ySnap) guides.push({ axis: "y", value: ySnap.value, kind: "edge", ...(ySnap.nodeId ? { source_node_id: ySnap.nodeId } : {}) });
+  if (xSnap)
+    guides.push({
+      axis: "x",
+      value: xSnap.value,
+      kind: "edge",
+      ...(xSnap.nodeId ? { source_node_id: xSnap.nodeId } : {}),
+    });
+  if (ySnap)
+    guides.push({
+      axis: "y",
+      value: ySnap.value,
+      kind: "edge",
+      ...(ySnap.nodeId ? { source_node_id: ySnap.nodeId } : {}),
+    });
 
   if (options.include_grid && (options.grid_size ?? 0) > 0) {
     const grid = options.grid_size ?? 8;

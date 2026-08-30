@@ -8,11 +8,13 @@ import type {
 } from "./types";
 
 function assertProbability(value: number, name: string): void {
-  if (!Number.isFinite(value) || value < 0 || value > 1) throw new Error(`${name} must be between 0 and 1`);
+  if (!Number.isFinite(value) || value < 0 || value > 1)
+    throw new Error(`${name} must be between 0 and 1`);
 }
 
 function assertScore(value: number): void {
-  if (!Number.isFinite(value) || value < 0 || value > 100) throw new Error("calibration score must be between 0 and 100");
+  if (!Number.isFinite(value) || value < 0 || value > 100)
+    throw new Error("calibration score must be between 0 and 100");
 }
 
 function countsAt(samples: readonly CalibrationSample[], threshold: number) {
@@ -50,8 +52,12 @@ function rocAuc(samples: readonly CalibrationSample[]): number {
 }
 
 function averagePrecision(samples: readonly CalibrationSample[]): number {
-  const sorted = [...samples].sort((a, b) => b.score - a.score || a.sample_id.localeCompare(b.sample_id));
-  const positives = sorted.filter((sample) => sample.label === "POSITIVE").length;
+  const sorted = [...samples].sort(
+    (a, b) => b.score - a.score || a.sample_id.localeCompare(b.sample_id),
+  );
+  const positives = sorted.filter(
+    (sample) => sample.label === "POSITIVE",
+  ).length;
   if (!positives) return 0;
   let seenPositive = 0;
   let precisionSum = 0;
@@ -69,22 +75,43 @@ export function selectCalibratedThreshold(
   scenario: IdentityScenario,
   objective: CalibrationObjective = {},
 ): CalibrationMetrics {
-  const filtered = samples.filter((sample) => sample.identity_type === identityType && sample.scenario === scenario);
-  if (!filtered.length) throw new Error("calibration dataset is empty for identity type/scenario");
+  const filtered = samples.filter(
+    (sample) =>
+      sample.identity_type === identityType && sample.scenario === scenario,
+  );
+  if (!filtered.length)
+    throw new Error("calibration dataset is empty for identity type/scenario");
   filtered.forEach((sample) => assertScore(sample.score));
-  const positiveCount = filtered.filter((sample) => sample.label === "POSITIVE").length;
-  const negativeCount = filtered.filter((sample) => sample.label === "NEGATIVE").length;
-  const nearMissCount = filtered.filter((sample) => sample.label === "NEAR_MISS").length;
+  const positiveCount = filtered.filter(
+    (sample) => sample.label === "POSITIVE",
+  ).length;
+  const negativeCount = filtered.filter(
+    (sample) => sample.label === "NEGATIVE",
+  ).length;
+  const nearMissCount = filtered.filter(
+    (sample) => sample.label === "NEAR_MISS",
+  ).length;
   if (!positiveCount || !(negativeCount + nearMissCount)) {
-    throw new Error("calibration requires positive and negative/near-miss samples");
+    throw new Error(
+      "calibration requires positive and negative/near-miss samples",
+    );
   }
   const minimumPrecision = objective.minimum_precision ?? 0;
   const minimumRecall = objective.minimum_recall ?? 0;
   assertProbability(minimumPrecision, "minimum_precision");
   assertProbability(minimumRecall, "minimum_recall");
 
-  const thresholds = [...new Set(filtered.map((sample) => sample.score))].sort((a, b) => a - b);
-  let best: { threshold: number; precision: number; recall: number; f1: number; fpr: number; fnr: number } | null = null;
+  const thresholds = [...new Set(filtered.map((sample) => sample.score))].sort(
+    (a, b) => a - b,
+  );
+  let best: {
+    threshold: number;
+    precision: number;
+    recall: number;
+    f1: number;
+    fpr: number;
+    fnr: number;
+  } | null = null;
   for (const threshold of thresholds) {
     const { tp, fp, tn, fn } = countsAt(filtered, threshold);
     const precision = safeDivide(tp, tp + fp);
@@ -98,9 +125,15 @@ export function selectCalibratedThreshold(
       !best ||
       candidate.f1 > best.f1 ||
       (candidate.f1 === best.f1 && candidate.precision > best.precision) ||
-      (candidate.f1 === best.f1 && candidate.precision === best.precision && candidate.recall > best.recall) ||
-      (candidate.f1 === best.f1 && candidate.precision === best.precision && candidate.recall === best.recall &&
-        ((objective.prefer_higher_threshold_on_tie ?? true) ? candidate.threshold > best.threshold : candidate.threshold < best.threshold))
+      (candidate.f1 === best.f1 &&
+        candidate.precision === best.precision &&
+        candidate.recall > best.recall) ||
+      (candidate.f1 === best.f1 &&
+        candidate.precision === best.precision &&
+        candidate.recall === best.recall &&
+        ((objective.prefer_higher_threshold_on_tie ?? true)
+          ? candidate.threshold > best.threshold
+          : candidate.threshold < best.threshold))
     ) {
       best = candidate;
     }
@@ -138,26 +171,45 @@ export interface BuildCalibrationProfileInput {
   readonly objective?: CalibrationObjective;
 }
 
-export function buildCalibrationProfile(input: BuildCalibrationProfileInput): ThresholdCalibrationProfile {
-  if (!input.required_signals.length) throw new Error("required_signals must not be empty");
+export function buildCalibrationProfile(
+  input: BuildCalibrationProfileInput,
+): ThresholdCalibrationProfile {
+  if (!input.required_signals.length)
+    throw new Error("required_signals must not be empty");
   const distinctSignals = new Set(input.required_signals);
-  if ((input.identity_type === "PRODUCT" || input.identity_type === "LOGO") && distinctSignals.size < 2) {
-    throw new Error("PRODUCT/LOGO calibration must require multiple independent signals");
+  if (
+    (input.identity_type === "PRODUCT" || input.identity_type === "LOGO") &&
+    distinctSignals.size < 2
+  ) {
+    throw new Error(
+      "PRODUCT/LOGO calibration must require multiple independent signals",
+    );
   }
   let totalWeight = 0;
   for (const [signal, weight] of Object.entries(input.signal_weights)) {
-    if (!Number.isFinite(weight) || weight <= 0) throw new Error(`signal weight must be positive: ${signal}`);
+    if (!Number.isFinite(weight) || weight <= 0)
+      throw new Error(`signal weight must be positive: ${signal}`);
     totalWeight += weight;
   }
   if (totalWeight <= 0) throw new Error("signal_weights must not be empty");
   for (const signal of input.required_signals) {
-    if (!(signal in input.signal_weights)) throw new Error(`required signal has no weight: ${signal}`);
+    if (!(signal in input.signal_weights))
+      throw new Error(`required signal has no weight: ${signal}`);
   }
   assertProbability(input.minimum_confidence, "minimum_confidence");
-  if (!Number.isFinite(input.review_margin) || input.review_margin < 0 || input.review_margin > 100) {
+  if (
+    !Number.isFinite(input.review_margin) ||
+    input.review_margin < 0 ||
+    input.review_margin > 100
+  ) {
     throw new Error("review_margin must be between 0 and 100");
   }
-  const metrics = selectCalibratedThreshold(input.samples, input.identity_type, input.scenario, input.objective);
+  const metrics = selectCalibratedThreshold(
+    input.samples,
+    input.identity_type,
+    input.scenario,
+    input.objective,
+  );
   return {
     profile_id: input.profile_id,
     organization_id: input.organization_id,

@@ -14,13 +14,39 @@ const confirm: SensitiveActionInput = {
 const bootstrap: AdminBootstrap = {
   deterministic: true,
   workspace: {
-    actor: { actor_id: "admin-1", roles: ["OPS"], permissions: ["admin.queue.requeue"] },
-    overview: { active_users: 1, active_organizations: 1, daily_generations: 1, failure_rate_basis_points: 0, provider_health: "HEALTHY", queue_depth: 1, cost_today_microusd: null, critical_alerts: [] },
-    users: [], runs: [], providers: [], registry: [], audit: [],
-    queue: [{ queue_item_id: "queue-1", task_id: "task-1", state: "DLQ", payload_ref: "payload://immutable/1", payload_sha256: "a".repeat(64), attempts: 2, last_error_code: "FAIL" }],
+    actor: {
+      actor_id: "admin-1",
+      roles: ["OPS"],
+      permissions: ["admin.queue.requeue"],
+    },
+    overview: {
+      active_users: 1,
+      active_organizations: 1,
+      daily_generations: 1,
+      failure_rate_basis_points: 0,
+      provider_health: "HEALTHY",
+      queue_depth: 1,
+      cost_today_microusd: null,
+      critical_alerts: [],
+    },
+    users: [],
+    runs: [],
+    providers: [],
+    registry: [],
+    audit: [],
+    queue: [
+      {
+        queue_item_id: "queue-1",
+        task_id: "task-1",
+        state: "DLQ",
+        payload_ref: "payload://immutable/1",
+        payload_sha256: "a".repeat(64),
+        attempts: 2,
+        last_error_code: "FAIL",
+      },
+    ],
   },
 };
-
 
 describe("NODE-64 deterministic admin gateway", () => {
   it("requeues without changing immutable payload identity", async () => {
@@ -34,7 +60,12 @@ describe("NODE-64 deterministic admin gateway", () => {
 
   it("view-as is always readonly", async () => {
     const gateway = createAdminGateway(bootstrap, new LumiApiClient());
-    const session = await gateway.startViewAs("user-1", "org-1", "support", "SUP-1");
+    const session = await gateway.startViewAs(
+      "user-1",
+      "org-1",
+      "support",
+      "SUP-1",
+    );
     expect(session.readonly).toBe(true);
     expect(session.ended_at).toBeNull();
   });

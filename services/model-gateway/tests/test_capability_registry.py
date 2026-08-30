@@ -64,9 +64,7 @@ class CapabilityRegistryTests(unittest.IsolatedAsyncioTestCase):
             SupportLevel.FULL,
         )
         video_edit_profile = next(
-            item
-            for item in self.snapshot.routing_profiles
-            if item.profile == "video.edit"
+            item for item in self.snapshot.routing_profiles if item.profile == "video.edit"
         )
         self.assertEqual(
             video_edit_profile.required_capabilities,
@@ -81,16 +79,12 @@ class CapabilityRegistryTests(unittest.IsolatedAsyncioTestCase):
         assert existing is not None
         partial = replace(existing, support=SupportLevel.PARTIAL)
         claims = tuple(
-            partial if item is existing else item
-            for item in self.snapshot.capability_claims
+            partial if item is existing else item for item in self.snapshot.capability_claims
         )
         changed = replace(self.snapshot, capability_claims=claims)
         self.assertNotIn(
             key,
-            {
-                item.model_key
-                for item in changed.list_models(Capability.IMAGE_GENERATE)
-            },
+            {item.model_key for item in changed.list_models(Capability.IMAGE_GENERATE)},
         )
         self.assertIn(
             key,
@@ -141,10 +135,7 @@ class CapabilityRegistryTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("openai", {item.provider for item in models})
         self.assertIn(
             "openai",
-            {
-                item.provider
-                for item in self.snapshot.list_models(Capability.LLM_REASONING)
-            },
+            {item.provider for item in self.snapshot.list_models(Capability.LLM_REASONING)},
         )
 
     def test_hard_region_policy_rejects_unknown_region_facts(self) -> None:
@@ -228,9 +219,7 @@ class CapabilityRegistryTests(unittest.IsolatedAsyncioTestCase):
         decision = await router.route(request)
         self.assertEqual(decision.candidates[0].model, "gpt-5.6-sol")
         reasons = decision.candidates[0].reason_codes
-        self.assertTrue(
-            any(item.startswith("REGISTRY_SNAPSHOT:") for item in reasons)
-        )
+        self.assertTrue(any(item.startswith("REGISTRY_SNAPSHOT:") for item in reasons))
         self.assertIn("REGISTRY_VERSION:1", reasons)
 
         claims = tuple(

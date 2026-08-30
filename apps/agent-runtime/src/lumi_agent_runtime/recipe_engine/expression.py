@@ -76,9 +76,7 @@ def _validate_node(node: ast.AST) -> None:
         for item in node.elts:
             _validate_node(item)
         return
-    raise RecipeExpressionError(
-        f"RECIPE_EXPRESSION_NODE_FORBIDDEN:{type(node).__name__}"
-    )
+    raise RecipeExpressionError(f"RECIPE_EXPRESSION_NODE_FORBIDDEN:{type(node).__name__}")
 
 
 def _evaluate(node: ast.AST, context: dict[str, Any]) -> Any:
@@ -86,15 +84,11 @@ def _evaluate(node: ast.AST, context: dict[str, Any]) -> Any:
         try:
             return context[node.id]
         except KeyError as exc:
-            raise RecipeExpressionError(
-                f"RECIPE_EXPRESSION_CONTEXT_MISSING:{node.id}"
-            ) from exc
+            raise RecipeExpressionError(f"RECIPE_EXPRESSION_CONTEXT_MISSING:{node.id}") from exc
     if isinstance(node, ast.Attribute):
         parent = _evaluate(node.value, context)
         if not isinstance(parent, dict) or node.attr not in parent:
-            raise RecipeExpressionError(
-                f"RECIPE_EXPRESSION_PATH_MISSING:{node.attr}"
-            )
+            raise RecipeExpressionError(f"RECIPE_EXPRESSION_PATH_MISSING:{node.attr}")
         return parent[node.attr]
     if isinstance(node, ast.Constant):
         return node.value

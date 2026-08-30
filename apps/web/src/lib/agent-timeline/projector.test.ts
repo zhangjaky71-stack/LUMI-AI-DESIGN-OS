@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { AIWorkspaceSnapshot, AgentTaskSummary } from "@/lib/ai-workspace/types";
+import type {
+  AIWorkspaceSnapshot,
+  AgentTaskSummary,
+} from "@/lib/ai-workspace/types";
 import { projectAgentTimeline, sanitizeTimelineText } from "./projector";
 
-function snapshot(tasks: readonly AgentTaskSummary[] = []): AIWorkspaceSnapshot {
+function snapshot(
+  tasks: readonly AgentTaskSummary[] = [],
+): AIWorkspaceSnapshot {
   return {
     project_id: "project-1",
     project_name: "Project",
@@ -42,18 +47,20 @@ function snapshot(tasks: readonly AgentTaskSummary[] = []): AIWorkspaceSnapshot 
 
 describe("Agent Timeline canonical projection", () => {
   it("projects real task counts rather than inventing percentages", () => {
-    const view = projectAgentTimeline(snapshot([
-      {
-        task_id: "visual",
-        label: "生成视觉方向",
-        status: "RUNNING",
-        retryable: true,
-        category: "GENERATION",
-        safe_summary: "正在生成 4 个可评审方向。",
-        completed_units: 2,
-        total_units: 4,
-      },
-    ]));
+    const view = projectAgentTimeline(
+      snapshot([
+        {
+          task_id: "visual",
+          label: "生成视觉方向",
+          status: "RUNNING",
+          retryable: true,
+          category: "GENERATION",
+          safe_summary: "正在生成 4 个可评审方向。",
+          completed_units: 2,
+          total_units: 4,
+        },
+      ]),
+    );
     const task = view.items.find((item) => item.task_id === "visual");
     expect(task?.progress).toEqual({ completed: 2, total: 4, label: "2/4" });
     expect(JSON.stringify(task)).not.toContain("50%");
@@ -78,27 +85,33 @@ describe("Agent Timeline canonical projection", () => {
   });
 
   it("redacts text that looks like private execution detail", () => {
-    expect(sanitizeTimelineText("system prompt: never expose this")).toBe("内部执行细节已隐藏。");
-    expect(sanitizeTimelineText("Checked brand consistency")).toBe("Checked brand consistency");
+    expect(sanitizeTimelineText("system prompt: never expose this")).toBe(
+      "内部执行细节已隐藏。",
+    );
+    expect(sanitizeTimelineText("Checked brand consistency")).toBe(
+      "Checked brand consistency",
+    );
   });
 
   it("projects provider fallback, retryable error and request id without a stack", () => {
-    const view = projectAgentTimeline(snapshot([
-      {
-        task_id: "render",
-        label: "Generate hero",
-        status: "FAILED",
-        retryable: true,
-        category: "GENERATION",
-        error: {
-          code: "PROVIDER_TIMEOUT",
-          safe_message: "主 Provider 超时，任务可重试。",
-          retrying: false,
-          request_id: "req-public-42",
-          provider_fallback: "Primary → Backup image provider",
+    const view = projectAgentTimeline(
+      snapshot([
+        {
+          task_id: "render",
+          label: "Generate hero",
+          status: "FAILED",
+          retryable: true,
+          category: "GENERATION",
+          error: {
+            code: "PROVIDER_TIMEOUT",
+            safe_message: "主 Provider 超时，任务可重试。",
+            retrying: false,
+            request_id: "req-public-42",
+            provider_fallback: "Primary → Backup image provider",
+          },
         },
-      },
-    ]));
+      ]),
+    );
     const item = view.items.find((candidate) => candidate.task_id === "render");
     expect(item?.category).toBe("ERROR");
     expect(item?.error?.provider_fallback).toContain("Backup");
@@ -139,14 +152,26 @@ describe("Agent Timeline canonical projection", () => {
     };
     const view = projectAgentTimeline(withApproval);
     expect(view.has_waiting_user).toBe(true);
-    expect(view.items.find((item) => item.approval_id === "approval-current")?.sticky).toBe(true);
-    expect(view.items.find((item) => item.approval_id === "approval-old")?.sticky).toBe(false);
+    expect(
+      view.items.find((item) => item.approval_id === "approval-current")
+        ?.sticky,
+    ).toBe(true);
+    expect(
+      view.items.find((item) => item.approval_id === "approval-old")?.sticky,
+    ).toBe(false);
   });
 
   it("reconstructs the same timeline from the same canonical snapshot after refresh", () => {
     const canonical = snapshot([
-      { task_id: "brief", label: "Brief prepared", status: "SUCCEEDED", retryable: false },
+      {
+        task_id: "brief",
+        label: "Brief prepared",
+        status: "SUCCEEDED",
+        retryable: false,
+      },
     ]);
-    expect(projectAgentTimeline(structuredClone(canonical))).toEqual(projectAgentTimeline(canonical));
+    expect(projectAgentTimeline(structuredClone(canonical))).toEqual(
+      projectAgentTimeline(canonical),
+    );
   });
 });

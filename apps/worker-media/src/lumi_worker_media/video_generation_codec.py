@@ -79,7 +79,9 @@ def decode_video_job(value: object) -> VideoJob:
             _decode_shot_runtime(item)
             for item in _list(payload["shots"], "VIDEO_JOB_SHOTS_INVALID")
         ),
-        estimated_cost_usd=_decimal(payload["estimated_cost_usd"], "VIDEO_JOB_ESTIMATED_COST_INVALID"),
+        estimated_cost_usd=_decimal(
+            payload["estimated_cost_usd"], "VIDEO_JOB_ESTIMATED_COST_INVALID"
+        ),
         actual_cost_usd=_decimal(payload["actual_cost_usd"], "VIDEO_JOB_ACTUAL_COST_INVALID"),
         final_artifact_version_id=_optional_string(
             payload["final_artifact_version_id"], "VIDEO_JOB_FINAL_ARTIFACT_INVALID"
@@ -118,7 +120,9 @@ def decode_provider_record(value: object) -> ProviderJobRecord:
         organization_id=_string(payload["organization_id"], "VIDEO_PROVIDER_ORGANIZATION_REQUIRED"),
         video_job_id=_string(payload["video_job_id"], "VIDEO_PROVIDER_JOB_ID_REQUIRED"),
         shot_id=_string(payload["shot_id"], "VIDEO_PROVIDER_SHOT_ID_REQUIRED"),
-        paid_operation_id=_string(payload["paid_operation_id"], "VIDEO_PROVIDER_OPERATION_REQUIRED"),
+        paid_operation_id=_string(
+            payload["paid_operation_id"], "VIDEO_PROVIDER_OPERATION_REQUIRED"
+        ),
         request_hash=_sha256(payload["request_hash"], "VIDEO_PROVIDER_REQUEST_HASH_INVALID"),
         result=_decode_gateway_result(payload["result"]),
     )
@@ -177,7 +181,9 @@ def _decode_gateway_result(value: object) -> GatewayVideoResult:
             if payload["cost_usd"] is not None
             else None
         ),
-        cost_confidence=_string(payload["cost_confidence"], "VIDEO_GATEWAY_COST_CONFIDENCE_REQUIRED"),
+        cost_confidence=_string(
+            payload["cost_confidence"], "VIDEO_GATEWAY_COST_CONFIDENCE_REQUIRED"
+        ),
         pricing_snapshot_id=_optional_string(
             payload["pricing_snapshot_id"], "VIDEO_GATEWAY_PRICING_SNAPSHOT_INVALID"
         ),
@@ -188,7 +194,9 @@ def _decode_gateway_result(value: object) -> GatewayVideoResult:
         safety_metadata=MappingProxyType(
             _json_object(payload["safety_metadata"], "VIDEO_PROVIDER_SAFETY")
         ),
-        finish_reason=_optional_string(payload["finish_reason"], "VIDEO_GATEWAY_FINISH_REASON_INVALID"),
+        finish_reason=_optional_string(
+            payload["finish_reason"], "VIDEO_GATEWAY_FINISH_REASON_INVALID"
+        ),
     )
 
 
@@ -206,7 +214,9 @@ def _encode_shot_runtime(value: ShotRuntime) -> dict[str, Any]:
         "clip_artifact_version_id": value.clip_artifact_version_id,
         "attempt_artifact_version_ids": list(value.attempt_artifact_version_ids),
         "clip": _encode_clip(value.clip) if value.clip is not None else None,
-        "validation": _encode_validation(value.validation) if value.validation is not None else None,
+        "validation": _encode_validation(value.validation)
+        if value.validation is not None
+        else None,
         "error_code": value.error_code,
     }
 

@@ -1,5 +1,10 @@
 export type CollaborationActorType = "USER" | "AGENT";
-export type CollaborationRole = "OWNER" | "ADMIN" | "EDITOR" | "VIEWER" | "BILLING";
+export type CollaborationRole =
+  | "OWNER"
+  | "ADMIN"
+  | "EDITOR"
+  | "VIEWER"
+  | "BILLING";
 export type CollaborationThreadStatus = "OPEN" | "RESOLVED" | "REOPENED";
 
 export interface CollaborationActorSummary {
@@ -48,7 +53,11 @@ export interface CollaborationThread {
 
 export interface CollaborationNotification {
   readonly notification_id: string;
-  readonly kind: "MENTION" | "COMMENT_REPLY" | "APPROVAL_REQUEST" | "ARTIFACT_READY";
+  readonly kind:
+    | "MENTION"
+    | "COMMENT_REPLY"
+    | "APPROVAL_REQUEST"
+    | "ARTIFACT_READY";
   readonly thread_id: string | null;
   readonly safe_summary: string;
   readonly created_at: string;
@@ -102,7 +111,10 @@ export interface CollaborationWorkspaceSnapshot {
 export interface CreateCollaborationThreadInput {
   readonly body: string;
   readonly mention_actor_ids: readonly string[];
-  readonly anchor: Omit<CollaborationCommentAnchor, "project_id" | "historical">;
+  readonly anchor: Omit<
+    CollaborationCommentAnchor,
+    "project_id" | "historical"
+  >;
 }
 
 export interface ReplyCollaborationThreadInput {
@@ -119,8 +131,14 @@ export type CollaborationRealtimeEvent =
   | { readonly type: "CONNECTED" }
   | { readonly type: "RECONNECTING" }
   | { readonly type: "OFFLINE" }
-  | { readonly type: "PRESENCE_SNAPSHOT"; readonly presence: readonly CollaborationPresence[] }
-  | { readonly type: "AWARENESS_UPDATE"; readonly presence: CollaborationPresence }
+  | {
+      readonly type: "PRESENCE_SNAPSHOT";
+      readonly presence: readonly CollaborationPresence[];
+    }
+  | {
+      readonly type: "AWARENESS_UPDATE";
+      readonly presence: CollaborationPresence;
+    }
   | { readonly type: "WRITE_REJECTED"; readonly code: string };
 
 export interface CollaborationBootstrap {

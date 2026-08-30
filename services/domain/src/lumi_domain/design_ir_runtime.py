@@ -79,7 +79,9 @@ def _error(
     message: str,
     target_id: str | None = None,
 ) -> DesignIrRuntimeError:
-    return DesignIrRuntimeError(str(operation.get("operation_id", "unknown")), code, message, target_id)
+    return DesignIrRuntimeError(
+        str(operation.get("operation_id", "unknown")), code, message, target_id
+    )
 
 
 def _node(document: JsonObject, operation: JsonObject, node_id: str) -> JsonObject:
@@ -174,7 +176,9 @@ def _apply_create(document: JsonObject, operation: JsonObject, payload: JsonObje
         raise _error(operation, "PARENT_NOT_FOUND", "CREATE_NODE requires a parent_id")
     parent = _parent(document, operation, parent_id)
     node["parent_id"] = parent_id
-    node["children"] = list(node.get("children", [])) if isinstance(node.get("children"), list) else []
+    node["children"] = (
+        list(node.get("children", [])) if isinstance(node.get("children"), list) else []
+    )
     nodes[node_id] = node
     _insert_child(parent, node_id, payload.get("index"))
 
@@ -183,7 +187,9 @@ def _apply_delete(document: JsonObject, operation: JsonObject) -> None:
     root_id = document.get("root_id")
     for node_id in _targets(operation):
         if node_id == root_id:
-            raise _error(operation, "ROOT_MUTATION_FORBIDDEN", "The document root cannot be deleted", node_id)
+            raise _error(
+                operation, "ROOT_MUTATION_FORBIDDEN", "The document root cannot be deleted", node_id
+            )
         node = _node(document, operation, node_id)
         parent_id = node.get("parent_id")
         if isinstance(parent_id, str):
@@ -199,7 +205,9 @@ def _apply_property(document: JsonObject, operation: JsonObject, payload: JsonOb
         raise _error(operation, "INVALID_OPERATION", "SET_PROPERTY payload.path must be a string")
     for node_id in _targets(operation):
         if node_id == document.get("root_id") and path in {"id", "parent_id"}:
-            raise _error(operation, "ROOT_MUTATION_FORBIDDEN", f"Cannot mutate root {path}", node_id)
+            raise _error(
+                operation, "ROOT_MUTATION_FORBIDDEN", f"Cannot mutate root {path}", node_id
+            )
         _set_path(_node(document, operation, node_id), path, payload.get("value"))
 
 
@@ -239,7 +247,9 @@ def _apply_one(
 ) -> None:
     operation_id = str(operation.get("operation_id", "unknown"))
     if operation.get("expected_document_version") != expected_version:
-        raise _error(operation, "VERSION_CONFLICT", f"Current document version is {expected_version}")
+        raise _error(
+            operation, "VERSION_CONFLICT", f"Current document version is {expected_version}"
+        )
     payload = operation.get("payload", {})
     if not isinstance(payload, dict):
         raise _error(operation, "INVALID_OPERATION", "payload must be an object")
@@ -308,7 +318,9 @@ def _apply_one(
     elif operation_type == "BATCH":
         nested = payload.get("operations")
         if not isinstance(nested, list):
-            raise _error(operation, "INVALID_OPERATION", "BATCH payload.operations must be an array")
+            raise _error(
+                operation, "INVALID_OPERATION", "BATCH payload.operations must be an array"
+            )
         for child in nested:
             if not isinstance(child, dict):
                 raise _error(operation, "INVALID_OPERATION", "BATCH operations must be objects")

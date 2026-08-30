@@ -111,7 +111,9 @@ def _dispatch() -> JobDispatch:
     )
 
 
-def test_due_wait_copies_canonical_dispatch_and_uses_state_version_identity(monkeypatch: object) -> None:
+def test_due_wait_copies_canonical_dispatch_and_uses_state_version_identity(
+    monkeypatch: object,
+) -> None:
     dispatch = _dispatch()
     task = {
         "id": dispatch.message.job_id,

@@ -19,7 +19,9 @@ function conflictViolations(
   constraints: readonly DesignConstraint[],
   conflicts: ReturnType<typeof resolveConstraints>["conflicts"],
 ): ConstraintViolation[] {
-  const byId = new Map(constraints.map((constraint) => [constraint.id, constraint]));
+  const byId = new Map(
+    constraints.map((constraint) => [constraint.id, constraint]),
+  );
   return conflicts.map((conflict) => {
     const first = byId.get(conflict.constraint_ids[0]!)!;
     return {
@@ -39,7 +41,9 @@ function staleViolations(
   constraints: readonly DesignConstraint[],
   staleIds: readonly string[],
 ): ConstraintViolation[] {
-  const byId = new Map(constraints.map((constraint) => [constraint.id, constraint]));
+  const byId = new Map(
+    constraints.map((constraint) => [constraint.id, constraint]),
+  );
   return staleIds.map((id) => {
     const constraint = byId.get(id)!;
     return {
@@ -96,9 +100,15 @@ export function preflightOperations(
   const tolerance = options.tolerance ?? DEFAULT_TOLERANCE;
   const violations: ConstraintViolation[] = [...initialViolations];
   for (const constraint of resolved.constraints) {
-    if (isConstraintOverridden(document, constraint, options.overrides)) continue;
+    if (isConstraintOverridden(document, constraint, options.overrides))
+      continue;
     violations.push(
-      ...evaluateDeterministicConstraint(document, execution.document, constraint, tolerance),
+      ...evaluateDeterministicConstraint(
+        document,
+        execution.document,
+        constraint,
+        tolerance,
+      ),
     );
   }
   const aggregated = aggregateViolations(violations);
@@ -108,7 +118,9 @@ export function preflightOperations(
     conflicts: resolved.conflicts,
     effective_constraint_ids: resolved.constraints.map((item) => item.id),
   };
-  return report.decision === "DENY" ? { preflight: report } : { preflight: report, execution };
+  return report.decision === "DENY"
+    ? { preflight: report }
+    : { preflight: report, execution };
 }
 
 /**

@@ -26,9 +26,7 @@ class DeepAgentsSkillBundle:
             for relative, content in sorted(definition.resources.items()):
                 path = f"{base}/{relative}"
                 if path in files:
-                    raise SkillDefinitionInvalidError(
-                        f"Skill bundle path collision: {path}"
-                    )
+                    raise SkillDefinitionInvalidError(f"Skill bundle path collision: {path}")
                 files[path] = content
         return files
 
@@ -42,10 +40,7 @@ class DeepAgentsSkillBundle:
             raise SkillDefinitionInvalidError(
                 "current Deep Agents create_file_data is unavailable"
             ) from exc
-        return {
-            path: helper(content)
-            for path, content in self.plain_files().items()
-        }
+        return {path: helper(content) for path, content in self.plain_files().items()}
 
 
 def inject_skill_files(
@@ -55,15 +50,11 @@ def inject_skill_files(
     result = dict(input_state)
     existing = result.get("files", {})
     if not isinstance(existing, dict):
-        raise SkillDefinitionInvalidError(
-            "Deep Agents input files must be an object"
-        )
+        raise SkillDefinitionInvalidError("Deep Agents input files must be an object")
     merged = dict(existing)
     for path, value in bundle.deep_agents_files().items():
         if path in merged:
-            raise SkillDefinitionInvalidError(
-                f"Skill seed would overwrite existing file: {path}"
-            )
+            raise SkillDefinitionInvalidError(f"Skill seed would overwrite existing file: {path}")
         merged[path] = value
     result["files"] = merged
     return result

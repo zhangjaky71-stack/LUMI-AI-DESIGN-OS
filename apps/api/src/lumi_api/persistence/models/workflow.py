@@ -165,9 +165,13 @@ class Task(IdMixin, MutableTimestampMixin, Base):
     budget_limit_usd: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     state_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     lease_owner: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    retry_not_before: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retry_not_before: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     wait_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     external_ref: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     cancellation_requested_at: Mapped[datetime | None] = mapped_column(

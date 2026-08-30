@@ -42,15 +42,23 @@ def _safety(report: EditValidationReport, result: GatewayEditResult) -> EditVali
     blocked = result.safety_metadata.get("blocked") is True
     if not blocked:
         return report
-    return replace(report, findings=report.findings + (EditFinding(
-        validator="model-gateway-safety",
-        status="FAIL",
-        severity="HARD",
-        reason_code="IMAGE_EDIT_PROVIDER_SAFETY_BLOCK",
-    ),))
+    return replace(
+        report,
+        findings=report.findings
+        + (
+            EditFinding(
+                validator="model-gateway-safety",
+                status="FAIL",
+                severity="HARD",
+                reason_code="IMAGE_EDIT_PROVIDER_SAFETY_BLOCK",
+            ),
+        ),
+    )
 
 
-def _replace_asset_operation(spec: ImageEditSpec, candidate: StoredEditedImage) -> StructuralEditOperation:
+def _replace_asset_operation(
+    spec: ImageEditSpec, candidate: StoredEditedImage
+) -> StructuralEditOperation:
     if spec.design_document_version is None or not spec.intent.selected_node_ids:
         raise ValueError("IMAGE_EDIT_CANVAS_REPLACE_CONTEXT_MISSING")
     return StructuralEditOperation(
@@ -110,7 +118,12 @@ class ImageEditPipeline:
         )
         self.repository.save_spec(spec)
         self.repository.save(job)
-        await self.events.emit("image_edit.started", organization_id=spec.organization_id, edit_id=edit_id, payload={"route": plan.route})
+        await self.events.emit(
+            "image_edit.started",
+            organization_id=spec.organization_id,
+            edit_id=edit_id,
+            payload={"route": plan.route},
+        )
 
         if plan.route == "STRUCTURAL_IR_EDIT":
             result = await self.structural.apply(spec=spec, operations=plan.structural_operations)
@@ -122,7 +135,12 @@ class ImageEditPipeline:
                 validation_decision="PASS",
             )
             self.repository.save(completed)
-            await self.events.emit("image_edit.completed", organization_id=spec.organization_id, edit_id=edit_id, payload={"route": plan.route, "model_invoked": False})
+            await self.events.emit(
+                "image_edit.completed",
+                organization_id=spec.organization_id,
+                edit_id=edit_id,
+                payload={"route": plan.route, "model_invoked": False},
+            )
             return completed
 
         if plan.requires_mask:
@@ -135,11 +153,21 @@ class ImageEditPipeline:
         try:
             result = await self.gateway.invoke(spec=spec, plan=plan, mask=spec.mask)
         except Exception as exc:
-            failed = replace(job, status="FAILED", error_code=f"IMAGE_EDIT_GATEWAY_EXCEPTION:{type(exc).__name__}")
+            failed = replace(
+                job,
+                status="FAILED",
+                error_code=f"IMAGE_EDIT_GATEWAY_EXCEPTION:{type(exc).__name__}",
+            )
             self.repository.save(failed)
             return failed
         if result.status == "PENDING":
-            pending = replace(job, status="PROVIDER_PENDING", provider=result.provider, model=result.model, provider_request_id=result.provider_request_id)
+            pending = replace(
+                job,
+                status="PROVIDER_PENDING",
+                provider=result.provider,
+                model=result.model,
+                provider_request_id=result.provider_request_id,
+            )
             self.repository.save_pending(spec.organization_id, edit_id, result)
             self.repository.save(pending)
             return pending
@@ -166,7 +194,9 @@ class ImageEditPipeline:
         self.repository.delete_pending(organization_id, job.edit_id)
         return await self._complete(spec=spec, plan=plan, job=job, result=result)
 
-    async def _complete(self, *, spec: ImageEditSpec, plan: EditPlan, job: EditJob, result: GatewayEditResult) -> EditJob:
+    async def _complete(
+        self, *, spec: ImageEditSpec, plan: EditPlan, job: EditJob, result: GatewayEditResult
+    ) -> EditJob:
         await self.costs.record(
             edit_id=job.edit_id,
             operation_id=spec.operation_id,
@@ -178,7 +208,14 @@ class ImageEditPipeline:
             pricing_snapshot_id=result.pricing_snapshot_id,
         )
         if result.status != "SUCCEEDED" or not result.output_ref:
-            failed = replace(job, status="FAILED", provider=result.provider, model=result.model, provider_request_id=result.provider_request_id, error_code=f"IMAGE_EDIT_PROVIDER_{result.status}")
+            failed = replace(
+                job,
+                status="FAILED",
+                provider=result.provider,
+                model=result.model,
+                provider_request_id=result.provider_request_id,
+                error_code=f"IMAGE_EDIT_PROVIDER_{result.status}",
+            )
             self.repository.save(failed)
             return failed
         try:
@@ -188,12 +225,25 @@ class ImageEditPipeline:
             report = await self.validator.validate(spec=spec, plan=plan, candidate=candidate)
             report = _safety(report, result)
         except Exception as exc:
-            failed = replace(job, status="FAILED", provider=result.provider, model=result.model, provider_request_id=result.provider_request_id, error_code=f"IMAGE_EDIT_POSTPROCESS_EXCEPTION:{type(exc).__name__}")
+            failed = replace(
+                job,
+                status="FAILED",
+                provider=result.provider,
+                model=result.model,
+                provider_request_id=result.provider_request_id,
+                error_code=f"IMAGE_EDIT_POSTPROCESS_EXCEPTION:{type(exc).__name__}",
+            )
             self.repository.save(failed)
             return failed
 
-        if report.decision == "REJECT" and spec.protected_regions and plan.route in {"PIXEL_LOCAL_EDIT", "REGENERATE_REGION", "HYBRID"}:
-            candidate = await self.composite.composite_source_regions(source=spec.source, candidate=candidate, spec=spec)
+        if (
+            report.decision == "REJECT"
+            and spec.protected_regions
+            and plan.route in {"PIXEL_LOCAL_EDIT", "REGENERATE_REGION", "HYBRID"}
+        ):
+            candidate = await self.composite.composite_source_regions(
+                source=spec.source, candidate=candidate, spec=spec
+            )
             report = await self.validator.validate(spec=spec, plan=plan, candidate=candidate)
             report = _safety(report, result)
 
@@ -225,12 +275,20 @@ class ImageEditPipeline:
             spec=spec, candidate=candidate, provenance=provenance, validation=report
         )
         design_version: str | None = None
-        if report.decision == "PASS" and spec.design_document_id is not None and spec.intent.selected_node_ids:
+        if (
+            report.decision == "PASS"
+            and spec.design_document_id is not None
+            and spec.intent.selected_node_ids
+        ):
             structural_result = await self.structural.apply(
                 spec=spec, operations=(_replace_asset_operation(spec, candidate),)
             )
             design_version = structural_result.design_document_version_id
-        status = "COMPLETED" if report.decision == "PASS" else ("REPAIR_REQUIRED" if report.decision == "REPAIR" else "REJECTED")
+        status = (
+            "COMPLETED"
+            if report.decision == "PASS"
+            else ("REPAIR_REQUIRED" if report.decision == "REPAIR" else "REJECTED")
+        )
         completed = replace(
             job,
             status=status,
@@ -247,6 +305,10 @@ class ImageEditPipeline:
             "image_edit.completed" if status == "COMPLETED" else "image_edit.rejected",
             organization_id=spec.organization_id,
             edit_id=job.edit_id,
-            payload={"status": status, "artifact_version_id": artifact.artifact_version_id, "validation": report.decision},
+            payload={
+                "status": status,
+                "artifact_version_id": artifact.artifact_version_id,
+                "validation": report.decision,
+            },
         )
         return completed

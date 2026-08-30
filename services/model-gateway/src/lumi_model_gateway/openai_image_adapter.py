@@ -210,9 +210,7 @@ class OpenAIImageGenerationAdapter:
         }
         if self._transparent(request):
             payload["background"] = "transparent"
-        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(
-            "utf-8"
-        )
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         headers = {
             "authorization": f"Bearer {self._api_key}",
             "content-type": "application/json",

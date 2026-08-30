@@ -8,7 +8,12 @@ export type RetentionClass =
   | "EXPORT"
   | "ANALYTICS";
 export type ExportFormat = "JSON" | "CSV";
-export type ExportStatus = "PENDING" | "RUNNING" | "READY" | "FAILED" | "EXPIRED";
+export type ExportStatus =
+  | "PENDING"
+  | "RUNNING"
+  | "READY"
+  | "FAILED"
+  | "EXPIRED";
 
 export interface GovernanceCapabilities {
   readonly can_read_audit: boolean;
@@ -83,7 +88,13 @@ export interface DeletionView {
   readonly request_id: string;
   readonly subject_user_id: string;
   readonly organization_id: string;
-  readonly status: "REQUESTED" | "BLOCKED_HOLD" | "DEACTIVATED" | "DELETING" | "COMPLETED" | "FAILED";
+  readonly status:
+    | "REQUESTED"
+    | "BLOCKED_HOLD"
+    | "DEACTIVATED"
+    | "DELETING"
+    | "COMPLETED"
+    | "FAILED";
   readonly resource_refs: readonly string[];
   readonly blocked_hold_ids: readonly string[];
   readonly deleted_count: number;

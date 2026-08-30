@@ -1,6 +1,11 @@
 import type { DesignDocument, DesignOperation } from "@lumi/design-ir";
 
-export type CanvasSyncState = "SAVED" | "DIRTY" | "SAVING" | "OFFLINE" | "CONFLICT";
+export type CanvasSyncState =
+  | "SAVED"
+  | "DIRTY"
+  | "SAVING"
+  | "OFFLINE"
+  | "CONFLICT";
 
 export interface InfiniteCanvasSnapshot {
   readonly project_id: string;

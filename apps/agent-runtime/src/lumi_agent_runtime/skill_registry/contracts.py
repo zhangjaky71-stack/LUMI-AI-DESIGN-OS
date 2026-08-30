@@ -46,7 +46,9 @@ class SkillDefinition:
         SemVer.parse(self.version)
         if not self.summary or len(self.summary) > 1024:
             raise ValueError("SKILL_SUMMARY_INVALID")
-        if not self.compatible_agents or len(set(self.compatible_agents)) != len(self.compatible_agents):
+        if not self.compatible_agents or len(set(self.compatible_agents)) != len(
+            self.compatible_agents
+        ):
             raise ValueError("SKILL_COMPATIBLE_AGENTS_INVALID")
         if not all(_SKILL_ID.fullmatch(item) for item in self.compatible_agents):
             raise ValueError("SKILL_COMPATIBLE_AGENT_INVALID")
@@ -111,7 +113,9 @@ class SkillDefinition:
             "resources": resources,
             "metadata": self.metadata,
         }
-        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        encoded = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode()
         return hashlib.sha256(encoded).hexdigest()
 
 

@@ -178,9 +178,7 @@ def test_job_dispatcher_commits_failed_attempt_without_marking_published(
     publisher = RecordingPublisher(error=RuntimeError("broker unavailable"))
 
     with pytest.raises(RuntimeError, match="broker unavailable"):
-        asyncio.run(
-            MediaJobOutboxDispatcher("postgresql://test", publisher).dispatch_batch()
-        )
+        asyncio.run(MediaJobOutboxDispatcher("postgresql://test", publisher).dispatch_batch())
 
     assert connection.transaction_state.committed is True
     assert connection.transaction_state.exc_type is None

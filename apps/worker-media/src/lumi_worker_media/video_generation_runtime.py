@@ -258,10 +258,7 @@ class HostedVideoGenerationRuntime:
         if not shot.provider_request_id:
             raise HostedVideoGenerationError("VIDEO_RUNTIME_PROVIDER_REQUEST_ID_MISSING")
         wait_ref = hashlib.sha256(
-            (
-                f"{job.video_job_id}\x00{shot.shot_id}\x00"
-                f"{shot.provider_request_id}"
-            ).encode()
+            (f"{job.video_job_id}\x00{shot.shot_id}\x00{shot.provider_request_id}").encode()
         ).hexdigest()
         return ExternalWait(
             wait_reason="video_provider_pending",

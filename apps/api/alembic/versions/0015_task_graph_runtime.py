@@ -19,9 +19,7 @@ depends_on = None
 def _lumi_app_exists() -> bool:
     return bool(
         op.get_bind()
-        .execute(
-            sa.text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')")
-        )
+        .execute(sa.text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')"))
         .scalar_one()
     )
 
@@ -30,9 +28,24 @@ def upgrade() -> None:
     op.create_table(
         "task_graph_instances",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("organization_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("project_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("agent_run_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("agent_runs.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "organization_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("organizations.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "project_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("projects.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "agent_run_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("agent_runs.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("recipe_id", sa.String(length=64), nullable=False),
         sa.Column("recipe_version", sa.String(length=64), nullable=False),
         sa.Column("recipe_definition_hash", sa.String(length=64), nullable=False),
@@ -51,14 +64,31 @@ def upgrade() -> None:
         sa.Column("cancellation_requested_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.CheckConstraint("task_count > 0", name="ck_task_graph_instances_task_count"),
         sa.CheckConstraint("state_version > 0", name="ck_task_graph_instances_state_version"),
-        sa.CheckConstraint("completed_count >= 0 AND completed_count <= task_count", name="ck_task_graph_instances_completed_count"),
+        sa.CheckConstraint(
+            "completed_count >= 0 AND completed_count <= task_count",
+            name="ck_task_graph_instances_completed_count",
+        ),
     )
-    op.create_index("ix_task_graph_instances_org_status", "task_graph_instances", ["organization_id", "status"])
-    op.create_index("ix_task_graph_instances_agent_run", "task_graph_instances", ["agent_run_id", "created_at"])
+    op.create_index(
+        "ix_task_graph_instances_org_status", "task_graph_instances", ["organization_id", "status"]
+    )
+    op.create_index(
+        "ix_task_graph_instances_agent_run", "task_graph_instances", ["agent_run_id", "created_at"]
+    )
 
     for column in (
         sa.Column("task_graph_id", postgresql.UUID(as_uuid=True), nullable=True),
@@ -68,7 +98,12 @@ def upgrade() -> None:
         sa.Column("budget_limit_usd", sa.Numeric(18, 6), nullable=True),
         sa.Column("output_schema", sa.String(length=255), nullable=True),
         sa.Column("condition_expression", sa.String(length=1000), nullable=True),
-        sa.Column("metadata_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column(
+            "metadata_json",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
         sa.Column("state_version", sa.Integer(), nullable=False, server_default="1"),
         sa.Column("lease_owner", sa.String(length=255), nullable=True),
         sa.Column("lease_expires_at", sa.DateTime(timezone=True), nullable=True),
@@ -94,11 +129,27 @@ def upgrade() -> None:
         ondelete="CASCADE",
     )
     op.create_check_constraint("ck_tasks_state_version", "tasks", "state_version > 0")
-    op.create_check_constraint("ck_tasks_progress", "tasks", "progress_total > 0 AND progress_current >= 0 AND progress_current <= progress_total")
-    op.create_check_constraint("ck_tasks_dynamic_depth", "tasks", "dynamic_depth >= 0 AND dynamic_depth <= 4")
-    op.create_check_constraint("ck_tasks_dynamic_child_limit", "tasks", "dynamic_child_limit >= 0 AND dynamic_child_limit <= 32")
-    op.create_check_constraint("ck_tasks_concurrency_limit", "tasks", "concurrency_limit IS NULL OR (concurrency_limit >= 1 AND concurrency_limit <= 32)")
-    op.create_check_constraint("ck_tasks_budget_limit_usd", "tasks", "budget_limit_usd IS NULL OR budget_limit_usd > 0")
+    op.create_check_constraint(
+        "ck_tasks_progress",
+        "tasks",
+        "progress_total > 0 AND progress_current >= 0 AND progress_current <= progress_total",
+    )
+    op.create_check_constraint(
+        "ck_tasks_dynamic_depth", "tasks", "dynamic_depth >= 0 AND dynamic_depth <= 4"
+    )
+    op.create_check_constraint(
+        "ck_tasks_dynamic_child_limit",
+        "tasks",
+        "dynamic_child_limit >= 0 AND dynamic_child_limit <= 32",
+    )
+    op.create_check_constraint(
+        "ck_tasks_concurrency_limit",
+        "tasks",
+        "concurrency_limit IS NULL OR (concurrency_limit >= 1 AND concurrency_limit <= 32)",
+    )
+    op.create_check_constraint(
+        "ck_tasks_budget_limit_usd", "tasks", "budget_limit_usd IS NULL OR budget_limit_usd > 0"
+    )
     op.create_index(
         "uq_tasks_graph_task_key",
         "tasks",
@@ -106,16 +157,35 @@ def upgrade() -> None:
         unique=True,
         postgresql_where=sa.text("task_graph_id IS NOT NULL AND task_key IS NOT NULL"),
     )
-    op.create_index("ix_tasks_ready_claim", "tasks", ["task_graph_id", "status", "retry_not_before", "priority"])
+    op.create_index(
+        "ix_tasks_ready_claim", "tasks", ["task_graph_id", "status", "retry_not_before", "priority"]
+    )
     op.create_index("ix_tasks_lease_reap", "tasks", ["status", "lease_expires_at"])
-    op.create_index("ix_tasks_concurrency_group", "tasks", ["task_graph_id", "concurrency_group", "status"])
+    op.create_index(
+        "ix_tasks_concurrency_group", "tasks", ["task_graph_id", "concurrency_group", "status"]
+    )
 
     op.create_table(
         "task_attempts",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("organization_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("task_graph_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("task_graph_instances.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("task_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "organization_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("organizations.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "task_graph_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("task_graph_instances.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "task_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("tasks.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("attempt_number", sa.Integer(), nullable=False),
         sa.Column("logical_operation_key", sa.String(length=512), nullable=False),
         sa.Column("status", sa.String(length=64), nullable=False),
@@ -124,13 +194,26 @@ def upgrade() -> None:
         sa.Column("cost_amount_usd", sa.Numeric(18, 6), nullable=True),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.UniqueConstraint("task_id", "attempt_number", name="uq_task_attempts_task_number"),
         sa.CheckConstraint("attempt_number > 0", name="ck_task_attempts_number"),
-        sa.CheckConstraint("cost_amount_usd IS NULL OR cost_amount_usd >= 0", name="ck_task_attempts_cost"),
+        sa.CheckConstraint(
+            "cost_amount_usd IS NULL OR cost_amount_usd >= 0", name="ck_task_attempts_cost"
+        ),
     )
-    op.create_index("ix_task_attempts_graph_created", "task_attempts", ["task_graph_id", "created_at"])
-    op.create_index("ix_task_attempts_logical_operation", "task_attempts", ["logical_operation_key", "attempt_number"])
+    op.create_index(
+        "ix_task_attempts_graph_created", "task_attempts", ["task_graph_id", "created_at"]
+    )
+    op.create_index(
+        "ix_task_attempts_logical_operation",
+        "task_attempts",
+        ["logical_operation_key", "attempt_number"],
+    )
 
     if _lumi_app_exists():
         op.execute("REVOKE DELETE ON task_graph_instances FROM lumi_app")

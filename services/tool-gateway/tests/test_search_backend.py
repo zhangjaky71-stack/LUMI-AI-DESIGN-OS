@@ -114,9 +114,7 @@ class BraveSearchBackendTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(opener.requests), 1)
         request, timeout = opener.requests[0]
         self.assertTrue(
-            request.full_url.startswith(
-                "https://api.search.brave.com/res/v1/web/search?"
-            )
+            request.full_url.startswith("https://api.search.brave.com/res/v1/web/search?")
         )
         self.assertIn("q=lumi+design", request.full_url)
         self.assertIn("count=5", request.full_url)

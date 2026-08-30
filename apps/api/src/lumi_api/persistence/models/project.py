@@ -230,8 +230,12 @@ class ProjectSummary(IdMixin, MutableTimestampMixin, Base):
         nullable=False,
         server_default=func.now(),
     )
-    active_run_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    artifact_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    active_run_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    artifact_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
 
 class ProjectMember(IdMixin, CreatedAtMixin, Base):

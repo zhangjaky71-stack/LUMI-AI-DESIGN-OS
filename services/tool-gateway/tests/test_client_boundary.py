@@ -18,9 +18,7 @@ from lumi_tool_gateway.testing import CountingAdapter
 
 class ToolClientBoundaryTests(unittest.IsolatedAsyncioTestCase):
     async def test_client_invokes_without_exposing_server_registry_or_adapters(self) -> None:
-        definition = next(
-            item for item in p0_tool_definitions() if item.name == "project.query"
-        )
+        definition = next(item for item in p0_tool_definitions() if item.name == "project.query")
         expected = {
             "project_id": "01900000-0000-7000-8000-000000000002",
             "name": "Client boundary project",

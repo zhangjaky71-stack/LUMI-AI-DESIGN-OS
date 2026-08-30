@@ -105,9 +105,7 @@ class MemoryRecordModel(IdMixin, MutableTimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     created_by_type: Mapped[str] = mapped_column(String(32), nullable=False)
     created_by_id: Mapped[str] = mapped_column(String(512), nullable=False)
-    last_confirmed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
-    )
+    last_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

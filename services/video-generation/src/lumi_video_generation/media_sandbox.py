@@ -60,9 +60,16 @@ class FfmpegArgvCompiler:
             raise ValueError("VIDEO_TIMELINE_CLIPS_REQUIRED")
         if any(transition.kind != "CUT" for transition in timeline.transitions):
             raise ValueError("VIDEO_FFMPEG_TRANSITION_NOT_SUPPORTED_V1")
-        clip_paths = [_safe_path(resolver.resolve_readonly(clip.durable_ref)) for clip in timeline.clips]
-        audio_paths = [_safe_path(resolver.resolve_readonly(track.durable_ref)) for track in timeline.audio_tracks]
-        overlay_paths = [_safe_path(resolver.resolve_readonly(item.durable_ref)) for item in timeline.overlays]
+        clip_paths = [
+            _safe_path(resolver.resolve_readonly(clip.durable_ref)) for clip in timeline.clips
+        ]
+        audio_paths = [
+            _safe_path(resolver.resolve_readonly(track.durable_ref))
+            for track in timeline.audio_tracks
+        ]
+        overlay_paths = [
+            _safe_path(resolver.resolve_readonly(item.durable_ref)) for item in timeline.overlays
+        ]
         output_path = _safe_path(resolver.allocate_output(".mp4"))
         argv: list[str] = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y"]
         for path in clip_paths:
@@ -114,14 +121,22 @@ class FfmpegArgvCompiler:
         if audio_labels:
             argv.extend(("-map", "[aout]"))
         total_duration = sum((clip.duration_seconds for clip in timeline.clips), Decimal("0"))
-        argv.extend((
-            "-r", str(timeline.output_spec.fps),
-            "-s", f"{timeline.output_spec.width}x{timeline.output_spec.height}",
-            "-t", format(total_duration, "f"),
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
-        ))
+        argv.extend(
+            (
+                "-r",
+                str(timeline.output_spec.fps),
+                "-s",
+                f"{timeline.output_spec.width}x{timeline.output_spec.height}",
+                "-t",
+                format(total_duration, "f"),
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+            )
+        )
         if audio_labels:
             argv.extend(("-c:a", "aac"))
         argv.append(output_path)

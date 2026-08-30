@@ -5,7 +5,21 @@ from collections.abc import Iterable
 from .model import Constraint, ConstraintScope
 
 
-SUPPORTED_PROTECTIONS = frozenset({"position", "size", "rotation", "transform", "content", "text", "asset", "identity", "style", "brand", "scannability"})
+SUPPORTED_PROTECTIONS = frozenset(
+    {
+        "position",
+        "size",
+        "rotation",
+        "transform",
+        "content",
+        "text",
+        "asset",
+        "identity",
+        "style",
+        "brand",
+        "scannability",
+    }
+)
 
 PROTECTION_TYPES = {
     "position": "LOCK_POSITION",

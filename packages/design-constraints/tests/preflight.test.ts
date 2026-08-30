@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { DesignDocument, DesignOperation } from "../../design-ir/src/index";
+import type {
+  DesignDocument,
+  DesignOperation,
+} from "../../design-ir/src/index";
 import {
   guardedExecute,
   resolveConstraints,
@@ -14,7 +17,12 @@ function document(): DesignDocument {
     unit: "px",
     root_id: "root",
     nodes: {
-      root: { id: "root", kind: "DOCUMENT_ROOT", parent_id: null, children: ["frame"] },
+      root: {
+        id: "root",
+        kind: "DOCUMENT_ROOT",
+        parent_id: null,
+        children: ["frame"],
+      },
       frame: {
         id: "frame",
         kind: "FRAME",
@@ -56,7 +64,9 @@ function operation(overrides: Partial<DesignOperation> = {}): DesignOperation {
   };
 }
 
-function constraint(overrides: Partial<DesignConstraint> = {}): DesignConstraint {
+function constraint(
+  overrides: Partial<DesignConstraint> = {},
+): DesignConstraint {
   return {
     id: "c-lock",
     type: "LOCK_POSITION",
@@ -78,7 +88,9 @@ describe("NODE-39 guarded preflight", () => {
     const result = guardedExecute(input, [operation()], [constraint()]);
     expect(result.preflight.decision).toBe("DENY");
     expect(result.execution).toBeUndefined();
-    expect(result.preflight.violations[0]?.reason_code).toBe("CONSTRAINT_POSITION_CHANGED");
+    expect(result.preflight.violations[0]?.reason_code).toBe(
+      "CONSTRAINT_POSITION_CHANGED",
+    );
     expect(JSON.stringify(input)).toBe(before);
   });
 
@@ -105,7 +117,11 @@ describe("NODE-39 guarded preflight", () => {
   });
 
   it("allows a soft violation while preserving the warning", () => {
-    const result = guardedExecute(document(), [operation()], [constraint({ severity: "SOFT" })]);
+    const result = guardedExecute(
+      document(),
+      [operation()],
+      [constraint({ severity: "SOFT" })],
+    );
     expect(result.preflight.decision).toBe("ALLOW_WITH_WARNINGS");
     expect(result.execution?.ok).toBe(true);
   });
@@ -120,21 +136,37 @@ describe("NODE-39 guarded preflight", () => {
       reason: "Approved one-time QR reposition",
       one_time: true,
     };
-    const result = guardedExecute(document(), [operation()], [constraint()], { overrides: [token] });
+    const result = guardedExecute(document(), [operation()], [constraint()], {
+      overrides: [token],
+    });
     expect(result.preflight.decision).toBe("ALLOW");
     expect(result.execution?.ok).toBe(true);
   });
 
   it("fails closed on a stale hard constraint snapshot", () => {
-    const result = guardedExecute(document(), [operation()], [constraint({ document_version: 11 })]);
+    const result = guardedExecute(
+      document(),
+      [operation()],
+      [constraint({ document_version: 11 })],
+    );
     expect(result.preflight.decision).toBe("DENY");
-    expect(result.preflight.violations[0]?.reason_code).toBe("STALE_CONSTRAINT_SNAPSHOT");
+    expect(result.preflight.violations[0]?.reason_code).toBe(
+      "STALE_CONSTRAINT_SNAPSHOT",
+    );
   });
 
   it("surfaces equal-precedence incompatible constraints as a conflict", () => {
     const constraints = [
-      constraint({ id: "a", type: "MIN_MARGIN", parameters: { container_id: "frame", min_px: 24 } }),
-      constraint({ id: "b", type: "MIN_MARGIN", parameters: { container_id: "frame", min_px: 48 } }),
+      constraint({
+        id: "a",
+        type: "MIN_MARGIN",
+        parameters: { container_id: "frame", min_px: 24 },
+      }),
+      constraint({
+        id: "b",
+        type: "MIN_MARGIN",
+        parameters: { container_id: "frame", min_px: 48 },
+      }),
     ];
     const resolved = resolveConstraints(document(), constraints);
     expect(resolved.conflicts).toHaveLength(1);
@@ -143,8 +175,18 @@ describe("NODE-39 guarded preflight", () => {
 
   it("uses source precedence before lower-priority inferred rules", () => {
     const constraints = [
-      constraint({ id: "user", parameters: { marker: "user" }, source: "USER_EXPLICIT", priority: 10 }),
-      constraint({ id: "agent", parameters: { marker: "agent" }, source: "AGENT_INFERRED", priority: 9999 }),
+      constraint({
+        id: "user",
+        parameters: { marker: "user" },
+        source: "USER_EXPLICIT",
+        priority: 10,
+      }),
+      constraint({
+        id: "agent",
+        parameters: { marker: "agent" },
+        source: "AGENT_INFERRED",
+        priority: 9999,
+      }),
     ];
     const resolved = resolveConstraints(document(), constraints);
     expect(resolved.constraints.map((item) => item.id)).toEqual(["user"]);

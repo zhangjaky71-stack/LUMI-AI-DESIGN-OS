@@ -28,14 +28,18 @@ BOOTSTRAP = ROOT / "config/agent-registry/bootstrap-dependencies.v1.json"
 
 def _dependencies() -> DependencyResolver:
     names = ("web.search", "web.fetch", "asset.read", "artifact.query", "media.inspect")
-    tools = StaticVersionedCatalog({
-        name: (CatalogEntry(name, "1.0.0", f"hash:{name}", f"NODE-25:{name}@1.0.0"),)
-        for name in names
-    })
-    models = StaticNamedCatalog({
-        name: CatalogEntry(name, "registry-1", "model-registry-hash", f"NODE-23:{name}")
-        for name in ("reasoning.director", "reasoning.default")
-    })
+    tools = StaticVersionedCatalog(
+        {
+            name: (CatalogEntry(name, "1.0.0", f"hash:{name}", f"NODE-25:{name}@1.0.0"),)
+            for name in names
+        }
+    )
+    models = StaticNamedCatalog(
+        {
+            name: CatalogEntry(name, "registry-1", "model-registry-hash", f"NODE-23:{name}")
+            for name in ("reasoning.director", "reasoning.default")
+        }
+    )
     return DependencyResolver(
         model_policies=models,
         tools=tools,

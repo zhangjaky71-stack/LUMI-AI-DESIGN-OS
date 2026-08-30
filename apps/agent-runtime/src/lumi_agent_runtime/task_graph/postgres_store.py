@@ -53,8 +53,7 @@ class PostgresTaskGraphStore:
         async with self.connection_factory() as connection:
             async with connection.transaction():
                 existing = await connection.fetchrow(
-                    "SELECT provenance_hash FROM task_graph_instances "
-                    "WHERE id = $1 FOR UPDATE",
+                    "SELECT provenance_hash FROM task_graph_instances WHERE id = $1 FOR UPDATE",
                     graph.graph_id,
                 )
                 if existing is not None:

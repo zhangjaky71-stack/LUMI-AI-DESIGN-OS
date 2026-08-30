@@ -108,7 +108,8 @@ export class CanvasResourceManager<T> {
   }
 
   destroy(): void {
-    for (const entry of this.#resources.values()) this.#loader.destroy(entry.resource);
+    for (const entry of this.#resources.values())
+      this.#loader.destroy(entry.resource);
     this.#resources.clear();
     this.#inflight.clear();
   }
@@ -125,7 +126,9 @@ export class CanvasResourceManager<T> {
         references: entry.references,
       }))
       .sort((left, right) =>
-        `${left.asset_id}:${left.tier}`.localeCompare(`${right.asset_id}:${right.tier}`),
+        `${left.asset_id}:${left.tier}`.localeCompare(
+          `${right.asset_id}:${right.tier}`,
+        ),
       );
   }
 
@@ -149,7 +152,9 @@ export class CanvasResourceManager<T> {
   }
 
   #collectEvicted(): void {
-    const liveCacheKeys = new Set(this.#cache.snapshot().map((entry) => entry.key));
+    const liveCacheKeys = new Set(
+      this.#cache.snapshot().map((entry) => entry.key),
+    );
     for (const [key, entry] of this.#resources) {
       if (liveCacheKeys.has(key) || entry.references > 0) continue;
       this.#loader.destroy(entry.resource);

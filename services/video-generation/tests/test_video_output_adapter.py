@@ -41,7 +41,9 @@ def _spec() -> VideoTaskSpec:
 
 
 class Fetcher:
-    async def fetch_to_staging(self, *, source_ref: str, declared_mime_type: str | None, max_bytes: int) -> StagedProviderVideo:
+    async def fetch_to_staging(
+        self, *, source_ref: str, declared_mime_type: str | None, max_bytes: int
+    ) -> StagedProviderVideo:
         assert source_ref.startswith("https://provider.example/")
         assert max_bytes > 0
         digest = hashlib.sha256(b"provider-video").hexdigest()
@@ -108,12 +110,14 @@ def test_provider_url_stops_at_staging_and_durable_output_is_checksum_verified()
     adapter = VerifiedVideoOutputAdapter(fetcher=Fetcher(), probe_worker=Probe(), store=store)
     spec = _spec()
     shot = compile_storyboard(spec).shots[0]
-    stored, probe = asyncio.run(adapter.materialize_and_probe(
-        spec=spec,
-        shot=shot,
-        output_ref="https://provider.example/signed/output.mp4?token=secret",
-        declared_mime_type="video/mp4",
-    ))
+    stored, probe = asyncio.run(
+        adapter.materialize_and_probe(
+            spec=spec,
+            shot=shot,
+            output_ref="https://provider.example/signed/output.mp4?token=secret",
+            declared_mime_type="video/mp4",
+        )
+    )
     assert stored.storage_key == "video/clips/durable.mp4"
     assert "://" not in stored.storage_key
     assert probe.decode_ok
@@ -126,10 +130,12 @@ def test_staging_is_cleaned_even_when_durable_checksum_mismatch_fails() -> None:
     spec = _spec()
     shot = compile_storyboard(spec).shots[0]
     with pytest.raises(ValueError, match="VIDEO_DURABLE_CHECKSUM_MISMATCH"):
-        asyncio.run(adapter.materialize_and_probe(
-            spec=spec,
-            shot=shot,
-            output_ref="https://provider.example/output.mp4",
-            declared_mime_type="video/mp4",
-        ))
+        asyncio.run(
+            adapter.materialize_and_probe(
+                spec=spec,
+                shot=shot,
+                output_ref="https://provider.example/output.mp4",
+                declared_mime_type="video/mp4",
+            )
+        )
     assert store.discarded == ["staging/video/provider-job-1.mp4"]

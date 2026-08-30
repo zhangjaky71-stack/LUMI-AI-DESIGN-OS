@@ -71,7 +71,10 @@ def compare_to_baseline(
         reasons.append("SOURCE_RECALL_REGRESSION")
     if baseline.fact_recall - report.aggregate.fact_recall > guard.max_fact_recall_drop:
         reasons.append("FACT_RECALL_REGRESSION")
-    if baseline.provenance_coverage - report.aggregate.provenance_coverage > guard.max_provenance_drop:
+    if (
+        baseline.provenance_coverage - report.aggregate.provenance_coverage
+        > guard.max_provenance_drop
+    ):
         reasons.append("PROVENANCE_REGRESSION")
     if baseline.pass_rate - report.pass_rate > guard.max_pass_rate_drop:
         reasons.append("CASE_PASS_RATE_REGRESSION")

@@ -51,7 +51,9 @@ class AgentProvenance:
                 for item in self.dependencies
             ],
         }
-        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        encoded = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
 
 

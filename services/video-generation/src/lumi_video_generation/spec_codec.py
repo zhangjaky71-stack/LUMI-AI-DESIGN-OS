@@ -98,19 +98,35 @@ def decode_spec(value: object) -> VideoTaskSpec:
         fps=_integer(payload["fps"], "VIDEO_SPEC_FPS_INVALID"),
         budget_limit_usd=_decimal(payload["budget_limit_usd"], "VIDEO_SPEC_BUDGET_INVALID"),
         code_git_sha=_string(payload["code_git_sha"], "VIDEO_SPEC_CODE_SHA_REQUIRED"),
-        source_images=tuple(_decode_source(item) for item in _list(payload["source_images"], "VIDEO_SPEC_SOURCES_INVALID")),
-        shots=tuple(_decode_shot(item) for item in _list(payload["shots"], "VIDEO_SPEC_SHOTS_INVALID")),
-        audio_tracks=tuple(_decode_audio(item) for item in _list(payload["audio_tracks"], "VIDEO_SPEC_AUDIO_INVALID")),
-        brand_rule_set_version=_optional_string(payload["brand_rule_set_version"], "VIDEO_SPEC_BRAND_INVALID"),
+        source_images=tuple(
+            _decode_source(item)
+            for item in _list(payload["source_images"], "VIDEO_SPEC_SOURCES_INVALID")
+        ),
+        shots=tuple(
+            _decode_shot(item) for item in _list(payload["shots"], "VIDEO_SPEC_SHOTS_INVALID")
+        ),
+        audio_tracks=tuple(
+            _decode_audio(item)
+            for item in _list(payload["audio_tracks"], "VIDEO_SPEC_AUDIO_INVALID")
+        ),
+        brand_rule_set_version=_optional_string(
+            payload["brand_rule_set_version"], "VIDEO_SPEC_BRAND_INVALID"
+        ),
         identity_requirements=tuple(
             _decode_identity(item)
             for item in _list(payload["identity_requirements"], "VIDEO_SPEC_IDENTITIES_INVALID")
         ),
         agent_run_id=_optional_string(payload["agent_run_id"], "VIDEO_SPEC_AGENT_RUN_INVALID"),
         recipe_version=_optional_string(payload["recipe_version"], "VIDEO_SPEC_RECIPE_INVALID"),
-        allow_optional_shot_drop=_boolean(payload["allow_optional_shot_drop"], "VIDEO_SPEC_OPTIONAL_DROP_INVALID"),
-        quality_retry_limit=_integer(payload["quality_retry_limit"], "VIDEO_SPEC_RETRY_LIMIT_INVALID"),
-        negative_prompt=_optional_string(payload["negative_prompt"], "VIDEO_SPEC_NEGATIVE_PROMPT_INVALID"),
+        allow_optional_shot_drop=_boolean(
+            payload["allow_optional_shot_drop"], "VIDEO_SPEC_OPTIONAL_DROP_INVALID"
+        ),
+        quality_retry_limit=_integer(
+            payload["quality_retry_limit"], "VIDEO_SPEC_RETRY_LIMIT_INVALID"
+        ),
+        negative_prompt=_optional_string(
+            payload["negative_prompt"], "VIDEO_SPEC_NEGATIVE_PROMPT_INVALID"
+        ),
         seed=_optional_integer(payload["seed"], "VIDEO_SPEC_SEED_INVALID"),
         metadata=MappingProxyType(_json_object(payload["metadata"], label="VIDEO_SPEC_METADATA")),
     )
@@ -131,7 +147,14 @@ def _decode_source(value: object) -> SourceImageRef:
     payload = _object(value, "VIDEO_SOURCE_OBJECT_REQUIRED")
     _exact_fields(
         payload,
-        {"asset_id", "asset_version", "durable_ref", "checksum_sha256", "commercial_use_allowed", "artifact_version_id"},
+        {
+            "asset_id",
+            "asset_version",
+            "durable_ref",
+            "checksum_sha256",
+            "commercial_use_allowed",
+            "artifact_version_id",
+        },
         "VIDEO_SOURCE_FIELDS",
     )
     return SourceImageRef(
@@ -139,8 +162,12 @@ def _decode_source(value: object) -> SourceImageRef:
         asset_version=_string(payload["asset_version"], "VIDEO_SOURCE_ASSET_VERSION_REQUIRED"),
         durable_ref=_string(payload["durable_ref"], "VIDEO_SOURCE_DURABLE_REF_REQUIRED"),
         checksum_sha256=_string(payload["checksum_sha256"], "VIDEO_SOURCE_CHECKSUM_REQUIRED"),
-        commercial_use_allowed=_boolean(payload["commercial_use_allowed"], "VIDEO_SOURCE_COMMERCIAL_INVALID"),
-        artifact_version_id=_optional_string(payload["artifact_version_id"], "VIDEO_SOURCE_ARTIFACT_VERSION_INVALID"),
+        commercial_use_allowed=_boolean(
+            payload["commercial_use_allowed"], "VIDEO_SOURCE_COMMERCIAL_INVALID"
+        ),
+        artifact_version_id=_optional_string(
+            payload["artifact_version_id"], "VIDEO_SOURCE_ARTIFACT_VERSION_INVALID"
+        ),
     )
 
 
@@ -154,13 +181,17 @@ def _encode_identity(value: IdentityRequirement) -> dict[str, Any]:
 
 def _decode_identity(value: object) -> IdentityRequirement:
     payload = _object(value, "VIDEO_IDENTITY_OBJECT_REQUIRED")
-    _exact_fields(payload, {"identity_id", "reference_set_version", "severity"}, "VIDEO_IDENTITY_FIELDS")
+    _exact_fields(
+        payload, {"identity_id", "reference_set_version", "severity"}, "VIDEO_IDENTITY_FIELDS"
+    )
     severity = _string(payload["severity"], "VIDEO_IDENTITY_SEVERITY_REQUIRED")
     if severity not in {"HARD", "SOFT", "ADVISORY"}:
         raise ValueError("VIDEO_IDENTITY_SEVERITY_INVALID")
     return IdentityRequirement(
         identity_id=_string(payload["identity_id"], "VIDEO_IDENTITY_ID_REQUIRED"),
-        reference_set_version=_string(payload["reference_set_version"], "VIDEO_IDENTITY_VERSION_REQUIRED"),
+        reference_set_version=_string(
+            payload["reference_set_version"], "VIDEO_IDENTITY_VERSION_REQUIRED"
+        ),
         severity=cast(Any, severity),
     )
 
@@ -204,7 +235,17 @@ def _decode_shot(value: object) -> ShotSpec:
     payload = _object(value, "VIDEO_SHOT_OBJECT_REQUIRED")
     _exact_fields(
         payload,
-        {"shot_id", "duration_seconds", "prompt", "camera_motion", "subject_action", "source_ref", "continuity_refs", "transition_to_next", "optional"},
+        {
+            "shot_id",
+            "duration_seconds",
+            "prompt",
+            "camera_motion",
+            "subject_action",
+            "source_ref",
+            "continuity_refs",
+            "transition_to_next",
+            "optional",
+        },
         "VIDEO_SHOT_FIELDS",
     )
     transition = _string(payload["transition_to_next"], "VIDEO_SHOT_TRANSITION_REQUIRED")

@@ -98,7 +98,11 @@ def _apply_primitive(document: dict[str, Any], operation: dict[str, Any]) -> Non
         raw_node = payload.get("node")
         parent_id = payload.get("parent_id")
         index = payload.get("index")
-        if not isinstance(raw_node, dict) or not isinstance(parent_id, str) or not isinstance(index, int):
+        if (
+            not isinstance(raw_node, dict)
+            or not isinstance(parent_id, str)
+            or not isinstance(index, int)
+        ):
             raise OperationError("CREATE_NODE requires node, parent_id and integer index")
         node_id = raw_node.get("id")
         if not isinstance(node_id, str) or not node_id:

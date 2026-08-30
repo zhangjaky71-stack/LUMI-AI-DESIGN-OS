@@ -398,7 +398,5 @@ def _operation_lock_key(organization_id: UUID, operation_id: UUID) -> int:
 
 
 def _task_lock_key(task_id: UUID) -> int:
-    digest = hashlib.sha256(
-        f"{_OPERATION_TYPE}:task\x00{task_id}".encode("utf-8")
-    ).digest()
+    digest = hashlib.sha256(f"{_OPERATION_TYPE}:task\x00{task_id}".encode("utf-8")).digest()
     return int.from_bytes(digest[:8], "big", signed=True)

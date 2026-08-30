@@ -7,16 +7,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class AssetWorkerSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str = Field(
-        validation_alias=AliasChoices("LUMI_DATABASE_URL", "DATABASE_URL")
-    )
+    database_url: str = Field(validation_alias=AliasChoices("LUMI_DATABASE_URL", "DATABASE_URL"))
     s3_endpoint_url: str | None = Field(
         default=None,
         validation_alias=AliasChoices("LUMI_S3_ENDPOINT_URL", "S3_ENDPOINT_URL"),
     )
-    s3_bucket: str = Field(
-        validation_alias=AliasChoices("LUMI_S3_BUCKET", "S3_BUCKET")
-    )
+    s3_bucket: str = Field(validation_alias=AliasChoices("LUMI_S3_BUCKET", "S3_BUCKET"))
     s3_region: str = Field(
         default="us-east-1",
         validation_alias=AliasChoices("LUMI_S3_REGION", "S3_REGION"),

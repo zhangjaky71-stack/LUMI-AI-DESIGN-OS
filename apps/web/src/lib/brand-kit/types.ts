@@ -13,7 +13,11 @@ export type LogoVariant = "PRIMARY" | "SECONDARY" | "MONOCHROME" | "ICON";
 export type LogoBackground = "LIGHT" | "DARK" | "ANY";
 export type FontRole = "HEADING" | "BODY" | "CJK_FALLBACK";
 export type VisualReferencePolarity = "APPROVED" | "NEGATIVE";
-export type VisualReferenceRole = "PRODUCT" | "PHOTOGRAPHY" | "ILLUSTRATION" | "LAYOUT";
+export type VisualReferenceRole =
+  | "PRODUCT"
+  | "PHOTOGRAPHY"
+  | "ILLUSTRATION"
+  | "LAYOUT";
 export type BrandBindingPolicy = "CURRENT_PUBLISHED" | "PINNED";
 
 export interface BrandKitSummary {
@@ -113,7 +117,10 @@ export interface UploadBrandAssetInput {
   readonly logo_variant?: LogoVariant;
   readonly reference_polarity?: VisualReferencePolarity;
   readonly reference_role?: VisualReferenceRole;
-  readonly on_progress?: (progress: number, state: "UPLOADING" | "SCANNING" | "READY" | "FAILED") => void;
+  readonly on_progress?: (
+    progress: number,
+    state: "UPLOADING" | "SCANNING" | "READY" | "FAILED",
+  ) => void;
 }
 
 export interface ReviewExtractionDecision {

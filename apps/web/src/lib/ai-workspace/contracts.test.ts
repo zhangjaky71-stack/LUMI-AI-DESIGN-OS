@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { applyWorkspaceEvent, decodeSseFrame, isApprovalActionable } from "./contracts";
+import {
+  applyWorkspaceEvent,
+  decodeSseFrame,
+  isApprovalActionable,
+} from "./contracts";
 import type { AIWorkspaceSnapshot, WorkspaceEvent } from "./types";
 
 function snapshot(): AIWorkspaceSnapshot {
@@ -53,7 +57,9 @@ describe("AI workspace realtime contracts", () => {
     };
     const frame = `id: evt-1\nevent: message.created\ndata: ${JSON.stringify(event)}`;
     expect(decodeSseFrame(frame)).toEqual(event);
-    expect(() => decodeSseFrame(frame.replace("id: evt-1", "id: evt-other"))).toThrow();
+    expect(() =>
+      decodeSseFrame(frame.replace("id: evt-1", "id: evt-other")),
+    ).toThrow();
   });
 
   it("deduplicates at-least-once realtime delivery by event id", () => {
@@ -74,7 +80,10 @@ describe("AI workspace realtime contracts", () => {
         warning_code: null,
       },
     };
-    const once = applyWorkspaceEvent({ snapshot: base, seen_event_ids: [] }, event);
+    const once = applyWorkspaceEvent(
+      { snapshot: base, seen_event_ids: [] },
+      event,
+    );
     const twice = applyWorkspaceEvent(once, event);
     expect(once.snapshot.messages).toHaveLength(1);
     expect(twice.snapshot.messages).toHaveLength(1);
@@ -97,6 +106,8 @@ describe("AI workspace realtime contracts", () => {
       expires_at: null,
     };
     expect(isApprovalActionable(approval, base.run)).toBe(false);
-    expect(isApprovalActionable({ ...approval, expected_run_version: 2 }, base.run)).toBe(true);
+    expect(
+      isApprovalActionable({ ...approval, expected_run_version: 2 }, base.run),
+    ).toBe(true);
   });
 });

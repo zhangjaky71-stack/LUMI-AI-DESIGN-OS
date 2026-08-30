@@ -37,9 +37,7 @@ class ValidDefinition:
 
 class AgentReleaseTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.definitions = {
-            item.identity: item for item in load_definitions(ROOT / "agents")
-        }
+        self.definitions = {item.identity: item for item in load_definitions(ROOT / "agents")}
         self.manifest = load_release_manifest(ROOT / "agents/registry.json")
 
     def test_candidate_promotion_requires_eval_and_moves_alias(self) -> None:

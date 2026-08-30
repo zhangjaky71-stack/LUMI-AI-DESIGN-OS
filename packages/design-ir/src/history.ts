@@ -11,7 +11,10 @@ export class DesignIrHistory {
   private entries: HistoryEntry[] = [];
   private cursor = 0;
 
-  apply(document: DesignDocument, operations: readonly DesignOperation[]): ExecutionResult {
+  apply(
+    document: DesignDocument,
+    operations: readonly DesignOperation[],
+  ): ExecutionResult {
     const result = executeOperations(document, operations);
     if (!result.ok) return result;
     this.entries = this.entries.slice(0, this.cursor);

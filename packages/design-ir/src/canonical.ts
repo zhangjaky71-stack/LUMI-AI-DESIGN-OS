@@ -17,7 +17,8 @@ function assertFinite(value: unknown, path: string): void {
     return;
   }
   if (value !== null && typeof value === "object") {
-    for (const [key, child] of Object.entries(value)) assertFinite(child, `${path}.${key}`);
+    for (const [key, child] of Object.entries(value))
+      assertFinite(child, `${path}.${key}`);
   }
 }
 
@@ -56,7 +57,9 @@ export function canonicalStringify(value: unknown): string {
 export async function canonicalSha256(value: unknown): Promise<string> {
   const bytes = new TextEncoder().encode(canonicalStringify(value));
   const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
 }
 
 export function canonicalDocument(document: DesignDocument): string {

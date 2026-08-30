@@ -28,7 +28,9 @@ def test_runtime_is_immutable_and_deterministic() -> None:
     source = FIXTURE["document"]
     original = canonical_json(source)
     outputs = {
-        canonical_json(execute_operations(deepcopy(source), deepcopy(FIXTURE["operations"]))["document"])
+        canonical_json(
+            execute_operations(deepcopy(source), deepcopy(FIXTURE["operations"]))["document"]
+        )
         for _ in range(50)
     }
     assert len(outputs) == 1

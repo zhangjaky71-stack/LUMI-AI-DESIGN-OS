@@ -1,4 +1,7 @@
-import type { CompiledSceneNode, ResolvedCompilerStyle } from "./compiler-types";
+import type {
+  CompiledSceneNode,
+  ResolvedCompilerStyle,
+} from "./compiler-types";
 import type { CanvasSceneNode } from "./ir-scene";
 import type { Matrix2D } from "./matrix";
 import type { PixiDisplayHandle, PixiV8Bindings } from "./renderer";
@@ -39,7 +42,10 @@ export interface PixiGraphicsLike extends PixiContainerLike {
 
 export interface PixiV8RuntimeModule {
   readonly Container: new () => PixiContainerLike;
-  readonly Text: new (options: { readonly text: string; readonly style?: Readonly<Record<string, unknown>> }) => PixiTextLike;
+  readonly Text: new (options: {
+    readonly text: string;
+    readonly style?: Readonly<Record<string, unknown>>;
+  }) => PixiTextLike;
   readonly Graphics: new () => PixiGraphicsLike;
   readonly Matrix: new (
     a: number,
@@ -56,7 +62,11 @@ export interface PixiV8RuntimeModule {
 
 export interface PixiApplicationHost {
   readonly stage: PixiContainerLike;
-  resize(widthCssPx: number, heightCssPx: number, devicePixelRatio: number): void;
+  resize(
+    widthCssPx: number,
+    heightCssPx: number,
+    devicePixelRatio: number,
+  ): void;
   destroy(): void;
 }
 
@@ -66,7 +76,10 @@ export interface PixiTextureResolver {
 
 interface ManagedPixiHandle extends PixiDisplayHandle, PixiContainerLike {}
 
-function managed<T extends PixiContainerLike>(object: T, id: string): T & ManagedPixiHandle {
+function managed<T extends PixiContainerLike>(
+  object: T,
+  id: string,
+): T & ManagedPixiHandle {
   object.label = id;
   Object.defineProperty(object, "id", {
     value: id,
@@ -131,7 +144,10 @@ function textStyle(node: CanvasSceneNode): Readonly<Record<string, unknown>> {
   return result;
 }
 
-function applyContainerStyle(handle: PixiDisplayHandle, node: CanvasSceneNode): void {
+function applyContainerStyle(
+  handle: PixiDisplayHandle,
+  node: CanvasSceneNode,
+): void {
   const display = asContainer(handle);
   const style = resolvedStyle(node);
   const opacity = styleValue(style, "opacity");
@@ -139,10 +155,14 @@ function applyContainerStyle(handle: PixiDisplayHandle, node: CanvasSceneNode): 
   if (typeof opacity === "number" && Number.isFinite(opacity)) {
     display.alpha = Math.max(0, Math.min(1, opacity));
   }
-  if (typeof blendMode === "string" && blendMode.length > 0) display.blendMode = blendMode;
+  if (typeof blendMode === "string" && blendMode.length > 0)
+    display.blendMode = blendMode;
 }
 
-function applyTextStyle(handle: PixiDisplayHandle, node: CanvasSceneNode): void {
+function applyTextStyle(
+  handle: PixiDisplayHandle,
+  node: CanvasSceneNode,
+): void {
   const text = handle as PixiTextLike & PixiDisplayHandle;
   text.style = textStyle(node);
   applyContainerStyle(handle, node);
@@ -164,7 +184,10 @@ function drawGraphics(graphics: PixiGraphicsLike, node: CanvasSceneNode): void {
   applyContainerStyle(graphics as PixiGraphicsLike & PixiDisplayHandle, node);
 }
 
-function missingGraphic(runtime: PixiV8RuntimeModule, id: string): ManagedPixiHandle {
+function missingGraphic(
+  runtime: PixiV8RuntimeModule,
+  id: string,
+): ManagedPixiHandle {
   const graphics = managed(new runtime.Graphics(), id);
   graphics.clear().rect(0, 0, 64, 64).fill(0xd0d0d0);
   if (graphics.stroke) graphics.stroke({ width: 1, color: 0x777777 });
@@ -177,7 +200,10 @@ export function createPixiV8Bindings(
   textures: PixiTextureResolver,
 ): PixiV8Bindings {
   const stage = managed(host.stage, "__lumi_canvas_stage__");
-  const createGraphics = (id: string, node: CanvasSceneNode): ManagedPixiHandle => {
+  const createGraphics = (
+    id: string,
+    node: CanvasSceneNode,
+  ): ManagedPixiHandle => {
     const graphics = managed(new runtime.Graphics(), id);
     drawGraphics(graphics, node);
     return graphics;
@@ -191,7 +217,10 @@ export function createPixiV8Bindings(
       return managed(new runtime.Container(), id);
     },
     createText(id, content, node) {
-      const text = managed(new runtime.Text({ text: content, style: textStyle(node) }), id);
+      const text = managed(
+        new runtime.Text({ text: content, style: textStyle(node) }),
+        id,
+      );
       applyTextStyle(text, node);
       return text;
     },
@@ -234,7 +263,8 @@ export function createPixiV8Bindings(
     },
     setDisplaySize(handle, width, height) {
       const display = asContainer(handle);
-      if (display.setSize) display.setSize(Math.max(0, width), Math.max(0, height));
+      if (display.setSize)
+        display.setSize(Math.max(0, width), Math.max(0, height));
       else {
         display.width = Math.max(0, width);
         display.height = Math.max(0, height);

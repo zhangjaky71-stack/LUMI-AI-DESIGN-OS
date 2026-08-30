@@ -194,7 +194,9 @@ def create_agent_runtime_control_router(runtime: AgentRuntimeControlRuntime) -> 
                 reason=reason,
             )
         except IdempotencyError as exc:
-            return _error(exc.http_status, exc.code, "agent control ambiguity could not be committed")
+            return _error(
+                exc.http_status, exc.code, "agent control ambiguity could not be committed"
+            )
         except (ValueError, TypeError):
             return _error(422, "AGENT_CONTROL_REQUEST_INVALID", "invalid agent control request")
         except Exception:

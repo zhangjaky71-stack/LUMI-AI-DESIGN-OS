@@ -172,10 +172,13 @@ class DeepRuntimeFactoryTests(unittest.IsolatedAsyncioTestCase):
             backends=Backends(),
             checkpointers=Checkpointers(),
         )
-        with patch(
-            "lumi_agent_runtime.deep_runtime.factory._load_create_deep_agent",
-            return_value=fake_create_deep_agent,
-        ), self.assertRaises(DeepAgentModelBoundaryError):
+        with (
+            patch(
+                "lumi_agent_runtime.deep_runtime.factory._load_create_deep_agent",
+                return_value=fake_create_deep_agent,
+            ),
+            self.assertRaises(DeepAgentModelBoundaryError),
+        ):
             await factory.compile(definition(), context=context())
 
     async def test_tool_provider_cannot_expand_scope(self) -> None:
@@ -185,10 +188,13 @@ class DeepRuntimeFactoryTests(unittest.IsolatedAsyncioTestCase):
             backends=Backends(),
             checkpointers=Checkpointers(),
         )
-        with patch(
-            "lumi_agent_runtime.deep_runtime.factory._load_create_deep_agent",
-            return_value=fake_create_deep_agent,
-        ), self.assertRaises(DeepAgentToolScopeError):
+        with (
+            patch(
+                "lumi_agent_runtime.deep_runtime.factory._load_create_deep_agent",
+                return_value=fake_create_deep_agent,
+            ),
+            self.assertRaises(DeepAgentToolScopeError),
+        ):
             await factory.compile(definition(), context=context())
 
     async def test_nested_subagent_delegation_is_fail_closed_in_p0(self) -> None:
@@ -198,10 +204,13 @@ class DeepRuntimeFactoryTests(unittest.IsolatedAsyncioTestCase):
             backends=Backends(),
             checkpointers=Checkpointers(),
         )
-        with patch(
-            "lumi_agent_runtime.deep_runtime.factory._load_create_deep_agent",
-            return_value=fake_create_deep_agent,
-        ), self.assertRaises(DeepAgentDelegationDeniedError):
+        with (
+            patch(
+                "lumi_agent_runtime.deep_runtime.factory._load_create_deep_agent",
+                return_value=fake_create_deep_agent,
+            ),
+            self.assertRaises(DeepAgentDelegationDeniedError),
+        ):
             await factory.compile(definition(nested=True), context=context())
 
     async def test_compiled_graph_limits_cannot_be_widened_by_caller(self) -> None:

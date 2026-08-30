@@ -41,9 +41,7 @@ class MemoryGovernanceService:
         now: datetime | None = None,
     ) -> tuple[UUID, ...]:
         observed_at = now or datetime.now(UTC)
-        records = await self.repository.list_records(
-            organization_id=organization_id
-        )
+        records = await self.repository.list_records(organization_id=organization_id)
         changed: list[UUID] = []
         for record in records:
             if (
@@ -66,9 +64,7 @@ class MemoryGovernanceService:
 
         active = [
             item
-            for item in await self.repository.list_active(
-                organization_id=organization_id
-            )
+            for item in await self.repository.list_active(organization_id=organization_id)
             if item.kind == MemoryKind.EPISODIC_SUMMARY
         ]
         groups: dict[tuple[str, str, str], list[MemoryRecord]] = {}

@@ -78,9 +78,7 @@ def _scope() -> _Scope:
 
 
 def _dsn() -> str:
-    return os.environ["DATABASE_URL"].replace(
-        "postgresql+asyncpg://", "postgresql://", 1
-    )
+    return os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
 def _migration_dsn() -> str:
@@ -220,10 +218,7 @@ def _clip(scope: _Scope) -> StoredVideoClip:
 
 
 def _final_clip(scope: _Scope) -> StoredVideoClip:
-    key = (
-        f"generated/video/v1/{ORG}/{PROJECT}/final/"
-        f"{scope.operation_id.hex}/{FINAL_CHECKSUM}.mp4"
-    )
+    key = f"generated/video/v1/{ORG}/{PROJECT}/final/{scope.operation_id.hex}/{FINAL_CHECKSUM}.mp4"
     return StoredVideoClip(
         storage_key=key,
         checksum_sha256=FINAL_CHECKSUM,
@@ -564,9 +559,7 @@ def test_cost_outbox_artifact_and_external_wait_recovery_use_canonical_postgres(
         assert artifact_row is not None
         assert artifact_row["kind"] == "VIDEO"
         assert artifact_row["status"] == "ready"
-        assert artifact_row["object_key"].startswith(
-            f"generated/video/v1/{ORG}/{PROJECT}/final/"
-        )
+        assert artifact_row["object_key"].startswith(f"generated/video/v1/{ORG}/{PROJECT}/final/")
         assert artifact_row["checksum_sha256"] == FINAL_CHECKSUM
         assert artifact_row["operation"] == "video.generate.final"
         assert edge is not None

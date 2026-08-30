@@ -22,7 +22,9 @@ def shot_operation_id(root_operation_id: str, shot_id: str) -> str:
 def retry_shot_operation_id(root_operation_id: str, shot_id: str, attempt: int) -> str:
     if attempt < 1:
         raise ValueError("VIDEO_RETRY_ATTEMPT_INVALID")
-    return str(uuid5(_stable_uuid(root_operation_id), f"video-shot:{shot_id}:quality-retry:{attempt}"))
+    return str(
+        uuid5(_stable_uuid(root_operation_id), f"video-shot:{shot_id}:quality-retry:{attempt}")
+    )
 
 
 def compile_storyboard(spec: VideoTaskSpec) -> CompiledStoryboard:
@@ -76,7 +78,9 @@ def previous_ready_clip_ref(
     shot_id: str,
     clip_tail_refs: dict[str, str],
 ) -> str | None:
-    index = next((idx for idx, item in enumerate(storyboard.shots) if item.shot.shot_id == shot_id), None)
+    index = next(
+        (idx for idx, item in enumerate(storyboard.shots) if item.shot.shot_id == shot_id), None
+    )
     if index is None or index == 0:
         return None
     previous_id = storyboard.shots[index - 1].shot.shot_id

@@ -53,7 +53,9 @@ class _FakeStore:
         destination_key: str,
     ) -> None:
         self.copies.append((source_bucket, source_key, destination_bucket, destination_key))
-        self.objects[(destination_bucket, destination_key)] = self.objects[(source_bucket, source_key)]
+        self.objects[(destination_bucket, destination_key)] = self.objects[
+            (source_bucket, source_key)
+        ]
 
     async def delete_candidate(self, *, bucket: str, object_key: str) -> None:
         self.deleted.append((bucket, object_key))
@@ -97,7 +99,9 @@ class _FakeSandboxRuntime(SandboxExchangeMediaRuntime):
         assert payload["timeout_seconds"] == 300
         assert len(payload["exchange_inputs"]) == 1
         assert len(payload["exchange_outputs"]) == 1
-        assert all("/sandbox/" in token or not token.startswith("/") for token in payload["command"])
+        assert all(
+            "/sandbox/" in token or not token.startswith("/") for token in payload["command"]
+        )
         output = payload["exchange_outputs"][0]
         key = output["exchange_key"]
         rendered = b"rendered-mp4" * 1024
@@ -152,9 +156,7 @@ def test_exchange_manifest_and_promotion_use_server_side_copy() -> None:
         output_spec=VideoOutputSpec(width=1280, height=720, fps=30),
     )
 
-    rendered = asyncio.run(
-        TypedFfmpegSandbox(executor=runtime, resolver=runtime).render(timeline)
-    )
+    rendered = asyncio.run(TypedFfmpegSandbox(executor=runtime, resolver=runtime).render(timeline))
 
     assert len(runtime.payloads) == 1
     payload = runtime.payloads[0]

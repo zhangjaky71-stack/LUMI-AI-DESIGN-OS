@@ -101,10 +101,7 @@ class TaskGraphRuntimeTests(unittest.TestCase):
         self.store.install(self.bundle)
 
     def test_dependency_order_progress_and_success(self) -> None:
-        tasks = {
-            item.task_key: item
-            for item in self.store.tasks(self.bundle.graph.graph_id)
-        }
+        tasks = {item.task_key: item for item in self.store.tasks(self.bundle.graph.graph_id)}
         self.assertEqual(tasks["work"].status, TaskState.READY)
         self.assertEqual(tasks["finalize"].status, TaskState.PENDING)
         first = claim_ready_tasks(
@@ -128,10 +125,7 @@ class TaskGraphRuntimeTests(unittest.TestCase):
             now=self.now,
             output={"artifact_ref": "artifact://first"},
         )
-        tasks = {
-            item.task_key: item
-            for item in self.store.tasks(self.bundle.graph.graph_id)
-        }
+        tasks = {item.task_key: item for item in self.store.tasks(self.bundle.graph.graph_id)}
         self.assertEqual(tasks["finalize"].status, TaskState.READY)
         self.assertEqual(self.store.graph(self.bundle.graph.graph_id).progress, 0.5)
         second = claim_ready_tasks(

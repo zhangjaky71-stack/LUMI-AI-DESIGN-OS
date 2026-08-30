@@ -43,15 +43,9 @@ class AgentReleaseManager:
             raise AgentReleaseError("production promotion blocked by eval release gate")
         releases: list[AgentReleaseRecord] = []
         for row in manifest.releases:
-            if (
-                row.agent_id == definition.agent_id
-                and row.status == AgentReleaseStatus.PRODUCTION
-            ):
+            if row.agent_id == definition.agent_id and row.status == AgentReleaseStatus.PRODUCTION:
                 releases.append(replace(row, status=AgentReleaseStatus.DEPRECATED))
-            elif (
-                row.agent_id == definition.agent_id
-                and row.version == definition.version
-            ):
+            elif row.agent_id == definition.agent_id and row.version == definition.version:
                 releases.append(
                     replace(
                         row,

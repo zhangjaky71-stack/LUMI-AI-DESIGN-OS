@@ -53,18 +53,25 @@ export class CanvasSpatialIndex {
     }
     return [...ids]
       .map((id) => this.#nodes.get(id))
-      .filter((node): node is CanvasSceneNode => Boolean(node && rectsIntersect(node.world_bounds, rect)))
+      .filter((node): node is CanvasSceneNode =>
+        Boolean(node && rectsIntersect(node.world_bounds, rect)),
+      )
       .sort((left, right) => left.paint_order - right.paint_order);
   }
 
   hitTest(
     point: Point,
-    options: { readonly includeLocked?: boolean; readonly isolationRoot?: string | null } = {},
+    options: {
+      readonly includeLocked?: boolean;
+      readonly isolationRoot?: string | null;
+    } = {},
   ): CanvasSceneNode[] {
     const probe: Rect = { x: point.x, y: point.y, width: 0, height: 0 };
     return this.query(probe)
       .filter((node) => (options.includeLocked ?? true) || !node.locked)
-      .filter((node) => this.#insideIsolation(node, options.isolationRoot ?? null))
+      .filter((node) =>
+        this.#insideIsolation(node, options.isolationRoot ?? null),
+      )
       .filter((node) => containsPoint(node.world_bounds, point))
       .sort((left, right) => right.paint_order - left.paint_order);
   }
@@ -73,7 +80,10 @@ export class CanvasSpatialIndex {
     return this.#nodes.size;
   }
 
-  #insideIsolation(node: CanvasSceneNode, isolationRoot: string | null): boolean {
+  #insideIsolation(
+    node: CanvasSceneNode,
+    isolationRoot: string | null,
+  ): boolean {
     if (!isolationRoot) return true;
     if (node.id === isolationRoot) return true;
     let current: CanvasSceneNode | undefined = node;
@@ -87,8 +97,12 @@ export class CanvasSpatialIndex {
   #keysForRect(rect: Rect): string[] {
     const left = Math.floor(rect.x / this.#cellSize);
     const top = Math.floor(rect.y / this.#cellSize);
-    const right = Math.floor((rect.x + Math.max(0, rect.width)) / this.#cellSize);
-    const bottom = Math.floor((rect.y + Math.max(0, rect.height)) / this.#cellSize);
+    const right = Math.floor(
+      (rect.x + Math.max(0, rect.width)) / this.#cellSize,
+    );
+    const bottom = Math.floor(
+      (rect.y + Math.max(0, rect.height)) / this.#cellSize,
+    );
     const keys: string[] = [];
     for (let y = top; y <= bottom; y += 1) {
       for (let x = left; x <= right; x += 1) keys.push(cellKey(x, y));

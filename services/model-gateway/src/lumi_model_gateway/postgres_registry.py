@@ -153,9 +153,7 @@ def _model(row: Mapping[str, Any]) -> RegistryModelSnapshot:
         lifecycle=str(row["lifecycle"]),
         route_eligible=bool(row["route_eligible"]),
         regions=tuple(_json_list(row["regions_json"])),
-        latency_class=(
-            str(row["latency_class"]) if row["latency_class"] is not None else None
-        ),
+        latency_class=(str(row["latency_class"]) if row["latency_class"] is not None else None),
         benchmark_status=str(row["benchmark_status"]),
         observed_at=_datetime(row["observed_at"]),
         source_ref=str(row["source_ref"]),
@@ -182,16 +180,10 @@ def _price(row: Mapping[str, Any]) -> PricingSnapshot:
         unit=str(row["unit"]),
         price=Decimal(str(row["price"])),
         minimum_charge=(
-            Decimal(str(row["minimum_charge"]))
-            if row["minimum_charge"] is not None
-            else None
+            Decimal(str(row["minimum_charge"])) if row["minimum_charge"] is not None else None
         ),
         effective_from=_datetime(row["effective_from"]),
-        valid_until=(
-            _datetime(row["valid_until"])
-            if row["valid_until"] is not None
-            else None
-        ),
+        valid_until=(_datetime(row["valid_until"]) if row["valid_until"] is not None else None),
         observed_at=_datetime(row["observed_at"]),
         source_ref=str(row["source_ref"]),
     )
@@ -214,8 +206,7 @@ def _benchmark(row: Mapping[str, Any]) -> BenchmarkScore:
 
 def _profile(row: Mapping[str, Any]) -> RoutingProfile:
     required = tuple(
-        Capability(str(item))
-        for item in _json_list(row["required_capabilities_json"])
+        Capability(str(item)) for item in _json_list(row["required_capabilities_json"])
     )
     return RoutingProfile(
         profile=str(row["profile"]),
@@ -235,13 +226,9 @@ def _policy(row: Mapping[str, Any]) -> RegistryOrganizationPolicy:
         disabled_providers=frozenset(_json_list(row["disabled_providers_json"])),
         denied_models=frozenset(_json_list(row["denied_models_json"])),
         allowed_regions=frozenset(_json_list(row["allowed_regions_json"])),
-        max_cost_class=(
-            str(row["max_cost_class"]) if row["max_cost_class"] is not None else None
-        ),
+        max_cost_class=(str(row["max_cost_class"]) if row["max_cost_class"] is not None else None),
         preferred_models=tuple(_json_list(row["preferred_models_json"])),
-        data_handling_restrictions=tuple(
-            _json_list(row["data_handling_restrictions_json"])
-        ),
+        data_handling_restrictions=tuple(_json_list(row["data_handling_restrictions_json"])),
     )
 
 

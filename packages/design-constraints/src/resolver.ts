@@ -6,15 +6,16 @@ import type {
   DesignDocument,
 } from "./types";
 
-export const SOURCE_PRECEDENCE: Readonly<Record<ConstraintSource, number>> = Object.freeze({
-  SAFETY_SYSTEM: 700,
-  USER_EXPLICIT: 600,
-  APPROVED_BRAND_RULE: 500,
-  PROJECT_RULE: 400,
-  RECIPE_RULE: 300,
-  AGENT_INFERRED: 200,
-  STYLE_PREFERENCE: 100,
-});
+export const SOURCE_PRECEDENCE: Readonly<Record<ConstraintSource, number>> =
+  Object.freeze({
+    SAFETY_SYSTEM: 700,
+    USER_EXPLICIT: 600,
+    APPROVED_BRAND_RULE: 500,
+    PROJECT_RULE: 400,
+    RECIPE_RULE: 300,
+    AGENT_INFERRED: 200,
+    STYLE_PREFERENCE: 100,
+  });
 
 function scopeKey(constraint: DesignConstraint): string {
   return canonicalStringify({
@@ -45,12 +46,15 @@ export function resolveConstraints(
   constraints: readonly DesignConstraint[],
 ): ResolvedConstraintSet {
   const currentVersion =
-    typeof document.metadata.document_version === "number" ? document.metadata.document_version : 0;
+    typeof document.metadata.document_version === "number"
+      ? document.metadata.document_version
+      : 0;
   const active = constraints.filter((constraint) => constraint.active);
   const stale = active
     .filter(
       (constraint) =>
-        constraint.document_version !== undefined && constraint.document_version !== currentVersion,
+        constraint.document_version !== undefined &&
+        constraint.document_version !== currentVersion,
     )
     .map((constraint) => constraint.id)
     .sort();
@@ -68,7 +72,8 @@ export function resolveConstraints(
   const conflicts: ConstraintConflict[] = [];
   for (const bucket of groups.values()) {
     bucket.sort((left, right) => {
-      const source = SOURCE_PRECEDENCE[right.source] - SOURCE_PRECEDENCE[left.source];
+      const source =
+        SOURCE_PRECEDENCE[right.source] - SOURCE_PRECEDENCE[left.source];
       if (source) return source;
       const priority = right.priority - left.priority;
       if (priority) return priority;
@@ -77,7 +82,8 @@ export function resolveConstraints(
     const winner = bucket[0]!;
     const peers = bucket.filter(
       (candidate) =>
-        SOURCE_PRECEDENCE[candidate.source] === SOURCE_PRECEDENCE[winner.source] &&
+        SOURCE_PRECEDENCE[candidate.source] ===
+          SOURCE_PRECEDENCE[winner.source] &&
         candidate.priority === winner.priority,
     );
     const parameterShapes = new Set(peers.map(parameterKey));
@@ -93,6 +99,8 @@ export function resolveConstraints(
   }
 
   effective.sort((left, right) => left.id.localeCompare(right.id));
-  conflicts.sort((left, right) => left.constraint_ids.join(":").localeCompare(right.constraint_ids.join(":")));
+  conflicts.sort((left, right) =>
+    left.constraint_ids.join(":").localeCompare(right.constraint_ids.join(":")),
+  );
   return { constraints: effective, conflicts, stale_constraint_ids: stale };
 }

@@ -127,7 +127,9 @@ class AssetSearchEngine:
 
         # Critical security invariant: this is the only candidate retrieval call. The repository
         # applies organization/project/brand/permission/rights filters before any scoring below.
-        candidates = self._repository.scoped_candidates(request.scope, request.filters, index.index_id)
+        candidates = self._repository.scoped_candidates(
+            request.scope, request.filters, index.index_id
+        )
 
         source: AssetAnalysisRecord | None = None
         if request.mode == "SIMILAR_TO":

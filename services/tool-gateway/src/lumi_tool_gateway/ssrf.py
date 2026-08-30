@@ -90,11 +90,7 @@ class SSRFPolicy:
             raise ToolSSRFBlockedError("TOOL_URL_PORT_BLOCKED")
 
         literal = _parse_ip(hostname)
-        addresses = (
-            (str(literal),)
-            if literal is not None
-            else self.resolver.resolve(hostname)
-        )
+        addresses = (str(literal),) if literal is not None else self.resolver.resolve(hostname)
         normalized: list[str] = []
         for address in addresses:
             ip = _parse_ip(address)

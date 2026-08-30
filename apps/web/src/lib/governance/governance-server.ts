@@ -109,12 +109,14 @@ function deterministicWorkspace(organizationId: string): GovernanceWorkspace {
       ["EXPORT", 30],
       ["ANALYTICS", 400],
     ].map(([retention_class, retention_days]) => ({
-      retention_class: retention_class as GovernanceWorkspace["retention_policies"][number]["retention_class"],
+      retention_class:
+        retention_class as GovernanceWorkspace["retention_policies"][number]["retention_class"],
       version: 1,
       retention_days: retention_days as number,
       created_by: "system:node-65-default",
       created_at: now,
-      policy_note: "Engineering default; legal review required before production launch.",
+      policy_note:
+        "Engineering default; legal review required before production launch.",
     })),
     retention_candidates: [
       {
@@ -152,8 +154,13 @@ function deterministicWorkspace(organizationId: string): GovernanceWorkspace {
   };
 }
 
-export function getGovernanceBootstrap(session: ShellSession): GovernanceBootstrap {
-  if (process.env.NODE_ENV !== "production" && process.env.LUMI_GOVERNANCE_E2E === "1") {
+export function getGovernanceBootstrap(
+  session: ShellSession,
+): GovernanceBootstrap {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    process.env.LUMI_GOVERNANCE_E2E === "1"
+  ) {
     return {
       mode: "DETERMINISTIC",
       workspace: deterministicWorkspace(session.active_organization_id),

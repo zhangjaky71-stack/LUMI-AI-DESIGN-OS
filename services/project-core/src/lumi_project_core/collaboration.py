@@ -301,9 +301,7 @@ class CollaborationEngine:
         self._require(actor, project_id, "view")
         return self._presence.list(actor.organization_id, project_id, document_id)
 
-    def leave_presence(
-        self, actor: CollaborationActor, project_id: str, document_id: str
-    ) -> None:
+    def leave_presence(self, actor: CollaborationActor, project_id: str, document_id: str) -> None:
         self._require(actor, project_id, "view")
         self._presence.remove(actor.organization_id, project_id, document_id, actor.actor_id)
 
@@ -333,11 +331,17 @@ class CollaborationEngine:
             created_at=timestamp,
         )
         self._repository.save_thread(thread)
-        self._record(actor, anchor.project_id, "THREAD_CREATED", thread.thread_id, {
-            "artifact_version_id": anchor.artifact_version_id,
-            "design_document_version_id": anchor.design_document_version_id,
-            "node_id": anchor.node_id,
-        })
+        self._record(
+            actor,
+            anchor.project_id,
+            "THREAD_CREATED",
+            thread.thread_id,
+            {
+                "artifact_version_id": anchor.artifact_version_id,
+                "design_document_version_id": anchor.design_document_version_id,
+                "node_id": anchor.node_id,
+            },
+        )
         self._notify_mentions(actor, anchor.project_id, thread.thread_id, mentions)
         return thread
 
@@ -361,21 +365,23 @@ class CollaborationEngine:
         )
         updated = replace(thread, messages=(*thread.messages, message))
         self._repository.save_thread(updated)
-        self._record(actor, project_id, "COMMENT_REPLIED", thread_id, {
-            "comment_id": message.comment_id
-        })
+        self._record(
+            actor, project_id, "COMMENT_REPLIED", thread_id, {"comment_id": message.comment_id}
+        )
         self._notify_mentions(actor, project_id, thread_id, mentions)
         for recipient in {item.actor.actor_id for item in thread.messages} - {actor.actor_id}:
-            self._notifications.send(CollaborationNotification(
-                notification_id=str(uuid4()),
-                organization_id=actor.organization_id,
-                project_id=project_id,
-                recipient_actor_id=recipient,
-                kind="COMMENT_REPLY",
-                thread_id=thread_id,
-                safe_summary=f"{actor.display_name} replied to a review thread.",
-                created_at=_now(),
-            ))
+            self._notifications.send(
+                CollaborationNotification(
+                    notification_id=str(uuid4()),
+                    organization_id=actor.organization_id,
+                    project_id=project_id,
+                    recipient_actor_id=recipient,
+                    kind="COMMENT_REPLY",
+                    thread_id=thread_id,
+                    safe_summary=f"{actor.display_name} replied to a review thread.",
+                    created_at=_now(),
+                )
+            )
         return updated
 
     def set_thread_status(
@@ -467,8 +473,10 @@ class CollaborationEngine:
             raise CollaborationError("COLLABORATION_OPERATION_ID_DUPLICATE")
 
         current = self._canonical.current_version(project_id, document_id)
-        remote = () if base_version_id == current else self._canonical.operations_since(
-            project_id, document_id, base_version_id
+        remote = (
+            ()
+            if base_version_id == current
+            else self._canonical.operations_since(project_id, document_id, base_version_id)
         )
         remote_by_key = {item.operation.conflict_key: item for item in remote}
         accepted: list[CollaborationOperation] = []
@@ -478,41 +486,53 @@ class CollaborationEngine:
             if competing is None:
                 accepted.append(operation)
                 continue
-            conflicts.append(OperationConflict(
-                local_operation=operation,
-                remote_operation_id=competing.operation.operation_id,
-                remote_actor_id=competing.actor.actor_id,
-                remote_actor_type=competing.actor.actor_type,
-                remote_result_version_id=competing.result_version_id,
-                node_id=operation.node_id,
-                property_name=operation.property_name,
-            ))
+            conflicts.append(
+                OperationConflict(
+                    local_operation=operation,
+                    remote_operation_id=competing.operation.operation_id,
+                    remote_actor_id=competing.actor.actor_id,
+                    remote_actor_type=competing.actor.actor_type,
+                    remote_result_version_id=competing.result_version_id,
+                    node_id=operation.node_id,
+                    property_name=operation.property_name,
+                )
+            )
 
         result_version = current
         if accepted:
             accepted_tuple = tuple(accepted)
-            self._constraints.validate(
-                project_id, document_id, current, accepted_tuple
-            )
+            self._constraints.validate(project_id, document_id, current, accepted_tuple)
             result_version = self._canonical.commit(
                 project_id, document_id, current, actor, accepted_tuple
             )
             for operation in accepted:
-                self._record(actor, project_id, "DESIGN_OPERATION_COMMITTED", operation.operation_id, {
-                    "document_id": document_id,
-                    "base_version_id": base_version_id,
-                    "result_version_id": result_version,
-                    "node_id": operation.node_id,
-                    "property_name": operation.property_name,
-                })
+                self._record(
+                    actor,
+                    project_id,
+                    "DESIGN_OPERATION_COMMITTED",
+                    operation.operation_id,
+                    {
+                        "document_id": document_id,
+                        "base_version_id": base_version_id,
+                        "result_version_id": result_version,
+                        "node_id": operation.node_id,
+                        "property_name": operation.property_name,
+                    },
+                )
         for conflict in conflicts:
-            self._record(actor, project_id, "DESIGN_OPERATION_CONFLICT", conflict.local_operation.operation_id, {
-                "document_id": document_id,
-                "node_id": conflict.node_id,
-                "property_name": conflict.property_name,
-                "remote_operation_id": conflict.remote_operation_id,
-                "local_edit_preserved": True,
-            })
+            self._record(
+                actor,
+                project_id,
+                "DESIGN_OPERATION_CONFLICT",
+                conflict.local_operation.operation_id,
+                {
+                    "document_id": document_id,
+                    "node_id": conflict.node_id,
+                    "property_name": conflict.property_name,
+                    "remote_operation_id": conflict.remote_operation_id,
+                    "local_edit_preserved": True,
+                },
+            )
         return OperationSubmitResult(
             base_version_id=base_version_id,
             canonical_version_before=current,
@@ -534,9 +554,7 @@ class CollaborationEngine:
             actor, project_id, document_id, base_version_id, buffered_operations
         )
 
-    def _thread(
-        self, actor: CollaborationActor, project_id: str, thread_id: str
-    ) -> CommentThread:
+    def _thread(self, actor: CollaborationActor, project_id: str, thread_id: str) -> CommentThread:
         thread = self._repository.get_thread(actor.organization_id, project_id, thread_id)
         if thread is None:
             raise CollaborationError("COLLABORATION_THREAD_NOT_FOUND", 404)
@@ -566,16 +584,18 @@ class CollaborationEngine:
         for recipient in mentions:
             if recipient == actor.actor_id:
                 continue
-            self._notifications.send(CollaborationNotification(
-                notification_id=str(uuid4()),
-                organization_id=actor.organization_id,
-                project_id=project_id,
-                recipient_actor_id=recipient,
-                kind="MENTION",
-                thread_id=thread_id,
-                safe_summary=f"{actor.display_name} mentioned you in a review thread.",
-                created_at=_now(),
-            ))
+            self._notifications.send(
+                CollaborationNotification(
+                    notification_id=str(uuid4()),
+                    organization_id=actor.organization_id,
+                    project_id=project_id,
+                    recipient_actor_id=recipient,
+                    kind="MENTION",
+                    thread_id=thread_id,
+                    safe_summary=f"{actor.display_name} mentioned you in a review thread.",
+                    created_at=_now(),
+                )
+            )
 
     def _require(
         self, actor: CollaborationActor, project_id: str, action: Literal["view", "comment", "edit"]
@@ -596,18 +616,20 @@ class CollaborationEngine:
         target_id: str,
         metadata: dict[str, Any],
     ) -> None:
-        self._audit.record(CollaborationAuditEvent(
-            event_id=str(uuid4()),
-            organization_id=actor.organization_id,
-            project_id=project_id,
-            event_type=event_type,
-            actor_id=actor.actor_id,
-            actor_type=actor.actor_type,
-            agent_run_id=actor.agent_run_id,
-            target_id=target_id,
-            metadata=metadata,
-            created_at=_now(),
-        ))
+        self._audit.record(
+            CollaborationAuditEvent(
+                event_id=str(uuid4()),
+                organization_id=actor.organization_id,
+                project_id=project_id,
+                event_type=event_type,
+                actor_id=actor.actor_id,
+                actor_type=actor.actor_type,
+                agent_run_id=actor.agent_run_id,
+                target_id=target_id,
+                metadata=metadata,
+                created_at=_now(),
+            )
+        )
 
 
 class InMemoryCollaborationRepository:
@@ -616,7 +638,8 @@ class InMemoryCollaborationRepository:
 
     def list_threads(self, organization_id: str, project_id: str) -> tuple[CommentThread, ...]:
         values = [
-            item for (org, project, _), item in self.threads.items()
+            item
+            for (org, project, _), item in self.threads.items()
             if org == organization_id and project == project_id
         ]
         return tuple(sorted(values, key=lambda item: item.created_at, reverse=True))
@@ -637,18 +660,21 @@ class InMemoryPresenceStore:
         self.states: dict[tuple[str, str, str, str], PresenceState] = {}
 
     def upsert(self, presence: PresenceState) -> None:
-        self.states[(
-            presence.organization_id,
-            presence.project_id,
-            presence.document_id,
-            presence.actor.actor_id,
-        )] = presence
+        self.states[
+            (
+                presence.organization_id,
+                presence.project_id,
+                presence.document_id,
+                presence.actor.actor_id,
+            )
+        ] = presence
 
     def list(
         self, organization_id: str, project_id: str, document_id: str
     ) -> tuple[PresenceState, ...]:
         return tuple(
-            state for (org, project, document, _), state in self.states.items()
+            state
+            for (org, project, document, _), state in self.states.items()
             if org == organization_id and project == project_id and document == document_id
         )
 
@@ -685,9 +711,7 @@ class StaticCollaborationAuthorization:
     def can_edit(self, actor: CollaborationActor, project_id: str) -> bool:
         return self._has(actor, project_id, self.EDIT)
 
-    def can_mention(
-        self, actor: CollaborationActor, target_actor_id: str, project_id: str
-    ) -> bool:
+    def can_mention(self, actor: CollaborationActor, target_actor_id: str, project_id: str) -> bool:
         return self.can_comment(actor, project_id) and (
             self.actor_organizations.get(target_actor_id) == actor.organization_id
             and self.VIEW in self.permissions.get(target_actor_id, {}).get(project_id, frozenset())
@@ -721,7 +745,8 @@ class InMemoryCanonicalDesign:
         index = versions.index(version_id)
         allowed_result_versions = set(versions[index + 1 :])
         return tuple(
-            item for item in self._commits.get(key, [])
+            item
+            for item in self._commits.get(key, [])
             if item.result_version_id in allowed_result_versions
         )
 
@@ -741,14 +766,16 @@ class InMemoryCanonicalDesign:
         versions.append(result)
         for operation in operations:
             self._sequence += 1
-            self._commits[(project_id, document_id)].append(CommittedDesignOperation(
-                operation=operation,
-                actor=actor,
-                base_version_id=current,
-                result_version_id=result,
-                sequence=self._sequence,
-                committed_at=_now(),
-            ))
+            self._commits[(project_id, document_id)].append(
+                CommittedDesignOperation(
+                    operation=operation,
+                    actor=actor,
+                    base_version_id=current,
+                    result_version_id=result,
+                    sequence=self._sequence,
+                    committed_at=_now(),
+                )
+            )
         return result
 
     @staticmethod

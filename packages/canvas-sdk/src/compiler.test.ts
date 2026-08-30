@@ -12,7 +12,9 @@ import type {
 } from "./compiler-types";
 import { CanvasController } from "./controller";
 
-function fixture(uri = "https://signed.example/asset?token=one"): DesignDocument {
+function fixture(
+  uri = "https://signed.example/asset?token=one",
+): DesignDocument {
   return {
     schema_version: "1.0",
     document_id: "compiler-doc",
@@ -293,10 +295,7 @@ describe("NODE-41 resolver and cache boundaries", () => {
       },
     };
     const fontResolver: CompilerFontResolver = {
-      async resolveFont(
-        _document,
-        fontRef,
-      ): Promise<ResolvedCompilerFont> {
+      async resolveFont(_document, fontRef): Promise<ResolvedCompilerFont> {
         return {
           font_ref: fontRef,
           family: "Inter",

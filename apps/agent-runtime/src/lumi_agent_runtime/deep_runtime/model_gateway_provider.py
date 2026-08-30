@@ -117,8 +117,7 @@ class ModelGatewayChatModel(BaseChatModel):
             names = ",".join(sorted(kwargs))
             raise ValueError(f"MODEL_GATEWAY_LANGCHAIN_CALL_OPTION_UNSUPPORTED:{names}")
         wire_messages = [
-            _encode_message(message, index=index)
-            for index, message in enumerate(messages)
+            _encode_message(message, index=index) for index, message in enumerate(messages)
         ]
         inputs: dict[str, Any] = {"messages": wire_messages}
         if self.bound_tools:
@@ -266,9 +265,7 @@ def _text_content(value: Any, *, path: str) -> str:
                 if isinstance(text, str):
                     parts.append(text)
                     continue
-            raise ValueError(
-                f"MODEL_GATEWAY_LANGCHAIN_MULTIMODAL_UNSUPPORTED:{path}[{index}]"
-            )
+            raise ValueError(f"MODEL_GATEWAY_LANGCHAIN_MULTIMODAL_UNSUPPORTED:{path}[{index}]")
         return "".join(parts)
     raise ValueError(f"MODEL_GATEWAY_LANGCHAIN_CONTENT_UNSUPPORTED:{path}")
 
@@ -291,9 +288,7 @@ def _decode_result(result: ModelResult) -> AIMessage:
                 or not isinstance(args, dict)
             ):
                 raise ValueError("MODEL_GATEWAY_LANGCHAIN_TOOL_OUTPUT_INVALID")
-            tool_calls.append(
-                {"id": call_id, "name": name, "args": args, "type": "tool_call"}
-            )
+            tool_calls.append({"id": call_id, "name": name, "args": args, "type": "tool_call"})
             continue
         if output.kind == "refusal" and isinstance(output.value, str):
             refusal_parts.append(output.value)

@@ -140,9 +140,7 @@ async def _dispatch_outbox(
                     "oldest_domain_unpublished_age_seconds": (
                         domain_health.oldest_unpublished_age_seconds
                     ),
-                    "oldest_domain_publish_attempts": (
-                        domain_health.oldest_publish_attempts
-                    ),
+                    "oldest_domain_publish_attempts": (domain_health.oldest_publish_attempts),
                     "failure_count": len(failures),
                     "failure_channels": channels,
                 },
@@ -152,9 +150,7 @@ async def _dispatch_outbox(
             flush=True,
         )
         if failures:
-            raise RuntimeError(
-                f"OUTBOX_DISPATCH_FAILED:{','.join(channels)}"
-            ) from failures[0][1]
+            raise RuntimeError(f"OUTBOX_DISPATCH_FAILED:{','.join(channels)}") from failures[0][1]
         if not watch:
             return
         if published == 0 and wakes == 0:
@@ -236,11 +232,7 @@ def _publish_job_replay(
     task_name = data.get("task")
     args = data.get("args", [])
     kwargs = data.get("kwargs", {})
-    if (
-        not isinstance(task_name, str)
-        or not isinstance(args, list)
-        or not isinstance(kwargs, dict)
-    ):
+    if not isinstance(task_name, str) or not isinstance(args, list) or not isinstance(kwargs, dict):
         raise RuntimeError("DEAD_LETTER_JOB_PAYLOAD_INVALID")
     celery_app.send_task(
         task_name,

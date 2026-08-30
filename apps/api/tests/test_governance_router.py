@@ -183,9 +183,7 @@ def test_deletion_requires_privileged_actor_and_propagates_gc() -> None:
         },
     )
     assert requested.status_code == 200
-    executed = client.post(
-        "/governance/deletions/delete-api-65:execute", headers=headers
-    )
+    executed = client.post("/governance/deletions/delete-api-65:execute", headers=headers)
     assert executed.status_code == 200
     assert executed.json()["status"] == "COMPLETED"
     assert "object://org-a/asset-old" in data.gc_objects

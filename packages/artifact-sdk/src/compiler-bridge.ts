@@ -1,9 +1,12 @@
 import type { CompiledSceneSnapshot } from "../../canvas-sdk/src/index";
 import type { CompilerArtifactProvenance } from "./types";
 
-export function compilerProvenanceFromSnapshot(snapshot: CompiledSceneSnapshot): CompilerArtifactProvenance {
+export function compilerProvenanceFromSnapshot(
+  snapshot: CompiledSceneSnapshot,
+): CompilerArtifactProvenance {
   const value = snapshot.provenance;
-  if (!value.compile_hash) throw new Error("compiled artifact requires NODE-41 compile_hash");
+  if (!value.compile_hash)
+    throw new Error("compiled artifact requires NODE-41 compile_hash");
   return {
     compiler_version: value.compiler_version,
     document_id: value.document_id,

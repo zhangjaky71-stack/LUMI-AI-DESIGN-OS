@@ -126,16 +126,19 @@ def test_video_cost_confidence_uses_canonical_lowercase_ledger_contract(
         return connection
 
     monkeypatch.setattr(cost_module.asyncpg, "connect", connect)
-    assert asyncio.run(
-        _observer().record_terminal(
-            video_job_id="video-job:estimated",
-            shot_id="hero",
-            paid_operation_id=str(uuid4()),
-            provider="openai",
-            model="sora-2",
-            provider_request_id="video_provider_123",
-            amount_usd=Decimal("1.25000000"),
-            confidence="ESTIMATED",
-            pricing_snapshot_id="price-v1",
+    assert (
+        asyncio.run(
+            _observer().record_terminal(
+                video_job_id="video-job:estimated",
+                shot_id="hero",
+                paid_operation_id=str(uuid4()),
+                provider="openai",
+                model="sora-2",
+                provider_request_id="video_provider_123",
+                amount_usd=Decimal("1.25000000"),
+                confidence="ESTIMATED",
+                pricing_snapshot_id="price-v1",
+            )
         )
-    ) is True
+        is True
+    )

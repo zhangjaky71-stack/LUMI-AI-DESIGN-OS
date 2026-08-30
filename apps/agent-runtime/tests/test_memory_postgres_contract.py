@@ -53,7 +53,9 @@ class MemoryPostgresContractTests(unittest.TestCase):
 
     def test_sensitive_and_cross_scope_rejections_do_not_persist_candidate_content(self) -> None:
         text = PIPELINE.read_text(encoding="utf-8")
-        sensitive_block = text.split("if sensitivity.classification.value != \"NONE\":", 1)[1].split("policy =", 1)[0]
+        sensitive_block = text.split('if sensitivity.classification.value != "NONE":', 1)[1].split(
+            "policy =", 1
+        )[0]
         self.assertNotIn("insert_candidate", sensitive_block)
         policy_block = text.split("if not policy.allowed:", 1)[1].split("if policy.outcome", 1)[0]
         self.assertNotIn("insert_candidate", policy_block)

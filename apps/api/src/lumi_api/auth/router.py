@@ -8,7 +8,14 @@ from fastapi import APIRouter, Header, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from .errors import AuthError, InvalidCredentials, PermissionDenied, RegistrationRejected, SessionInvalid, TokenInvalid
+from .errors import (
+    AuthError,
+    InvalidCredentials,
+    PermissionDenied,
+    RegistrationRejected,
+    SessionInvalid,
+    TokenInvalid,
+)
 from .membership import MembershipService
 from .notifications import AuthNotificationNotConfigured, AuthNotificationPort
 from .principal import PrincipalResolver
@@ -70,8 +77,15 @@ def create_auth_router(
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
 
-    @router.post("/register", response_model=AcceptedResponse, status_code=202, operation_id="registerLocalUser")
-    async def register(payload: RegisterRequest, request: Request) -> AcceptedResponse | JSONResponse:
+    @router.post(
+        "/register",
+        response_model=AcceptedResponse,
+        status_code=202,
+        operation_id="registerLocalUser",
+    )
+    async def register(
+        payload: RegisterRequest, request: Request
+    ) -> AcceptedResponse | JSONResponse:
         try:
             async with session_factory() as session:
                 async with session.begin():
@@ -93,23 +107,34 @@ def create_auth_router(
             # Deliberately indistinguishable from accepted registration to reduce account enumeration.
             return AcceptedResponse()
         except AuthNotificationNotConfigured:
-            return _problem(503, "AUTH_NOTIFICATION_UNAVAILABLE", "Authentication email delivery is unavailable", request)
+            return _problem(
+                503,
+                "AUTH_NOTIFICATION_UNAVAILABLE",
+                "Authentication email delivery is unavailable",
+                request,
+            )
         except ValueError:
             return _problem(422, "INVALID_REGISTRATION", "Registration request is invalid", request)
         return AcceptedResponse()
 
     @router.post("/verify-email", response_model=AcceptedResponse, operation_id="verifyEmail")
-    async def verify_email(payload: VerifyEmailRequest, request: Request) -> AcceptedResponse | JSONResponse:
+    async def verify_email(
+        payload: VerifyEmailRequest, request: Request
+    ) -> AcceptedResponse | JSONResponse:
         try:
             async with session_factory() as session:
                 async with session.begin():
                     await AuthService(session).verify_email(payload.token)
         except TokenInvalid:
-            return _problem(400, "TOKEN_INVALID_OR_EXPIRED", "Verification token is invalid or expired", request)
+            return _problem(
+                400, "TOKEN_INVALID_OR_EXPIRED", "Verification token is invalid or expired", request
+            )
         return AcceptedResponse()
 
     @router.post("/login", response_model=LoginResponse, operation_id="loginLocalUser")
-    async def login(payload: LoginRequest, request: Request, response: Response) -> LoginResponse | JSONResponse:
+    async def login(
+        payload: LoginRequest, request: Request, response: Response
+    ) -> LoginResponse | JSONResponse:
         try:
             async with session_factory() as session:
                 async with session.begin():
@@ -162,11 +187,20 @@ def create_auth_router(
                     )
         except SessionInvalid:
             return _problem(401, "SESSION_INVALID", "Session is invalid", request)
-        response.delete_cookie(SESSION_COOKIE, path="/", secure=secure_cookie, httponly=True, samesite="lax")
+        response.delete_cookie(
+            SESSION_COOKIE, path="/", secure=secure_cookie, httponly=True, samesite="lax"
+        )
         return AcceptedResponse()
 
-    @router.post("/password-reset", response_model=AcceptedResponse, status_code=202, operation_id="requestPasswordReset")
-    async def password_reset(payload: PasswordResetRequest, request: Request) -> AcceptedResponse | JSONResponse:
+    @router.post(
+        "/password-reset",
+        response_model=AcceptedResponse,
+        status_code=202,
+        operation_id="requestPasswordReset",
+    )
+    async def password_reset(
+        payload: PasswordResetRequest, request: Request
+    ) -> AcceptedResponse | JSONResponse:
         try:
             async with session_factory() as session:
                 async with session.begin():
@@ -177,13 +211,22 @@ def create_auth_router(
                     if token is not None:
                         await notifications.send_password_reset(email=payload.email, token=token)
         except AuthNotificationNotConfigured:
-            return _problem(503, "AUTH_NOTIFICATION_UNAVAILABLE", "Authentication email delivery is unavailable", request)
+            return _problem(
+                503,
+                "AUTH_NOTIFICATION_UNAVAILABLE",
+                "Authentication email delivery is unavailable",
+                request,
+            )
         except ValueError:
             # Keep enumeration-safe outward semantics for malformed/not-found lookup details.
             return AcceptedResponse()
         return AcceptedResponse()
 
-    @router.post("/password-reset/confirm", response_model=AcceptedResponse, operation_id="confirmPasswordReset")
+    @router.post(
+        "/password-reset/confirm",
+        response_model=AcceptedResponse,
+        operation_id="confirmPasswordReset",
+    )
     async def password_reset_confirm(
         payload: PasswordResetConfirmRequest,
         request: Request,
@@ -196,9 +239,13 @@ def create_auth_router(
                         new_password=payload.new_password,
                     )
         except TokenInvalid:
-            return _problem(400, "TOKEN_INVALID_OR_EXPIRED", "Reset token is invalid or expired", request)
+            return _problem(
+                400, "TOKEN_INVALID_OR_EXPIRED", "Reset token is invalid or expired", request
+            )
         except ValueError:
-            return _problem(422, "INVALID_PASSWORD", "New password does not meet requirements", request)
+            return _problem(
+                422, "INVALID_PASSWORD", "New password does not meet requirements", request
+            )
         return AcceptedResponse()
 
     async def _session_principal(
@@ -298,10 +345,17 @@ def create_auth_router(
         except PermissionDenied:
             return _problem(403, "PERMISSION_DENIED", "Permission denied", request)
         except AuthNotificationNotConfigured:
-            return _problem(503, "AUTH_NOTIFICATION_UNAVAILABLE", "Authentication email delivery is unavailable", request)
+            return _problem(
+                503,
+                "AUTH_NOTIFICATION_UNAVAILABLE",
+                "Authentication email delivery is unavailable",
+                request,
+            )
         return AcceptedResponse()
 
-    @router.post("/invites/accept", response_model=AcceptedResponse, operation_id="acceptOrganizationInvite")
+    @router.post(
+        "/invites/accept", response_model=AcceptedResponse, operation_id="acceptOrganizationInvite"
+    )
     async def accept_invite(
         payload: InviteAcceptRequest,
         request: Request,
@@ -329,7 +383,9 @@ def create_auth_router(
                         plaintext_token=payload.token,
                     )
         except TokenInvalid:
-            return _problem(400, "TOKEN_INVALID_OR_EXPIRED", "Invite is invalid or expired", request)
+            return _problem(
+                400, "TOKEN_INVALID_OR_EXPIRED", "Invite is invalid or expired", request
+            )
         return AcceptedResponse()
 
     @router.post(
@@ -453,7 +509,12 @@ def create_auth_router(
             return _problem(403, "PERMISSION_DENIED", "Permission denied", request)
         except ValueError as exc:
             code = "LAST_OWNER_REQUIRED" if "LAST_OWNER_REQUIRED" in str(exc) else "INVALID_ROLE"
-            return _problem(409 if code == "LAST_OWNER_REQUIRED" else 422, code, "Membership change rejected", request)
+            return _problem(
+                409 if code == "LAST_OWNER_REQUIRED" else 422,
+                code,
+                "Membership change rejected",
+                request,
+            )
         return AcceptedResponse()
 
     @router.delete(

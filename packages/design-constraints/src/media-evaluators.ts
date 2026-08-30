@@ -14,10 +14,15 @@ export interface QrDecodeResult {
 }
 
 export interface QrDecoder {
-  decode(context: PostflightContext, constraint: DesignConstraint): Promise<QrDecodeResult>;
+  decode(
+    context: PostflightContext,
+    constraint: DesignConstraint,
+  ): Promise<QrDecodeResult>;
 }
 
-function evidence(value: string | undefined): Readonly<{ raw_evidence_ref?: string }> {
+function evidence(
+  value: string | undefined,
+): Readonly<{ raw_evidence_ref?: string }> {
   return value === undefined ? {} : { raw_evidence_ref: value };
 }
 
@@ -35,7 +40,9 @@ export class QrScannabilityEvaluator implements PostflightEvaluator {
   ): Promise<readonly ConstraintViolation[]> {
     const result = await this.decoder.decode(context, constraint);
     const expectedPayload =
-      typeof constraint.parameters.payload === "string" ? constraint.parameters.payload : undefined;
+      typeof constraint.parameters.payload === "string"
+        ? constraint.parameters.payload
+        : undefined;
     const violations: ConstraintViolation[] = [];
     if (!result.detected || !result.payload) {
       violations.push({
@@ -106,7 +113,10 @@ export interface ProtectedRegionSignals {
 }
 
 export interface ProtectedRegionComparator {
-  compare(context: PostflightContext, constraint: DesignConstraint): Promise<ProtectedRegionSignals>;
+  compare(
+    context: PostflightContext,
+    constraint: DesignConstraint,
+  ): Promise<ProtectedRegionSignals>;
 }
 
 export class ProtectedRegionEvaluator implements PostflightEvaluator {
@@ -123,7 +133,9 @@ export class ProtectedRegionEvaluator implements PostflightEvaluator {
   ): Promise<readonly ConstraintViolation[]> {
     const signals = await this.comparator.compare(context, constraint);
     const minSsim =
-      typeof constraint.parameters.min_ssim === "number" ? constraint.parameters.min_ssim : 0.985;
+      typeof constraint.parameters.min_ssim === "number"
+        ? constraint.parameters.min_ssim
+        : 0.985;
     const maxEdge =
       typeof constraint.parameters.max_edge_difference === "number"
         ? constraint.parameters.max_edge_difference
@@ -179,9 +191,13 @@ export class ResolutionEvaluator implements PostflightEvaluator {
     const width = context.after_ref.width ?? 0;
     const height = context.after_ref.height ?? 0;
     const minWidth =
-      typeof constraint.parameters.min_width === "number" ? constraint.parameters.min_width : 0;
+      typeof constraint.parameters.min_width === "number"
+        ? constraint.parameters.min_width
+        : 0;
     const minHeight =
-      typeof constraint.parameters.min_height === "number" ? constraint.parameters.min_height : 0;
+      typeof constraint.parameters.min_height === "number"
+        ? constraint.parameters.min_height
+        : 0;
     if (width >= minWidth && height >= minHeight) return [];
     return [
       {

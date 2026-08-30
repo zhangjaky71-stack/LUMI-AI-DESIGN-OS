@@ -186,9 +186,7 @@ class OutboxDispatcher:
                     oldest_publish_attempts=0,
                 )
             return DomainOutboxHealth(
-                oldest_unpublished_age_seconds=int(
-                    row["oldest_unpublished_age_seconds"]
-                ),
+                oldest_unpublished_age_seconds=int(row["oldest_unpublished_age_seconds"]),
                 oldest_publish_attempts=int(row["oldest_publish_attempts"]),
             )
         finally:
@@ -311,7 +309,10 @@ class KombuEventConsumer:
 
     def consume_one(self, handler: EventHandler, *, timeout: float = 1.0) -> str:
         queue = domain_queue(self.runtime.consumer, self.binding_key)
-        with Connection(self.broker_url) as connection, connection.SimpleQueue(queue) as simple_queue:
+        with (
+            Connection(self.broker_url) as connection,
+            connection.SimpleQueue(queue) as simple_queue,
+        ):
             message = simple_queue.get(block=True, timeout=timeout)
             envelope = message.payload
             try:

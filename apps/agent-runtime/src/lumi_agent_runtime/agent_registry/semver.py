@@ -55,20 +55,14 @@ def matches(version: SemVer, selector: str) -> bool:
         return _stable(*base) <= version < _caret_upper(base)
     if selector.startswith("~"):
         base, count = _parse_partial(selector[1:], selector)
-        upper = (
-            _stable(base[0] + 1, 0, 0)
-            if count == 1
-            else _stable(base[0], base[1] + 1, 0)
-        )
+        upper = _stable(base[0] + 1, 0, 0) if count == 1 else _stable(base[0], base[1] + 1, 0)
         return _stable(*base) <= version < upper
     raise ValueError(f"AGENT_SEMVER_SELECTOR_INVALID:{selector}")
 
 
 def select_highest(versions: tuple[str, ...], selector: str) -> str | None:
     matched = [
-        item
-        for item in (SemVer.parse(value) for value in versions)
-        if matches(item, selector)
+        item for item in (SemVer.parse(value) for value in versions) if matches(item, selector)
     ]
     return max(matched).text if matched else None
 

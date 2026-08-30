@@ -266,9 +266,7 @@ def _record(row: Any) -> MemoryRecord:
         semantic_key=row["semantic_key"],
         content_structured=_json_object(row["content_structured"]),
         summary=row["summary"],
-        source_refs=tuple(
-            MemorySourceRef(**item) for item in _json_list(row["source_refs"])
-        ),
+        source_refs=tuple(MemorySourceRef(**item) for item in _json_list(row["source_refs"])),
         confidence=float(row["confidence"]),
         status=MemoryStatus(row["status"]),
         created_by_type=MemoryActorType(row["created_by_type"]),

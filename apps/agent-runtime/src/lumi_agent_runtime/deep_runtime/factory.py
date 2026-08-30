@@ -90,9 +90,7 @@ class DeepAgentRuntimeFactory:
         if checkpointer is None:
             raise DeepAgentFactoryError("durable Deep Agent requires a NODE-28 checkpointer")
         store = (
-            await self.stores.store_for_run(context=context)
-            if self.stores is not None
-            else None
+            await self.stores.store_for_run(context=context) if self.stores is not None else None
         )
 
         subagent_configs: list[dict[str, Any]] = []

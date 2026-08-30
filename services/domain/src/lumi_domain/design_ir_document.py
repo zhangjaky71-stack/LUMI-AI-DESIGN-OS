@@ -48,14 +48,21 @@ def validate_document(document: dict[str, Any]) -> dict[str, Any]:
     issues: list[dict[str, str]] = []
     schema_version = document.get("schema_version")
     if not isinstance(schema_version, str) or schema_version.split(".")[0] != "1":
-        _issue(issues, "IR_VERSION_UNSUPPORTED", "Only Design IR major version 1 is supported", "/schema_version")
+        _issue(
+            issues,
+            "IR_VERSION_UNSUPPORTED",
+            "Only Design IR major version 1 is supported",
+            "/schema_version",
+        )
     nodes = document.get("nodes")
     if not isinstance(nodes, dict):
         _issue(issues, "IR_SCHEMA_INVALID", "nodes must be an object", "/nodes")
         nodes = {}
     root_id = document.get("root_id")
     if not isinstance(root_id, str) or root_id not in nodes:
-        _issue(issues, "IR_REFERENCE_MISSING", "root_id must reference an existing node", "/root_id")
+        _issue(
+            issues, "IR_REFERENCE_MISSING", "root_id must reference an existing node", "/root_id"
+        )
 
     for node_id, raw in nodes.items():
         pointer = f"/nodes/{node_id}"
@@ -63,30 +70,74 @@ def validate_document(document: dict[str, Any]) -> dict[str, Any]:
             _issue(issues, "IR_SCHEMA_INVALID", "node must be an object", pointer, str(node_id))
             continue
         if raw.get("id") != node_id:
-            _issue(issues, "IR_SCHEMA_INVALID", "Node map key must equal node.id", f"{pointer}/id", str(node_id))
+            _issue(
+                issues,
+                "IR_SCHEMA_INVALID",
+                "Node map key must equal node.id",
+                f"{pointer}/id",
+                str(node_id),
+            )
         kind = raw.get("kind")
-        if not isinstance(kind, str) or (kind not in SUPPORTED_KINDS and not kind.startswith("custom:")):
-            _issue(issues, "IR_SCHEMA_INVALID", f"Unsupported node kind {kind}", f"{pointer}/kind", str(node_id))
+        if not isinstance(kind, str) or (
+            kind not in SUPPORTED_KINDS and not kind.startswith("custom:")
+        ):
+            _issue(
+                issues,
+                "IR_SCHEMA_INVALID",
+                f"Unsupported node kind {kind}",
+                f"{pointer}/kind",
+                str(node_id),
+            )
         parent_id = raw.get("parent_id")
         if parent_id is not None and parent_id not in nodes:
-            _issue(issues, "IR_REFERENCE_MISSING", f"Parent {parent_id} does not exist", f"{pointer}/parent_id", str(node_id))
+            _issue(
+                issues,
+                "IR_REFERENCE_MISSING",
+                f"Parent {parent_id} does not exist",
+                f"{pointer}/parent_id",
+                str(node_id),
+            )
         children = raw.get("children")
         if not isinstance(children, list):
-            _issue(issues, "IR_SCHEMA_INVALID", "children must be an array", f"{pointer}/children", str(node_id))
+            _issue(
+                issues,
+                "IR_SCHEMA_INVALID",
+                "children must be an array",
+                f"{pointer}/children",
+                str(node_id),
+            )
             continue
         for index, child_id in enumerate(children):
             child = nodes.get(child_id)
             if not isinstance(child, dict):
-                _issue(issues, "IR_REFERENCE_MISSING", f"Child {child_id} does not exist", f"{pointer}/children/{index}", str(node_id))
+                _issue(
+                    issues,
+                    "IR_REFERENCE_MISSING",
+                    f"Child {child_id} does not exist",
+                    f"{pointer}/children/{index}",
+                    str(node_id),
+                )
             elif child.get("parent_id") != node_id:
-                _issue(issues, "IR_SCHEMA_INVALID", f"Child {child_id} parent_id mismatch", f"{pointer}/children/{index}", str(node_id))
+                _issue(
+                    issues,
+                    "IR_SCHEMA_INVALID",
+                    f"Child {child_id} parent_id mismatch",
+                    f"{pointer}/children/{index}",
+                    str(node_id),
+                )
 
     visiting: set[str] = set()
     visited: set[str] = set()
 
     def walk(node_id: str) -> None:
         if node_id in visiting:
-            _issue(issues, "IR_GRAPH_CYCLE", f"Cycle detected at {node_id}", f"/nodes/{node_id}", node_id)
+            _issue(
+                issues,
+                "IR_GRAPH_CYCLE",
+                f"Cycle detected at {node_id}",
+                f"/nodes/{node_id}",
+                node_id,
+            )
             return
         if node_id in visited:
             return
@@ -139,10 +190,17 @@ def query_nodes(document: dict[str, Any], selector: dict[str, Any]) -> list[dict
             continue
         if "locked" in selector and bool(node.get("locked")) != selector["locked"]:
             continue
-        if "brand_binding" in selector and metadata.get("brand_binding") != selector["brand_binding"]:
+        if (
+            "brand_binding" in selector
+            and metadata.get("brand_binding") != selector["brand_binding"]
+        ):
             continue
         asset_binding = selector.get("asset_binding")
-        if asset_binding is not None and node.get("asset_id") != asset_binding and metadata.get("asset_binding") != asset_binding:
+        if (
+            asset_binding is not None
+            and node.get("asset_id") != asset_binding
+            and metadata.get("asset_binding") != asset_binding
+        ):
             continue
         result.append(deepcopy(node))
     return result

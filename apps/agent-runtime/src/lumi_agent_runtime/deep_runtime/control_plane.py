@@ -54,8 +54,7 @@ class DeepAgentControlPlaneCompiler:
         if (
             compiled.graph_definition.graph_key != definition.graph_key
             or compiled.graph_definition.graph_version != definition.graph_version
-            or compiled.graph_definition.agent_config_version
-            != definition.agent_config_version
+            or compiled.graph_definition.agent_config_version != definition.agent_config_version
             or compiled.graph_definition.metadata.get("deep_agent_definition_hash")
             != definition.content_hash
         ):

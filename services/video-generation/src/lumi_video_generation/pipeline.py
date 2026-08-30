@@ -273,7 +273,10 @@ class VideoGenerationPipeline:
             base = next(item for item in storyboard.shots if item.shot.shot_id == queued.shot_id)
             compiled = _compiled_for_runtime(base, queued)
             continuity_refs, _ = self._continuity(job, storyboard.shots, compiled)
-            if compiled.shot.source_ref is not None and not compiled.shot.source_ref.commercial_use_allowed:
+            if (
+                compiled.shot.source_ref is not None
+                and not compiled.shot.source_ref.commercial_use_allowed
+            ):
                 return self._fail_job(job, queued, "VIDEO_SOURCE_COMMERCIAL_RIGHTS_NOT_ALLOWED")
             try:
                 estimate = await self.gateway.estimate(
@@ -306,7 +309,9 @@ class VideoGenerationPipeline:
                     excluded_provider_keys=queued.excluded_provider_keys,
                 )
             except Exception as exc:
-                return self._fail_job(job, queued, f"VIDEO_GATEWAY_SUBMIT_EXCEPTION:{type(exc).__name__}")
+                return self._fail_job(
+                    job, queued, f"VIDEO_GATEWAY_SUBMIT_EXCEPTION:{type(exc).__name__}"
+                )
             if result.status == "PENDING":
                 if not result.provider_request_id:
                     return self._fail_job(job, queued, "VIDEO_PENDING_PROVIDER_REQUEST_ID_REQUIRED")
@@ -628,7 +633,11 @@ class VideoGenerationPipeline:
         ):
             previous_id = storyboard[shot.ordinal - 2].shot.shot_id
             previous = next(item for item in job.shots if item.shot_id == previous_id)
-            if previous.status == "READY" and previous.clip is not None and previous.clip.tail_frame_ref:
+            if (
+                previous.status == "READY"
+                and previous.clip is not None
+                and previous.clip.tail_frame_ref
+            ):
                 refs.append(previous.clip.tail_frame_ref)
                 if previous.clip_artifact_version_id:
                     parent_ids.append(previous.clip_artifact_version_id)

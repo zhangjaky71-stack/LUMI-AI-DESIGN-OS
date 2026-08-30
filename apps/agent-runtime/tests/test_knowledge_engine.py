@@ -220,9 +220,7 @@ class KnowledgeEngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(without_read, ())
         with_read = await self.service.search(
             KnowledgeSearchQuery(
-                access=access(
-                    permissions=frozenset({"knowledge.organization.read"})
-                ),
+                access=access(permissions=frozenset({"knowledge.organization.read"})),
                 text="approved policy",
             )
         )
@@ -299,9 +297,7 @@ class KnowledgeEngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(results, ())
 
     async def test_reindex_supersedes_previous_ready_version(self) -> None:
-        first = await self.service.index(
-            request("guide", "Old brand guidance", source_version="1")
-        )
+        first = await self.service.index(request("guide", "Old brand guidance", source_version="1"))
         second = await self.service.index(
             request("guide", "New brand guidance", source_version="2")
         )

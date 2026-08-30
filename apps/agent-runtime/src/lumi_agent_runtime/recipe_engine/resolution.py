@@ -42,10 +42,7 @@ class RecipeReferenceResolver:
         if step.agent_ref is None:
             raise RecipeCompileError("AGENT step has no Agent reference")
         resolved_agent = self.agents.resolve(step.agent_ref)
-        identity = (
-            f"{resolved_agent.definition.agent_id}@"
-            f"{resolved_agent.definition.version}"
-        )
+        identity = f"{resolved_agent.definition.agent_id}@{resolved_agent.definition.version}"
         bindings.agents.setdefault(
             identity,
             ResolvedAgentBinding(
@@ -56,19 +53,14 @@ class RecipeReferenceResolver:
                 provenance_hash=resolved_agent.provenance.freeze_hash,
             ),
         )
-        declared_skills = {
-            item.skill_id: item
-            for item in resolved_agent.definition.skills
-        }
+        declared_skills = {item.skill_id: item for item in resolved_agent.definition.skills}
         dependency_skills = {
             item.key: item
             for item in resolved_agent.provenance.dependencies
             if item.kind == "skill"
         }
         for dependency in dependency_skills.values():
-            resolved_skill = self.skills.resolve(
-                f"{dependency.key}@{dependency.exact_version}"
-            )
+            resolved_skill = self.skills.resolve(f"{dependency.key}@{dependency.exact_version}")
             bindings.skills.setdefault(
                 resolved_skill.definition.identity,
                 ResolvedSkillBinding(
@@ -76,8 +68,7 @@ class RecipeReferenceResolver:
                     skill_id=dependency.key,
                     exact_version=dependency.exact_version,
                     content_hash=(
-                        dependency.content_hash
-                        or resolved_skill.definition.content_hash
+                        dependency.content_hash or resolved_skill.definition.content_hash
                     ),
                 ),
             )
@@ -92,8 +83,7 @@ class RecipeReferenceResolver:
             dependency = dependency_skills[skill_id]
             if dependency.exact_version != resolved_skill.definition.version:
                 raise RecipeCompileError(
-                    "Recipe Skill exact version differs from Agent freeze: "
-                    f"{requested_skill}"
+                    f"Recipe Skill exact version differs from Agent freeze: {requested_skill}"
                 )
             explicit_skills.append(resolved_skill.definition.identity)
         return (

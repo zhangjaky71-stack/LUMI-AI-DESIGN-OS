@@ -164,9 +164,7 @@ class SandboxExchangeMediaRuntime:
             raise ValueError("VIDEO_SANDBOX_OUTPUT_SUFFIX_UNSUPPORTED")
         if self._output is not None:
             raise RuntimeError("VIDEO_SANDBOX_OUTPUT_ALREADY_ALLOCATED")
-        token = hashlib.sha256(
-            f"{self.operation_id}\x00rendered-video".encode()
-        ).hexdigest()
+        token = hashlib.sha256(f"{self.operation_id}\x00rendered-video".encode()).hexdigest()
         binding = _OutputBinding(
             logical_path="/sandbox/output/render.mp4",
             exchange_key=f"{self.exchange_prefix}/output/{token}.mp4",
@@ -253,7 +251,10 @@ class SandboxExchangeMediaRuntime:
                 bucket=self.exchange_bucket,
                 object_key=output.exchange_key,
             )
-            if rendered_head.content_length <= 0 or rendered_head.content_length > _MAX_RENDER_BYTES:
+            if (
+                rendered_head.content_length <= 0
+                or rendered_head.content_length > _MAX_RENDER_BYTES
+            ):
                 raise RuntimeError("VIDEO_SANDBOX_RENDER_SIZE_INVALID")
             if rendered_head.content_type != "video/mp4":
                 raise RuntimeError("VIDEO_SANDBOX_RENDER_MIME_INVALID")
@@ -279,9 +280,7 @@ class SandboxExchangeMediaRuntime:
             checksum = _head_sha256(head.checksum_sha256_b64, head.metadata)
             if head.content_length <= 0 or head.content_length > _MAX_RENDER_BYTES:
                 raise RuntimeError("VIDEO_SANDBOX_RENDER_SIZE_INVALID")
-            scope = hashlib.sha256(
-                f"{self.task_id}\x00{self.operation_id}".encode()
-            ).hexdigest()
+            scope = hashlib.sha256(f"{self.task_id}\x00{self.operation_id}".encode()).hexdigest()
             durable_key = (
                 f"generated/video/v1/{self.organization_id}/{self.project_id}/"
                 f"{scope}/final/{checksum}.mp4"

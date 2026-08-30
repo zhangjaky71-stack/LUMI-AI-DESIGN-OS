@@ -10,8 +10,12 @@ ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "apps/agent-runtime/src/lumi_agent_runtime/task_graph"
 STORE = (PACKAGE / "postgres_store.py").read_text(encoding="utf-8")
 SCHEDULER = (PACKAGE / "scheduler.py").read_text(encoding="utf-8")
-MIGRATION = (ROOT / "apps/api/alembic/versions/0015_task_graph_runtime.py").read_text(encoding="utf-8")
-WORKFLOW = (ROOT / "apps/api/src/lumi_api/persistence/models/workflow.py").read_text(encoding="utf-8")
+MIGRATION = (ROOT / "apps/api/alembic/versions/0015_task_graph_runtime.py").read_text(
+    encoding="utf-8"
+)
+WORKFLOW = (ROOT / "apps/api/src/lumi_api/persistence/models/workflow.py").read_text(
+    encoding="utf-8"
+)
 
 
 class TaskGraphPostgresContractTests(unittest.TestCase):

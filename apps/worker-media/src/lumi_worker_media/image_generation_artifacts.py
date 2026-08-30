@@ -305,10 +305,7 @@ def _json_safe(value: object, *, depth: int = 0) -> object:
     if isinstance(value, dict):
         if not all(isinstance(key, str) for key in value):
             raise ValueError("GENERATION_ARTIFACT_METADATA_KEY_INVALID")
-        return {
-            key: _json_safe(item, depth=depth + 1)
-            for key, item in sorted(value.items())
-        }
+        return {key: _json_safe(item, depth=depth + 1) for key, item in sorted(value.items())}
     raise ValueError(f"GENERATION_ARTIFACT_METADATA_INVALID:{type(value).__name__}")
 
 

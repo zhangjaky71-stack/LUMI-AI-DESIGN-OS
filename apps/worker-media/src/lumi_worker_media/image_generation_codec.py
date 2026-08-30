@@ -105,9 +105,7 @@ def decode_spec(payload: dict[str, Any]) -> ImageGenerationSpec:
         constraints=tuple(_decode_constraint(_object(item)) for item in raw_constraints),
         quality_profile=cast(QualityProfile, _str(root, "quality_profile")),
         budget_limit_usd=_decimal(root.get("budget_limit_usd"), "budget_limit_usd"),
-        output_requirements=_decode_output_requirements(
-            _dict(root, "output_requirements")
-        ),
+        output_requirements=_decode_output_requirements(_dict(root, "output_requirements")),
         code_git_sha=_str(root, "code_git_sha"),
         agent_run_id=_optional_str(root.get("agent_run_id")),
         recipe_version=_optional_str(root.get("recipe_version")),
@@ -463,9 +461,7 @@ def _decode_validation_bundle(payload: dict[str, Any]) -> ValidationBundle:
         identity_validation_snapshot_id=_optional_str(
             payload.get("identity_validation_snapshot_id")
         ),
-        brand_validation_snapshot_id=_optional_str(
-            payload.get("brand_validation_snapshot_id")
-        ),
+        brand_validation_snapshot_id=_optional_str(payload.get("brand_validation_snapshot_id")),
     )
 
 
@@ -528,8 +524,7 @@ def _decode_gateway_request(payload: dict[str, Any]) -> GatewayGenerationRequest
         mode=cast(GenerationMode, _str(payload, "mode")),
         prompt=_decode_prompt(_dict(payload, "prompt")),
         references=tuple(
-            _decode_authorized_reference(_object(item))
-            for item in _list(payload, "references")
+            _decode_authorized_reference(_object(item)) for item in _list(payload, "references")
         ),
         target_width=_int(payload, "target_width"),
         target_height=_int(payload, "target_height"),
@@ -538,9 +533,7 @@ def _decode_gateway_request(payload: dict[str, Any]) -> GatewayGenerationRequest
         constraints=tuple(
             _decode_constraint(_object(item)) for item in _list(payload, "constraints")
         ),
-        output_requirements=_decode_output_requirements(
-            _dict(payload, "output_requirements")
-        ),
+        output_requirements=_decode_output_requirements(_dict(payload, "output_requirements")),
         seed=_optional_int(payload.get("seed"), "seed"),
         agent_run_id=_optional_str(payload.get("agent_run_id")),
     )
@@ -553,9 +546,7 @@ def _encode_gateway_result(value: GatewayGenerationResult) -> dict[str, Any]:
         "model": value.model,
         "model_revision": value.model_revision,
         "provider_request_id": value.provider_request_id,
-        "outputs": [
-            {"ref": item.ref, "mime_type": item.mime_type} for item in value.outputs
-        ],
+        "outputs": [{"ref": item.ref, "mime_type": item.mime_type} for item in value.outputs],
         "cost_usd": format(value.cost_usd, "f") if value.cost_usd is not None else None,
         "cost_confidence": value.cost_confidence,
         "pricing_snapshot_id": value.pricing_snapshot_id,
@@ -715,8 +706,5 @@ def _json_value(value: Any, *, depth: int = 0) -> Any:
     if isinstance(value, dict):
         if not all(isinstance(key, str) for key in value):
             raise ValueError("GENERATION_SNAPSHOT_JSON_KEY_INVALID")
-        return {
-            key: _json_value(item, depth=depth + 1)
-            for key, item in sorted(value.items())
-        }
+        return {key: _json_value(item, depth=depth + 1) for key, item in sorted(value.items())}
     raise ValueError(f"GENERATION_SNAPSHOT_JSON_TYPE_INVALID:{type(value).__name__}")

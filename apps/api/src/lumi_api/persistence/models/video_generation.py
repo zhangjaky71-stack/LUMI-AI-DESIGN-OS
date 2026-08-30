@@ -4,7 +4,17 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import CHAR, Boolean, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint, text
+from sqlalchemy import (
+    CHAR,
+    Boolean,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 

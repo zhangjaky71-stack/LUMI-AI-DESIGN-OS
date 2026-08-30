@@ -86,7 +86,10 @@ async def validate_asset_run(
             scanner_status = await scanner.scan_path(source_path)
             if scanner_status == "INFECTED":
                 raise ValidationRejected("MALWARE_DETECTED")
-            if scanner_status in {"SCAN_UNAVAILABLE", "ERROR"} and not settings.asset_allow_scan_unavailable:
+            if (
+                scanner_status in {"SCAN_UNAVAILABLE", "ERROR"}
+                and not settings.asset_allow_scan_unavailable
+            ):
                 raise ValidationRejected("MALWARE_SCAN_UNAVAILABLE")
 
             inspection = await inspect_media(
@@ -157,7 +160,9 @@ class DerivedFile:
     height: int | None
 
 
-async def _claim(connection: asyncpg.Connection, validation_run_id: UUID) -> ValidationSnapshot | None:
+async def _claim(
+    connection: asyncpg.Connection, validation_run_id: UUID
+) -> ValidationSnapshot | None:
     async with connection.transaction():
         claimed = await connection.fetchrow(
             """

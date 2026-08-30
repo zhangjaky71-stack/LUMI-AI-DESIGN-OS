@@ -17,6 +17,7 @@ def conservative_token_estimate(text: str) -> int:
 
 def with_token_estimate(item: ContextItem, counter: TokenCounter) -> ContextItem:
     from .safety import render_context_item
+
     return replace(item, token_estimate=counter(render_context_item(item)))
 
 

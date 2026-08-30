@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { DesignDocument, DesignOperation } from "../../design-ir/src/index";
+import type {
+  DesignDocument,
+  DesignOperation,
+} from "../../design-ir/src/index";
 import type { DesignConstraint } from "../../design-constraints/src/index";
 import { CanvasCommandBus } from "./command-bus";
 
@@ -11,7 +14,12 @@ function fixture(): DesignDocument {
     unit: "px",
     root_id: "root",
     nodes: {
-      root: { id: "root", kind: "DOCUMENT_ROOT", parent_id: null, children: ["node"] },
+      root: {
+        id: "root",
+        kind: "DOCUMENT_ROOT",
+        parent_id: null,
+        children: ["node"],
+      },
       node: {
         id: "node",
         kind: "SHAPE",

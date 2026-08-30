@@ -30,9 +30,7 @@ PROJECT = UUID("01900000-0000-7000-8000-000000000006")
 
 
 def _dsn() -> str:
-    return os.environ["DATABASE_URL"].replace(
-        "postgresql+asyncpg://", "postgresql://", 1
-    )
+    return os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
 def _spec() -> tuple[VideoTaskSpec, CompiledShot, UUID]:
@@ -72,10 +70,7 @@ def _spec() -> tuple[VideoTaskSpec, CompiledShot, UUID]:
 
 
 def _clip(paid_operation_id: UUID, checksum: str) -> StoredVideoClip:
-    key = (
-        f"generated/video/v1/{ORG}/{PROJECT}/shots/"
-        f"{paid_operation_id.hex}/{checksum}.mp4"
-    )
+    key = f"generated/video/v1/{ORG}/{PROJECT}/shots/{paid_operation_id.hex}/{checksum}.mp4"
     return StoredVideoClip(
         storage_key=key,
         checksum_sha256=checksum,
@@ -92,10 +87,7 @@ def _clip(paid_operation_id: UUID, checksum: str) -> StoredVideoClip:
 
 
 def _final_clip(spec: VideoTaskSpec, checksum: str) -> StoredVideoClip:
-    key = (
-        f"generated/video/v1/{ORG}/{PROJECT}/final/"
-        f"{UUID(spec.operation_id).hex}/{checksum}.mp4"
-    )
+    key = f"generated/video/v1/{ORG}/{PROJECT}/final/{UUID(spec.operation_id).hex}/{checksum}.mp4"
     return StoredVideoClip(
         storage_key=key,
         checksum_sha256=checksum,

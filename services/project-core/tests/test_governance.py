@@ -25,7 +25,12 @@ def make_engine(resources: tuple[GovernanceResourceRef, ...] = ()):
     repository = InMemoryGovernanceRepository()
     data = InMemoryGovernanceDataPort(resources)
     storage = InMemoryAuditExportStorage()
-    return GovernanceEngine(repository=repository, data=data, export_storage=storage), repository, data, storage
+    return (
+        GovernanceEngine(repository=repository, data=data, export_storage=storage),
+        repository,
+        data,
+        storage,
+    )
 
 
 def org_actor(org: str = "org-a", permissions: frozenset[str] | None = None) -> GovernanceActor:
@@ -195,7 +200,9 @@ def test_cursor_pagination_is_stable_and_not_offset_based() -> None:
     assert len(first.items) == 2 and first.next_cursor
     second = engine.search_audit(actor, AuditQuery(limit=2, cursor=first.next_cursor))
     assert len(second.items) == 2
-    assert {item.event_id for item in first.items}.isdisjoint(item.event_id for item in second.items)
+    assert {item.event_id for item in first.items}.isdisjoint(
+        item.event_id for item in second.items
+    )
 
 
 def test_agent_actor_requires_version_run_task_and_human_initiator() -> None:
@@ -287,7 +294,9 @@ def test_retention_policy_is_versioned_and_legal_hold_blocks_candidate() -> None
         ticket_ref="LEGAL-65",
     )
     assert engine.retention_candidates(actor, organization_id="org-a") == ()
-    engine.release_hold(actor, hold_id=hold.hold_id, reason_code="MATTER_CLOSED", ticket_ref="LEGAL-65")
+    engine.release_hold(
+        actor, hold_id=hold.hold_id, reason_code="MATTER_CLOSED", ticket_ref="LEGAL-65"
+    )
     assert engine.retention_candidates(actor, organization_id="org-a")
 
 
@@ -300,7 +309,12 @@ def test_legal_hold_blocks_deletion_then_delete_propagates_object_and_search_gc(
             search_ref="vector://org-a/asset-a",
         ),
         old_resource("PROFILE", "profile-a", erasure_mode="ANONYMIZE"),
-        old_resource("AUDIT_EVENT", "audit-retained", retention_class="SECURITY_AUDIT", erasure_mode="RETENTION_ONLY"),
+        old_resource(
+            "AUDIT_EVENT",
+            "audit-retained",
+            retention_class="SECURITY_AUDIT",
+            erasure_mode="RETENTION_ONLY",
+        ),
     )
     engine, _, data, _ = make_engine(resources)
     actor = platform_actor()
@@ -320,7 +334,9 @@ def test_legal_hold_blocks_deletion_then_delete_propagates_object_and_search_gc(
     assert blocked.status == "BLOCKED_HOLD"
     assert hold.hold_id in blocked.blocked_hold_ids
     assert data.erased == []
-    engine.release_hold(actor, hold_id=hold.hold_id, reason_code="CASE_CLOSED", ticket_ref="LEGAL-66")
+    engine.release_hold(
+        actor, hold_id=hold.hold_id, reason_code="CASE_CLOSED", ticket_ref="LEGAL-66"
+    )
     completed = engine.execute_deletion(actor, request.request_id)
     assert completed.status == "COMPLETED"
     assert completed.deleted_count == 1

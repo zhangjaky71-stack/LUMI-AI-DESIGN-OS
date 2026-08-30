@@ -86,7 +86,9 @@ class Node25ToolCatalog:
             "input_schema": definition.input_schema,
             "output_schema": definition.output_schema,
         }
-        digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        digest = hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
         return CatalogEntry(
             key=key,
             exact_version=definition.version,
@@ -117,14 +119,45 @@ class DependencyResolver:
 
     def resolve(self, definition: AgentDefinition) -> tuple[ResolvedDependency, ...]:
         rows: list[ResolvedDependency] = []
-        rows.append(_resolved("model_policy", definition.model_policy, definition.model_policy, self.model_policies.resolve(definition.model_policy)))
+        rows.append(
+            _resolved(
+                "model_policy",
+                definition.model_policy,
+                definition.model_policy,
+                self.model_policies.resolve(definition.model_policy),
+            )
+        )
         for item in definition.tools:
-            rows.append(_resolved("tool", item.name, item.version_constraint, self.tools.resolve(item.name, item.version_constraint)))
+            rows.append(
+                _resolved(
+                    "tool",
+                    item.name,
+                    item.version_constraint,
+                    self.tools.resolve(item.name, item.version_constraint),
+                )
+            )
         for item in definition.skills:
-            rows.append(_resolved("skill", item.skill_id, item.version_constraint, self.skills.resolve(item.skill_id, item.version_constraint)))
-        rows.append(_resolved("context_policy", definition.context_policy, definition.context_policy, self.context_policies.resolve(definition.context_policy)))
+            rows.append(
+                _resolved(
+                    "skill",
+                    item.skill_id,
+                    item.version_constraint,
+                    self.skills.resolve(item.skill_id, item.version_constraint),
+                )
+            )
+        rows.append(
+            _resolved(
+                "context_policy",
+                definition.context_policy,
+                definition.context_policy,
+                self.context_policies.resolve(definition.context_policy),
+            )
+        )
         memory_payload = json.dumps(
-            {"read": sorted(definition.memory_policy.read), "write": sorted(definition.memory_policy.write)},
+            {
+                "read": sorted(definition.memory_policy.read),
+                "write": sorted(definition.memory_policy.write),
+            },
             sort_keys=True,
             separators=(",", ":"),
         )
@@ -138,9 +171,30 @@ class DependencyResolver:
                 source_ref=f"{definition.identity}#memory_policy",
             )
         )
-        rows.append(_resolved("budget_policy", definition.budget_policy, definition.budget_policy, self.budget_policies.resolve(definition.budget_policy)))
-        rows.append(_resolved("output_schema", definition.output_schema, definition.output_schema, self.output_schemas.resolve(definition.output_schema)))
-        rows.append(_resolved("eval_profile", definition.eval_profile, definition.eval_profile, self.eval_profiles.resolve(definition.eval_profile)))
+        rows.append(
+            _resolved(
+                "budget_policy",
+                definition.budget_policy,
+                definition.budget_policy,
+                self.budget_policies.resolve(definition.budget_policy),
+            )
+        )
+        rows.append(
+            _resolved(
+                "output_schema",
+                definition.output_schema,
+                definition.output_schema,
+                self.output_schemas.resolve(definition.output_schema),
+            )
+        )
+        rows.append(
+            _resolved(
+                "eval_profile",
+                definition.eval_profile,
+                definition.eval_profile,
+                self.eval_profiles.resolve(definition.eval_profile),
+            )
+        )
         return tuple(rows)
 
 

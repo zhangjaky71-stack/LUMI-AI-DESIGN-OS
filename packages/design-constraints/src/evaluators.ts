@@ -1,4 +1,8 @@
-import type { DesignDocument, DesignNode, DesignTransform } from "../../design-ir/src/index";
+import type {
+  DesignDocument,
+  DesignNode,
+  DesignTransform,
+} from "../../design-ir/src/index";
 import type {
   ConstraintViolation,
   DesignConstraint,
@@ -63,13 +67,20 @@ function violation(
 
 function intersects(left: Bounds, right: Bounds, tolerance: number): boolean {
   const overlapX =
-    Math.min(left.x + left.width, right.x + right.width) - Math.max(left.x, right.x);
+    Math.min(left.x + left.width, right.x + right.width) -
+    Math.max(left.x, right.x);
   const overlapY =
-    Math.min(left.y + left.height, right.y + right.height) - Math.max(left.y, right.y);
+    Math.min(left.y + left.height, right.y + right.height) -
+    Math.max(left.y, right.y);
   return overlapX > tolerance && overlapY > tolerance;
 }
 
-function inside(inner: Bounds, outer: Bounds, margin: number, tolerance: number): boolean {
+function inside(
+  inner: Bounds,
+  outer: Bounds,
+  margin: number,
+  tolerance: number,
+): boolean {
   return (
     inner.x + tolerance >= outer.x + margin &&
     inner.y + tolerance >= outer.y + margin &&
@@ -86,7 +97,9 @@ function changedTransform(
 ): boolean {
   const before = transform(beforeNode);
   const after = transform(afterNode);
-  return keys.some((key) => !close(number(before[key]), number(after[key]), tolerance));
+  return keys.some(
+    (key) => !close(number(before[key]), number(after[key]), tolerance),
+  );
 }
 
 function compareNodeLock(
@@ -113,7 +126,14 @@ function compareNodeLock(
     }
     switch (constraint.type) {
       case "LOCK_POSITION":
-        if (changedTransform(beforeNode, afterNode, ["x", "y"], tolerance.position_px)) {
+        if (
+          changedTransform(
+            beforeNode,
+            afterNode,
+            ["x", "y"],
+            tolerance.position_px,
+          )
+        ) {
           violations.push(
             violation(
               constraint,
@@ -148,7 +168,14 @@ function compareNodeLock(
         }
         break;
       case "LOCK_ROTATION":
-        if (changedTransform(beforeNode, afterNode, ["rotation_deg"], tolerance.rotation_deg)) {
+        if (
+          changedTransform(
+            beforeNode,
+            afterNode,
+            ["rotation_deg"],
+            tolerance.rotation_deg,
+          )
+        ) {
           violations.push(
             violation(
               constraint,
@@ -179,7 +206,11 @@ function compareNodeLock(
               "anchor_x",
               "anchor_y",
             ],
-            Math.max(tolerance.position_px, tolerance.size_px, tolerance.rotation_deg),
+            Math.max(
+              tolerance.position_px,
+              tolerance.size_px,
+              tolerance.rotation_deg,
+            ),
           )
         ) {
           violations.push(
@@ -197,9 +228,13 @@ function compareNodeLock(
       case "LOCK_ASPECT_RATIO": {
         const beforeBounds = bounds(beforeNode);
         const afterBounds = bounds(afterNode);
-        const fallback = beforeBounds.height ? beforeBounds.width / beforeBounds.height : 0;
+        const fallback = beforeBounds.height
+          ? beforeBounds.width / beforeBounds.height
+          : 0;
         const expected = number(constraint.parameters.ratio, fallback);
-        const actual = afterBounds.height ? afterBounds.width / afterBounds.height : 0;
+        const actual = afterBounds.height
+          ? afterBounds.width / afterBounds.height
+          : 0;
         if (!close(expected, actual, tolerance.aspect_ratio)) {
           violations.push(
             violation(
@@ -279,7 +314,10 @@ function compareNodeLock(
         }
         break;
       case "LOCK_STYLE":
-        if (JSON.stringify(beforeNode.style_refs ?? []) !== JSON.stringify(afterNode.style_refs ?? [])) {
+        if (
+          JSON.stringify(beforeNode.style_refs ?? []) !==
+          JSON.stringify(afterNode.style_refs ?? [])
+        ) {
           violations.push(
             violation(
               constraint,
@@ -310,14 +348,30 @@ function compareNodeLock(
         }
         break;
       case "LOCK_CONTENT": {
-        const keys = ["content", "asset_id", "source_artifact_version_id", "semantic"] as const;
-        const expected = Object.fromEntries(keys.map((key) => [key, beforeNode[key]]));
-        const actual = Object.fromEntries(keys.map((key) => [key, afterNode[key]]));
+        const keys = [
+          "content",
+          "asset_id",
+          "source_artifact_version_id",
+          "semantic",
+        ] as const;
+        const expected = Object.fromEntries(
+          keys.map((key) => [key, beforeNode[key]]),
+        );
+        const actual = Object.fromEntries(
+          keys.map((key) => [key, afterNode[key]]),
+        );
         if (JSON.stringify(expected) !== JSON.stringify(actual)) {
           violations.push(
-            violation(constraint, targetId, "CONSTRAINT_CONTENT_CHANGED", expected, actual, {
-              action: "restore_content",
-            }),
+            violation(
+              constraint,
+              targetId,
+              "CONSTRAINT_CONTENT_CHANGED",
+              expected,
+              actual,
+              {
+                action: "restore_content",
+              },
+            ),
           );
         }
         break;
@@ -366,7 +420,10 @@ function compareRegionRule(
       if (!target) continue;
       for (const forbiddenId of forbidden) {
         const other = after.nodes[forbiddenId];
-        if (other && intersects(bounds(target), bounds(other), tolerance.overlap_px)) {
+        if (
+          other &&
+          intersects(bounds(target), bounds(other), tolerance.overlap_px)
+        ) {
           violations.push(
             violation(
               constraint,
@@ -374,7 +431,10 @@ function compareRegionRule(
               "CONSTRAINT_OVERLAP",
               forbiddenId,
               { target: bounds(target), forbidden: bounds(other) },
-              { action: "move_outside_overlap", forbidden_node_id: forbiddenId },
+              {
+                action: "move_outside_overlap",
+                forbidden_node_id: forbiddenId,
+              },
             ),
           );
         }
@@ -395,9 +455,16 @@ function compareRegionRule(
       const outer = safeAreaBounds(after, target, constraint);
       if (!outer) {
         violations.push(
-          violation(constraint, targetId, "CONSTRAINT_SAFE_AREA_FRAME_MISSING", null, null, {
-            action: "bind_safe_area_frame",
-          }),
+          violation(
+            constraint,
+            targetId,
+            "CONSTRAINT_SAFE_AREA_FRAME_MISSING",
+            null,
+            null,
+            {
+              action: "bind_safe_area_frame",
+            },
+          ),
         );
       } else if (!inside(bounds(target), outer, 0, tolerance.position_px)) {
         violations.push(
@@ -415,7 +482,9 @@ function compareRegionRule(
     }
     if (!container) continue;
     if (constraint.type === "MUST_STAY_INSIDE") {
-      if (!inside(bounds(target), bounds(container), 0, tolerance.position_px)) {
+      if (
+        !inside(bounds(target), bounds(container), 0, tolerance.position_px)
+      ) {
         violations.push(
           violation(
             constraint,
@@ -430,7 +499,14 @@ function compareRegionRule(
     }
     if (constraint.type === "MIN_MARGIN") {
       const margin = number(constraint.parameters.min_px, 0);
-      if (!inside(bounds(target), bounds(container), margin, tolerance.position_px)) {
+      if (
+        !inside(
+          bounds(target),
+          bounds(container),
+          margin,
+          tolerance.position_px,
+        )
+      ) {
         violations.push(
           violation(
             constraint,
@@ -470,7 +546,14 @@ export function evaluateDeterministicConstraint(
   if (nodeRules.has(constraint.type)) {
     return compareNodeLock(before, after, constraint, tolerance);
   }
-  if (["MUST_STAY_INSIDE", "MUST_NOT_OVERLAP", "MIN_MARGIN", "SAFE_AREA"].includes(constraint.type)) {
+  if (
+    [
+      "MUST_STAY_INSIDE",
+      "MUST_NOT_OVERLAP",
+      "MIN_MARGIN",
+      "SAFE_AREA",
+    ].includes(constraint.type)
+  ) {
     return compareRegionRule(after, constraint, tolerance);
   }
   return [];

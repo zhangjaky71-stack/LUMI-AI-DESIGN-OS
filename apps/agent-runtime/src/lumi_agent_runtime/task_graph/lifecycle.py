@@ -45,13 +45,23 @@ def refresh_ready_tasks(
         assert_transition(task.status, TaskState.READY)
         updated = replace(task, status=TaskState.READY, state_version=task.state_version + 1)
         store.replace_task(updated, expected_version=task.state_version)
-        store.emit(TaskGraphEvent(event_name="task.ready", graph_id=graph_id, task_id=task.task_id, organization_id=task.organization_id, payload={"task_key": task.task_key}))
+        store.emit(
+            TaskGraphEvent(
+                event_name="task.ready",
+                graph_id=graph_id,
+                task_id=task.task_id,
+                organization_id=task.organization_id,
+                payload={"task_key": task.task_key},
+            )
+        )
         changed.append(task.task_id)
     recompute_graph(store, graph_id, now=now)
     return tuple(changed)
 
 
-def recompute_graph(store: InMemoryTaskGraphStore, graph_id: UUID, *, now: datetime) -> TaskGraphSnapshot:
+def recompute_graph(
+    store: InMemoryTaskGraphStore, graph_id: UUID, *, now: datetime
+) -> TaskGraphSnapshot:
     graph = store.graph(graph_id)
     tasks = store.tasks(graph_id)
     completed = sum(item.status in TERMINAL_TASK_STATES for item in tasks)
@@ -67,19 +77,51 @@ def recompute_graph(store: InMemoryTaskGraphStore, graph_id: UUID, *, now: datet
         else:
             status = TaskGraphState.SUCCEEDED
         completed_at = graph.completed_at or now
-    elif any(item.status in WAITING_TASK_STATES for item in tasks) and not any(item.status in {TaskState.READY, TaskState.RUNNING} for item in tasks):
+    elif any(item.status in WAITING_TASK_STATES for item in tasks) and not any(
+        item.status in {TaskState.READY, TaskState.RUNNING} for item in tasks
+    ):
         status = TaskGraphState.WAITING
         completed_at = None
     else:
         status = TaskGraphState.RUNNING
         completed_at = None
-    changed = graph.status != status or graph.completed_count != completed or graph.succeeded_count != succeeded or graph.failed_count != failed or graph.cancelled_count != cancelled or graph.skipped_count != skipped or graph.completed_at != completed_at
+    changed = (
+        graph.status != status
+        or graph.completed_count != completed
+        or graph.succeeded_count != succeeded
+        or graph.failed_count != failed
+        or graph.cancelled_count != cancelled
+        or graph.skipped_count != skipped
+        or graph.completed_at != completed_at
+    )
     if not changed:
         return graph
-    updated = replace(graph, status=status, completed_count=completed, succeeded_count=succeeded, failed_count=failed, cancelled_count=cancelled, skipped_count=skipped, completed_at=completed_at, state_version=graph.state_version + 1)
+    updated = replace(
+        graph,
+        status=status,
+        completed_count=completed,
+        succeeded_count=succeeded,
+        failed_count=failed,
+        cancelled_count=cancelled,
+        skipped_count=skipped,
+        completed_at=completed_at,
+        state_version=graph.state_version + 1,
+    )
     store.replace_graph(updated, expected_version=graph.state_version)
     if status in {TaskGraphState.SUCCEEDED, TaskGraphState.FAILED_FINAL, TaskGraphState.CANCELLED}:
-        store.emit(TaskGraphEvent(event_name="task_graph.completed", graph_id=graph_id, task_id=None, organization_id=graph.organization_id, payload={"status": status.value, "completed_count": completed, "task_count": len(tasks)}))
+        store.emit(
+            TaskGraphEvent(
+                event_name="task_graph.completed",
+                graph_id=graph_id,
+                task_id=None,
+                organization_id=graph.organization_id,
+                payload={
+                    "status": status.value,
+                    "completed_count": completed,
+                    "task_count": len(tasks),
+                },
+            )
+        )
     return updated
 
 
@@ -104,23 +146,49 @@ def _join_decision(task: TaskSnapshot, dependencies: list[TaskSnapshot]) -> str:
     if policy == "ALL":
         if successes == len(dependencies):
             return "ready"
-        if any(item.status in {TaskState.FAILED_FINAL, TaskState.CANCELLED, TaskState.SKIPPED} for item in dependencies):
+        if any(
+            item.status in {TaskState.FAILED_FINAL, TaskState.CANCELLED, TaskState.SKIPPED}
+            for item in dependencies
+        ):
             return "impossible"
         return "pending"
     return "impossible"
 
 
-def _condition_context(tasks: tuple[TaskSnapshot, ...], supplied: dict[str, Any] | None) -> dict[str, Any]:
+def _condition_context(
+    tasks: tuple[TaskSnapshot, ...], supplied: dict[str, Any] | None
+) -> dict[str, Any]:
     base = dict(supplied or {})
-    context = {"inputs": dict(base.get("inputs", {})), "project": dict(base.get("project", {})), "run": dict(base.get("run", {})), "steps": dict(base.get("steps", {}))}
+    context = {
+        "inputs": dict(base.get("inputs", {})),
+        "project": dict(base.get("project", {})),
+        "run": dict(base.get("run", {})),
+        "steps": dict(base.get("steps", {})),
+    }
     for item in tasks:
         if item.output:
             context["steps"][item.task_key] = dict(item.output)
     return context
 
 
-def _skip_task(store: InMemoryTaskGraphStore, task: TaskSnapshot, *, now: datetime, reason: str) -> None:
+def _skip_task(
+    store: InMemoryTaskGraphStore, task: TaskSnapshot, *, now: datetime, reason: str
+) -> None:
     assert_transition(task.status, TaskState.SKIPPED)
-    updated = replace(task, status=TaskState.SKIPPED, completed_at=now, error={"reason": reason}, state_version=task.state_version + 1)
+    updated = replace(
+        task,
+        status=TaskState.SKIPPED,
+        completed_at=now,
+        error={"reason": reason},
+        state_version=task.state_version + 1,
+    )
     store.replace_task(updated, expected_version=task.state_version)
-    store.emit(TaskGraphEvent(event_name="task.skipped", graph_id=task.graph_id, task_id=task.task_id, organization_id=task.organization_id, payload={"task_key": task.task_key, "reason": reason}))
+    store.emit(
+        TaskGraphEvent(
+            event_name="task.skipped",
+            graph_id=task.graph_id,
+            task_id=task.task_id,
+            organization_id=task.organization_id,
+            payload={"task_key": task.task_key, "reason": reason},
+        )
+    )

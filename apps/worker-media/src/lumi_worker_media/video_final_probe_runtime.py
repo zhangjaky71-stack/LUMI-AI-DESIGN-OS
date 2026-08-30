@@ -55,10 +55,7 @@ class HostedVerifiedVideoMediaSandbox:
         video = rendered.video
         if video.storage_key != video.durable_asset_ref:
             raise RuntimeError("VIDEO_FINAL_DURABLE_REF_MISMATCH")
-        prefix = (
-            f"generated/video/v1/{self.spec.organization_id}/"
-            f"{self.spec.project_id}/"
-        )
+        prefix = f"generated/video/v1/{self.spec.organization_id}/{self.spec.project_id}/"
         key = video.storage_key
         if (
             not key.startswith(prefix)
@@ -83,12 +80,9 @@ class HostedVerifiedVideoMediaSandbox:
         if source.content_length != video.size_bytes or checksum != video.checksum_sha256:
             raise RuntimeError("VIDEO_FINAL_DURABLE_IDENTITY_MISMATCH")
 
-        scope = hashlib.sha256(
-            f"{self.spec.task_id}\x00final-probe\x00{key}".encode()
-        ).hexdigest()
+        scope = hashlib.sha256(f"{self.spec.task_id}\x00final-probe\x00{key}".encode()).hexdigest()
         exchange_key = (
-            f"sandbox-exchange/v1/{self.spec.organization_id}/{scope}/"
-            f"final-probe/{checksum}.mp4"
+            f"sandbox-exchange/v1/{self.spec.organization_id}/{scope}/final-probe/{checksum}.mp4"
         )
         await adapter.object_store.copy(
             source_bucket=adapter.bucket,

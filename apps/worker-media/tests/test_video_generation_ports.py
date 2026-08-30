@@ -166,9 +166,7 @@ def test_provider_output_is_probed_in_exchange_then_promoted_by_server_side_copy
     assert len(seen) == 1
     assert any(copy[0] == "lumi-assets" and copy[2] == "lumi-sandbox" for copy in store.copies)
     assert any(
-        copy[0] == "lumi-assets"
-        and copy[2] == "lumi-assets"
-        and copy[3] == clip.storage_key
+        copy[0] == "lumi-assets" and copy[2] == "lumi-assets" and copy[3] == clip.storage_key
         for copy in store.copies
     )
     assert ("lumi-assets", source_key) in store.deleted

@@ -81,7 +81,10 @@ class ScopedPostgresVideoCostObserver(PostgresVideoCostObserver):
                 raise RuntimeError("VIDEO_COST_AMOUNT_MISMATCH")
             if str(row["confidence"]) != confidence.casefold():
                 raise RuntimeError("VIDEO_COST_CONFIDENCE_MISMATCH")
-            if pricing_snapshot_id is not None and row["pricing_snapshot_id"] != pricing_snapshot_id:
+            if (
+                pricing_snapshot_id is not None
+                and row["pricing_snapshot_id"] != pricing_snapshot_id
+            ):
                 raise RuntimeError("VIDEO_COST_PRICE_SNAPSHOT_MISMATCH")
             return True
         finally:

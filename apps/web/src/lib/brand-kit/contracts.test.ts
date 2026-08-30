@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { contrastRatio, draftPublishIssues, duplicateColorTokenIds, normalizeHexColor } from "./contracts";
+import {
+  contrastRatio,
+  draftPublishIssues,
+  duplicateColorTokenIds,
+  normalizeHexColor,
+} from "./contracts";
 import { getBrandKitBootstrap } from "./brand-kit-server";
 
 function detail() {
@@ -26,7 +31,12 @@ describe("Brand Kit validation contracts", () => {
       ...current.draft_token_set,
       colors: [
         ...current.draft_token_set.colors,
-        { id: "duplicate", name: "Duplicate", value: "#1c1917", roles: ["accent"] },
+        {
+          id: "duplicate",
+          name: "Duplicate",
+          value: "#1c1917",
+          roles: ["accent"],
+        },
       ],
     };
     expect(duplicateColorTokenIds(tokenSet)).toContain("color-ink");
@@ -43,6 +53,10 @@ describe("Brand Kit validation contracts", () => {
           : font,
       ),
     };
-    expect(draftPublishIssues(withUnknownRights).some((issue) => /UNKNOWN/.test(issue))).toBe(true);
+    expect(
+      draftPublishIssues(withUnknownRights).some((issue) =>
+        /UNKNOWN/.test(issue),
+      ),
+    ).toBe(true);
   });
 });

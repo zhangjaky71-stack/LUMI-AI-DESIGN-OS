@@ -12,14 +12,20 @@ export interface BrandQualityPort {
 }
 
 export interface IdentityQualityPort {
-  evaluate(subject: CriticSubject): Promise<readonly IdentityValidationReport[]>;
+  evaluate(
+    subject: CriticSubject,
+  ): Promise<readonly IdentityValidationReport[]>;
 }
 
 export interface OcrQualityResult {
   readonly provider_id: string;
   readonly provider_version: string;
   readonly status: "READY" | "UNAVAILABLE";
-  readonly texts: readonly { readonly text: string; readonly confidence: number; readonly evidence_ref?: string }[];
+  readonly texts: readonly {
+    readonly text: string;
+    readonly confidence: number;
+    readonly evidence_ref?: string;
+  }[];
 }
 
 export interface OcrQualityPort {
@@ -46,7 +52,10 @@ export interface VisualGraderPort {
   readonly grader_id: string;
   readonly grader_version: string;
   readonly role_id: "visual-critic";
-  grade(subject: CriticSubject, profile: QualityProfile): Promise<VisualGradeResult>;
+  grade(
+    subject: CriticSubject,
+    profile: QualityProfile,
+  ): Promise<VisualGradeResult>;
 }
 
 export interface QualityArtifactPort {

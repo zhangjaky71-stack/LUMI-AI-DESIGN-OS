@@ -77,8 +77,7 @@ def test_production_and_staging_propagate_restricted_egress_ids() -> None:
         assert 'output "sandbox_egress_security_group_id"' in core
         assert 'output "app_internet_egress_security_group_id"' in core
         assert (
-            "sandbox_egress_security_group_id       = "
-            "local.core.sandbox_egress_security_group_id"
+            "sandbox_egress_security_group_id       = local.core.sandbox_egress_security_group_id"
         ) in app
         assert (
             "app_internet_egress_security_group_id = "
@@ -93,9 +92,7 @@ def test_inner_sandbox_execution_remains_network_none() -> None:
 
 
 def test_provider_cost_guard_uses_canonical_node27_ledger() -> None:
-    migration = _read(
-        "apps/api/alembic/versions/0018_platform_provider_cost_guard.py"
-    )
+    migration = _read("apps/api/alembic/versions/0018_platform_provider_cost_guard.py")
     guard = _read("apps/api/src/lumi_api/costs/platform_guard.py")
     adapter = _read("apps/api/src/lumi_api/costs/model_gateway_adapter.py")
 
@@ -167,6 +164,5 @@ def test_release_closure_does_not_create_second_provider_ledger() -> None:
     assert not (ROOT / "db/migrations/0015_provider_cost_guard.sql").exists()
     assert not (ROOT / "db/migrations/0016_provider_cost_guard_snapshot_fix.sql").exists()
     assert not (
-        ROOT
-        / "services/model-gateway/src/lumi_model_gateway/postgres_cost_accounting.py"
+        ROOT / "services/model-gateway/src/lumi_model_gateway/postgres_cost_accounting.py"
     ).exists()

@@ -180,16 +180,12 @@ class ToolGateway:
                     f"tool exceeded {definition.timeout_seconds:g}s timeout"
                 ) from exc
             except Exception as exc:
-                raise ToolAdapterExecutionError(
-                    f"adapter failed for {definition.key}"
-                ) from exc
+                raise ToolAdapterExecutionError(f"adapter failed for {definition.key}") from exc
 
         if definition.idempotency == ToolIdempotency.NOT_REQUIRED:
             return ToolSideEffectResponse(await call_adapter(), replayed=False)
         if not request.idempotency_key:
-            raise ToolIdempotencyRequiredError(
-                f"idempotency key required for {definition.key}"
-            )
+            raise ToolIdempotencyRequiredError(f"idempotency key required for {definition.key}")
         if self.side_effect_guard is None:
             raise ToolSideEffectGuardRequiredError(
                 f"side-effect guard required for {definition.key}"
@@ -321,9 +317,7 @@ class ToolGateway:
         except ToolAuditUnavailableError:
             raise
         except Exception as exc:
-            raise ToolAuditUnavailableError(
-                "durable Tool Gateway audit delivery failed"
-            ) from exc
+            raise ToolAuditUnavailableError("durable Tool Gateway audit delivery failed") from exc
 
 
 def _inline_preview(value: Any, *, depth: int = 0) -> Any:
@@ -337,8 +331,7 @@ def _inline_preview(value: Any, *, depth: int = 0) -> Any:
         return value
     if isinstance(value, dict):
         return {
-            key: _inline_preview(child, depth=depth + 1)
-            for key, child in list(value.items())[:20]
+            key: _inline_preview(child, depth=depth + 1) for key, child in list(value.items())[:20]
         }
     if isinstance(value, list):
         return [_inline_preview(child, depth=depth + 1) for child in value[:20]]

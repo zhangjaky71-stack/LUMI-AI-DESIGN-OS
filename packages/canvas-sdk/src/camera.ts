@@ -21,7 +21,10 @@ export function screenToWorld(point: Point, camera: CameraState): Point {
   };
 }
 
-export function panCamera(camera: CameraState, screenDelta: Point): CameraState {
+export function panCamera(
+  camera: CameraState,
+  screenDelta: Point,
+): CameraState {
   return {
     ...camera,
     x: camera.x - screenDelta.x / camera.zoom,
@@ -44,7 +47,10 @@ export function zoomAtScreenPoint(
   };
 }
 
-export function viewportWorldRect(camera: CameraState, viewport: CanvasViewport): Rect {
+export function viewportWorldRect(
+  camera: CameraState,
+  viewport: CanvasViewport,
+): Rect {
   return {
     x: camera.x,
     y: camera.y,
@@ -72,13 +78,22 @@ export function fitWorldRect(
   };
 }
 
-export function zoomFromWheelDelta(camera: CameraState, deltaY: number, sensitivity = 0.0015): number {
+export function zoomFromWheelDelta(
+  camera: CameraState,
+  deltaY: number,
+  sensitivity = 0.0015,
+): number {
   if (!Number.isFinite(deltaY)) return camera.zoom;
   return clampZoom(camera.zoom * Math.exp(-deltaY * sensitivity));
 }
 
-export function physicalCanvasSize(viewport: CanvasViewport, devicePixelRatio: number): CanvasViewport {
-  const dpr = Number.isFinite(devicePixelRatio) ? Math.max(1, devicePixelRatio) : 1;
+export function physicalCanvasSize(
+  viewport: CanvasViewport,
+  devicePixelRatio: number,
+): CanvasViewport {
+  const dpr = Number.isFinite(devicePixelRatio)
+    ? Math.max(1, devicePixelRatio)
+    : 1;
   return {
     width: Math.max(1, Math.round(viewport.width * dpr)),
     height: Math.max(1, Math.round(viewport.height * dpr)),

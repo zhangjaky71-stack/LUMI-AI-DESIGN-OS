@@ -122,14 +122,10 @@ class SandboxContractTests(unittest.TestCase):
             normalize_workspace_path("input/x", writable=True)
 
     def test_command_and_log_redaction(self) -> None:
-        command = redact_command(
-            ("tool", "--api-key", "secret-value", "password=hunter2")
-        )
+        command = redact_command(("tool", "--api-key", "secret-value", "password=hunter2"))
         self.assertEqual(command[2], "<redacted>")
         self.assertEqual(command[3], "password=<redacted>")
-        text = redact_text(
-            "Authorization: Bearer abc123 api_key=xyz password=hunter2"
-        )
+        text = redact_text("Authorization: Bearer abc123 api_key=xyz password=hunter2")
         self.assertNotIn("abc123", text)
         self.assertNotIn("xyz", text)
         self.assertNotIn("hunter2", text)

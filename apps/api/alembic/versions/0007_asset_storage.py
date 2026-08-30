@@ -24,9 +24,7 @@ def _execute(statements: Iterable[str]) -> None:
 def _lumi_app_exists() -> bool:
     return bool(
         op.get_bind()
-        .execute(
-            text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')")
-        )
+        .execute(text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')"))
         .scalar_one()
     )
 

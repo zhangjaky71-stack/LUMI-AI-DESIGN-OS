@@ -68,9 +68,7 @@ class AgentTeamTests(unittest.TestCase):
             self.assertFalse(definition.memory_policy.get("write", []), agent_id)
 
     def test_role_static_eval_bindings_cover_all_16(self) -> None:
-        contracts = load_role_eval_contracts(
-            ROOT / "evals/profiles/agents/agent-team-v1.json"
-        )
+        contracts = load_role_eval_contracts(ROOT / "evals/profiles/agents/agent-team-v1.json")
         validate_role_eval_bindings(self.team, contracts)
         self.assertEqual(set(contracts), set(CANONICAL_AGENT_IDS))
 

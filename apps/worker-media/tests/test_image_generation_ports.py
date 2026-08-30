@@ -110,9 +110,7 @@ class GeneratedImageStorageTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, "GENERATION_STORAGE_TEMPORARY")
 
     def test_hosted_store_known_s3_503_remains_retryable(self) -> None:
-        backend = _FakePutStore(
-            error=_FakeS3ClientError(status=503, code="ServiceUnavailable")
-        )
+        backend = _FakePutStore(error=_FakeS3ClientError(status=503, code="ServiceUnavailable"))
         classified = _ClassifyingS3ObjectStore(backend)  # type: ignore[arg-type]
         store = S3GeneratedImageStore(
             bucket="lumi-assets",

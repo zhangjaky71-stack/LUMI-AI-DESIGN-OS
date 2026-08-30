@@ -59,9 +59,7 @@ def authorize_delegation(
         if not child_profile.delegation_tool_ceiling <= parent_tool_ceiling:
             raise PermissionError("AGENT_TEAM_CHILD_DELEGATION_TOOL_CEILING_ESCALATION")
         if not child_profile.delegation_permission_ceiling <= parent_permission_ceiling:
-            raise PermissionError(
-                "AGENT_TEAM_CHILD_DELEGATION_PERMISSION_CEILING_ESCALATION"
-            )
+            raise PermissionError("AGENT_TEAM_CHILD_DELEGATION_PERMISSION_CEILING_ESCALATION")
 
     return DelegationGrant(
         parent_agent=parent.agent_id,
@@ -85,9 +83,7 @@ def validate_team_delegation_graph(
                 raise ValueError(f"AGENT_TEAM_UNKNOWN_DELEGATE:{agent_id}:{child_id}")
             child_profile = team_profile(child)
             if not set(child.allowed_tools) <= profile.delegation_tool_ceiling:
-                raise ValueError(
-                    f"AGENT_TEAM_STATIC_CHILD_TOOL_ESCALATION:{agent_id}:{child_id}"
-                )
+                raise ValueError(f"AGENT_TEAM_STATIC_CHILD_TOOL_ESCALATION:{agent_id}:{child_id}")
             if not set(child.permissions) <= profile.delegation_permission_ceiling:
                 raise ValueError(
                     f"AGENT_TEAM_STATIC_CHILD_PERMISSION_ESCALATION:{agent_id}:{child_id}"
@@ -95,8 +91,7 @@ def validate_team_delegation_graph(
             if child_profile.can_delegate:
                 if not child_profile.delegation_tool_ceiling <= profile.delegation_tool_ceiling:
                     raise ValueError(
-                        "AGENT_TEAM_STATIC_NESTED_TOOL_CEILING_ESCALATION:"
-                        f"{agent_id}:{child_id}"
+                        f"AGENT_TEAM_STATIC_NESTED_TOOL_CEILING_ESCALATION:{agent_id}:{child_id}"
                     )
                 if not child_profile.delegation_permission_ceiling <= (
                     profile.delegation_permission_ceiling

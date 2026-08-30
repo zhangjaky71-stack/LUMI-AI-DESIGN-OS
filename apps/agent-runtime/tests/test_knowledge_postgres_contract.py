@@ -8,8 +8,7 @@ ROOT = Path(__file__).resolve().parents[3]
 MIGRATION = ROOT / "apps/api/alembic/versions/0017_knowledge_engine.py"
 ORM = ROOT / "apps/api/src/lumi_api/persistence/models/knowledge.py"
 REPOSITORY = (
-    ROOT
-    / "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/postgres_repository.py"
+    ROOT / "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/postgres_repository.py"
 )
 RETRIEVAL = ROOT / "apps/agent-runtime/src/lumi_agent_runtime/knowledge_engine/retrieval.py"
 CONTEXT_CONTRACT = ROOT / "apps/agent-runtime/src/lumi_agent_runtime/context_engine/contracts.py"

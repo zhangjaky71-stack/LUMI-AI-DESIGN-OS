@@ -21,7 +21,11 @@ export interface ClipboardAssetPolicy {
   ): string | null;
 }
 
-function descendants(document: DesignDocument, id: string, result: Set<string>): void {
+function descendants(
+  document: DesignDocument,
+  id: string,
+  result: Set<string>,
+): void {
   if (result.has(id)) return;
   const node = document.nodes[id];
   if (!node) return;
@@ -64,11 +68,15 @@ export function createClipboardFragment(
   };
 }
 
-export function serializeClipboardFragment(fragment: CanvasClipboardFragment): string {
+export function serializeClipboardFragment(
+  fragment: CanvasClipboardFragment,
+): string {
   return JSON.stringify(fragment);
 }
 
-export function parseClipboardFragment(value: string): CanvasClipboardFragment | null {
+export function parseClipboardFragment(
+  value: string,
+): CanvasClipboardFragment | null {
   try {
     const parsed = JSON.parse(value) as Partial<CanvasClipboardFragment>;
     if (

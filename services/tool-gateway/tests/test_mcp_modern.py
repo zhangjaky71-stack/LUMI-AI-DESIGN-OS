@@ -322,8 +322,7 @@ class ModernMCPTests(unittest.IsolatedAsyncioTestCase):
         tool_calls = [
             call
             for call in transport.calls
-            if isinstance(call["body"], dict)
-            and call["body"].get("method") == "tools/call"
+            if isinstance(call["body"], dict) and call["body"].get("method") == "tools/call"
         ]
         self.assertEqual(tool_calls[0]["headers"]["Mcp-Name"], "search")
         self.assertNotIn("Mcp-Session-Id", tool_calls[0]["headers"])
@@ -416,9 +415,7 @@ class ModernMCPTests(unittest.IsolatedAsyncioTestCase):
             registry=ToolRegistry(plan.definitions),
             adapters=plan.adapters,
         )
-        definition = next(
-            item for item in plan.definitions if item.name.endswith("needs_input")
-        )
+        definition = next(item for item in plan.definitions if item.name.endswith("needs_input"))
         with self.assertRaises(MCPInputRequiredError) as caught:
             await gateway.invoke(
                 tool_request(
@@ -493,9 +490,9 @@ class ModernMCPTests(unittest.IsolatedAsyncioTestCase):
                 response = await super().post(**kwargs)
                 body = kwargs["body"]
                 if body.get("method") == "tools/list" and response.json_body:
-                    response.json_body["result"]["tools"][0]["inputSchema"]["properties"][
-                        "query"
-                    ]["x-mcp-header"] = "Authorization"
+                    response.json_body["result"]["tools"][0]["inputSchema"]["properties"]["query"][
+                        "x-mcp-header"
+                    ] = "Authorization"
                 return response
 
         mcp = client(HeaderSchemaTransport())

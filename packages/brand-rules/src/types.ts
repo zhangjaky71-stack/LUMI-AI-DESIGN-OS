@@ -1,4 +1,8 @@
-import type { DesignDocument, DesignOperation, JsonValue } from "../../design-ir/src/index";
+import type {
+  DesignDocument,
+  DesignOperation,
+  JsonValue,
+} from "../../design-ir/src/index";
 
 export type { DesignDocument, DesignOperation, JsonValue };
 
@@ -45,7 +49,10 @@ export const BRAND_RULE_TYPES = [
 export type BrandRuleType = (typeof BRAND_RULE_TYPES)[number];
 
 export type BrandRuleSetStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
-export type BrandExtractionProposalStatus = "PROPOSED" | "APPROVED" | "REJECTED";
+export type BrandExtractionProposalStatus =
+  | "PROPOSED"
+  | "APPROVED"
+  | "REJECTED";
 
 export interface BrandColorToken {
   readonly id: string;
@@ -88,7 +95,9 @@ export interface BrandVoice {
   readonly forbidden_terms: readonly string[];
   readonly do_examples?: readonly string[];
   readonly dont_examples?: readonly string[];
-  readonly locale_overrides?: Readonly<Record<string, Readonly<Record<string, JsonValue>>>>;
+  readonly locale_overrides?: Readonly<
+    Record<string, Readonly<Record<string, JsonValue>>>
+  >;
 }
 
 export interface BrandVisualReferenceSet {

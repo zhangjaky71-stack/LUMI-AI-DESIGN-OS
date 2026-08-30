@@ -176,9 +176,7 @@ def create_tool_approval_control_router(runtime: ToolApprovalControlRuntime) -> 
                 raise ValueError("TOOL_APPROVAL_ARGUMENTS_INVALID")
             approval_raw = payload.get("approval_id")
             approval_id = (
-                UUID(approval_raw)
-                if isinstance(approval_raw, str) and approval_raw
-                else None
+                UUID(approval_raw) if isinstance(approval_raw, str) and approval_raw else None
             )
             request_hash = _request_hash(
                 organization_id=organization_id,
@@ -309,9 +307,7 @@ def create_tool_approval_public_router(
                 approval.decided_by = context.actor_id
                 approval.decided_at = datetime.now(UTC)
                 approval.reason = (
-                    body.reason.strip()
-                    if body.reason and body.reason.strip()
-                    else None
+                    body.reason.strip() if body.reason and body.reason.strip() else None
                 )
                 approval.version += 1
             await session.refresh(approval)
@@ -472,12 +468,7 @@ def _verify_auth(request: Request, body: bytes, secret: str) -> JSONResponse | N
 
 def _required_string(payload: dict[str, Any], key: str, max_length: int) -> str:
     value = payload.get(key)
-    if (
-        not isinstance(value, str)
-        or not value
-        or len(value) > max_length
-        or "\x00" in value
-    ):
+    if not isinstance(value, str) or not value or len(value) > max_length or "\x00" in value:
         raise ValueError(f"TOOL_APPROVAL_FIELD_INVALID:{key}")
     return value
 

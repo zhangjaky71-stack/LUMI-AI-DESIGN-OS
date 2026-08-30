@@ -60,7 +60,9 @@ export function cullNodes(
   nodes: readonly SpikeNode[],
   viewportWorldRect: Rect,
 ): SpikeNode[] {
-  return nodes.filter((node) => rectsIntersect(nodeBounds(node), viewportWorldRect));
+  return nodes.filter((node) =>
+    rectsIntersect(nodeBounds(node), viewportWorldRect),
+  );
 }
 
 export function unionBounds(nodes: readonly SpikeNode[]): Rect | null {

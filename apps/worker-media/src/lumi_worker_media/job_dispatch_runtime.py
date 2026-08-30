@@ -196,9 +196,7 @@ class MediaJobOutboxDispatcher:
                     oldest_publish_attempts=0,
                 )
             return MediaJobOutboxHealth(
-                oldest_unpublished_age_seconds=int(
-                    row["oldest_unpublished_age_seconds"]
-                ),
+                oldest_unpublished_age_seconds=int(row["oldest_unpublished_age_seconds"]),
                 oldest_publish_attempts=int(row["oldest_publish_attempts"]),
             )
         finally:

@@ -167,7 +167,9 @@ class ApprovalResumeEnvelope:
 
 
 class ApprovalRepository(Protocol):
-    def get(self, organization_id: str, project_id: str, approval_id: str) -> ApprovalRecord | None: ...
+    def get(
+        self, organization_id: str, project_id: str, approval_id: str
+    ) -> ApprovalRecord | None: ...
 
     def list_project(self, organization_id: str, project_id: str) -> tuple[ApprovalRecord, ...]: ...
 
@@ -374,13 +376,13 @@ class ApprovalEngine:
             feedback=feedback if final_status == "CHANGES_REQUESTED" else None,
         )
         self._repository.save(updated)
-        self._repository.record_idempotency_key(
-            actor.organization_id, idempotency_key, approval_id
-        )
+        self._repository.record_idempotency_key(actor.organization_id, idempotency_key, approval_id)
         self._record(
             actor,
             updated,
-            "APPROVAL_DECISION_RECORDED" if final_status == "PENDING" else f"APPROVAL_{final_status}",
+            "APPROVAL_DECISION_RECORDED"
+            if final_status == "PENDING"
+            else f"APPROVAL_{final_status}",
             {"decision": decision, "policy_mode": approval.policy.mode},
         )
 
@@ -388,7 +390,9 @@ class ApprovalEngine:
             task_ids = self._changes.create_change_tasks(
                 actor.organization_id, project_id, approval_id, approval.subject, feedback
             )
-            self._record(actor, updated, "APPROVAL_CHANGE_TASKS_CREATED", {"task_count": len(task_ids)})
+            self._record(
+                actor, updated, "APPROVAL_CHANGE_TASKS_CREATED", {"task_count": len(task_ids)}
+            )
         if final_status in {"APPROVED", "REJECTED", "CHANGES_REQUESTED"}:
             self._resume_graph(updated, decision, feedback)
         return updated
@@ -405,7 +409,9 @@ class ApprovalEngine:
             approval, status="CANCELLED", resolved_at=_now(), resolved_by=actor.actor_id
         )
         self._repository.save(updated)
-        self._record(actor, updated, "APPROVAL_CANCELLED", {"has_reason": bool(reason and reason.strip())})
+        self._record(
+            actor, updated, "APPROVAL_CANCELLED", {"has_reason": bool(reason and reason.strip())}
+        )
         return updated
 
     def expire_due(self, actor: ApprovalActor, project_id: str) -> tuple[ApprovalRecord, ...]:
@@ -436,13 +442,17 @@ class ApprovalEngine:
                     superseded_by=incoming.approval_id,
                 )
                 self._repository.save(updated)
-                self._record(actor, updated, "APPROVAL_SUPERSEDED", {"new_approval_id": incoming.approval_id})
+                self._record(
+                    actor, updated, "APPROVAL_SUPERSEDED", {"new_approval_id": incoming.approval_id}
+                )
 
     @staticmethod
     def _authorize(actor: ApprovalActor, approval: ApprovalRecord) -> None:
         if approval.policy.required_permission not in actor.permissions:
             raise ApprovalError("APPROVAL_FORBIDDEN", 403)
-        if approval.policy.required_roles and not set(actor.roles).intersection(approval.policy.required_roles):
+        if approval.policy.required_roles and not set(actor.roles).intersection(
+            approval.policy.required_roles
+        ):
             raise ApprovalError("APPROVAL_FORBIDDEN", 403)
 
     @staticmethod
@@ -555,12 +565,18 @@ class InMemoryApprovalRepository:
         return tuple(sorted(records, key=lambda item: item.created_at, reverse=True))
 
     def save(self, approval: ApprovalRecord) -> None:
-        self.records[(approval.organization_id, approval.project_id, approval.approval_id)] = approval
+        self.records[(approval.organization_id, approval.project_id, approval.approval_id)] = (
+            approval
+        )
 
-    def approval_for_idempotency_key(self, organization_id: str, idempotency_key: str) -> str | None:
+    def approval_for_idempotency_key(
+        self, organization_id: str, idempotency_key: str
+    ) -> str | None:
         return self.idempotency.get((organization_id, idempotency_key))
 
-    def record_idempotency_key(self, organization_id: str, idempotency_key: str, approval_id: str) -> None:
+    def record_idempotency_key(
+        self, organization_id: str, idempotency_key: str, approval_id: str
+    ) -> None:
         self.idempotency[(organization_id, idempotency_key)] = approval_id
 
 
@@ -570,7 +586,13 @@ class InMemoryApprovalSubjects:
 
     def add(self, organization_id: str, project_id: str, subject: ApprovalSubject) -> None:
         self.subjects.add(
-            (organization_id, project_id, subject.subject_type, subject.subject_id, subject.subject_version)
+            (
+                organization_id,
+                project_id,
+                subject.subject_type,
+                subject.subject_id,
+                subject.subject_version,
+            )
         )
 
     def exists(self, organization_id: str, project_id: str, subject: ApprovalSubject) -> bool:

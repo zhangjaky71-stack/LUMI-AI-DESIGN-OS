@@ -35,14 +35,10 @@ class ContainerCompiler:
         if policy is None:
             raise RecipeCompileError("parallel policy missing")
         if policy.budget_limit_usd is None or not policy.budget_split:
-            raise RecipeBudgetError(
-                "parallel requires total budget and explicit budget split"
-            )
+            raise RecipeBudgetError("parallel requires total budget and explicit budget split")
         if len(policy.budget_split) != len(step.children):
             raise RecipeBudgetError("parallel budget split count differs from children")
-        if sum(Decimal(item) for item in policy.budget_split) != Decimal(
-            policy.budget_limit_usd
-        ):
+        if sum(Decimal(item) for item in policy.budget_split) != Decimal(policy.budget_limit_usd):
             raise RecipeBudgetError("parallel budget split must equal total budget")
         if policy.join_policy == JoinPolicy.MIN_SUCCESS:
             if policy.min_success is None or policy.min_success > len(step.children):

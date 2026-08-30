@@ -45,16 +45,30 @@ class AuthPolicyTests(unittest.TestCase):
 
     def test_viewer_cannot_write_and_billing_cannot_edit_project(self) -> None:
         viewer = build_request_context(
-            request_id="req-v", actor_id="viewer", organization_id="org-a",
-            memberships=(Membership("viewer", "org-a", "VIEWER"),), trace_id="t-v"
+            request_id="req-v",
+            actor_id="viewer",
+            organization_id="org-a",
+            memberships=(Membership("viewer", "org-a", "VIEWER"),),
+            trace_id="t-v",
         )
         billing = build_request_context(
-            request_id="req-b", actor_id="billing", organization_id="org-a",
-            memberships=(Membership("billing", "org-a", "BILLING"),), trace_id="t-b"
+            request_id="req-b",
+            actor_id="billing",
+            organization_id="org-a",
+            memberships=(Membership("billing", "org-a", "BILLING"),),
+            trace_id="t-b",
         )
-        self.assertFalse(authorize(viewer, resource_organization_id="org-a", permission="project.write").allowed)
-        self.assertTrue(authorize(billing, resource_organization_id="org-a", permission="billing.manage").allowed)
-        self.assertFalse(authorize(billing, resource_organization_id="org-a", permission="project.write").allowed)
+        self.assertFalse(
+            authorize(viewer, resource_organization_id="org-a", permission="project.write").allowed
+        )
+        self.assertTrue(
+            authorize(
+                billing, resource_organization_id="org-a", permission="billing.manage"
+            ).allowed
+        )
+        self.assertFalse(
+            authorize(billing, resource_organization_id="org-a", permission="project.write").allowed
+        )
 
     def test_last_owner_cannot_be_removed_or_demoted(self) -> None:
         memberships = (
@@ -168,10 +182,19 @@ class AuthPolicyTests(unittest.TestCase):
     def test_sliding_window_rate_limit_blocks_burst_and_recovers(self) -> None:
         limiter = InMemorySlidingWindowRateLimiter()
         for offset in range(3):
-            limiter.consume("login:user", now=NOW + timedelta(seconds=offset), limit=3, window=timedelta(minutes=1))
+            limiter.consume(
+                "login:user",
+                now=NOW + timedelta(seconds=offset),
+                limit=3,
+                window=timedelta(minutes=1),
+            )
         with self.assertRaises(RateLimitExceeded):
-            limiter.consume("login:user", now=NOW + timedelta(seconds=3), limit=3, window=timedelta(minutes=1))
-        limiter.consume("login:user", now=NOW + timedelta(minutes=2), limit=3, window=timedelta(minutes=1))
+            limiter.consume(
+                "login:user", now=NOW + timedelta(seconds=3), limit=3, window=timedelta(minutes=1)
+            )
+        limiter.consume(
+            "login:user", now=NOW + timedelta(minutes=2), limit=3, window=timedelta(minutes=1)
+        )
 
 
 if __name__ == "__main__":

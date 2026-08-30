@@ -17,7 +17,12 @@ class NormalizedRect:
         values = (self.x, self.y, self.width, self.height)
         if any(value < 0 or value > 1 for value in values):
             raise ValueError("IMAGE_EDIT_NORMALIZED_RECT_INVALID")
-        if self.width <= 0 or self.height <= 0 or self.x + self.width > 1 or self.y + self.height > 1:
+        if (
+            self.width <= 0
+            or self.height <= 0
+            or self.x + self.width > 1
+            or self.y + self.height > 1
+        ):
             raise ValueError("IMAGE_EDIT_NORMALIZED_RECT_INVALID")
 
 
@@ -33,7 +38,9 @@ def rects_overlap(a: PixelRect, b: PixelRect) -> bool:
     return not (a.right <= b.x or b.right <= a.x or a.bottom <= b.y or b.bottom <= a.y)
 
 
-def assert_no_hard_protected_overlap(editable: PixelRect, protected: tuple[ProtectedRegion, ...]) -> None:
+def assert_no_hard_protected_overlap(
+    editable: PixelRect, protected: tuple[ProtectedRegion, ...]
+) -> None:
     for region in protected:
         if region.severity == "HARD" and rects_overlap(editable, region.rect):
             raise ValueError(f"IMAGE_EDIT_MASK_OVERLAPS_HARD_PROTECTED_REGION:{region.region_id}")

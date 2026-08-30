@@ -72,11 +72,7 @@ class PolicyResumeAuthorizer:
         current: GraphRunSnapshot,
     ) -> ResumeAuthorization:
         interrupt = next(
-            (
-                item
-                for item in current.interrupts
-                if item.interrupt_id == request.interrupt_id
-            ),
+            (item for item in current.interrupts if item.interrupt_id == request.interrupt_id),
             None,
         )
         if interrupt is None:
@@ -132,14 +128,10 @@ class PolicyResumeAuthorizer:
                 reason="approval is still pending",
             )
         expected_decision = (
-            ResumeDecision.APPROVED
-            if normalized_status == "approved"
-            else ResumeDecision.REJECTED
+            ResumeDecision.APPROVED if normalized_status == "approved" else ResumeDecision.REJECTED
         )
         if request.decision != expected_decision:
-            raise GraphResumeDeniedError(
-                "resume decision does not match durable approval decision"
-            )
+            raise GraphResumeDeniedError("resume decision does not match durable approval decision")
         # `approved=True` means this resume COMMAND is authorized. A durable business
         # decision of REJECTED is encoded in normalized_value and still legitimately
         # resumes the graph down its rejection branch.

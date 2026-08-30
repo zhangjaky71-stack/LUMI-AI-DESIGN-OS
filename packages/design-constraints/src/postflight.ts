@@ -21,7 +21,10 @@ const FAIL_CLOSED_POSTFLIGHT_TYPES = new Set<string>([
   "REQUIRE_RESOLUTION",
 ]);
 
-function unavailable(constraint: DesignConstraint, validator: string): ConstraintViolation {
+function unavailable(
+  constraint: DesignConstraint,
+  validator: string,
+): ConstraintViolation {
   return {
     constraint_id: constraint.id,
     type: constraint.type,
@@ -34,7 +37,10 @@ function unavailable(constraint: DesignConstraint, validator: string): Constrain
 
 export class DelegatingBrandEvaluator implements PostflightEvaluator {
   readonly name = "brand-compliance";
-  readonly supported_types = ["LOCK_BRAND", "REQUIRE_BRAND_COMPLIANCE"] as const;
+  readonly supported_types = [
+    "LOCK_BRAND",
+    "REQUIRE_BRAND_COMPLIANCE",
+  ] as const;
   readonly supports_preflight = false;
   readonly supports_postflight = true;
 
@@ -47,7 +53,10 @@ export class DelegatingBrandEvaluator implements PostflightEvaluator {
 
 export class DelegatingIdentityEvaluator implements PostflightEvaluator {
   readonly name = "identity-similarity";
-  readonly supported_types = ["LOCK_IDENTITY", "REQUIRE_IDENTITY_SCORE"] as const;
+  readonly supported_types = [
+    "LOCK_IDENTITY",
+    "REQUIRE_IDENTITY_SCORE",
+  ] as const;
   readonly supports_preflight = false;
   readonly supports_postflight = true;
 
@@ -65,17 +74,29 @@ export class ConstraintPostflightRuntime {
     const violations: ConstraintViolation[] = [];
     const unavailableValidators = new Set<string>();
 
-    for (const constraint of context.constraints.filter((item) => item.active)) {
-      if (isConstraintOverridden(context.document, constraint, context.overrides)) continue;
+    for (const constraint of context.constraints.filter(
+      (item) => item.active,
+    )) {
+      if (
+        isConstraintOverridden(context.document, constraint, context.overrides)
+      )
+        continue;
       const matching = this.evaluators.filter(
         (evaluator) =>
           evaluator.supports_postflight &&
-          (evaluator.supported_types as readonly string[]).includes(constraint.type),
+          (evaluator.supported_types as readonly string[]).includes(
+            constraint.type,
+          ),
       );
       if (!matching.length) {
-        if (constraint.severity === "HARD" && FAIL_CLOSED_POSTFLIGHT_TYPES.has(constraint.type)) {
+        if (
+          constraint.severity === "HARD" &&
+          FAIL_CLOSED_POSTFLIGHT_TYPES.has(constraint.type)
+        ) {
           unavailableValidators.add(`missing:${constraint.type}`);
-          violations.push(unavailable(constraint, `missing:${constraint.type}`));
+          violations.push(
+            unavailable(constraint, `missing:${constraint.type}`),
+          );
         }
         continue;
       }
@@ -84,7 +105,8 @@ export class ConstraintPostflightRuntime {
           violations.push(...(await evaluator.evaluate(context, constraint)));
         } catch {
           unavailableValidators.add(evaluator.name);
-          if (constraint.severity === "HARD") violations.push(unavailable(constraint, evaluator.name));
+          if (constraint.severity === "HARD")
+            violations.push(unavailable(constraint, evaluator.name));
         }
       }
     }

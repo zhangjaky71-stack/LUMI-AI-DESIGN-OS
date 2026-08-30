@@ -58,9 +58,7 @@ class MemoryContextSource:
                 access=access,
                 text=request.query or request.purpose,
                 limit=request.retrieval_limit,
-                query_embedding=_query_embedding(
-                    request.metadata.get("query_embedding")
-                ),
+                query_embedding=_query_embedding(request.metadata.get("query_embedding")),
             )
         )
         output: list[RetrievalCandidate] = []

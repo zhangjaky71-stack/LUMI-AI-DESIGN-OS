@@ -120,8 +120,7 @@ class PostgresGraphRunStore:
                 _assert_snapshot_identity(row, snapshot)
                 if expected_checkpoint is not None and (
                     row["thread_id"] != expected_checkpoint.thread_id
-                    or row["checkpoint_namespace"]
-                    != expected_checkpoint.checkpoint_namespace
+                    or row["checkpoint_namespace"] != expected_checkpoint.checkpoint_namespace
                     or row["checkpoint_id"] != expected_checkpoint.checkpoint_id
                 ):
                     raise GraphCheckpointConflictError(

@@ -28,11 +28,15 @@ export interface BrowserTelemetryOptions {
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SAFE_NAME = /^[a-z][a-z0-9_.-]{0,63}$/;
 const STATUS_CLASS = /^[1-5]xx$/;
-const UUID_SEGMENT = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const OPAQUE_ID_SEGMENT = /^(?:[0-9a-f]{24,64}|[0-9]{4,}|[0-9A-HJKMNP-TV-Z]{26})$/i;
+const UUID_SEGMENT =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const OPAQUE_ID_SEGMENT =
+  /^(?:[0-9a-f]{24,64}|[0-9]{4,}|[0-9A-HJKMNP-TV-Z]{26})$/i;
 const MAX_BODY_BYTES = 4096;
 
-export function safeTelemetryRef(value: string | null | undefined): string | undefined {
+export function safeTelemetryRef(
+  value: string | null | undefined,
+): string | undefined {
   if (!value) return undefined;
   const candidate = value.trim();
   return SAFE_REF.test(candidate) ? candidate : undefined;
@@ -49,14 +53,17 @@ export function normalizeTelemetryRoute(value: string): string {
     .split("/")
     .map((segment) => {
       if (!segment) return segment;
-      if (UUID_SEGMENT.test(segment) || OPAQUE_ID_SEGMENT.test(segment)) return ":id";
+      if (UUID_SEGMENT.test(segment) || OPAQUE_ID_SEGMENT.test(segment))
+        return ":id";
       return segment.slice(0, 80);
     })
     .join("/");
   return (normalized || "/").slice(0, 240);
 }
 
-export function sanitizeBrowserTelemetry(input: unknown): BrowserTelemetryEvent | null {
+export function sanitizeBrowserTelemetry(
+  input: unknown,
+): BrowserTelemetryEvent | null {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
   const raw = input as Record<string, unknown>;
   const kind = raw.kind;
@@ -72,10 +79,17 @@ export function sanitizeBrowserTelemetry(input: unknown): BrowserTelemetryEvent 
     route: normalizeTelemetryRoute(raw.route),
   };
 
-  if (typeof raw.value === "number" && Number.isFinite(raw.value) && raw.value >= 0) {
+  if (
+    typeof raw.value === "number" &&
+    Number.isFinite(raw.value) &&
+    raw.value >= 0
+  ) {
     event.value = Math.min(raw.value, 86_400_000);
   }
-  if (typeof raw.statusClass === "string" && STATUS_CLASS.test(raw.statusClass)) {
+  if (
+    typeof raw.statusClass === "string" &&
+    STATUS_CLASS.test(raw.statusClass)
+  ) {
     event.statusClass = raw.statusClass;
   }
   if (typeof raw.requestId === "string") {
@@ -97,11 +111,14 @@ export function emitBrowserTelemetry(
   input: BrowserTelemetryEvent,
   options: BrowserTelemetryOptions = {},
 ): boolean {
-  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  if (typeof window === "undefined" || typeof navigator === "undefined")
+    return false;
   const event = sanitizeBrowserTelemetry(input);
   if (!event) return false;
 
-  const sampleRate = clampSampleRate(options.sampleRate ?? defaultSampleRate(event.kind));
+  const sampleRate = clampSampleRate(
+    options.sampleRate ?? defaultSampleRate(event.kind),
+  );
   const random = options.random ?? Math.random;
   if (sampleRate < 1 && random() >= sampleRate) return false;
 
@@ -111,7 +128,10 @@ export function emitBrowserTelemetry(
 
   try {
     if (typeof navigator.sendBeacon === "function") {
-      return navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+      return navigator.sendBeacon(
+        endpoint,
+        new Blob([body], { type: "application/json" }),
+      );
     }
     void fetch(endpoint, {
       method: "POST",
@@ -126,7 +146,10 @@ export function emitBrowserTelemetry(
   }
 }
 
-export function reportRouteError(errorCode?: string, route = currentRoute()): boolean {
+export function reportRouteError(
+  errorCode?: string,
+  route = currentRoute(),
+): boolean {
   const safeCode = safeErrorCode(errorCode);
   return emitBrowserTelemetry({
     version: 1,
@@ -137,7 +160,10 @@ export function reportRouteError(errorCode?: string, route = currentRoute()): bo
   });
 }
 
-export function reportCanvasError(errorCode?: string, route = currentRoute()): boolean {
+export function reportCanvasError(
+  errorCode?: string,
+  route = currentRoute(),
+): boolean {
   const safeCode = safeErrorCode(errorCode);
   return emitBrowserTelemetry({
     version: 1,
@@ -148,7 +174,11 @@ export function reportCanvasError(errorCode?: string, route = currentRoute()): b
   });
 }
 
-export function reportWebVital(name: WebVitalName, value: number, route = currentRoute()): boolean {
+export function reportWebVital(
+  name: WebVitalName,
+  value: number,
+  route = currentRoute(),
+): boolean {
   return emitBrowserTelemetry(
     { version: 1, kind: "web_vital", name, route, value },
     { sampleRate: 0.1 },
@@ -161,7 +191,9 @@ export async function observedFetch(
 ): Promise<Response> {
   const response = await fetch(input, init);
   if (!response.ok) {
-    const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+    const method = (
+      init?.method ?? (input instanceof Request ? input.method : "GET")
+    ).toUpperCase();
     const target = input instanceof Request ? input.url : String(input);
     const refs = responseCorrelation(response);
     emitBrowserTelemetry({
@@ -181,7 +213,9 @@ export function responseCorrelation(response: Response): {
   correlationId?: string;
 } {
   const requestId = safeTelemetryRef(response.headers.get("x-request-id"));
-  const correlationId = safeTelemetryRef(response.headers.get("x-correlation-id"));
+  const correlationId = safeTelemetryRef(
+    response.headers.get("x-correlation-id"),
+  );
   return {
     ...(requestId ? { requestId } : {}),
     ...(correlationId ? { correlationId } : {}),
@@ -189,12 +223,18 @@ export function responseCorrelation(response: Response): {
 }
 
 function currentRoute(): string {
-  return typeof window === "undefined" ? "/" : normalizeTelemetryRoute(window.location.pathname);
+  return typeof window === "undefined"
+    ? "/"
+    : normalizeTelemetryRoute(window.location.pathname);
 }
 
 function safeErrorCode(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9_.-]+/g, "_").slice(0, 64);
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "_")
+    .slice(0, 64);
   return SAFE_NAME.test(normalized) ? normalized : undefined;
 }
 

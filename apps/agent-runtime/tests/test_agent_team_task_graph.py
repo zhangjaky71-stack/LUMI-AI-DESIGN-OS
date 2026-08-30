@@ -43,7 +43,9 @@ class AgentTeamTaskGraphTests(unittest.TestCase):
         owners = [step["owner"] for step in template["steps"]]
         self.assertTrue(all(owner.startswith("AGENT:") for owner in owners))
         self.assertTrue(all(owner.endswith("@2.0.0") for owner in owners))
-        self.assertTrue(all(step["task_type"] == "AGENT_TEAM_HANDOFF" for step in template["steps"]))
+        self.assertTrue(
+            all(step["task_type"] == "AGENT_TEAM_HANDOFF" for step in template["steps"])
+        )
 
     def test_cycle_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "AGENT_TEAM_GRAPH_CYCLE"):

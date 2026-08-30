@@ -79,7 +79,9 @@ def build_parser() -> argparse.ArgumentParser:
     compare_parser.add_argument("--out", default=str(DEFAULT_REPORTS))
     compare_parser.set_defaults(func=_compare)
 
-    live_parser = sub.add_parser("live", help="perform secretless live-provider authorization preflight")
+    live_parser = sub.add_parser(
+        "live", help="perform secretless live-provider authorization preflight"
+    )
     live_parser.add_argument("--suite", required=True)
     live_parser.set_defaults(func=_live)
 

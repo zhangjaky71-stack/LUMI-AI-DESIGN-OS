@@ -162,7 +162,10 @@ export class HttpVersionsGateway implements VersionsGateway {
     artifactId: string,
     signal?: AbortSignal,
   ) {
-    const query = new URLSearchParams({ artifact_id: artifactId, check_updates: "1" });
+    const query = new URLSearchParams({
+      artifact_id: artifactId,
+      check_updates: "1",
+    });
     return this.#api.get<VersionWorkspaceSnapshot>(
       `/projects/${encodeURIComponent(projectId)}/versions?${query.toString()}`,
       request(signal),
@@ -200,16 +203,23 @@ export class DeterministicVersionsGateway implements VersionsGateway {
       this.#engine.addBranch({ ...branch, head_version_id: null });
       this.#activeBranchByArtifact.set(branch.artifact_id, branch.id);
     }
-    for (const item of [...seed.versions].sort((a, b) => a.version_number - b.version_number)) {
+    for (const item of [...seed.versions].sort(
+      (a, b) => a.version_number - b.version_number,
+    )) {
       this.#engine.addVersion(item);
     }
     for (const edge of seed.lineage) this.#engine.addEdge(edge);
     for (const row of seed.provenance) this.#engine.addProvenance(row);
-    for (const [id, value] of Object.entries(seed.semantic_changes)) this.#semantic.set(id, clone(value));
-    for (const [id, value] of Object.entries(seed.previews)) this.#previews.set(id, clone(value));
-    for (const [id, value] of Object.entries(seed.approval)) this.#approval.set(id, clone(value));
-    for (const [id, value] of Object.entries(seed.quality)) this.#quality.set(id, clone(value));
-    for (const [id, value] of Object.entries(seed.safe_summaries)) this.#summaries.set(id, value);
+    for (const [id, value] of Object.entries(seed.semantic_changes))
+      this.#semantic.set(id, clone(value));
+    for (const [id, value] of Object.entries(seed.previews))
+      this.#previews.set(id, clone(value));
+    for (const [id, value] of Object.entries(seed.approval))
+      this.#approval.set(id, clone(value));
+    for (const [id, value] of Object.entries(seed.quality))
+      this.#quality.set(id, clone(value));
+    for (const [id, value] of Object.entries(seed.safe_summaries))
+      this.#summaries.set(id, value);
   }
 
   async getWorkspace(
@@ -233,7 +243,10 @@ export class DeterministicVersionsGateway implements VersionsGateway {
     const artifact = this.#artifact(artifactId);
     const from = this.#timelineItem(fromVersionId);
     const to = this.#timelineItem(toVersionId);
-    if (from.version.artifact_id !== artifact.id || to.version.artifact_id !== artifact.id) {
+    if (
+      from.version.artifact_id !== artifact.id ||
+      to.version.artifact_id !== artifact.id
+    ) {
       throw versionsProblem("COMPARE_ARTIFACT_MISMATCH", 400);
     }
     return clone({
@@ -262,7 +275,11 @@ export class DeterministicVersionsGateway implements VersionsGateway {
     const artifact = this.#artifact(safe.artifact_id);
     const source = this.#version(safe.source_version_id);
     const branch = this.#engine.branches.get(safe.branch_id);
-    if (!branch || branch.artifact_id !== artifact.id || source.artifact_id !== artifact.id) {
+    if (
+      !branch ||
+      branch.artifact_id !== artifact.id ||
+      source.artifact_id !== artifact.id
+    ) {
       throw versionsProblem("RESTORE_SCOPE_MISMATCH", 400);
     }
     if (branch.head_version_id !== safe.expected_head_version_id) {
@@ -283,7 +300,10 @@ export class DeterministicVersionsGateway implements VersionsGateway {
           ? { brand_rule_set_version: source.brand_rule_set_version }
           : {}),
         ...(source.identity_validation_snapshot_id
-          ? { identity_validation_snapshot_id: source.identity_validation_snapshot_id }
+          ? {
+              identity_validation_snapshot_id:
+                source.identity_validation_snapshot_id,
+            }
           : {}),
       },
       `edge-restore-${this.#counter}`,
@@ -325,12 +345,17 @@ export class DeterministicVersionsGateway implements VersionsGateway {
       organization_id: restored.organization_id,
       constraint_snapshot_hash: restored.constraint_snapshot_hash,
       code_git_sha: sourceProvenance?.code_git_sha ?? "unknown",
-      ...(sourceProvenance?.compiler ? { compiler: clone(sourceProvenance.compiler) } : {}),
+      ...(sourceProvenance?.compiler
+        ? { compiler: clone(sourceProvenance.compiler) }
+        : {}),
       ...(restored.brand_rule_set_version
         ? { brand_rule_set_version: restored.brand_rule_set_version }
         : {}),
       ...(restored.identity_validation_snapshot_id
-        ? { identity_validation_snapshot_id: restored.identity_validation_snapshot_id }
+        ? {
+            identity_validation_snapshot_id:
+              restored.identity_validation_snapshot_id,
+          }
         : {}),
       input_artifact_version_ids: [source.id],
       prompt_template_version: "restore@1",
@@ -356,7 +381,8 @@ export class DeterministicVersionsGateway implements VersionsGateway {
     const safe = validateForkInput(input);
     const artifact = this.#artifact(safe.artifact_id);
     const source = this.#version(safe.source_version_id);
-    if (source.artifact_id !== artifact.id) throw versionsProblem("FORK_SCOPE_MISMATCH", 400);
+    if (source.artifact_id !== artifact.id)
+      throw versionsProblem("FORK_SCOPE_MISMATCH", 400);
 
     const branch: ArtifactBranch = {
       id: `branch-${artifact.id}-${++this.#counter}`,
@@ -387,7 +413,8 @@ export class DeterministicVersionsGateway implements VersionsGateway {
     signal?: AbortSignal,
   ): Promise<SafeVersionProvenance> {
     this.#assertOrganization(organizationId, signal);
-    if (!this.#seed.provenance_access) throw versionsProblem("PROVENANCE_FORBIDDEN", 403);
+    if (!this.#seed.provenance_access)
+      throw versionsProblem("PROVENANCE_FORBIDDEN", 403);
     const item = this.#timelineItem(artifactVersionId);
     const source = this.#engine.provenance.get(artifactVersionId);
     if (!source) throw versionsProblem("PROVENANCE_NOT_FOUND", 404);
@@ -397,10 +424,18 @@ export class DeterministicVersionsGateway implements VersionsGateway {
         ...(source.provider ? { provider: source.provider } : {}),
         ...(source.agent_run_id ? { agent_run_id: source.agent_run_id } : {}),
         ...(source.task_id ? { task_id: source.task_id } : {}),
-        ...(source.generation_id ? { generation_id: source.generation_id } : {}),
-        ...(source.recipe_version ? { recipe_version: source.recipe_version } : {}),
-        ...(source.skill_versions ? { skill_versions: source.skill_versions } : {}),
-        ...(source.input_asset_ids ? { input_asset_ids: source.input_asset_ids } : {}),
+        ...(source.generation_id
+          ? { generation_id: source.generation_id }
+          : {}),
+        ...(source.recipe_version
+          ? { recipe_version: source.recipe_version }
+          : {}),
+        ...(source.skill_versions
+          ? { skill_versions: source.skill_versions }
+          : {}),
+        ...(source.input_asset_ids
+          ? { input_asset_ids: source.input_asset_ids }
+          : {}),
         ...(source.input_artifact_version_ids
           ? { input_artifact_version_ids: source.input_artifact_version_ids }
           : {}),
@@ -435,7 +470,8 @@ export class DeterministicVersionsGateway implements VersionsGateway {
     const branches = [...this.#engine.branches.values()].filter(
       (branch) => branch.artifact_id === artifact.id,
     );
-    const activeBranchId = this.#activeBranchByArtifact.get(artifact.id) ?? branches[0]?.id;
+    const activeBranchId =
+      this.#activeBranchByArtifact.get(artifact.id) ?? branches[0]?.id;
     if (!activeBranchId) throw versionsProblem("ARTIFACT_BRANCH_MISSING", 500);
     const activeBranch = this.#engine.branches.get(activeBranchId);
     if (!activeBranch) throw versionsProblem("ARTIFACT_BRANCH_MISSING", 500);
@@ -448,25 +484,27 @@ export class DeterministicVersionsGateway implements VersionsGateway {
       const from = this.#engine.versions.get(edge.from_version_id);
       return from?.artifact_id === artifact.id;
     });
-    const artifactOptions: ArtifactVersionOption[] = [...this.#engine.artifacts.values()].map(
-      (candidate) => {
-        const candidateBranches = [...this.#engine.branches.values()].filter(
-          (branch) => branch.artifact_id === candidate.id,
-        );
-        const candidateVersions = [...this.#engine.versions.values()].filter(
-          (item) => item.artifact_id === candidate.id,
-        );
-        const main = candidateBranches.find((branch) => branch.name === "main") ?? candidateBranches[0];
-        return {
-          artifact_id: candidate.id,
-          title: candidate.title,
-          type: candidate.type,
-          branch_count: candidateBranches.length,
-          version_count: candidateVersions.length,
-          head_version_id: main?.head_version_id ?? null,
-        };
-      },
-    );
+    const artifactOptions: ArtifactVersionOption[] = [
+      ...this.#engine.artifacts.values(),
+    ].map((candidate) => {
+      const candidateBranches = [...this.#engine.branches.values()].filter(
+        (branch) => branch.artifact_id === candidate.id,
+      );
+      const candidateVersions = [...this.#engine.versions.values()].filter(
+        (item) => item.artifact_id === candidate.id,
+      );
+      const main =
+        candidateBranches.find((branch) => branch.name === "main") ??
+        candidateBranches[0];
+      return {
+        artifact_id: candidate.id,
+        title: candidate.title,
+        type: candidate.type,
+        branch_count: candidateBranches.length,
+        version_count: candidateVersions.length,
+        head_version_id: main?.head_version_id ?? null,
+      };
+    });
 
     return clone({
       project_id: this.#seed.project_id,
@@ -511,7 +549,8 @@ export class DeterministicVersionsGateway implements VersionsGateway {
       preview: clone(this.#preview(version.id)),
       approval: clone(approval),
       quality: clone(quality),
-      safe_change_summary: this.#summaries.get(version.id) ?? renderSemanticSummary(semantic),
+      safe_change_summary:
+        this.#summaries.get(version.id) ?? renderSemanticSummary(semantic),
       lineage_labels: lineageLabels,
     };
   }
@@ -525,19 +564,30 @@ export class DeterministicVersionsGateway implements VersionsGateway {
       return clone(exactCompareChanges(from, to));
     }
 
-    const low = Math.min(from.version.version_number, to.version.version_number);
-    const high = Math.max(from.version.version_number, to.version.version_number);
+    const low = Math.min(
+      from.version.version_number,
+      to.version.version_number,
+    );
+    const high = Math.max(
+      from.version.version_number,
+      to.version.version_number,
+    );
     const forward = from.version.version_number < to.version.version_number;
     const rows = [...this.#engine.versions.values()]
       .filter((item) => item.artifact_id === from.version.artifact_id)
-      .filter((item) => item.version_number > low && item.version_number <= high)
+      .filter(
+        (item) => item.version_number > low && item.version_number <= high,
+      )
       .sort((a, b) => a.version_number - b.version_number)
       .flatMap((item) => this.#semantic.get(item.id) ?? []);
     const merged = new Map<string, VersionSemanticChange>();
     for (const row of rows) {
       const key = `${row.node_id ?? "artifact"}:${row.property}`;
       const current = merged.get(key);
-      merged.set(key, current ? { ...row, before: current.before } : { ...row });
+      merged.set(
+        key,
+        current ? { ...row, before: current.before } : { ...row },
+      );
     }
     return clone(
       [...merged.values()].map((row) => {
@@ -558,7 +608,9 @@ export class DeterministicVersionsGateway implements VersionsGateway {
       (item) => item.artifact_id === artifact.id && item.name === "main",
     );
     if (!branch) throw versionsProblem("MAIN_BRANCH_MISSING", 500);
-    const currentHead = branch.head_version_id ? this.#version(branch.head_version_id) : null;
+    const currentHead = branch.head_version_id
+      ? this.#version(branch.head_version_id)
+      : null;
     if (!currentHead) throw versionsProblem("HEAD_VERSION_MISSING", 500);
 
     const next: ArtifactVersion = {
@@ -576,9 +628,11 @@ export class DeterministicVersionsGateway implements VersionsGateway {
       created_by_id: "user:collaborator",
       created_at: "2026-08-15T05:20:00.000Z",
       primary_file_id: currentHead.primary_file_id ?? null,
-      design_document_version_id: currentHead.design_document_version_id ?? null,
+      design_document_version_id:
+        currentHead.design_document_version_id ?? null,
       brand_rule_set_version: currentHead.brand_rule_set_version ?? null,
-      identity_validation_snapshot_id: currentHead.identity_validation_snapshot_id ?? null,
+      identity_validation_snapshot_id:
+        currentHead.identity_validation_snapshot_id ?? null,
       quality_score: null,
     };
     this.#engine.addVersion(next, currentHead.id);
@@ -607,7 +661,10 @@ export class DeterministicVersionsGateway implements VersionsGateway {
       label: "Not scored",
       checks: ["Pending validation"],
     });
-    this.#summaries.set(next.id, "A collaborator created a newer branch-head version.");
+    this.#summaries.set(
+      next.id,
+      "A collaborator created a newer branch-head version.",
+    );
     this.#engine.addProvenance({
       artifact_version_id: next.id,
       organization_id: next.organization_id,
@@ -649,16 +706,25 @@ export class DeterministicVersionsGateway implements VersionsGateway {
 
   #assertOrganization(organizationId: string, signal?: AbortSignal): void {
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    if (organizationId !== "org-lumi") throw versionsProblem("ORGANIZATION_FORBIDDEN", 403);
+    if (organizationId !== "org-lumi")
+      throw versionsProblem("ORGANIZATION_FORBIDDEN", 403);
   }
 
-  #assertScope(organizationId: string, projectId: string, signal?: AbortSignal): void {
+  #assertScope(
+    organizationId: string,
+    projectId: string,
+    signal?: AbortSignal,
+  ): void {
     this.#assertOrganization(organizationId, signal);
-    if (projectId !== this.#seed.project_id) throw versionsProblem("PROJECT_NOT_FOUND", 404);
+    if (projectId !== this.#seed.project_id)
+      throw versionsProblem("PROJECT_NOT_FOUND", 404);
   }
 }
 
-export function getVersionsGateway(api: LumiApiClient, bootstrap: VersionsBootstrap): VersionsGateway {
+export function getVersionsGateway(
+  api: LumiApiClient,
+  bootstrap: VersionsBootstrap,
+): VersionsGateway {
   if (bootstrap.mode !== "e2e") return new HttpVersionsGateway(api);
   if (!bootstrap.seed) throw new Error("VERSIONS_E2E_SEED_REQUIRED");
   return new DeterministicVersionsGateway(bootstrap.seed);

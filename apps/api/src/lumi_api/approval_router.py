@@ -191,7 +191,9 @@ def create_approval_router(
         actor = await resolve_actor(request, project_id)
         try:
             return _approval_json(
-                engine.cancel(actor, project_id=project_id, approval_id=approval_id, reason=body.reason)
+                engine.cancel(
+                    actor, project_id=project_id, approval_id=approval_id, reason=body.reason
+                )
             )
         except ApprovalError as error:
             raise _problem(error, _request_id(request)) from error

@@ -374,10 +374,7 @@ def _json_value(value: object, *, depth: int = 0) -> object:
     if isinstance(value, dict):
         if not all(isinstance(key, str) for key in value):
             raise ValueError("GENERATION_EVENT_KEY_INVALID")
-        return {
-            key: _json_value(item, depth=depth + 1)
-            for key, item in sorted(value.items())
-        }
+        return {key: _json_value(item, depth=depth + 1) for key, item in sorted(value.items())}
     raise ValueError(f"GENERATION_EVENT_VALUE_INVALID:{type(value).__name__}")
 
 

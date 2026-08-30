@@ -18,7 +18,9 @@ export interface CanvasCompilerBenchmarkResult {
   readonly equivalent_compile_hash: boolean;
 }
 
-export function createCompilerBenchmarkDocument(nodeCount = 2_000): DesignDocument {
+export function createCompilerBenchmarkDocument(
+  nodeCount = 2_000,
+): DesignDocument {
   if (!Number.isInteger(nodeCount) || nodeCount < 2) {
     throw new Error("nodeCount must be an integer >= 2");
   }
@@ -69,7 +71,10 @@ export function createCompilerBenchmarkDocument(nodeCount = 2_000): DesignDocume
   };
 }
 
-function moveOperations(document: DesignDocument, operationCount: number): DesignOperation[] {
+function moveOperations(
+  document: DesignDocument,
+  operationCount: number,
+): DesignOperation[] {
   const version = getDocumentVersion(document);
   return Array.from({ length: operationCount }, (_, index) => ({
     operation_id: `benchmark-move-${index}`,
@@ -89,9 +94,13 @@ export async function runCanvasCompilerBenchmark(
   const before = createCompilerBenchmarkDocument(nodeCount);
   const compiler = new CanvasCompiler();
   const initial = await compiler.fullCompile(before);
-  if (!initial.ok) throw new Error("initial compiler benchmark document failed to compile");
+  if (!initial.ok)
+    throw new Error("initial compiler benchmark document failed to compile");
 
-  const execution = executeOperations(before, moveOperations(before, operationCount));
+  const execution = executeOperations(
+    before,
+    moveOperations(before, operationCount),
+  );
   if (!execution.ok) throw new Error("compiler benchmark operations failed");
   const after = execution.document;
 
@@ -120,6 +129,7 @@ export async function runCanvasCompilerBenchmark(
     upserted_node_count: incremental.patch.upserted_nodes.length,
     fallback_to_full: incremental.fallback_to_full,
     equivalent_compile_hash:
-      incremental.snapshot.provenance.compile_hash === full.snapshot.provenance.compile_hash,
+      incremental.snapshot.provenance.compile_hash ===
+      full.snapshot.provenance.compile_hash,
   };
 }

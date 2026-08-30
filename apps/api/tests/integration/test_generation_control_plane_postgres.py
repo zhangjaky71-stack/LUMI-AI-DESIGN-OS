@@ -132,7 +132,9 @@ async def _acceptance() -> None:
                         await session.flush()
 
                 generation_count = await session.scalar(
-                    select(func.count()).select_from(Generation).where(
+                    select(func.count())
+                    .select_from(Generation)
+                    .where(
                         Generation.organization_id == ORG_ID,
                         Generation.operation_id == operation_id,
                     )
@@ -141,28 +143,36 @@ async def _acceptance() -> None:
                     select(func.count()).select_from(Task).where(Task.id == task_id)
                 )
                 outbox_rows = (
-                    await session.execute(
-                        select(OutboxEvent).where(
-                            OutboxEvent.organization_id == ORG_ID,
-                            OutboxEvent.event_name == "job.dispatch.requested",
-                            OutboxEvent.aggregate_id == task_id,
+                    (
+                        await session.execute(
+                            select(OutboxEvent).where(
+                                OutboxEvent.organization_id == ORG_ID,
+                                OutboxEvent.event_name == "job.dispatch.requested",
+                                OutboxEvent.aggregate_id == task_id,
+                            )
                         )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 idempotency_rows = (
-                    await session.execute(
-                        select(IdempotencyOperation).where(
-                            IdempotencyOperation.organization_id == ORG_ID,
-                            IdempotencyOperation.operation_type == "api.v1.generation.create",
-                            IdempotencyOperation.idempotency_key.in_(
-                                (
-                                    "node-73-1-integration-key-0001",
-                                    "node-73-1-integration-key-0002",
-                                )
-                            ),
+                    (
+                        await session.execute(
+                            select(IdempotencyOperation).where(
+                                IdempotencyOperation.organization_id == ORG_ID,
+                                IdempotencyOperation.operation_type == "api.v1.generation.create",
+                                IdempotencyOperation.idempotency_key.in_(
+                                    (
+                                        "node-73-1-integration-key-0001",
+                                        "node-73-1-integration-key-0002",
+                                    )
+                                ),
+                            )
                         )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 task = await session.get(Task, task_id)
 
                 assert generation_count == 1

@@ -12,7 +12,10 @@ export function parseUsdMicros(value: string): bigint {
 export function formatUsdMicros(value: bigint): string {
   if (value < 0n) throw new Error("AUTO_REPAIR_NEGATIVE_USD");
   const whole = value / SCALE;
-  const fraction = (value % SCALE).toString().padStart(6, "0").replace(/0+$/, "");
+  const fraction = (value % SCALE)
+    .toString()
+    .padStart(6, "0")
+    .replace(/0+$/, "");
   return fraction ? `${whole}.${fraction}` : whole.toString();
 }
 

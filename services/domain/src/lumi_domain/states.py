@@ -88,9 +88,7 @@ _TASK_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.CANCELLED: frozenset(),
 }
 
-_ARTIFACT_VERSION_TRANSITIONS: dict[
-    ArtifactVersionStatus, frozenset[ArtifactVersionStatus]
-] = {
+_ARTIFACT_VERSION_TRANSITIONS: dict[ArtifactVersionStatus, frozenset[ArtifactVersionStatus]] = {
     ArtifactVersionStatus.DRAFT: frozenset(
         {ArtifactVersionStatus.READY, ArtifactVersionStatus.REJECTED}
     ),

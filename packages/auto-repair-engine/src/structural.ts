@@ -1,6 +1,10 @@
 import { guardedExecute } from "../../design-constraints/src/index";
 import type { StructuralMaterializerPort } from "./ports";
-import type { CandidateMaterialization, RepairPlanItem, RepairSource } from "./types";
+import type {
+  CandidateMaterialization,
+  RepairPlanItem,
+  RepairSource,
+} from "./types";
 
 export class RepairExecutionError extends Error {}
 
@@ -9,10 +13,21 @@ export async function executeStructuralRepair(
   source: RepairSource,
   materializer: StructuralMaterializerPort,
 ): Promise<CandidateMaterialization> {
-  if (item.kind !== "STRUCTURAL_DESIGN_OP" || !item.operations?.length) throw new RepairExecutionError("AUTO_REPAIR_STRUCTURAL_OPERATIONS_REQUIRED");
-  const guarded = guardedExecute(source.subject.design_document, item.operations, source.constraints);
-  if (guarded.preflight.decision === "DENY" || !guarded.execution?.ok) throw new RepairExecutionError("AUTO_REPAIR_CONSTRAINT_PREFLIGHT_DENIED");
-  const rendered = await materializer.materialize(guarded.execution.document, source);
+  if (item.kind !== "STRUCTURAL_DESIGN_OP" || !item.operations?.length)
+    throw new RepairExecutionError(
+      "AUTO_REPAIR_STRUCTURAL_OPERATIONS_REQUIRED",
+    );
+  const guarded = guardedExecute(
+    source.subject.design_document,
+    item.operations,
+    source.constraints,
+  );
+  if (guarded.preflight.decision === "DENY" || !guarded.execution?.ok)
+    throw new RepairExecutionError("AUTO_REPAIR_CONSTRAINT_PREFLIGHT_DENIED");
+  const rendered = await materializer.materialize(
+    guarded.execution.document,
+    source,
+  );
   return {
     design_document: guarded.execution.document,
     rendered_asset_ref: rendered.rendered_asset_ref,

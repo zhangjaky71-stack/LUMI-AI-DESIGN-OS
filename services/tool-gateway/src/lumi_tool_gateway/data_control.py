@@ -145,9 +145,7 @@ class HttpToolDataClient:
                 "canonical Tool Data control plane is unavailable"
             ) from exc
         if len(raw) > _MAX_RESPONSE_BYTES:
-            raise ToolDataControlUnavailableError(
-                "canonical Tool Data response exceeded limit"
-            )
+            raise ToolDataControlUnavailableError("canonical Tool Data response exceeded limit")
         try:
             payload = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -222,9 +220,7 @@ class AssetWriteDerivedAdapter:
         request: ToolRequest,
     ) -> ToolAdapterOutput:
         if definition.name != "asset.write-derived":
-            raise ToolDataControlUnavailableError(
-                "derived asset adapter received wrong tool"
-            )
+            raise ToolDataControlUnavailableError("derived asset adapter received wrong tool")
         data = await self.client.asset_write_derived(request)
         asset_id = _required_response_id(data, "asset_id")
         asset_ref = f"asset://{asset_id}"

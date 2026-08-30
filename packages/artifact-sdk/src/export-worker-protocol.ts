@@ -20,7 +20,11 @@ export interface RasterWorkerTransport {
 }
 
 function expectedMime(format: RasterWorkerRequest["format"]): string {
-  return format === "PNG" ? "image/png" : format === "JPEG" ? "image/jpeg" : "image/webp";
+  return format === "PNG"
+    ? "image/png"
+    : format === "JPEG"
+      ? "image/jpeg"
+      : "image/webp";
 }
 
 export class WorkerBackedRasterCodec implements ExportRasterCodecPort {
@@ -30,11 +34,17 @@ export class WorkerBackedRasterCodec implements ExportRasterCodecPort {
     this.#transport = transport;
   }
 
-  async encodeSvg(request: RasterWorkerRequest): Promise<{ bytes: Uint8Array; mime_type: string }> {
+  async encodeSvg(
+    request: RasterWorkerRequest,
+  ): Promise<{ bytes: Uint8Array; mime_type: string }> {
     const response = await this.#transport.invoke(request);
     if (!response.bytes.length) throw new Error("EXPORT_RASTER_WORKER_EMPTY");
-    if (response.mime_type !== expectedMime(request.format)) throw new Error("EXPORT_RASTER_WORKER_MIME_MISMATCH");
-    if (response.width !== request.width || response.height !== request.height) {
+    if (response.mime_type !== expectedMime(request.format))
+      throw new Error("EXPORT_RASTER_WORKER_MIME_MISMATCH");
+    if (
+      response.width !== request.width ||
+      response.height !== request.height
+    ) {
       throw new Error("EXPORT_RASTER_WORKER_DIMENSIONS_MISMATCH");
     }
     return { bytes: response.bytes, mime_type: response.mime_type };

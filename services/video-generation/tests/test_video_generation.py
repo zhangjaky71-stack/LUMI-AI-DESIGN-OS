@@ -103,7 +103,9 @@ def _spec(
     )
 
 
-def _clip(name: str, *, duration: str = "2", width: int = 1600, height: int = 900) -> tuple[StoredVideoClip, VideoProbeResult]:
+def _clip(
+    name: str, *, duration: str = "2", width: int = 1600, height: int = 900
+) -> tuple[StoredVideoClip, VideoProbeResult]:
     digest = hashlib.sha256(name.encode()).hexdigest()
     keyframes = (f"asset:keyframe:{name}:0", f"asset:keyframe:{name}:1")
     clip = StoredVideoClip(
@@ -135,7 +137,9 @@ def _clip(name: str, *, duration: str = "2", width: int = 1600, height: int = 90
     return clip, probe
 
 
-def _estimate(*, amount: str = "0.01", provider: str = "p1", model: str = "video-a") -> GatewayEstimate:
+def _estimate(
+    *, amount: str = "0.01", provider: str = "p1", model: str = "video-a"
+) -> GatewayEstimate:
     return GatewayEstimate(
         amount_usd=Decimal(amount),
         provider=provider,
@@ -173,7 +177,14 @@ def _pipeline(
     gateway: object,
     outputs: dict[str, tuple[StoredVideoClip, VideoProbeResult]],
     validator: object | None = None,
-) -> tuple[VideoGenerationPipeline, InMemoryVideoRepository, ArtifactHistory, MemoryVideoCostLedger, MemoryMediaSandbox, MemoryVideoEvents]:
+) -> tuple[
+    VideoGenerationPipeline,
+    InMemoryVideoRepository,
+    ArtifactHistory,
+    MemoryVideoCostLedger,
+    MemoryMediaSandbox,
+    MemoryVideoEvents,
+]:
     repository = InMemoryVideoRepository()
     history = ArtifactHistory()
     costs = MemoryVideoCostLedger()
@@ -254,7 +265,10 @@ def test_two_shot_storyboard_creates_clip_lineage_and_auto_previous_tail() -> No
     )
     pipeline, _, history, costs, sandbox, _ = _pipeline(
         gateway=gateway,
-        outputs={"fixture://s1": _clip("s1", duration="1"), "fixture://s2": _clip("s2", duration="1")},
+        outputs={
+            "fixture://s1": _clip("s1", duration="1"),
+            "fixture://s2": _clip("s2", duration="1"),
+        },
     )
     job = asyncio.run(pipeline.start(_spec(mode="STORYBOARD_MULTI_SHOT", shots=shots)))
     assert job.status == "COMPLETED"
@@ -264,7 +278,11 @@ def test_two_shot_storyboard_creates_clip_lineage_and_auto_previous_tail() -> No
     clip_versions = [item.clip_artifact_version_id for item in job.shots]
     composed = [edge for edge in history.edges.values() if edge.type == "COMPOSED_FROM"]
     assert {edge.from_version_id for edge in composed} == set(clip_versions)
-    second_provenance = [record for record in history.provenance.values() if record.provider == "p1" and record.provider_request_id == "s2"]
+    second_provenance = [
+        record
+        for record in history.provenance.values()
+        if record.provider == "p1" and record.provider_request_id == "s2"
+    ]
     assert second_provenance
     assert clip_versions[0] in second_provenance[0].input_artifact_version_ids
 
@@ -298,12 +316,14 @@ class RejectThenPassValidator:
         if self.calls == 1:
             return ShotValidationReport(
                 decision="REJECT",
-                findings=(ValidationFinding(
-                    validator="fixture",
-                    status="FAIL",
-                    severity="HARD",
-                    reason_code="IDENTITY_DRIFT",
-                ),),
+                findings=(
+                    ValidationFinding(
+                        validator="fixture",
+                        status="FAIL",
+                        severity="HARD",
+                        reason_code="IDENTITY_DRIFT",
+                    ),
+                ),
             )
         return ShotValidationReport(decision="PASS", findings=())
 
@@ -312,12 +332,26 @@ class RejectThenPassValidator:
         return ShotValidationReport(decision="PASS", findings=())
 
 
-def test_quality_retry_uses_new_paid_operation_excludes_first_provider_and_keeps_attempt_artifacts() -> None:
+def test_quality_retry_uses_new_paid_operation_excludes_first_provider_and_keeps_attempt_artifacts() -> (
+    None
+):
     gateway = ScriptedVideoGateway(
         estimate=_estimate(),
         submits=(
-            _result("SUCCEEDED", provider="p1", model="video-a", request_id="try-1", output_ref="fixture://bad"),
-            _result("SUCCEEDED", provider="p2", model="video-b", request_id="try-2", output_ref="fixture://good"),
+            _result(
+                "SUCCEEDED",
+                provider="p1",
+                model="video-a",
+                request_id="try-1",
+                output_ref="fixture://bad",
+            ),
+            _result(
+                "SUCCEEDED",
+                provider="p2",
+                model="video-b",
+                request_id="try-2",
+                output_ref="fixture://good",
+            ),
         ),
     )
     pipeline, _, history, costs, _, events = _pipeline(
@@ -342,7 +376,9 @@ def test_quality_retry_uses_new_paid_operation_excludes_first_provider_and_keeps
 def test_optional_shot_can_be_explicitly_dropped_and_final_is_partial() -> None:
     shots = (
         ShotSpec(shot_id="required", duration_seconds=Decimal("1"), prompt="required"),
-        ShotSpec(shot_id="optional", duration_seconds=Decimal("1"), prompt="optional", optional=True),
+        ShotSpec(
+            shot_id="optional", duration_seconds=Decimal("1"), prompt="optional", optional=True
+        ),
     )
     gateway = ScriptedVideoGateway(
         estimate=_estimate(),
@@ -355,12 +391,16 @@ def test_optional_shot_can_be_explicitly_dropped_and_final_is_partial() -> None:
         gateway=gateway,
         outputs={"fixture://required": _clip("required", duration="1")},
     )
-    job = asyncio.run(pipeline.start(_spec(
-        mode="STORYBOARD_MULTI_SHOT",
-        shots=shots,
-        allow_optional_drop=True,
-        quality_retry_limit=0,
-    )))
+    job = asyncio.run(
+        pipeline.start(
+            _spec(
+                mode="STORYBOARD_MULTI_SHOT",
+                shots=shots,
+                allow_optional_drop=True,
+                quality_retry_limit=0,
+            )
+        )
+    )
     assert job.status == "PARTIAL"
     assert job.shots[1].status == "DROPPED"
     assert len(costs.records) == 2
@@ -380,7 +420,9 @@ def test_task_budget_is_cumulative_across_shots() -> None:
         gateway=gateway,
         outputs={"fixture://s1": _clip("s1", duration="1")},
     )
-    job = asyncio.run(pipeline.start(_spec(mode="STORYBOARD_MULTI_SHOT", shots=shots, budget="1.00")))
+    job = asyncio.run(
+        pipeline.start(_spec(mode="STORYBOARD_MULTI_SHOT", shots=shots, budget="1.00"))
+    )
     assert job.status == "FAILED"
     assert job.error_code == "VIDEO_TASK_BUDGET_EXCEEDED"
     assert gateway.submit_count == 1
@@ -451,7 +493,9 @@ def test_real_model_gateway_video_async_submit_poll_poll() -> None:
     record = replace(record, result=first)
     completed = asyncio.run(adapter.poll(pending=record))
     assert completed.status == "SUCCEEDED"
-    assert completed.output_ref is not None and completed.output_ref.startswith("fixture://mock/video/")
+    assert completed.output_ref is not None and completed.output_ref.startswith(
+        "fixture://mock/video/"
+    )
 
 
 def test_image_to_video_requires_feature_registry_and_routes_to_matching_provider_key() -> None:
@@ -462,7 +506,9 @@ def test_image_to_video_requires_feature_registry_and_routes_to_matching_provide
     p2 = MockProvider(provider="p2", model="video-b", quality_score=90)
     gateway = _real_gateway(p1, p2)
     with pytest.raises(ValueError, match="VIDEO_PROVIDER_FEATURE_REGISTRY_REQUIRED"):
-        asyncio.run(ModelGatewayVideoAdapter(gateway).submit(spec=spec, shot=shot, continuity_refs=()))
+        asyncio.run(
+            ModelGatewayVideoAdapter(gateway).submit(spec=spec, shot=shot, continuity_refs=())
+        )
     registry = VideoFeatureRegistry(
         snapshot_id="video-features-v1",
         provider_features={
@@ -484,7 +530,9 @@ def test_image_to_video_requires_feature_registry_and_routes_to_matching_provide
 
 class FakeResolver:
     def resolve_readonly(self, durable_ref: str) -> str:
-        return "/sandbox/input/clip;not-a-shell-command.mp4" if durable_ref else "/sandbox/input/x.mp4"
+        return (
+            "/sandbox/input/clip;not-a-shell-command.mp4" if durable_ref else "/sandbox/input/x.mp4"
+        )
 
     def allocate_output(self, suffix: str) -> str:
         return "/sandbox/output/final" + suffix
@@ -498,19 +546,25 @@ class BadResolver(FakeResolver):
 
 def _timeline(*, transition: str = "CUT") -> VideoTimeline:
     return VideoTimeline(
-        clips=(TimelineClip(
-            shot_id="s1",
-            artifact_version_id="v1",
-            durable_ref="asset:clip:v1",
-            duration_seconds=Decimal("2"),
-        ),),
+        clips=(
+            TimelineClip(
+                shot_id="s1",
+                artifact_version_id="v1",
+                durable_ref="asset:clip:v1",
+                duration_seconds=Decimal("2"),
+            ),
+        ),
         overlays=(),
         audio_tracks=(),
-        transitions=() if transition == "CUT" else (TimelineTransition(
-            from_shot_id="s1",
-            to_shot_id="s2",
-            kind=transition,  # type: ignore[arg-type]
-        ),),
+        transitions=()
+        if transition == "CUT"
+        else (
+            TimelineTransition(
+                from_shot_id="s1",
+                to_shot_id="s2",
+                kind=transition,  # type: ignore[arg-type]
+            ),
+        ),
         output_spec=VideoOutputSpec(width=1600, height=900, fps=24),
     )
 

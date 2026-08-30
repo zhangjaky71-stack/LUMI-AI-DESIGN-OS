@@ -26,9 +26,7 @@ type MutableDocument = {
 };
 
 class OperationError extends Error {
-  constructor(
-    readonly failure: OperationFailure,
-  ) {
+  constructor(readonly failure: OperationFailure) {
     super(failure.message);
   }
 }
@@ -44,31 +42,68 @@ function failure(
   targetId?: string,
 ): OperationError {
   const value: OperationFailure = targetId
-    ? { operation_id: operation.operation_id, code, message, target_id: targetId }
+    ? {
+        operation_id: operation.operation_id,
+        code,
+        message,
+        target_id: targetId,
+      }
     : { operation_id: operation.operation_id, code, message };
   return new OperationError(value);
 }
 
-function assertFinite(value: unknown, operation: DesignOperation, path = "payload"): void {
+function assertFinite(
+  value: unknown,
+  operation: DesignOperation,
+  path = "payload",
+): void {
   if (typeof value === "number" && !Number.isFinite(value)) {
-    throw failure(operation, "NON_FINITE_NUMBER", `${path} must contain only finite numbers`);
+    throw failure(
+      operation,
+      "NON_FINITE_NUMBER",
+      `${path} must contain only finite numbers`,
+    );
   }
   if (Array.isArray(value)) {
-    value.forEach((child, index) => assertFinite(child, operation, `${path}[${index}]`));
+    value.forEach((child, index) =>
+      assertFinite(child, operation, `${path}[${index}]`),
+    );
   } else if (value !== null && typeof value === "object") {
-    Object.entries(value).forEach(([key, child]) => assertFinite(child, operation, `${path}.${key}`));
+    Object.entries(value).forEach(([key, child]) =>
+      assertFinite(child, operation, `${path}.${key}`),
+    );
   }
 }
 
-function nodeFor(document: MutableDocument, operation: DesignOperation, id: string): MutableNode {
+function nodeFor(
+  document: MutableDocument,
+  operation: DesignOperation,
+  id: string,
+): MutableNode {
   const node = document.nodes[id];
-  if (!node) throw failure(operation, "TARGET_NOT_FOUND", `Node ${id} does not exist`, id);
+  if (!node)
+    throw failure(
+      operation,
+      "TARGET_NOT_FOUND",
+      `Node ${id} does not exist`,
+      id,
+    );
   return node;
 }
 
-function parentFor(document: MutableDocument, operation: DesignOperation, id: string): MutableNode {
+function parentFor(
+  document: MutableDocument,
+  operation: DesignOperation,
+  id: string,
+): MutableNode {
   const parent = document.nodes[id];
-  if (!parent) throw failure(operation, "PARENT_NOT_FOUND", `Parent ${id} does not exist`, id);
+  if (!parent)
+    throw failure(
+      operation,
+      "PARENT_NOT_FOUND",
+      `Parent ${id} does not exist`,
+      id,
+    );
   return parent;
 }
 
@@ -82,7 +117,11 @@ function removeChild(parent: MutableNode, childId: string): void {
   parent.children = parent.children.filter((id) => id !== childId);
 }
 
-function insertChild(parent: MutableNode, childId: string, index: unknown): void {
+function insertChild(
+  parent: MutableNode,
+  childId: string,
+  index: unknown,
+): void {
   removeChild(parent, childId);
   const position = clampIndex(index, parent.children.length);
   parent.children.splice(position, 0, childId);
@@ -106,7 +145,8 @@ function setPath(node: MutableNode, path: string, value: unknown): void {
   let current: Record<string, unknown> = node;
   for (const key of keys.slice(0, -1)) {
     const child = current[key];
-    if (child === null || typeof child !== "object" || Array.isArray(child)) current[key] = {};
+    if (child === null || typeof child !== "object" || Array.isArray(child))
+      current[key] = {};
     current = current[key] as Record<string, unknown>;
   }
   current[keys[keys.length - 1]!] = structuredClone(value);
@@ -117,23 +157,45 @@ function mutateTransform(
   patch: Readonly<Record<string, unknown>>,
 ): void {
   const current =
-    node.transform !== null && typeof node.transform === "object" && !Array.isArray(node.transform)
+    node.transform !== null &&
+    typeof node.transform === "object" &&
+    !Array.isArray(node.transform)
       ? (node.transform as Record<string, unknown>)
       : {};
   node.transform = { ...current, ...patch };
 }
 
-function applyCreate(document: MutableDocument, operation: DesignOperation): void {
+function applyCreate(
+  document: MutableDocument,
+  operation: DesignOperation,
+): void {
   const raw = operation.payload.node;
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw failure(operation, "INVALID_OPERATION", "CREATE_NODE payload.node must be an object");
+    throw failure(
+      operation,
+      "INVALID_OPERATION",
+      "CREATE_NODE payload.node must be an object",
+    );
   }
   const node = structuredClone(raw) as MutableNode;
-  if (typeof node.id !== "string" || !node.id || typeof node.kind !== "string") {
-    throw failure(operation, "INVALID_OPERATION", "CREATE_NODE requires node.id and node.kind");
+  if (
+    typeof node.id !== "string" ||
+    !node.id ||
+    typeof node.kind !== "string"
+  ) {
+    throw failure(
+      operation,
+      "INVALID_OPERATION",
+      "CREATE_NODE requires node.id and node.kind",
+    );
   }
   if (document.nodes[node.id]) {
-    throw failure(operation, "INVALID_OPERATION", `Node ${node.id} already exists`, node.id);
+    throw failure(
+      operation,
+      "INVALID_OPERATION",
+      `Node ${node.id} already exists`,
+      node.id,
+    );
   }
   const parentId =
     typeof operation.payload.parent_id === "string"
@@ -141,7 +203,12 @@ function applyCreate(document: MutableDocument, operation: DesignOperation): voi
       : typeof node.parent_id === "string"
         ? node.parent_id
         : null;
-  if (!parentId) throw failure(operation, "PARENT_NOT_FOUND", "CREATE_NODE requires a parent_id");
+  if (!parentId)
+    throw failure(
+      operation,
+      "PARENT_NOT_FOUND",
+      "CREATE_NODE requires a parent_id",
+    );
   const parent = parentFor(document, operation, parentId);
   node.parent_id = parentId;
   node.children = Array.isArray(node.children) ? [...node.children] : [];
@@ -149,26 +216,47 @@ function applyCreate(document: MutableDocument, operation: DesignOperation): voi
   insertChild(parent, node.id, operation.payload.index);
 }
 
-function applyDelete(document: MutableDocument, operation: DesignOperation): void {
+function applyDelete(
+  document: MutableDocument,
+  operation: DesignOperation,
+): void {
   for (const id of operation.target_ids) {
     if (id === document.root_id) {
-      throw failure(operation, "ROOT_MUTATION_FORBIDDEN", "The document root cannot be deleted", id);
+      throw failure(
+        operation,
+        "ROOT_MUTATION_FORBIDDEN",
+        "The document root cannot be deleted",
+        id,
+      );
     }
     const node = nodeFor(document, operation, id);
     const removeIds = [id, ...descendants(document, id)];
-    if (node.parent_id) removeChild(parentFor(document, operation, node.parent_id), id);
+    if (node.parent_id)
+      removeChild(parentFor(document, operation, node.parent_id), id);
     for (const removeId of removeIds) delete document.nodes[removeId];
   }
 }
 
-function applySetProperty(document: MutableDocument, operation: DesignOperation): void {
+function applySetProperty(
+  document: MutableDocument,
+  operation: DesignOperation,
+): void {
   const path = operation.payload.path;
   if (typeof path !== "string" || !path) {
-    throw failure(operation, "INVALID_OPERATION", "SET_PROPERTY payload.path must be a string");
+    throw failure(
+      operation,
+      "INVALID_OPERATION",
+      "SET_PROPERTY payload.path must be a string",
+    );
   }
   for (const id of operation.target_ids) {
     if (id === document.root_id && (path === "id" || path === "parent_id")) {
-      throw failure(operation, "ROOT_MUTATION_FORBIDDEN", `Cannot mutate root ${path}`, id);
+      throw failure(
+        operation,
+        "ROOT_MUTATION_FORBIDDEN",
+        `Cannot mutate root ${path}`,
+        id,
+      );
     }
     try {
       setPath(nodeFor(document, operation, id), path, operation.payload.value);
@@ -183,7 +271,10 @@ function applySetProperty(document: MutableDocument, operation: DesignOperation)
   }
 }
 
-function applyMove(document: MutableDocument, operation: DesignOperation): void {
+function applyMove(
+  document: MutableDocument,
+  operation: DesignOperation,
+): void {
   for (const id of operation.target_ids) {
     const node = nodeFor(document, operation, id);
     const current = (node.transform ?? {}) as Record<string, unknown>;
@@ -195,18 +286,30 @@ function applyMove(document: MutableDocument, operation: DesignOperation): void 
       x:
         typeof x === "number"
           ? x
-          : (typeof current.x === "number" ? current.x : 0) + (typeof dx === "number" ? dx : 0),
+          : (typeof current.x === "number" ? current.x : 0) +
+            (typeof dx === "number" ? dx : 0),
       y:
         typeof y === "number"
           ? y
-          : (typeof current.y === "number" ? current.y : 0) + (typeof dy === "number" ? dy : 0),
+          : (typeof current.y === "number" ? current.y : 0) +
+            (typeof dy === "number" ? dy : 0),
     });
   }
 }
 
-function applyResize(document: MutableDocument, operation: DesignOperation): void {
-  if (typeof operation.payload.width !== "number" || typeof operation.payload.height !== "number") {
-    throw failure(operation, "INVALID_OPERATION", "RESIZE_NODE requires numeric width and height");
+function applyResize(
+  document: MutableDocument,
+  operation: DesignOperation,
+): void {
+  if (
+    typeof operation.payload.width !== "number" ||
+    typeof operation.payload.height !== "number"
+  ) {
+    throw failure(
+      operation,
+      "INVALID_OPERATION",
+      "RESIZE_NODE requires numeric width and height",
+    );
   }
   for (const id of operation.target_ids) {
     mutateTransform(nodeFor(document, operation, id), {
@@ -216,75 +319,146 @@ function applyResize(document: MutableDocument, operation: DesignOperation): voi
   }
 }
 
-function applyRotate(document: MutableDocument, operation: DesignOperation): void {
+function applyRotate(
+  document: MutableDocument,
+  operation: DesignOperation,
+): void {
   if (typeof operation.payload.rotation_deg !== "number") {
-    throw failure(operation, "INVALID_OPERATION", "ROTATE_NODE requires rotation_deg");
+    throw failure(
+      operation,
+      "INVALID_OPERATION",
+      "ROTATE_NODE requires rotation_deg",
+    );
   }
   for (const id of operation.target_ids) {
-    mutateTransform(nodeFor(document, operation, id), { rotation_deg: operation.payload.rotation_deg });
+    mutateTransform(nodeFor(document, operation, id), {
+      rotation_deg: operation.payload.rotation_deg,
+    });
   }
 }
 
-function applyReorder(document: MutableDocument, operation: DesignOperation): void {
+function applyReorder(
+  document: MutableDocument,
+  operation: DesignOperation,
+): void {
   for (const id of operation.target_ids) {
     const node = nodeFor(document, operation, id);
     if (!node.parent_id) {
-      throw failure(operation, "ROOT_MUTATION_FORBIDDEN", "Root cannot be reordered", id);
+      throw failure(
+        operation,
+        "ROOT_MUTATION_FORBIDDEN",
+        "Root cannot be reordered",
+        id,
+      );
     }
-    insertChild(parentFor(document, operation, node.parent_id), id, operation.payload.index);
+    insertChild(
+      parentFor(document, operation, node.parent_id),
+      id,
+      operation.payload.index,
+    );
   }
 }
 
-function applyReparent(document: MutableDocument, operation: DesignOperation): void {
+function applyReparent(
+  document: MutableDocument,
+  operation: DesignOperation,
+): void {
   const parentId = operation.payload.parent_id;
   if (typeof parentId !== "string") {
-    throw failure(operation, "INVALID_OPERATION", "REPARENT_NODE requires payload.parent_id");
+    throw failure(
+      operation,
+      "INVALID_OPERATION",
+      "REPARENT_NODE requires payload.parent_id",
+    );
   }
   const nextParent = parentFor(document, operation, parentId);
   for (const id of operation.target_ids) {
     if (id === document.root_id) {
-      throw failure(operation, "ROOT_MUTATION_FORBIDDEN", "Root cannot be reparented", id);
+      throw failure(
+        operation,
+        "ROOT_MUTATION_FORBIDDEN",
+        "Root cannot be reparented",
+        id,
+      );
     }
     const node = nodeFor(document, operation, id);
     if (id === parentId || descendants(document, id).has(parentId)) {
-      throw failure(operation, "CYCLE_DETECTED", `Reparenting ${id} under ${parentId} creates a cycle`, id);
+      throw failure(
+        operation,
+        "CYCLE_DETECTED",
+        `Reparenting ${id} under ${parentId} creates a cycle`,
+        id,
+      );
     }
-    if (node.parent_id) removeChild(parentFor(document, operation, node.parent_id), id);
+    if (node.parent_id)
+      removeChild(parentFor(document, operation, node.parent_id), id);
     node.parent_id = parentId;
     insertChild(nextParent, id, operation.payload.index);
   }
 }
 
-function applyReplaceAsset(document: MutableDocument, operation: DesignOperation): void {
+function applyReplaceAsset(
+  document: MutableDocument,
+  operation: DesignOperation,
+): void {
   if (typeof operation.payload.asset_id !== "string") {
-    throw failure(operation, "INVALID_OPERATION", "REPLACE_ASSET requires payload.asset_id");
+    throw failure(
+      operation,
+      "INVALID_OPERATION",
+      "REPLACE_ASSET requires payload.asset_id",
+    );
   }
-  for (const id of operation.target_ids) nodeFor(document, operation, id).asset_id = operation.payload.asset_id;
+  for (const id of operation.target_ids)
+    nodeFor(document, operation, id).asset_id = operation.payload.asset_id;
 }
 
-function applySetText(document: MutableDocument, operation: DesignOperation): void {
+function applySetText(
+  document: MutableDocument,
+  operation: DesignOperation,
+): void {
   if (typeof operation.payload.content !== "string") {
-    throw failure(operation, "INVALID_OPERATION", "SET_TEXT requires payload.content");
+    throw failure(
+      operation,
+      "INVALID_OPERATION",
+      "SET_TEXT requires payload.content",
+    );
   }
-  for (const id of operation.target_ids) nodeFor(document, operation, id).content = operation.payload.content;
+  for (const id of operation.target_ids)
+    nodeFor(document, operation, id).content = operation.payload.content;
 }
 
-function applyStyle(document: MutableDocument, operation: DesignOperation): void {
+function applyStyle(
+  document: MutableDocument,
+  operation: DesignOperation,
+): void {
   const styleRefs = Array.isArray(operation.payload.style_refs)
-    ? operation.payload.style_refs.filter((value): value is string => typeof value === "string")
+    ? operation.payload.style_refs.filter(
+        (value): value is string => typeof value === "string",
+      )
     : typeof operation.payload.style_ref === "string"
       ? [operation.payload.style_ref]
       : [];
   if (!styleRefs.length) {
-    throw failure(operation, "INVALID_OPERATION", "APPLY_STYLE requires style_ref or style_refs");
+    throw failure(
+      operation,
+      "INVALID_OPERATION",
+      "APPLY_STYLE requires style_ref or style_refs",
+    );
   }
-  for (const id of operation.target_ids) nodeFor(document, operation, id).style_refs = [...styleRefs];
+  for (const id of operation.target_ids)
+    nodeFor(document, operation, id).style_refs = [...styleRefs];
 }
 
-function nestedOperations(operation: DesignOperation): readonly DesignOperation[] {
+function nestedOperations(
+  operation: DesignOperation,
+): readonly DesignOperation[] {
   const operations = operation.payload.operations;
   if (!Array.isArray(operations)) {
-    throw failure(operation, "INVALID_OPERATION", "BATCH payload.operations must be an array");
+    throw failure(
+      operation,
+      "INVALID_OPERATION",
+      "BATCH payload.operations must be an array",
+    );
   }
   return operations as DesignOperation[];
 }
@@ -338,10 +512,15 @@ function applyOne(
       applyStyle(document, operation);
       break;
     case "BATCH":
-      for (const child of nestedOperations(operation)) applyOne(document, child, expectedVersion, applied);
+      for (const child of nestedOperations(operation))
+        applyOne(document, child, expectedVersion, applied);
       break;
     default:
-      throw failure(operation, "UNSUPPORTED_OPERATION", `Unsupported operation ${(operation as DesignOperation).type}`);
+      throw failure(
+        operation,
+        "UNSUPPORTED_OPERATION",
+        `Unsupported operation ${(operation as DesignOperation).type}`,
+      );
   }
   applied.push(operation.operation_id);
 }
@@ -358,7 +537,8 @@ export function executeOperations(
   const working = cloneDocument(document);
   const applied: string[] = [];
   try {
-    for (const operation of operations) applyOne(working, operation, previousVersion, applied);
+    for (const operation of operations)
+      applyOne(working, operation, previousVersion, applied);
     working.metadata.document_version = previousVersion + 1;
     return {
       ok: true,
@@ -374,7 +554,10 @@ export function executeOperations(
         : {
             operation_id: "runtime",
             code: "INVALID_OPERATION",
-            message: error instanceof Error ? error.message : "Unknown Design IR execution error",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Unknown Design IR execution error",
           };
     return {
       ok: false,
@@ -386,7 +569,10 @@ export function executeOperations(
   }
 }
 
-export function executeOperation(document: DesignDocument, operation: DesignOperation): ExecutionResult {
+export function executeOperation(
+  document: DesignDocument,
+  operation: DesignOperation,
+): ExecutionResult {
   return executeOperations(document, [operation]);
 }
 

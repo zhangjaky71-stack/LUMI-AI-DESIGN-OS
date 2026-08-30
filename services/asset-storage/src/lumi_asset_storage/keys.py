@@ -25,10 +25,7 @@ def asset_object_key(
     project_segment = project_id or "unscoped"
     if "/" in project_segment or "\\" in project_segment or project_segment in {".", ".."}:
         raise ValueError("invalid project_id")
-    return (
-        f"org/{organization_id}/project/{project_segment}/asset/{asset_id}/"
-        f"{variant}/{file_id}"
-    )
+    return f"org/{organization_id}/project/{project_segment}/asset/{asset_id}/{variant}/{file_id}"
 
 
 def sanitize_download_filename(value: str | None, *, fallback: str = "download") -> str:

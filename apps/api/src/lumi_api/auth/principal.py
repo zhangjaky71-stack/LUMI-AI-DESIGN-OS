@@ -102,7 +102,9 @@ class PrincipalResolver:
         row.last_seen_at = now
         row.organization_id = organization_id
         await self.session.flush()
-        return SessionPrincipal(context=context, session_id=row.id, csrf_token_hash=row.csrf_token_hash)
+        return SessionPrincipal(
+            context=context, session_id=row.id, csrf_token_hash=row.csrf_token_hash
+        )
 
     async def from_api_token(
         self,

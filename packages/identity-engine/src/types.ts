@@ -1,6 +1,17 @@
-import type { ConstraintSeverity, DesignConstraint, PostflightArtifactRef, PostflightContext } from "../../design-constraints/src/types";
+import type {
+  ConstraintSeverity,
+  DesignConstraint,
+  PostflightArtifactRef,
+  PostflightContext,
+} from "../../design-constraints/src/types";
 
-export const IDENTITY_TYPES = ["PRODUCT", "LOGO", "CHARACTER", "FACE", "STYLE_REFERENCE"] as const;
+export const IDENTITY_TYPES = [
+  "PRODUCT",
+  "LOGO",
+  "CHARACTER",
+  "FACE",
+  "STYLE_REFERENCE",
+] as const;
 export type IdentityType = (typeof IDENTITY_TYPES)[number];
 
 export const IDENTITY_SCENARIOS = [
@@ -14,7 +25,11 @@ export type IdentityScenario = (typeof IDENTITY_SCENARIOS)[number];
 export type IdentityReferenceSetStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
 export type CalibrationProfileStatus = "DRAFT" | "PUBLISHED" | "RETIRED";
 export type CalibrationLabel = "POSITIVE" | "NEGATIVE" | "NEAR_MISS";
-export type IdentityValidationStatus = "PASS" | "FAIL" | "REVIEW" | "UNAVAILABLE";
+export type IdentityValidationStatus =
+  | "PASS"
+  | "FAIL"
+  | "REVIEW"
+  | "UNAVAILABLE";
 
 export interface IdentityRegion {
   readonly x: number;
@@ -29,7 +44,14 @@ export interface IdentityReferenceView {
   readonly asset_id: string;
   readonly asset_version: string;
   readonly organization_id: string;
-  readonly role?: "CANONICAL" | "FRONT" | "BACK" | "SIDE" | "DETAIL" | "WORDMARK" | "OTHER";
+  readonly role?:
+    | "CANONICAL"
+    | "FRONT"
+    | "BACK"
+    | "SIDE"
+    | "DETAIL"
+    | "WORDMARK"
+    | "OTHER";
   readonly region?: IdentityRegion;
   readonly checksum_sha256?: string;
   readonly notes?: string;
@@ -126,7 +148,14 @@ export interface CalibrationObjective {
 }
 
 export interface IdentityEvidenceRef {
-  readonly kind: "ASSET" | "REGION" | "OCR" | "FEATURE" | "MODEL" | "CALIBRATION" | "HASH";
+  readonly kind:
+    | "ASSET"
+    | "REGION"
+    | "OCR"
+    | "FEATURE"
+    | "MODEL"
+    | "CALIBRATION"
+    | "HASH";
   readonly ref: string;
   readonly region?: IdentityRegion;
   readonly detail?: string;
@@ -159,7 +188,9 @@ export interface IdentitySignalProvider {
   readonly provider_id: string;
   readonly provider_version: string;
   readonly preprocessor_version: string;
-  score(request: IdentitySignalRequest): Promise<readonly IdentitySignalScore[]>;
+  score(
+    request: IdentitySignalRequest,
+  ): Promise<readonly IdentitySignalScore[]>;
 }
 
 export interface IdentityValidationReport {
@@ -198,11 +229,16 @@ export interface IdentityValidationInput {
 }
 
 export interface IdentityReferenceResolver {
-  resolve(identity: IdentityReferenceSet): Promise<readonly VerifiedIdentityAsset[]>;
+  resolve(
+    identity: IdentityReferenceSet,
+  ): Promise<readonly VerifiedIdentityAsset[]>;
 }
 
 export interface IdentityPostflightResolver {
-  validate(context: PostflightContext, constraint: DesignConstraint): Promise<IdentityValidationReport>;
+  validate(
+    context: PostflightContext,
+    constraint: DesignConstraint,
+  ): Promise<IdentityValidationReport>;
 }
 
 export interface IdentityPrivacyPolicy {

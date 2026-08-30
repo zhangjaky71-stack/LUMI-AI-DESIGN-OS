@@ -76,8 +76,7 @@ def image_transform(self: object, message: dict[str, object]) -> dict[str, objec
         )
     if outcome.state == JobState.FAILED:
         raise RuntimeError(
-            "IMAGE_GENERATION_JOB_FAILED:"
-            + str(outcome.output.get("error", "unknown"))[:1000]
+            "IMAGE_GENERATION_JOB_FAILED:" + str(outcome.output.get("error", "unknown"))[:1000]
         )
     return {
         "job_id": str(parsed.job_id),
@@ -120,8 +119,7 @@ def video_render(self: object, message: dict[str, object]) -> dict[str, object]:
         )
     if outcome.state == JobState.FAILED:
         raise RuntimeError(
-            "VIDEO_GENERATION_JOB_FAILED:"
-            + str(outcome.output.get("error", "unknown"))[:1000]
+            "VIDEO_GENERATION_JOB_FAILED:" + str(outcome.output.get("error", "unknown"))[:1000]
         )
     return {
         "job_id": str(parsed.job_id),

@@ -351,12 +351,8 @@ class DockerSandboxBackend:
             if process.stdout is None or process.stderr is None:
                 process.kill()
                 raise SandboxError("SANDBOX_EXEC_PIPE_MISSING")
-            stdout_thread = _stream_to_file(
-                cast(BinaryIO, process.stdout), stdout_path, log_cap
-            )
-            stderr_thread = _stream_to_file(
-                cast(BinaryIO, process.stderr), stderr_path, log_cap
-            )
+            stdout_thread = _stream_to_file(cast(BinaryIO, process.stdout), stdout_path, log_cap)
+            stderr_thread = _stream_to_file(cast(BinaryIO, process.stderr), stderr_path, log_cap)
             try:
                 exit_code = process.wait(timeout=timeout)
             except subprocess.TimeoutExpired as exc:
@@ -456,9 +452,9 @@ class DockerSandboxBackend:
                 if result.returncode == 47:
                     raise SandboxPolicyError("SANDBOX_FILE_TOO_LARGE")
                 if result.returncode != 0:
-                    message = redact_text(
-                        result.stderr.decode("utf-8", errors="replace").strip()
-                    )[:2000]
+                    message = redact_text(result.stderr.decode("utf-8", errors="replace").strip())[
+                        :2000
+                    ]
                     raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
                 if target.stat().st_size > limit:
                     raise SandboxPolicyError("SANDBOX_FILE_TOO_LARGE")
@@ -598,9 +594,9 @@ class DockerSandboxBackend:
                 if result.returncode == 47:
                     raise SandboxPolicyError("SANDBOX_ARTIFACT_TOO_LARGE")
                 if result.returncode != 0:
-                    message = redact_text(
-                        result.stderr.decode("utf-8", errors="replace").strip()
-                    )[:2000]
+                    message = redact_text(result.stderr.decode("utf-8", errors="replace").strip())[
+                        :2000
+                    ]
                     raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
                 if not staged.is_file():
                     raise SandboxPolicyError("SANDBOX_ARTIFACT_FILE_TYPE_INVALID")
@@ -661,7 +657,8 @@ class DockerSandboxBackend:
             expired = tuple(
                 sandbox_id
                 for sandbox_id, record in self._records.items()
-                if record.state not in {
+                if record.state
+                not in {
                     SandboxState.TERMINATED,
                     SandboxState.TERMINATING,
                 }
@@ -684,7 +681,7 @@ class DockerSandboxBackend:
                 [
                     "inspect",
                     "--format",
-                    "{{ index .Config.Labels \"lumi.sandbox.expires_at\" }}",
+                    '{{ index .Config.Labels "lumi.sandbox.expires_at" }}',
                     container_id,
                 ],
                 timeout=10,
@@ -848,9 +845,7 @@ class DockerSandboxBackend:
             check=False,
         )
         if result.returncode != 0 and not allow_failure:
-            message = redact_text(result.stderr.decode("utf-8", errors="replace").strip())[
-                :2000
-            ]
+            message = redact_text(result.stderr.decode("utf-8", errors="replace").strip())[:2000]
             raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
         return result
 
@@ -873,9 +868,7 @@ class DockerSandboxBackend:
                 check=False,
             )
         if result.returncode != 0 and not allow_failure:
-            message = redact_text(result.stderr.decode("utf-8", errors="replace").strip())[
-                :2000
-            ]
+            message = redact_text(result.stderr.decode("utf-8", errors="replace").strip())[:2000]
             raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
         return result
 

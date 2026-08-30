@@ -139,10 +139,7 @@ class SafeWebFetchAdapter:
                 current_url = urljoin(current_url, location)
                 continue
             content_type = (
-                _header(response.headers, "content-type")
-                .split(";", 1)[0]
-                .strip()
-                .lower()
+                _header(response.headers, "content-type").split(";", 1)[0].strip().lower()
             )
             if content_type not in self.allowed_content_types:
                 raise ToolUnsupportedContentTypeError(
@@ -185,8 +182,10 @@ class SandboxExecuteAdapter:
         request: ToolRequest,
     ) -> ToolAdapterOutput:
         command = request.arguments.get("command")
-        if not isinstance(command, list) or not command or not all(
-            isinstance(item, str) and item for item in command
+        if (
+            not isinstance(command, list)
+            or not command
+            or not all(isinstance(item, str) and item for item in command)
         ):
             raise ValueError("TOOL_SANDBOX_COMMAND_INVALID")
         result = await self.executor.execute(

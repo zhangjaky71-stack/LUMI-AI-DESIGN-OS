@@ -75,9 +75,13 @@ def _seed_settings() -> dict[str, object]:
     }
 
 
-async def _insert_ignore(session: AsyncSession, model: type[object], values: dict[str, object]) -> None:
+async def _insert_ignore(
+    session: AsyncSession, model: type[object], values: dict[str, object]
+) -> None:
     table = getattr(model, "__table__")
-    await session.execute(insert(table).values(**values).on_conflict_do_nothing(index_elements=["id"]))
+    await session.execute(
+        insert(table).values(**values).on_conflict_do_nothing(index_elements=["id"])
+    )
 
 
 async def seed(session: AsyncSession) -> None:

@@ -160,9 +160,7 @@ def compile_agent_team(
     repo_root: Path,
     manifest_path: Path | None = None,
 ) -> CompiledAgentTeam:
-    manifest = load_team_manifest(
-        manifest_path or repo_root / "config/agent-team/team.v1.json"
-    )
+    manifest = load_team_manifest(manifest_path or repo_root / "config/agent-team/team.v1.json")
     loader = AgentDefinitionLoader(repo_root / "agents")
     definitions: dict[str, AgentDefinition] = {}
     profiles: dict[str, AgentTeamProfile] = {}

@@ -46,23 +46,13 @@ class SkillPromotionManager:
         self.validator.validate(definition)
         evidence = self.eval_gate.evaluate(definition)
         if not evidence.passed or not evidence.evidence_ref:
-            raise SkillReleaseError(
-                "Skill production promotion blocked by eval gate"
-            )
+            raise SkillReleaseError("Skill production promotion blocked by eval gate")
 
         releases: list[SkillReleaseRecord] = []
         for row in manifest.releases:
-            if (
-                row.skill_id == definition.skill_id
-                and row.status == SkillReleaseStatus.PRODUCTION
-            ):
-                releases.append(
-                    replace(row, status=SkillReleaseStatus.DEPRECATED)
-                )
-            elif (
-                row.skill_id == definition.skill_id
-                and row.version == definition.version
-            ):
+            if row.skill_id == definition.skill_id and row.status == SkillReleaseStatus.PRODUCTION:
+                releases.append(replace(row, status=SkillReleaseStatus.DEPRECATED))
+            elif row.skill_id == definition.skill_id and row.version == definition.version:
                 releases.append(
                     replace(
                         row,
@@ -73,13 +63,8 @@ class SkillPromotionManager:
                 )
             else:
                 releases.append(row)
-        aliases = {
-            skill_id: dict(values)
-            for skill_id, values in manifest.aliases.items()
-        }
-        aliases.setdefault(definition.skill_id, {})[
-            "production"
-        ] = definition.version
+        aliases = {skill_id: dict(values) for skill_id, values in manifest.aliases.items()}
+        aliases.setdefault(definition.skill_id, {})["production"] = definition.version
         return SkillReleaseManifest(
             schema=manifest.schema,
             revision=manifest.revision + 1,
@@ -102,7 +87,5 @@ def _release(
         None,
     )
     if row is None:
-        raise SkillReleaseError(
-            f"Skill release not found: {skill_id}@{version}"
-        )
+        raise SkillReleaseError(f"Skill release not found: {skill_id}@{version}")
     return row

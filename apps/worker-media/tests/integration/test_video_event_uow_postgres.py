@@ -22,9 +22,7 @@ PROJECT = UUID("01900000-0000-7000-8000-000000000006")
 
 
 def _dsn() -> str:
-    return os.environ["DATABASE_URL"].replace(
-        "postgresql+asyncpg://", "postgresql://", 1
-    )
+    return os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
 def _migration_dsn() -> str:

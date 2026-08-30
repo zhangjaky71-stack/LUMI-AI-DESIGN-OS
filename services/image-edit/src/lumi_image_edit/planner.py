@@ -25,7 +25,11 @@ def _structural_payload(spec: ImageEditSpec, op_type: str) -> dict[str, object]:
     if op_type == "SET_TEXT":
         return {"text": spec.intent.value}
     if op_type == "SET_PROPERTY":
-        path = "fill" if spec.intent.action in {"CHANGE_COLOR", "BACKGROUND_COLOR"} else "font_asset_id"
+        path = (
+            "fill"
+            if spec.intent.action in {"CHANGE_COLOR", "BACKGROUND_COLOR"}
+            else "font_asset_id"
+        )
         return {"path": path, "value": spec.intent.value}
     if op_type == "REPLACE_ASSET":
         return {"asset_ref": spec.intent.value}

@@ -275,9 +275,7 @@ def _parse_call_result(
     if not isinstance(result_type, str):
         raise MCPProtocolMismatchError("MCP resultType missing or invalid")
     raw_content = result.get("content", [])
-    if not isinstance(raw_content, list) or not all(
-        isinstance(item, dict) for item in raw_content
-    ):
+    if not isinstance(raw_content, list) or not all(isinstance(item, dict) for item in raw_content):
         raise MCPProtocolMismatchError("MCP tool content invalid")
     input_requests = result.get("inputRequests")
     if input_requests is not None and not isinstance(input_requests, dict):

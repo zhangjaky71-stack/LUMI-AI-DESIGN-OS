@@ -19,7 +19,9 @@ class MemoryStructuralEdit:
     def __init__(self) -> None:
         self.calls: list[tuple[StructuralEditOperation, ...]] = []
 
-    async def apply(self, *, spec: ImageEditSpec, operations: tuple[StructuralEditOperation, ...]) -> StructuralEditResult:
+    async def apply(
+        self, *, spec: ImageEditSpec, operations: tuple[StructuralEditOperation, ...]
+    ) -> StructuralEditResult:
         self.calls.append(operations)
         version = (spec.design_document_version or 0) + 1
         return StructuralEditResult(
@@ -35,14 +37,23 @@ class ScriptedEditGateway:
         self.invoke_count = 0
         self.poll_count = 0
 
-    async def invoke(self, *, spec: ImageEditSpec, plan: EditPlan, mask: MaskSpec | None) -> GatewayEditResult:
+    async def invoke(
+        self, *, spec: ImageEditSpec, plan: EditPlan, mask: MaskSpec | None
+    ) -> GatewayEditResult:
         del spec, plan, mask
         self.invoke_count += 1
         if not self.results:
             raise RuntimeError("SCRIPTED_EDIT_GATEWAY_EXHAUSTED")
         return self.results.pop(0)
 
-    async def poll(self, *, spec: ImageEditSpec, plan: EditPlan, pending: GatewayEditResult, mask: MaskSpec | None) -> GatewayEditResult:
+    async def poll(
+        self,
+        *,
+        spec: ImageEditSpec,
+        plan: EditPlan,
+        pending: GatewayEditResult,
+        mask: MaskSpec | None,
+    ) -> GatewayEditResult:
         del spec, plan, pending, mask
         self.poll_count += 1
         if not self.results:
@@ -54,7 +65,9 @@ class MemoryEditedOutput:
     def __init__(self, outputs: dict[str, StoredEditedImage]) -> None:
         self.outputs = outputs
 
-    async def materialize_and_store(self, *, spec: ImageEditSpec, output_ref: str, declared_mime_type: str | None) -> StoredEditedImage:
+    async def materialize_and_store(
+        self, *, spec: ImageEditSpec, output_ref: str, declared_mime_type: str | None
+    ) -> StoredEditedImage:
         del spec, declared_mime_type
         try:
             return self.outputs[output_ref]
@@ -67,21 +80,29 @@ class MemoryComposite:
         self.replacement = replacement
         self.calls = 0
 
-    async def composite_source_regions(self, *, source: SourceImageRef, candidate: StoredEditedImage, spec: ImageEditSpec) -> StoredEditedImage:
+    async def composite_source_regions(
+        self, *, source: SourceImageRef, candidate: StoredEditedImage, spec: ImageEditSpec
+    ) -> StoredEditedImage:
         del source, spec
         self.calls += 1
         return self.replacement or candidate
 
 
 class PassingEditValidator:
-    async def validate(self, *, spec: ImageEditSpec, plan: EditPlan, candidate: StoredEditedImage) -> EditValidationReport:
+    async def validate(
+        self, *, spec: ImageEditSpec, plan: EditPlan, candidate: StoredEditedImage
+    ) -> EditValidationReport:
         del spec, plan, candidate
-        return EditValidationReport(findings=(EditFinding(
-            validator="fixture",
-            status="PASS",
-            severity="HARD",
-            reason_code="FIXTURE_PASS",
-        ),))
+        return EditValidationReport(
+            findings=(
+                EditFinding(
+                    validator="fixture",
+                    status="PASS",
+                    severity="HARD",
+                    reason_code="FIXTURE_PASS",
+                ),
+            )
+        )
 
 
 class MemoryCost:
@@ -96,8 +117,12 @@ class MemoryEvents:
     def __init__(self) -> None:
         self.events: list[tuple[str, dict[str, object]]] = []
 
-    async def emit(self, event_type: str, *, organization_id: str, edit_id: str, payload: dict[str, object]) -> None:
-        self.events.append((event_type, {"organization_id": organization_id, "edit_id": edit_id, **payload}))
+    async def emit(
+        self, event_type: str, *, organization_id: str, edit_id: str, payload: dict[str, object]
+    ) -> None:
+        self.events.append(
+            (event_type, {"organization_id": organization_id, "edit_id": edit_id, **payload})
+        )
 
 
 def gateway_result(

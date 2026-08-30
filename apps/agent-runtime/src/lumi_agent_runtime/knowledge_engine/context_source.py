@@ -77,9 +77,7 @@ class KnowledgeContextSource:
                 expanded_queries=_expanded_queries(
                     request.metadata.get("knowledge_expanded_queries")
                 ),
-                require_fresh=bool(
-                    request.metadata.get("knowledge_require_fresh", False)
-                ),
+                require_fresh=bool(request.metadata.get("knowledge_require_fresh", False)),
                 max_source_age_seconds=_optional_positive_int(
                     request.metadata.get("knowledge_max_source_age_seconds")
                 ),

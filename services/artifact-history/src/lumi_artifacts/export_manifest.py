@@ -33,10 +33,10 @@ def build_export_manifest(
         raise ValueError("identity validation snapshot mismatch between version and provenance")
 
     file_rows = tuple(file for file in files if file.artifact_version_id == version.id)
-    rights_rows = tuple(right for right in rights if right.organization_id == version.organization_id)
-    sources = sorted(
-        set(provenance.input_asset_ids).union(provenance.input_artifact_version_ids)
+    rights_rows = tuple(
+        right for right in rights if right.organization_id == version.organization_id
     )
+    sources = sorted(set(provenance.input_asset_ids).union(provenance.input_artifact_version_ids))
     models = []
     if provenance.provider or provenance.model:
         models.append("/".join(part for part in (provenance.provider, provenance.model) if part))
@@ -69,8 +69,7 @@ def build_export_manifest(
             provenance.brand_rule_set_version or version.brand_rule_set_version
         ),
         "identity_validation_snapshot_id": (
-            provenance.identity_validation_snapshot_id
-            or version.identity_validation_snapshot_id
+            provenance.identity_validation_snapshot_id or version.identity_validation_snapshot_id
         ),
         "code_git_sha": provenance.code_git_sha,
     }

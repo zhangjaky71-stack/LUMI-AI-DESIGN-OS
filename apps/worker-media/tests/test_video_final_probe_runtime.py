@@ -53,7 +53,9 @@ class _FakeStore:
         destination_key: str,
     ) -> None:
         self.copies.append((source_bucket, source_key, destination_bucket, destination_key))
-        self.objects[(destination_bucket, destination_key)] = self.objects[(source_bucket, source_key)]
+        self.objects[(destination_bucket, destination_key)] = self.objects[
+            (source_bucket, source_key)
+        ]
 
     async def delete_candidate(self, *, bucket: str, object_key: str) -> None:
         self.deleted.append((bucket, object_key))
@@ -120,10 +122,7 @@ def _fixture() -> tuple[VideoTaskSpec, VideoTimeline, RenderedVideo, _FakeStore]
         output_spec=VideoOutputSpec(width=1280, height=720, fps=24),
     )
     checksum = hashlib.sha256(b"final-video").hexdigest()
-    key = (
-        f"generated/video/v1/{organization_id}/{project_id}/"
-        f"final/{checksum}.mp4"
-    )
+    key = f"generated/video/v1/{organization_id}/{project_id}/final/{checksum}.mp4"
     # Deliberately bogus expected metadata. The final verifier must not trust it.
     rendered = RenderedVideo(
         video=StoredVideoClip(

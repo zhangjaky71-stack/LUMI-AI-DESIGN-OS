@@ -25,18 +25,23 @@ export function normalizeBranchName(value: string): string {
 
 export function validateForkInput(input: ForkVersionInput): ForkVersionInput {
   const name = normalizeBranchName(input.name);
-  if (!BRANCH_NAME.test(name)) throw versionsProblem("BRANCH_NAME_INVALID", 400);
+  if (!BRANCH_NAME.test(name))
+    throw versionsProblem("BRANCH_NAME_INVALID", 400);
   return { ...input, name };
 }
 
-export function validateRestoreInput(input: RestoreVersionInput): RestoreVersionInput {
+export function validateRestoreInput(
+  input: RestoreVersionInput,
+): RestoreVersionInput {
   if (!input.artifact_id || !input.branch_id || !input.source_version_id) {
     throw versionsProblem("RESTORE_INPUT_INVALID", 400);
   }
   return input;
 }
 
-export function renderSemanticSummary(changes: readonly VersionSemanticChange[]): string {
+export function renderSemanticSummary(
+  changes: readonly VersionSemanticChange[],
+): string {
   if (!changes.length) return "No semantic property changes.";
   return changes.map((change) => change.label).join(" · ");
 }
@@ -82,7 +87,10 @@ export function safeProvenance(
     skill_versions: source.skill_versions ?? {},
     input_asset_ids: source.input_asset_ids ?? [],
     input_artifact_version_ids: source.input_artifact_version_ids ?? [],
-    brand_rule_set_version: source.brand_rule_set_version ?? item.version.brand_rule_set_version ?? null,
+    brand_rule_set_version:
+      source.brand_rule_set_version ??
+      item.version.brand_rule_set_version ??
+      null,
     constraint_snapshot_hash: source.constraint_snapshot_hash,
     prompt_hash: source.prompt_hash ?? null,
     prompt_template_version: source.prompt_template_version ?? null,

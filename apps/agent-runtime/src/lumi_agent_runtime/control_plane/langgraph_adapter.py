@@ -51,9 +51,7 @@ class CompiledLangGraphRegistry:
         try:
             return self._graphs[(definition.graph_key, definition.graph_version)]
         except KeyError as exc:
-            raise GraphNotFoundError(
-                f"compiled graph unavailable: {definition.identity}"
-            ) from exc
+            raise GraphNotFoundError(f"compiled graph unavailable: {definition.identity}") from exc
 
 
 class LangGraphExecutor:

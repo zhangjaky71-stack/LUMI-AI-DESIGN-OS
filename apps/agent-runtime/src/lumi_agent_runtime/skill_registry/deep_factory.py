@@ -66,13 +66,9 @@ class SkillAwareDeepAgentCompiler:
             virtual_files_enabled=definition.virtual_files_enabled,
         )
         _assert_backend(backend)
-        checkpointer = await self.base_factory.checkpointers.checkpointer_for_run(
-            context=context
-        )
+        checkpointer = await self.base_factory.checkpointers.checkpointer_for_run(context=context)
         if checkpointer is None:
-            raise DeepAgentFactoryError(
-                "Skill-aware Deep Agent requires a NODE-28 checkpointer"
-            )
+            raise DeepAgentFactoryError("Skill-aware Deep Agent requires a NODE-28 checkpointer")
         store = (
             await self.base_factory.stores.store_for_run(context=context)
             if self.base_factory.stores is not None
@@ -149,13 +145,9 @@ class SkillAwareDeepAgentCompiler:
         try:
             compiled = create_deep_agent(**kwargs)
         except Exception as exc:
-            raise DeepAgentFactoryError(
-                "Skill-aware Deep Agents compilation failed"
-            ) from exc
+            raise DeepAgentFactoryError("Skill-aware Deep Agents compilation failed") from exc
         if getattr(compiled, "checkpointer", None) is None:
-            raise DeepAgentFactoryError(
-                "compiled Skill-aware Deep Agent lost durable checkpointer"
-            )
+            raise DeepAgentFactoryError("compiled Skill-aware Deep Agent lost durable checkpointer")
 
         graph_metadata = {
             "deep_agent_key": definition.agent_key,
@@ -168,9 +160,7 @@ class SkillAwareDeepAgentCompiler:
             "planning_enabled": definition.planning_enabled,
             "virtual_files_enabled": definition.virtual_files_enabled,
             "delegation_max_depth": definition.delegation.max_depth,
-            "delegation_max_total_calls": (
-                definition.delegation.max_total_subagent_calls
-            ),
+            "delegation_max_total_calls": (definition.delegation.max_total_subagent_calls),
             "skill_pack_freeze_hash": bundle.pack.freeze_hash,
             "resolved_skills": [
                 {

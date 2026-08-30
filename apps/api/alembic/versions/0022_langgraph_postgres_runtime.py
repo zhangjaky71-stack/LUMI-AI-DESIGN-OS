@@ -22,9 +22,7 @@ depends_on = None
 def _lumi_app_exists() -> bool:
     return bool(
         op.get_bind()
-        .execute(
-            text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')")
-        )
+        .execute(text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')"))
         .scalar_one()
     )
 
@@ -83,9 +81,7 @@ def upgrade() -> None:
     op.execute("CREATE INDEX checkpoints_thread_id_idx ON checkpoints (thread_id)")
     op.execute("CREATE INDEX checkpoint_blobs_thread_id_idx ON checkpoint_blobs (thread_id)")
     op.execute("CREATE INDEX checkpoint_writes_thread_id_idx ON checkpoint_writes (thread_id)")
-    op.execute(
-        "INSERT INTO checkpoint_migrations (v) SELECT generate_series(0, 9)"
-    )
+    op.execute("INSERT INTO checkpoint_migrations (v) SELECT generate_series(0, 9)")
 
     op.execute(
         """

@@ -121,11 +121,17 @@ class ModelGatewayImageEditAdapter:
         decision = await self.gateway.router.route(request)
         result = await self.gateway.invoke(request)
         match = next(
-            (candidate for candidate in decision.candidates if candidate.provider == result.provider and candidate.model == result.model),
+            (
+                candidate
+                for candidate in decision.candidates
+                if candidate.provider == result.provider and candidate.model == result.model
+            ),
             None,
         )
         normalized = _normalize(result, seed=spec.seed)
-        reasons = match.reason_codes if match is not None else ("ROUTE_DECISION_CHANGED_DURING_INVOKE",)
+        reasons = (
+            match.reason_codes if match is not None else ("ROUTE_DECISION_CHANGED_DURING_INVOKE",)
+        )
         return GatewayEditResult(
             status=normalized.status,
             provider=normalized.provider,

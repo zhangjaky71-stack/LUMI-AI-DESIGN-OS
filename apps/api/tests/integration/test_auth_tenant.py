@@ -47,7 +47,9 @@ async def _database_is_at_current_head() -> None:
     engine = create_engine()
     try:
         async with engine.connect() as connection:
-            head = (await connection.execute(text("SELECT version_num FROM alembic_version"))).scalar_one()
+            head = (
+                await connection.execute(text("SELECT version_num FROM alembic_version"))
+            ).scalar_one()
             assert head == expected_head
     finally:
         await engine.dispose()
@@ -80,7 +82,9 @@ async def _local_registration_login_logout_reset() -> None:
                     now=NOW,
                 )
                 credential = await session.scalar(
-                    select(PasswordCredential).where(PasswordCredential.user_id == registration.user_id)
+                    select(PasswordCredential).where(
+                        PasswordCredential.user_id == registration.user_id
+                    )
                 )
                 assert credential is not None
                 assert credential.password_hash.startswith("$argon2id$")
@@ -92,7 +96,9 @@ async def _local_registration_login_logout_reset() -> None:
                     )
                 )
                 assert verification_row is not None
-                assert verification_row.token_hash == hash_token(registration.email_verification_token)
+                assert verification_row.token_hash == hash_token(
+                    registration.email_verification_token
+                )
                 assert registration.email_verification_token not in verification_row.token_hash
 
                 verified_user_id = await service.verify_email(
@@ -171,9 +177,9 @@ async def _local_registration_login_logout_reset() -> None:
                 )
                 assert reset_plaintext is not None
                 reset_row = await session.scalar(
-                    select(PasswordResetToken).where(
-                        PasswordResetToken.user_id == registration.user_id
-                    ).order_by(PasswordResetToken.created_at.desc())
+                    select(PasswordResetToken)
+                    .where(PasswordResetToken.user_id == registration.user_id)
+                    .order_by(PasswordResetToken.created_at.desc())
                 )
                 assert reset_row is not None
                 assert reset_row.token_hash == hash_token(reset_plaintext)
@@ -185,7 +191,9 @@ async def _local_registration_login_logout_reset() -> None:
                 )
                 assert reset_user_id == registration.user_id
                 sessions = (
-                    await session.scalars(select(Session).where(Session.user_id == registration.user_id))
+                    await session.scalars(
+                        select(Session).where(Session.user_id == registration.user_id)
+                    )
                 ).all()
                 assert sessions and all(item.revoked_at is not None for item in sessions)
                 with pytest.raises(TokenInvalid):

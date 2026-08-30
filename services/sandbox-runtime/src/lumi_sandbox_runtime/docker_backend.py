@@ -159,7 +159,8 @@ class DockerSandboxBackend(_LocalDockerSandboxBackend):
             expired_records = tuple(
                 record
                 for record in self._records.values()
-                if record.state not in {
+                if record.state
+                not in {
                     SandboxState.TERMINATED,
                     SandboxState.TERMINATING,
                 }
@@ -221,11 +222,7 @@ def _read_prefix(path: Path, limit: int) -> str:
 
 
 def _prune_oldest_files(directory: Path, budget_bytes: int, *, keep: Path) -> None:
-    files = [
-        path
-        for path in directory.glob("*.log")
-        if path.is_file() and not path.is_symlink()
-    ]
+    files = [path for path in directory.glob("*.log") if path.is_file() and not path.is_symlink()]
     total = sum(path.stat().st_size for path in files)
     if total <= budget_bytes:
         return

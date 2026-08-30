@@ -6,7 +6,9 @@ export interface QualityMetricSnapshot {
 }
 
 /** Safe-by-default telemetry projection; no prompt text, image URL, OCR text or raw VLM output. */
-export function qualityMetricSnapshot(result: QualityResult): QualityMetricSnapshot {
+export function qualityMetricSnapshot(
+  result: QualityResult,
+): QualityMetricSnapshot {
   return {
     attributes: {
       quality_result_id: result.quality_result_id,
@@ -21,7 +23,9 @@ export function qualityMetricSnapshot(result: QualityResult): QualityMetricSnaps
     metrics: {
       overall_score: result.overall_score,
       confidence: result.confidence,
-      hard_violation_count: result.violations.filter((item) => item.severity === "HARD").length,
+      hard_violation_count: result.violations.filter(
+        (item) => item.severity === "HARD",
+      ).length,
       repair_action_count: result.repair_actions.length,
       evidence_count: result.evidence.length,
       dimension_count: result.dimensions.length,

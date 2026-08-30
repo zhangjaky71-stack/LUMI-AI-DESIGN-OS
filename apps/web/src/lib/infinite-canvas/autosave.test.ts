@@ -20,7 +20,11 @@ describe("CanvasAutosaveBuffer", () => {
     const batch = buffer.snapshot();
     expect(batch?.base_document_version).toBe(7);
     expect(batch?.operations).toHaveLength(2);
-    expect(batch?.operations.every((operation) => operation.expected_document_version === 7)).toBe(true);
+    expect(
+      batch?.operations.every(
+        (operation) => operation.expected_document_version === 7,
+      ),
+    ).toBe(true);
   });
 
   it("acknowledges only the flushed prefix and rebases operations queued during save", () => {
@@ -45,7 +49,9 @@ describe("CanvasAutosaveBuffer", () => {
     };
     const [rebased] = rebaseOperationsVersion([nested], 5);
     expect(rebased?.expected_document_version).toBe(5);
-    const child = (rebased?.payload.operations as DesignOperation[] | undefined)?.[0];
+    const child = (
+      rebased?.payload.operations as DesignOperation[] | undefined
+    )?.[0];
     expect(child?.expected_document_version).toBe(5);
   });
 });

@@ -179,9 +179,7 @@ class HostedVideoOutputAdapter:
         scope = hashlib.sha256(
             f"{spec.organization_id}\x00{spec.task_id}\x00{source_key}".encode()
         ).hexdigest()
-        exchange_key = (
-            f"sandbox-exchange/v1/{spec.organization_id}/{scope}/probe/{checksum}.mp4"
-        )
+        exchange_key = f"sandbox-exchange/v1/{spec.organization_id}/{scope}/probe/{checksum}.mp4"
         await self.object_store.copy(
             source_bucket=self.bucket,
             source_key=source_key,
@@ -314,7 +312,10 @@ class PostgresVideoCostObserver:
                 raise RuntimeError("VIDEO_COST_AMOUNT_MISMATCH")
             if str(row["confidence"]) != confidence.casefold():
                 raise RuntimeError("VIDEO_COST_CONFIDENCE_MISMATCH")
-            if pricing_snapshot_id is not None and row["pricing_snapshot_id"] != pricing_snapshot_id:
+            if (
+                pricing_snapshot_id is not None
+                and row["pricing_snapshot_id"] != pricing_snapshot_id
+            ):
                 raise RuntimeError("VIDEO_COST_PRICE_SNAPSHOT_MISMATCH")
             return True
         finally:
@@ -589,10 +590,7 @@ def _json_value(value: object, *, depth: int = 0) -> object:
     if isinstance(value, Mapping):
         if not all(isinstance(key, str) for key in value):
             raise ValueError("VIDEO_EVENT_KEY_INVALID")
-        return {
-            key: _json_value(child, depth=depth + 1)
-            for key, child in sorted(value.items())
-        }
+        return {key: _json_value(child, depth=depth + 1) for key, child in sorted(value.items())}
     if isinstance(value, (list, tuple)):
         return [_json_value(child, depth=depth + 1) for child in value]
     raise ValueError(f"VIDEO_EVENT_VALUE_INVALID:{type(value).__name__}")

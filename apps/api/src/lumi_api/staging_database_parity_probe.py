@@ -32,7 +32,10 @@ def migration_url() -> str:
     raw = os.environ.get("MIGRATION_DATABASE_URL", "").strip()
     require(bool(raw), "MIGRATION_DATABASE_URL is required")
     url = make_url(raw)
-    require(url.drivername in {"postgresql+asyncpg", "postgres+asyncpg"}, "migration URL must use asyncpg")
+    require(
+        url.drivername in {"postgresql+asyncpg", "postgres+asyncpg"},
+        "migration URL must use asyncpg",
+    )
     require(bool(url.host), "migration URL host is missing")
     return raw
 
@@ -66,7 +69,13 @@ def require_alembic_no_drift() -> None:
     require(result.returncode == 0, "Alembic metadata/database drift check failed")
 
 
-async def collect(*, release_git_sha: str, release_version: str, expected_postgres_major: int, expected_host_sha256: str) -> dict[str, Any]:
+async def collect(
+    *,
+    release_git_sha: str,
+    release_version: str,
+    expected_postgres_major: int,
+    expected_host_sha256: str,
+) -> dict[str, Any]:
     require(os.environ.get("LUMI_ENV") == "staging", "LUMI_ENV must equal staging")
     require(bool(SHA40.fullmatch(release_git_sha)), "release Git SHA must be lowercase SHA40")
     require(bool(release_version.strip()), "release version is required")
@@ -76,7 +85,10 @@ async def collect(*, release_git_sha: str, release_version: str, expected_postgr
     raw_url = migration_url()
     url = make_url(raw_url)
     host_hash = hashlib.sha256(str(url.host).lower().rstrip(".").encode("utf-8")).hexdigest()
-    require(host_hash == expected_host_sha256, "migration secret does not target canonical Staging PostgreSQL host")
+    require(
+        host_hash == expected_host_sha256,
+        "migration secret does not target canonical Staging PostgreSQL host",
+    )
 
     migration_head = source_migration_head()
     require_alembic_no_drift()
@@ -88,14 +100,25 @@ async def collect(*, release_git_sha: str, release_version: str, expected_postgr
             transaction = await connection.begin()
             try:
                 await connection.execute(text("SET TRANSACTION READ ONLY"))
-                read_only = str((await connection.execute(text("SHOW transaction_read_only"))).scalar_one()).lower() == "on"
-                server_version_num = int((await connection.execute(text("SHOW server_version_num"))).scalar_one())
+                read_only = (
+                    str(
+                        (await connection.execute(text("SHOW transaction_read_only"))).scalar_one()
+                    ).lower()
+                    == "on"
+                )
+                server_version_num = int(
+                    (await connection.execute(text("SHOW server_version_num"))).scalar_one()
+                )
                 observed_major = server_version_num // 10000
                 versions = [
                     str(item)
                     for item in (
-                        await connection.execute(text("SELECT version_num FROM alembic_version ORDER BY version_num"))
-                    ).scalars().all()
+                        await connection.execute(
+                            text("SELECT version_num FROM alembic_version ORDER BY version_num")
+                        )
+                    )
+                    .scalars()
+                    .all()
                 ]
             finally:
                 await transaction.rollback()
@@ -138,7 +161,9 @@ async def collect(*, release_git_sha: str, release_version: str, expected_postgr
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Read-only Production-like Staging PostgreSQL parity probe")
+    parser = argparse.ArgumentParser(
+        description="Read-only Production-like Staging PostgreSQL parity probe"
+    )
     parser.add_argument("--release-git-sha", required=True)
     parser.add_argument("--release-version", required=True)
     parser.add_argument("--expected-postgres-major", required=True, type=int)

@@ -295,7 +295,9 @@ def _http_json_sync(
         with urlopen(request, timeout=30) as response:  # noqa: S310 - fixed internal staging host
             status = int(response.status)
             raw = response.read(1024 * 1024)
-            response_headers = {str(key).lower(): str(value) for key, value in response.headers.items()}
+            response_headers = {
+                str(key).lower(): str(value) for key, value in response.headers.items()
+            }
     except HTTPError as exc:
         detail = exc.read(4096).decode("utf-8", errors="replace")
         raise CollectorError(f"E2E_HTTP_{exc.code}:{detail[:1000]}") from exc
@@ -519,7 +521,10 @@ async def _collect_database_evidence(
         dispatch = JobDispatch.from_outbox_payload(dict(outbox.payload_json or {}))
         if dispatch.task_name != _TASK_NAME or dispatch.queue != _QUEUE:
             raise CollectorError("E2E_OUTBOX_DISPATCH_ROUTE_MISMATCH")
-        if dispatch.message.job_id != ids.task_id or dispatch.message.operation_id != ids.operation_id:
+        if (
+            dispatch.message.job_id != ids.task_id
+            or dispatch.message.operation_id != ids.operation_id
+        ):
             raise CollectorError("E2E_OUTBOX_MESSAGE_SCOPE_MISMATCH")
 
         artifact_id, artifact_version_id = _first_ready_artifact(task)
@@ -709,7 +714,9 @@ async def run() -> dict[str, str]:
     timeout_seconds = _timeout_seconds()
     evidence_bucket = _required_env("LUMI_E2E_EVIDENCE_BUCKET", max_length=255)
     evidence_key = _required_env("LUMI_E2E_EVIDENCE_KEY", max_length=1024)
-    if not evidence_key.startswith("acceptance/node73/e2e-03/") or not evidence_key.endswith(".json"):
+    if not evidence_key.startswith("acceptance/node73/e2e-03/") or not evidence_key.endswith(
+        ".json"
+    ):
         raise CollectorError("LUMI_E2E_EVIDENCE_KEY_OUTSIDE_ACCEPTANCE_PREFIX")
     region = _region()
     evidence_uri = f"s3://{evidence_bucket}/{evidence_key}"

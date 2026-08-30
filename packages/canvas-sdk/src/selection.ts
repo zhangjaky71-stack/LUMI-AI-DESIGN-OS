@@ -42,7 +42,9 @@ export class CanvasSelectionModel {
     cycleOffset = 0,
   ): string | null {
     const hits = index.hitTest(point, { isolationRoot: this.#isolationRootId });
-    const hit = hits.length ? hits[Math.abs(cycleOffset) % hits.length] ?? null : null;
+    const hit = hits.length
+      ? (hits[Math.abs(cycleOffset) % hits.length] ?? null)
+      : null;
     if (!hit) {
       if (mode === "replace") this.clear();
       return null;
@@ -73,7 +75,11 @@ export class CanvasSelectionModel {
 
   enterIsolation(groupId: string, scene: CanvasSceneSnapshot): boolean {
     const node = scene.nodes.get(groupId);
-    if (!node || !["GROUP", "FRAME", "COMPONENT", "INSTANCE"].includes(node.kind)) return false;
+    if (
+      !node ||
+      !["GROUP", "FRAME", "COMPONENT", "INSTANCE"].includes(node.kind)
+    )
+      return false;
     this.#isolationRootId = groupId;
     this.clear();
     return true;
@@ -88,7 +94,10 @@ export class CanvasSelectionModel {
     return [...this.#selected].filter((id) => {
       const node = scene.nodes.get(id);
       return Boolean(
-        node && !node.locked && node.kind !== "DOCUMENT_ROOT" && node.kind !== "GUIDE",
+        node &&
+          !node.locked &&
+          node.kind !== "DOCUMENT_ROOT" &&
+          node.kind !== "GUIDE",
       );
     });
   }
@@ -115,7 +124,8 @@ export class CanvasSelectionModel {
   #apply(ids: readonly string[], mode: SelectionMode): void {
     if (mode === "replace") this.#selected.clear();
     for (const id of ids) {
-      if (mode === "toggle" && this.#selected.has(id)) this.#selected.delete(id);
+      if (mode === "toggle" && this.#selected.has(id))
+        this.#selected.delete(id);
       else this.#selected.add(id);
     }
     if (this.#primaryId && !this.#selected.has(this.#primaryId)) {
@@ -123,7 +133,11 @@ export class CanvasSelectionModel {
     }
   }
 
-  #descendsFrom(nodeId: string, rootId: string, index: CanvasSpatialIndex): boolean {
+  #descendsFrom(
+    nodeId: string,
+    rootId: string,
+    index: CanvasSpatialIndex,
+  ): boolean {
     let current = index.get(nodeId);
     while (current?.parent_id) {
       if (current.parent_id === rootId) return true;

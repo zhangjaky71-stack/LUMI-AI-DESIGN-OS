@@ -28,23 +28,17 @@ class ToolPermissionPolicy:
         context: ToolPermissionContext,
     ) -> ToolPolicyDecision:
         if any(
-            _matches(definition.name, pattern)
-            for pattern in context.organization_deny_patterns
+            _matches(definition.name, pattern) for pattern in context.organization_deny_patterns
         ):
             return ToolPolicyDecision(False, "ORG_TOOL_DENIED")
         if context.organization_allow_patterns and not any(
-            _matches(definition.name, pattern)
-            for pattern in context.organization_allow_patterns
+            _matches(definition.name, pattern) for pattern in context.organization_allow_patterns
         ):
             return ToolPolicyDecision(False, "ORG_TOOL_NOT_ALLOWED")
-        if not any(
-            _matches(definition.name, pattern)
-            for pattern in context.agent_allow_patterns
-        ):
+        if not any(_matches(definition.name, pattern) for pattern in context.agent_allow_patterns):
             return ToolPolicyDecision(False, "AGENT_TOOL_NOT_ALLOWED")
         if context.parent_allow_patterns is not None and not any(
-            _matches(definition.name, pattern)
-            for pattern in context.parent_allow_patterns
+            _matches(definition.name, pattern) for pattern in context.parent_allow_patterns
         ):
             return ToolPolicyDecision(False, "SUBAGENT_PERMISSION_ESCALATION")
         missing = definition.permissions - context.granted_permissions

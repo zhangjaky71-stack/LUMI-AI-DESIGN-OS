@@ -85,8 +85,10 @@ async def _scenario() -> None:
 
         async with session_factory() as session:
             rows = (
-                await session.execute(select(AuditEvent).where(AuditEvent.id == event_id))
-            ).scalars().all()
+                (await session.execute(select(AuditEvent).where(AuditEvent.id == event_id)))
+                .scalars()
+                .all()
+            )
         assert len(rows) == 1
         stored = rows[0]
         assert stored.organization_id == organization_id

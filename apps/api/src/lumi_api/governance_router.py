@@ -133,7 +133,9 @@ def create_governance_router(
     @router.get("/capabilities")
     async def capabilities(request: Request):
         actor = await resolve_actor(request)
-        platform_read = actor.actor_type == "PLATFORM_ADMIN" and "admin.audit.read" in actor.permissions
+        platform_read = (
+            actor.actor_type == "PLATFORM_ADMIN" and "admin.audit.read" in actor.permissions
+        )
         return {
             "can_read_audit": platform_read or "audit.read" in actor.permissions,
             "can_export_audit": "audit.export" in actor.permissions,
@@ -237,7 +239,10 @@ def create_governance_router(
         actor = await resolve_actor(request)
         try:
             return {
-                "items": [asdict(item) for item in engine.active_holds(actor, organization_id=organization_id)]
+                "items": [
+                    asdict(item)
+                    for item in engine.active_holds(actor, organization_id=organization_id)
+                ]
             }
         except GovernanceError as error:
             raise _problem(error, _request_id(request)) from error

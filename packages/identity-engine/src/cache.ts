@@ -1,5 +1,8 @@
 import { canonicalSha256 } from "../../design-ir/src/index";
-import type { IdentityReferenceSet, ThresholdCalibrationProfile } from "./types";
+import type {
+  IdentityReferenceSet,
+  ThresholdCalibrationProfile,
+} from "./types";
 
 export interface IdentityCacheKeyInput {
   readonly candidate_checksum_sha256: string;
@@ -10,7 +13,9 @@ export interface IdentityCacheKeyInput {
   readonly preprocessor_version: string;
 }
 
-export async function identityCacheKey(input: IdentityCacheKeyInput): Promise<string> {
+export async function identityCacheKey(
+  input: IdentityCacheKeyInput,
+): Promise<string> {
   const digest = await canonicalSha256({
     organization_id: input.identity.organization_id,
     candidate_checksum_sha256: input.candidate_checksum_sha256,

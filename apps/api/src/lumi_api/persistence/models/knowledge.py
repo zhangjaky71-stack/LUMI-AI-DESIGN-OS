@@ -53,8 +53,7 @@ class KnowledgeDocumentModel(IdMixin, MutableTimestampMixin, Base):
             name="source_type",
         ),
         CheckConstraint(
-            "trust IN ('INTERNAL_DATA','USER_CONTENT',"
-            "'EXTERNAL_UNTRUSTED','MODEL_GENERATED')",
+            "trust IN ('INTERNAL_DATA','USER_CONTENT','EXTERNAL_UNTRUSTED','MODEL_GENERATED')",
             name="trust",
         ),
         CheckConstraint(

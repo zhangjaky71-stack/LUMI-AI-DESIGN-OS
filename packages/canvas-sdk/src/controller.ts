@@ -1,4 +1,8 @@
-import { getDocumentVersion, type DesignDocument, type DesignOperation } from "../../design-ir/src/index";
+import {
+  getDocumentVersion,
+  type DesignDocument,
+  type DesignOperation,
+} from "../../design-ir/src/index";
 import type {
   ConstraintOverrideToken,
   DesignConstraint,
@@ -17,7 +21,11 @@ import { CanvasCompiler } from "./compiler";
 import type { CanvasSceneCompilerPort } from "./compiler-types";
 import type { CanvasSceneSnapshot } from "./ir-scene";
 import type { CanvasRendererAdapter, RendererSyncResult } from "./renderer";
-import { CanvasSelectionModel, type SelectionMode, type SelectionSnapshot } from "./selection";
+import {
+  CanvasSelectionModel,
+  type SelectionMode,
+  type SelectionSnapshot,
+} from "./selection";
 import { CanvasSpatialIndex } from "./spatial-index";
 import { CanvasTextEditSession } from "./text-edit";
 import { CanvasTransformSession } from "./transform-session";
@@ -84,8 +92,10 @@ export class CanvasController {
     this.#renderer = options.renderer;
     this.#assetResidency = options.asset_residency;
     this.#requestFrame =
-      options.request_frame ?? ((callback) => globalThis.requestAnimationFrame(callback));
-    this.#cancelFrame = options.cancel_frame ?? ((id) => globalThis.cancelAnimationFrame(id));
+      options.request_frame ??
+      ((callback) => globalThis.requestAnimationFrame(callback));
+    this.#cancelFrame =
+      options.cancel_frame ?? ((id) => globalThis.cancelAnimationFrame(id));
     this.#assetResidency?.setInvalidator?.(() => this.scheduleRender());
   }
 
@@ -115,7 +125,11 @@ export class CanvasController {
       width: Math.max(1, viewport.width),
       height: Math.max(1, viewport.height),
     };
-    this.#renderer?.resize(this.#viewport.width, this.#viewport.height, devicePixelRatio);
+    this.#renderer?.resize(
+      this.#viewport.width,
+      this.#viewport.height,
+      devicePixelRatio,
+    );
     this.scheduleRender();
   }
 
@@ -141,14 +155,19 @@ export class CanvasController {
   fitFrame(frameId: string, paddingScreenPx = 48): boolean {
     const frame = this.#scene.nodes.get(frameId);
     if (!frame || frame.kind !== "FRAME") return false;
-    this.#camera = fitWorldRect(frame.world_bounds, this.#viewport, paddingScreenPx);
+    this.#camera = fitWorldRect(
+      frame.world_bounds,
+      this.#viewport,
+      paddingScreenPx,
+    );
     this.scheduleRender();
     return true;
   }
 
   fitSelection(paddingScreenPx = 48): boolean {
-    const selected = this.selection.snapshot().ids
-      .map((id) => this.#scene.nodes.get(id)?.world_bounds)
+    const selected = this.selection
+      .snapshot()
+      .ids.map((id) => this.#scene.nodes.get(id)?.world_bounds)
       .filter((rect): rect is Rect => Boolean(rect));
     const bounds = unionRects(selected);
     if (!bounds) return false;
@@ -161,7 +180,10 @@ export class CanvasController {
     const bounds = unionRects(
       this.#scene.paint_order
         .map((id) => this.#scene.nodes.get(id))
-        .filter((node) => node && node.kind !== "DOCUMENT_ROOT" && node.kind !== "GUIDE")
+        .filter(
+          (node) =>
+            node && node.kind !== "DOCUMENT_ROOT" && node.kind !== "GUIDE",
+        )
         .map((node) => node!.world_bounds),
     );
     if (!bounds) return false;
@@ -185,15 +207,29 @@ export class CanvasController {
     return selected;
   }
 
-  marqueeScreen(rect: Rect, mode: SelectionMode = "replace"): readonly string[] {
+  marqueeScreen(
+    rect: Rect,
+    mode: SelectionMode = "replace",
+  ): readonly string[] {
     const normalized = normalizeRect(rect);
-    const start = screenToWorld({ x: normalized.x, y: normalized.y }, this.#camera);
+    const start = screenToWorld(
+      { x: normalized.x, y: normalized.y },
+      this.#camera,
+    );
     const end = screenToWorld(
-      { x: normalized.x + normalized.width, y: normalized.y + normalized.height },
+      {
+        x: normalized.x + normalized.width,
+        y: normalized.y + normalized.height,
+      },
       this.#camera,
     );
     const ids = this.selection.marquee(
-      { x: start.x, y: start.y, width: end.x - start.x, height: end.y - start.y },
+      {
+        x: start.x,
+        y: start.y,
+        width: end.x - start.x,
+        height: end.y - start.y,
+      },
       this.#spatial,
       mode,
     );
@@ -215,7 +251,12 @@ export class CanvasController {
     label = "transform",
     overrides: readonly ConstraintOverrideToken[] = [],
   ): CanvasCommandResult {
-    const result = this.#commands.dispatch(label, session.operations(), this.#constraints, overrides);
+    const result = this.#commands.dispatch(
+      label,
+      session.operations(),
+      this.#constraints,
+      overrides,
+    );
     if (result.accepted) this.#refreshScene();
     else this.scheduleRender();
     return result;
@@ -227,7 +268,12 @@ export class CanvasController {
     overrides: readonly ConstraintOverrideToken[] = [],
   ): CanvasCommandResult {
     const op = session.commitOperation(this.#commands.document, operationId);
-    const result = this.#commands.dispatch("text-edit", op ? [op] : [], this.#constraints, overrides);
+    const result = this.#commands.dispatch(
+      "text-edit",
+      op ? [op] : [],
+      this.#constraints,
+      overrides,
+    );
     if (result.accepted && op) this.#refreshScene();
     return result;
   }
@@ -237,12 +283,16 @@ export class CanvasController {
     dy: number,
     overrides: readonly ConstraintOverrideToken[] = [],
   ): CanvasCommandResult {
-    const session = this.beginTransform(`canvas-nudge-${getDocumentVersion(this.#commands.document)}`);
+    const session = this.beginTransform(
+      `canvas-nudge-${getDocumentVersion(this.#commands.document)}`,
+    );
     session.previewMove(dx, dy);
     return this.commitTransform(session, "nudge", overrides);
   }
 
-  deleteSelection(overrides: readonly ConstraintOverrideToken[] = []): CanvasCommandResult {
+  deleteSelection(
+    overrides: readonly ConstraintOverrideToken[] = [],
+  ): CanvasCommandResult {
     const selected = new Set(this.selection.snapshot().ids);
     const roots = [...selected].filter((id) => {
       let parentId = this.#scene.nodes.get(id)?.parent_id ?? null;
@@ -273,13 +323,17 @@ export class CanvasController {
     return result;
   }
 
-  undo(overrides: readonly ConstraintOverrideToken[] = []): CanvasCommandResult {
+  undo(
+    overrides: readonly ConstraintOverrideToken[] = [],
+  ): CanvasCommandResult {
     const result = this.#commands.undo(this.#constraints, overrides);
     if (result.accepted) this.#refreshScene();
     return result;
   }
 
-  redo(overrides: readonly ConstraintOverrideToken[] = []): CanvasCommandResult {
+  redo(
+    overrides: readonly ConstraintOverrideToken[] = [],
+  ): CanvasCommandResult {
     const result = this.#commands.redo(this.#constraints, overrides);
     if (result.accepted) this.#refreshScene();
     return result;
@@ -345,7 +399,10 @@ export class CanvasController {
       previousSelection.isolation_root_id &&
       this.#scene.nodes.has(previousSelection.isolation_root_id)
     ) {
-      this.selection.enterIsolation(previousSelection.isolation_root_id, this.#scene);
+      this.selection.enterIsolation(
+        previousSelection.isolation_root_id,
+        this.#scene,
+      );
       this.selection.set(
         previousSelection.ids.filter((id) => this.#scene.nodes.has(id)),
         previousSelection.primary_id,

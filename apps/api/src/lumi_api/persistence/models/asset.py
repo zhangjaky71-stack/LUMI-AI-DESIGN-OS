@@ -58,7 +58,9 @@ class AssetFile(IdMixin, MutableTimestampMixin, Base):
     __tablename__ = "asset_files"
     __table_args__ = (
         UniqueConstraint("asset_id", "variant", name="uq_asset_files_asset_variant"),
-        UniqueConstraint("organization_id", "bucket", "object_key", name="uq_asset_files_object_key"),
+        UniqueConstraint(
+            "organization_id", "bucket", "object_key", name="uq_asset_files_object_key"
+        ),
         Index("ix_asset_files_org_asset", "organization_id", "asset_id"),
     )
 

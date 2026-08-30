@@ -10,7 +10,14 @@ export interface Matrix2D {
   readonly ty: number;
 }
 
-export const IDENTITY_MATRIX: Matrix2D = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+export const IDENTITY_MATRIX: Matrix2D = {
+  a: 1,
+  b: 0,
+  c: 0,
+  d: 1,
+  tx: 0,
+  ty: 0,
+};
 
 export function multiplyMatrix(parent: Matrix2D, local: Matrix2D): Matrix2D {
   return {
@@ -25,7 +32,8 @@ export function multiplyMatrix(parent: Matrix2D, local: Matrix2D): Matrix2D {
 
 export function invertMatrix(matrix: Matrix2D): Matrix2D | null {
   const determinant = matrix.a * matrix.d - matrix.b * matrix.c;
-  if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) return null;
+  if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12)
+    return null;
   return {
     a: matrix.d / determinant,
     b: -matrix.b / determinant,
@@ -77,7 +85,11 @@ export function transformToMatrix(transform: DesignTransform = {}): Matrix2D {
   };
 }
 
-export function transformedRectBounds(matrix: Matrix2D, width: number, height: number): Rect {
+export function transformedRectBounds(
+  matrix: Matrix2D,
+  width: number,
+  height: number,
+): Rect {
   const corners = [
     applyMatrix(matrix, { x: 0, y: 0 }),
     applyMatrix(matrix, { x: width, y: 0 }),
@@ -93,7 +105,11 @@ export function transformedRectBounds(matrix: Matrix2D, width: number, height: n
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
-export function matrixApproximatelyEqual(left: Matrix2D, right: Matrix2D, epsilon = 1e-8): boolean {
+export function matrixApproximatelyEqual(
+  left: Matrix2D,
+  right: Matrix2D,
+  epsilon = 1e-8,
+): boolean {
   return (
     Math.abs(left.a - right.a) <= epsilon &&
     Math.abs(left.b - right.b) <= epsilon &&

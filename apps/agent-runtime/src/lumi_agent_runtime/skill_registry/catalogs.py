@@ -37,9 +37,7 @@ def load_skill_eval_catalog(path: Path) -> StaticNamedCatalog:
             raise SkillDefinitionInvalidError(f"Skill eval profile invalid: {key}")
         version = raw.get("version")
         if not isinstance(version, str) or not version:
-            raise SkillDefinitionInvalidError(
-                f"Skill eval profile version invalid: {key}"
-            )
+            raise SkillDefinitionInvalidError(f"Skill eval profile version invalid: {key}")
         rows[str(key)] = CatalogEntry(
             key=str(key),
             exact_version=version,
@@ -63,18 +61,12 @@ def _entries(
         version = raw.get("version")
         source_ref = raw.get("source_ref")
         if not isinstance(version, str) or not version:
-            raise SkillDefinitionInvalidError(
-                f"Skill schema version invalid: {key}"
-            )
+            raise SkillDefinitionInvalidError(f"Skill schema version invalid: {key}")
         if not isinstance(source_ref, str) or not source_ref:
-            raise SkillDefinitionInvalidError(
-                f"Skill schema source missing: {key}"
-            )
+            raise SkillDefinitionInvalidError(f"Skill schema source missing: {key}")
         source_path = source_root / source_ref
         if not source_path.is_file():
-            raise SkillDefinitionInvalidError(
-                f"Skill schema source not found: {source_ref}"
-            )
+            raise SkillDefinitionInvalidError(f"Skill schema source not found: {source_ref}")
         schema_payload = _read(source_path)
         rows[str(key)] = CatalogEntry(
             key=str(key),

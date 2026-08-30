@@ -31,7 +31,12 @@ export class ProgressiveAssetCache {
     this.#now = now;
   }
 
-  put(assetId: string, tier: AssetTier, bytes: number, initialReferences?: number): AssetCacheEntry {
+  put(
+    assetId: string,
+    tier: AssetTier,
+    bytes: number,
+    initialReferences?: number,
+  ): AssetCacheEntry {
     if (bytes <= 0) {
       throw new Error("asset cache entry bytes must be positive");
     }
@@ -73,7 +78,10 @@ export class ProgressiveAssetCache {
   remove(assetId: string, tier?: AssetTier): string[] {
     const removed: string[] = [];
     for (const [key, entry] of this.#entries) {
-      if (entry.assetId === assetId && (tier === undefined || entry.tier === tier)) {
+      if (
+        entry.assetId === assetId &&
+        (tier === undefined || entry.tier === tier)
+      ) {
         this.#entries.delete(key);
         removed.push(key);
       }
@@ -86,7 +94,9 @@ export class ProgressiveAssetCache {
     while (this.totalBytes > this.#budgetBytes) {
       const candidate = [...this.#entries.values()]
         .filter((entry) => entry.references === 0)
-        .sort((a, b) => a.lastAccess - b.lastAccess || a.key.localeCompare(b.key))[0];
+        .sort(
+          (a, b) => a.lastAccess - b.lastAccess || a.key.localeCompare(b.key),
+        )[0];
       if (!candidate) break;
       this.#entries.delete(candidate.key);
       evicted.push(candidate.key);

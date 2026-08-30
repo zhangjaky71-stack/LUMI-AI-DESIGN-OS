@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getDocumentVersion, type DesignDocument, type DesignOperation } from "@lumi/design-ir";
+import {
+  getDocumentVersion,
+  type DesignDocument,
+  type DesignOperation,
+} from "@lumi/design-ir";
 import { DeterministicInfiniteCanvasGateway } from "./canvas-gateway";
 import type { InfiniteCanvasSeed } from "./types";
 
@@ -10,7 +14,12 @@ function document(version = 3): DesignDocument {
     unit: "px",
     root_id: "root",
     nodes: {
-      root: { id: "root", kind: "DOCUMENT_ROOT", parent_id: null, children: ["frame"] },
+      root: {
+        id: "root",
+        kind: "DOCUMENT_ROOT",
+        parent_id: null,
+        children: ["frame"],
+      },
       frame: {
         id: "frame",
         kind: "FRAME",
@@ -33,7 +42,11 @@ function document(version = 3): DesignDocument {
 
 function seed(conflict = false): InfiniteCanvasSeed {
   return {
-    snapshot: { project_id: "project-1", document: document(), saved_at: "2026-08-15T00:00:00.000Z" },
+    snapshot: {
+      project_id: "project-1",
+      document: document(),
+      saved_at: "2026-08-15T00:00:00.000Z",
+    },
     conflict_on_next_save: conflict,
   };
 }
@@ -94,6 +107,8 @@ describe("DeterministicInfiniteCanvasGateway", () => {
         expected_document_version: 3,
         operations: [move(4)],
       }),
-    ).rejects.toMatchObject({ problem: { code: "DESIGN_OPERATION_VERSION_MISMATCH" } });
+    ).rejects.toMatchObject({
+      problem: { code: "DESIGN_OPERATION_VERSION_MISMATCH" },
+    });
   });
 });

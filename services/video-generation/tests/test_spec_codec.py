@@ -49,7 +49,9 @@ def _spec() -> VideoTaskSpec:
                 duration_seconds=Decimal("2.250"),
                 prompt="Hero reveal",
                 source_ref=source,
-                continuity_refs=(ContinuityRef(kind="FIRST_FRAME", durable_ref="asset:first-frame"),),
+                continuity_refs=(
+                    ContinuityRef(kind="FIRST_FRAME", durable_ref="asset:first-frame"),
+                ),
                 transition_to_next="CUT",
             ),
             ShotSpec(

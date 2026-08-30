@@ -11,7 +11,12 @@ function message(
   id: string,
   kind: WorkspaceMessage["kind"],
   text: string,
-  options: Partial<Pick<WorkspaceMessage, "run_id" | "artifact_version_id" | "approval_id" | "warning_code">> = {},
+  options: Partial<
+    Pick<
+      WorkspaceMessage,
+      "run_id" | "artifact_version_id" | "approval_id" | "warning_code"
+    >
+  > = {},
 ): WorkspaceMessage {
   return {
     id,
@@ -66,13 +71,19 @@ function seededRun(projectId: string): AgentRunSnapshot | null {
           finished_at: "2026-08-15T01:34:00.000Z",
           completed_units: 2,
           total_units: 4,
-          tool_summaries: [{ id: "tool-identity", label: "Checked product identity constraints" }],
+          tool_summaries: [
+            {
+              id: "tool-identity",
+              label: "Checked product identity constraints",
+            },
+          ],
           error: {
             code: "PROVIDER_TIMEOUT",
             safe_message: "主图像 Provider 超时；已保留可重试任务状态。",
             retrying: false,
             request_id: "req-timeline-retry-01",
-            provider_fallback: "Primary image provider → Backup provider available on retry",
+            provider_fallback:
+              "Primary image provider → Backup provider available on retry",
           },
         },
       ],
@@ -130,7 +141,9 @@ function seed(projectId: string): DeterministicWorkspaceSeed {
     expires_at: "2026-08-14T00:00:00.000Z",
   };
   const run = seededRun(projectId);
-  const hasLumiBrand = projectId === "project-summer-launch" || projectId === "project-store-signage";
+  const hasLumiBrand =
+    projectId === "project-summer-launch" ||
+    projectId === "project-store-signage";
   const snapshot: AIWorkspaceSnapshot = {
     project_id: projectId,
     project_name:
@@ -148,7 +161,10 @@ function seed(projectId: string): DeterministicWorkspaceSeed {
       ? {
           brand_profile_id: "brand-lumi-coffee",
           brand_name: "LUMI Coffee",
-          policy: projectId === "project-store-signage" ? "PINNED" : "CURRENT_PUBLISHED",
+          policy:
+            projectId === "project-store-signage"
+              ? "PINNED"
+              : "CURRENT_PUBLISHED",
           resolved_rule_set_version: "1.0.0",
         }
       : null,
@@ -159,9 +175,24 @@ function seed(projectId: string): DeterministicWorkspaceSeed {
       width: 1440,
       height: 1800,
       selection_options: [
-        { node_id: "node-hero-product", label: "Hero Product", kind: "image", locked_identity: true },
-        { node_id: "node-headline", label: "Headline", kind: "text", locked_identity: false },
-        { node_id: "node-offer", label: "Offer Badge", kind: "shape", locked_identity: false },
+        {
+          node_id: "node-hero-product",
+          label: "Hero Product",
+          kind: "image",
+          locked_identity: true,
+        },
+        {
+          node_id: "node-headline",
+          label: "Headline",
+          kind: "text",
+          locked_identity: false,
+        },
+        {
+          node_id: "node-offer",
+          label: "Offer Badge",
+          kind: "shape",
+          locked_identity: false,
+        },
       ],
     },
     references: [
@@ -188,7 +219,11 @@ function seed(projectId: string): DeterministicWorkspaceSeed {
     ],
     run,
     messages: [
-      message("message-welcome", "ANSWER", "项目工作区已就绪。你可以直接描述要完成的设计任务。"),
+      message(
+        "message-welcome",
+        "ANSWER",
+        "项目工作区已就绪。你可以直接描述要完成的设计任务。",
+      ),
       message(
         "message-provider-warning",
         "WARNING",
@@ -197,10 +232,15 @@ function seed(projectId: string): DeterministicWorkspaceSeed {
       ),
       ...(run?.status === "FAILED"
         ? [
-            message("message-retry-error", "ERROR", "视觉方向生成失败；可以从失败任务安全重试。", {
-              run_id: run.run_id,
-              warning_code: "PROVIDER_TIMEOUT",
-            }),
+            message(
+              "message-retry-error",
+              "ERROR",
+              "视觉方向生成失败；可以从失败任务安全重试。",
+              {
+                run_id: run.run_id,
+                warning_code: "PROVIDER_TIMEOUT",
+              },
+            ),
           ]
         : []),
       message("message-stale-approval", "APPROVAL", staleApproval.description, {
@@ -214,8 +254,13 @@ function seed(projectId: string): DeterministicWorkspaceSeed {
   return { snapshot, stale_approval_id: staleApproval.approval_id };
 }
 
-export function getAIWorkspaceBootstrap(projectId: string): AIWorkspaceBootstrap {
+export function getAIWorkspaceBootstrap(
+  projectId: string,
+): AIWorkspaceBootstrap {
   const e2e =
-    process.env.NODE_ENV !== "production" && process.env.LUMI_AI_WORKSPACE_E2E === "1";
-  return e2e ? { mode: "e2e", seed: seed(projectId) } : { mode: "http", seed: null };
+    process.env.NODE_ENV !== "production" &&
+    process.env.LUMI_AI_WORKSPACE_E2E === "1";
+  return e2e
+    ? { mode: "e2e", seed: seed(projectId) }
+    : { mode: "http", seed: null };
 }

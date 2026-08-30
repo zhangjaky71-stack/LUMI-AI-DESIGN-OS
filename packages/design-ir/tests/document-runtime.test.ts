@@ -28,20 +28,30 @@ describe("NODE-38 document runtime", () => {
     raw.nodes.headline!.children.push("root");
     const result = validateDocument(cyclic);
     expect(result.valid).toBe(false);
-    expect(result.issues.some((value) => value.code === "IR_GRAPH_CYCLE")).toBe(true);
+    expect(result.issues.some((value) => value.code === "IR_GRAPH_CYCLE")).toBe(
+      true,
+    );
   });
 
   it("queries local semantic slices without scanning in callers", () => {
-    expect(queryNodes(source, { kinds: ["TEXT"], parent_id: "root" }).map((node) => node.id)).toEqual([
-      "headline",
-    ]);
+    expect(
+      queryNodes(source, { kinds: ["TEXT"], parent_id: "root" }).map(
+        (node) => node.id,
+      ),
+    ).toEqual(["headline"]);
   });
 
   it("normalizes Unicode and excludes ephemeral metadata from document hashes", async () => {
     const left = structuredClone(source) as DesignDocument;
     const right = structuredClone(source) as DesignDocument;
-    const leftRaw = left as unknown as { metadata: Record<string, unknown>; nodes: Record<string, Record<string, unknown>> };
-    const rightRaw = right as unknown as { metadata: Record<string, unknown>; nodes: Record<string, Record<string, unknown>> };
+    const leftRaw = left as unknown as {
+      metadata: Record<string, unknown>;
+      nodes: Record<string, Record<string, unknown>>;
+    };
+    const rightRaw = right as unknown as {
+      metadata: Record<string, unknown>;
+      nodes: Record<string, Record<string, unknown>>;
+    };
     leftRaw.metadata.viewport = { x: 1, y: 2 };
     rightRaw.metadata.viewport = { x: 999, y: 999 };
     leftRaw.nodes.headline!.content = "Cafe\u0301";

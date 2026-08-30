@@ -26,7 +26,9 @@ const PRIVATE_EXECUTION_PATTERNS = [
   /BEGIN\s+PRIVATE/i,
 ];
 
-export function sanitizeTimelineText(value: string | null | undefined): string | null {
+export function sanitizeTimelineText(
+  value: string | null | undefined,
+): string | null {
   if (!value) return null;
   const compact = value.replace(/\s+/g, " ").trim().slice(0, 800);
   if (!compact) return null;
@@ -35,7 +37,9 @@ export function sanitizeTimelineText(value: string | null | undefined): string |
     : compact;
 }
 
-function cost(value: AgentCostSummary | null | undefined): TimelineCostSummary | null {
+function cost(
+  value: AgentCostSummary | null | undefined,
+): TimelineCostSummary | null {
   if (!value) return null;
   return {
     estimated_microusd: value.estimated_microusd ?? null,
@@ -48,7 +52,8 @@ function cost(value: AgentCostSummary | null | undefined): TimelineCostSummary |
 function taskCategory(task: AgentTaskSummary): TimelineCategory {
   if (task.category) return task.category;
   const label = task.label.toLowerCase();
-  if (/生成|generation|visual|image|video|render|repair|quality/.test(label)) return "GENERATION";
+  if (/生成|generation|visual|image|video|render|repair|quality/.test(label))
+    return "GENERATION";
   if (task.status === "FAILED") return "ERROR";
   return "AGENT";
 }
@@ -65,21 +70,30 @@ function progress(task: AgentTaskSummary): TimelineProgress | null {
   ) {
     return null;
   }
-  const safeCompleted = Math.max(0, Math.min(Math.floor(completed), Math.floor(total)));
+  const safeCompleted = Math.max(
+    0,
+    Math.min(Math.floor(completed), Math.floor(total)),
+  );
   const safeTotal = Math.max(1, Math.floor(total));
-  return { completed: safeCompleted, total: safeTotal, label: `${safeCompleted}/${safeTotal}` };
+  return {
+    completed: safeCompleted,
+    total: safeTotal,
+    label: `${safeCompleted}/${safeTotal}`,
+  };
 }
 
 function taskItem(task: AgentTaskSummary): TimelineItem {
-  const error = task.status === "FAILED" && task.error
-    ? {
-        code: task.error.code,
-        safe_message: sanitizeTimelineText(task.error.safe_message) ?? "任务执行失败。",
-        retrying: Boolean(task.error.retrying),
-        request_id: task.error.request_id ?? null,
-        provider_fallback: sanitizeTimelineText(task.error.provider_fallback),
-      }
-    : null;
+  const error =
+    task.status === "FAILED" && task.error
+      ? {
+          code: task.error.code,
+          safe_message:
+            sanitizeTimelineText(task.error.safe_message) ?? "任务执行失败。",
+          retrying: Boolean(task.error.retrying),
+          request_id: task.error.request_id ?? null,
+          provider_fallback: sanitizeTimelineText(task.error.provider_fallback),
+        }
+      : null;
   return {
     id: `task:${task.task_id}`,
     type: "TASK",
@@ -107,7 +121,11 @@ function taskItem(task: AgentTaskSummary): TimelineItem {
 
 function messageCategory(message: WorkspaceMessage): TimelineCategory {
   if (message.kind === "ERROR") return "ERROR";
-  if (message.kind === "WARNING" && message.warning_code === "PROVIDER_FALLBACK") return "GENERATION";
+  if (
+    message.kind === "WARNING" &&
+    message.warning_code === "PROVIDER_FALLBACK"
+  )
+    return "GENERATION";
   return "AGENT";
 }
 
@@ -136,7 +154,9 @@ function messageItem(message: WorkspaceMessage): TimelineItem | null {
     started_at: message.created_at,
     finished_at: message.created_at,
     task_id: null,
-    artifact_version_ids: message.artifact_version_id ? [message.artifact_version_id] : [],
+    artifact_version_ids: message.artifact_version_id
+      ? [message.artifact_version_id]
+      : [],
     approval_id: message.approval_id,
     progress: null,
     tool_actions: [],
@@ -144,7 +164,8 @@ function messageItem(message: WorkspaceMessage): TimelineItem | null {
       message.kind === "ERROR"
         ? {
             code: message.warning_code ?? "AGENT_TASK_FAILED",
-            safe_message: sanitizeTimelineText(message.text) ?? "任务执行失败。",
+            safe_message:
+              sanitizeTimelineText(message.text) ?? "任务执行失败。",
             retrying: false,
             request_id: null,
             provider_fallback: null,
@@ -171,7 +192,9 @@ export function projectAgentTimeline(
       category: run.status === "FAILED" ? "ERROR" : "AGENT",
       status: run.status,
       label: "Agent run",
-      safe_summary: sanitizeTimelineText(run.safe_summary) ?? `Run ${run.status.toLowerCase()}`,
+      safe_summary:
+        sanitizeTimelineText(run.safe_summary) ??
+        `Run ${run.status.toLowerCase()}`,
       started_at: run.started_at,
       finished_at: run.completed_at,
       task_id: null,
@@ -189,7 +212,13 @@ export function projectAgentTimeline(
   }
 
   for (const message of snapshot.messages) {
-    if (message.run_id && run && message.run_id !== run.run_id && message.kind !== "WARNING") continue;
+    if (
+      message.run_id &&
+      run &&
+      message.run_id !== run.run_id &&
+      message.kind !== "WARNING"
+    )
+      continue;
     const item = messageItem(message);
     if (item) items.push(item);
   }
@@ -228,7 +257,8 @@ export function projectAgentTimeline(
       label: approval.title,
       safe_summary: sanitizeTimelineText(approval.description),
       started_at: null,
-      finished_at: approval.state === "PENDING" ? null : run?.completed_at ?? null,
+      finished_at:
+        approval.state === "PENDING" ? null : (run?.completed_at ?? null),
       task_id: null,
       artifact_version_ids: approval.artifact_version_ids,
       approval_id: approval.approval_id,
@@ -249,7 +279,8 @@ export function projectAgentTimeline(
     });
   }
 
-  const visible = filter === "ALL" ? items : items.filter((item) => item.category === filter);
+  const visible =
+    filter === "ALL" ? items : items.filter((item) => item.category === filter);
   return {
     run_id: run?.run_id ?? null,
     run_status: run?.status ?? null,
@@ -262,7 +293,9 @@ export function projectAgentTimeline(
   };
 }
 
-export function timelineCategoryLabel(category: AgentTaskCategory | TimelineCategory): string {
+export function timelineCategoryLabel(
+  category: AgentTaskCategory | TimelineCategory,
+): string {
   if (category === "GENERATION") return "Generation";
   if (category === "APPROVAL") return "Approval";
   if (category === "ERROR") return "Error";

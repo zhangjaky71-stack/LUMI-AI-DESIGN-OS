@@ -9,7 +9,11 @@ import {
   type BrandTokenSet,
 } from "@lumi/brand-rules";
 import { LumiApiClient } from "@/lib/app-shell/api-client";
-import { brandKitProblem, draftPublishIssues, validateSaveDraftInput } from "./contracts";
+import {
+  brandKitProblem,
+  draftPublishIssues,
+  validateSaveDraftInput,
+} from "./contracts";
 import type {
   BrandComplianceInput,
   BrandComplianceResult,
@@ -27,9 +31,21 @@ import type {
 } from "./types";
 
 export interface BrandKitGateway {
-  getBrandKit(organizationId: string, brandId?: string | null, signal?: AbortSignal): Promise<BrandKitSnapshot>;
-  saveDraft(organizationId: string, input: SaveBrandDraftInput, signal?: AbortSignal): Promise<BrandKitSnapshot>;
-  uploadAsset(organizationId: string, input: UploadBrandAssetInput, signal?: AbortSignal): Promise<BrandKitSnapshot>;
+  getBrandKit(
+    organizationId: string,
+    brandId?: string | null,
+    signal?: AbortSignal,
+  ): Promise<BrandKitSnapshot>;
+  saveDraft(
+    organizationId: string,
+    input: SaveBrandDraftInput,
+    signal?: AbortSignal,
+  ): Promise<BrandKitSnapshot>;
+  uploadAsset(
+    organizationId: string,
+    input: UploadBrandAssetInput,
+    signal?: AbortSignal,
+  ): Promise<BrandKitSnapshot>;
   reviewGuideProposal(
     organizationId: string,
     input: ReviewGuideProposalInput,
@@ -78,14 +94,22 @@ export class HttpBrandKitGateway implements BrandKitGateway {
     this.#api = api;
   }
 
-  getBrandKit(_organizationId: string, brandId?: string | null, signal?: AbortSignal) {
+  getBrandKit(
+    _organizationId: string,
+    brandId?: string | null,
+    signal?: AbortSignal,
+  ) {
     const path = brandId
       ? `/brands/${encodeURIComponent(brandId)}/kit`
       : "/brands/active-kit";
     return this.#api.get<BrandKitSnapshot>(path, request(signal));
   }
 
-  saveDraft(_organizationId: string, input: SaveBrandDraftInput, signal?: AbortSignal) {
+  saveDraft(
+    _organizationId: string,
+    input: SaveBrandDraftInput,
+    signal?: AbortSignal,
+  ) {
     const safe = validateSaveDraftInput(input);
     return this.#api.patch<BrandKitSnapshot, Record<string, unknown>>(
       `/brands/${encodeURIComponent(safe.brand_profile_id)}/draft`,
@@ -101,9 +125,16 @@ export class HttpBrandKitGateway implements BrandKitGateway {
     );
   }
 
-  async uploadAsset(_organizationId: string, input: UploadBrandAssetInput, signal?: AbortSignal) {
+  async uploadAsset(
+    _organizationId: string,
+    input: UploadBrandAssetInput,
+    signal?: AbortSignal,
+  ) {
     input.on_progress?.(4, "UPLOADING");
-    const session = await this.#api.post<UploadSessionResponse, Record<string, unknown>>(
+    const session = await this.#api.post<
+      UploadSessionResponse,
+      Record<string, unknown>
+    >(
       "/assets/uploads",
       {
         brand_profile_id: input.brand_profile_id,
@@ -125,7 +156,10 @@ export class HttpBrandKitGateway implements BrandKitGateway {
       ...request(signal),
     });
     input.on_progress?.(82, "SCANNING");
-    const completed = await this.#api.post<UploadCompleteResponse, Record<string, unknown>>(
+    const completed = await this.#api.post<
+      UploadCompleteResponse,
+      Record<string, unknown>
+    >(
       `/assets/uploads/${encodeURIComponent(session.upload_id)}/complete`,
       {
         asset_id: session.asset_id,
@@ -152,7 +186,11 @@ export class HttpBrandKitGateway implements BrandKitGateway {
     return this.getBrandKit(_organizationId, input.brand_profile_id, signal);
   }
 
-  reviewGuideProposal(_organizationId: string, input: ReviewGuideProposalInput, signal?: AbortSignal) {
+  reviewGuideProposal(
+    _organizationId: string,
+    input: ReviewGuideProposalInput,
+    signal?: AbortSignal,
+  ) {
     return this.#api.post<BrandKitSnapshot, ReviewGuideProposalInput>(
       `/brands/${encodeURIComponent(input.brand_profile_id)}/guide-extractions/${encodeURIComponent(input.proposal_id)}/review`,
       input,
@@ -160,7 +198,11 @@ export class HttpBrandKitGateway implements BrandKitGateway {
     );
   }
 
-  publishDraft(_organizationId: string, input: PublishBrandDraftInput, signal?: AbortSignal) {
+  publishDraft(
+    _organizationId: string,
+    input: PublishBrandDraftInput,
+    signal?: AbortSignal,
+  ) {
     return this.#api.post<BrandKitSnapshot, PublishBrandDraftInput>(
       `/brands/${encodeURIComponent(input.brand_profile_id)}/publish`,
       input,
@@ -168,7 +210,11 @@ export class HttpBrandKitGateway implements BrandKitGateway {
     );
   }
 
-  updateProjectBinding(_organizationId: string, input: UpdateBrandBindingInput, signal?: AbortSignal) {
+  updateProjectBinding(
+    _organizationId: string,
+    input: UpdateBrandBindingInput,
+    signal?: AbortSignal,
+  ) {
     return this.#api.patch<BrandKitSnapshot, UpdateBrandBindingInput>(
       `/projects/${encodeURIComponent(input.project_id)}/brand-binding`,
       input,
@@ -176,7 +222,11 @@ export class HttpBrandKitGateway implements BrandKitGateway {
     );
   }
 
-  checkCompliance(_organizationId: string, input: BrandComplianceInput, signal?: AbortSignal) {
+  checkCompliance(
+    _organizationId: string,
+    input: BrandComplianceInput,
+    signal?: AbortSignal,
+  ) {
     return this.#api.post<BrandComplianceResult, BrandComplianceInput>(
       `/artifact-versions/${encodeURIComponent(input.artifact_version_id)}/brand-compliance`,
       input,
@@ -201,13 +251,21 @@ function draftVersionAfter(publishedVersion: string): string {
 function rebuildAssetSet(detail: BrandKitDetail): BrandAssetSet {
   return {
     ...detail.draft_asset_set,
-    logo_asset_ids: detail.logos.filter((item) => item.scan_status === "READY").map((item) => item.asset_id),
-    font_asset_ids: detail.fonts.filter((item) => item.scan_status === "READY").map((item) => item.asset_id),
+    logo_asset_ids: detail.logos
+      .filter((item) => item.scan_status === "READY")
+      .map((item) => item.asset_id),
+    font_asset_ids: detail.fonts
+      .filter((item) => item.scan_status === "READY")
+      .map((item) => item.asset_id),
     reference_asset_ids: detail.visual_assets
-      .filter((item) => item.scan_status === "READY" && item.polarity === "APPROVED")
+      .filter(
+        (item) => item.scan_status === "READY" && item.polarity === "APPROVED",
+      )
       .map((item) => item.asset_id),
     negative_reference_asset_ids: detail.visual_assets
-      .filter((item) => item.scan_status === "READY" && item.polarity === "NEGATIVE")
+      .filter(
+        (item) => item.scan_status === "READY" && item.polarity === "NEGATIVE",
+      )
       .map((item) => item.asset_id),
   };
 }
@@ -220,7 +278,11 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
     this.#snapshot = clone(seed);
   }
 
-  async getBrandKit(organizationId: string, brandId?: string | null, signal?: AbortSignal) {
+  async getBrandKit(
+    organizationId: string,
+    brandId?: string | null,
+    signal?: AbortSignal,
+  ) {
     this.#assertScope(organizationId, signal);
     if (brandId && brandId !== this.#snapshot.detail.profile.id) {
       throw brandKitProblem("BRAND_NOT_AVAILABLE_IN_FIXTURE", 404);
@@ -228,10 +290,17 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
     return clone(this.#snapshot);
   }
 
-  async saveDraft(organizationId: string, input: SaveBrandDraftInput, signal?: AbortSignal) {
+  async saveDraft(
+    organizationId: string,
+    input: SaveBrandDraftInput,
+    signal?: AbortSignal,
+  ) {
     this.#assertScope(organizationId, signal);
     const safe = validateSaveDraftInput(input);
-    const detail = this.#requireDetail(safe.brand_profile_id, safe.expected_draft_revision);
+    const detail = this.#requireDetail(
+      safe.brand_profile_id,
+      safe.expected_draft_revision,
+    );
     const nextDetail: BrandKitDetail = {
       ...detail,
       profile: { ...detail.profile, name: safe.name },
@@ -242,12 +311,19 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
       fonts: clone(safe.fonts),
       visual_assets: clone(safe.visual_assets),
     };
-    const withAssets = { ...nextDetail, draft_asset_set: rebuildAssetSet(nextDetail) };
+    const withAssets = {
+      ...nextDetail,
+      draft_asset_set: rebuildAssetSet(nextDetail),
+    };
     this.#replaceDetail(withAssets);
     return clone(this.#snapshot);
   }
 
-  async uploadAsset(organizationId: string, input: UploadBrandAssetInput, signal?: AbortSignal) {
+  async uploadAsset(
+    organizationId: string,
+    input: UploadBrandAssetInput,
+    signal?: AbortSignal,
+  ) {
     this.#assertScope(organizationId, signal);
     const detail = this.#requireDetail(input.brand_profile_id);
     input.on_progress?.(12, "UPLOADING");
@@ -256,7 +332,7 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
     input.on_progress?.(72, "SCANNING");
     await Promise.resolve();
     const rejected = /malware|scan-fail/i.test(input.file.name);
-    const scanStatus = rejected ? "REJECTED" as const : "READY" as const;
+    const scanStatus = rejected ? ("REJECTED" as const) : ("READY" as const);
     const assetId = `asset-brand-e2e-${++this.#counter}`;
     let nextDetail = detail;
 
@@ -274,26 +350,40 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
       };
       nextDetail = { ...nextDetail, logos: [...nextDetail.logos, asset] };
     } else if (input.kind === "FONT") {
-      const family = input.file.name.replace(/\.(woff2?|otf|ttf)$/i, "") || "Uploaded font";
+      const family =
+        input.file.name.replace(/\.(woff2?|otf|ttf)$/i, "") || "Uploaded font";
       const asset: BrandFontAsset = {
         asset_id: assetId,
         file_name: input.file.name,
         family,
         scan_status: scanStatus,
         rights_assertion: input.rights_assertion,
-        license_note: input.rights_assertion === "UNKNOWN" ? null : "Rights assertion recorded by uploader.",
+        license_note:
+          input.rights_assertion === "UNKNOWN"
+            ? null
+            : "Rights assertion recorded by uploader.",
         roles: ["BODY"],
       };
-      const tokenSet: BrandTokenSet = scanStatus === "READY"
-        ? {
-            ...nextDetail.draft_token_set,
-            fonts: [
-              ...nextDetail.draft_token_set.fonts,
-              { id: `font-${assetId}`, name: family, asset_id: assetId, roles: ["body"] },
-            ],
-          }
-        : nextDetail.draft_token_set;
-      nextDetail = { ...nextDetail, fonts: [...nextDetail.fonts, asset], draft_token_set: tokenSet };
+      const tokenSet: BrandTokenSet =
+        scanStatus === "READY"
+          ? {
+              ...nextDetail.draft_token_set,
+              fonts: [
+                ...nextDetail.draft_token_set.fonts,
+                {
+                  id: `font-${assetId}`,
+                  name: family,
+                  asset_id: assetId,
+                  roles: ["body"],
+                },
+              ],
+            }
+          : nextDetail.draft_token_set;
+      nextDetail = {
+        ...nextDetail,
+        fonts: [...nextDetail.fonts, asset],
+        draft_token_set: tokenSet,
+      };
     } else if (input.kind === "REFERENCE") {
       const asset: BrandVisualAsset = {
         asset_id: assetId,
@@ -304,7 +394,10 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
         polarity: input.reference_polarity ?? "APPROVED",
         role: input.reference_role ?? "PHOTOGRAPHY",
       };
-      nextDetail = { ...nextDetail, visual_assets: [...nextDetail.visual_assets, asset] };
+      nextDetail = {
+        ...nextDetail,
+        visual_assets: [...nextDetail.visual_assets, asset],
+      };
       const visualAssets = [...nextDetail.visual_assets];
       nextDetail = {
         ...nextDetail,
@@ -313,21 +406,33 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
           visual_references: {
             ...nextDetail.draft_rule_set.visual_references,
             reference_asset_ids: visualAssets
-              .filter((item) => item.scan_status === "READY" && item.polarity === "APPROVED")
+              .filter(
+                (item) =>
+                  item.scan_status === "READY" && item.polarity === "APPROVED",
+              )
               .map((item) => item.asset_id),
             negative_reference_asset_ids: visualAssets
-              .filter((item) => item.scan_status === "READY" && item.polarity === "NEGATIVE")
+              .filter(
+                (item) =>
+                  item.scan_status === "READY" && item.polarity === "NEGATIVE",
+              )
               .map((item) => item.asset_id),
           },
         },
       };
     } else {
-      if (!/pdf$/i.test(input.file.name) && input.file.type !== "application/pdf") {
+      if (
+        !/pdf$/i.test(input.file.name) &&
+        input.file.type !== "application/pdf"
+      ) {
         throw brandKitProblem("BRAND_GUIDE_MUST_BE_PDF", 400);
       }
       if (scanStatus === "READY") {
         const proposal = this.#guideProposal(nextDetail, assetId);
-        nextDetail = { ...nextDetail, guide_proposals: [proposal, ...nextDetail.guide_proposals] };
+        nextDetail = {
+          ...nextDetail,
+          guide_proposals: [proposal, ...nextDetail.guide_proposals],
+        };
       }
     }
 
@@ -347,11 +452,22 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
     signal?: AbortSignal,
   ) {
     this.#assertScope(organizationId, signal);
-    const detail = this.#requireDetail(input.brand_profile_id, input.expected_draft_revision);
-    const proposal = detail.guide_proposals.find((item) => item.id === input.proposal_id);
+    const detail = this.#requireDetail(
+      input.brand_profile_id,
+      input.expected_draft_revision,
+    );
+    const proposal = detail.guide_proposals.find(
+      (item) => item.id === input.proposal_id,
+    );
     if (!proposal) throw brandKitProblem("GUIDE_PROPOSAL_NOT_FOUND", 404);
-    const decisions = new Map(input.decisions.map((item) => [item.candidate_id, item]));
-    if (proposal.candidates.some((candidate) => !decisions.has(candidate.candidate_id))) {
+    const decisions = new Map(
+      input.decisions.map((item) => [item.candidate_id, item]),
+    );
+    if (
+      proposal.candidates.some(
+        (candidate) => !decisions.has(candidate.candidate_id),
+      )
+    ) {
       throw brandKitProblem("GUIDE_REVIEW_INCOMPLETE", 400);
     }
     const approvals = input.decisions
@@ -385,17 +501,27 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
         ...detail.draft_rule_set,
         rules: [...detail.draft_rule_set.rules, ...rules],
       },
-      guide_proposals: detail.guide_proposals.map((item) => item.id === reviewed.id ? reviewed : item),
+      guide_proposals: detail.guide_proposals.map((item) =>
+        item.id === reviewed.id ? reviewed : item,
+      ),
     };
     this.#replaceDetail(nextDetail);
     return clone(this.#snapshot);
   }
 
-  async publishDraft(organizationId: string, input: PublishBrandDraftInput, signal?: AbortSignal) {
+  async publishDraft(
+    organizationId: string,
+    input: PublishBrandDraftInput,
+    signal?: AbortSignal,
+  ) {
     this.#assertScope(organizationId, signal);
-    const detail = this.#requireDetail(input.brand_profile_id, input.expected_draft_revision);
+    const detail = this.#requireDetail(
+      input.brand_profile_id,
+      input.expected_draft_revision,
+    );
     const issues = draftPublishIssues(detail);
-    if (issues.length) throw brandKitProblem(`PUBLISH_BLOCKED_${issues.length}`, 422);
+    if (issues.length)
+      throw brandKitProblem(`PUBLISH_BLOCKED_${issues.length}`, 422);
     const currentVersion = detail.published_versions.at(-1)?.version ?? null;
     const publishedVersion = nextMajor(currentVersion);
     const publishedAt = "2026-08-15T04:30:00.000Z";
@@ -461,8 +587,13 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
     const detail = this.#requireDetail(input.brand_profile_id);
     const latest = detail.published_versions.at(-1)?.version ?? null;
     if (input.policy === "PINNED") {
-      if (!input.pinned_rule_set_version) throw brandKitProblem("PINNED_VERSION_REQUIRED", 400);
-      if (!detail.published_versions.some((item) => item.version === input.pinned_rule_set_version)) {
+      if (!input.pinned_rule_set_version)
+        throw brandKitProblem("PINNED_VERSION_REQUIRED", 400);
+      if (
+        !detail.published_versions.some(
+          (item) => item.version === input.pinned_rule_set_version,
+        )
+      ) {
         throw brandKitProblem("BRAND_RULE_VERSION_STALE", 409);
       }
     }
@@ -473,8 +604,14 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
           ? {
               ...binding,
               policy: input.policy,
-              pinned_rule_set_version: input.policy === "PINNED" ? input.pinned_rule_set_version : null,
-              resolved_rule_set_version: input.policy === "PINNED" ? input.pinned_rule_set_version : latest,
+              pinned_rule_set_version:
+                input.policy === "PINNED"
+                  ? input.pinned_rule_set_version
+                  : null,
+              resolved_rule_set_version:
+                input.policy === "PINNED"
+                  ? input.pinned_rule_set_version
+                  : latest,
             }
           : binding,
       ),
@@ -483,10 +620,18 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
     return clone(this.#snapshot);
   }
 
-  async checkCompliance(organizationId: string, input: BrandComplianceInput, signal?: AbortSignal) {
+  async checkCompliance(
+    organizationId: string,
+    input: BrandComplianceInput,
+    signal?: AbortSignal,
+  ) {
     this.#assertScope(organizationId, signal);
     const detail = this.#requireDetail(input.brand_profile_id);
-    if (!detail.published_versions.some((item) => item.version === input.brand_rule_set_version)) {
+    if (
+      !detail.published_versions.some(
+        (item) => item.version === input.brand_rule_set_version,
+      )
+    ) {
       throw brandKitProblem("BRAND_RULE_VERSION_STALE", 409);
     }
     const artifact = detail.compliance_artifacts.find(
@@ -532,7 +677,10 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
     };
   }
 
-  #guideProposal(detail: BrandKitDetail, sourceAssetId: string): BrandGuideExtractionProposal {
+  #guideProposal(
+    detail: BrandKitDetail,
+    sourceAssetId: string,
+  ): BrandGuideExtractionProposal {
     return createExtractionProposal({
       id: `guide-proposal-${++this.#counter}`,
       organization_id: detail.profile.organization_id,
@@ -543,7 +691,13 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
         {
           candidate_id: `guide-candidate-${this.#counter}-color`,
           confidence: 0.96,
-          citations: [{ source_asset_id: sourceAssetId, page: 8, span: "Primary palette / Amber #D9A441" }],
+          citations: [
+            {
+              source_asset_id: sourceAssetId,
+              page: 8,
+              span: "Primary palette / Amber #D9A441",
+            },
+          ],
           rule: {
             id: `rule-guide-${this.#counter}-color`,
             category: "COLOR",
@@ -552,14 +706,22 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
             source: "INFERRED_PROPOSAL",
             priority: 70,
             scope: {},
-            parameters: { token_ids: ["color-ink", "color-oat", "color-amber"] },
+            parameters: {
+              token_ids: ["color-ink", "color-oat", "color-amber"],
+            },
             active: true,
           },
         },
         {
           candidate_id: `guide-candidate-${this.#counter}-logo`,
           confidence: 0.91,
-          citations: [{ source_asset_id: sourceAssetId, page: 12, span: "Clear space = 0.18× mark width" }],
+          citations: [
+            {
+              source_asset_id: sourceAssetId,
+              page: 12,
+              span: "Clear space = 0.18× mark width",
+            },
+          ],
           rule: {
             id: `rule-guide-${this.#counter}-logo`,
             category: "LOGO",
@@ -575,7 +737,13 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
         {
           candidate_id: `guide-candidate-${this.#counter}-voice`,
           confidence: 0.84,
-          citations: [{ source_asset_id: sourceAssetId, page: 20, span: "Avoid superlative / unverifiable claims" }],
+          citations: [
+            {
+              source_asset_id: sourceAssetId,
+              page: 20,
+              span: "Avoid superlative / unverifiable claims",
+            },
+          ],
           rule: {
             id: `rule-guide-${this.#counter}-voice`,
             category: "VOICE",
@@ -594,7 +762,8 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
 
   #requireDetail(brandProfileId: string, revision?: number): BrandKitDetail {
     const detail = this.#snapshot.detail;
-    if (detail.profile.id !== brandProfileId) throw brandKitProblem("BRAND_NOT_FOUND", 404);
+    if (detail.profile.id !== brandProfileId)
+      throw brandKitProblem("BRAND_NOT_FOUND", 404);
     if (revision !== undefined && detail.draft_revision !== revision) {
       throw brandKitProblem("DRAFT_REVISION_CONFLICT", 409);
     }
@@ -629,7 +798,10 @@ export class DeterministicBrandKitGateway implements BrandKitGateway {
 let deterministicGateway: DeterministicBrandKitGateway | null = null;
 let deterministicKey = "";
 
-export function getBrandKitGateway(api: LumiApiClient, bootstrap: BrandKitBootstrap): BrandKitGateway {
+export function getBrandKitGateway(
+  api: LumiApiClient,
+  bootstrap: BrandKitBootstrap,
+): BrandKitGateway {
   if (bootstrap.mode !== "e2e") return new HttpBrandKitGateway(api);
   if (!bootstrap.seed) throw new Error("BRAND_KIT_E2E_SEED_REQUIRED");
   const key = `${bootstrap.seed.active_brand_id}:${bootstrap.seed.detail.draft_revision}`;

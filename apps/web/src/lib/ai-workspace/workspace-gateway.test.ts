@@ -16,7 +16,12 @@ function seed(): DeterministicWorkspaceSeed {
         width: 1200,
         height: 1500,
         selection_options: [
-          { node_id: "node-product", label: "Product", kind: "image", locked_identity: true },
+          {
+            node_id: "node-product",
+            label: "Product",
+            kind: "image",
+            locked_identity: true,
+          },
         ],
       },
       references: [],
@@ -71,7 +76,10 @@ describe("DeterministicAIWorkspaceGateway", () => {
     });
     expect(paused.status).toBe("PAUSED");
     await expect(
-      gateway.resumeRun("org-lumi", { run_id: run.run_id, expected_run_version: run.version }),
+      gateway.resumeRun("org-lumi", {
+        run_id: run.run_id,
+        expected_run_version: run.version,
+      }),
     ).rejects.toMatchObject({ problem: { code: "RUN_VERSION_CONFLICT" } });
     const resumed = await gateway.resumeRun("org-lumi", {
       run_id: paused.run_id,
@@ -142,6 +150,8 @@ describe("DeterministicAIWorkspaceGateway", () => {
       artifact_version_id: artifact.version_id,
     });
     expect(placed.document.version).toBe(current.document.version + 1);
-    expect(placed.messages.at(-1)?.artifact_version_id).toBe(artifact.version_id);
+    expect(placed.messages.at(-1)?.artifact_version_id).toBe(
+      artifact.version_id,
+    );
   });
 });

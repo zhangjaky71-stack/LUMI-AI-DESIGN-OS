@@ -21,9 +21,7 @@ class HostedAdapterCoverageTests(unittest.TestCase):
             adapters = _build_hosted_adapters()
 
         required = {
-            definition.key
-            for definition in build_p0_registry().definitions()
-            if definition.enabled
+            definition.key for definition in build_p0_registry().definitions() if definition.enabled
         }
         self.assertEqual(set(adapters), required)
         self.assertEqual(len(adapters), 8)

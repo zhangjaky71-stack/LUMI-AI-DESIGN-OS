@@ -251,9 +251,7 @@ class PostgresVideoArtifactAdapter:
                         connection,
                         edge_id=uuid5(version_id, f"composed:{index}:{clip_version}"),
                         organization_id=org_id,
-                        from_version_id=_uuid(
-                            clip_version, "VIDEO_CLIP_ARTIFACT_VERSION_INVALID"
-                        ),
+                        from_version_id=_uuid(clip_version, "VIDEO_CLIP_ARTIFACT_VERSION_INVALID"),
                         to_version_id=version_id,
                         edge_type="COMPOSED_FROM",
                         metadata={"ordinal": index + 1},

@@ -12,7 +12,12 @@ function documentFixture(): DesignDocument {
     unit: "px",
     root_id: "root",
     nodes: {
-      root: { id: "root", kind: "DOCUMENT_ROOT", parent_id: null, children: ["image"] },
+      root: {
+        id: "root",
+        kind: "DOCUMENT_ROOT",
+        parent_id: null,
+        children: ["image"],
+      },
       image: {
         id: "image",
         kind: "IMAGE",
@@ -78,20 +83,18 @@ describe("Design IR clipboard", () => {
   it("sanitizes runtime metadata and revalidates assets across documents", () => {
     const source = documentFixture();
     const fragment = createClipboardFragment(source, ["image"]);
-    expect(fragment.nodes.image?.metadata?.["runtime:pixi-handle"]).toBeUndefined();
+    expect(
+      fragment.nodes.image?.metadata?.["runtime:pixi-handle"],
+    ).toBeUndefined();
     const target: DesignDocument = {
       ...source,
       document_id: "target-doc",
       nodes: { root: source.nodes.root! },
       metadata: { document_version: 7 },
     };
-    const operations = buildPasteOperations(
-      fragment,
-      target,
-      "root",
-      "paste",
-      { mapAssetId: (assetId) => `copied-${assetId}` },
-    );
+    const operations = buildPasteOperations(fragment, target, "root", "paste", {
+      mapAssetId: (assetId) => `copied-${assetId}`,
+    });
     expect(operations).toHaveLength(1);
     const pasted = operations[0]?.payload.node as Record<string, unknown>;
     expect(pasted.asset_id).toBe("copied-asset-a");

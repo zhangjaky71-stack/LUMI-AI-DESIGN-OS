@@ -23,10 +23,15 @@ export function normalizeHexColor(value: string): string | null {
 
 function channel(value: string): number {
   const normalized = Number.parseInt(value, 16) / 255;
-  return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+  return normalized <= 0.04045
+    ? normalized / 12.92
+    : ((normalized + 0.055) / 1.055) ** 2.4;
 }
 
-export function contrastRatio(foreground: string, background: string): number | null {
+export function contrastRatio(
+  foreground: string,
+  background: string,
+): number | null {
   const fg = normalizeHexColor(foreground);
   const bg = normalizeHexColor(background);
   if (!fg || !bg) return null;
@@ -62,8 +67,13 @@ export function duplicateColorTokenIds(
 export function draftPublishIssues(detail: BrandKitDetail): readonly string[] {
   const issues: string[] = [];
   if (!detail.profile.name.trim()) issues.push("品牌名称不能为空。");
-  if (!detail.draft_token_set.colors.length) issues.push("至少需要一个品牌色 token。");
-  if (detail.draft_token_set.colors.some((color) => !normalizeHexColor(color.value))) {
+  if (!detail.draft_token_set.colors.length)
+    issues.push("至少需要一个品牌色 token。");
+  if (
+    detail.draft_token_set.colors.some(
+      (color) => !normalizeHexColor(color.value),
+    )
+  ) {
     issues.push("颜色 token 必须使用有效 HEX。");
   }
   if (duplicateColorTokenIds(detail.draft_token_set).length) {
@@ -71,13 +81,19 @@ export function draftPublishIssues(detail: BrandKitDetail): readonly string[] {
   }
 
   const activeLogoIds = new Set(detail.draft_asset_set.logo_asset_ids);
-  const activeLogos = detail.logos.filter((asset) => activeLogoIds.has(asset.asset_id));
+  const activeLogos = detail.logos.filter((asset) =>
+    activeLogoIds.has(asset.asset_id),
+  );
   if (activeLogos.some((asset) => asset.scan_status !== "READY")) {
     issues.push("BrandRuleSet 使用的 Logo 仍在扫描或已被拒绝，不能发布。");
   }
 
-  const usedFontAssets = new Set(detail.draft_token_set.fonts.map((font) => font.asset_id));
-  const relevantFonts = detail.fonts.filter((font) => usedFontAssets.has(font.asset_id));
+  const usedFontAssets = new Set(
+    detail.draft_token_set.fonts.map((font) => font.asset_id),
+  );
+  const relevantFonts = detail.fonts.filter((font) =>
+    usedFontAssets.has(font.asset_id),
+  );
   if (relevantFonts.some((font) => font.scan_status !== "READY")) {
     issues.push("被 BrandRuleSet 使用的字体尚未通过 Asset 验证。");
   }
@@ -101,14 +117,20 @@ export function draftPublishIssues(detail: BrandKitDetail): readonly string[] {
   return issues;
 }
 
-export function validateSaveDraftInput(input: SaveBrandDraftInput): SaveBrandDraftInput {
+export function validateSaveDraftInput(
+  input: SaveBrandDraftInput,
+): SaveBrandDraftInput {
   const name = input.name.trim();
   if (!name) throw brandKitProblem("BRAND_NAME_REQUIRED", 400);
-  if (!Number.isSafeInteger(input.expected_draft_revision) || input.expected_draft_revision < 1) {
+  if (
+    !Number.isSafeInteger(input.expected_draft_revision) ||
+    input.expected_draft_revision < 1
+  ) {
     throw brandKitProblem("DRAFT_REVISION_INVALID", 400);
   }
   for (const color of input.token_set.colors) {
-    if (!normalizeHexColor(color.value)) throw brandKitProblem("COLOR_HEX_INVALID", 400);
+    if (!normalizeHexColor(color.value))
+      throw brandKitProblem("COLOR_HEX_INVALID", 400);
   }
   return { ...input, name };
 }

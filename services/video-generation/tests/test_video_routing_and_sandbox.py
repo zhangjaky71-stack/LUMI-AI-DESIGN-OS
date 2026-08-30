@@ -109,12 +109,14 @@ class Resolver:
 
 def test_multi_track_audio_is_compiled_as_typed_delay_gain_and_amix() -> None:
     timeline = VideoTimeline(
-        clips=(TimelineClip(
-            shot_id="s1",
-            artifact_version_id="v1",
-            durable_ref="asset:video:v1",
-            duration_seconds=Decimal("3"),
-        ),),
+        clips=(
+            TimelineClip(
+                shot_id="s1",
+                artifact_version_id="v1",
+                durable_ref="asset:video:v1",
+                duration_seconds=Decimal("3"),
+            ),
+        ),
         overlays=(),
         audio_tracks=(
             TimelineAudioTrack("asset:audio:music", Decimal("0"), Decimal("-6")),

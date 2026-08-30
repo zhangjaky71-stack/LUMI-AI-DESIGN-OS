@@ -50,7 +50,9 @@ async def _head_and_table_count() -> None:
     engine = create_engine()
     try:
         async with engine.connect() as connection:
-            head = (await connection.execute(text("SELECT version_num FROM alembic_version"))).scalar_one()
+            head = (
+                await connection.execute(text("SELECT version_num FROM alembic_version"))
+            ).scalar_one()
             assert head == EXPECTED_ALEMBIC_HEAD
             rows = await connection.execute(
                 text(
@@ -130,7 +132,9 @@ async def _tenant_scope_and_optimistic_lock() -> None:
                 )
                 await tenant_a_repository.save(domain_project)
                 stored = await session.scalar(
-                    select(Project).where(Project.id == project_a_id, Project.organization_id == ORG_ID)
+                    select(Project).where(
+                        Project.id == project_a_id, Project.organization_id == ORG_ID
+                    )
                 )
                 assert stored is not None
                 expected = stored.version

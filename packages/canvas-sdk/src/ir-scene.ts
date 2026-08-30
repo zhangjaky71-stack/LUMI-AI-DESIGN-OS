@@ -1,4 +1,8 @@
-import type { DesignDocument, DesignNode, JsonValue } from "../../design-ir/src/index";
+import type {
+  DesignDocument,
+  DesignNode,
+  JsonValue,
+} from "../../design-ir/src/index";
 import { canonicalStringify } from "../../design-ir/src/index";
 import {
   IDENTITY_MATRIX,
@@ -105,7 +109,9 @@ function isRenderable(node: DesignNode): boolean {
   );
 }
 
-export function projectDesignDocument(document: DesignDocument): CanvasSceneSnapshot {
+export function projectDesignDocument(
+  document: DesignDocument,
+): CanvasSceneSnapshot {
   const nodes = new Map<string, CanvasSceneNode>();
   const diagnostics: CanvasNodeDiagnostic[] = [];
   const paintOrder: string[] = [];
@@ -159,7 +165,11 @@ export function projectDesignDocument(document: DesignDocument): CanvasSceneSnap
       local_matrix: local,
       world_matrix: world,
       local_bounds: localBounds,
-      world_bounds: transformedRectBounds(world, dimensions.width, dimensions.height),
+      world_bounds: transformedRectBounds(
+        world,
+        dimensions.width,
+        dimensions.height,
+      ),
       render_key: renderKey(node),
       ...(typeof node.asset_id === "string" ? { asset_id: node.asset_id } : {}),
       ...(typeof node.content === "string" ? { content: node.content } : {}),
@@ -173,7 +183,12 @@ export function projectDesignDocument(document: DesignDocument): CanvasSceneSnap
     for (const childId of node.children) {
       const child = document.nodes[childId];
       if (!child) {
-        diagnostic(diagnostics, childId, "MISSING_CHILD", `referenced by ${id}`);
+        diagnostic(
+          diagnostics,
+          childId,
+          "MISSING_CHILD",
+          `referenced by ${id}`,
+        );
         continue;
       }
       if (child.parent_id !== id) {
@@ -194,7 +209,12 @@ export function projectDesignDocument(document: DesignDocument): CanvasSceneSnap
 
   for (const node of Object.values(document.nodes)) {
     if (!visited.has(node.id)) {
-      diagnostic(diagnostics, node.id, "MISSING_PARENT", "node is unreachable from document root");
+      diagnostic(
+        diagnostics,
+        node.id,
+        "MISSING_PARENT",
+        "node is unreachable from document root",
+      );
       visit(node.id, IDENTITY_MATRIX, 0, true, false);
     }
   }
@@ -210,11 +230,16 @@ export function projectDesignDocument(document: DesignDocument): CanvasSceneSnap
   };
 }
 
-export function sceneNode(snapshot: CanvasSceneSnapshot, id: string): CanvasSceneNode | null {
+export function sceneNode(
+  snapshot: CanvasSceneSnapshot,
+  id: string,
+): CanvasSceneNode | null {
   return snapshot.nodes.get(id) ?? null;
 }
 
-export function visibleSceneNodes(snapshot: CanvasSceneSnapshot): CanvasSceneNode[] {
+export function visibleSceneNodes(
+  snapshot: CanvasSceneSnapshot,
+): CanvasSceneNode[] {
   return snapshot.paint_order
     .map((id) => snapshot.nodes.get(id))
     .filter((node): node is CanvasSceneNode => Boolean(node?.visible));

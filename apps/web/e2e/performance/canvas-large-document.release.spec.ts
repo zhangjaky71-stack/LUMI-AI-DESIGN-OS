@@ -46,7 +46,11 @@ function requireSha(name: string): string {
 function percentile(values: readonly number[], fraction: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)] ?? 0;
+  return (
+    sorted[
+      Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)
+    ] ?? 0
+  );
 }
 
 async function loadJson<T>(path: string): Promise<T> {
@@ -65,18 +69,28 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
     browser,
     page,
   }) => {
-    const profile = await loadJson<ProfileF>("perf/profiles/v1/F-canvas-large-document.json");
+    const profile = await loadJson<ProfileF>(
+      "perf/profiles/v1/F-canvas-large-document.json",
+    );
     const budgets = await loadJson<Budgets>("perf/budgets/v1.json");
-    const rootPackage = await loadJson<{ devDependencies: Record<string, string> }>("package.json");
+    const rootPackage = await loadJson<{
+      devDependencies: Record<string, string>;
+    }>("package.json");
     expect(profile.id).toBe("F");
     expect(profile.duration_seconds).toBe(600);
-    expect(profile.input.reference_device).toBe("node69-playwright-chromium-swiftshader-v1");
+    expect(profile.input.reference_device).toBe(
+      "node69-playwright-chromium-swiftshader-v1",
+    );
 
     const startedAt = new Date().toISOString();
     const externalRequests: string[] = [];
     await page.route("**/*", async (route) => {
       const url = new URL(route.request().url());
-      if (url.origin === allowedOrigin || url.protocol === "data:" || url.protocol === "blob:") {
+      if (
+        url.origin === allowedOrigin ||
+        url.protocol === "data:" ||
+        url.protocol === "blob:"
+      ) {
         await route.continue();
         return;
       }
@@ -97,9 +111,14 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
         cls: 0,
         eventDurations: [],
       };
-      (window as unknown as { __LUMI_RELEASE_PERF__?: PerfState }).__LUMI_RELEASE_PERF__ = state;
+      (
+        window as unknown as { __LUMI_RELEASE_PERF__?: PerfState }
+      ).__LUMI_RELEASE_PERF__ = state;
 
-      const observe = (type: string, callback: (entry: PerformanceEntry) => void) => {
+      const observe = (
+        type: string,
+        callback: (entry: PerformanceEntry) => void,
+      ) => {
         try {
           const observer = new PerformanceObserver((list) => {
             for (const entry of list.getEntries()) callback(entry);
@@ -150,7 +169,10 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
       throw cause;
     }
     const loadMs = Date.now() - loadStarted;
-    expect(externalRequests, "release measurement must not depend on external origins").toEqual([]);
+    expect(
+      externalRequests,
+      "release measurement must not depend on external origins",
+    ).toEqual([]);
 
     const canvas = page.locator('canvas[data-canvas-spike="pixi"]');
     await expect(canvas).toBeVisible();
@@ -161,7 +183,10 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
       type PixiLike = {
         Application: new () => {
           canvas: HTMLCanvasElement;
-          stage: { addChild(value: unknown): void; removeChild(value: unknown): void };
+          stage: {
+            addChild(value: unknown): void;
+            removeChild(value: unknown): void;
+          };
           init(options: Record<string, unknown>): Promise<void>;
           destroy(removeView?: boolean, options?: unknown): void;
         };
@@ -185,15 +210,27 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
         Assets: { load(source: string): Promise<unknown> };
       };
       const pixi = (window as unknown as { PIXI?: PixiLike }).PIXI;
-      if (!pixi) throw new Error("Pixi runtime unavailable for NODE-69 benchmark");
+      if (!pixi)
+        throw new Error("Pixi runtime unavailable for NODE-69 benchmark");
 
-      const percentileInPage = (values: readonly number[], fraction: number): number => {
+      const percentileInPage = (
+        values: readonly number[],
+        fraction: number,
+      ): number => {
         const sorted = [...values].sort((a, b) => a - b);
-        return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)] ?? 0;
+        return (
+          sorted[
+            Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)
+          ] ?? 0
+        );
       };
       const mean = (values: readonly number[]): number =>
-        values.reduce((total, value) => total + value, 0) / Math.max(values.length, 1);
-      const samples = async (frames: number, onFrame: (index: number) => void): Promise<number[]> => {
+        values.reduce((total, value) => total + value, 0) /
+        Math.max(values.length, 1);
+      const samples = async (
+        frames: number,
+        onFrame: (index: number) => void,
+      ): Promise<number[]> => {
         const values: number[] = [];
         let previous = performance.now();
         for (let index = 0; index < frames; index += 1) {
@@ -255,7 +292,12 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
           const graphic = new pixi.Graphics() as unknown as {
             x: number;
             y: number;
-            rect(x: number, y: number, width: number, height: number): {
+            rect(
+              x: number,
+              y: number,
+              width: number,
+              height: number,
+            ): {
               fill(color: number): unknown;
             };
           };
@@ -276,7 +318,9 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
 
       const productDataUri =
         "data:image/svg+xml;charset=utf-8," +
-        encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="56"><rect width="80" height="56" rx="6" fill="#d8b56d"/><circle cx="40" cy="28" r="14" fill="#4f3826"/></svg>');
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="56"><rect width="80" height="56" rx="6" fill="#d8b56d"/><circle cx="40" cy="28" r="14" fill="#4f3826"/></svg>',
+        );
       const measureImages = async (count: number) => {
         const texture = await pixi.Assets.load(productDataUri);
         const root = new pixi.Container();
@@ -335,20 +379,42 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
       const zoomStart = Date.now();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await page.mouse.wheel(0, pageCycle % 2 === 0 ? -120 : 120);
-      await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+      await page.evaluate(
+        () =>
+          new Promise<void>((done) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => done())),
+          ),
+      );
       zoomLatencies.push(Date.now() - zoomStart);
 
       const panStart = Date.now();
-      await page.mouse.move(box.x + box.width * 0.55, box.y + box.height * 0.55);
+      await page.mouse.move(
+        box.x + box.width * 0.55,
+        box.y + box.height * 0.55,
+      );
       await page.mouse.down({ button: "middle" });
-      await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.58, { steps: 2 });
+      await page.mouse.move(
+        box.x + box.width * 0.6,
+        box.y + box.height * 0.58,
+        { steps: 2 },
+      );
       await page.mouse.up({ button: "middle" });
-      await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+      await page.evaluate(
+        () =>
+          new Promise<void>((done) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => done())),
+          ),
+      );
       panLatencies.push(Date.now() - panStart);
 
       const interactionStart = Date.now();
       await page.mouse.click(box.x + 400, box.y + 528);
-      await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+      await page.evaluate(
+        () =>
+          new Promise<void>((done) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => done())),
+          ),
+      );
       interactionLatencies.push(Date.now() - interactionStart);
 
       const multiPage = await cycleNode69MultiPageHarness(page);
@@ -356,14 +422,17 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
       multiPageLatencies.push(multiPage.latency_ms);
 
       const heapMb = await page.evaluate(() => {
-        const memory = (performance as Performance & {
-          memory?: { usedJSHeapSize?: number };
-        }).memory;
+        const memory = (
+          performance as Performance & {
+            memory?: { usedJSHeapSize?: number };
+          }
+        ).memory;
         const used = memory?.usedJSHeapSize;
         if (!Number.isFinite(used)) return null;
         return (used as number) / 1024 / 1024;
       });
-      if (heapMb === null) throw new Error("precise Chromium heap telemetry unavailable");
+      if (heapMb === null)
+        throw new Error("precise Chromium heap telemetry unavailable");
       heapSamplesMb.push(heapMb);
 
       pageCycle += 1;
@@ -385,15 +454,25 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
         cls: number;
         eventDurations: number[];
       };
-      const state = (window as unknown as { __LUMI_RELEASE_PERF__?: PerfState }).__LUMI_RELEASE_PERF__;
-      if (!state) throw new Error("browser performance observer state unavailable");
-      const canvas = document.querySelector('canvas[data-canvas-spike="pixi"]') as HTMLCanvasElement | null;
-      if (!canvas) throw new Error("Pixi canvas unavailable for WebGL provenance");
-      const gl = (canvas.getContext("webgl2") || canvas.getContext("webgl")) as WebGLRenderingContext | null;
+      const state = (window as unknown as { __LUMI_RELEASE_PERF__?: PerfState })
+        .__LUMI_RELEASE_PERF__;
+      if (!state)
+        throw new Error("browser performance observer state unavailable");
+      const canvas = document.querySelector(
+        'canvas[data-canvas-spike="pixi"]',
+      ) as HTMLCanvasElement | null;
+      if (!canvas)
+        throw new Error("Pixi canvas unavailable for WebGL provenance");
+      const gl = (canvas.getContext("webgl2") ||
+        canvas.getContext("webgl")) as WebGLRenderingContext | null;
       if (!gl) throw new Error("WebGL context unavailable");
       const debug = gl.getExtension("WEBGL_debug_renderer_info");
-      const webglVendor = debug ? String(gl.getParameter(debug.UNMASKED_VENDOR_WEBGL)) : String(gl.getParameter(gl.VENDOR));
-      const webglRenderer = debug ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER));
+      const webglVendor = debug
+        ? String(gl.getParameter(debug.UNMASKED_VENDOR_WEBGL))
+        : String(gl.getParameter(gl.VENDOR));
+      const webglRenderer = debug
+        ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL))
+        : String(gl.getParameter(gl.RENDERER));
       return {
         user_agent: navigator.userAgent,
         webgl_vendor: webglVendor,
@@ -405,11 +484,16 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
       };
     });
 
-    if (browserTelemetry.lcp_ms <= 0) throw new Error("LCP evidence unavailable");
-    if (browserTelemetry.event_durations_ms.length === 0) throw new Error("INP/Event Timing evidence unavailable");
-    if (heapSamplesMb.length < 2) throw new Error("long-session heap evidence incomplete");
+    if (browserTelemetry.lcp_ms <= 0)
+      throw new Error("LCP evidence unavailable");
+    if (browserTelemetry.event_durations_ms.length === 0)
+      throw new Error("INP/Event Timing evidence unavailable");
+    if (heapSamplesMb.length < 2)
+      throw new Error("long-session heap evidence incomplete");
 
-    const fps = Math.min(...frameMetrics.map((metric) => metric.approximate_fps));
+    const fps = Math.min(
+      ...frameMetrics.map((metric) => metric.approximate_fps),
+    );
     const heapGrowthPerCycleMb =
       (heapSamplesMb[heapSamplesMb.length - 1]! - heapSamplesMb[0]!) /
       Math.max(1, heapSamplesMb.length - 1);
@@ -422,19 +506,29 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
       long_tasks: {
         count: browserTelemetry.long_tasks_ms.length,
         max_ms: Math.max(0, ...browserTelemetry.long_tasks_ms),
-        total_ms: browserTelemetry.long_tasks_ms.reduce((sum, value) => sum + value, 0),
+        total_ms: browserTelemetry.long_tasks_ms.reduce(
+          (sum, value) => sum + value,
+          0,
+        ),
       },
       heap_memory_mb: {
         first: heapSamplesMb[0],
         last: heapSamplesMb[heapSamplesMb.length - 1],
         max: Math.max(...heapSamplesMb),
         growth_per_cycle: heapGrowthPerCycleMb,
-        target_growth_per_cycle_max: budgets.canvas.memory_growth_mb_per_cycle_max,
+        target_growth_per_cycle_max:
+          budgets.canvas.memory_growth_mb_per_cycle_max,
         samples: heapSamplesMb.length,
       },
       load_ms: loadMs,
-      zoom_latency_ms: { p95: percentile(zoomLatencies, 0.95), samples: zoomLatencies.length },
-      pan_latency_ms: { p95: percentile(panLatencies, 0.95), samples: panLatencies.length },
+      zoom_latency_ms: {
+        p95: percentile(zoomLatencies, 0.95),
+        samples: zoomLatencies.length,
+      },
+      pan_latency_ms: {
+        p95: percentile(panLatencies, 0.95),
+        samples: panLatencies.length,
+      },
       interaction_latency_ms: {
         p95: percentile(interactionLatencies, 0.95),
         target_p95_max: budgets.latency_ms.local_interaction_p95_max,
@@ -457,7 +551,8 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
       evidence_head_sha: evidenceHeadSha,
       base_url: allowedOrigin,
       playwright_version: rootPackage.devDependencies["@playwright/test"],
-      browser_version: browser?.version() ?? page.context().browser()?.version() ?? "unknown",
+      browser_version:
+        browser?.version() ?? page.context().browser()?.version() ?? "unknown",
       user_agent: browserTelemetry.user_agent,
       os: `${os.platform()}-${os.release()}`,
       architecture: os.arch(),
@@ -495,7 +590,8 @@ test.describe("NODE-69 / F Canvas Large Document release evidence", () => {
       "inp_ms",
       "cls",
     ]) {
-      if (!(key in measurements)) throw new Error(`required F metric missing: ${key}`);
+      if (!(key in measurements))
+        throw new Error(`required F metric missing: ${key}`);
     }
     expect(result.external_requests).toEqual([]);
     expect(result.long_session_seconds).toBe(600);

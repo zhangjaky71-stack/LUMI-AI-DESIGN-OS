@@ -299,8 +299,7 @@ def test_qr_lock_fails_closed_when_qr_decoder_unavailable() -> None:
     )
     assert report.decision == "REJECT"
     assert any(
-        item.reason_code == "IMAGE_EDIT_QR_VALIDATOR_UNAVAILABLE"
-        for item in report.findings
+        item.reason_code == "IMAGE_EDIT_QR_VALIDATOR_UNAVAILABLE" for item in report.findings
     )
 
 
@@ -504,9 +503,7 @@ def model_request() -> ModelRequest:
         operation_id=UUID(OP),
         capability=Capability.IMAGE_MASK_EDIT,
         inputs={"instruction": "background black"},
-        constraints={
-            "required_capabilities": [Capability.IMAGE_REFERENCE_CONSISTENCY.value]
-        },
+        constraints={"required_capabilities": [Capability.IMAGE_REFERENCE_CONSISTENCY.value]},
     )
 
 

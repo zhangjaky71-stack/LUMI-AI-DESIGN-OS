@@ -103,7 +103,9 @@ def test_hard_position_lock_denies_without_candidate() -> None:
 
 
 def test_soft_position_lock_allows_with_warning() -> None:
-    result = guarded_execute(document=_document(), operations=[_operation()], constraints=[_constraint(severity="SOFT")])
+    result = guarded_execute(
+        document=_document(), operations=[_operation()], constraints=[_constraint(severity="SOFT")]
+    )
     assert result["preflight"]["decision"] == "ALLOW_WITH_WARNINGS"
     assert result["execution"]["ok"] is True
 
@@ -155,8 +157,12 @@ def test_equal_precedence_incompatible_rules_surface_conflict() -> None:
     resolved = resolve_constraints(
         _document(),
         [
-            _constraint(id="a", type="MIN_MARGIN", parameters={"container_id": "frame", "min_px": 24}),
-            _constraint(id="b", type="MIN_MARGIN", parameters={"container_id": "frame", "min_px": 48}),
+            _constraint(
+                id="a", type="MIN_MARGIN", parameters={"container_id": "frame", "min_px": 24}
+            ),
+            _constraint(
+                id="b", type="MIN_MARGIN", parameters={"container_id": "frame", "min_px": 48}
+            ),
         ],
     )
     assert len(resolved["conflicts"]) == 1

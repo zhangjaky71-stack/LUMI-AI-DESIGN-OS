@@ -10,21 +10,46 @@ function fixture(): DesignDocument {
     unit: "px",
     root_id: "root",
     nodes: {
-      root: { id: "root", kind: "DOCUMENT_ROOT", parent_id: null, children: ["frame"] },
+      root: {
+        id: "root",
+        kind: "DOCUMENT_ROOT",
+        parent_id: null,
+        children: ["frame"],
+      },
       frame: {
-        id: "frame", kind: "FRAME", name: "Frame", parent_id: "root", children: ["group", "top"],
-        visible: false, transform: { x: 0, y: 0, width: 500, height: 500 },
+        id: "frame",
+        kind: "FRAME",
+        name: "Frame",
+        parent_id: "root",
+        children: ["group", "top"],
+        visible: false,
+        transform: { x: 0, y: 0, width: 500, height: 500 },
       },
       group: {
-        id: "group", kind: "GROUP", name: "Group", parent_id: "frame", children: ["child"],
-        locked: true, transform: { x: 10, y: 20, width: 200, height: 200 },
+        id: "group",
+        kind: "GROUP",
+        name: "Group",
+        parent_id: "frame",
+        children: ["child"],
+        locked: true,
+        transform: { x: 10, y: 20, width: 200, height: 200 },
       },
       child: {
-        id: "child", kind: "TEXT", name: "Child", parent_id: "group", children: [], content: "Copy",
-        transform: { x: 5, y: 8, width: 80, height: 20 }, metadata: { fill: "#111111", font_size: 18 },
+        id: "child",
+        kind: "TEXT",
+        name: "Child",
+        parent_id: "group",
+        children: [],
+        content: "Copy",
+        transform: { x: 5, y: 8, width: 80, height: 20 },
+        metadata: { fill: "#111111", font_size: 18 },
       },
       top: {
-        id: "top", kind: "SHAPE", name: "Top", parent_id: "frame", children: [],
+        id: "top",
+        kind: "SHAPE",
+        name: "Top",
+        parent_id: "frame",
+        children: [],
         transform: { x: 250, y: 250, width: 80, height: 80 },
       },
     },
@@ -39,7 +64,10 @@ describe("Layers / Inspector model", () => {
     controller.selection.set(["child"], "child");
     const state = buildCanvasEditorState(controller.snapshot(), 4, "SAVED");
     expect(state.layers.map((layer) => layer.id)).toEqual(["frame"]);
-    expect(state.layers[0]?.children.map((layer) => layer.id)).toEqual(["top", "group"]);
+    expect(state.layers[0]?.children.map((layer) => layer.id)).toEqual([
+      "top",
+      "group",
+    ]);
     const group = state.layers[0]?.children[1];
     const child = group?.children[0];
     expect(child?.visible).toBe(true);
@@ -52,9 +80,13 @@ describe("Layers / Inspector model", () => {
   it("marks one zero-rotation group as ungroupable and sibling selections as groupable", () => {
     const controller = new CanvasController(fixture());
     controller.selection.set(["group"], "group");
-    expect(buildCanvasEditorState(controller.snapshot(), 4, "SAVED").can_ungroup).toBe(false);
+    expect(
+      buildCanvasEditorState(controller.snapshot(), 4, "SAVED").can_ungroup,
+    ).toBe(false);
     controller.selection.set(["group", "top"], "top");
-    expect(buildCanvasEditorState(controller.snapshot(), 4, "SAVED").can_group).toBe(false);
+    expect(
+      buildCanvasEditorState(controller.snapshot(), 4, "SAVED").can_group,
+    ).toBe(false);
 
     const unlocked: DesignDocument = {
       ...fixture(),
@@ -65,8 +97,12 @@ describe("Layers / Inspector model", () => {
     };
     const second = new CanvasController(unlocked);
     second.selection.set(["group", "top"], "top");
-    expect(buildCanvasEditorState(second.snapshot(), 4, "SAVED").can_group).toBe(true);
+    expect(
+      buildCanvasEditorState(second.snapshot(), 4, "SAVED").can_group,
+    ).toBe(true);
     second.selection.set(["group"], "group");
-    expect(buildCanvasEditorState(second.snapshot(), 4, "SAVED").can_ungroup).toBe(true);
+    expect(
+      buildCanvasEditorState(second.snapshot(), 4, "SAVED").can_ungroup,
+    ).toBe(true);
   });
 });
