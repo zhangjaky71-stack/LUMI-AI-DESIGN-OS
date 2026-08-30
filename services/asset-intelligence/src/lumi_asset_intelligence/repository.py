@@ -45,9 +45,7 @@ class InMemoryAssetIndexRepository(AssetIndexRepository):
         if scope.commercial_use and not record.commercial_use_allowed:
             return False
         required = set(record.permission_tags)
-        if required and not required.issubset(set(scope.permission_tags)):
-            return False
-        return True
+        return not required or required.issubset(set(scope.permission_tags))
 
     @staticmethod
     def _filters_allow(record: AssetAnalysisRecord, filters: AssetSearchFilters) -> bool:
@@ -63,9 +61,7 @@ class InMemoryAssetIndexRepository(AssetIndexRepository):
             return False
         if filters.created_after and record.created_at < filters.created_after:
             return False
-        if filters.created_before and record.created_at > filters.created_before:
-            return False
-        return True
+        return not filters.created_before or record.created_at <= filters.created_before
 
     def scoped_candidates(
         self,
