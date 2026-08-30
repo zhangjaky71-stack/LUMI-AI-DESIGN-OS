@@ -5,6 +5,7 @@ on:
     branches: [release-closure-p0]
     paths:
       - .github/workflows/agent-team-candidate-repair-v2.yml
+  workflow_dispatch:
 
 permissions:
   contents: write
