@@ -73,7 +73,7 @@ jobs:
         run: uv sync --all-packages --frozen
       - name: Observability regression tests
         run: |
-          uv run pytest \
+          uv run pytest --import-mode=importlib \
             apps/api/tests/test_observability.py \
             apps/agent-runtime/tests/test_observability.py \
             apps/worker-media/tests/test_event_runtime.py \
