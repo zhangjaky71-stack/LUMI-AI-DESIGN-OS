@@ -91,7 +91,8 @@ jobs:
       - name: Verify Approval durable schema
         env: { PGPASSWORD: lumi }
         run: |
-          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.tables where table_name in ('approvals','approval_decisions','approval_change_requests','approval_audit_events');\")" = "4"
+          table_count="$(psql -h 127.0.0.1 -U lumi -d lumi -Atc "select count(*) from information_schema.tables where table_name in ('approvals','approval_decisions','approval_change_requests','approval_audit_events');")"
+          test "$table_count" = "4"
           psql -h 127.0.0.1 -U lumi -d lumi -Atc "select data_type from information_schema.columns where table_name='approvals' and column_name='required_roles';" | grep -qx jsonb
           psql -h 127.0.0.1 -U lumi -d lumi -Atc "select count(*) from pg_constraint where conrelid='approval_change_requests'::regclass and contype='f';" | grep -qx 2
 
