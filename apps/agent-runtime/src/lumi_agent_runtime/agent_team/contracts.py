@@ -150,9 +150,7 @@ def definition_tool_names(definition: AgentDefinition) -> frozenset[str]:
 
 
 def definition_permission_names(definition: AgentDefinition) -> frozenset[str]:
-    return frozenset(
-        key for key, enabled in definition.permissions.items() if enabled
-    )
+    return frozenset(key for key, enabled in definition.permissions.items() if enabled)
 
 
 def team_profile(definition: AgentDefinition) -> AgentTeamProfile:
