@@ -92,7 +92,7 @@ class PostgresTaskGraphStore:
             )
             task_rows = [_task_insert_row(task) for task in bundle.tasks]
             await connection.executemany(_TASK_INSERT_SQL, task_rows)
-            dependency_rows = [
+            dependency_rows: list[tuple[object, ...]] = [
                 (uuid4(), task.organization_id, task.task_id, dependency)
                 for task in bundle.tasks
                 for dependency in task.depends_on
@@ -406,6 +406,8 @@ class PostgresTaskGraphStore:
                 is_terminal,
                 now,
             )
+            if row is None:
+                raise TaskGraphConflictError("TASK_FINISH_UPDATE_CONFLICT")
             attempt = int(current["attempt_count"])
             result = await connection.execute(
                 """
@@ -694,6 +696,8 @@ class PostgresTaskGraphStore:
                 concurrency_group or parent["concurrency_group"],
                 concurrency_limit or parent_concurrency,
             )
+            if row is None:
+                raise TaskGraphExpansionError("TASK_DYNAMIC_INSERT_FAILED")
             await connection.execute(
                 """
                     UPDATE task_graph_instances
