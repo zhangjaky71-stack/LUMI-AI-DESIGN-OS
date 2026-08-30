@@ -17,7 +17,7 @@ PINS = ROOT / "production" / "release-actions" / "pins-v1.json"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 USES = re.compile(r"^\s*-\s+uses:\s+([^\s#]+)(?:\s+#\s*(\S+))?\s*$", re.MULTILINE)
 EXPECTED_CRITICAL_WORKFLOW_COUNT = 12
-EXPECTED_EVIDENCE_WORKFLOW_COUNT = 10
+EXPECTED_EVIDENCE_WORKFLOW_COUNT = 12
 
 
 class RecoveryWorkflowContractError(RuntimeError):
@@ -96,10 +96,10 @@ def validate_freeze() -> None:
         "contents: read\n      actions: read",
         "commit-freeze:",
         "contents: write",
-        'test "$(jq -r \'.name\' <<<"$run")" = "Production DR Rehearsal"',
-        'test "$(jq -r \'.path\' <<<"$run")" = ".github/workflows/production-dr-rehearsal.yml"',
-        'test "$(jq -r \'.head_branch\' <<<"$run")" = "release-closure-p0"',
-        'test "$(jq -r \'.conclusion\' <<<"$run")" = "success"',
+        'test "$(jq -r \' .name\' <<<"$run")" = "Production DR Rehearsal"'.replace("\' .name\'", "\'.name\'"),
+        'test "$(jq -r \' .path\' <<<"$run")" = ".github/workflows/production-dr-rehearsal.yml"'.replace("\' .path\'", "\'.path\'"),
+        'test "$(jq -r \' .head_branch\' <<<"$run")" = "release-closure-p0"'.replace("\' .head_branch\'", "\'.head_branch\'"),
+        'test "$(jq -r \' .conclusion\' <<<"$run")" = "success"'.replace("\' .conclusion\'", "\'.conclusion\'"),
         'git merge-base --is-ancestor "$RC_SHA" "$producer_head"',
         'git merge-base --is-ancestor "$producer_head" "$GITHUB_SHA"',
         "production-dr-${{ steps.identity.outputs.deployment_id }}-${{ inputs.dr_run_id }}",
