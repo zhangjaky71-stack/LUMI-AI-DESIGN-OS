@@ -77,3 +77,23 @@ Validation identity for this refresh:
 - branch: `release-closure-p0`
 
 This refresh validates the accumulated repair batch only. It is **not** final NODE-73 authorization or product acceptance.
+
+## Python lint closure refresh — late 2026-08-30
+
+A fourth hosted refresh is intentionally triggered after the canonical main CI on `3c59d40d48613ddbf38b00bb68479b7cbc98802e` proved that Ruff formatting was already clean across 733 files but exposed 67 Ruff lint findings.
+
+The lint boundary and remaining findings were resolved without disabling correctness checks:
+
+- `ruff format --check` remains the canonical source of line-wrapping truth; `E501` is excluded from `ruff check` so historical SQL strings, diagnostics and other formatter-preserved literals do not duplicate the formatter as a second line-length gate.
+- Ruff correctness/import/upgrade/bugbear/simplification families remain enabled: `E`, `F`, `I`, `UP`, `B`, and `SIM`, with only `E501` ignored.
+- The remaining non-E501 findings were repaired directly: Task Graph `SIM117`/`SIM102`, public HTTP security `SIM118`, Python 3.12 test-helper `UP047` findings, an unused auth integration assignment, artifact-rights `SIM108`, and SVG sanitizer `SIM102`.
+- The Task Graph PostgreSQL edit only combines equivalent context-manager and guard structures; SQL conditions, lease semantics, state transitions and budget ceilings remain unchanged.
+
+Validation identity for this refresh:
+
+- pre-refresh branch head: `799f3437c55f8c1653df38abdbec885f4daba4a3`
+- prior hosted validation head: `3c59d40d48613ddbf38b00bb68479b7cbc98802e`
+- PR: `#135`
+- branch: `release-closure-p0`
+
+This refresh is intended to prove the Python lint closure on the exact accumulated repair state and to expose the next real code-level failures, if any. It is still **not** final NODE-73 product acceptance.
