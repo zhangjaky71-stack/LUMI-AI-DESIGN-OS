@@ -1,0 +1,189 @@
+name: Queue Event Quality Repair
+
+on:
+  push:
+    branches: [release-closure-p0]
+    paths:
+      - .github/workflows/queue-event-quality-repair.yml
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release-closure-p0
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Apply reviewed NODE-19 quality repairs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected exactly one marker in {path}: {old!r}")
+              target.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "apps/api/src/lumi_api/persistence/models/asset.py",
+              '            "scanner_status IS NULL OR scanner_status IN (\'CLEAN\',\'INFECTED\',\'SCAN_UNAVAILABLE\',\'ERROR\')",\n',
+              '            (\n'
+              '                "scanner_status IS NULL OR scanner_status IN "\n'
+              '                "(\'CLEAN\',\'INFECTED\',\'SCAN_UNAVAILABLE\',\'ERROR\')"\n'
+              '            ),\n',
+          )
+          replace_once(
+              "apps/api/src/lumi_api/persistence/models/asset.py",
+              '            "source_type IN (\'USER_UPLOAD\',\'GENERATED\',\'LICENSED\',\'PUBLIC_DOMAIN\',\'THIRD_PARTY\',\'UNKNOWN\')",\n',
+              '            (\n'
+              '                "source_type IN "\n'
+              '                "(\'USER_UPLOAD\',\'GENERATED\',\'LICENSED\',\'PUBLIC_DOMAIN\',\'THIRD_PARTY\',\'UNKNOWN\')"\n'
+              '            ),\n',
+          )
+          replace_once(
+              "apps/api/src/lumi_api/persistence/models/asset.py",
+              '            "license_type IN (\'OWNED\',\'COMMERCIAL_LICENSE\',\'NONCOMMERCIAL\',\'PUBLIC_DOMAIN\',\'CC_BY\',\'CC_BY_SA\',\'UNKNOWN\')",\n',
+              '            (\n'
+              '                "license_type IN "\n'
+              '                "(\'OWNED\',\'COMMERCIAL_LICENSE\',\'NONCOMMERCIAL\',\'PUBLIC_DOMAIN\',"\n'
+              '                "\'CC_BY\',\'CC_BY_SA\',\'UNKNOWN\')"\n'
+              '            ),\n',
+          )
+          replace_once(
+              "apps/worker-media/src/lumi_worker_media/media_tools.py",
+              '        names = font["name"] if "name" in font else None\n',
+              '        names = font.get("name", None)\n',
+          )
+          replace_once(
+              "apps/worker-media/src/lumi_worker_media/task_base.py",
+              "import asyncio\nimport os\n",
+              "import asyncio\nimport os\nfrom contextlib import suppress\n",
+          )
+          replace_once(
+              "apps/worker-media/src/lumi_worker_media/task_base.py",
+              '        try:\n'
+              '            _record_final_failure(self, exc=exc, task_id=task_id, args=args, kwargs=kwargs)\n'
+              '        except Exception:\n'
+              '            # Failure reporting must never mask Celery\'s original failure state.\n'
+              '            pass\n',
+              '        # Failure reporting must never mask Celery\'s original failure state.\n'
+              '        with suppress(Exception):\n'
+              '            _record_final_failure(self, exc=exc, task_id=task_id, args=args, kwargs=kwargs)\n',
+          )
+          replace_once(
+              "apps/worker-media/src/lumi_worker_media/video_generation_repository.py",
+              '                    "UPDATE video_provider_jobs SET active=false, updated_at=now(), version=version+1 "\n',
+              '                    "UPDATE video_provider_jobs SET active=false, updated_at=now(), "\n'
+              '                    "version=version+1 "\n',
+          )
+          replace_once(
+              "apps/worker-media/src/lumi_worker_media/video_job_runtime.py",
+              '            error_message="provider video reached terminal failure during cancellation reconciliation",\n',
+              '            error_message=(\n'
+              '                "provider video reached terminal failure during cancellation "\n'
+              '                "reconciliation"\n'
+              '            ),\n',
+          )
+          replace_once(
+              "apps/worker-media/tests/integration/test_image_artifact_event_postgres.py",
+              '                    "DELETE FROM artifact_provenance WHERE organization_id=$1 AND artifact_version_id = ANY($2::uuid[])",\n',
+              '                    "DELETE FROM artifact_provenance WHERE organization_id=$1 "\n'
+              '                    "AND artifact_version_id = ANY($2::uuid[])",\n',
+          )
+          replace_once(
+              "apps/worker-media/tests/integration/test_image_artifact_event_postgres.py",
+              '                    "DELETE FROM artifact_files WHERE organization_id=$1 AND artifact_version_id = ANY($2::uuid[])",\n',
+              '                    "DELETE FROM artifact_files WHERE organization_id=$1 "\n'
+              '                    "AND artifact_version_id = ANY($2::uuid[])",\n',
+          )
+          replace_once(
+              "apps/worker-media/tests/test_event_runtime.py",
+              "        async def __aenter__(self) -> FakeTransaction:\n",
+              '        async def __aenter__(self) -> "FakeTransaction":\n',
+          )
+          replace_once(
+              "scripts/integration_queue_event_runtime.py",
+              '    with Connection(broker_url) as connection:\n'
+              '        with connection.SimpleQueue(domain_dlq(CONSUMER)) as dlq:\n'
+              '            dead = dlq.get(block=True, timeout=10)\n'
+              '            dead.ack()\n',
+              '    with (\n'
+              '        Connection(broker_url) as connection,\n'
+              '        connection.SimpleQueue(domain_dlq(CONSUMER)) as dlq,\n'
+              '    ):\n'
+              '        dead = dlq.get(block=True, timeout=10)\n'
+              '        dead.ack()\n',
+          )
+          replace_once(
+              "scripts/validate_queue_runtime_contract.py",
+              '        "from lumi_domain.job_dispatch import MAX_JOB_MESSAGE_BYTES, JobMessage, validate_job_payload",\n',
+              '        "from lumi_domain.job_dispatch import",\n'
+              '        "MAX_JOB_MESSAGE_BYTES",\n'
+              '        "JobMessage",\n'
+              '        "validate_job_payload",\n',
+          )
+          PY
+      - name: Normalize touched Python files
+        run: |
+          uv run ruff format \
+            apps/api/src/lumi_api/persistence/models/asset.py \
+            apps/worker-media/src/lumi_worker_media/media_tools.py \
+            apps/worker-media/src/lumi_worker_media/task_base.py \
+            apps/worker-media/src/lumi_worker_media/video_generation_repository.py \
+            apps/worker-media/src/lumi_worker_media/video_job_runtime.py \
+            apps/worker-media/tests/integration/test_image_artifact_event_postgres.py \
+            apps/worker-media/tests/test_event_runtime.py \
+            scripts/integration_queue_event_runtime.py \
+            scripts/validate_queue_runtime_contract.py
+      - name: NODE-19 static contract
+        run: uv run python scripts/validate_queue_runtime_contract.py
+      - name: Queue runtime Ruff gate
+        run: >-
+          uv run ruff check
+          apps/worker-media
+          apps/api/src/lumi_api/persistence
+          apps/api/alembic/versions/0008_queue_event_runtime.py
+          scripts/validate_queue_runtime_contract.py
+          scripts/integration_queue_event_runtime.py
+      - name: Queue runtime unit tests
+        run: uv run pytest apps/worker-media/tests -q
+      - name: Patch sanity
+        run: git diff --check
+      - name: Commit validated NODE-19 repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/api/src/lumi_api/persistence/models/asset.py \
+            apps/worker-media/src/lumi_worker_media/media_tools.py \
+            apps/worker-media/src/lumi_worker_media/task_base.py \
+            apps/worker-media/src/lumi_worker_media/video_generation_repository.py \
+            apps/worker-media/src/lumi_worker_media/video_job_runtime.py \
+            apps/worker-media/tests/integration/test_image_artifact_event_postgres.py \
+            apps/worker-media/tests/test_event_runtime.py \
+            scripts/integration_queue_event_runtime.py \
+            scripts/validate_queue_runtime_contract.py
+          git commit -m "fix: normalize NODE-19 queue runtime quality [skip ci]"
+          git push origin HEAD:release-closure-p0
