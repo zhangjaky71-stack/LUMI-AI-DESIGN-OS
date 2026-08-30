@@ -183,7 +183,7 @@ def main() -> int:
         "MediaJobOutboxHealth",
         "DomainOutboxHealth",
         "async def health_snapshot",
-        'assert calls == ["jobs", "domain"]',
+        'assert calls == ["wake", "jobs", "domain"]',
         "OUTBOX_DISPATCH_FAILED:jobs",
     )
     require(
