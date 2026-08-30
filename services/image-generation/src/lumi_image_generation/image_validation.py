@@ -192,15 +192,20 @@ def validate_provider_image(fetched: FetchedImage, spec: ImageGenerationSpec) ->
     if mime_type != expected_mime:
         raise ImageValidationError("IMAGE_OUTPUT_FORMAT_MISMATCH")
 
-    if spec.output_requirements.exact_dimensions:
-        if width != spec.target_width or height != spec.target_height:
-            raise ImageValidationError("IMAGE_OUTPUT_DIMENSIONS_MISMATCH")
-    if spec.output_requirements.minimum_width is not None:
-        if width < spec.output_requirements.minimum_width:
-            raise ImageValidationError("IMAGE_OUTPUT_WIDTH_BELOW_MINIMUM")
-    if spec.output_requirements.minimum_height is not None:
-        if height < spec.output_requirements.minimum_height:
-            raise ImageValidationError("IMAGE_OUTPUT_HEIGHT_BELOW_MINIMUM")
+    if spec.output_requirements.exact_dimensions and (
+        width != spec.target_width or height != spec.target_height
+    ):
+        raise ImageValidationError("IMAGE_OUTPUT_DIMENSIONS_MISMATCH")
+    if (
+        spec.output_requirements.minimum_width is not None
+        and width < spec.output_requirements.minimum_width
+    ):
+        raise ImageValidationError("IMAGE_OUTPUT_WIDTH_BELOW_MINIMUM")
+    if (
+        spec.output_requirements.minimum_height is not None
+        and height < spec.output_requirements.minimum_height
+    ):
+        raise ImageValidationError("IMAGE_OUTPUT_HEIGHT_BELOW_MINIMUM")
     if spec.output_requirements.transparent_background and not has_alpha:
         raise ImageValidationError("IMAGE_OUTPUT_ALPHA_REQUIRED")
 

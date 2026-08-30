@@ -64,7 +64,7 @@ def resume_command(envelope: ApprovalResumeEnvelopeLike) -> Command:
 
 
 def resume_payload(envelope: ApprovalResumeEnvelopeLike) -> dict[str, Any]:
-    """Serializable form for queue/checkpoint adapters that cannot carry Command objects directly."""
+    """Return the serializable resume form for queue/checkpoint adapters."""
     feedback = None
     if envelope.feedback is not None:
         feedback = {

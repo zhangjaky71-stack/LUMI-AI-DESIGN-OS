@@ -71,12 +71,12 @@ def main() -> int:
         if resolved.definition.version != "1.0.0":
             raise SystemExit(f"Recipe exact version unexpected: {recipe_id}")
     for release in manifest.releases:
-        if release.status == RecipeReleaseStatus.PRODUCTION:
-            if release.eval_status != "passed" or not release.eval_evidence:
-                raise SystemExit(
-                    f"production Recipe lacks eval evidence: "
-                    f"{release.recipe_id}@{release.version}"
-                )
+        if release.status == RecipeReleaseStatus.PRODUCTION and (
+            release.eval_status != "passed" or not release.eval_evidence
+        ):
+            raise SystemExit(
+                f"production Recipe lacks eval evidence: {release.recipe_id}@{release.version}"
+            )
     if {item.value for item in StepType} != EXPECTED_STEP_TYPES:
         raise SystemExit("NODE-32 StepType V1 contract drifted")
 
@@ -85,9 +85,7 @@ def main() -> int:
     )
     if recipe_schema.get("$id") != "urn:lumi:recipe:v1":
         raise SystemExit("NODE-32 Recipe DSL schema identity invalid")
-    schema_step_types = set(
-        recipe_schema["$defs"]["step"]["properties"]["type"]["enum"]
-    )
+    schema_step_types = set(recipe_schema["$defs"]["step"]["properties"]["type"]["enum"])
     if {item.upper() for item in schema_step_types} != EXPECTED_STEP_TYPES:
         raise SystemExit("NODE-32 Recipe DSL Step type enum drifted")
 
@@ -97,10 +95,7 @@ def main() -> int:
     if eval_registry.get("schema") != "lumi.recipe-eval-profile-registry.v1":
         raise SystemExit("NODE-32 Recipe eval profile registry invalid")
     known_profiles = set(eval_registry.get("profiles", {}))
-    declared_profiles = {
-        str(item.metadata.get("eval_profile"))
-        for item in definitions
-    }
+    declared_profiles = {str(item.metadata.get("eval_profile")) for item in definitions}
     if declared_profiles - known_profiles:
         raise SystemExit(
             f"Recipe eval profile missing: {sorted(declared_profiles - known_profiles)}"
@@ -165,14 +160,13 @@ def main() -> int:
             if isinstance(node, ast.ImportFrom) and node.module:
                 root = node.module.split(".", 1)[0]
                 if root in FORBIDDEN_IMPORTS:
-                    raise SystemExit(
-                        f"Recipe Engine imports ambient authority: {path}:{root}"
-                    )
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                if node.func.id in FORBIDDEN_BUILTINS:
-                    raise SystemExit(
-                        f"Recipe Engine calls forbidden builtin: {path}:{node.func.id}"
-                    )
+                    raise SystemExit(f"Recipe Engine imports ambient authority: {path}:{root}")
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id in FORBIDDEN_BUILTINS
+            ):
+                raise SystemExit(f"Recipe Engine calls forbidden builtin: {path}:{node.func.id}")
 
     for definition in definitions:
         for step in definition.steps:
@@ -183,12 +177,12 @@ def main() -> int:
                         f"parallel Recipe lacks bounded budget: "
                         f"{definition.identity}:{step.step_id}"
                     )
-            if step.step_type == StepType.FOREACH:
-                if step.foreach_count is None or not 1 <= step.foreach_count <= 8:
-                    raise SystemExit(
-                        f"foreach Recipe is unbounded: "
-                        f"{definition.identity}:{step.step_id}"
-                    )
+            if step.step_type == StepType.FOREACH and (
+                step.foreach_count is None or not 1 <= step.foreach_count <= 8
+            ):
+                raise SystemExit(
+                    f"foreach Recipe is unbounded: {definition.identity}:{step.step_id}"
+                )
 
     print("NODE-32 Workflow / Recipe Engine static contract: PASS")
     return 0

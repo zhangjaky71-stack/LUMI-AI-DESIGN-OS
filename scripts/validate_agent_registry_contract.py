@@ -34,9 +34,19 @@ def main() -> int:
     schema = json.loads((ROOT / "schemas/agent-definition-v1.schema.json").read_text())
     required = set(schema.get("required", []))
     expected = {
-        "id", "version", "role", "description", "model_policy", "tools",
-        "skills", "context_policy", "memory_policy", "budget_policy",
-        "permissions", "output_schema", "eval_profile",
+        "id",
+        "version",
+        "role",
+        "description",
+        "model_policy",
+        "tools",
+        "skills",
+        "context_policy",
+        "memory_policy",
+        "budget_policy",
+        "permissions",
+        "output_schema",
+        "eval_profile",
     }
     if not expected <= required:
         raise SystemExit("AgentDefinition schema misses required fields")
@@ -72,7 +82,13 @@ def main() -> int:
     bootstrap = json.loads(
         (ROOT / "config/agent-registry/bootstrap-dependencies.v1.json").read_text()
     )
-    for section in ("skills", "context_policies", "budget_policies", "output_schemas", "eval_profiles"):
+    for section in (
+        "skills",
+        "context_policies",
+        "budget_policies",
+        "output_schemas",
+        "eval_profiles",
+    ):
         if not bootstrap.get(section):
             raise SystemExit(f"bootstrap dependency section missing: {section}")
     for row in bootstrap["output_schemas"].values():
@@ -124,7 +140,9 @@ def main() -> int:
             if isinstance(node, ast.Import):
                 names = {alias.name.split(".", 1)[0] for alias in node.names}
                 if names & forbidden:
-                    raise SystemExit(f"Agent Registry imports ambient authority: {path}:{names & forbidden}")
+                    raise SystemExit(
+                        f"Agent Registry imports ambient authority: {path}:{names & forbidden}"
+                    )
             if isinstance(node, ast.ImportFrom) and node.module:
                 root = node.module.split(".", 1)[0]
                 if root in forbidden:

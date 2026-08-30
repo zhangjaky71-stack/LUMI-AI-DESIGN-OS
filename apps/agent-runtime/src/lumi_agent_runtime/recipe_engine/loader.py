@@ -184,9 +184,8 @@ def _validate_step_shape(step: RecipeStep) -> None:
             raise RecipeDefinitionInvalidError("RECIPE_AGENT_REF_REQUIRED")
     elif step.skill_refs:
         raise RecipeDefinitionInvalidError("RECIPE_SKILLS_ONLY_ALLOWED_ON_AGENT")
-    if step.step_type in {StepType.DETERMINISTIC, StepType.FINALIZE}:
-        if step.service_key is None:
-            raise RecipeDefinitionInvalidError("RECIPE_SERVICE_KEY_REQUIRED")
+    if step.step_type in {StepType.DETERMINISTIC, StepType.FINALIZE} and step.service_key is None:
+        raise RecipeDefinitionInvalidError("RECIPE_SERVICE_KEY_REQUIRED")
     if step.step_type == StepType.MEDIA_JOB and step.media_operation is None:
         raise RecipeDefinitionInvalidError("RECIPE_MEDIA_OPERATION_REQUIRED")
     if step.step_type == StepType.SUBRECIPE and step.recipe_ref is None:

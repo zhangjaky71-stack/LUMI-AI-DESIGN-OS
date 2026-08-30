@@ -74,7 +74,7 @@ class RecipeRegistry:
             if version is None:
                 raise RecipeVersionResolutionError(
                     f"no production Recipe matches: {recipe_id}@{selector}"
-                )
+                ) from None
             return version, self._release(recipe_id, version)
         release = self._release(recipe_id, selector)
         if release.status in {RecipeReleaseStatus.DRAFT, RecipeReleaseStatus.DISABLED}:

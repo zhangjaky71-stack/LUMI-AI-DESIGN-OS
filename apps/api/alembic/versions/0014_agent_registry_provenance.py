@@ -39,20 +39,30 @@ def upgrade() -> None:
             provenance_hash char(64) NOT NULL,
             dependencies_json jsonb NOT NULL,
             created_at timestamptz NOT NULL DEFAULT now(),
-            CONSTRAINT ck_agent_run_provenance_status CHECK (release_status IN ('DRAFT','CANDIDATE','PRODUCTION','DEPRECATED','DISABLED')),
-            CONSTRAINT ck_agent_run_provenance_definition_hash CHECK (definition_hash ~ '^[0-9a-f]{64}$'),
-            CONSTRAINT ck_agent_run_provenance_prompt_hash CHECK (system_prompt_hash ~ '^[0-9a-f]{64}$'),
+            CONSTRAINT ck_agent_run_provenance_status CHECK (
+                release_status IN ('DRAFT','CANDIDATE','PRODUCTION','DEPRECATED','DISABLED')
+            ),
+            CONSTRAINT ck_agent_run_provenance_definition_hash CHECK (
+                definition_hash ~ '^[0-9a-f]{64}$'
+            ),
+            CONSTRAINT ck_agent_run_provenance_prompt_hash CHECK (
+                system_prompt_hash ~ '^[0-9a-f]{64}$'
+            ),
             CONSTRAINT ck_agent_run_provenance_hash CHECK (provenance_hash ~ '^[0-9a-f]{64}$'),
             CONSTRAINT ck_agent_run_provenance_revision CHECK (release_manifest_revision >= 1),
-            CONSTRAINT ck_agent_run_provenance_dependencies_size CHECK (octet_length(dependencies_json::text) <= 1048576)
+            CONSTRAINT ck_agent_run_provenance_dependencies_size CHECK (
+                octet_length(dependencies_json::text) <= 1048576
+            )
         )
         """
     )
     op.execute(
-        "CREATE INDEX ix_agent_run_provenance_org_agent ON agent_run_provenance (organization_id, agent_id, exact_version)"
+        "CREATE INDEX ix_agent_run_provenance_org_agent "
+        "ON agent_run_provenance (organization_id, agent_id, exact_version)"
     )
     op.execute(
-        "CREATE INDEX ix_agent_run_provenance_project_created ON agent_run_provenance (project_id, created_at)"
+        "CREATE INDEX ix_agent_run_provenance_project_created "
+        "ON agent_run_provenance (project_id, created_at)"
     )
     if _lumi_app_exists():
         op.execute("REVOKE UPDATE, DELETE ON agent_run_provenance FROM lumi_app")

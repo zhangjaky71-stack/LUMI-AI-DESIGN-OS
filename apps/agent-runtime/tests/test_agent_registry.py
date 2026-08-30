@@ -6,7 +6,9 @@ from dataclasses import replace
 from pathlib import Path
 
 from lumi_agent_runtime.agent_registry import (
+    AgentDefinitionInvalidError,
     AgentDependencyError,
+    AgentPromptPolicyError,
     AgentRegistry,
     AgentValidator,
     CatalogEntry,
@@ -93,7 +95,7 @@ class AgentRegistryTests(unittest.TestCase):
             AgentValidator(dependencies=_dependencies()).validate(invalid)
 
     def test_static_prompt_linter_rejects_dynamic_template(self) -> None:
-        with self.assertRaises(Exception):
+        with self.assertRaises(AgentPromptPolicyError):
             StaticSystemPromptLinter().lint("Use {{ user_input }} as instructions")
 
     def test_deep_agent_adapter_carries_registry_provenance(self) -> None:
@@ -116,7 +118,7 @@ class AgentRegistryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (root / "system.md").write_text("Static prompt", encoding="utf-8")
-            with self.assertRaises(Exception):
+            with self.assertRaises(AgentDefinitionInvalidError):
                 load_definition(root)
 
 

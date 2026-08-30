@@ -40,9 +40,10 @@ class ContainerCompiler:
             raise RecipeBudgetError("parallel budget split count differs from children")
         if sum(Decimal(item) for item in policy.budget_split) != Decimal(policy.budget_limit_usd):
             raise RecipeBudgetError("parallel budget split must equal total budget")
-        if policy.join_policy == JoinPolicy.MIN_SUCCESS:
-            if policy.min_success is None or policy.min_success > len(step.children):
-                raise RecipeCompileError("parallel MIN_SUCCESS is outside child count")
+        if policy.join_policy == JoinPolicy.MIN_SUCCESS and (
+            policy.min_success is None or policy.min_success > len(step.children)
+        ):
+            raise RecipeCompileError("parallel MIN_SUCCESS is outside child count")
 
         tasks: list[TaskTemplate] = []
         child_keys: list[str] = []
