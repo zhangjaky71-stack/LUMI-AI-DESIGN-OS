@@ -5,7 +5,7 @@ import os
 from collections.abc import Coroutine
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, TypeVar
+from typing import Any
 
 import pytest
 from sqlalchemy import select, text, update
@@ -27,7 +27,6 @@ from lumi_domain import Project as DomainProject
 if os.environ.get("LUMI_DB_INTEGRATION") != "1":
     pytest.skip("set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests", allow_module_level=True)
 
-T = TypeVar("T")
 EXPECTED_ALEMBIC_HEAD = "0023_video_generation_runtime"
 MIGRATION_ONLY_TABLES = frozenset(
     {
@@ -43,7 +42,7 @@ MIGRATION_ONLY_TABLES = frozenset(
 )
 
 
-def run(coroutine: Coroutine[Any, Any, T]) -> T:
+def run[T](coroutine: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coroutine)
 
 
