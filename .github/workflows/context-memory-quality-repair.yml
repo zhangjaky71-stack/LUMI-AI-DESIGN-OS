@@ -1,0 +1,89 @@
+name: Context Memory Quality Repair
+
+on:
+  push:
+    branches: [release-closure-p0]
+    paths:
+      - .github/workflows/context-memory-quality-repair.yml
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release-closure-p0
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Format scoped quality files
+        run: |
+          uv run ruff format \
+            apps/agent-runtime/src/lumi_agent_runtime/context_engine \
+            apps/agent-runtime/src/lumi_agent_runtime/memory_engine \
+            scripts/integration_context_eval.py \
+            scripts/integration_context_postgres.py \
+            scripts/run_context_eval_report.py \
+            scripts/validate_context_engine_contract.py \
+            scripts/validate_context_eval_contract.py
+      - name: Apply safe fixes only
+        shell: bash
+        run: |
+          set +e
+          uv run ruff check --fix \
+            apps/agent-runtime/src/lumi_agent_runtime/context_engine \
+            apps/agent-runtime/src/lumi_agent_runtime/memory_engine \
+            scripts/integration_context_eval.py \
+            scripts/integration_context_postgres.py \
+            scripts/run_context_eval_report.py \
+            scripts/validate_context_engine_contract.py \
+            scripts/validate_context_eval_contract.py
+          status=$?
+          set -e
+          echo "scoped_ruff_exit=$status"
+      - name: Show residual findings
+        shell: bash
+        run: |
+          uv run ruff check \
+            apps/agent-runtime/src/lumi_agent_runtime/context_engine \
+            apps/agent-runtime/src/lumi_agent_runtime/memory_engine \
+            scripts/integration_context_eval.py \
+            scripts/integration_context_postgres.py \
+            scripts/run_context_eval_report.py \
+            scripts/validate_context_engine_contract.py \
+            scripts/validate_context_eval_contract.py || true
+      - name: Commit formatter-safe changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No formatting changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/agent-runtime/src/lumi_agent_runtime/context_engine \
+                  apps/agent-runtime/src/lumi_agent_runtime/memory_engine \
+                  scripts/integration_context_eval.py \
+                  scripts/integration_context_postgres.py \
+                  scripts/run_context_eval_report.py \
+                  scripts/validate_context_engine_contract.py \
+                  scripts/validate_context_eval_contract.py
+          git commit -m "style: normalize context memory quality scope [skip ci]"
+          git push origin HEAD:release-closure-p0
