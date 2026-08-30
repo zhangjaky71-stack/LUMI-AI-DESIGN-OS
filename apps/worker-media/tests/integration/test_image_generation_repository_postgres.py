@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Iterator
 from decimal import Decimal
 from uuid import UUID
 
@@ -178,7 +179,7 @@ async def _delete_generation() -> None:
 
 
 @pytest.fixture(autouse=True)
-def cleanup_generation() -> None:
+def cleanup_generation() -> Iterator[None]:
     asyncio.run(_delete_generation())
     yield
     asyncio.run(_delete_generation())
