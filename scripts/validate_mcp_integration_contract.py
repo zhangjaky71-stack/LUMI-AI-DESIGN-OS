@@ -80,7 +80,10 @@ def validate_execution_cache_boundary() -> None:
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == "MCPClient":
             for method in node.body:
-                if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)) and method.name == "call_tool":
+                if (
+                    isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and method.name == "call_tool"
+                ):
                     source = ast.get_source_segment(path.read_text(encoding="utf-8"), method) or ""
                     if "discovery_cache" in source:
                         raise SystemExit("tools/call must never use MCP discovery result cache")
