@@ -55,6 +55,8 @@ test.describe("NODE-63 Billing", () => {
     await expect(
       page.getByRole("heading", { name: "用量与账单" }),
     ).toBeVisible();
-    await expect(page.getByText("Credit ledger")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Credit ledger" }),
+    ).toBeVisible();
   });
 });
