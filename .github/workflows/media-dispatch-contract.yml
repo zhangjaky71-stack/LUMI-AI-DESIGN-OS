@@ -146,7 +146,10 @@ jobs:
           set -a
           source infra/compose/.env
           set +a
-          printf 'DATABASE_URL=%s\n' "$DATABASE_URL" >> "$GITHUB_ENV"
+          printf 'DATABASE_URL=postgresql+asyncpg://%s:%s@localhost:%s/%s\n' \
+            "$POSTGRES_APP_USER" "$POSTGRES_APP_PASSWORD" "$POSTGRES_PORT" "$POSTGRES_DB" >> "$GITHUB_ENV"
+          printf 'MIGRATION_DATABASE_URL=postgresql+asyncpg://%s:%s@localhost:%s/%s\n' \
+            "$POSTGRES_MIGRATION_USER" "$POSTGRES_MIGRATION_PASSWORD" "$POSTGRES_PORT" "$POSTGRES_DB" >> "$GITHUB_ENV"
       - name: Start PostgreSQL infrastructure
         run: make infra-up
       - name: Upgrade empty database
