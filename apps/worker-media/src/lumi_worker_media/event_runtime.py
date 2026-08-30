@@ -133,7 +133,7 @@ class OutboxDispatcher:
                         aggregate_type=row["aggregate_type"],
                         aggregate_id=row["aggregate_id"],
                         schema_version=int(row["schema_version"]),
-                        payload=dict(row["payload_json"]),
+                        payload=_json_object(row["payload_json"]),
                         created_at=row["created_at"],
                     )
                     await connection.execute(
@@ -402,6 +402,17 @@ def _normalized_event_data(record: OutboxRecord) -> dict[str, Any]:
         if "full_checksum_sha256" in data and "checksum_sha256" not in data:
             data["checksum_sha256"] = data["full_checksum_sha256"]
     return data
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("OUTBOX_PAYLOAD_INVALID") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError("OUTBOX_PAYLOAD_INVALID")
+    return dict(value)
 
 
 def _asset_kind_from_mime(value: Any) -> str:
