@@ -11,7 +11,13 @@ from typing import Any
 from lumi_agent_runtime.agent_registry.definition import AgentDefinition
 from lumi_agent_runtime.agent_registry.loader import load_definition
 
-from .contracts import AgentArchetype, AgentTeamProfile, team_profile
+from .contracts import (
+    AgentArchetype,
+    AgentTeamProfile,
+    definition_permission_names,
+    definition_tool_names,
+    team_profile,
+)
 from .delegation import validate_team_delegation_graph
 
 CANONICAL_AGENT_IDS = (
@@ -191,9 +197,9 @@ def _validate_role_invariants(
         "asset.write-derived",
         "sandbox.execute",
     }
-    if write_tools & set(critic.allowed_tools):
+    if write_tools & definition_tool_names(critic):
         raise ValueError("AGENT_TEAM_CRITIC_WRITE_TOOL_FORBIDDEN")
-    if any("write" in permission for permission in critic.permissions):
+    if any("write" in permission for permission in definition_permission_names(critic)):
         raise ValueError("AGENT_TEAM_CRITIC_WRITE_PERMISSION_FORBIDDEN")
 
     brand = profiles["brand-strategist"]

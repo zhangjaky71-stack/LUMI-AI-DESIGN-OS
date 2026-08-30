@@ -4,6 +4,10 @@ import ast
 import json
 from pathlib import Path
 
+from lumi_agent_runtime.agent_team.contracts import (
+    definition_permission_names,
+    definition_tool_names,
+)
 from lumi_agent_runtime.agent_team.evals import (
     load_role_eval_contracts,
     validate_role_eval_bindings,
@@ -73,9 +77,9 @@ def main() -> int:
         if f'"{definition.model_policy}"' not in route_text:
             raise SystemExit(f"NODE-37 unknown model route: {agent_id}:{definition.model_policy}")
         for skill in definition.skills:
-            if skill.id not in skills:
-                raise SystemExit(f"NODE-37 unknown skill: {agent_id}:{skill.id}")
-        unknown_tools = set(definition.allowed_tools) - TOOL_NAMES
+            if skill.skill_id not in skills:
+                raise SystemExit(f"NODE-37 unknown skill: {agent_id}:{skill.skill_id}")
+        unknown_tools = definition_tool_names(definition) - TOOL_NAMES
         if unknown_tools:
             raise SystemExit(
                 f"NODE-37 unknown tools: {agent_id}:" + ",".join(sorted(unknown_tools))
@@ -127,9 +131,11 @@ def main() -> int:
         raise SystemExit("NODE-37 flow contains unbounded loop")
 
     critic = team.resolve("critic-agent")
-    if {"asset.write-derived", "sandbox.execute"} & set(critic.allowed_tools):
+    if {"asset.write-derived", "sandbox.execute"} & definition_tool_names(critic):
         raise SystemExit("NODE-37 Critic has a write-capable tool")
-    if any("write" in permission for permission in critic.permissions):
+    if any(
+        "write" in permission for permission in definition_permission_names(critic)
+    ):
         raise SystemExit("NODE-37 Critic has a write permission")
     brand = team.profiles["brand-strategist"]
     if "brand-rule.write" not in brand.approval_gated_actions:

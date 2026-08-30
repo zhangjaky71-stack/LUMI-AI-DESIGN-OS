@@ -145,6 +145,16 @@ class DelegationGrant:
     deadline_at: datetime | None
 
 
+def definition_tool_names(definition: AgentDefinition) -> frozenset[str]:
+    return frozenset(item.name for item in definition.tools)
+
+
+def definition_permission_names(definition: AgentDefinition) -> frozenset[str]:
+    return frozenset(
+        key for key, enabled in definition.permissions.items() if enabled
+    )
+
+
 def team_profile(definition: AgentDefinition) -> AgentTeamProfile:
     raw = definition.metadata.get("team")
     if not isinstance(raw, dict):
@@ -182,9 +192,9 @@ def team_profile(definition: AgentDefinition) -> AgentTeamProfile:
         approval_gated_actions=_string_tuple(raw.get("approval_gated_actions", [])),
         supports_waiting_external=bool(raw.get("supports_waiting_external", False)),
     )
-    if set(definition.allowed_tools) - profile.delegation_tool_ceiling:
+    if definition_tool_names(definition) - profile.delegation_tool_ceiling:
         raise ValueError(f"AGENT_TEAM_DIRECT_TOOL_OUTSIDE_CEILING:{definition.agent_id}")
-    if set(definition.permissions) - profile.delegation_permission_ceiling:
+    if definition_permission_names(definition) - profile.delegation_permission_ceiling:
         raise ValueError(f"AGENT_TEAM_DIRECT_PERMISSION_OUTSIDE_CEILING:{definition.agent_id}")
     return profile
 

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from lumi_agent_runtime.agent_registry.definition import AgentDefinition
 
+from .contracts import definition_permission_names, definition_tool_names
 from .registry import CANONICAL_AGENT_IDS, CompiledAgentTeam
 
 
@@ -68,10 +69,10 @@ def _validate_role_static_contract(
     text = "\n".join(
         (
             definition.role,
-            definition.prompt.text,
+            definition.system_prompt,
             json.dumps(definition.metadata, ensure_ascii=False, sort_keys=True),
-            " ".join(definition.allowed_tools),
-            " ".join(definition.permissions),
+            " ".join(sorted(definition_tool_names(definition))),
+            " ".join(sorted(definition_permission_names(definition))),
         )
     ).casefold()
     safety_markers = {
