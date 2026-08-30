@@ -37,7 +37,7 @@ def main() -> int:
     before_hash = definitions["creative-director@1.1.0"].content_hash
     promoted = manager.promote(manifest, candidate)
     assert promoted.aliases["creative-director"]["production"] == "1.2.0"
-    assert promoted.revision == 2
+    assert promoted.revision == manifest.revision + 1
     target = next(
         item
         for item in promoted.releases
@@ -46,7 +46,7 @@ def main() -> int:
     assert target.status == AgentReleaseStatus.PRODUCTION
     rolled = manager.rollback(promoted, "creative-director", "1.1.0")
     assert rolled.aliases["creative-director"]["production"] == "1.1.0"
-    assert rolled.revision == 3
+    assert rolled.revision == manifest.revision + 2
     assert definitions["creative-director@1.1.0"].content_hash == before_hash
     print("NODE-30 Agent Registry promotion/rollback integration: PASS")
     return 0
