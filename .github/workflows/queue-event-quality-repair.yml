@@ -33,234 +33,24 @@ jobs:
       - name: Frozen workspace install
         run: uv sync --all-packages --frozen
 
-      - name: Apply reviewed quality-only repairs
+      - name: Reapply reviewed quality-only repair payload
+        shell: bash
         run: |
+          set -euo pipefail
+          git show 7487ef7b6d11c9fb24db18dc317aa2fff2537123:.github/workflows/queue-event-quality-repair.yml > /tmp/quality-repair-source.yml
           python - <<'PY'
           from pathlib import Path
+          from textwrap import dedent
 
-          def replace_exact(path: str, old: str, new: str, *, count: int = 1) -> None:
-              target = Path(path)
-              text = target.read_text(encoding="utf-8")
-              if new in text and old not in text:
-                  return
-              actual = text.count(old)
-              if actual != count:
-                  raise SystemExit(
-                      f"expected {count} marker(s) in {path}, found {actual}: {old!r}"
-                  )
-              target.write_text(text.replace(old, new, count), encoding="utf-8")
-
-          # NODE-46 image validation: Ruff SIM102, behavior unchanged.
-          path = "services/image-generation/src/lumi_image_generation/image_validation.py"
-          replace_exact(
-              path,
-              "    if spec.output_requirements.exact_dimensions:\n"
-              "        if width != spec.target_width or height != spec.target_height:\n"
-              "            raise ImageValidationError(\"IMAGE_OUTPUT_DIMENSIONS_MISMATCH\")\n",
-              "    if spec.output_requirements.exact_dimensions and (\n"
-              "        width != spec.target_width or height != spec.target_height\n"
-              "    ):\n"
-              "        raise ImageValidationError(\"IMAGE_OUTPUT_DIMENSIONS_MISMATCH\")\n",
-          )
-          replace_exact(
-              path,
-              "    if spec.output_requirements.minimum_width is not None:\n"
-              "        if width < spec.output_requirements.minimum_width:\n"
-              "            raise ImageValidationError(\"IMAGE_OUTPUT_WIDTH_BELOW_MINIMUM\")\n",
-              "    if (\n"
-              "        spec.output_requirements.minimum_width is not None\n"
-              "        and width < spec.output_requirements.minimum_width\n"
-              "    ):\n"
-              "        raise ImageValidationError(\"IMAGE_OUTPUT_WIDTH_BELOW_MINIMUM\")\n",
-          )
-          replace_exact(
-              path,
-              "    if spec.output_requirements.minimum_height is not None:\n"
-              "        if height < spec.output_requirements.minimum_height:\n"
-              "            raise ImageValidationError(\"IMAGE_OUTPUT_HEIGHT_BELOW_MINIMUM\")\n",
-              "    if (\n"
-              "        spec.output_requirements.minimum_height is not None\n"
-              "        and height < spec.output_requirements.minimum_height\n"
-              "    ):\n"
-              "        raise ImageValidationError(\"IMAGE_OUTPUT_HEIGHT_BELOW_MINIMUM\")\n",
-          )
-
-          # NODE-30 tests assert the exact public exceptions rather than Exception.
-          test_path = "apps/agent-runtime/tests/test_agent_registry.py"
-          replace_exact(
-              test_path,
-              "    AgentDependencyError,\n    AgentRegistry,\n",
-              "    AgentDefinitionInvalidError,\n"
-              "    AgentDependencyError,\n"
-              "    AgentPromptPolicyError,\n"
-              "    AgentRegistry,\n",
-          )
-          replace_exact(
-              test_path,
-              "        with self.assertRaises(Exception):\n"
-              "            StaticSystemPromptLinter().lint(\"Use {{ user_input }} as instructions\")\n",
-              "        with self.assertRaises(AgentPromptPolicyError):\n"
-              "            StaticSystemPromptLinter().lint(\"Use {{ user_input }} as instructions\")\n",
-          )
-          replace_exact(
-              test_path,
-              "            with self.assertRaises(Exception):\n"
-              "                load_definition(root)\n",
-              "            with self.assertRaises(AgentDefinitionInvalidError):\n"
-              "                load_definition(root)\n",
-          )
-
-          # NODE-30 migration formatting only; SQL semantics are unchanged.
-          migration = "apps/api/alembic/versions/0014_agent_registry_provenance.py"
-          replace_exact(
-              migration,
-              "            CONSTRAINT ck_agent_run_provenance_status CHECK (release_status IN ('DRAFT','CANDIDATE','PRODUCTION','DEPRECATED','DISABLED')),\n",
-              "            CONSTRAINT ck_agent_run_provenance_status CHECK (\n"
-              "                release_status IN ('DRAFT','CANDIDATE','PRODUCTION','DEPRECATED','DISABLED')\n"
-              "            ),\n",
-          )
-          replace_exact(
-              migration,
-              "            CONSTRAINT ck_agent_run_provenance_definition_hash CHECK (definition_hash ~ '^[0-9a-f]{64}$'),\n",
-              "            CONSTRAINT ck_agent_run_provenance_definition_hash CHECK (\n"
-              "                definition_hash ~ '^[0-9a-f]{64}$'\n"
-              "            ),\n",
-          )
-          replace_exact(
-              migration,
-              "            CONSTRAINT ck_agent_run_provenance_prompt_hash CHECK (system_prompt_hash ~ '^[0-9a-f]{64}$'),\n",
-              "            CONSTRAINT ck_agent_run_provenance_prompt_hash CHECK (\n"
-              "                system_prompt_hash ~ '^[0-9a-f]{64}$'\n"
-              "            ),\n",
-          )
-          replace_exact(
-              migration,
-              "            CONSTRAINT ck_agent_run_provenance_dependencies_size CHECK (octet_length(dependencies_json::text) <= 1048576)\n",
-              "            CONSTRAINT ck_agent_run_provenance_dependencies_size CHECK (\n"
-              "                octet_length(dependencies_json::text) <= 1048576\n"
-              "            )\n",
-          )
-          replace_exact(
-              migration,
-              '        "CREATE INDEX ix_agent_run_provenance_org_agent ON agent_run_provenance (organization_id, agent_id, exact_version)"\n',
-              '        "CREATE INDEX ix_agent_run_provenance_org_agent "\n'
-              '        "ON agent_run_provenance (organization_id, agent_id, exact_version)"\n',
-          )
-          replace_exact(
-              migration,
-              '        "CREATE INDEX ix_agent_run_provenance_project_created ON agent_run_provenance (project_id, created_at)"\n',
-              '        "CREATE INDEX ix_agent_run_provenance_project_created "\n'
-              '        "ON agent_run_provenance (project_id, created_at)"\n',
-          )
-
-          validator = "scripts/validate_agent_registry_contract.py"
-          replace_exact(
-              validator,
-              '    for section in ("skills", "context_policies", "budget_policies", "output_schemas", "eval_profiles"):\n',
-              '    for section in (\n'
-              '        "skills",\n'
-              '        "context_policies",\n'
-              '        "budget_policies",\n'
-              '        "output_schemas",\n'
-              '        "eval_profiles",\n'
-              '    ):\n',
-          )
-          replace_exact(
-              validator,
-              '                    raise SystemExit(f"Agent Registry imports ambient authority: {path}:{names & forbidden}")\n',
-              '                    raise SystemExit(\n'
-              '                        f"Agent Registry imports ambient authority: "\n'
-              '                        f"{path}:{names & forbidden}"\n'
-              '                    )\n',
-          )
-
-          # NODE-32 Recipe quality-only repairs.
-          replace_exact(
-              "apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/approval_bridge.py",
-              '    """Serializable form for queue/checkpoint adapters that cannot carry Command objects directly."""\n',
-              '    """Return the serializable resume form for queue/checkpoint adapters."""\n',
-          )
-          replace_exact(
-              "apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/containers.py",
-              "        if policy.join_policy == JoinPolicy.MIN_SUCCESS:\n"
-              "            if policy.min_success is None or policy.min_success > len(step.children):\n"
-              "                raise RecipeCompileError(\"parallel MIN_SUCCESS is outside child count\")\n",
-              "        if policy.join_policy == JoinPolicy.MIN_SUCCESS and (\n"
-              "            policy.min_success is None or policy.min_success > len(step.children)\n"
-              "        ):\n"
-              "            raise RecipeCompileError(\"parallel MIN_SUCCESS is outside child count\")\n",
-          )
-          replace_exact(
-              "apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/loader.py",
-              "    if step.step_type in {StepType.DETERMINISTIC, StepType.FINALIZE}:\n"
-              "        if step.service_key is None:\n"
-              "            raise RecipeDefinitionInvalidError(\"RECIPE_SERVICE_KEY_REQUIRED\")\n",
-              "    if (\n"
-              "        step.step_type in {StepType.DETERMINISTIC, StepType.FINALIZE}\n"
-              "        and step.service_key is None\n"
-              "    ):\n"
-              "        raise RecipeDefinitionInvalidError(\"RECIPE_SERVICE_KEY_REQUIRED\")\n",
-          )
-          replace_exact(
-              "apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/registry.py",
-              "                raise RecipeVersionResolutionError(\n"
-              "                    f\"no production Recipe matches: {recipe_id}@{selector}\"\n"
-              "                )\n",
-              "                raise RecipeVersionResolutionError(\n"
-              "                    f\"no production Recipe matches: {recipe_id}@{selector}\"\n"
-              "                ) from None\n",
-          )
-          recipe_validator = "scripts/validate_recipe_engine_contract.py"
-          replace_exact(
-              recipe_validator,
-              "        if release.status == RecipeReleaseStatus.PRODUCTION:\n"
-              "            if release.eval_status != \"passed\" or not release.eval_evidence:\n"
-              "                raise SystemExit(\n"
-              "                    f\"production Recipe lacks eval evidence: \"\n"
-              "                    f\"{release.recipe_id}@{release.version}\"\n"
-              "                )\n",
-              "        if (\n"
-              "            release.status == RecipeReleaseStatus.PRODUCTION\n"
-              "            and (release.eval_status != \"passed\" or not release.eval_evidence)\n"
-              "        ):\n"
-              "            raise SystemExit(\n"
-              "                f\"production Recipe lacks eval evidence: \"\n"
-              "                f\"{release.recipe_id}@{release.version}\"\n"
-              "            )\n",
-          )
-          replace_exact(
-              recipe_validator,
-              "            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):\n"
-              "                if node.func.id in FORBIDDEN_BUILTINS:\n"
-              "                    raise SystemExit(\n"
-              "                        f\"Recipe Engine calls forbidden builtin: {path}:{node.func.id}\"\n"
-              "                    )\n",
-              "            if (\n"
-              "                isinstance(node, ast.Call)\n"
-              "                and isinstance(node.func, ast.Name)\n"
-              "                and node.func.id in FORBIDDEN_BUILTINS\n"
-              "            ):\n"
-              "                raise SystemExit(\n"
-              "                    f\"Recipe Engine calls forbidden builtin: {path}:{node.func.id}\"\n"
-              "                )\n",
-          )
-          replace_exact(
-              recipe_validator,
-              "            if step.step_type == StepType.FOREACH:\n"
-              "                if step.foreach_count is None or not 1 <= step.foreach_count <= 8:\n"
-              "                    raise SystemExit(\n"
-              "                        f\"foreach Recipe is unbounded: \"\n"
-              "                        f\"{definition.identity}:{step.step_id}\"\n"
-              "                    )\n",
-              "            if step.step_type == StepType.FOREACH and (\n"
-              "                step.foreach_count is None or not 1 <= step.foreach_count <= 8\n"
-              "            ):\n"
-              "                raise SystemExit(\n"
-              "                    f\"foreach Recipe is unbounded: \"\n"
-              "                    f\"{definition.identity}:{step.step_id}\"\n"
-              "                )\n",
-          )
+          text = Path("/tmp/quality-repair-source.yml").read_text(encoding="utf-8")
+          start_marker = "      - name: Apply reviewed quality-only repairs\n        run: |\n"
+          end_marker = "\n      - name: Format touched Python files\n"
+          if text.count(start_marker) != 1 or text.count(end_marker) != 1:
+              raise SystemExit("reviewed quality repair payload markers drifted")
+          body = text.split(start_marker, 1)[1].split(end_marker, 1)[0]
+          Path("/tmp/apply-reviewed-quality-repair.sh").write_text(dedent(body), encoding="utf-8")
           PY
+          bash /tmp/apply-reviewed-quality-repair.sh
 
       - name: Format touched Python files
         run: |
@@ -302,9 +92,11 @@ jobs:
             scripts/integration_recipe_engine_mock.py
 
       - name: NODE-46 image tests and Pyright
+        env:
+          PYTHONPATH: services/image-generation/src:services/model-gateway/src:services/asset-intelligence/src:services/artifact-history/src:services/brand-rules/src:services/identity-engine/src:services/domain/src
         run: |
           uv run pytest services/image-generation/tests -q
-          uv run pyright services/image-generation/src services/image-generation/tests
+          uv run pyright -p services/image-generation/pyrightconfig.json
 
       - name: NODE-30 Agent Registry contract tests and Pyright
         run: |
