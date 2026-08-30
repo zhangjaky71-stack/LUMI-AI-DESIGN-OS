@@ -43,14 +43,25 @@ class PostgresProjectContextSource:
     async def load_project(self, request: ContextRequest) -> tuple[ContextItem, ...]:
         async with self.connection_factory() as connection:
             project = await connection.fetchrow(
-                "SELECT id, brief_json, brief_version, settings_json, brand_id, version FROM projects WHERE id=$1 AND organization_id=$2 AND deleted_at IS NULL",
+                (
+                    "SELECT id, brief_json, brief_version, settings_json, brand_id, version "
+                    "FROM projects WHERE id=$1 AND organization_id=$2 "
+                    "AND deleted_at IS NULL"
+                ),
                 request.project_id,
                 request.organization_id,
             )
             brand_rows: list[Any] = []
             if project is not None and project["brand_id"] is not None:
                 brand_rows = await connection.fetch(
-                    "SELECT b.id AS brand_id,b.name AS brand_name,b.profile_json,b.tone_json,b.version AS brand_version,r.id AS rule_id,r.rule_type,r.severity,r.rule_json,r.version AS rule_version FROM brands b LEFT JOIN brand_rules r ON r.brand_id=b.id AND r.organization_id=b.organization_id WHERE b.id=$1 AND b.organization_id=$2 ORDER BY r.rule_type,r.id",
+                    (
+                        "SELECT b.id AS brand_id,b.name AS brand_name,b.profile_json,"
+                        "b.tone_json,b.version AS brand_version,r.id AS rule_id,"
+                        "r.rule_type,r.severity,r.rule_json,r.version AS rule_version "
+                        "FROM brands b LEFT JOIN brand_rules r ON r.brand_id=b.id "
+                        "AND r.organization_id=b.organization_id WHERE b.id=$1 "
+                        "AND b.organization_id=$2 ORDER BY r.rule_type,r.id"
+                    ),
                     project["brand_id"],
                     request.organization_id,
                 )
@@ -137,13 +148,22 @@ class PostgresProjectContextSource:
             return ()
         async with self.connection_factory() as connection:
             task = await connection.fetchrow(
-                "SELECT id,task_key,recipe_step_id,type,owner_key,status,input_json,output_json,metadata_json,state_version,wait_reason,external_ref FROM tasks WHERE id=$1 AND organization_id=$2 AND project_id=$3",
+                (
+                    "SELECT id,task_key,recipe_step_id,type,owner_key,status,input_json,"
+                    "output_json,metadata_json,state_version,wait_reason,external_ref "
+                    "FROM tasks WHERE id=$1 AND organization_id=$2 AND project_id=$3"
+                ),
                 request.task_id,
                 request.organization_id,
                 request.project_id,
             )
             deps = await connection.fetch(
-                "SELECT t.id,t.task_key,t.status,t.output_json,t.state_version FROM task_dependencies d JOIN tasks t ON t.id=d.depends_on_task_id WHERE d.task_id=$1 AND d.organization_id=$2 ORDER BY t.created_at,t.task_key",
+                (
+                    "SELECT t.id,t.task_key,t.status,t.output_json,t.state_version "
+                    "FROM task_dependencies d JOIN tasks t ON t.id=d.depends_on_task_id "
+                    "WHERE d.task_id=$1 AND d.organization_id=$2 "
+                    "ORDER BY t.created_at,t.task_key"
+                ),
                 request.task_id,
                 request.organization_id,
             )
@@ -206,14 +226,30 @@ class PostgresProjectContextSource:
         query = request.query.strip()
         async with self.connection_factory() as connection:
             assets = await connection.fetch(
-                "SELECT a.id,a.version,a.kind,a.original_name,a.metadata_json,am.namespace,am.data_json FROM assets a LEFT JOIN asset_metadata am ON am.asset_id=a.id AND am.organization_id=a.organization_id WHERE a.organization_id=$1 AND a.project_id=$2 AND a.deleted_at IS NULL AND a.status='ready' AND ($3='' OR coalesce(a.original_name,'') ILIKE '%'||$3||'%' OR a.metadata_json::text ILIKE '%'||$3||'%' OR coalesce(am.data_json::text,'') ILIKE '%'||$3||'%') ORDER BY a.updated_at DESC LIMIT $4",
+                (
+                    "SELECT a.id,a.version,a.kind,a.original_name,a.metadata_json,"
+                    "am.namespace,am.data_json FROM assets a LEFT JOIN asset_metadata am "
+                    "ON am.asset_id=a.id AND am.organization_id=a.organization_id "
+                    "WHERE a.organization_id=$1 AND a.project_id=$2 "
+                    "AND a.deleted_at IS NULL AND a.status='ready' "
+                    "AND ($3='' OR coalesce(a.original_name,'') ILIKE '%'||$3||'%' "
+                    "OR a.metadata_json::text ILIKE '%'||$3||'%' "
+                    "OR coalesce(am.data_json::text,'') ILIKE '%'||$3||'%') "
+                    "ORDER BY a.updated_at DESC LIMIT $4"
+                ),
                 request.organization_id,
                 request.project_id,
                 query,
                 request.retrieval_limit,
             )
             artifacts = await connection.fetch(
-                "SELECT id,kind,title,metadata_json,version,created_at FROM artifacts WHERE organization_id=$1 AND project_id=$2 AND ($3='' OR coalesce(title,'') ILIKE '%'||$3||'%' OR metadata_json::text ILIKE '%'||$3||'%') ORDER BY created_at DESC LIMIT $4",
+                (
+                    "SELECT id,kind,title,metadata_json,version,created_at FROM artifacts "
+                    "WHERE organization_id=$1 AND project_id=$2 "
+                    "AND ($3='' OR coalesce(title,'') ILIKE '%'||$3||'%' "
+                    "OR metadata_json::text ILIKE '%'||$3||'%') "
+                    "ORDER BY created_at DESC LIMIT $4"
+                ),
                 request.organization_id,
                 request.project_id,
                 query,
@@ -223,7 +259,15 @@ class PostgresProjectContextSource:
             vector = _query_vector(request.metadata.get("query_embedding"))
             if vector is not None:
                 semantic = await connection.fetch(
-                    "SELECT a.id,a.version,a.kind,a.original_name,a.metadata_json,1-(e.embedding <=> $3::vector) AS semantic_score FROM asset_embeddings e JOIN assets a ON a.id=e.asset_id AND a.organization_id=e.organization_id WHERE a.organization_id=$1 AND a.project_id=$2 AND a.deleted_at IS NULL AND a.status='ready' AND e.dimensions=$4 ORDER BY e.embedding <=> $3::vector LIMIT $5",
+                    (
+                        "SELECT a.id,a.version,a.kind,a.original_name,a.metadata_json,"
+                        "1-(e.embedding <=> $3::vector) AS semantic_score "
+                        "FROM asset_embeddings e JOIN assets a ON a.id=e.asset_id "
+                        "AND a.organization_id=e.organization_id "
+                        "WHERE a.organization_id=$1 AND a.project_id=$2 "
+                        "AND a.deleted_at IS NULL AND a.status='ready' "
+                        "AND e.dimensions=$4 ORDER BY e.embedding <=> $3::vector LIMIT $5"
+                    ),
                     request.organization_id,
                     request.project_id,
                     _vector_literal(vector),
@@ -249,14 +293,20 @@ class PostgresProjectContextSource:
                 item=item,
                 organization_id=str(request.organization_id),
                 project_id=str(request.project_id),
-                lexical_score=prev.lexical_score if prev else _lexical_score(query, item.content),
+                lexical_score=(
+                    prev.lexical_score if prev else _lexical_score(query, item.content)
+                ),
                 semantic_score=max(0.0, min(1.0, float(row["semantic_score"] or 0))),
                 authority_score=0.75,
                 recency_score=0.5,
             )
         for row in artifacts:
             content = json.dumps(
-                {"kind": row["kind"], "title": row["title"], "metadata": row["metadata_json"]},
+                {
+                    "kind": row["kind"],
+                    "title": row["title"],
+                    "metadata": row["metadata_json"],
+                },
                 ensure_ascii=False,
                 sort_keys=True,
                 default=str,
@@ -284,7 +334,9 @@ class PostgresProjectContextSource:
 
 
 def _asset_item(row: Any) -> ContextItem:
-    get = lambda key: row[key] if key in row else None
+    def get(key: str) -> Any:
+        return row.get(key)
+
     content = json.dumps(
         {
             "kind": row["kind"],
@@ -346,7 +398,10 @@ def _key(item):
 
 def _lexical_score(query, content):
     terms = {x.casefold() for x in query.split() if x.strip()}
-    return 0.25 if not terms else min(1.0, sum(x in content.casefold() for x in terms) / len(terms))
+    if not terms:
+        return 0.25
+    matches = sum(x in content.casefold() for x in terms)
+    return min(1.0, matches / len(terms))
 
 
 def _query_vector(value):
