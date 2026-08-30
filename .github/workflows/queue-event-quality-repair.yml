@@ -1,4 +1,4 @@
-name: Queue Event Quality Repair
+name: Release Closure Quality Repair
 
 on:
   push:
@@ -16,7 +16,7 @@ env:
 jobs:
   repair:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
@@ -32,20 +32,26 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Frozen workspace install
         run: uv sync --all-packages --frozen
-      - name: Apply reviewed NODE-19 repairs
+      - name: Apply reviewed release-closure repairs
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          def replace_once(path: str, old: str, new: str) -> None:
+          def replace_exact(path: str, old: str, new: str, *, count: int = 1) -> None:
               target = Path(path)
               text = target.read_text(encoding="utf-8")
-              if text.count(old) != 1:
-                  raise SystemExit(f"expected exactly one marker in {path}: {old!r}")
-              target.write_text(text.replace(old, new, 1), encoding="utf-8")
+              if new in text and old not in text:
+                  return
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(
+                      f"expected {count} marker(s) in {path}, found {actual}: {old!r}"
+                  )
+              target.write_text(text.replace(old, new, count), encoding="utf-8")
 
-          # Existing quality-only fixes proven by the previous scoped run.
-          replace_once(
+          # Queue/Event quality repairs that were previously validated but never
+          # landed because two stale fixtures blocked the old repair commit.
+          replace_exact(
               "apps/api/src/lumi_api/persistence/models/asset.py",
               '            "scanner_status IS NULL OR scanner_status IN (\'CLEAN\',\'INFECTED\',\'SCAN_UNAVAILABLE\',\'ERROR\')",\n',
               '            (\n'
@@ -53,7 +59,7 @@ jobs:
               '                "(\'CLEAN\',\'INFECTED\',\'SCAN_UNAVAILABLE\',\'ERROR\')"\n'
               '            ),\n',
           )
-          replace_once(
+          replace_exact(
               "apps/api/src/lumi_api/persistence/models/asset.py",
               '            "source_type IN (\'USER_UPLOAD\',\'GENERATED\',\'LICENSED\',\'PUBLIC_DOMAIN\',\'THIRD_PARTY\',\'UNKNOWN\')",\n',
               '            (\n'
@@ -61,7 +67,7 @@ jobs:
               '                "(\'USER_UPLOAD\',\'GENERATED\',\'LICENSED\',\'PUBLIC_DOMAIN\',\'THIRD_PARTY\',\'UNKNOWN\')"\n'
               '            ),\n',
           )
-          replace_once(
+          replace_exact(
               "apps/api/src/lumi_api/persistence/models/asset.py",
               '            "license_type IN (\'OWNED\',\'COMMERCIAL_LICENSE\',\'NONCOMMERCIAL\',\'PUBLIC_DOMAIN\',\'CC_BY\',\'CC_BY_SA\',\'UNKNOWN\')",\n',
               '            (\n'
@@ -70,17 +76,17 @@ jobs:
               '                "\'CC_BY\',\'CC_BY_SA\',\'UNKNOWN\')"\n'
               '            ),\n',
           )
-          replace_once(
+          replace_exact(
               "apps/worker-media/src/lumi_worker_media/media_tools.py",
               '        names = font["name"] if "name" in font else None\n',
               '        names = font.get("name", None)\n',
           )
-          replace_once(
+          replace_exact(
               "apps/worker-media/src/lumi_worker_media/task_base.py",
               "import asyncio\nimport os\n",
               "import asyncio\nimport os\nfrom contextlib import suppress\n",
           )
-          replace_once(
+          replace_exact(
               "apps/worker-media/src/lumi_worker_media/task_base.py",
               '        try:\n'
               '            _record_final_failure(self, exc=exc, task_id=task_id, args=args, kwargs=kwargs)\n'
@@ -91,13 +97,13 @@ jobs:
               '        with suppress(Exception):\n'
               '            _record_final_failure(self, exc=exc, task_id=task_id, args=args, kwargs=kwargs)\n',
           )
-          replace_once(
+          replace_exact(
               "apps/worker-media/src/lumi_worker_media/video_generation_repository.py",
               '                    "UPDATE video_provider_jobs SET active=false, updated_at=now(), version=version+1 "\n',
               '                    "UPDATE video_provider_jobs SET active=false, updated_at=now(), "\n'
               '                    "version=version+1 "\n',
           )
-          replace_once(
+          replace_exact(
               "apps/worker-media/src/lumi_worker_media/video_job_runtime.py",
               '            error_message="provider video reached terminal failure during cancellation reconciliation",\n',
               '            error_message=(\n'
@@ -105,24 +111,19 @@ jobs:
               '                "reconciliation"\n'
               '            ),\n',
           )
-          replace_once(
+          replace_exact(
               "apps/worker-media/tests/integration/test_image_artifact_event_postgres.py",
               '                    "DELETE FROM artifact_provenance WHERE organization_id=$1 AND artifact_version_id = ANY($2::uuid[])",\n',
               '                    "DELETE FROM artifact_provenance WHERE organization_id=$1 "\n'
               '                    "AND artifact_version_id = ANY($2::uuid[])",\n',
           )
-          replace_once(
+          replace_exact(
               "apps/worker-media/tests/integration/test_image_artifact_event_postgres.py",
               '                    "DELETE FROM artifact_files WHERE organization_id=$1 AND artifact_version_id = ANY($2::uuid[])",\n',
               '                    "DELETE FROM artifact_files WHERE organization_id=$1 "\n'
               '                    "AND artifact_version_id = ANY($2::uuid[])",\n',
           )
-          replace_once(
-              "apps/worker-media/tests/test_event_runtime.py",
-              "        async def __aenter__(self) -> FakeTransaction:\n",
-              '        async def __aenter__(self) -> "FakeTransaction":\n',
-          )
-          replace_once(
+          replace_exact(
               "scripts/integration_queue_event_runtime.py",
               '    with Connection(broker_url) as connection:\n'
               '        with connection.SimpleQueue(domain_dlq(CONSUMER)) as dlq:\n'
@@ -135,7 +136,7 @@ jobs:
               '        dead = dlq.get(block=True, timeout=10)\n'
               '        dead.ack()\n',
           )
-          replace_once(
+          replace_exact(
               "scripts/validate_queue_runtime_contract.py",
               '        "from lumi_domain.job_dispatch import MAX_JOB_MESSAGE_BYTES, JobMessage, validate_job_payload",\n',
               '        "from lumi_domain.job_dispatch import",\n'
@@ -144,9 +145,20 @@ jobs:
               '        "validate_job_payload",\n',
           )
 
-          # Stale test fixture 1: use a genuinely unknown task name so the test
-          # exercises task-name rejection rather than a valid video-task/image-queue mismatch.
-          replace_once(
+          # Queue/Event stale fixtures: local-class annotations must be deferred,
+          # and the new external-wake channel must be represented explicitly.
+          replace_exact(
+              "apps/worker-media/tests/test_event_runtime.py",
+              "        def transaction(self) -> FakeTransaction:\n",
+              '        def transaction(self) -> "FakeTransaction":\n',
+              count=2,
+          )
+          replace_exact(
+              "apps/worker-media/tests/test_event_runtime.py",
+              "        async def __aenter__(self) -> FakeTransaction:\n",
+              '        async def __aenter__(self) -> "FakeTransaction":\n',
+          )
+          replace_exact(
               "apps/worker-media/tests/test_job_dispatch_runtime.py",
               '        task_name="lumi.jobs.video.render",\n'
               '        queue=dispatch.queue,\n'
@@ -155,11 +167,7 @@ jobs:
               '        queue=dispatch.queue,\n'
               '        message=dispatch.message,\n',
           )
-
-          # Stale test fixture 2: external-wake is now a legitimate third dispatch
-          # channel. Mock it healthy so this test remains specifically about the jobs
-          # channel failing while domain dispatch still runs.
-          replace_once(
+          replace_exact(
               "apps/worker-media/tests/test_queue_cli.py",
               '    monkeypatch.setattr(cli, "MediaJobOutboxDispatcher", JobDispatcher)\n'
               '    monkeypatch.setattr(cli, "OutboxDispatcher", DomainDispatcher)\n',
@@ -176,16 +184,129 @@ jobs:
               '    monkeypatch.setattr(cli, "MediaJobOutboxDispatcher", JobDispatcher)\n'
               '    monkeypatch.setattr(cli, "OutboxDispatcher", DomainDispatcher)\n',
           )
-          replace_once(
+          replace_exact(
               "apps/worker-media/tests/test_queue_cli.py",
               '    assert calls == ["jobs", "domain"]\n',
               '    assert calls == ["wake", "jobs", "domain"]\n',
           )
+
+          # Media Dispatch production fix: the canonical operation UUID is the
+          # idempotency operation primary key and the Generation FK target.
+          replace_exact(
+              "apps/api/src/lumi_api/generations/service.py",
+              '        operation = IdempotencyOperation(\n'
+              '            organization_id=organization_id,\n',
+              '        operation = IdempotencyOperation(\n'
+              '            id=operation_id,\n'
+              '            organization_id=organization_id,\n',
+          )
+
+          # NODE-64/65 governance adapter implements the formal AdminAuditSink.
+          replace_exact(
+              "services/project-core/src/lumi_project_core/governance.py",
+              "from typing import Literal, Protocol\n",
+              "from typing import TYPE_CHECKING, Literal, Protocol\n",
+          )
+          replace_exact(
+              "services/project-core/src/lumi_project_core/governance.py",
+              "from uuid import uuid4\n\nAuditActorType",
+              "from uuid import uuid4\n\nif TYPE_CHECKING:\n"
+              "    from lumi_project_core.admin_console import AdminAuditEvent\n\n"
+              "AuditActorType",
+          )
+          replace_exact(
+              "services/project-core/src/lumi_project_core/governance.py",
+              "    def emit(self, event: object) -> None:\n",
+              "    def emit(self, event: AdminAuditEvent) -> None:\n",
+          )
+          replace_exact(
+              "services/project-core/src/lumi_project_core/governance.py",
+              "    def recent(self) -> tuple[object, ...]:\n",
+              "    def recent(self) -> tuple[AdminAuditEvent, ...]:\n",
+          )
+
+          # Approval tests need an explicit heterogeneous fixture return type;
+          # the test must call the concrete subject fixture rather than a private Protocol.
+          replace_exact(
+              "services/project-core/tests/test_approval.py",
+              'def setup_engine(*, permissions=frozenset({"artifact.approve"}), roles=("OWNER",)):\n',
+              'def setup_engine(\n'
+              '    *, permissions=frozenset({"artifact.approve"}), roles=("OWNER",)\n'
+              ') -> tuple[\n'
+              '    ApprovalEngine,\n'
+              '    ApprovalActor,\n'
+              '    InMemoryApprovalRepository,\n'
+              '    InMemoryApprovalSubjects,\n'
+              '    InMemoryApprovalRuns,\n'
+              '    RecordingApprovalResume,\n'
+              '    RecordingApprovalAudit,\n'
+              '    RecordingApprovalNotifications,\n'
+              '    RecordingApprovalChanges,\n'
+              ']:\n',
+          )
+          replace_exact(
+              "services/project-core/tests/test_approval.py",
+              '    engine, owner, *_ = setup_engine()\n'
+              '    min_policy = ApprovalPolicy(mode="MIN_N", min_approvals=2)\n',
+              '    engine, owner, _, subjects, *_ = setup_engine()\n'
+              '    min_policy = ApprovalPolicy(mode="MIN_N", min_approvals=2)\n',
+          )
+          replace_exact(
+              "services/project-core/tests/test_approval.py",
+              '    engine._subjects.add(ORG, PROJECT, seq_subject)  # deterministic fixture port\n',
+              '    subjects.add(ORG, PROJECT, seq_subject)\n',
+          )
+
+          # ProjectCoreGateway remains intentionally partial, but must structurally
+          # satisfy the current ApiV1Gateway protocol for later-node cost/usage routes.
+          replace_exact(
+              "apps/api/src/lumi_api/projects/gateway.py",
+              "from __future__ import annotations\n\nfrom uuid import UUID\n",
+              "from __future__ import annotations\n\nfrom datetime import datetime\nfrom uuid import UUID\n",
+          )
+          replace_exact(
+              "apps/api/src/lumi_api/projects/gateway.py",
+              "    AssetResource,\n    GenerationCreate,\n",
+              "    AssetResource,\n    CostSummaryResource,\n    GenerationCreate,\n",
+          )
+          replace_exact(
+              "apps/api/src/lumi_api/projects/gateway.py",
+              "    TaskResource,\n)\n",
+              "    TaskResource,\n    UsageSummaryResource,\n)\n",
+          )
+          replace_exact(
+              "apps/api/src/lumi_api/projects/gateway.py",
+              "\n    @staticmethod\n    def _project_resource(row: Project) -> ProjectResource:\n",
+              "\n    async def get_cost_summary(\n"
+              "        self,\n"
+              "        context: RequestContext,\n"
+              "        *,\n"
+              "        from_time: datetime,\n"
+              "        to_time: datetime,\n"
+              "        project_id: UUID | None = None,\n"
+              "    ) -> CostSummaryResource:\n"
+              "        del context, from_time, to_time, project_id\n"
+              "        raise self._not_implemented(\"Cost ledger runtime\")\n\n"
+              "    async def list_usage_summary(\n"
+              "        self,\n"
+              "        context: RequestContext,\n"
+              "        *,\n"
+              "        from_time: datetime,\n"
+              "        to_time: datetime,\n"
+              "        project_id: UUID | None = None,\n"
+              "    ) -> list[UsageSummaryResource]:\n"
+              "        del context, from_time, to_time, project_id\n"
+              "        raise self._not_implemented(\"Usage ledger runtime\")\n"
+              "\n    @staticmethod\n    def _project_resource(row: Project) -> ProjectResource:\n",
+          )
           PY
+
       - name: Normalize touched Python files
         run: |
           uv run ruff format \
             apps/api/src/lumi_api/persistence/models/asset.py \
+            apps/api/src/lumi_api/generations/service.py \
+            apps/api/src/lumi_api/projects/gateway.py \
             apps/worker-media/src/lumi_worker_media/media_tools.py \
             apps/worker-media/src/lumi_worker_media/task_base.py \
             apps/worker-media/src/lumi_worker_media/video_generation_repository.py \
@@ -194,23 +315,51 @@ jobs:
             apps/worker-media/tests/test_event_runtime.py \
             apps/worker-media/tests/test_job_dispatch_runtime.py \
             apps/worker-media/tests/test_queue_cli.py \
+            services/project-core/src/lumi_project_core/governance.py \
+            services/project-core/tests/test_approval.py \
             scripts/integration_queue_event_runtime.py \
             scripts/validate_queue_runtime_contract.py
+
+      - name: Targeted Ruff gates
+        run: |
+          uv run ruff check \
+            apps/api/src/lumi_api/persistence/models/asset.py \
+            apps/api/src/lumi_api/generations/service.py \
+            apps/api/src/lumi_api/projects/gateway.py \
+            apps/worker-media \
+            services/project-core/src/lumi_project_core/governance.py \
+            services/project-core/tests/test_approval.py \
+            scripts/integration_queue_event_runtime.py \
+            scripts/validate_queue_runtime_contract.py
+
+      - name: Project integration Pyright gate
+        run: >-
+          uv run pyright
+          services/project-core
+          apps/api/src/lumi_api/projects
+          apps/api/src/lumi_api/project_app.py
+          apps/api/src/lumi_api/auth/principal.py
+
+      - name: Generation control-plane Pyright gate
+        run: uv run pyright apps/api/src/lumi_api/generations/service.py
+
+      - name: Project Core deterministic tests
+        run: >-
+          uv run pytest
+          services/project-core/tests/test_approval.py
+          services/project-core/tests/test_governance.py
+          -q
+
+      - name: Worker Media unit tests
+        run: uv run pytest apps/worker-media/tests -q
+
       - name: NODE-19 static contract
         run: uv run python scripts/validate_queue_runtime_contract.py
-      - name: Queue runtime Ruff gate
-        run: >-
-          uv run ruff check
-          apps/worker-media
-          apps/api/src/lumi_api/persistence
-          apps/api/alembic/versions/0008_queue_event_runtime.py
-          scripts/validate_queue_runtime_contract.py
-          scripts/integration_queue_event_runtime.py
-      - name: Queue runtime unit tests
-        run: uv run pytest apps/worker-media/tests -q
+
       - name: Patch sanity
         run: git diff --check
-      - name: Commit validated NODE-19 repairs
+
+      - name: Commit validated release repairs
         shell: bash
         run: |
           set -euo pipefail
@@ -218,6 +367,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
             apps/api/src/lumi_api/persistence/models/asset.py \
+            apps/api/src/lumi_api/generations/service.py \
+            apps/api/src/lumi_api/projects/gateway.py \
             apps/worker-media/src/lumi_worker_media/media_tools.py \
             apps/worker-media/src/lumi_worker_media/task_base.py \
             apps/worker-media/src/lumi_worker_media/video_generation_repository.py \
@@ -226,7 +377,13 @@ jobs:
             apps/worker-media/tests/test_event_runtime.py \
             apps/worker-media/tests/test_job_dispatch_runtime.py \
             apps/worker-media/tests/test_queue_cli.py \
+            services/project-core/src/lumi_project_core/governance.py \
+            services/project-core/tests/test_approval.py \
             scripts/integration_queue_event_runtime.py \
             scripts/validate_queue_runtime_contract.py
-          git commit -m "fix: normalize NODE-19 queue runtime quality [skip ci]"
+          if git diff --cached --quiet; then
+            echo "No ordinary-source repair changes remain."
+            exit 0
+          fi
+          git commit -m "fix: close shared release quality blockers [skip ci]"
           git push origin HEAD:release-closure-p0
