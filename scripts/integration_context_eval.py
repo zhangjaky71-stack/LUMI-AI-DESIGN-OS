@@ -255,9 +255,7 @@ class CorpusExecutor:
 
 
 async def main_async() -> None:
-    suite_id, thresholds, cases = load_eval_corpus(
-        ROOT / "evals/context/memory-retrieval-v1.json"
-    )
+    suite_id, thresholds, cases = load_eval_corpus(ROOT / "evals/context/memory-retrieval-v1.json")
     run = await run_eval_suite(
         suite_id,
         cases,
@@ -267,9 +265,7 @@ async def main_async() -> None:
     )
     if not run.passed:
         failures = {
-            result.case_id: result.reasons
-            for result in run.report.results
-            if not result.passed
+            result.case_id: result.reasons for result in run.report.results if not result.passed
         }
         raise AssertionError(f"NODE-35 eval suite failed: {failures}")
     assert run.report.pass_rate == 1.0

@@ -293,9 +293,7 @@ class PostgresProjectContextSource:
                 item=item,
                 organization_id=str(request.organization_id),
                 project_id=str(request.project_id),
-                lexical_score=(
-                    prev.lexical_score if prev else _lexical_score(query, item.content)
-                ),
+                lexical_score=(prev.lexical_score if prev else _lexical_score(query, item.content)),
                 semantic_score=max(0.0, min(1.0, float(row["semantic_score"] or 0))),
                 authority_score=0.75,
                 recency_score=0.5,
