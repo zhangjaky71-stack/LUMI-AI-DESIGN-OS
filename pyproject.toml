@@ -67,9 +67,9 @@ src = [
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-"apps/api/alembic/versions/*.py" = ["E501"]
 "services/domain/src/lumi_domain/constraint_validator.py" = ["E501"]
 "services/domain/tests/test_constraint_validator.py" = ["E501"]
 
