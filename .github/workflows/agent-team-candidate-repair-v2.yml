@@ -143,13 +143,19 @@ jobs:
           import re
           import subprocess
 
-          changed = subprocess.run(
-              ['git', 'status', '--porcelain=v1'],
+          untracked = subprocess.run(
+              ['git', 'ls-files', '--others', '--exclude-standard'],
               check=True,
               capture_output=True,
               text=True,
           ).stdout.splitlines()
-          paths = [line[3:] for line in changed if line.strip()]
+          modified = subprocess.run(
+              ['git', 'diff', '--name-only'],
+              check=True,
+              capture_output=True,
+              text=True,
+          ).stdout.splitlines()
+          paths = sorted({path for path in (*untracked, *modified) if path.strip()})
           pattern = re.compile(r'^agents/[^/]+/2\.0\.0/(agent\.yaml|system\.md)$')
           unexpected = [path for path in paths if not pattern.fullmatch(path)]
           if unexpected:
