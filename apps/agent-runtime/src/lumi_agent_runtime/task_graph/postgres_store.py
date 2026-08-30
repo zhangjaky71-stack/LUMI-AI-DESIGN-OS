@@ -531,76 +531,75 @@ class PostgresTaskGraphStore:
         if not 1 <= limit <= 256:
             raise TaskGraphClaimError("TASK_RECLAIM_LIMIT_INVALID")
         reclaimed: list[UUID] = []
-        async with self.connection_factory() as connection:
-            async with connection.transaction():
-                rows = await connection.fetch(
-                    """
-                    SELECT * FROM tasks
-                    WHERE task_graph_id = $1 AND status = 'RUNNING'
-                      AND lease_expires_at < $2
-                    ORDER BY lease_expires_at
-                    FOR UPDATE SKIP LOCKED
-                    LIMIT $3
-                    """,
-                    graph_id,
-                    now,
-                    limit,
+        async with self.connection_factory() as connection, connection.transaction():
+            rows = await connection.fetch(
+                """
+                SELECT * FROM tasks
+                WHERE task_graph_id = $1 AND status = 'RUNNING'
+                  AND lease_expires_at < $2
+                ORDER BY lease_expires_at
+                FOR UPDATE SKIP LOCKED
+                LIMIT $3
+                """,
+                graph_id,
+                now,
+                limit,
+            )
+            for row in rows:
+                task_id = UUID(str(row["id"]))
+                attempt = int(row["attempt_count"])
+                target = (
+                    "FAILED_FINAL"
+                    if attempt >= int(row["max_attempts"])
+                    else "FAILED_RETRYABLE"
                 )
-                for row in rows:
-                    task_id = UUID(str(row["id"]))
-                    attempt = int(row["attempt_count"])
-                    target = (
-                        "FAILED_FINAL"
-                        if attempt >= int(row["max_attempts"])
-                        else "FAILED_RETRYABLE"
-                    )
-                    await connection.execute(
-                        """
-                        UPDATE tasks
-                        SET status = $2,
-                            metadata_json = metadata_json ||
-                              '{"provider_reconciliation_required":true,"failure":"lease_expired"}'::jsonb,
-                            lease_owner = NULL, lease_expires_at = NULL,
-                            heartbeat_at = NULL,
-                            finished_at = CASE WHEN $2 = 'FAILED_FINAL' THEN $3 ELSE finished_at END,
-                            state_version = state_version + 1, updated_at = now()
-                        WHERE id = $1
-                        """,
-                        task_id,
-                        target,
-                        now,
-                    )
-                    result = await connection.execute(
-                        """
-                        UPDATE task_attempts
-                        SET status = $3, error_category = 'lease_expired', completed_at = $4
-                        WHERE task_id = $1 AND attempt_number = $2
-                          AND status = 'RUNNING'
-                        """,
-                        task_id,
-                        attempt,
-                        target,
-                        now,
-                    )
-                    if not result.endswith(" 1"):
-                        raise TaskGraphConflictError("TASK_ATTEMPT_RECLAIM_CONFLICT")
-                    await _insert_outbox(
-                        connection,
-                        TaskGraphEvent(
-                            event_name="task.failed",
-                            graph_id=graph_id,
-                            task_id=task_id,
-                            organization_id=UUID(str(row["organization_id"])),
-                            payload={
-                                "status": target,
-                                "error_category": "lease_expired",
-                                "provider_reconciliation_required": True,
-                            },
-                        ),
-                    )
-                    reclaimed.append(task_id)
-                if reclaimed:
-                    await _recompute_graph_locked(connection, graph_id, now)
+                await connection.execute(
+                    """
+                    UPDATE tasks
+                    SET status = $2,
+                        metadata_json = metadata_json ||
+                          '{"provider_reconciliation_required":true,"failure":"lease_expired"}'::jsonb,
+                        lease_owner = NULL, lease_expires_at = NULL,
+                        heartbeat_at = NULL,
+                        finished_at = CASE WHEN $2 = 'FAILED_FINAL' THEN $3 ELSE finished_at END,
+                        state_version = state_version + 1, updated_at = now()
+                    WHERE id = $1
+                    """,
+                    task_id,
+                    target,
+                    now,
+                )
+                result = await connection.execute(
+                    """
+                    UPDATE task_attempts
+                    SET status = $3, error_category = 'lease_expired', completed_at = $4
+                    WHERE task_id = $1 AND attempt_number = $2
+                      AND status = 'RUNNING'
+                    """,
+                    task_id,
+                    attempt,
+                    target,
+                    now,
+                )
+                if not result.endswith(" 1"):
+                    raise TaskGraphConflictError("TASK_ATTEMPT_RECLAIM_CONFLICT")
+                await _insert_outbox(
+                    connection,
+                    TaskGraphEvent(
+                        event_name="task.failed",
+                        graph_id=graph_id,
+                        task_id=task_id,
+                        organization_id=UUID(str(row["organization_id"])),
+                        payload={
+                            "status": target,
+                            "error_category": "lease_expired",
+                            "provider_reconciliation_required": True,
+                        },
+                    ),
+                )
+                reclaimed.append(task_id)
+            if reclaimed:
+                await _recompute_graph_locked(connection, graph_id, now)
         return tuple(reclaimed)
 
     async def add_dynamic_task(
@@ -638,9 +637,12 @@ class PostgresTaskGraphStore:
             if count is None or int(count["count"]) >= parent_limit:
                 raise TaskGraphExpansionError("TASK_DYNAMIC_CHILD_LIMIT")
             parent_budget = parent["budget_limit_usd"]
-            if budget_limit_usd is not None and parent_budget is not None:
-                if Decimal(budget_limit_usd) > Decimal(str(parent_budget)):
-                    raise TaskGraphBudgetError("TASK_DYNAMIC_BUDGET_ESCALATION")
+            if (
+                budget_limit_usd is not None
+                and parent_budget is not None
+                and Decimal(budget_limit_usd) > Decimal(str(parent_budget))
+            ):
+                raise TaskGraphBudgetError("TASK_DYNAMIC_BUDGET_ESCALATION")
             parent_concurrency = parent["concurrency_limit"]
             if (
                 concurrency_limit is not None
