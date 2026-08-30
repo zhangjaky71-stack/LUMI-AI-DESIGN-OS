@@ -54,11 +54,11 @@ test.describe("NODE-59 Versions UI", () => {
     await expect(timeline.getByText("v2", { exact: true })).toBeVisible();
     const v2 = timeline
       .locator("article")
-      .filter({ has: timeline.getByText("v2", { exact: true }) });
+      .filter({ has: page.getByText("v2", { exact: true }) });
     await expect(v2.getByText("APPROVED", { exact: true })).toBeVisible();
     const v5 = timeline
       .locator("article")
-      .filter({ has: timeline.getByText("v5", { exact: true }) });
+      .filter({ has: page.getByText("v5", { exact: true }) });
     await expect(v5.getByText("DRAFT", { exact: true })).toBeVisible();
     await expect(v5.getByText("HEAD", { exact: true })).toBeVisible();
   });
@@ -73,7 +73,7 @@ test.describe("NODE-59 Versions UI", () => {
     await expect(page.getByRole("status")).toContainText(
       "Branch dark-direction created from exact v3",
     );
-    await expect(page.getByLabel("Branch")).toHaveValue(
+    await expect(page.getByLabel("Branch", { exact: true })).toHaveValue(
       /branch-artifact-campaign-canvas-/,
     );
     await expect(
