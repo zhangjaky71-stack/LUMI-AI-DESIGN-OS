@@ -9,7 +9,7 @@ from types import MappingProxyType
 from typing import Any
 
 from lumi_agent_runtime.agent_registry.definition import AgentDefinition
-from lumi_agent_runtime.agent_registry.loader import AgentDefinitionLoader
+from lumi_agent_runtime.agent_registry.loader import load_definition
 
 from .contracts import AgentArchetype, AgentTeamProfile, team_profile
 from .delegation import validate_team_delegation_graph
@@ -162,15 +162,14 @@ def compile_agent_team(
     manifest_path: Path | None = None,
 ) -> CompiledAgentTeam:
     manifest = load_team_manifest(manifest_path or repo_root / "config/agent-team/team.v1.json")
-    loader = AgentDefinitionLoader(repo_root / "agents")
     definitions: dict[str, AgentDefinition] = {}
     profiles: dict[str, AgentTeamProfile] = {}
     for member in manifest.members:
-        loaded = loader.load(member.agent_id, member.version)
-        if loaded.definition.agent_id != member.agent_id:
+        definition = load_definition(repo_root / "agents" / member.agent_id / member.version)
+        if definition.agent_id != member.agent_id:
             raise ValueError("AGENT_TEAM_DEFINITION_ID_MISMATCH")
-        definitions[member.agent_id] = loaded.definition
-        profiles[member.agent_id] = team_profile(loaded.definition)
+        definitions[member.agent_id] = definition
+        profiles[member.agent_id] = team_profile(definition)
 
     validate_team_delegation_graph(definitions)
     _validate_role_invariants(definitions, profiles)
