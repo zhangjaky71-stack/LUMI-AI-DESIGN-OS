@@ -122,7 +122,7 @@ async def verify_permanent_failure_dlq(broker_url: str) -> None:
             declare=[DOMAIN_EXCHANGE, queue],
         )
     try:
-        adapter.consume_one(_noop_handler, timeout=10)
+        await asyncio.to_thread(adapter.consume_one, _noop_handler, timeout=10)
     except Exception:
         pass
     else:
