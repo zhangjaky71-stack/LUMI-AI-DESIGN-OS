@@ -116,7 +116,7 @@ for marker in [
     "sanitizeBrowserTelemetry(input)",
     'const endpoint = options.endpoint ?? "/api/telemetry/browser";',
     "MAX_BODY_BYTES = 4096",
-    "navigator.sendBeacon(endpoint",
+    "navigator.sendBeacon(",
     'credentials: "same-origin"',
     "keepalive: true",
 ]:
