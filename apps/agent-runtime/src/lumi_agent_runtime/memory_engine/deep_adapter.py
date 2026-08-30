@@ -269,9 +269,13 @@ def _value(record) -> dict[str, Any]:
     }
 
 
+async def _await_results(awaitable: Awaitable[list[Result]]) -> list[Result]:
+    return await awaitable
+
+
 def _run_sync(awaitable: Awaitable[list[Result]]) -> list[Result]:
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(awaitable)
+        return asyncio.run(_await_results(awaitable))
     raise RuntimeError("MEMORY_STORE_SYNC_CALL_INSIDE_EVENT_LOOP_USE_ASYNC_GRAPH")
