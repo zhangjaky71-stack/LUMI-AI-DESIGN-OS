@@ -62,7 +62,7 @@ def apply_security_hardening(app: FastAPI, config: SecurityConfig) -> None:
             if parsed_length > config.max_request_bytes:
                 return JSONResponse(status_code=413, content={"detail": "request too large"})
 
-        query_keys = {key.lower() for key in request.query_params.keys()}
+        query_keys = {key.lower() for key in request.query_params}
         if query_keys.intersection(_SENSITIVE_QUERY_KEYS):
             return JSONResponse(
                 status_code=400,
