@@ -179,7 +179,8 @@ def query_nodes(document: dict[str, Any], selector: dict[str, Any]) -> list[dict
     for node in document.get("nodes", {}).values():
         if not isinstance(node, dict):
             continue
-        metadata = node.get("metadata") if isinstance(node.get("metadata"), dict) else {}
+        metadata_value = node.get("metadata")
+        metadata = metadata_value if isinstance(metadata_value, dict) else {}
         if ids is not None and node.get("id") not in ids:
             continue
         if roles is not None and node.get("role") not in roles:

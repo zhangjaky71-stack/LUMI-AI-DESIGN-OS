@@ -204,7 +204,10 @@ class PostgresMemoryRepositorySession:
                 id,organization_id,scope_type,scope_id,kind,semantic_key,content_hash,
                 content_structured,summary,source_refs,confidence,created_by_type,created_by_id,
                 explicit_remember,temporal_coexistence,outcome,reason,expires_at,metadata_json
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10::jsonb,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb)
+            ) VALUES (
+                $1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10::jsonb,
+                $11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb
+            )
             ON CONFLICT (id) DO NOTHING
             """,
             candidate.candidate_id,

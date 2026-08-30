@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Coroutine
-from typing import Any, TypeVar
+from typing import Any
 
 import pytest
 from sqlalchemy import func, select, update
@@ -30,10 +30,8 @@ from lumi_project_core import ProjectListFilter
 if os.environ.get("LUMI_DB_INTEGRATION") != "1":
     pytest.skip("set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests", allow_module_level=True)
 
-T = TypeVar("T")
 
-
-def run(coroutine: Coroutine[Any, Any, T]) -> T:
+def run[T](coroutine: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coroutine)
 
 

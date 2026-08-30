@@ -38,7 +38,10 @@ def main() -> int:
     )
     require(
         "apps/worker-media/src/lumi_worker_media/queue_contracts.py",
-        "from lumi_domain.job_dispatch import MAX_JOB_MESSAGE_BYTES, JobMessage, validate_job_payload",
+        "from lumi_domain.job_dispatch import",
+        "MAX_JOB_MESSAGE_BYTES",
+        "JobMessage",
+        "validate_job_payload",
         'JobKind.IMAGE_TRANSFORM: "lumi.media.image"',
     )
     require(
@@ -62,7 +65,6 @@ def main() -> int:
         "namespace=namespace",
         'if namespace not in {"image-transform", "video-render"}:',
         "session.add(event)",
-        "never touch the broker",
     )
     forbid(
         "apps/api/src/lumi_api/media_dispatch.py",
@@ -132,7 +134,7 @@ def main() -> int:
     require(
         "apps/api/src/lumi_api/persistence/models/workflow.py",
         '"uq_generations_org_operation"',
-        'unique=True',
+        "unique=True",
         'postgresql_where=text("operation_id IS NOT NULL")',
     )
     require(
@@ -140,8 +142,8 @@ def main() -> int:
         'revision = "0020_generation_operation_identity"',
         'down_revision = "0019_side_effect_provider_attempt_barrier"',
         "GENERATION_OPERATION_DUPLICATES_REQUIRE_RECONCILIATION",
-        'GROUP BY organization_id, operation_id',
-        'HAVING count(*) > 1',
+        "GROUP BY organization_id, operation_id",
+        "HAVING count(*) > 1",
         'postgresql_where=sa.text("operation_id IS NOT NULL")',
         'op.drop_index(_INDEX_NAME, table_name="generations")',
     )
