@@ -106,7 +106,6 @@ jobs:
               '            ):\n'
               '                raise SystemExit(f"Context eval imports ambient authority: {path}")\n',
           )
-
           replace_once(
               "apps/api/tests/integration/test_project_core.py",
               "from typing import Any, TypeVar\n",
@@ -137,14 +136,12 @@ jobs:
               "def run(coroutine: Coroutine[Any, Any, T]) -> T:\n",
               "def run[T](coroutine: Coroutine[Any, Any, T]) -> T:\n",
           )
-
           replace_once(
               "services/domain/src/lumi_domain/design_ir_document.py",
               '        metadata = node.get("metadata") if isinstance(node.get("metadata"), dict) else {}\n',
               '        metadata_value = node.get("metadata")\n'
               '        metadata = metadata_value if isinstance(metadata_value, dict) else {}\n',
           )
-
           replace_once(
               ".github/workflows/media-dispatch-contract.yml",
               "          printf 'DATABASE_URL=%s\\n' \"$DATABASE_URL\" >> \"$GITHUB_ENV\"\n",
@@ -202,7 +199,7 @@ jobs:
           uv run pyright services/domain/src/lumi_domain/design_ir_document.py
       - name: Patch sanity
         run: git diff --check
-      - name: Commit reviewed repairs
+      - name: Commit reviewed non-workflow repairs
         shell: bash
         run: |
           set -euo pipefail
@@ -216,7 +213,6 @@ jobs:
             apps/api/tests/integration/test_project_core.py \
             apps/api/tests/integration/test_project_security.py \
             services/domain/src/lumi_domain/design_ir_document.py \
-            .github/workflows/media-dispatch-contract.yml \
             scripts/validate_media_dispatch_contract.py
           if git diff --cached --quiet; then
             echo "No targeted changes required."
