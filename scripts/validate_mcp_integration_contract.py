@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,6 +47,31 @@ def validate_import_boundary() -> None:
                 module = node.module.split(".", 1)[0]
                 if module in forbidden_modules:
                     raise SystemExit(f"{path}: MCP core bypass dependency: {module}")
+
+
+def validate_project_dependency_boundary() -> None:
+    """Keep MCP transport dependency-light without constraining the whole gateway service."""
+    path = ROOT / "services/tool-gateway/pyproject.toml"
+    payload = tomllib.loads(path.read_text(encoding="utf-8"))
+    dependencies = payload.get("project", {}).get("dependencies", [])
+    if not isinstance(dependencies, list):
+        raise SystemExit(f"{path}: project.dependencies must be a list")
+
+    forbidden_direct = {"mcp", "httpx", "requests", "aiohttp", "urllib3"}
+    normalized = {
+        dependency.split("[", 1)[0]
+        .split("=", 1)[0]
+        .split("<", 1)[0]
+        .split(">", 1)[0]
+        .split("~", 1)[0]
+        .strip()
+        .casefold()
+        for dependency in dependencies
+        if isinstance(dependency, str)
+    }
+    bad = sorted(normalized & forbidden_direct)
+    if bad:
+        raise SystemExit(f"{path}: MCP transport forbidden direct dependencies: {bad}")
 
 
 def validate_execution_cache_boundary() -> None:
@@ -153,16 +179,13 @@ def main() -> int:
         "map_approved_tools",
         "MCPToolAdapter",
     )
-    require(
-        "services/tool-gateway/pyproject.toml",
-        "dependencies = []",
-    )
     forbid(
         "services/tool-gateway/src/lumi_tool_gateway/mcp/adapter.py",
         "base_url",
         "Authorization",
         "Cookie",
     )
+    validate_project_dependency_boundary()
     validate_import_boundary()
     validate_execution_cache_boundary()
     print("NODE-26 MCP Integration architecture/security contract: PASS")
