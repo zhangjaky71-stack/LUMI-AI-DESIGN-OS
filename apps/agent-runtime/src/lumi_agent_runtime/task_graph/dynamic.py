@@ -36,9 +36,12 @@ def expand_dynamic_task(
     ]
     if len(siblings) >= parent.dynamic_child_limit:
         raise TaskGraphExpansionError("TASK_DYNAMIC_CHILD_LIMIT")
-    if budget_limit_usd is not None and parent.budget_limit_usd is not None:
-        if Decimal(budget_limit_usd) > Decimal(parent.budget_limit_usd):
-            raise TaskGraphBudgetError("TASK_DYNAMIC_BUDGET_ESCALATION")
+    if (
+        budget_limit_usd is not None
+        and parent.budget_limit_usd is not None
+        and Decimal(budget_limit_usd) > Decimal(parent.budget_limit_usd)
+    ):
+        raise TaskGraphBudgetError("TASK_DYNAMIC_BUDGET_ESCALATION")
     if (
         concurrency_limit is not None
         and parent.concurrency_limit is not None

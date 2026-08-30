@@ -191,9 +191,12 @@ def main() -> int:
                 roots = {alias.name.split(".", 1)[0] for alias in node.names}
                 if roots & FORBIDDEN_IMPORTS:
                     raise SystemExit(f"Task Graph imports ambient authority: {path}")
-            if isinstance(node, ast.ImportFrom) and node.module:
-                if node.module.split(".", 1)[0] in FORBIDDEN_IMPORTS:
-                    raise SystemExit(f"Task Graph imports ambient authority: {path}")
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and node.module.split(".", 1)[0] in FORBIDDEN_IMPORTS
+            ):
+                raise SystemExit(f"Task Graph imports ambient authority: {path}")
 
     print("NODE-33 Task Graph static contract: PASS")
     return 0
