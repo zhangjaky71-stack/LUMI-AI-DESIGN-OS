@@ -1,4 +1,4 @@
-name: Release Closure Quality Repair
+name: Final Release Quality Repair
 
 on:
   push:
@@ -32,7 +32,8 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Frozen workspace install
         run: uv sync --all-packages --frozen
-      - name: Apply reviewed release-closure repairs
+
+      - name: Apply reviewed quality-only repairs
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -49,341 +50,308 @@ jobs:
                   )
               target.write_text(text.replace(old, new, count), encoding="utf-8")
 
-          # Queue/Event quality repairs that were previously validated but never
-          # landed because two stale fixtures blocked the old repair commit.
+          # NODE-46 image validation: Ruff SIM102, behavior unchanged.
+          path = "services/image-generation/src/lumi_image_generation/image_validation.py"
           replace_exact(
-              "apps/api/src/lumi_api/persistence/models/asset.py",
-              '            "scanner_status IS NULL OR scanner_status IN (\'CLEAN\',\'INFECTED\',\'SCAN_UNAVAILABLE\',\'ERROR\')",\n',
-              '            (\n'
-              '                "scanner_status IS NULL OR scanner_status IN "\n'
-              '                "(\'CLEAN\',\'INFECTED\',\'SCAN_UNAVAILABLE\',\'ERROR\')"\n'
-              '            ),\n',
+              path,
+              "    if spec.output_requirements.exact_dimensions:\n"
+              "        if width != spec.target_width or height != spec.target_height:\n"
+              "            raise ImageValidationError(\"IMAGE_OUTPUT_DIMENSIONS_MISMATCH\")\n",
+              "    if spec.output_requirements.exact_dimensions and (\n"
+              "        width != spec.target_width or height != spec.target_height\n"
+              "    ):\n"
+              "        raise ImageValidationError(\"IMAGE_OUTPUT_DIMENSIONS_MISMATCH\")\n",
           )
           replace_exact(
-              "apps/api/src/lumi_api/persistence/models/asset.py",
-              '            "source_type IN (\'USER_UPLOAD\',\'GENERATED\',\'LICENSED\',\'PUBLIC_DOMAIN\',\'THIRD_PARTY\',\'UNKNOWN\')",\n',
-              '            (\n'
-              '                "source_type IN "\n'
-              '                "(\'USER_UPLOAD\',\'GENERATED\',\'LICENSED\',\'PUBLIC_DOMAIN\',\'THIRD_PARTY\',\'UNKNOWN\')"\n'
-              '            ),\n',
+              path,
+              "    if spec.output_requirements.minimum_width is not None:\n"
+              "        if width < spec.output_requirements.minimum_width:\n"
+              "            raise ImageValidationError(\"IMAGE_OUTPUT_WIDTH_BELOW_MINIMUM\")\n",
+              "    if (\n"
+              "        spec.output_requirements.minimum_width is not None\n"
+              "        and width < spec.output_requirements.minimum_width\n"
+              "    ):\n"
+              "        raise ImageValidationError(\"IMAGE_OUTPUT_WIDTH_BELOW_MINIMUM\")\n",
           )
           replace_exact(
-              "apps/api/src/lumi_api/persistence/models/asset.py",
-              '            "license_type IN (\'OWNED\',\'COMMERCIAL_LICENSE\',\'NONCOMMERCIAL\',\'PUBLIC_DOMAIN\',\'CC_BY\',\'CC_BY_SA\',\'UNKNOWN\')",\n',
-              '            (\n'
-              '                "license_type IN "\n'
-              '                "(\'OWNED\',\'COMMERCIAL_LICENSE\',\'NONCOMMERCIAL\',\'PUBLIC_DOMAIN\',"\n'
-              '                "\'CC_BY\',\'CC_BY_SA\',\'UNKNOWN\')"\n'
-              '            ),\n',
-          )
-          replace_exact(
-              "apps/worker-media/src/lumi_worker_media/media_tools.py",
-              '        names = font["name"] if "name" in font else None\n',
-              '        names = font.get("name", None)\n',
-          )
-          replace_exact(
-              "apps/worker-media/src/lumi_worker_media/task_base.py",
-              "import asyncio\nimport os\n",
-              "import asyncio\nimport os\nfrom contextlib import suppress\n",
-          )
-          replace_exact(
-              "apps/worker-media/src/lumi_worker_media/task_base.py",
-              '        try:\n'
-              '            _record_final_failure(self, exc=exc, task_id=task_id, args=args, kwargs=kwargs)\n'
-              '        except Exception:\n'
-              '            # Failure reporting must never mask Celery\'s original failure state.\n'
-              '            pass\n',
-              '        # Failure reporting must never mask Celery\'s original failure state.\n'
-              '        with suppress(Exception):\n'
-              '            _record_final_failure(self, exc=exc, task_id=task_id, args=args, kwargs=kwargs)\n',
-          )
-          replace_exact(
-              "apps/worker-media/src/lumi_worker_media/video_generation_repository.py",
-              '                    "UPDATE video_provider_jobs SET active=false, updated_at=now(), version=version+1 "\n',
-              '                    "UPDATE video_provider_jobs SET active=false, updated_at=now(), "\n'
-              '                    "version=version+1 "\n',
-          )
-          replace_exact(
-              "apps/worker-media/src/lumi_worker_media/video_job_runtime.py",
-              '            error_message="provider video reached terminal failure during cancellation reconciliation",\n',
-              '            error_message=(\n'
-              '                "provider video reached terminal failure during cancellation "\n'
-              '                "reconciliation"\n'
-              '            ),\n',
-          )
-          replace_exact(
-              "apps/worker-media/tests/integration/test_image_artifact_event_postgres.py",
-              '                    "DELETE FROM artifact_provenance WHERE organization_id=$1 AND artifact_version_id = ANY($2::uuid[])",\n',
-              '                    "DELETE FROM artifact_provenance WHERE organization_id=$1 "\n'
-              '                    "AND artifact_version_id = ANY($2::uuid[])",\n',
-          )
-          replace_exact(
-              "apps/worker-media/tests/integration/test_image_artifact_event_postgres.py",
-              '                    "DELETE FROM artifact_files WHERE organization_id=$1 AND artifact_version_id = ANY($2::uuid[])",\n',
-              '                    "DELETE FROM artifact_files WHERE organization_id=$1 "\n'
-              '                    "AND artifact_version_id = ANY($2::uuid[])",\n',
-          )
-          replace_exact(
-              "scripts/integration_queue_event_runtime.py",
-              '    with Connection(broker_url) as connection:\n'
-              '        with connection.SimpleQueue(domain_dlq(CONSUMER)) as dlq:\n'
-              '            dead = dlq.get(block=True, timeout=10)\n'
-              '            dead.ack()\n',
-              '    with (\n'
-              '        Connection(broker_url) as connection,\n'
-              '        connection.SimpleQueue(domain_dlq(CONSUMER)) as dlq,\n'
-              '    ):\n'
-              '        dead = dlq.get(block=True, timeout=10)\n'
-              '        dead.ack()\n',
-          )
-          replace_exact(
-              "scripts/validate_queue_runtime_contract.py",
-              '        "from lumi_domain.job_dispatch import MAX_JOB_MESSAGE_BYTES, JobMessage, validate_job_payload",\n',
-              '        "from lumi_domain.job_dispatch import",\n'
-              '        "MAX_JOB_MESSAGE_BYTES",\n'
-              '        "JobMessage",\n'
-              '        "validate_job_payload",\n',
+              path,
+              "    if spec.output_requirements.minimum_height is not None:\n"
+              "        if height < spec.output_requirements.minimum_height:\n"
+              "            raise ImageValidationError(\"IMAGE_OUTPUT_HEIGHT_BELOW_MINIMUM\")\n",
+              "    if (\n"
+              "        spec.output_requirements.minimum_height is not None\n"
+              "        and height < spec.output_requirements.minimum_height\n"
+              "    ):\n"
+              "        raise ImageValidationError(\"IMAGE_OUTPUT_HEIGHT_BELOW_MINIMUM\")\n",
           )
 
-          # Queue/Event stale fixtures: local-class annotations must be deferred,
-          # and the new external-wake channel must be represented explicitly.
+          # NODE-30 tests assert the exact public exceptions rather than Exception.
+          test_path = "apps/agent-runtime/tests/test_agent_registry.py"
           replace_exact(
-              "apps/worker-media/tests/test_event_runtime.py",
-              "        def transaction(self) -> FakeTransaction:\n",
-              '        def transaction(self) -> "FakeTransaction":\n',
-              count=2,
+              test_path,
+              "    AgentDependencyError,\n    AgentRegistry,\n",
+              "    AgentDefinitionInvalidError,\n"
+              "    AgentDependencyError,\n"
+              "    AgentPromptPolicyError,\n"
+              "    AgentRegistry,\n",
           )
           replace_exact(
-              "apps/worker-media/tests/test_event_runtime.py",
-              "        async def __aenter__(self) -> FakeTransaction:\n",
-              '        async def __aenter__(self) -> "FakeTransaction":\n',
+              test_path,
+              "        with self.assertRaises(Exception):\n"
+              "            StaticSystemPromptLinter().lint(\"Use {{ user_input }} as instructions\")\n",
+              "        with self.assertRaises(AgentPromptPolicyError):\n"
+              "            StaticSystemPromptLinter().lint(\"Use {{ user_input }} as instructions\")\n",
           )
           replace_exact(
-              "apps/worker-media/tests/test_job_dispatch_runtime.py",
-              '        task_name="lumi.jobs.video.render",\n'
-              '        queue=dispatch.queue,\n'
-              '        message=dispatch.message,\n',
-              '        task_name="lumi.jobs.unknown",\n'
-              '        queue=dispatch.queue,\n'
-              '        message=dispatch.message,\n',
-          )
-          replace_exact(
-              "apps/worker-media/tests/test_queue_cli.py",
-              '    monkeypatch.setattr(cli, "MediaJobOutboxDispatcher", JobDispatcher)\n'
-              '    monkeypatch.setattr(cli, "OutboxDispatcher", DomainDispatcher)\n',
-              '    class WakeScheduler:\n'
-              '        def __init__(self, dsn: str) -> None:\n'
-              '            del dsn\n'
-              '\n'
-              '        async def stage_due_batch(self, *, limit: int):\n'
-              '            del limit\n'
-              '            calls.append("wake")\n'
-              '            return ()\n'
-              '\n'
-              '    monkeypatch.setattr(cli, "MediaExternalWaitWakeScheduler", WakeScheduler)\n'
-              '    monkeypatch.setattr(cli, "MediaJobOutboxDispatcher", JobDispatcher)\n'
-              '    monkeypatch.setattr(cli, "OutboxDispatcher", DomainDispatcher)\n',
-          )
-          replace_exact(
-              "apps/worker-media/tests/test_queue_cli.py",
-              '    assert calls == ["jobs", "domain"]\n',
-              '    assert calls == ["wake", "jobs", "domain"]\n',
+              test_path,
+              "            with self.assertRaises(Exception):\n"
+              "                load_definition(root)\n",
+              "            with self.assertRaises(AgentDefinitionInvalidError):\n"
+              "                load_definition(root)\n",
           )
 
-          # Media Dispatch production fix: the canonical operation UUID is the
-          # idempotency operation primary key and the Generation FK target.
+          # NODE-30 migration formatting only; SQL semantics are unchanged.
+          migration = "apps/api/alembic/versions/0014_agent_registry_provenance.py"
           replace_exact(
-              "apps/api/src/lumi_api/generations/service.py",
-              '        operation = IdempotencyOperation(\n'
-              '            organization_id=organization_id,\n',
-              '        operation = IdempotencyOperation(\n'
-              '            id=operation_id,\n'
-              '            organization_id=organization_id,\n',
+              migration,
+              "            CONSTRAINT ck_agent_run_provenance_status CHECK (release_status IN ('DRAFT','CANDIDATE','PRODUCTION','DEPRECATED','DISABLED')),\n",
+              "            CONSTRAINT ck_agent_run_provenance_status CHECK (\n"
+              "                release_status IN ('DRAFT','CANDIDATE','PRODUCTION','DEPRECATED','DISABLED')\n"
+              "            ),\n",
+          )
+          replace_exact(
+              migration,
+              "            CONSTRAINT ck_agent_run_provenance_definition_hash CHECK (definition_hash ~ '^[0-9a-f]{64}$'),\n",
+              "            CONSTRAINT ck_agent_run_provenance_definition_hash CHECK (\n"
+              "                definition_hash ~ '^[0-9a-f]{64}$'\n"
+              "            ),\n",
+          )
+          replace_exact(
+              migration,
+              "            CONSTRAINT ck_agent_run_provenance_prompt_hash CHECK (system_prompt_hash ~ '^[0-9a-f]{64}$'),\n",
+              "            CONSTRAINT ck_agent_run_provenance_prompt_hash CHECK (\n"
+              "                system_prompt_hash ~ '^[0-9a-f]{64}$'\n"
+              "            ),\n",
+          )
+          replace_exact(
+              migration,
+              "            CONSTRAINT ck_agent_run_provenance_dependencies_size CHECK (octet_length(dependencies_json::text) <= 1048576)\n",
+              "            CONSTRAINT ck_agent_run_provenance_dependencies_size CHECK (\n"
+              "                octet_length(dependencies_json::text) <= 1048576\n"
+              "            )\n",
+          )
+          replace_exact(
+              migration,
+              '        "CREATE INDEX ix_agent_run_provenance_org_agent ON agent_run_provenance (organization_id, agent_id, exact_version)"\n',
+              '        "CREATE INDEX ix_agent_run_provenance_org_agent "\n'
+              '        "ON agent_run_provenance (organization_id, agent_id, exact_version)"\n',
+          )
+          replace_exact(
+              migration,
+              '        "CREATE INDEX ix_agent_run_provenance_project_created ON agent_run_provenance (project_id, created_at)"\n',
+              '        "CREATE INDEX ix_agent_run_provenance_project_created "\n'
+              '        "ON agent_run_provenance (project_id, created_at)"\n',
           )
 
-          # NODE-64/65 governance adapter implements the formal AdminAuditSink.
+          validator = "scripts/validate_agent_registry_contract.py"
           replace_exact(
-              "services/project-core/src/lumi_project_core/governance.py",
-              "from typing import Literal, Protocol\n",
-              "from typing import TYPE_CHECKING, Literal, Protocol\n",
+              validator,
+              '    for section in ("skills", "context_policies", "budget_policies", "output_schemas", "eval_profiles"):\n',
+              '    for section in (\n'
+              '        "skills",\n'
+              '        "context_policies",\n'
+              '        "budget_policies",\n'
+              '        "output_schemas",\n'
+              '        "eval_profiles",\n'
+              '    ):\n',
           )
           replace_exact(
-              "services/project-core/src/lumi_project_core/governance.py",
-              "from uuid import uuid4\n\nAuditActorType",
-              "from uuid import uuid4\n\nif TYPE_CHECKING:\n"
-              "    from lumi_project_core.admin_console import AdminAuditEvent\n\n"
-              "AuditActorType",
-          )
-          replace_exact(
-              "services/project-core/src/lumi_project_core/governance.py",
-              "    def emit(self, event: object) -> None:\n",
-              "    def emit(self, event: AdminAuditEvent) -> None:\n",
-          )
-          replace_exact(
-              "services/project-core/src/lumi_project_core/governance.py",
-              "    def recent(self) -> tuple[object, ...]:\n",
-              "    def recent(self) -> tuple[AdminAuditEvent, ...]:\n",
+              validator,
+              '                    raise SystemExit(f"Agent Registry imports ambient authority: {path}:{names & forbidden}")\n',
+              '                    raise SystemExit(\n'
+              '                        f"Agent Registry imports ambient authority: "\n'
+              '                        f"{path}:{names & forbidden}"\n'
+              '                    )\n',
           )
 
-          # Approval tests need an explicit heterogeneous fixture return type;
-          # the test must call the concrete subject fixture rather than a private Protocol.
+          # NODE-32 Recipe quality-only repairs.
           replace_exact(
-              "services/project-core/tests/test_approval.py",
-              'def setup_engine(*, permissions=frozenset({"artifact.approve"}), roles=("OWNER",)):\n',
-              'def setup_engine(\n'
-              '    *, permissions=frozenset({"artifact.approve"}), roles=("OWNER",)\n'
-              ') -> tuple[\n'
-              '    ApprovalEngine,\n'
-              '    ApprovalActor,\n'
-              '    InMemoryApprovalRepository,\n'
-              '    InMemoryApprovalSubjects,\n'
-              '    InMemoryApprovalRuns,\n'
-              '    RecordingApprovalResume,\n'
-              '    RecordingApprovalAudit,\n'
-              '    RecordingApprovalNotifications,\n'
-              '    RecordingApprovalChanges,\n'
-              ']:\n',
+              "apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/approval_bridge.py",
+              '    """Serializable form for queue/checkpoint adapters that cannot carry Command objects directly."""\n',
+              '    """Return the serializable resume form for queue/checkpoint adapters."""\n',
           )
           replace_exact(
-              "services/project-core/tests/test_approval.py",
-              '    engine, owner, *_ = setup_engine()\n'
-              '    min_policy = ApprovalPolicy(mode="MIN_N", min_approvals=2)\n',
-              '    engine, owner, _, subjects, *_ = setup_engine()\n'
-              '    min_policy = ApprovalPolicy(mode="MIN_N", min_approvals=2)\n',
+              "apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/containers.py",
+              "        if policy.join_policy == JoinPolicy.MIN_SUCCESS:\n"
+              "            if policy.min_success is None or policy.min_success > len(step.children):\n"
+              "                raise RecipeCompileError(\"parallel MIN_SUCCESS is outside child count\")\n",
+              "        if policy.join_policy == JoinPolicy.MIN_SUCCESS and (\n"
+              "            policy.min_success is None or policy.min_success > len(step.children)\n"
+              "        ):\n"
+              "            raise RecipeCompileError(\"parallel MIN_SUCCESS is outside child count\")\n",
           )
           replace_exact(
-              "services/project-core/tests/test_approval.py",
-              '    engine._subjects.add(ORG, PROJECT, seq_subject)  # deterministic fixture port\n',
-              '    subjects.add(ORG, PROJECT, seq_subject)\n',
-          )
-
-          # ProjectCoreGateway remains intentionally partial, but must structurally
-          # satisfy the current ApiV1Gateway protocol for later-node cost/usage routes.
-          replace_exact(
-              "apps/api/src/lumi_api/projects/gateway.py",
-              "from __future__ import annotations\n\nfrom uuid import UUID\n",
-              "from __future__ import annotations\n\nfrom datetime import datetime\nfrom uuid import UUID\n",
+              "apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/loader.py",
+              "    if step.step_type in {StepType.DETERMINISTIC, StepType.FINALIZE}:\n"
+              "        if step.service_key is None:\n"
+              "            raise RecipeDefinitionInvalidError(\"RECIPE_SERVICE_KEY_REQUIRED\")\n",
+              "    if (\n"
+              "        step.step_type in {StepType.DETERMINISTIC, StepType.FINALIZE}\n"
+              "        and step.service_key is None\n"
+              "    ):\n"
+              "        raise RecipeDefinitionInvalidError(\"RECIPE_SERVICE_KEY_REQUIRED\")\n",
           )
           replace_exact(
-              "apps/api/src/lumi_api/projects/gateway.py",
-              "    AssetResource,\n    GenerationCreate,\n",
-              "    AssetResource,\n    CostSummaryResource,\n    GenerationCreate,\n",
+              "apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/registry.py",
+              "                raise RecipeVersionResolutionError(\n"
+              "                    f\"no production Recipe matches: {recipe_id}@{selector}\"\n"
+              "                )\n",
+              "                raise RecipeVersionResolutionError(\n"
+              "                    f\"no production Recipe matches: {recipe_id}@{selector}\"\n"
+              "                ) from None\n",
+          )
+          recipe_validator = "scripts/validate_recipe_engine_contract.py"
+          replace_exact(
+              recipe_validator,
+              "        if release.status == RecipeReleaseStatus.PRODUCTION:\n"
+              "            if release.eval_status != \"passed\" or not release.eval_evidence:\n"
+              "                raise SystemExit(\n"
+              "                    f\"production Recipe lacks eval evidence: \"\n"
+              "                    f\"{release.recipe_id}@{release.version}\"\n"
+              "                )\n",
+              "        if (\n"
+              "            release.status == RecipeReleaseStatus.PRODUCTION\n"
+              "            and (release.eval_status != \"passed\" or not release.eval_evidence)\n"
+              "        ):\n"
+              "            raise SystemExit(\n"
+              "                f\"production Recipe lacks eval evidence: \"\n"
+              "                f\"{release.recipe_id}@{release.version}\"\n"
+              "            )\n",
           )
           replace_exact(
-              "apps/api/src/lumi_api/projects/gateway.py",
-              "    TaskResource,\n)\n",
-              "    TaskResource,\n    UsageSummaryResource,\n)\n",
+              recipe_validator,
+              "            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):\n"
+              "                if node.func.id in FORBIDDEN_BUILTINS:\n"
+              "                    raise SystemExit(\n"
+              "                        f\"Recipe Engine calls forbidden builtin: {path}:{node.func.id}\"\n"
+              "                    )\n",
+              "            if (\n"
+              "                isinstance(node, ast.Call)\n"
+              "                and isinstance(node.func, ast.Name)\n"
+              "                and node.func.id in FORBIDDEN_BUILTINS\n"
+              "            ):\n"
+              "                raise SystemExit(\n"
+              "                    f\"Recipe Engine calls forbidden builtin: {path}:{node.func.id}\"\n"
+              "                )\n",
           )
           replace_exact(
-              "apps/api/src/lumi_api/projects/gateway.py",
-              "\n    @staticmethod\n    def _project_resource(row: Project) -> ProjectResource:\n",
-              "\n    async def get_cost_summary(\n"
-              "        self,\n"
-              "        context: RequestContext,\n"
-              "        *,\n"
-              "        from_time: datetime,\n"
-              "        to_time: datetime,\n"
-              "        project_id: UUID | None = None,\n"
-              "    ) -> CostSummaryResource:\n"
-              "        del context, from_time, to_time, project_id\n"
-              "        raise self._not_implemented(\"Cost ledger runtime\")\n\n"
-              "    async def list_usage_summary(\n"
-              "        self,\n"
-              "        context: RequestContext,\n"
-              "        *,\n"
-              "        from_time: datetime,\n"
-              "        to_time: datetime,\n"
-              "        project_id: UUID | None = None,\n"
-              "    ) -> list[UsageSummaryResource]:\n"
-              "        del context, from_time, to_time, project_id\n"
-              "        raise self._not_implemented(\"Usage ledger runtime\")\n"
-              "\n    @staticmethod\n    def _project_resource(row: Project) -> ProjectResource:\n",
+              recipe_validator,
+              "            if step.step_type == StepType.FOREACH:\n"
+              "                if step.foreach_count is None or not 1 <= step.foreach_count <= 8:\n"
+              "                    raise SystemExit(\n"
+              "                        f\"foreach Recipe is unbounded: \"\n"
+              "                        f\"{definition.identity}:{step.step_id}\"\n"
+              "                    )\n",
+              "            if step.step_type == StepType.FOREACH and (\n"
+              "                step.foreach_count is None or not 1 <= step.foreach_count <= 8\n"
+              "            ):\n"
+              "                raise SystemExit(\n"
+              "                    f\"foreach Recipe is unbounded: \"\n"
+              "                    f\"{definition.identity}:{step.step_id}\"\n"
+              "                )\n",
           )
           PY
 
-      - name: Normalize touched Python files
+      - name: Format touched Python files
         run: |
           uv run ruff format \
-            apps/api/src/lumi_api/persistence/models/asset.py \
-            apps/api/src/lumi_api/generations/service.py \
-            apps/api/src/lumi_api/projects/gateway.py \
-            apps/worker-media/src/lumi_worker_media/media_tools.py \
-            apps/worker-media/src/lumi_worker_media/task_base.py \
-            apps/worker-media/src/lumi_worker_media/video_generation_repository.py \
-            apps/worker-media/src/lumi_worker_media/video_job_runtime.py \
-            apps/worker-media/tests/integration/test_image_artifact_event_postgres.py \
-            apps/worker-media/tests/test_event_runtime.py \
-            apps/worker-media/tests/test_job_dispatch_runtime.py \
-            apps/worker-media/tests/test_queue_cli.py \
-            services/project-core/src/lumi_project_core/governance.py \
-            services/project-core/tests/test_approval.py \
-            scripts/integration_queue_event_runtime.py \
-            scripts/validate_queue_runtime_contract.py
+            services/image-generation/src/lumi_image_generation/image_validation.py \
+            apps/agent-runtime/tests/test_agent_registry.py \
+            apps/api/alembic/versions/0014_agent_registry_provenance.py \
+            scripts/validate_agent_registry_contract.py \
+            apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/approval_bridge.py \
+            apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/containers.py \
+            apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/loader.py \
+            apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/registry.py \
+            scripts/validate_recipe_engine_contract.py
 
-      - name: Targeted Ruff gates
+      - name: Exact Ruff gates
         run: |
+          uv run ruff check --ignore E501 \
+            services/image-generation/src \
+            services/image-generation/tests \
+            apps/api/src/lumi_api/generations/service.py
           uv run ruff check \
-            apps/api/src/lumi_api/persistence/models/asset.py \
-            apps/api/src/lumi_api/generations/service.py \
-            apps/api/src/lumi_api/projects/gateway.py \
-            apps/worker-media \
-            services/project-core/src/lumi_project_core/governance.py \
-            services/project-core/tests/test_approval.py \
-            scripts/integration_queue_event_runtime.py \
-            scripts/validate_queue_runtime_contract.py
+            apps/agent-runtime/src/lumi_agent_runtime/agent_registry \
+            apps/agent-runtime/tests/test_agent_registry.py \
+            apps/agent-runtime/tests/test_agent_registry_release.py \
+            apps/agent-runtime/tests/test_agent_registry_provenance_store.py \
+            apps/api/src/lumi_api/persistence/models/agent_registry.py \
+            apps/api/src/lumi_api/persistence/models/__init__.py \
+            apps/api/alembic/versions/0014_agent_registry_provenance.py \
+            scripts/validate_agent_registry_contract.py \
+            scripts/integration_agent_registry.py \
+            scripts/integration_agent_registry_release.py
+          uv run ruff check \
+            apps/agent-runtime/src/lumi_agent_runtime/recipe_engine \
+            apps/agent-runtime/tests/test_recipe_expression.py \
+            apps/agent-runtime/tests/test_recipe_dag.py \
+            apps/agent-runtime/tests/test_recipe_release.py \
+            scripts/validate_recipe_engine_contract.py \
+            scripts/integration_recipe_engine.py \
+            scripts/integration_recipe_engine_mock.py
 
-      - name: Project integration Pyright gate
-        run: >-
-          uv run pyright
-          services/project-core
-          apps/api/src/lumi_api/projects
-          apps/api/src/lumi_api/project_app.py
-          apps/api/src/lumi_api/auth/principal.py
+      - name: NODE-46 image tests and Pyright
+        run: |
+          uv run pytest services/image-generation/tests -q
+          uv run pyright services/image-generation/src services/image-generation/tests
 
-      - name: Generation control-plane Pyright gate
-        run: uv run pyright apps/api/src/lumi_api/generations/service.py
+      - name: NODE-30 Agent Registry contract tests and Pyright
+        run: |
+          uv run python scripts/validate_agent_registry_contract.py
+          uv run pytest \
+            apps/agent-runtime/tests/test_agent_registry.py \
+            apps/agent-runtime/tests/test_agent_registry_release.py \
+            apps/agent-runtime/tests/test_agent_registry_provenance_store.py -q
+          uv run pyright apps/agent-runtime/src/lumi_agent_runtime/agent_registry \
+            apps/agent-runtime/tests/test_agent_registry.py \
+            apps/agent-runtime/tests/test_agent_registry_release.py \
+            apps/agent-runtime/tests/test_agent_registry_provenance_store.py
 
-      - name: Project Core deterministic tests
-        run: >-
-          uv run pytest
-          services/project-core/tests/test_approval.py
-          services/project-core/tests/test_governance.py
-          -q
-
-      - name: Worker Media unit tests
-        run: uv run pytest apps/worker-media/tests -q
-
-      - name: NODE-19 static contract
-        run: uv run python scripts/validate_queue_runtime_contract.py
+      - name: NODE-32 Recipe contract tests and Pyright
+        run: |
+          PYTHONPATH=apps/agent-runtime/src uv run python scripts/validate_recipe_engine_contract.py
+          uv run pytest \
+            apps/agent-runtime/tests/test_recipe_expression.py \
+            apps/agent-runtime/tests/test_recipe_dag.py \
+            apps/agent-runtime/tests/test_recipe_release.py -q
+          uv run pyright apps/agent-runtime/src/lumi_agent_runtime/recipe_engine \
+            apps/agent-runtime/tests/test_recipe_expression.py \
+            apps/agent-runtime/tests/test_recipe_dag.py \
+            apps/agent-runtime/tests/test_recipe_release.py
 
       - name: Patch sanity
         run: git diff --check
 
-      - name: Commit validated release repairs
+      - name: Commit validated quality repairs
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
-            apps/api/src/lumi_api/persistence/models/asset.py \
-            apps/api/src/lumi_api/generations/service.py \
-            apps/api/src/lumi_api/projects/gateway.py \
-            apps/worker-media/src/lumi_worker_media/media_tools.py \
-            apps/worker-media/src/lumi_worker_media/task_base.py \
-            apps/worker-media/src/lumi_worker_media/video_generation_repository.py \
-            apps/worker-media/src/lumi_worker_media/video_job_runtime.py \
-            apps/worker-media/tests/integration/test_image_artifact_event_postgres.py \
-            apps/worker-media/tests/test_event_runtime.py \
-            apps/worker-media/tests/test_job_dispatch_runtime.py \
-            apps/worker-media/tests/test_queue_cli.py \
-            services/project-core/src/lumi_project_core/governance.py \
-            services/project-core/tests/test_approval.py \
-            scripts/integration_queue_event_runtime.py \
-            scripts/validate_queue_runtime_contract.py
+            services/image-generation/src/lumi_image_generation/image_validation.py \
+            apps/agent-runtime/tests/test_agent_registry.py \
+            apps/api/alembic/versions/0014_agent_registry_provenance.py \
+            scripts/validate_agent_registry_contract.py \
+            apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/approval_bridge.py \
+            apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/containers.py \
+            apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/loader.py \
+            apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/registry.py \
+            scripts/validate_recipe_engine_contract.py
           if git diff --cached --quiet; then
-            echo "No ordinary-source repair changes remain."
+            echo "No quality repair changes remain."
             exit 0
           fi
-          git commit -m "fix: close shared release quality blockers [skip ci]"
+          git commit -m "fix: close final static quality blockers [skip ci]"
           git push origin HEAD:release-closure-p0
