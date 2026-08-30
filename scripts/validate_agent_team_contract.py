@@ -170,14 +170,24 @@ def main() -> int:
             if isinstance(node, ast.ClassDef) and node.name == "AgentDefinition":
                 raise SystemExit("NODE-37 creates a competing AgentDefinition")
 
-    # NODE-37 intentionally pins candidate versions in its team manifest. It does
-    # not rewrite the NODE-28 production release registry in this node.
-    production_registry = json.loads(
+    # NODE-37 candidates must be represented in the NODE-30 release registry as
+    # CANDIDATE rows, but must never silently replace a production alias.
+    release_registry = json.loads(
         (ROOT / "agents/registry.json").read_text(encoding="utf-8")
     )
-    production_text = json.dumps(production_registry, ensure_ascii=False)
-    if "2.0.0" in production_text:
-        raise SystemExit("NODE-37 silently promoted team candidates in production registry")
+    release_rows = {
+        (str(item.get("id")), str(item.get("version"))): item
+        for item in release_registry.get("releases", [])
+        if isinstance(item, dict)
+    }
+    aliases = release_registry.get("aliases", {})
+    for agent_id in CANONICAL_AGENT_IDS:
+        row = release_rows.get((agent_id, "2.0.0"))
+        if row is None or row.get("status") != "CANDIDATE":
+            raise SystemExit(f"NODE-37 candidate release registration drifted: {agent_id}")
+        agent_aliases = aliases.get(agent_id, {}) if isinstance(aliases, dict) else {}
+        if isinstance(agent_aliases, dict) and agent_aliases.get("production") == "2.0.0":
+            raise SystemExit(f"NODE-37 silently promoted team candidate: {agent_id}")
 
     print("NODE-37 Agent Team static contract: PASS")
     return 0
