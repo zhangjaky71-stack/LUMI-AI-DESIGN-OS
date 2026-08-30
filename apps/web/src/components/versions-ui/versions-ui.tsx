@@ -248,16 +248,19 @@ export function VersionsUI({
   }, [activeOrganization.id, gateway, provenanceVersionId, snapshot]);
 
   const chooseCompareFrom = (versionId: string) => {
+    if (versionId === compareFromId) return;
     setCompareFromId(versionId);
     setCompare(null);
   };
 
   const chooseCompareTo = (versionId: string) => {
+    if (versionId === compareToId) return;
     setCompareToId(versionId);
     setCompare(null);
   };
 
   const chooseProvenance = (versionId: string) => {
+    if (versionId === provenanceVersionId) return;
     setProvenanceVersionId(versionId);
     setProvenance(null);
     setProvenanceError(null);
