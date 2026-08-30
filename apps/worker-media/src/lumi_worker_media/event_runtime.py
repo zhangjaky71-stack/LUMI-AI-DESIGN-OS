@@ -88,7 +88,6 @@ class KombuDomainPublisher:
                     exchange=DOMAIN_EXCHANGE,
                     routing_key=record.event_name,
                     serializer="json",
-                    content_type="application/json",
                     retry=True,
                     retry_policy={"max_retries": 3, "interval_start": 0, "interval_step": 1},
                     declare=[DOMAIN_EXCHANGE],
