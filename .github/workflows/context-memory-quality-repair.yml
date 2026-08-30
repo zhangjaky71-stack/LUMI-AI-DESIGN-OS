@@ -158,6 +158,14 @@ jobs:
               '        "never touch the broker",\n',
               "",
           )
+          replace_once(
+              "scripts/validate_media_dispatch_contract.py",
+              '        "from lumi_domain.job_dispatch import MAX_JOB_MESSAGE_BYTES, JobMessage, validate_job_payload",\n',
+              '        "from lumi_domain.job_dispatch import",\n'
+              '        "MAX_JOB_MESSAGE_BYTES",\n'
+              '        "JobMessage",\n'
+              '        "validate_job_payload",\n',
+          )
           PY
       - name: Normalize touched Python files
         run: |
