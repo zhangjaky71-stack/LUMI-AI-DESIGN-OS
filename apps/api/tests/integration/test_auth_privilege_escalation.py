@@ -4,7 +4,7 @@ import asyncio
 import os
 from collections.abc import Coroutine
 from datetime import UTC, datetime, timedelta
-from typing import Any, TypeVar
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -20,11 +20,10 @@ from lumi_domain import new_uuid7
 if os.environ.get("LUMI_AUTH_INTEGRATION") != "1":
     pytest.skip("set LUMI_AUTH_INTEGRATION=1 to run auth PostgreSQL tests", allow_module_level=True)
 
-T = TypeVar("T")
 NOW = datetime(2026, 8, 13, 4, 0, tzinfo=UTC)
 
 
-def run(coroutine: Coroutine[Any, Any, T]) -> T:
+def run[T](coroutine: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coroutine)
 
 
