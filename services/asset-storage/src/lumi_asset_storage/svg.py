@@ -37,9 +37,8 @@ def sanitize_svg(data: bytes, *, max_bytes: int = 5_000_000) -> bytes:
             lowered_value = value.strip().lower()
             if local.startswith("on"):
                 raise ValueError("SVG_EVENT_HANDLER_REJECTED")
-            if local in {"href", "src"}:
-                if lowered_value and not lowered_value.startswith("#"):
-                    raise ValueError("SVG_EXTERNAL_REFERENCE_REJECTED")
+            if local in {"href", "src"} and lowered_value and not lowered_value.startswith("#"):
+                raise ValueError("SVG_EXTERNAL_REFERENCE_REJECTED")
             if local == "style" and _DANGEROUS_TEXT.search(value):
                 raise ValueError("SVG_DANGEROUS_STYLE")
 
