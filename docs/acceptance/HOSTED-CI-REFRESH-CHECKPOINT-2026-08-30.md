@@ -52,3 +52,28 @@ Validation identity for this refresh:
 - branch: `release-closure-p0`
 
 The purpose of this refresh is to obtain hosted evidence for the exact accumulated repair state, especially the live Queue Event Runtime path and the Python Brand Rules suite. It remains non-final evidence and must not be interpreted as NODE-73 product acceptance.
+
+## Repair-batch refresh — evening 2026-08-30
+
+A third hosted refresh is intentionally triggered after another group of independently diagnosed fixes:
+
+- AI Regression source-contract now exposes the repository root on `PYTHONPATH`; canonical benchmark/release tests had already passed and the prior source failure was only `ModuleNotFoundError: evals`.
+- MCP Integration's sole remaining Ruff line-length violation was formatted without changing security behavior; MCP architecture, deterministic tests and Tool Gateway integration had already passed.
+- Project Integration now derives `DATABASE_URL` and `MIGRATION_DATABASE_URL` from the canonical local PostgreSQL credentials before running persistence tests; infrastructure, migration, ORM drift and fixture setup had already passed.
+- Memory Engine now bridges a generic `Awaitable` through an async coroutine before `asyncio.run`, preserving behavior while satisfying Pyright's exact coroutine contract; its tests, Ruff and retrieval evaluations had already passed.
+- Approval Engine durable-schema verification removes the literal escaped-quote shell bug that caused a syntax error after successful schema application.
+- Billing mobile browser acceptance now targets the unique `Credit ledger` heading instead of an ambiguous substring locator; backend, schema, frontend units, lint and production build had already passed.
+
+Known unresolved code-addressable items are intentionally not hidden by this refresh:
+
+- Cost Ledger integration cleanup still attempts to remove immutable financial ledger facts; the database correctly rejects that deletion. The immutable ledger protection remains unchanged and must not be weakened.
+- Task Graph PostgreSQL store retains four Ruff-only formatting/simplification findings that require a safer targeted edit to the large persistence file.
+- Versions UI still has multiple browser-level failures including fixture/semantic mismatches and a real pointer-event overlap around Wipe/provenance UI; it is not being converted into a green test by weakening assertions.
+
+Validation identity for this refresh:
+
+- pre-refresh branch head: `2873b74d4d993b0302187342d472dfc14548d1ed`
+- PR: `#135`
+- branch: `release-closure-p0`
+
+This refresh validates the accumulated repair batch only. It is **not** final NODE-73 authorization or product acceptance.
