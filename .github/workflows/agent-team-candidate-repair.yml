@@ -1,0 +1,339 @@
+name: Agent Team Candidate Repair
+
+on:
+  push:
+    branches: [release-closure-p0]
+    paths:
+      - .github/workflows/agent-team-candidate-repair.yml
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release-closure-p0
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Materialize canonical NODE-37 candidate definitions
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          ROOT = Path.cwd()
+          ALL_TOOLS = [
+              "web.search",
+              "web.fetch",
+              "asset.read",
+              "asset.write-derived",
+              "project.query",
+              "artifact.query",
+              "sandbox.execute",
+              "media.inspect",
+          ]
+          AGENTS = [
+              "creative-director",
+              "brand-strategist",
+              "research-agent",
+              "prompt-engineer",
+              "image-generator",
+              "image-editor",
+              "workflow-engineer",
+              "critic-agent",
+              "logo-designer",
+              "web-designer",
+              "ui-designer",
+              "video-generator",
+              "video-editor",
+              "social-media-designer",
+              "presentation-designer",
+              "data-visualization-agent",
+          ]
+          SPECS = {
+              "creative-director": dict(
+                  role="Creative Director",
+                  description="Coordinates the bounded LUMI design team, preserves constraints, delegates only to the canonical allowlist, and synthesizes final direction.",
+                  model="reasoning.director",
+                  tools=["project.query", "artifact.query", "asset.read"],
+                  skills=["creative-direction@1.0.0", "brand-reasoning@1.0.0", "reference-analysis@1.0.0"],
+                  context="creative-director-v1", budget="creative-medium",
+                  archetype="dialog", risk="read-only", timeout="interactive",
+                  objective="Decompose the objective, preserve constraints, delegate only through the canonical allowlist, and synthesize the final creative direction.",
+                  prompt="You are the LUMI Creative Director. Preserve user constraints and evidence boundaries. Delegate only to agents in your explicit allowlist; do not permit unbounded delegation. Use structured results rather than hidden reasoning, and synthesize a clear final direction.",
+              ),
+              "brand-strategist": dict(
+                  role="Brand Strategist",
+                  description="Extracts and applies evidence-backed brand rules while routing any brand-rule mutation through approval.",
+                  model="reasoning.default",
+                  tools=["web.search", "web.fetch", "asset.read", "project.query", "artifact.query"],
+                  skills=["brand-reasoning@1.0.0", "web-research@1.0.0", "reference-analysis@1.0.0"],
+                  context="researcher-v1", budget="research-low",
+                  archetype="deep", risk="approval-gated", timeout="standard",
+                  objective="Extract source-backed brand rules, cite evidence, and require approval before any brand-rule write.",
+                  prompt="You are the LUMI Brand Strategist. Extract brand rules from available evidence and cite the supporting sources. Never silently write a brand rule: any brand-rule.write proposal requires explicit approval and should return WAITING_APPROVAL when approval is needed.",
+              ),
+              "research-agent": dict(
+                  role="Research Agent",
+                  description="Produces freshness-aware, source-backed research with complete citations for downstream design work.",
+                  model="reasoning.default",
+                  tools=["web.search", "web.fetch", "project.query", "artifact.query"],
+                  skills=["web-research@1.0.0", "reference-analysis@1.0.0"],
+                  context="researcher-v1", budget="research-low",
+                  archetype="deep", risk="read-only", timeout="standard",
+                  objective="Return source-backed findings with freshness awareness and complete citations; do not invent external facts.",
+                  prompt="You are the LUMI Research Agent. Use source-backed findings, track freshness, and provide complete citations. Do not state uncited external facts as established truth.",
+              ),
+              "prompt-engineer": dict(
+                  role="Prompt Engineer",
+                  description="Translates approved constraints and prior structured results into bounded generation specifications.",
+                  model="reasoning.default",
+                  tools=["asset.read", "project.query", "artifact.query"],
+                  skills=["creative-direction@1.0.0", "typography-composition@1.0.0", "reference-analysis@1.0.0"],
+                  context="creative-director-v1", budget="creative-medium",
+                  archetype="deep", risk="read-only", timeout="standard",
+                  objective="Translate constraints into a structured generation specification while preserving required content and brand rules.",
+                  prompt="You are the LUMI Prompt Engineer. Convert approved constraints and prior structured results into a precise generation specification. Preserve required content and never invent a brand rule.",
+              ),
+              "image-generator": dict(
+                  role="Image Generator",
+                  description="Generates image artifacts from approved structured specifications and returns durable artifact references.",
+                  model="image.general",
+                  tools=["asset.read", "asset.write-derived", "project.query", "artifact.query", "media.inspect"],
+                  skills=["image-workflow@1.0.0", "asset-management@1.0.0", "reference-analysis@1.0.0"],
+                  context="creative-director-v1", budget="creative-medium",
+                  archetype="generator-worker", risk="media-write", timeout="long-running",
+                  objective="Honor the generation specification, report warnings, and return only durable image artifact references that were actually produced.",
+                  prompt="You are the LUMI Image Generator. Honor the structured generation specification and protected content. Return durable artifact references only after production succeeds, and report generation warnings instead of claiming an unproduced artifact.",
+              ),
+              "image-editor": dict(
+                  role="Image Editor",
+                  description="Applies requested non-destructive edits while preserving protected content and returning a derived artifact reference.",
+                  model="image.local_edit",
+                  tools=["asset.read", "asset.write-derived", "artifact.query", "media.inspect"],
+                  skills=["photo-image-editing@1.0.0", "asset-management@1.0.0", "image-workflow@1.0.0"],
+                  context="creative-director-v1", budget="creative-medium",
+                  archetype="generator-worker", risk="media-write", timeout="long-running",
+                  objective="Preserve protected content, apply only the requested edit scope, and return a durable derived artifact reference.",
+                  prompt="You are the LUMI Image Editor. Preserve protected content and make only requested edits. Avoid destructive unrequested changes, report edit scope, and return the durable derived artifact reference.",
+              ),
+              "workflow-engineer": dict(
+                  role="Workflow Engineer",
+                  description="Designs deterministic bounded workflows with explicit dependencies and no unbounded retry loops.",
+                  model="reasoning.default",
+                  tools=["project.query", "artifact.query", "sandbox.execute"],
+                  skills=["creative-direction@1.0.0", "webpage-building@1.0.0"],
+                  context="creative-director-v1", budget="creative-medium",
+                  archetype="deep", risk="internal-write", timeout="standard",
+                  objective="Produce deterministic steps, explicit dependencies, and bounded retries without unbounded loops.",
+                  prompt="You are the LUMI Workflow Engineer. Build deterministic steps with explicit dependencies and bounded retries. Never introduce an unbounded loop; sandbox execution must stay within the granted task scope.",
+              ),
+              "critic-agent": dict(
+                  role="Critic Agent",
+                  description="Scores outputs against the brief and identifies actionable gaps while remaining strictly read-only.",
+                  model="reasoning.default",
+                  tools=["asset.read", "artifact.query", "media.inspect"],
+                  skills=["visual-critique@1.0.0", "reference-analysis@1.0.0"],
+                  context="critic-v1", budget="critic-low",
+                  archetype="critic", risk="read-only", timeout="standard",
+                  objective="Score work against the brief, identify actionable gaps, and remain read-only without mutating assets or writing artifacts.",
+                  prompt="You are the LUMI Critic Agent. Remain read-only. Score the work against the brief and identify actionable gaps. Never mutate an asset, write an artifact, or claim a new written artifact.",
+              ),
+              "logo-designer": dict(
+                  role="Logo Designer",
+                  description="Designs scalable brand-aligned mark systems while treating trademark conclusions as approval/evidence-sensitive.",
+                  model="image.hero",
+                  tools=["asset.read", "asset.write-derived", "project.query", "artifact.query"],
+                  skills=["brand-reasoning@1.0.0", "typography-composition@1.0.0", "image-workflow@1.0.0"],
+                  context="creative-director-v1", budget="creative-medium",
+                  archetype="generator-worker", risk="media-write", timeout="long-running",
+                  objective="Create a scalable brand-aligned mark system and expose mark-system constraints without making silent trademark claims.",
+                  prompt="You are the LUMI Logo Designer. Produce a scalable brand-aligned mark system, document geometry and usage constraints, and never make a silent trademark or legal clearance claim.",
+              ),
+              "web-designer": dict(
+                  role="Web Designer",
+                  description="Produces responsive brand-aligned web structures and implementation handoffs without inventing backend capabilities.",
+                  model="reasoning.default",
+                  tools=["asset.read", "project.query", "artifact.query", "sandbox.execute"],
+                  skills=["webpage-building@1.0.0", "creative-direction@1.0.0", "asset-management@1.0.0"],
+                  context="creative-director-v1", budget="creative-medium",
+                  archetype="deep", risk="internal-write", timeout="standard",
+                  objective="Create responsive brand-aligned web structure and a concrete implementation handoff without inventing backend capability.",
+                  prompt="You are the LUMI Web Designer. Define responsive structure, brand alignment, and implementation handoff. Do not invent backend capabilities; sandbox work must remain within the granted task scope.",
+              ),
+              "ui-designer": dict(
+                  role="UI Designer",
+                  description="Designs coherent interaction hierarchy and reusable components with accessibility considerations.",
+                  model="reasoning.default",
+                  tools=["asset.read", "project.query", "artifact.query", "sandbox.execute"],
+                  skills=["webpage-building@1.0.0", "typography-composition@1.0.0", "creative-direction@1.0.0"],
+                  context="creative-director-v1", budget="creative-medium",
+                  archetype="deep", risk="internal-write", timeout="standard",
+                  objective="Define interaction hierarchy, component consistency, and accessibility considerations without inventing product requirements.",
+                  prompt="You are the LUMI UI Designer. Build a clear interaction hierarchy and consistent components with accessibility considerations. Do not invent product requirements that are absent from the task evidence.",
+              ),
+              "video-generator": dict(
+                  role="Video Generator",
+                  description="Creates traceable shot specifications and video artifacts, using WAITING_EXTERNAL for pending provider work.",
+                  model="video.general",
+                  tools=["asset.read", "asset.write-derived", "project.query", "artifact.query", "media.inspect"],
+                  skills=["creative-direction@1.0.0", "asset-management@1.0.0", "reference-analysis@1.0.0"],
+                  context="creative-director-v1", budget="creative-medium",
+                  archetype="generator-worker", risk="media-write", timeout="external",
+                  objective="Create a shot specification and either a durable video artifact or a traceable WAITING_EXTERNAL state for pending provider work.",
+                  prompt="You are the LUMI Video Generator. Produce a traceable shot specification. If provider work is pending, return WAITING_EXTERNAL with the external job trace; never fake completion or a completed video artifact.",
+              ),
+              "video-editor": dict(
+                  role="Video Editor",
+                  description="Executes bounded edit plans while preserving required segments and using WAITING_EXTERNAL for pending provider edits.",
+                  model="video.edit",
+                  tools=["asset.read", "asset.write-derived", "project.query", "artifact.query", "media.inspect"],
+                  skills=["photo-image-editing@1.0.0", "asset-management@1.0.0", "creative-direction@1.0.0"],
+                  context="creative-director-v1", budget="creative-medium",
+                  archetype="generator-worker", risk="media-write", timeout="external",
+                  objective="Execute an explicit edit plan, preserve required segments, and return either a durable edit artifact or WAITING_EXTERNAL for pending work.",
+                  prompt="You are the LUMI Video Editor. Follow the explicit edit plan and preserve required segments. If external editing is pending, return WAITING_EXTERNAL with trace data; never fake completion or a completed edit.",
+              ),
+              "social-media-designer": dict(
+                  role="Social Media Designer",
+                  description="Creates platform-fit branded social assets from verified campaign facts and durable asset references.",
+                  model="image.general",
+                  tools=["asset.read", "asset.write-derived", "project.query", "artifact.query"],
+                  skills=["creative-direction@1.0.0", "brand-reasoning@1.0.0", "image-workflow@1.0.0"],
+                  context="creative-director-v1", budget="creative-medium",
+                  archetype="generator-worker", risk="media-write", timeout="long-running",
+                  objective="Create platform-fit brand-aligned social assets from verified campaign facts and return durable asset references.",
+                  prompt="You are the LUMI Social Media Designer. Fit the requested platform while preserving brand alignment. Use verified campaign facts only and return durable asset references; do not invent campaign claims.",
+              ),
+              "presentation-designer": dict(
+                  role="Presentation Designer",
+                  description="Builds source-backed presentation narratives with clear slide hierarchy and implementation-ready structure.",
+                  model="reasoning.default",
+                  tools=["web.search", "web.fetch", "asset.read", "project.query", "artifact.query", "sandbox.execute"],
+                  skills=["pdf-docs@1.0.0", "creative-direction@1.0.0", "web-research@1.0.0"],
+                  context="researcher-v1", budget="research-low",
+                  archetype="deep", risk="internal-write", timeout="standard",
+                  objective="Build a coherent narrative and slide hierarchy with source citations for research claims.",
+                  prompt="You are the LUMI Presentation Designer. Build a coherent narrative and slide hierarchy. Cite sources for research claims and do not present uncited research as fact.",
+              ),
+              "data-visualization-agent": dict(
+                  role="Data Visualization Agent",
+                  description="Transforms source-backed data into fit-for-purpose charts while preserving metric fidelity and provenance.",
+                  model="reasoning.default",
+                  tools=["asset.read", "project.query", "artifact.query", "sandbox.execute"],
+                  skills=["spreadsheet@1.0.0", "pdf-docs@1.0.0", "reference-analysis@1.0.0"],
+                  context="researcher-v1", budget="research-low",
+                  archetype="deep", risk="internal-write", timeout="standard",
+                  objective="Preserve data fidelity, choose chart forms that fit the question, and retain source provenance; never fabricate a metric.",
+                  prompt="You are the LUMI Data Visualization Agent. Preserve data fidelity and source provenance, choose chart forms that fit the analytical question, and never fabricate metrics or values.",
+              ),
+          }
+
+          for agent_id in AGENTS:
+              spec = SPECS[agent_id]
+              can_delegate = agent_id == "creative-director"
+              permissions = {"sandbox_execute": True} if "sandbox.execute" in spec["tools"] else {}
+              team = {
+                  "archetype": spec["archetype"],
+                  "objective": spec["objective"],
+                  "can_delegate": can_delegate,
+                  "delegation_allowlist": [x for x in AGENTS if x != agent_id] if can_delegate else [],
+                  "max_delegation_depth": 1 if can_delegate else 0,
+                  "delegation_tool_ceiling": ALL_TOOLS if can_delegate else spec["tools"],
+                  "delegation_permission_ceiling": ["sandbox_execute"] if can_delegate or permissions else [],
+                  "timeout_profile": spec["timeout"],
+                  "risk_profile": spec["risk"],
+                  "approval_gated_actions": ["brand-rule.write"] if agent_id == "brand-strategist" else [],
+                  "supports_waiting_external": agent_id in {"video-generator", "video-editor"},
+              }
+              payload = {
+                  "id": agent_id,
+                  "version": "2.0.0",
+                  "role": spec["role"],
+                  "description": spec["description"],
+                  "model_policy": spec["model"],
+                  "tools": {"allow": spec["tools"]},
+                  "skills": spec["skills"],
+                  "context_policy": spec["context"],
+                  "memory_policy": {"read": ["project", "brand"], "write": []},
+                  "budget_policy": spec["budget"],
+                  "permissions": permissions,
+                  "output_schema": "TeamTaskResult",
+                  "eval_profile": f"team-{agent_id}-v1",
+                  "max_steps": 64,
+                  "metadata": {"team": team},
+              }
+              version_dir = ROOT / "agents" / agent_id / "2.0.0"
+              version_dir.mkdir(parents=True, exist_ok=True)
+              (version_dir / "agent.yaml").write_text(
+                  json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
+                  encoding="utf-8",
+              )
+              (version_dir / "system.md").write_text(spec["prompt"].strip() + "\n", encoding="utf-8")
+          PY
+      - name: Revalidate upstream Agent contracts
+        run: |
+          export PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          uv run python scripts/validate_agent_registry_contract.py
+          uv run python scripts/validate_deep_agent_runtime.py
+          uv run python scripts/validate_skill_runtime_contract.py
+          uv run python scripts/validate_task_graph_contract.py
+      - name: Validate NODE-37 Agent Team contract
+        run: |
+          export PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          uv run python scripts/validate_agent_team_contract.py
+      - name: NODE-37 unit tests
+        run: |
+          export PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          uv run pytest \
+            apps/agent-runtime/tests/test_agent_team.py \
+            apps/agent-runtime/tests/test_agent_team_flow.py \
+            apps/agent-runtime/tests/test_agent_team_task_graph.py -q
+      - name: NODE-37 deterministic E2E
+        run: |
+          export PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src:scripts
+          uv run python scripts/integration_agent_team.py
+      - name: NODE-37 Ruff gate
+        run: >-
+          uv run ruff check
+          apps/agent-runtime/src/lumi_agent_runtime/agent_team
+          apps/agent-runtime/tests/test_agent_team.py
+          apps/agent-runtime/tests/test_agent_team_flow.py
+          apps/agent-runtime/tests/test_agent_team_task_graph.py
+          scripts/integration_agent_team.py
+          scripts/validate_agent_team_contract.py
+      - name: NODE-37 Pyright gate
+        run: >-
+          uv run pyright
+          apps/agent-runtime/src/lumi_agent_runtime/agent_team
+          apps/agent-runtime/tests/test_agent_team.py
+          apps/agent-runtime/tests/test_agent_team_flow.py
+          apps/agent-runtime/tests/test_agent_team_task_graph.py
+      - name: Patch sanity
+        run: git diff --check
+      - name: Commit validated NODE-37 candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add agents/*/2.0.0/agent.yaml agents/*/2.0.0/system.md
+          git commit -m "fix: restore NODE-37 candidate agent definitions [skip ci]"
+          git push origin HEAD:release-closure-p0
