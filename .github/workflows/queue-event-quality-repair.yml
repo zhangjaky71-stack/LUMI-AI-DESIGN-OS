@@ -32,7 +32,7 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Frozen workspace install
         run: uv sync --all-packages --frozen
-      - name: Apply reviewed NODE-19 quality repairs
+      - name: Apply reviewed NODE-19 repairs
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -44,6 +44,7 @@ jobs:
                   raise SystemExit(f"expected exactly one marker in {path}: {old!r}")
               target.write_text(text.replace(old, new, 1), encoding="utf-8")
 
+          # Existing quality-only fixes proven by the previous scoped run.
           replace_once(
               "apps/api/src/lumi_api/persistence/models/asset.py",
               '            "scanner_status IS NULL OR scanner_status IN (\'CLEAN\',\'INFECTED\',\'SCAN_UNAVAILABLE\',\'ERROR\')",\n',
@@ -142,6 +143,44 @@ jobs:
               '        "JobMessage",\n'
               '        "validate_job_payload",\n',
           )
+
+          # Stale test fixture 1: use a genuinely unknown task name so the test
+          # exercises task-name rejection rather than a valid video-task/image-queue mismatch.
+          replace_once(
+              "apps/worker-media/tests/test_job_dispatch_runtime.py",
+              '        task_name="lumi.jobs.video.render",\n'
+              '        queue=dispatch.queue,\n'
+              '        message=dispatch.message,\n',
+              '        task_name="lumi.jobs.unknown",\n'
+              '        queue=dispatch.queue,\n'
+              '        message=dispatch.message,\n',
+          )
+
+          # Stale test fixture 2: external-wake is now a legitimate third dispatch
+          # channel. Mock it healthy so this test remains specifically about the jobs
+          # channel failing while domain dispatch still runs.
+          replace_once(
+              "apps/worker-media/tests/test_queue_cli.py",
+              '    monkeypatch.setattr(cli, "MediaJobOutboxDispatcher", JobDispatcher)\n'
+              '    monkeypatch.setattr(cli, "OutboxDispatcher", DomainDispatcher)\n',
+              '    class WakeScheduler:\n'
+              '        def __init__(self, dsn: str) -> None:\n'
+              '            del dsn\n'
+              '\n'
+              '        async def stage_due_batch(self, *, limit: int):\n'
+              '            del limit\n'
+              '            calls.append("wake")\n'
+              '            return ()\n'
+              '\n'
+              '    monkeypatch.setattr(cli, "MediaExternalWaitWakeScheduler", WakeScheduler)\n'
+              '    monkeypatch.setattr(cli, "MediaJobOutboxDispatcher", JobDispatcher)\n'
+              '    monkeypatch.setattr(cli, "OutboxDispatcher", DomainDispatcher)\n',
+          )
+          replace_once(
+              "apps/worker-media/tests/test_queue_cli.py",
+              '    assert calls == ["jobs", "domain"]\n',
+              '    assert calls == ["wake", "jobs", "domain"]\n',
+          )
           PY
       - name: Normalize touched Python files
         run: |
@@ -153,6 +192,8 @@ jobs:
             apps/worker-media/src/lumi_worker_media/video_job_runtime.py \
             apps/worker-media/tests/integration/test_image_artifact_event_postgres.py \
             apps/worker-media/tests/test_event_runtime.py \
+            apps/worker-media/tests/test_job_dispatch_runtime.py \
+            apps/worker-media/tests/test_queue_cli.py \
             scripts/integration_queue_event_runtime.py \
             scripts/validate_queue_runtime_contract.py
       - name: NODE-19 static contract
@@ -183,6 +224,8 @@ jobs:
             apps/worker-media/src/lumi_worker_media/video_job_runtime.py \
             apps/worker-media/tests/integration/test_image_artifact_event_postgres.py \
             apps/worker-media/tests/test_event_runtime.py \
+            apps/worker-media/tests/test_job_dispatch_runtime.py \
+            apps/worker-media/tests/test_queue_cli.py \
             scripts/integration_queue_event_runtime.py \
             scripts/validate_queue_runtime_contract.py
           git commit -m "fix: normalize NODE-19 queue runtime quality [skip ci]"
