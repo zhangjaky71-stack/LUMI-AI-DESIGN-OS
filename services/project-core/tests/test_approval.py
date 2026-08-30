@@ -23,7 +23,19 @@ PROJECT = "project-a"
 SUBJECT = ApprovalSubject("ARTIFACT_VERSION", "artifact-a", "artifact-v3")
 
 
-def setup_engine(*, permissions=frozenset({"artifact.approve"}), roles=("OWNER",)):
+def setup_engine(
+    *, permissions=frozenset({"artifact.approve"}), roles=("OWNER",)
+) -> tuple[
+    ApprovalEngine,
+    ApprovalActor,
+    InMemoryApprovalRepository,
+    InMemoryApprovalSubjects,
+    InMemoryApprovalRuns,
+    RecordingApprovalResume,
+    RecordingApprovalAudit,
+    RecordingApprovalNotifications,
+    RecordingApprovalChanges,
+]:
     repo = InMemoryApprovalRepository()
     subjects = InMemoryApprovalSubjects()
     subjects.add(ORG, PROJECT, SUBJECT)
@@ -138,8 +150,7 @@ def test_duplicate_decision_is_idempotent_by_key():
 
 
 def test_request_changes_creates_change_task_and_resumes_graph():
-    engine, actor, *rest = setup_engine()
-    resume, changes = rest[3], rest[-1]
+    engine, actor, _, _, _, resume, _, _, changes = setup_engine()
     approval = request(engine, actor)
     feedback = ApprovalFeedback(
         comment="Move the CTA and keep the logo lockup.",
@@ -214,7 +225,7 @@ def test_graph_restart_can_resume_from_durable_approval_id():
 
 
 def test_multi_approver_min_n_and_role_sequence_fixture():
-    engine, owner, *_ = setup_engine()
+    engine, owner, _, subjects, *_ = setup_engine()
     min_policy = ApprovalPolicy(mode="MIN_N", min_approvals=2)
     approval = request(engine, owner, policy=min_policy, agent_run_id=None)
     first = engine.decide(
@@ -236,7 +247,7 @@ def test_multi_approver_min_n_and_role_sequence_fixture():
     assert second.status == "APPROVED"
 
     seq_subject = ApprovalSubject("CUSTOM_REVIEW", "campaign-a", "review-v1")
-    engine._subjects.add(ORG, PROJECT, seq_subject)  # deterministic fixture port
+    subjects.add(ORG, PROJECT, seq_subject)
     seq = engine.request(
         owner,
         project_id=PROJECT,
