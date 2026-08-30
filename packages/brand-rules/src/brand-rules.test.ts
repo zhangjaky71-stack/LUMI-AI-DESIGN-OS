@@ -192,7 +192,7 @@ describe("NODE-43 Brand Rules Engine", () => {
       token_set: tokenSet,
       asset_set: assetSet,
       verified_asset_ids: ["logo-a", "font-good"],
-      font_rights_allowed_asset_ids: ["font-good"],
+      font_rights_allowed_asset_ids: ["font-good", "font-bad"],
     });
     expect(report.decision).toBe("FAIL");
     expect(report.hard_violation_count).toBeGreaterThanOrEqual(4);
