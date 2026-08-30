@@ -115,7 +115,7 @@ def test_media_job_outbox_record_validates_identity_and_route() -> None:
     assert record.dispatch() == dispatch
 
     wrong = JobDispatch(
-        task_name="lumi.jobs.video.render",
+        task_name="lumi.jobs.unknown",
         queue=dispatch.queue,
         message=dispatch.message,
     )

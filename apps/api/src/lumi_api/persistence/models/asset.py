@@ -161,7 +161,10 @@ class AssetValidationRun(IdMixin, MutableTimestampMixin, Base):
             name="status",
         ),
         CheckConstraint(
-            "scanner_status IS NULL OR scanner_status IN ('CLEAN','INFECTED','SCAN_UNAVAILABLE','ERROR')",
+            (
+                "scanner_status IS NULL OR scanner_status IN "
+                "('CLEAN','INFECTED','SCAN_UNAVAILABLE','ERROR')"
+            ),
             name="scanner",
         ),
         CheckConstraint(
@@ -284,11 +287,18 @@ class AssetRights(IdMixin, MutableTimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("asset_id", name="asset_rights_asset_id_key"),
         CheckConstraint(
-            "source_type IN ('USER_UPLOAD','GENERATED','LICENSED','PUBLIC_DOMAIN','THIRD_PARTY','UNKNOWN')",
+            (
+                "source_type IN "
+                "('USER_UPLOAD','GENERATED','LICENSED','PUBLIC_DOMAIN','THIRD_PARTY','UNKNOWN')"
+            ),
             name="source_type",
         ),
         CheckConstraint(
-            "license_type IN ('OWNED','COMMERCIAL_LICENSE','NONCOMMERCIAL','PUBLIC_DOMAIN','CC_BY','CC_BY_SA','UNKNOWN')",
+            (
+                "license_type IN "
+                "('OWNED','COMMERCIAL_LICENSE','NONCOMMERCIAL','PUBLIC_DOMAIN',"
+                "'CC_BY','CC_BY_SA','UNKNOWN')"
+            ),
             name="license_type",
         ),
         CheckConstraint("commercial_use IN ('ALLOWED','DENIED','UNKNOWN')", name="commercial_use"),

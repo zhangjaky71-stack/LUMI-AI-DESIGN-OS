@@ -114,6 +114,7 @@ class ImageGenerationControlPlane:
         task.input_json = canonical_task_input
 
         operation = IdempotencyOperation(
+            id=operation_id,
             organization_id=organization_id,
             idempotency_key=idempotency_key,
             operation_type=_OPERATION_TYPE,

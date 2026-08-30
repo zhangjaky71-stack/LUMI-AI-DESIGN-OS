@@ -128,10 +128,12 @@ async def verify_permanent_failure_dlq(broker_url: str) -> None:
     else:
         raise AssertionError("invalid event must fail")
 
-    with Connection(broker_url) as connection:
-        with connection.SimpleQueue(domain_dlq(CONSUMER)) as dlq:
-            dead = dlq.get(block=True, timeout=10)
-            dead.ack()
+    with (
+        Connection(broker_url) as connection,
+        connection.SimpleQueue(domain_dlq(CONSUMER)) as dlq,
+    ):
+        dead = dlq.get(block=True, timeout=10)
+        dead.ack()
     connection = await asyncpg.connect(_dsn())
     try:
         count = await connection.fetchval(

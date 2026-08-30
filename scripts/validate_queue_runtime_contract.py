@@ -50,10 +50,7 @@ def _celery_task_function(path: str, function_name: str, task_name: str) -> ast.
 
 
 def _forbid_task_string(function: ast.FunctionDef, value: str, *, path: str) -> None:
-    if any(
-        isinstance(node, ast.Constant) and node.value == value
-        for node in ast.walk(function)
-    ):
+    if any(isinstance(node, ast.Constant) and node.value == value for node in ast.walk(function)):
         raise SystemExit(f"{path}: {function.name} contains forbidden placeholder: {value}")
 
 
@@ -101,7 +98,10 @@ def main() -> int:
     )
     require(
         "apps/worker-media/src/lumi_worker_media/queue_contracts.py",
-        "from lumi_domain.job_dispatch import MAX_JOB_MESSAGE_BYTES, JobMessage, validate_job_payload",
+        "from lumi_domain.job_dispatch import",
+        "MAX_JOB_MESSAGE_BYTES",
+        "JobMessage",
+        "validate_job_payload",
         "provider_reconciliation_required=True",
         'JobKind.IMAGE_TRANSFORM: "lumi.media.image"',
     )

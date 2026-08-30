@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from contextlib import suppress
 from typing import Any
 from uuid import UUID
 
@@ -35,11 +36,9 @@ class RuntimeTask(Task):
         kwargs: dict[str, Any],
         einfo: Any,
     ) -> None:
-        try:
+        # Failure reporting must never mask Celery's original failure state.
+        with suppress(Exception):
             _record_final_failure(self, exc=exc, task_id=task_id, args=args, kwargs=kwargs)
-        except Exception:
-            # Failure reporting must never mask Celery's original failure state.
-            pass
         super().on_failure(exc, task_id, args, kwargs, einfo)
 
 

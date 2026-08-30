@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -16,6 +17,7 @@ from lumi_api.api.v1.contracts import (
     ArtifactVersionResource,
     AssetCreate,
     AssetResource,
+    CostSummaryResource,
     GenerationCreate,
     GenerationResource,
     ProjectBriefVersionResource,
@@ -23,6 +25,7 @@ from lumi_api.api.v1.contracts import (
     ProjectPatch,
     ProjectResource,
     TaskResource,
+    UsageSummaryResource,
 )
 from lumi_api.api.v1.errors import ApiProblem
 from lumi_api.api.v1.services import PageResult
@@ -256,6 +259,28 @@ class ProjectCoreGateway:
         expected_version: int,
     ) -> ApprovalResource:
         raise self._not_implemented("Approval runtime")
+
+    async def get_cost_summary(
+        self,
+        context: RequestContext,
+        *,
+        from_time: datetime,
+        to_time: datetime,
+        project_id: UUID | None = None,
+    ) -> CostSummaryResource:
+        del context, from_time, to_time, project_id
+        raise self._not_implemented("Cost ledger runtime")
+
+    async def list_usage_summary(
+        self,
+        context: RequestContext,
+        *,
+        from_time: datetime,
+        to_time: datetime,
+        project_id: UUID | None = None,
+    ) -> list[UsageSummaryResource]:
+        del context, from_time, to_time, project_id
+        raise self._not_implemented("Usage ledger runtime")
 
     @staticmethod
     def _project_resource(row: Project) -> ProjectResource:

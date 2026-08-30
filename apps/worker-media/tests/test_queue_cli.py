@@ -44,6 +44,16 @@ def test_domain_dispatch_still_runs_when_job_dispatch_fails(
                 oldest_publish_attempts=0,
             )
 
+    class WakeScheduler:
+        def __init__(self, dsn: str) -> None:
+            del dsn
+
+        async def stage_due_batch(self, *, limit: int):
+            del limit
+            calls.append("wake")
+            return ()
+
+    monkeypatch.setattr(cli, "MediaExternalWaitWakeScheduler", WakeScheduler)
     monkeypatch.setattr(cli, "MediaJobOutboxDispatcher", JobDispatcher)
     monkeypatch.setattr(cli, "OutboxDispatcher", DomainDispatcher)
     monkeypatch.setattr(cli, "CeleryJobPublisher", lambda: object())
@@ -60,4 +70,4 @@ def test_domain_dispatch_still_runs_when_job_dispatch_fails(
             )
         )
 
-    assert calls == ["jobs", "domain"]
+    assert calls == ["wake", "jobs", "domain"]

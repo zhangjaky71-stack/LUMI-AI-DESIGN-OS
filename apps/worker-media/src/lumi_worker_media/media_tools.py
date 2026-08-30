@@ -157,7 +157,7 @@ def _inspect_svg(path: str, workspace: str) -> MediaInspection:
 def _inspect_font(path: str, mime_type: str) -> MediaInspection:
     font = TTFont(path, lazy=True, recalcBBoxes=False, recalcTimestamp=False)
     try:
-        names = font["name"] if "name" in font else None
+        names = font.get("name", None)
         family = _font_name(names, 1) if names is not None else None
         subfamily = _font_name(names, 2) if names is not None else None
         full_name = _font_name(names, 4) if names is not None else None

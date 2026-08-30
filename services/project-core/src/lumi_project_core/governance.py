@@ -9,9 +9,12 @@ from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from threading import RLock
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from lumi_project_core.admin_console import AdminAuditEvent
 
 AuditActorType = Literal["USER", "PLATFORM_ADMIN", "AGENT", "SERVICE"]
 AuditResult = Literal["SUCCESS", "DENIED", "FAILED"]
@@ -1394,7 +1397,7 @@ class Node64AdminAuditSink:
         self._engine = engine
         self._repository = repository
 
-    def emit(self, event: object) -> None:
+    def emit(self, event: AdminAuditEvent) -> None:
         event_type = str(event.event_type)
         actor_id = str(event.actor_id)
         target_type = str(event.target_type)
@@ -1427,7 +1430,7 @@ class Node64AdminAuditSink:
             occurred_at=str(event.created_at),
         )
 
-    def recent(self) -> tuple[object, ...]:
+    def recent(self) -> tuple[AdminAuditEvent, ...]:
         from lumi_project_core.admin_console import AdminAuditEvent
 
         page = self._repository.search_audit(AuditQuery(limit=100))

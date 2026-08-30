@@ -106,7 +106,9 @@ async def _reconcile_cancellation(
             message,
             category=ErrorCategory.PERMANENT,
             error_code=error_code,
-            error_message="provider video reached terminal failure during cancellation reconciliation",
+            error_message=(
+                "provider video reached terminal failure during cancellation reconciliation"
+            ),
         )
         return JobOutcome(state, attempt_count, output)
     raise RuntimeError("VIDEO_CANCELLATION_RECONCILIATION_STATE_INVALID")

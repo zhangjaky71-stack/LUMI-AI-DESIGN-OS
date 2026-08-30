@@ -64,7 +64,7 @@ def test_event_consumer_binds_and_resets_correlation(monkeypatch: pytest.MonkeyP
             del exc_type, exc, traceback
 
     class FakeConnection:
-        def transaction(self) -> FakeTransaction:
+        def transaction(self) -> "FakeTransaction":
             return FakeTransaction()
 
         async def fetchval(self, query: str, *args: object) -> object:
@@ -122,7 +122,7 @@ def test_domain_outbox_commits_failed_publish_attempt_without_marking_published(
             self.committed = False
             self.exc_type: object | None = None
 
-        async def __aenter__(self) -> FakeTransaction:
+        async def __aenter__(self) -> "FakeTransaction":
             return self
 
         async def __aexit__(
@@ -141,7 +141,7 @@ def test_domain_outbox_commits_failed_publish_attempt_without_marking_published(
             self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
             self.closed = False
 
-        def transaction(self) -> FakeTransaction:
+        def transaction(self) -> "FakeTransaction":
             return self.transaction_state
 
         async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:

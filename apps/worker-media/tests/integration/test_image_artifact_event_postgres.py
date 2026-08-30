@@ -147,12 +147,14 @@ async def _cleanup() -> None:
             ids = [row["id"] for row in version_ids]
             if ids:
                 await connection.execute(
-                    "DELETE FROM artifact_provenance WHERE organization_id=$1 AND artifact_version_id = ANY($2::uuid[])",
+                    "DELETE FROM artifact_provenance WHERE organization_id=$1 "
+                    "AND artifact_version_id = ANY($2::uuid[])",
                     UUID(ORG),
                     ids,
                 )
                 await connection.execute(
-                    "DELETE FROM artifact_files WHERE organization_id=$1 AND artifact_version_id = ANY($2::uuid[])",
+                    "DELETE FROM artifact_files WHERE organization_id=$1 "
+                    "AND artifact_version_id = ANY($2::uuid[])",
                     UUID(ORG),
                     ids,
                 )

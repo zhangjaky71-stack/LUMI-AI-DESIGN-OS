@@ -198,7 +198,8 @@ class PostgresVideoRepository(InMemoryVideoRepository):
                     raise RuntimeError("VIDEO_RUNTIME_ROW_SCOPE_CONFLICT")
 
                 await connection.execute(
-                    "UPDATE video_provider_jobs SET active=false, updated_at=now(), version=version+1 "
+                    "UPDATE video_provider_jobs SET active=false, updated_at=now(), "
+                    "version=version+1 "
                     "WHERE organization_id=$1 AND video_job_id=$2 AND active",
                     UUID(organization_id),
                     row_id,
