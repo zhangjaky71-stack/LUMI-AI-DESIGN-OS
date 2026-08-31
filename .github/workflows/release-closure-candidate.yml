@@ -218,8 +218,10 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Sync frozen Python workspace
         run: uv sync --all-packages --frozen
-      - name: Canonical Ruff format
-        run: uv run ruff format apps services evals
+      - name: Canonical Ruff fix and format
+        run: |
+          uv run ruff check --fix apps services evals
+          uv run ruff format apps services evals
       - name: Full Python formatting and lint
         run: |
           uv run ruff format --check apps services evals
