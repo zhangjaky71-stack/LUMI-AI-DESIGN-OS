@@ -10,6 +10,7 @@
 }
 .topToolbar,
 .contextToolbar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -129,6 +130,7 @@
   font-size: 9px;
 }
 .conflictBar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -144,10 +146,9 @@
 }
 .notice {
   position: absolute;
-  top: 96px;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: min(520px, 80%);
+  right: 12px;
+  bottom: 54px;
+  max-width: min(420px, calc(100% - 24px));
   z-index: 90;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 999px;
@@ -304,14 +305,14 @@
 .trayToggle {
   position: absolute;
   top: 12px;
-  left: 12px;
+  right: 12px;
   z-index: 42;
   background: rgba(19, 22, 26, 0.93);
 }
 .assetTray {
   position: absolute;
   top: 49px;
-  left: 12px;
+  right: 12px;
   width: 196px;
   max-height: calc(100% - 118px);
   overflow: auto;
@@ -466,12 +467,12 @@
   }
   .assetTray {
     top: 44px;
-    left: 7px;
+    right: 7px;
     width: 155px;
   }
   .trayToggle {
     top: 8px;
-    left: 7px;
+    right: 7px;
   }
   .frameNavigator {
     left: 8px;
@@ -479,8 +480,10 @@
     max-width: calc(100% - 16px);
   }
   .notice {
-    top: 88px;
-    max-width: 92%;
+    right: 7px;
+    bottom: 54px;
+    left: 7px;
+    max-width: none;
     border-radius: 10px;
   }
   .conflictBar {
