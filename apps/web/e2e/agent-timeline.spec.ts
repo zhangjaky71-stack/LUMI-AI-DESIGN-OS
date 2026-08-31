@@ -4,7 +4,10 @@ const workspace = "/app/projects/project-summer-launch/workspace";
 
 async function startRun(page: Page) {
   const canvas = page.getByLabel("Canvas preview");
-  const headline = canvas.getByRole("button", { name: "Headline", exact: true });
+  const headline = canvas.getByRole("button", {
+    name: "Headline",
+    exact: true,
+  });
 
   if (!(await headline.isVisible())) {
     const mobileTabs = page.getByLabel("移动工作区面板");
