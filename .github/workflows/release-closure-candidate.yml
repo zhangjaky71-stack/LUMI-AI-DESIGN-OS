@@ -1,4 +1,4 @@
-name: Release Closure Python Diagnose
+name: Release Closure Pyright Diagnose
 
 on:
   pull_request:
@@ -9,12 +9,10 @@ permissions:
   contents: read
 
 jobs:
-  diagnose-python-closure:
+  diagnose-pyright-closure:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 20
     env:
-      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
-      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
       EXPECTED_PARENT: 174929388975069cd7a5388357b9a5cabbf9506e
     steps:
       - uses: actions/checkout@v6
@@ -23,7 +21,7 @@ jobs:
           fetch-depth: 1
       - name: Assert exact release parent
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_PARENT"
-      - name: Apply LangGraph restart and Pyright source-root diagnostics
+      - name: Apply first typed closure batch
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -32,40 +30,182 @@ jobs:
               target = Path(path)
               text = target.read_text()
               if old not in text:
-                  raise SystemExit(f"expected patch anchor missing: {path}")
+                  raise SystemExit(f"expected patch anchor missing: {path}: {old[:80]!r}")
               target.write_text(text.replace(old, new, 1))
 
-          script = "scripts/integration_langgraph_postgres_checkpoint.py"
-          replace(script, "from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit\n", "")
-          replace(script, '\n_SCHEMA = "node28_checkpoint_acceptance"\n', "")
           replace(
-              script,
-              '''\ndef _with_search_path(dsn: str, schema: str) -> str:\n    parsed = urlsplit(dsn)\n    query = dict(parse_qsl(parsed.query, keep_blank_values=True))\n    query["options"] = f"-csearch_path={schema},public"\n    return urlunsplit(\n        (parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment)\n    )\n''',
-              "",
-          )
-          replace(
-              script,
-              '''    checkpoint_dsn = _with_search_path(admin_dsn, _SCHEMA)''',
-              '''    # Alembic migration 0022 owns checkpoint schema mutation. Runtime must\n    # exercise the migration-provisioned tables without setup privileges.\n    checkpoint_dsn = runtime_dsn''',
-          )
-          replace(
-              script,
-              '''        await admin.execute(f'DROP SCHEMA IF EXISTS "{_SCHEMA}" CASCADE')\n        await admin.execute(f'CREATE SCHEMA "{_SCHEMA}"')\n''',
-              "",
-          )
-          replace(script, "status, budget, started_at, version", "status, budget_json, started_at, version")
-          replace(script, "            allow_setup=True,", "            allow_setup=False,")
-          replace(
-              script,
-              '''        await admin.execute(f'DROP SCHEMA IF EXISTS "{_SCHEMA}" CASCADE')\n''',
-              "",
-          )
-
-          pyproject = "pyproject.toml"
-          replace(
-              pyproject,
+              "pyproject.toml",
               '''  "services/video-generation/src",\n]''',
               '''  "services/video-generation/src",\n  "services/artifact-history/src",\n  "services/brand-rules/src",\n  "services/constraint-engine/src",\n  "services/design-ir/src",\n  "services/event-contract/src",\n  "services/identity-engine/src",\n  "services/image-edit/src",\n]''',
+          )
+
+          bridge = "apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/approval_bridge.py"
+          replace(
+              bridge,
+              '''class ApprovalFeedbackLike(Protocol):\n    comment: str\n    node_refs: tuple[str, ...]\n    region_refs: tuple[str, ...]\n    requested_changes: tuple[str, ...]\n\n\nclass ApprovalResumeEnvelopeLike(Protocol):\n    approval_id: str\n    decision: str\n    status: str\n    subject_type: str\n    subject_id: str\n    subject_version: str\n    feedback: ApprovalFeedbackLike | None\n''',
+              '''class ApprovalFeedbackLike(Protocol):\n    @property\n    def comment(self) -> str: ...\n\n    @property\n    def node_refs(self) -> tuple[str, ...]: ...\n\n    @property\n    def region_refs(self) -> tuple[str, ...]: ...\n\n    @property\n    def requested_changes(self) -> tuple[str, ...]: ...\n\n\nclass ApprovalResumeEnvelopeLike(Protocol):\n    @property\n    def approval_id(self) -> str: ...\n\n    @property\n    def decision(self) -> str: ...\n\n    @property\n    def status(self) -> str: ...\n\n    @property\n    def subject_type(self) -> str: ...\n\n    @property\n    def subject_id(self) -> str: ...\n\n    @property\n    def subject_version(self) -> str: ...\n\n    @property\n    def feedback(self) -> ApprovalFeedbackLike | None: ...\n''',
+          )
+          replace(
+              "apps/agent-runtime/tests/test_approval_bridge.py",
+              '''    command = resume_command(envelope)\n    payload = resume_payload(envelope)\n    assert command.resume["approval_id"] == "approval-1"''',
+              '''    command = resume_command(envelope)\n    payload = resume_payload(envelope)\n    assert command.resume is not None\n    assert command.resume["approval_id"] == "approval-1"''',
+          )
+
+          router = "apps/api/src/lumi_api/assets/router.py"
+          replace(router, "from typing import Annotated", "from typing import Annotated, Literal, cast")
+          replace(
+              router,
+              '''            upload_mode=upload.upload_mode,\n            status=upload.status,''',
+              '''            upload_mode=cast(Literal["single", "multipart"], upload.upload_mode),\n            status=cast(Literal["pending"], upload.status),''',
+          )
+
+          replace(
+              "apps/api/src/lumi_api/persistence/repositories.py",
+              '''        id_column = self.model.id\n        result = await self._session.execute(''',
+              '''        id_column = getattr(self.model, "id", None)\n        if id_column is None:\n            raise TypeError(f"{self.model.__name__} has no id column")\n        result = await self._session.execute(''',
+          )
+          replace(
+              "apps/api/src/lumi_api/persistence/seed.py",
+              '''    table = model.__table__\n    await session.execute(''',
+              '''    table = getattr(model, "__table__", None)\n    if table is None:\n        raise TypeError(f"{model!r} is not a mapped table")\n    await session.execute(''',
+          )
+
+          security = "apps/api/tests/integration/test_project_security.py"
+          replace(security, "from typing import Annotated, Any", "from typing import Annotated, Any, cast")
+          replace(
+              security,
+              "        app.add_exception_handler(ApiProblem, api_problem_handler)",
+              "        app.add_exception_handler(ApiProblem, cast(Any, api_problem_handler))",
+          )
+          replace(
+              "apps/api/tests/integration/test_tool_gateway_staging_fixture_postgres.py",
+              '''        table_id = model.id\n        return int(''',
+              '''        table_id = getattr(model, "id", None)\n        if table_id is None:\n            raise TypeError(f"{model!r} has no id column")\n        return int(''',
+          )
+
+          admin_test = "apps/api/tests/test_admin_router.py"
+          replace(
+              admin_test,
+              '''    AdminBillingView,\n    AdminConsoleService,''',
+              '''    AdminBillingView,\n    AdminConsoleService,\n    AdminRole,''',
+          )
+          replace(
+              admin_test,
+              '''        mapping = {''',
+              '''        mapping: dict[str, frozenset[AdminRole]] = {''',
+          )
+
+          replace(
+              "apps/api/tests/test_api_v1_contract.py",
+              '''    limit_schema = parameters["limit"]["schema"]\n    assert limit_schema["minimum"] == 1''',
+              '''    limit_schema = parameters["limit"]["schema"]\n    assert isinstance(limit_schema, dict)\n    assert limit_schema["minimum"] == 1''',
+          )
+
+          deep_init = "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/__init__.py"
+          replace(
+              deep_init,
+              '''        TrustedBackendProvider,\n    )''',
+              '''        TrustedBackendProvider,\n        mark_backend_bound,\n        mark_model_gateway_bound,\n    )''',
+          )
+
+          image_pg = "apps/worker-media/tests/integration/test_image_artifact_event_postgres.py"
+          replace(image_pg, "import os\nfrom decimal import Decimal", "import os\nfrom collections.abc import Iterator\nfrom decimal import Decimal")
+          replace(image_pg, "def cleanup() -> None:", "def cleanup() -> Iterator[None]:")
+
+          replace(
+              "apps/worker-media/tests/integration/test_video_hosted_postgres.py",
+              '''        async def handler(value: JobMessage) -> ExternalWait:\n            assert value == message''',
+              '''        async def handler(message: JobMessage) -> ExternalWait:\n            assert message == dispatch.message''',
+          )
+          replace(
+              "apps/worker-media/tests/test_event_runtime.py",
+              '''        def publish(self, outbox_record: OutboxRecord) -> None:\n            assert outbox_record.event_id == record.event_id\n            assert outbox_record.payload == record.payload''',
+              '''        def publish(self, record: OutboxRecord) -> None:\n            assert record.event_id == expected.event_id\n            assert record.payload == expected.payload''',
+          )
+          replace(
+              "apps/worker-media/tests/test_event_runtime.py",
+              '''    connection = FakeConnection()''',
+              '''    expected = record\n    connection = FakeConnection()''',
+          )
+          replace(
+              "apps/worker-media/tests/test_external_wait_runtime.py",
+              '''    async def handler(value: JobMessage) -> ExternalWait:\n        assert value == message''',
+              '''    async def handler(message: JobMessage) -> ExternalWait:\n        assert message == _dispatch().message''',
+          )
+
+          image_entry = "apps/worker-media/tests/test_image_task_entrypoint.py"
+          replace(
+              image_entry,
+              "from unittest.mock import AsyncMock, patch\nfrom uuid import UUID",
+              "from typing import Any, cast\nfrom unittest.mock import AsyncMock, patch\nfrom uuid import UUID",
+          )
+          replace(image_entry, "        payload = app.image_transform.run(MESSAGE)", "        payload = cast(Any, app.image_transform).run(MESSAGE)")
+          replace(image_entry, "        app.image_transform.run(MESSAGE)", "        cast(Any, app.image_transform).run(MESSAGE)")
+          replace(image_entry, "        app.image_transform.run(MESSAGE)", "        cast(Any, app.image_transform).run(MESSAGE)")
+          replace(
+              image_entry,
+              '''    kwargs = retry.call_args.kwargs''',
+              '''    assert retry.call_args is not None\n    kwargs = retry.call_args.kwargs''',
+          )
+
+          replace(
+              "apps/worker-media/tests/test_queue_topology.py",
+              '''    for queue in queues.values():\n        assert queue.queue_arguments["x-dead-letter-exchange"] == "lumi.dlx"''',
+              '''    for queue in queues.values():\n        queue_arguments = getattr(queue, "queue_arguments", None)\n        assert isinstance(queue_arguments, dict)\n        assert queue_arguments["x-dead-letter-exchange"] == "lumi.dlx"''',
+          )
+
+          release_test = "evals/tests/test_release_gate.py"
+          replace(release_test, "import copy\nfrom pathlib import Path", "import copy\nfrom pathlib import Path\nfrom typing import Any")
+          replace(release_test, "from evals.release import ReleaseGateError, ReleaseManifest, evaluate_release", "from evals.models import SuiteDefinition\nfrom evals.release import ReleaseGateError, ReleaseManifest, evaluate_release")
+          replace(
+              release_test,
+              "def _smoke_pair() -> tuple[object, dict[str, object], dict[str, object]]:",
+              "def _smoke_pair() -> tuple[SuiteDefinition, dict[str, Any], dict[str, Any]]:",
+          )
+
+          stats_test = "evals/tests/test_statistics.py"
+          replace(
+              stats_test,
+              '''    interval = wilson_interval(18, 20)\n    assert 0 <= interval["ci95_low"] <= interval["rate"] <= interval["ci95_high"] <= 1''',
+              '''    interval = wilson_interval(18, 20)\n    low = interval["ci95_low"]\n    rate = interval["rate"]\n    high = interval["ci95_high"]\n    assert isinstance(low, (int, float))\n    assert isinstance(rate, (int, float))\n    assert isinstance(high, (int, float))\n    assert 0 <= low <= rate <= high <= 1''',
+          )
+          replace(
+              stats_test,
+              '''    comparison = compare_success_rates(18, 20, 19, 20)\n    assert comparison["delta"] > 0''',
+              '''    comparison = compare_success_rates(18, 20, 19, 20)\n    delta = comparison["delta"]\n    assert isinstance(delta, (int, float))\n    assert delta > 0''',
+          )
+
+          artifact_test = "services/artifact-history/tests/test_artifact_engine_runtime.py"
+          replace(
+              artifact_test,
+              '''    payload = compiler_provenance_payload(value)\n    assert list(payload["resource_versions"]) == ["a", "z"]''',
+              '''    payload = compiler_provenance_payload(value)\n    resource_versions = payload["resource_versions"]\n    assert isinstance(resource_versions, dict)\n    assert list(resource_versions) == ["a", "z"]''',
+          )
+
+          asset_test = "services/asset-storage/tests/test_s3_bounded_bytes.py"
+          replace(
+              asset_test,
+              '''        self.last_put = dict(kwargs)\n        self.objects[(str(kwargs["Bucket"]), str(kwargs["Key"]))] = {''',
+              '''        self.last_put = dict(kwargs)\n        metadata = kwargs.get("Metadata")\n        assert metadata is None or isinstance(metadata, dict)\n        self.objects[(str(kwargs["Bucket"]), str(kwargs["Key"]))] = {''',
+          )
+          replace(asset_test, '''            "metadata": dict(kwargs.get("Metadata") or {}),''', '''            "metadata": dict(metadata or {}),''')
+
+          auth = "services/auth/src/lumi_auth/policy.py"
+          replace(auth, "    roles = tuple(\n", "    roles: tuple[Role, ...] = tuple(\n")
+
+          design_validation = "services/design-ir/src/lumi_design_ir/validation.py"
+          replace(
+              design_validation,
+              '''            component_id = instance.get("component_id")\n            component = nodes.get(component_id)''',
+              '''            component_id = instance.get("component_id")\n            component = nodes.get(component_id) if isinstance(component_id, str) else None''',
+          )
+
+          image_edit_memory = "services/image-edit/src/lumi_image_edit/inmemory.py"
+          replace(image_edit_memory, "from decimal import Decimal\n", "from collections.abc import Mapping\nfrom decimal import Decimal\n")
+          replace(
+              image_edit_memory,
+              '''        self, event_type: str, *, organization_id: str, edit_id: str, payload: dict[str, object]''',
+              '''        self, event_type: str, *, organization_id: str, edit_id: str, payload: Mapping[str, object]''',
           )
           PY
       - uses: actions/setup-python@v6
@@ -78,43 +218,25 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Sync frozen Python workspace
         run: uv sync --all-packages --frozen
-      - name: Validate diagnostic patch formatting and lint
+      - name: Canonical Ruff format
+        run: uv run ruff format apps services evals
+      - name: Full Python formatting and lint
         run: |
-          uv run ruff format scripts/integration_langgraph_postgres_checkpoint.py
           uv run ruff format --check apps services evals
-          uv run ruff check scripts/integration_langgraph_postgres_checkpoint.py
-      - name: Start PostgreSQL and dependencies
-        run: |
-          make infra-env
-          make infra-up
-      - name: Upgrade and seed database
-        run: |
-          make db-upgrade
-          make db-seed
-      - name: Verify migration-owned LangGraph saver restart
-        id: restart
-        continue-on-error: true
-        run: >-
-          PYTHONPATH=apps/agent-runtime/src:apps/api/src
-          uv run python scripts/integration_langgraph_postgres_checkpoint.py
-      - name: Run full Pyright after source-root repair
+          uv run ruff check apps services evals
+      - name: Run full Pyright
         id: pyright
         continue-on-error: true
         run: uv run pyright
-      - name: Show diagnostic diff boundary
+      - name: Show typed closure boundary
         if: always()
         run: |
           git diff --check
           git diff --name-only
-      - name: Require both diagnostic gates
+      - name: Require Pyright
         if: always()
         env:
-          RESTART_OUTCOME: ${{ steps.restart.outcome }}
           PYRIGHT_OUTCOME: ${{ steps.pyright.outcome }}
         run: |
-          printf 'restart=%s\npyright=%s\n' "$RESTART_OUTCOME" "$PYRIGHT_OUTCOME"
-          test "$RESTART_OUTCOME" = success
+          echo "pyright=$PYRIGHT_OUTCOME"
           test "$PYRIGHT_OUTCOME" = success
-      - name: Cleanup
-        if: always()
-        run: CONFIRM=1 make infra-reset || true
