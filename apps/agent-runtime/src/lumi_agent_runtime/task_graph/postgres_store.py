@@ -895,9 +895,17 @@ async def _recompute_graph_locked(
     failed = int(counts["failed"])
     cancelled = int(counts["cancelled"])
     if total > 0 and completed == total:
-        status = "FAILED_FINAL" if failed else ("CANCELLED" if cancelled else "SUCCEEDED")
+        status = (
+            "FAILED_FINAL"
+            if failed
+            else ("CANCELLED" if cancelled else "SUCCEEDED")
+        )
         completed_at = now
-    elif int(counts["waiting"]) and not int(counts["running"]) and not int(counts["ready"]):
+    elif (
+        int(counts["waiting"])
+        and not int(counts["running"])
+        and not int(counts["ready"])
+    ):
         status = "WAITING"
         completed_at = None
     else:
@@ -923,7 +931,9 @@ async def _recompute_graph_locked(
     )
 
 
-async def _insert_outbox(connection: TaskGraphDbConnection, event: TaskGraphEvent) -> None:
+async def _insert_outbox(
+    connection: TaskGraphDbConnection, event: TaskGraphEvent
+) -> None:
     payload = {
         "graph_id": str(event.graph_id),
         "task_id": str(event.task_id) if event.task_id is not None else None,
