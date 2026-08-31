@@ -1,4 +1,4 @@
-name: Release Closure Candidate Verify
+name: Release Closure Python Diagnose
 
 on:
   pull_request:
@@ -6,33 +6,24 @@ on:
       - .github/release-closure-candidate-trigger
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-verify-candidate:
+  diagnose-python-closure:
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 35
     env:
-      LUMI_SHELL_E2E_AUTH: "1"
-      LUMI_PROJECTS_E2E: "1"
-      LUMI_AI_WORKSPACE_E2E: "1"
-      LUMI_INFINITE_CANVAS_E2E: "1"
-      LUMI_BRAND_KIT_E2E: "1"
-      LUMI_VERSIONS_E2E: "1"
       DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
       MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
-      EXPECTED_PARENT: d72dffb40239677a5378e66f2714f3f3172b8b23
-      CANDIDATE_BRANCH: diag-release-closure-candidate
+      EXPECTED_PARENT: 174929388975069cd7a5388357b9a5cabbf9506e
     steps:
       - uses: actions/checkout@v6
         with:
           ref: release-closure-p0
           fetch-depth: 1
-      - name: Assert frozen candidate parent
-        run: |
-          test "$(git rev-parse HEAD)" = "$EXPECTED_PARENT"
-          git checkout -B "$CANDIDATE_BRANCH"
-      - name: Apply exact code-addressable closure patches
+      - name: Assert exact release parent
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_PARENT"
+      - name: Apply LangGraph restart and Pyright source-root diagnostics
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -44,71 +35,38 @@ jobs:
                   raise SystemExit(f"expected patch anchor missing: {path}")
               target.write_text(text.replace(old, new, 1))
 
+          script = "scripts/integration_langgraph_postgres_checkpoint.py"
+          replace(script, "from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit\n", "")
+          replace(script, '\n_SCHEMA = "node28_checkpoint_acceptance"\n', "")
           replace(
-              "apps/web/e2e/versions-ui.spec.ts",
-              '''    await page.getByLabel("Wipe position").evaluate((node) => {\n      const input = node as HTMLInputElement;\n      input.value = "70";\n      input.dispatchEvent(new Event("input", { bubbles: true }));\n      input.dispatchEvent(new Event("change", { bubbles: true }));\n    });''',
-              '''    await page.getByLabel("Wipe position").fill("70");''',
+              script,
+              '''\ndef _with_search_path(dsn: str, schema: str) -> str:\n    parsed = urlsplit(dsn)\n    query = dict(parse_qsl(parsed.query, keep_blank_values=True))\n    query["options"] = f"-csearch_path={schema},public"\n    return urlunsplit(\n        (parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment)\n    )\n''',
+              "",
           )
           replace(
-              "apps/web/e2e/brand-kit.spec.ts",
-              '''    await expect(page.getByText("逐条确认", { exact: false })).toBeVisible();''',
-              '''    await expect(\n      page.getByRole("alert").filter({ hasText: "逐条确认" }),\n    ).toBeVisible();''',
+              script,
+              '''    checkpoint_dsn = _with_search_path(admin_dsn, _SCHEMA)''',
+              '''    # Alembic migration 0022 owns checkpoint schema mutation. Runtime must\n    # exercise the migration-provisioned tables without setup privileges.\n    checkpoint_dsn = runtime_dsn''',
           )
           replace(
-              "apps/web/e2e/brand-kit.spec.ts",
-              '''    await expect(page.getByText("APPROVED_GUIDE_EXTRACTION")).toBeVisible();''',
-              '''    await expect(\n      page.getByText("COLOR · APPROVED_GUIDE_EXTRACTION", { exact: true }),\n    ).toBeVisible();''',
+              script,
+              '''        await admin.execute(f'DROP SCHEMA IF EXISTS "{_SCHEMA}" CASCADE')\n        await admin.execute(f'CREATE SCHEMA "{_SCHEMA}"')\n''',
+              "",
           )
-
-          brand = "apps/web/src/components/brand-kit/brand-kit.tsx"
+          replace(script, "            allow_setup=True,", "            allow_setup=False,")
           replace(
-              brand,
-              '''                          onChange={(event) =>\n                            setGuideDecisions((current) => ({\n                              ...current,\n                              [candidate.candidate_id]: {\n                                candidate_id: candidate.candidate_id,\n                                decision: event.currentTarget.value as\n                                  | "APPROVE"\n                                  | "REJECT",\n                                severity:\n                                  current[candidate.candidate_id]?.severity ??\n                                  candidate.rule.severity,\n                              },\n                            }))\n                          }''',
-              '''                          onChange={(event) => {\n                            const decision = event.currentTarget.value as\n                              | "APPROVE"\n                              | "REJECT";\n                            setGuideDecisions((current) => ({\n                              ...current,\n                              [candidate.candidate_id]: {\n                                candidate_id: candidate.candidate_id,\n                                decision,\n                                severity:\n                                  current[candidate.candidate_id]?.severity ??\n                                  candidate.rule.severity,\n                              },\n                            }));\n                          }}''',
-          )
-          replace(
-              brand,
-              '''                          onChange={(event) =>\n                            setGuideDecisions((current) => ({\n                              ...current,\n                              [candidate.candidate_id]: {\n                                candidate_id: candidate.candidate_id,\n                                decision:\n                                  current[candidate.candidate_id]?.decision ??\n                                  "APPROVE",\n                                severity: event.currentTarget\n                                  .value as BrandRuleSeverity,\n                              },\n                            }))\n                          }''',
-              '''                          onChange={(event) => {\n                            const severity = event.currentTarget\n                              .value as BrandRuleSeverity;\n                            setGuideDecisions((current) => ({\n                              ...current,\n                              [candidate.candidate_id]: {\n                                candidate_id: candidate.candidate_id,\n                                decision:\n                                  current[candidate.candidate_id]?.decision ??\n                                  "APPROVE",\n                                severity,\n                              },\n                            }));\n                          }}''',
+              script,
+              '''        await admin.execute(f'DROP SCHEMA IF EXISTS "{_SCHEMA}" CASCADE')\n''',
+              "",
           )
 
-          store = "apps/agent-runtime/src/lumi_agent_runtime/control_plane/postgres_store.py"
+          pyproject = "pyproject.toml"
           replace(
-              store,
-              '''    interrupts_raw = row["interrupts_json"] or []\n    interrupts = tuple(_interrupt_from_json(item) for item in interrupts_raw)''',
-              '''    state_values_raw = _decode_json(row["state_values_json"], {})\n    next_nodes_raw = _decode_json(row["next_nodes_json"], [])\n    interrupts_raw = _decode_json(row["interrupts_json"], [])\n    if not isinstance(state_values_raw, dict):\n        raise GraphRunConflictError("persisted state values are not an object")\n    if not isinstance(next_nodes_raw, list):\n        raise GraphRunConflictError("persisted next nodes are not an array")\n    if not isinstance(interrupts_raw, list):\n        raise GraphRunConflictError("persisted interrupts are not an array")\n    interrupts = tuple(_interrupt_from_json(item) for item in interrupts_raw)''',
-          )
-          replace(
-              store,
-              '''        state_values=dict(row["state_values_json"] or {}),\n        next_nodes=tuple(str(item) for item in (row["next_nodes_json"] or [])),''',
-              '''        state_values=dict(state_values_raw),\n        next_nodes=tuple(str(item) for item in next_nodes_raw),''',
-          )
-          replace(
-              store,
-              '''\ndef _interrupt_json(interrupt: GraphInterrupt) -> dict[str, Any]:''',
-              '''\ndef _decode_json(value: Any, default: Any) -> Any:\n    if value is None:\n        return default\n    if isinstance(value, str):\n        try:\n            return json.loads(value)\n        except json.JSONDecodeError as exc:\n            raise GraphRunConflictError("persisted control JSON is invalid") from exc\n    return value\n\n\ndef _interrupt_json(interrupt: GraphInterrupt) -> dict[str, Any]:''',
+              pyproject,
+              '''  "services/video-generation/src",\n]''',
+              '''  "services/video-generation/src",\n  "services/artifact-history/src",\n  "services/brand-rules/src",\n  "services/constraint-engine/src",\n  "services/design-ir/src",\n  "services/identity-engine/src",\n  "services/image-edit/src",\n]''',
           )
           PY
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          package-manager-cache: false
-      - name: Enable pinned pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@11.4.0 --activate
-      - name: Install JS workspace
-        run: pnpm install --frozen-lockfile
-      - name: Canonical Prettier write
-        run: |
-          pnpm exec prettier --write \
-            apps/web/src/components/brand-kit/brand-kit.tsx \
-            apps/web/e2e/versions-ui.spec.ts \
-            apps/web/e2e/brand-kit.spec.ts \
-            packages/design-ir/src/executor.ts \
-            packages/design-ir/tests/runtime.test.ts
-      - name: Full frontend format gate
-        run: pnpm format:check
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -117,22 +75,13 @@ jobs:
           version: 0.11.28
           enable-cache: true
           cache-dependency-glob: uv.lock
-      - name: Sync Python workspace
+      - name: Sync frozen Python workspace
         run: uv sync --all-packages --frozen
-      - name: Canonical Ruff format write
+      - name: Validate diagnostic patch formatting and lint
         run: |
-          uv run ruff format \
-            apps/agent-runtime/src/lumi_agent_runtime/control_plane/postgres_store.py \
-            apps/agent-runtime/src/lumi_agent_runtime/task_graph/postgres_store.py \
-            apps/api/tests/integration/test_project_security.py
-      - name: Full Python format gate
-        run: uv run ruff format --check apps services evals
-      - name: Python correctness gate
-        run: uv run ruff check apps/agent-runtime/src/lumi_agent_runtime/control_plane apps/agent-runtime/src/lumi_agent_runtime/task_graph apps/api/tests/integration/test_project_security.py
-      - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Verify Brand Kit and Versions browser closure
-        run: pnpm exec playwright test apps/web/e2e/brand-kit.spec.ts apps/web/e2e/versions-ui.spec.ts
+          uv run ruff format scripts/integration_langgraph_postgres_checkpoint.py
+          uv run ruff format --check apps services evals scripts
+          uv run ruff check scripts/integration_langgraph_postgres_checkpoint.py
       - name: Start PostgreSQL and dependencies
         run: |
           make infra-env
@@ -141,41 +90,17 @@ jobs:
         run: |
           make db-upgrade
           make db-seed
-      - name: Verify LangGraph PostgreSQL control closure
+      - name: Verify migration-owned LangGraph saver restart
         run: >-
           PYTHONPATH=apps/agent-runtime/src:apps/api/src
-          uv run python scripts/integration_langgraph_postgres_control.py
-      - name: Verify exact changed-path boundary
+          uv run python scripts/integration_langgraph_postgres_checkpoint.py
+      - name: Run full Pyright after source-root repair
+        run: uv run pyright
+      - name: Show diagnostic diff boundary
+        if: always()
         run: |
-          git checkout -- apps/web/next-env.d.ts
           git diff --check
-          actual="$(git diff --name-only | sort)"
-          expected="$(printf '%s\n' \
-            apps/agent-runtime/src/lumi_agent_runtime/control_plane/postgres_store.py \
-            apps/agent-runtime/src/lumi_agent_runtime/task_graph/postgres_store.py \
-            apps/api/tests/integration/test_project_security.py \
-            apps/web/e2e/brand-kit.spec.ts \
-            apps/web/e2e/versions-ui.spec.ts \
-            apps/web/src/components/brand-kit/brand-kit.tsx \
-            packages/design-ir/src/executor.ts \
-            packages/design-ir/tests/runtime.test.ts | sort)"
-          printf '%s\n' "$actual"
-          test "$actual" = "$expected"
-      - name: Commit verified candidate only
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add \
-            apps/agent-runtime/src/lumi_agent_runtime/control_plane/postgres_store.py \
-            apps/agent-runtime/src/lumi_agent_runtime/task_graph/postgres_store.py \
-            apps/api/tests/integration/test_project_security.py \
-            apps/web/e2e/brand-kit.spec.ts \
-            apps/web/e2e/versions-ui.spec.ts \
-            apps/web/src/components/brand-kit/brand-kit.tsx \
-            packages/design-ir/src/executor.ts \
-            packages/design-ir/tests/runtime.test.ts
-          git commit -m "fix: close remaining source validation regressions"
-          git push --force origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
+          git diff --name-only
       - name: Cleanup
         if: always()
         run: CONFIRM=1 make infra-reset || true
