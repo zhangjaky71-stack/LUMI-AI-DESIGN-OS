@@ -171,9 +171,7 @@ def test_project_security_requires_real_principal_tenant_membership_and_csrf() -
                 transport=transport,
                 base_url="http://testserver",
             ) as client:
-                header_only = await client.get(
-                    "/probe", headers={"X-Lumi-Organization-Id": org}
-                )
+                header_only = await client.get("/probe", headers={"X-Lumi-Organization-Id": org})
                 assert header_only.status_code == 401
 
                 owner_read = await client.get(

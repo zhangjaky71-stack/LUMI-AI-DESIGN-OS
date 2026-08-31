@@ -947,20 +947,21 @@ export function BrandKitProduct({
                         <select
                           aria-label={`${candidate.candidate_id} review`}
                           value={decision?.decision ?? ""}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            const decision = event.currentTarget.value as
+                              | "APPROVE"
+                              | "REJECT";
                             setGuideDecisions((current) => ({
                               ...current,
                               [candidate.candidate_id]: {
                                 candidate_id: candidate.candidate_id,
-                                decision: event.currentTarget.value as
-                                  | "APPROVE"
-                                  | "REJECT",
+                                decision,
                                 severity:
                                   current[candidate.candidate_id]?.severity ??
                                   candidate.rule.severity,
                               },
-                            }))
-                          }
+                            }));
+                          }}
                         >
                           <option value="">Review…</option>
                           <option value="APPROVE">Approve</option>
@@ -970,7 +971,9 @@ export function BrandKitProduct({
                           aria-label={`${candidate.candidate_id} severity`}
                           value={decision?.severity ?? candidate.rule.severity}
                           disabled={decision?.decision !== "APPROVE"}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            const severity = event.currentTarget
+                              .value as BrandRuleSeverity;
                             setGuideDecisions((current) => ({
                               ...current,
                               [candidate.candidate_id]: {
@@ -978,11 +981,10 @@ export function BrandKitProduct({
                                 decision:
                                   current[candidate.candidate_id]?.decision ??
                                   "APPROVE",
-                                severity: event.currentTarget
-                                  .value as BrandRuleSeverity,
+                                severity,
                               },
-                            }))
-                          }
+                            }));
+                          }}
                         >
                           <option>HARD</option>
                           <option>SOFT</option>

@@ -90,17 +90,19 @@ test.describe("NODE-58 Brand Kit UI", () => {
     expect(firstReviewLabel).not.toBeNull();
     const firstCandidateId = firstReviewLabel!.replace(/ review$/, "");
     await firstReview.selectOption("APPROVE");
-    await page
-      .getByLabel(`${firstCandidateId} severity`)
-      .selectOption("HARD");
+    await page.getByLabel(`${firstCandidateId} severity`).selectOption("HARD");
     await reviews.nth(1).selectOption("REJECT");
     await page.getByRole("button", { name: "Apply human review" }).click();
-    await expect(page.getByText("逐条确认", { exact: false })).toBeVisible();
+    await expect(
+      page.getByRole("alert").filter({ hasText: "逐条确认" }),
+    ).toBeVisible();
     await reviews.nth(2).selectOption("REJECT");
     await page.getByRole("button", { name: "Apply human review" }).click();
     await expect(page.getByText("APPROVED", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Voice & Rules" }).click();
-    await expect(page.getByText("APPROVED_GUIDE_EXTRACTION")).toBeVisible();
+    await expect(
+      page.getByText("COLOR · APPROVED_GUIDE_EXTRACTION", { exact: true }),
+    ).toBeVisible();
   });
 
   test("publishes a new immutable version, advances CURRENT binding and preserves PINNED", async ({

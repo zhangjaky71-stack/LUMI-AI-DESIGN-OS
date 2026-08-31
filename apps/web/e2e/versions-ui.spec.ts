@@ -108,12 +108,7 @@ test.describe("NODE-59 Versions UI", () => {
     await page.getByLabel("Compare after").selectOption("raster-v3");
     await page.getByRole("button", { name: "Wipe", exact: true }).click();
     await expect(page.getByLabel("Wipe compare")).toBeVisible();
-    await page.getByLabel("Wipe position").evaluate((node) => {
-      const input = node as HTMLInputElement;
-      input.value = "70";
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    await page.getByLabel("Wipe position").fill("70");
     await expect(page.getByText(/After · 70%/)).toBeVisible();
   });
 

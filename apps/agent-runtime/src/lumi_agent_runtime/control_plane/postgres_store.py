@@ -221,7 +221,15 @@ def _assert_snapshot_identity(row: Any, snapshot: GraphRunSnapshot) -> None:
 def _snapshot_from_row(row: Any) -> GraphRunSnapshot:
     created = _datetime(row["created_at"])
     updated = _datetime(row["updated_at"])
-    interrupts_raw = row["interrupts_json"] or []
+    state_values_raw = _decode_json(row["state_values_json"], {})
+    next_nodes_raw = _decode_json(row["next_nodes_json"], [])
+    interrupts_raw = _decode_json(row["interrupts_json"], [])
+    if not isinstance(state_values_raw, dict):
+        raise GraphRunConflictError("persisted state values are not an object")
+    if not isinstance(next_nodes_raw, list):
+        raise GraphRunConflictError("persisted next nodes are not an array")
+    if not isinstance(interrupts_raw, list):
+        raise GraphRunConflictError("persisted interrupts are not an array")
     interrupts = tuple(_interrupt_from_json(item) for item in interrupts_raw)
     return GraphRunSnapshot(
         organization_id=row["organization_id"],
@@ -235,13 +243,24 @@ def _snapshot_from_row(row: Any) -> GraphRunSnapshot:
         status=GraphRunStatus(row["control_status"]),
         checkpoint_id=row["checkpoint_id"],
         checkpoint_namespace=row["checkpoint_namespace"],
-        state_values=dict(row["state_values_json"] or {}),
-        next_nodes=tuple(str(item) for item in (row["next_nodes_json"] or [])),
+        state_values=dict(state_values_raw),
+        next_nodes=tuple(str(item) for item in next_nodes_raw),
         interrupts=interrupts,
         created_at=created,
         updated_at=updated,
         error_code=row["error_code"],
     )
+
+
+def _decode_json(value: Any, default: Any) -> Any:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise GraphRunConflictError("persisted control JSON is invalid") from exc
+    return value
 
 
 def _interrupt_json(interrupt: GraphInterrupt) -> dict[str, Any]:

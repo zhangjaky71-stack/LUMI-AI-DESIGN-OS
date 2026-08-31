@@ -177,11 +177,7 @@ function setPath(node: MutableNode, path: string, value: unknown): void {
       current = child as Record<string, unknown>;
     }
   }
-  defineOwnProperty(
-    current,
-    keys[keys.length - 1]!,
-    structuredClone(value),
-  );
+  defineOwnProperty(current, keys[keys.length - 1]!, structuredClone(value));
 }
 
 function mutateTransform(

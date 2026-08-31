@@ -61,7 +61,9 @@ describe("NODE-38 Design IR runtime", () => {
 
   it("rejects prototype-polluting property paths", () => {
     const marker = "__lumi_design_ir_polluted__";
-    expect((Object.prototype as Record<string, unknown>)[marker]).toBeUndefined();
+    expect(
+      (Object.prototype as Record<string, unknown>)[marker],
+    ).toBeUndefined();
 
     const maliciousPaths = [
       `__proto__.${marker}`,
@@ -85,7 +87,9 @@ describe("NODE-38 Design IR runtime", () => {
           "Unsafe property path segment",
         );
       }
-      expect((Object.prototype as Record<string, unknown>)[marker]).toBeUndefined();
+      expect(
+        (Object.prototype as Record<string, unknown>)[marker],
+      ).toBeUndefined();
     }
   });
 
