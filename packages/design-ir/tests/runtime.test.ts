@@ -59,6 +59,36 @@ describe("NODE-38 Design IR runtime", () => {
     if (!result.ok) expect(result.failures[0]?.code).toBe("VERSION_CONFLICT");
   });
 
+  it("rejects prototype-polluting property paths", () => {
+    const marker = "__lumi_design_ir_polluted__";
+    expect((Object.prototype as Record<string, unknown>)[marker]).toBeUndefined();
+
+    const maliciousPaths = [
+      `__proto__.${marker}`,
+      `constructor.prototype.${marker}`,
+      `style.__proto__.${marker}`,
+    ];
+    for (const path of maliciousPaths) {
+      const result = executeOperations(source, [
+        {
+          operation_id: `prototype-pollution:${path}`,
+          type: "SET_PROPERTY",
+          target_ids: ["headline"],
+          expected_document_version: operations[0]!.expected_document_version,
+          payload: { path, value: "polluted" },
+        },
+      ]);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.failures[0]?.code).toBe("INVALID_OPERATION");
+        expect(result.failures[0]?.message).toContain(
+          "Unsafe property path segment",
+        );
+      }
+      expect((Object.prototype as Record<string, unknown>)[marker]).toBeUndefined();
+    }
+  });
+
   it("is deterministic across repeated equivalent transactions", () => {
     const hashes = new Set<string>();
     for (let index = 0; index < 50; index += 1) {
