@@ -53,7 +53,7 @@ jobs:
           replace(
               "apps/web/e2e/brand-kit.spec.ts",
               '''    const firstReview = reviews.nth(0);\n    const firstReviewLabel = await firstReview.getAttribute("aria-label");\n    expect(firstReviewLabel).not.toBeNull();\n    const firstCandidateId = firstReviewLabel!.replace(/ review$/, "");\n    await firstReview.selectOption("APPROVE");\n    await page\n      .getByLabel(`${firstCandidateId} severity`)\n      .selectOption("HARD");''',
-              '''    const firstReview = reviews.nth(0);\n    const firstSeverityLabel = await firstReview.evaluate((node) =>\n      node.parentElement\n        ?.querySelector('select[aria-label$=" severity"]')\n        ?.getAttribute("aria-label"),\n    );\n    expect(firstSeverityLabel).not.toBeNull();\n    const firstSeverity = page.getByLabel(firstSeverityLabel!, { exact: true });\n    await firstReview.selectOption("APPROVE");\n    await expect(firstSeverity).toBeEnabled();\n    await firstSeverity.selectOption("HARD");''',
+              '''    const firstReview = reviews.nth(0);\n    await firstReview.selectOption("APPROVE");\n    await expect(reviews.nth(0)).toHaveValue("APPROVE");\n    const firstSeverityLabel = await reviews.nth(0).evaluate((node) =>\n      node.parentElement\n        ?.querySelector('select[aria-label$=" severity"]')\n        ?.getAttribute("aria-label"),\n    );\n    expect(firstSeverityLabel).not.toBeNull();\n    const firstSeverity = page.locator(\n      `select[aria-label="${firstSeverityLabel}"]`,\n    );\n    await expect(firstSeverity).toBeEnabled();\n    await firstSeverity.selectOption("HARD");''',
           )
 
           store = "apps/agent-runtime/src/lumi_agent_runtime/control_plane/postgres_store.py"
