@@ -107,7 +107,8 @@ async def main_async() -> None:
             INSERT INTO organizations (
                 id, name, slug, status, plan, settings_json, created_at, updated_at, version
             ) VALUES (
-                $1,'Release Guard Org','release-guard-' || replace($1::text,'-',''),
+                $1::uuid,'Release Guard Org',
+                'release-guard-' || replace($1::uuid::text,'-',''),
                 'active','development','{}'::jsonb,now(),now(),1
             )
             """,
@@ -281,8 +282,9 @@ async def main_async() -> None:
 
         print("platform provider USD/day hard-stop PostgreSQL acceptance: PASS")
     finally:
-        # Use the migration role for deterministic cleanup of immutable financial
-        # fixtures created only by this acceptance run.
+        # cost_ledger is append-only for every database role. Preserve immutable
+        # facts and any operation/organization rows they reference until the
+        # disposable integration database is destroyed by the Hosted job.
         if operation_ids:
             await migration.execute(
                 "DELETE FROM usage_ledger WHERE operation_id = ANY($1::uuid[])",
@@ -293,14 +295,27 @@ async def main_async() -> None:
                 operation_ids,
             )
             await migration.execute(
-                "DELETE FROM cost_ledger WHERE operation_id = ANY($1::uuid[])",
+                """
+                DELETE FROM idempotency_operations AS operation
+                WHERE operation.id = ANY($1::uuid[])
+                  AND NOT EXISTS (
+                      SELECT 1 FROM cost_ledger AS ledger
+                      WHERE ledger.operation_id = operation.id
+                  )
+                """,
                 operation_ids,
             )
-            await migration.execute(
-                "DELETE FROM idempotency_operations WHERE id = ANY($1::uuid[])",
-                operation_ids,
-            )
-        await migration.execute("DELETE FROM organizations WHERE id=$1", second_org)
+        await migration.execute(
+            """
+            DELETE FROM organizations AS organization
+            WHERE organization.id=$1
+              AND NOT EXISTS (
+                  SELECT 1 FROM cost_ledger AS ledger
+                  WHERE ledger.organization_id = organization.id
+              )
+            """,
+            second_org,
+        )
         if original_policy is not None:
             await migration.execute(
                 """
