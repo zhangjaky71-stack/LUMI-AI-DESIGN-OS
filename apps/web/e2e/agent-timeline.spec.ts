@@ -60,7 +60,7 @@ test.describe("NODE-57 Agent Timeline", () => {
     const timeline = page.getByLabel("Agent Timeline");
     await expect(timeline.getByText("2/4", { exact: true })).toBeVisible();
     await expect(
-      timeline.getByText("PROVIDER_TIMEOUT", { exact: true }),
+      timeline.getByText("PROVIDER_TIMEOUT", { exact: true }).first(),
     ).toBeVisible();
     await expect(timeline.getByText(/req-timeline-retry-01/)).toBeVisible();
     await expect(
