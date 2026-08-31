@@ -18,6 +18,7 @@ jobs:
       BASE_VERIFIER_COMMIT: 8c2ab60e3b093b80c2d1b046c7eea1b65f72e06e
       TYPED_VERIFIER_COMMIT: 4d0ecaeeaee2058922b7a316f9515d14c23242fa
       CANDIDATE_VERIFIER_COMMIT: 42083de10e1a62c0472722567ce00ac6b1818334
+      DISCOVERY_VERIFIER_COMMIT: 33c6b2e67b558fc3993d9a8563000f3d018839d2
     steps:
       - uses: actions/checkout@v6
         with:
@@ -32,41 +33,56 @@ jobs:
       - name: Fetch frozen proven patch sources
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin "$BASE_VERIFIER_COMMIT" "$TYPED_VERIFIER_COMMIT" "$CANDIDATE_VERIFIER_COMMIT"
+          git fetch --no-tags --depth=1 origin "$BASE_VERIFIER_COMMIT" "$TYPED_VERIFIER_COMMIT" "$CANDIDATE_VERIFIER_COMMIT" "$DISCOVERY_VERIFIER_COMMIT"
           git show "$BASE_VERIFIER_COMMIT:.github/workflows/release-closure-candidate.yml" > /tmp/base-verifier.yml
           git show "$TYPED_VERIFIER_COMMIT:.github/workflows/release-closure-candidate.yml" > /tmp/typed-verifier.yml
           git show "$CANDIDATE_VERIFIER_COMMIT:.github/workflows/release-closure-candidate.yml" > /tmp/candidate-verifier.yml
-      - name: Apply proven closure plus main-CI pytest discovery repair
+          git show "$DISCOVERY_VERIFIER_COMMIT:.github/workflows/release-closure-candidate.yml" > /tmp/discovery-verifier.yml
+      - name: Apply proven closure plus semantic security contract repair
         run: |
           python - <<'PY'
           from pathlib import Path
           import textwrap
 
-          frozen = Path("/tmp/candidate-verifier.yml").read_text()
-          marker = "      - name: Apply proven typed closure and least-privilege LangGraph restart patch\n        run: |\n"
+          frozen = Path("/tmp/discovery-verifier.yml").read_text()
+          marker = "      - name: Apply proven closure plus main-CI pytest discovery repair\n        run: |\n"
           if marker not in frozen:
-              raise SystemExit("frozen candidate patch step marker not found")
+              raise SystemExit("frozen discovery patch step marker not found")
           body = frozen.split(marker, 1)[1]
           start = "          python - <<'PY'\n"
           end = "\n          PY\n      - uses: actions/setup-python@v6"
           if start not in body or end not in body:
-              raise SystemExit("frozen candidate patch block not found")
+              raise SystemExit("frozen discovery patch block not found")
           patch = body.split(start, 1)[1].split(end, 1)[0]
-          exec(compile(textwrap.dedent(patch), "<frozen-candidate-patch>", "exec"))
+          exec(compile(textwrap.dedent(patch), "<frozen-discovery-patch>", "exec"))
 
           def replace(path: str, old: str, new: str) -> None:
               target = Path(path)
               text = target.read_text()
               if old not in text:
-                  raise SystemExit(f"expected pytest patch anchor missing: {path}: {old[:100]!r}")
+                  raise SystemExit(f"expected security-contract patch anchor missing: {path}: {old[:100]!r}")
               target.write_text(text.replace(old, new, 1))
 
-          pyproject = "pyproject.toml"
-          replace(pyproject, 'addopts = "-q"', 'addopts = "-q --import-mode=importlib"')
+          test = "evals/tests/test_release_security_contracts.py"
           replace(
-              pyproject,
-              '''  "services/asset-storage/src",\n  "services/image-generation/src",\n  "services/video-generation/src",\n]\ntestpaths = [''',
-              '''  "services/asset-storage/src",\n  "services/image-generation/src",\n  "services/video-generation/src",\n  "services/artifact-history/src",\n  "services/brand-rules/src",\n  "services/constraint-engine/src",\n  "services/design-ir/src",\n  "services/event-contract/src",\n  "services/identity-engine/src",\n  "services/image-edit/src",\n]\ntestpaths = [''',
+              test,
+              '''def _read(relative: str) -> str:\n    return (ROOT / relative).read_text(encoding="utf-8")\n''',
+              '''def _read(relative: str) -> str:\n    return (ROOT / relative).read_text(encoding="utf-8")\n\n\ndef _normalized_hcl(source: str) -> str:\n    return " ".join(source.split())\n''',
+          )
+          replace(
+              test,
+              '''    assert 'name == "sandbox-runtime"' in compute''',
+              '''    assert 'contains(["sandbox-runtime", "outbox-dispatcher"], name)' in compute''',
+          )
+          replace(
+              test,
+              '''        assert (\n            "sandbox_egress_security_group_id       = local.core.sandbox_egress_security_group_id"\n        ) in app\n        assert (\n            "app_internet_egress_security_group_id = "\n            "local.core.app_internet_egress_security_group_id"\n        ) in app''',
+              '''        normalized_app = _normalized_hcl(app)\n        assert (\n            "sandbox_egress_security_group_id = local.core.sandbox_egress_security_group_id"\n            in normalized_app\n        )\n        assert (\n            "app_internet_egress_security_group_id = "\n            "local.core.app_internet_egress_security_group_id"\n            in normalized_app\n        )''',
+          )
+          replace(
+              test,
+              '''        gateway = _hcl_block(source, "model-gateway = {")\n        assert 'LUMI_DATABASE_URL          = local.secret_arns["database/app"]' in gateway\n        assert 'LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"]' in gateway\n        assert 'LUMI_MEDIA_PROVIDER_SECRET = local.secret_arns["providers/media"]' in gateway''',
+              '''        gateway = _hcl_block(source, "model-gateway = {")\n        normalized_gateway = _normalized_hcl(gateway)\n        assert 'LUMI_DATABASE_URL = local.secret_arns["database/app"]' in normalized_gateway\n        assert (\n            'LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"]'\n            in normalized_gateway\n        )\n        assert (\n            'LUMI_MEDIA_PROVIDER_SECRET = local.secret_arns["providers/media"]'\n            in normalized_gateway\n        )''',
           )
           PY
       - uses: actions/setup-python@v6
@@ -186,6 +202,7 @@ jobs:
           apps/worker-media/tests/test_image_task_entrypoint.py
           apps/worker-media/tests/test_queue_topology.py
           evals/tests/test_release_gate.py
+          evals/tests/test_release_security_contracts.py
           evals/tests/test_statistics.py
           pyproject.toml
           scripts/integration_langgraph_postgres_checkpoint.py
@@ -200,7 +217,7 @@ jobs:
           git diff --name-only | sort > /tmp/actual-paths.txt
           sort /tmp/expected-paths.txt -o /tmp/expected-paths.txt
           diff -u /tmp/expected-paths.txt /tmp/actual-paths.txt
-          test "$(wc -l < /tmp/actual-paths.txt)" -eq 30
+          test "$(wc -l < /tmp/actual-paths.txt)" -eq 31
       - name: Create and push single validated candidate commit
         run: |
           set -euo pipefail
@@ -209,7 +226,7 @@ jobs:
           git config user.name "LUMI Release Closure"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add --all
-          test "$(git diff --cached --name-only | wc -l)" -eq 30
+          test "$(git diff --cached --name-only | wc -l)" -eq 31
           git commit -m "fix: close Python and LangGraph source gates"
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
           git push origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
