@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Iterator
 from decimal import Decimal
 from uuid import UUID
 
@@ -224,7 +225,7 @@ async def _cleanup() -> None:
 
 
 @pytest.fixture(autouse=True)
-def cleanup() -> None:
+def cleanup() -> Iterator[None]:
     asyncio.run(_cleanup())
     yield
     asyncio.run(_cleanup())

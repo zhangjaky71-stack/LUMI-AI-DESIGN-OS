@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from contextlib import suppress
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from celery import Task
@@ -98,7 +98,7 @@ def _record_final_failure(
         )
     broker_url = os.getenv("RABBITMQ_URL")
     if broker_url:
-        with Connection(broker_url) as connection, connection.channel() as channel:
+        with Connection(broker_url) as connection, cast(Any, connection.channel()) as channel:
             Producer(channel, serializer="json").publish(
                 dlq_body,
                 exchange=DEAD_LETTER_EXCHANGE,

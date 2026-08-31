@@ -213,7 +213,7 @@ def validate_document(document: Mapping[str, Any]) -> None:
         elif kind == "INSTANCE":
             instance = _require_mapping(node.get("instance"), f"nodes.{node_id}.instance")
             component_id = instance.get("component_id")
-            component = nodes.get(component_id)
+            component = nodes.get(component_id) if isinstance(component_id, str) else None
             if not isinstance(component, Mapping) or component.get("kind") != "COMPONENT":
                 raise ResourceReferenceError(
                     f"instance node {node_id} references invalid component {component_id}"

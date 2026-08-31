@@ -13,11 +13,19 @@ def test_sample_summary_records_uncertainty() -> None:
 
 def test_wilson_interval_is_bounded() -> None:
     interval = wilson_interval(18, 20)
-    assert 0 <= interval["ci95_low"] <= interval["rate"] <= interval["ci95_high"] <= 1
+    low = interval["ci95_low"]
+    rate = interval["rate"]
+    high = interval["ci95_high"]
+    assert isinstance(low, (int, float))
+    assert isinstance(rate, (int, float))
+    assert isinstance(high, (int, float))
+    assert 0 <= low <= rate <= high <= 1
     assert interval["confidence_method"] == "wilson_95"
 
 
 def test_comparison_never_declares_significance_implicitly() -> None:
     comparison = compare_success_rates(18, 20, 19, 20)
-    assert comparison["delta"] > 0
+    delta = comparison["delta"]
+    assert isinstance(delta, (int, float))
+    assert delta > 0
     assert comparison["claim_significant_improvement"] is False

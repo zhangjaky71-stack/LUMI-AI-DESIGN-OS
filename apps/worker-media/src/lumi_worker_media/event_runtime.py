@@ -5,7 +5,7 @@ import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 from uuid import UUID
 
 import asyncpg
@@ -78,7 +78,7 @@ class KombuDomainPublisher:
     def publish(self, record: OutboxRecord) -> None:
         with Connection(self.broker_url) as connection:
             connection.ensure_connection(max_retries=3)
-            with connection.channel() as channel:
+            with cast(Any, connection.channel()) as channel:
                 confirm_select = getattr(channel, "confirm_select", None)
                 if callable(confirm_select):
                     confirm_select()

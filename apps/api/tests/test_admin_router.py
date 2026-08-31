@@ -13,6 +13,7 @@ from lumi_project_core.admin_console import (
     AdminProviderRecord,
     AdminQueueRecord,
     AdminRegistryEntry,
+    AdminRole,
     AdminRunRecord,
     InMemoryAdminAuditSink,
     InMemoryViewAsStore,
@@ -167,7 +168,7 @@ def make_client(role_header: str = "ops") -> tuple[TestClient, InMemoryAdminAudi
 
     async def resolve_actor(request: Request) -> PlatformAdminActor:
         mode = request.headers.get("x-platform-role", role_header)
-        mapping = {
+        mapping: dict[str, frozenset[AdminRole]] = {
             "support": frozenset({"SUPPORT_READ"}),
             "ops": frozenset({"OPS"}),
             "billing": frozenset({"BILLING_ADMIN"}),

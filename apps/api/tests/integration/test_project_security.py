@@ -4,7 +4,7 @@ import asyncio
 import os
 from collections.abc import Coroutine
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 import pytest
 from fastapi import Depends, FastAPI
@@ -149,7 +149,7 @@ def test_project_security_requires_real_principal_tenant_membership_and_csrf() -
         ) = await _prepare_security_fixtures()
 
         app = FastAPI()
-        app.add_exception_handler(ApiProblem, api_problem_handler)
+        app.add_exception_handler(ApiProblem, cast(Any, api_problem_handler))
         app.state.project_session_factory = factory
         app.state.project_allowed_origins = frozenset({"http://localhost:3000"})
 

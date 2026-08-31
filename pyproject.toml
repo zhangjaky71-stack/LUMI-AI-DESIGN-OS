@@ -110,10 +110,17 @@ extraPaths = [
   "services/asset-storage/src",
   "services/image-generation/src",
   "services/video-generation/src",
+  "services/artifact-history/src",
+  "services/brand-rules/src",
+  "services/constraint-engine/src",
+  "services/design-ir/src",
+  "services/event-contract/src",
+  "services/identity-engine/src",
+  "services/image-edit/src",
 ]
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q --import-mode=importlib"
 pythonpath = [
   ".",
   "services/auth/src",
@@ -125,6 +132,13 @@ pythonpath = [
   "services/asset-storage/src",
   "services/image-generation/src",
   "services/video-generation/src",
+  "services/artifact-history/src",
+  "services/brand-rules/src",
+  "services/constraint-engine/src",
+  "services/design-ir/src",
+  "services/event-contract/src",
+  "services/identity-engine/src",
+  "services/image-edit/src",
 ]
 testpaths = [
   "apps/api/tests",

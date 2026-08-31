@@ -21,20 +21,40 @@ class ApprovalRecordLike(Protocol):
 
 
 class ApprovalFeedbackLike(Protocol):
-    comment: str
-    node_refs: tuple[str, ...]
-    region_refs: tuple[str, ...]
-    requested_changes: tuple[str, ...]
+    @property
+    def comment(self) -> str: ...
+
+    @property
+    def node_refs(self) -> tuple[str, ...]: ...
+
+    @property
+    def region_refs(self) -> tuple[str, ...]: ...
+
+    @property
+    def requested_changes(self) -> tuple[str, ...]: ...
 
 
 class ApprovalResumeEnvelopeLike(Protocol):
-    approval_id: str
-    decision: str
-    status: str
-    subject_type: str
-    subject_id: str
-    subject_version: str
-    feedback: ApprovalFeedbackLike | None
+    @property
+    def approval_id(self) -> str: ...
+
+    @property
+    def decision(self) -> str: ...
+
+    @property
+    def status(self) -> str: ...
+
+    @property
+    def subject_type(self) -> str: ...
+
+    @property
+    def subject_id(self) -> str: ...
+
+    @property
+    def subject_version(self) -> str: ...
+
+    @property
+    def feedback(self) -> ApprovalFeedbackLike | None: ...
 
 
 def interrupt_for_approval(approval: ApprovalRecordLike) -> Any:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from typing import Any, cast
 from uuid import UUID
 
 from celery import Celery
@@ -65,7 +66,7 @@ def image_transform(self: object, message: dict[str, object]) -> dict[str, objec
     if outcome.state == JobState.RETRYING:
         retries = getattr(getattr(self, "request", None), "retries", 0)
         policy = retry_policy_for(JobKind.IMAGE_TRANSFORM)
-        retry = self.retry
+        retry = cast(Any, self).retry
         countdown = policy.delay_seconds(
             attempt=max(1, outcome.attempt_count),
             jitter_seed=retries,
@@ -108,7 +109,7 @@ def video_render(self: object, message: dict[str, object]) -> dict[str, object]:
     if outcome.state == JobState.RETRYING:
         retries = getattr(getattr(self, "request", None), "retries", 0)
         policy = retry_policy_for(JobKind.VIDEO_RENDER)
-        retry = self.retry
+        retry = cast(Any, self).retry
         countdown = policy.delay_seconds(
             attempt=max(1, outcome.attempt_count),
             jitter_seed=retries,
@@ -153,7 +154,7 @@ def export_package(message: dict[str, object]) -> dict[str, object]:
 
 @celery_app.task(name="lumi.assets.validate", bind=True, max_retries=4, base=RuntimeTask)
 def asset_validate(self: object, validation_run_id: str) -> str:
-    settings = AssetWorkerSettings()
+    settings = cast(Any, AssetWorkerSettings)()
     object_store = S3ObjectStore(
         endpoint_url=settings.s3_endpoint_url,
         region_name=settings.s3_region,
@@ -174,7 +175,7 @@ def asset_validate(self: object, validation_run_id: str) -> str:
         policy = retry_policy_for(JobKind.ASSET_VALIDATE)
         if retries >= policy.max_attempts - 1:
             raise
-        retry = self.retry
+        retry = cast(Any, self).retry
         countdown = policy.delay_seconds(attempt=retries + 1, jitter_seed=retries)
         raise retry(exc=exc, countdown=countdown) from exc
 

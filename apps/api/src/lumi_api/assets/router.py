@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -96,8 +96,8 @@ def create_asset_storage_router(runtime: AssetStorageRuntime) -> APIRouter:
             asset_id=asset.id,
             upload_session_id=upload.id,
             file_id=upload.file_id,
-            upload_mode=upload.upload_mode,
-            status=upload.status,
+            upload_mode=cast(Literal["single", "multipart"], upload.upload_mode),
+            status=cast(Literal["pending"], upload.status),
             upload=signed,
             expires_at=upload.expires_at,
         )

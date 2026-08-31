@@ -32,7 +32,9 @@ class TenantRepository[ModelT: DeclarativeBase]:
         return statement.where(organization_column == self.organization_id)
 
     async def get_model(self, object_id: UUID) -> ModelT | None:
-        id_column = self.model.id
+        id_column = getattr(self.model, "id", None)
+        if id_column is None:
+            raise TypeError(f"{self.model.__name__} has no id column")
         result = await self._session.execute(
             self.scoped(select(self.model)).where(id_column == object_id)
         )

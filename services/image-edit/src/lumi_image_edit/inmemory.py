@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from decimal import Decimal
 
 from .model import (
@@ -118,7 +119,7 @@ class MemoryEvents:
         self.events: list[tuple[str, dict[str, object]]] = []
 
     async def emit(
-        self, event_type: str, *, organization_id: str, edit_id: str, payload: dict[str, object]
+        self, event_type: str, *, organization_id: str, edit_id: str, payload: Mapping[str, object]
     ) -> None:
         self.events.append(
             (event_type, {"organization_id": organization_id, "edit_id": edit_id, **payload})

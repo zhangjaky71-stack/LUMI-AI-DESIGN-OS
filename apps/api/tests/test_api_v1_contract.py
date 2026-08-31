@@ -100,6 +100,7 @@ def test_cursor_pagination_limit_is_bounded() -> None:
     schema = create_contract_app().openapi()
     parameters = _parameters(schema["paths"]["/api/v1/projects"]["get"])
     limit_schema = parameters["limit"]["schema"]
+    assert isinstance(limit_schema, dict)
     assert limit_schema["minimum"] == 1
     assert limit_schema["maximum"] == 100
     assert limit_schema["default"] == 50

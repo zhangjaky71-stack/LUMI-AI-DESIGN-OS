@@ -92,7 +92,7 @@ def build_request_context(
     trace_id: str,
     workspace_id: str | None = None,
 ) -> RequestContext:
-    roles = tuple(
+    roles: tuple[Role, ...] = tuple(
         membership.role
         for membership in memberships
         if membership.user_id == actor_id

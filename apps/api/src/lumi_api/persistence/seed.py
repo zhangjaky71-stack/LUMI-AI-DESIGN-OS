@@ -78,7 +78,9 @@ def _seed_settings() -> dict[str, object]:
 async def _insert_ignore(
     session: AsyncSession, model: type[object], values: dict[str, object]
 ) -> None:
-    table = model.__table__
+    table = getattr(model, "__table__", None)
+    if table is None:
+        raise TypeError(f"{model!r} is not a mapped table")
     await session.execute(
         insert(table).values(**values).on_conflict_do_nothing(index_elements=["id"])
     )

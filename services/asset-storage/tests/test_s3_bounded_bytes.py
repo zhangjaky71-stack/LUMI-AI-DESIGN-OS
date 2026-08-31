@@ -19,11 +19,13 @@ class FakeS3Client:
         body = kwargs["Body"]
         assert isinstance(body, bytes)
         self.last_put = dict(kwargs)
+        metadata = kwargs.get("Metadata")
+        assert metadata is None or isinstance(metadata, dict)
         self.objects[(str(kwargs["Bucket"]), str(kwargs["Key"]))] = {
             "body": body,
             "content_type": kwargs.get("ContentType"),
             "checksum": kwargs.get("ChecksumSHA256"),
-            "metadata": dict(kwargs.get("Metadata") or {}),
+            "metadata": dict(metadata or {}),
         }
         return {"ETag": '"etag"'}
 

@@ -466,8 +466,8 @@ def test_cost_outbox_artifact_and_external_wait_recovery_use_canonical_postgres(
             output={"video_job_id": scope.video_job_id},
         )
 
-        async def handler(value: JobMessage) -> ExternalWait:
-            assert value == message
+        async def handler(message: JobMessage) -> ExternalWait:
+            assert message == dispatch.message
             return wait
 
         store = TaskJobStore(_dsn())

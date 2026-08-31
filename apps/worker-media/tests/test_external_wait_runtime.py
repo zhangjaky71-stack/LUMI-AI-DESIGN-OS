@@ -155,8 +155,8 @@ def test_execute_job_parks_external_wait_without_success_or_failure() -> None:
         output={"video_job_id": "video-job-1"},
     )
 
-    async def handler(value: JobMessage) -> ExternalWait:
-        assert value == message
+    async def handler(message: JobMessage) -> ExternalWait:
+        assert message == _dispatch().message
         return wait
 
     outcome = asyncio.run(

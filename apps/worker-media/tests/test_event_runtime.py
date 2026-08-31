@@ -169,11 +169,12 @@ def test_domain_outbox_commits_failed_publish_attempt_without_marking_published(
             self.closed = True
 
     class FailingPublisher:
-        def publish(self, outbox_record: OutboxRecord) -> None:
-            assert outbox_record.event_id == record.event_id
-            assert outbox_record.payload == record.payload
+        def publish(self, record: OutboxRecord) -> None:
+            assert record.event_id == expected.event_id
+            assert record.payload == expected.payload
             raise RuntimeError("broker unavailable")
 
+    expected = record
     connection = FakeConnection()
 
     async def fake_connect(dsn: str) -> FakeConnection:

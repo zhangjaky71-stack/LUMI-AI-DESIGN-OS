@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
@@ -33,11 +34,12 @@ def test_image_task_returns_durable_success_payload() -> None:
         "_execute_image_generation_job",
         new=AsyncMock(return_value=outcome),
     ) as execute:
-        payload = app.image_transform.run(MESSAGE)
+        payload = cast(Any, app.image_transform).run(MESSAGE)
     assert payload["job_id"] == MESSAGE["job_id"]
     assert payload["state"] == "succeeded"
     assert payload["attempt_count"] == 2
     assert payload["status"] == "COMPLETED"
+    assert execute.await_args is not None
     parsed = execute.await_args.args[0]
     assert parsed.job_id == UUID(MESSAGE["job_id"])
     assert parsed.operation_id == UUID(MESSAGE["operation_id"])
@@ -58,7 +60,7 @@ def test_image_task_failed_outcome_raises_for_celery_dlq() -> None:
         ),
         pytest.raises(RuntimeError, match="IMAGE_GENERATION_JOB_FAILED"),
     ):
-        app.image_transform.run(MESSAGE)
+        cast(Any, app.image_transform).run(MESSAGE)
 
 
 def test_image_task_retrying_outcome_calls_celery_retry() -> None:
@@ -80,8 +82,9 @@ def test_image_task_retrying_outcome_calls_celery_retry() -> None:
         ) as retry,
         pytest.raises(RuntimeError, match="retry-called"),
     ):
-        app.image_transform.run(MESSAGE)
+        cast(Any, app.image_transform).run(MESSAGE)
     assert retry.call_count == 1
+    assert retry.call_args is not None
     kwargs = retry.call_args.kwargs
     assert isinstance(kwargs["exc"], RuntimeError)
     assert kwargs["countdown"] >= 2

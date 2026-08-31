@@ -26,9 +26,12 @@ class SandboxExecutor(Protocol):
     async def execute(self, invocation: FfmpegInvocation) -> None: ...
 
 
-class SandboxPathResolver(Protocol):
+class SandboxCompilePathResolver(Protocol):
     def resolve_readonly(self, durable_ref: str) -> str: ...
     def allocate_output(self, suffix: str) -> str: ...
+
+
+class SandboxPathResolver(SandboxCompilePathResolver, Protocol):
     async def ingest_rendered_video(self, path: str, timeline: VideoTimeline) -> RenderedVideo: ...
 
 
@@ -55,7 +58,9 @@ def _audio_gain(gain_db: Decimal) -> str:
 class FfmpegArgvCompiler:
     """Compile typed timeline data into argv only; no shell command is ever created."""
 
-    def compile(self, timeline: VideoTimeline, resolver: SandboxPathResolver) -> FfmpegInvocation:
+    def compile(
+        self, timeline: VideoTimeline, resolver: SandboxCompilePathResolver
+    ) -> FfmpegInvocation:
         if not timeline.clips:
             raise ValueError("VIDEO_TIMELINE_CLIPS_REQUIRED")
         if any(transition.kind != "CUT" for transition in timeline.transitions):

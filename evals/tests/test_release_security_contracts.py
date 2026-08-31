@@ -10,6 +10,10 @@ def _read(relative: str) -> str:
     return (ROOT / relative).read_text(encoding="utf-8")
 
 
+def _normalized_hcl(source: str) -> str:
+    return " ".join(source.split())
+
+
 def _resource_block(source: str, resource_type: str, name: str) -> str:
     return _hcl_block(source, f'resource "{resource_type}" "{name}" {{')
 
@@ -33,7 +37,7 @@ def test_sandbox_runtime_is_forced_onto_restricted_egress() -> None:
     compute = _read("infra/iac/modules/compute/main.tf")
     variables = _read("infra/iac/modules/compute/variables.tf")
 
-    assert 'name == "sandbox-runtime"' in compute
+    assert 'contains(["sandbox-runtime", "outbox-dispatcher"], name)' in compute
     assert "[var.app_security_group_id, var.sandbox_egress_security_group_id]" in compute
     assert "[var.app_security_group_id, var.app_internet_egress_security_group_id]" in compute
     assert "security_groups  = local.service_security_groups[each.key]" in compute
@@ -75,13 +79,15 @@ def test_production_and_staging_propagate_restricted_egress_ids() -> None:
         app = _read(f"infra/iac/environments/{environment}/app/main.tf")
         assert 'output "sandbox_egress_security_group_id"' in core
         assert 'output "app_internet_egress_security_group_id"' in core
+        normalized_app = _normalized_hcl(app)
         assert (
-            "sandbox_egress_security_group_id       = local.core.sandbox_egress_security_group_id"
-        ) in app
+            "sandbox_egress_security_group_id = local.core.sandbox_egress_security_group_id"
+            in normalized_app
+        )
         assert (
             "app_internet_egress_security_group_id = "
-            "local.core.app_internet_egress_security_group_id"
-        ) in app
+            "local.core.app_internet_egress_security_group_id" in normalized_app
+        )
 
 
 def test_inner_sandbox_execution_remains_network_none() -> None:
@@ -143,9 +149,16 @@ def test_provider_credentials_only_reach_model_gateway() -> None:
     for environment in ("staging", "production"):
         source = _read(f"infra/iac/environments/{environment}/app/main.tf")
         gateway = _hcl_block(source, "model-gateway = {")
-        assert 'LUMI_DATABASE_URL          = local.secret_arns["database/app"]' in gateway
-        assert 'LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"]' in gateway
-        assert 'LUMI_MEDIA_PROVIDER_SECRET = local.secret_arns["providers/media"]' in gateway
+        normalized_gateway = _normalized_hcl(gateway)
+        assert 'LUMI_DATABASE_URL = local.secret_arns["database/app"]' in normalized_gateway
+        assert (
+            'LUMI_MODEL_PROVIDER_SECRET = local.secret_arns["providers/model"]'
+            in normalized_gateway
+        )
+        assert (
+            'LUMI_MEDIA_PROVIDER_SECRET = local.secret_arns["providers/media"]'
+            in normalized_gateway
+        )
 
         for service in (
             "api",

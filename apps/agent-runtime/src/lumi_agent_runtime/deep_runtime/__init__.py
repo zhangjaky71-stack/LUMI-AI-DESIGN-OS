@@ -33,6 +33,8 @@ if TYPE_CHECKING:
         StaticCheckpointerProvider,
         StaticStoreProvider,
         TrustedBackendProvider,
+        mark_backend_bound,
+        mark_model_gateway_bound,
     )
     from .registry import DeepAgentRegistry
     from .runtime_factory import BoundedDeepAgentRuntimeFactory, HostedDeepAgentRuntimeFactory

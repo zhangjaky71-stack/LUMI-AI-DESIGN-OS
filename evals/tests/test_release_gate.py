@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from evals.models import SuiteDefinition
 from evals.release import ReleaseGateError, ReleaseManifest, evaluate_release
 from evals.release_control import (
     RolloutError,
@@ -30,7 +32,7 @@ def _manifests() -> tuple[ReleaseManifest, ReleaseManifest]:
     )
 
 
-def _smoke_pair() -> tuple[object, dict[str, object], dict[str, object]]:
+def _smoke_pair() -> tuple[SuiteDefinition, dict[str, Any], dict[str, Any]]:
     suite, _ = load_suite(ROOT, "smoke")
     baseline = run_suite(ROOT, "smoke", BASELINE_PROFILE, git_sha="a" * 40)
     candidate = run_suite(ROOT, "smoke", CANDIDATE_PROFILE, git_sha="b" * 40)
