@@ -9,9 +9,15 @@ test.describe("NODE-55 Infinite Canvas UI", () => {
     await page.goto(workspace);
     const canvas = page.getByLabel("Canvas preview");
     await expect(canvas).toBeVisible();
-    await expect(canvas.getByLabel("Square / 1:1", { exact: true })).toBeVisible();
-    await expect(canvas.getByLabel("Feed / 4:5", { exact: true })).toBeVisible();
-    await expect(canvas.getByLabel("Story / 9:16", { exact: true })).toBeVisible();
+    await expect(
+      canvas.getByLabel("Square / 1:1", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      canvas.getByLabel("Feed / 4:5", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      canvas.getByLabel("Story / 9:16", { exact: true }),
+    ).toBeVisible();
     await expect(canvas.getByText("Server v7", { exact: true })).toBeVisible();
   });
 
