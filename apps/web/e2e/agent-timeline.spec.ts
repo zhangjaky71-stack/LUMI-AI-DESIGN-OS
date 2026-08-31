@@ -4,10 +4,28 @@ const workspace = "/app/projects/project-summer-launch/workspace";
 
 async function startRun(page: Page) {
   const canvas = page.getByLabel("Canvas preview");
-  await canvas.getByRole("button", { name: "Headline", exact: true }).click();
-  await page
-    .getByLabel("给 LUMI Agent 的指令")
-    .fill("生成一个可评审方向并展示安全执行进度");
+  const headline = canvas.getByRole("button", { name: "Headline", exact: true });
+
+  if (!(await headline.isVisible())) {
+    const mobileTabs = page.getByLabel("移动工作区面板");
+    await mobileTabs
+      .getByRole("button", { name: "Canvas", exact: true })
+      .click();
+    await expect(headline).toBeVisible();
+  }
+
+  await headline.click();
+
+  const composer = page.getByLabel("给 LUMI Agent 的指令");
+  if (!(await composer.isVisible())) {
+    await page
+      .getByLabel("移动工作区面板")
+      .getByRole("button", { name: "Agent", exact: true })
+      .click();
+    await expect(composer).toBeVisible();
+  }
+
+  await composer.fill("生成一个可评审方向并展示安全执行进度");
   await page.getByRole("button", { name: "Send", exact: true }).click();
 }
 
@@ -25,8 +43,12 @@ test.describe("NODE-57 Agent Timeline", () => {
     await expect(
       timeline.getByText("已锁定产品身份约束，正在生成视觉方向。"),
     ).toHaveCount(1);
+    const artifactItem = timeline
+      .locator('article[data-type="ARTIFACT"]')
+      .filter({ hasText: "夏季新品主视觉方向 A" })
+      .first();
     await expect(
-      timeline.getByRole("heading", { name: "夏季新品主视觉方向 A" }),
+      artifactItem.getByRole("heading", { name: "夏季新品主视觉方向 A" }).first(),
     ).toBeVisible();
     await expect(timeline.getByLabel("Waiting for user")).toBeVisible();
     await expect(
@@ -122,9 +144,12 @@ test.describe("NODE-57 Agent Timeline", () => {
     await page.goto(workspace);
     await startRun(page);
     const timeline = page.getByLabel("Agent Timeline");
-    await timeline
-      .getByRole("button", { name: "Approve", exact: true })
-      .click();
+    const approve = timeline.getByRole("button", {
+      name: "Approve",
+      exact: true,
+    });
+    await expect(approve).toBeEnabled();
+    await approve.click();
     await expect(timeline.getByText("APPROVED", { exact: true })).toBeVisible();
     await expect(
       timeline.getByText(/private reasoning|raw tool payload|stack trace/i),
