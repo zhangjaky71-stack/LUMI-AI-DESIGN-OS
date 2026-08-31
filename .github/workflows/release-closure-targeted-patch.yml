@@ -1,0 +1,74 @@
+name: Release Closure Targeted Patch
+
+on:
+  pull_request:
+    paths:
+      - ".github/release-closure-targeted-patch-trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-release-branch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release-closure-p0
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+      - name: Apply asserted targeted fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}")
+              file.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              "apps/web/src/components/infinite-canvas/infinite-canvas.tsx",
+              '                  onPointerDown={(event) => beginNodeDrag(event, node)}',
+              '                  onPointerDown={(event) => {\n                    if (!event.shiftKey) beginNodeDrag(event, node);\n                  }}',
+          )
+          replace_once(
+              "apps/web/e2e/ai-workspace.spec.ts",
+              '      agent.getByRole("heading", { name: "确认主视觉方向" }),',
+              '      agent.getByRole("heading", { name: "确认主视觉方向" }).first(),',
+          )
+          replace_once(
+              "apps/web/e2e/agent-timeline.spec.ts",
+              '      timeline.getByRole("heading", { name: "确认主视觉方向" }),',
+              '      timeline.getByRole("heading", { name: "确认主视觉方向" }).first(),',
+          )
+          PY
+      - name: Apply pinned Prettier 3.6.2
+        run: >-
+          pnpm exec prettier --write
+          apps/web/src/components/infinite-canvas/infinite-canvas.tsx
+          apps/web/e2e/ai-workspace.spec.ts
+          apps/web/e2e/agent-timeline.spec.ts
+      - name: Verify formatting and lint
+        run: |
+          pnpm exec prettier --check apps/web/src/components/infinite-canvas/infinite-canvas.tsx apps/web/e2e/ai-workspace.spec.ts apps/web/e2e/agent-timeline.spec.ts
+          pnpm --filter @lumi/web lint
+          git diff --check
+      - name: Commit exact patch to release branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/components/infinite-canvas/infinite-canvas.tsx apps/web/e2e/ai-workspace.spec.ts apps/web/e2e/agent-timeline.spec.ts
+          git diff --cached --stat
+          git commit -m "fix(workspace): preserve shift multi-selection and stabilize browser assertions"
+          git push origin HEAD:release-closure-p0
