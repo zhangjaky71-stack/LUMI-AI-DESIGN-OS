@@ -53,6 +53,7 @@ jobs:
               '''        await admin.execute(f'DROP SCHEMA IF EXISTS "{_SCHEMA}" CASCADE')\n        await admin.execute(f'CREATE SCHEMA "{_SCHEMA}"')\n''',
               "",
           )
+          replace(script, "status, budget, started_at, version", "status, budget_json, started_at, version")
           replace(script, "            allow_setup=True,", "            allow_setup=False,")
           replace(
               script,
@@ -64,7 +65,7 @@ jobs:
           replace(
               pyproject,
               '''  "services/video-generation/src",\n]''',
-              '''  "services/video-generation/src",\n  "services/artifact-history/src",\n  "services/brand-rules/src",\n  "services/constraint-engine/src",\n  "services/design-ir/src",\n  "services/identity-engine/src",\n  "services/image-edit/src",\n]''',
+              '''  "services/video-generation/src",\n  "services/artifact-history/src",\n  "services/brand-rules/src",\n  "services/constraint-engine/src",\n  "services/design-ir/src",\n  "services/event-contract/src",\n  "services/identity-engine/src",\n  "services/image-edit/src",\n]''',
           )
           PY
       - uses: actions/setup-python@v6
@@ -91,16 +92,29 @@ jobs:
           make db-upgrade
           make db-seed
       - name: Verify migration-owned LangGraph saver restart
+        id: restart
+        continue-on-error: true
         run: >-
           PYTHONPATH=apps/agent-runtime/src:apps/api/src
           uv run python scripts/integration_langgraph_postgres_checkpoint.py
       - name: Run full Pyright after source-root repair
+        id: pyright
+        continue-on-error: true
         run: uv run pyright
       - name: Show diagnostic diff boundary
         if: always()
         run: |
           git diff --check
           git diff --name-only
+      - name: Require both diagnostic gates
+        if: always()
+        env:
+          RESTART_OUTCOME: ${{ steps.restart.outcome }}
+          PYRIGHT_OUTCOME: ${{ steps.pyright.outcome }}
+        run: |
+          printf 'restart=%s\npyright=%s\n' "$RESTART_OUTCOME" "$PYRIGHT_OUTCOME"
+          test "$RESTART_OUTCOME" = success
+          test "$PYRIGHT_OUTCOME" = success
       - name: Cleanup
         if: always()
         run: CONFIRM=1 make infra-reset || true
