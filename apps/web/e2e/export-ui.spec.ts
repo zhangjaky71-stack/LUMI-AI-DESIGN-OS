@@ -35,6 +35,7 @@ test.describe("NODE-60 Export Product UX", () => {
   }) => {
     await page.goto(route);
     await page.getByRole("button", { name: "Preset" }).click();
+    await page.getByLabel("Preset").selectOption("instagram-story");
     await expect(page.getByTestId("aspect-ratio-choice")).toContainText("Crop");
     await expect(page.getByTestId("aspect-ratio-choice")).toContainText(
       "Scale",
