@@ -9,15 +9,9 @@ test.describe("NODE-55 Infinite Canvas UI", () => {
     await page.goto(workspace);
     const canvas = page.getByLabel("Canvas preview");
     await expect(canvas).toBeVisible();
-    await expect(
-      canvas.getByRole("button", { name: /Square \/ 1:1/ }),
-    ).toBeVisible();
-    await expect(
-      canvas.getByRole("button", { name: /Feed \/ 4:5/ }),
-    ).toBeVisible();
-    await expect(
-      canvas.getByRole("button", { name: /Story \/ 9:16/ }),
-    ).toBeVisible();
+    await expect(canvas.getByLabel("Square / 1:1", { exact: true })).toBeVisible();
+    await expect(canvas.getByLabel("Feed / 4:5", { exact: true })).toBeVisible();
+    await expect(canvas.getByLabel("Story / 9:16", { exact: true })).toBeVisible();
     await expect(canvas.getByText("Server v7", { exact: true })).toBeVisible();
   });
 
@@ -38,7 +32,9 @@ test.describe("NODE-55 Infinite Canvas UI", () => {
   test("Canvas selection becomes exact AI Edit context", async ({ page }) => {
     await page.goto(workspace);
     const canvas = page.getByLabel("Canvas preview");
-    await canvas.getByRole("button", { name: /Headline/ }).click();
+    await canvas
+      .getByRole("button", { name: "Headline", exact: true })
+      .click();
     await expect(page.getByText("1 selected", { exact: true })).toBeVisible();
     await expect(
       page.getByText("Headline", { exact: true }).first(),
@@ -73,11 +69,12 @@ test.describe("NODE-55 Infinite Canvas UI", () => {
     await canvas
       .getByRole("button", { name: /Hero Product/ })
       .click({ button: "right" });
+    const contextMenu = canvas.locator('div[class*="contextMenu"]');
     await expect(
-      canvas.getByRole("button", { name: "Delete", exact: true }),
+      contextMenu.getByRole("button", { name: "Delete", exact: true }),
     ).toBeDisabled();
     await expect(
-      canvas.getByRole("button", { name: "Unlock", exact: true }),
+      contextMenu.getByRole("button", { name: "Unlock", exact: true }),
     ).toBeVisible();
   });
 
