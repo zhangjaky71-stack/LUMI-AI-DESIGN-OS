@@ -17,8 +17,7 @@ jobs:
       CANDIDATE_BRANCH: release-closure-python-candidate
       BASE_VERIFIER_COMMIT: 8c2ab60e3b093b80c2d1b046c7eea1b65f72e06e
       TYPED_VERIFIER_COMMIT: 4d0ecaeeaee2058922b7a316f9515d14c23242fa
-      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
-      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+      CANDIDATE_VERIFIER_COMMIT: 42083de10e1a62c0472722567ce00ac6b1818334
     steps:
       - uses: actions/checkout@v6
         with:
@@ -30,61 +29,44 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_PARENT"
           remote_candidate="$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')"
           test "$remote_candidate" = "$EXPECTED_PARENT"
-      - name: Fetch frozen typed verifier sources
+      - name: Fetch frozen proven patch sources
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin "$BASE_VERIFIER_COMMIT" "$TYPED_VERIFIER_COMMIT"
+          git fetch --no-tags --depth=1 origin "$BASE_VERIFIER_COMMIT" "$TYPED_VERIFIER_COMMIT" "$CANDIDATE_VERIFIER_COMMIT"
           git show "$BASE_VERIFIER_COMMIT:.github/workflows/release-closure-candidate.yml" > /tmp/base-verifier.yml
           git show "$TYPED_VERIFIER_COMMIT:.github/workflows/release-closure-candidate.yml" > /tmp/typed-verifier.yml
-      - name: Apply proven typed closure and least-privilege LangGraph restart patch
+          git show "$CANDIDATE_VERIFIER_COMMIT:.github/workflows/release-closure-candidate.yml" > /tmp/candidate-verifier.yml
+      - name: Apply proven closure plus main-CI pytest discovery repair
         run: |
           python - <<'PY'
           from pathlib import Path
           import textwrap
 
-          typed = Path("/tmp/typed-verifier.yml").read_text()
-          marker = "      - name: Apply first and final typed closure batches\n        run: |\n"
-          if marker not in typed:
-              raise SystemExit("typed verifier step marker not found")
-          body = typed.split(marker, 1)[1]
+          frozen = Path("/tmp/candidate-verifier.yml").read_text()
+          marker = "      - name: Apply proven typed closure and least-privilege LangGraph restart patch\n        run: |\n"
+          if marker not in frozen:
+              raise SystemExit("frozen candidate patch step marker not found")
+          body = frozen.split(marker, 1)[1]
           start = "          python - <<'PY'\n"
           end = "\n          PY\n      - uses: actions/setup-python@v6"
           if start not in body or end not in body:
-              raise SystemExit("typed verifier patch block not found")
-          typed_batch = body.split(start, 1)[1].split(end, 1)[0]
-          exec(compile(textwrap.dedent(typed_batch), "<frozen-typed-batch>", "exec"))
+              raise SystemExit("frozen candidate patch block not found")
+          patch = body.split(start, 1)[1].split(end, 1)[0]
+          exec(compile(textwrap.dedent(patch), "<frozen-candidate-patch>", "exec"))
 
           def replace(path: str, old: str, new: str) -> None:
               target = Path(path)
               text = target.read_text()
               if old not in text:
-                  raise SystemExit(f"expected LangGraph patch anchor missing: {path}: {old[:100]!r}")
+                  raise SystemExit(f"expected pytest patch anchor missing: {path}: {old[:100]!r}")
               target.write_text(text.replace(old, new, 1))
 
-          script = "scripts/integration_langgraph_postgres_checkpoint.py"
-          replace(script, "from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit\n", "")
-          replace(script, '\n_SCHEMA = "node28_checkpoint_acceptance"\n', "")
+          pyproject = "pyproject.toml"
+          replace(pyproject, 'addopts = "-q"', 'addopts = "-q --import-mode=importlib"')
           replace(
-              script,
-              '''\ndef _with_search_path(dsn: str, schema: str) -> str:\n    parsed = urlsplit(dsn)\n    query = dict(parse_qsl(parsed.query, keep_blank_values=True))\n    query["options"] = f"-csearch_path={schema},public"\n    return urlunsplit(\n        (parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment)\n    )\n''',
-              "",
-          )
-          replace(
-              script,
-              "    checkpoint_dsn = _with_search_path(admin_dsn, _SCHEMA)",
-              '''    # Alembic migration 0022 owns checkpoint schema mutation. Runtime must\n    # exercise migration-provisioned tables without setup privileges.\n    checkpoint_dsn = runtime_dsn''',
-          )
-          replace(
-              script,
-              '''        await admin.execute(f'DROP SCHEMA IF EXISTS "{_SCHEMA}" CASCADE')\n        await admin.execute(f'CREATE SCHEMA "{_SCHEMA}"')\n''',
-              "",
-          )
-          replace(script, "status, budget, started_at, version", "status, budget_json, started_at, version")
-          replace(script, "            allow_setup=True,", "            allow_setup=False,")
-          replace(
-              script,
-              '''        await admin.execute(f'DROP SCHEMA IF EXISTS "{_SCHEMA}" CASCADE')\n''',
-              "",
+              pyproject,
+              '''  "services/asset-storage/src",\n  "services/image-generation/src",\n  "services/video-generation/src",\n]\ntestpaths = [''',
+              '''  "services/asset-storage/src",\n  "services/image-generation/src",\n  "services/video-generation/src",\n  "services/artifact-history/src",\n  "services/brand-rules/src",\n  "services/constraint-engine/src",\n  "services/design-ir/src",\n  "services/event-contract/src",\n  "services/identity-engine/src",\n  "services/image-edit/src",\n]\ntestpaths = [''',
           )
           PY
       - uses: actions/setup-python@v6
@@ -163,10 +145,16 @@ jobs:
           make infra-env
           make infra-up
       - name: Upgrade and seed database
+        env:
+          DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+          MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
         run: |
           make db-upgrade
           make db-seed
       - name: LangGraph PostgreSQL exact acceptance gates
+        env:
+          DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+          MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
         run: |
           set -euo pipefail
           PYTHONPATH=apps/agent-runtime/src:apps/api/src uv run python scripts/integration_langgraph_postgres_control.py
