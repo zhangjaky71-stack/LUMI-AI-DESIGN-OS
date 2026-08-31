@@ -36,7 +36,11 @@ test("PII reveal requires reason and ticket while View-as is readonly", async ({
 }) => {
   await page.getByRole("button", { name: "Users & Orgs" }).click();
   await page.getByRole("button", { name: "Reveal PII" }).first().click();
-  await expect(page.getByRole("alert")).toContainText("Reason and ticket");
+  await expect(
+    page.getByText("Reason and ticket are required before PII reveal.", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await fillSupportContext(page);
   await page.getByRole("button", { name: "Reveal PII" }).first().click();
   await expect(page.getByText(/PII REVEALED/)).toBeVisible();
