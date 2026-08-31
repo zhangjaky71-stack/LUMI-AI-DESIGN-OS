@@ -56,7 +56,7 @@ test.describe("NODE-54 AI Design Workspace", () => {
       agent.getByRole("heading", { name: "夏季新品主视觉方向 A" }).first(),
     ).toBeVisible();
     await expect(
-      agent.getByRole("heading", { name: "确认主视觉方向" }),
+      agent.getByRole("heading", { name: "确认主视觉方向" }).first(),
     ).toBeVisible();
     await expect(page.getByText("已暂停", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Approve", exact: true }).click();

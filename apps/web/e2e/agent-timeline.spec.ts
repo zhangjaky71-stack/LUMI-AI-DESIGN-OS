@@ -51,11 +51,13 @@ test.describe("NODE-57 Agent Timeline", () => {
       .filter({ hasText: "夏季新品主视觉方向 A" })
       .first();
     await expect(
-      artifactItem.getByRole("heading", { name: "夏季新品主视觉方向 A" }).first(),
+      artifactItem
+        .getByRole("heading", { name: "夏季新品主视觉方向 A" })
+        .first(),
     ).toBeVisible();
     await expect(timeline.getByLabel("Waiting for user")).toBeVisible();
     await expect(
-      timeline.getByRole("heading", { name: "确认主视觉方向" }),
+      timeline.getByRole("heading", { name: "确认主视觉方向" }).first(),
     ).toBeVisible();
   });
 

@@ -1451,7 +1451,9 @@ export function InfiniteCanvasProduct({
                     event.stopPropagation();
                     selectNode(node.id, event.shiftKey);
                   }}
-                  onPointerDown={(event) => beginNodeDrag(event, node)}
+                  onPointerDown={(event) => {
+                    if (!event.shiftKey) beginNodeDrag(event, node);
+                  }}
                   onPointerMove={moveNodeDrag}
                   onPointerUp={endNodeDrag}
                   onPointerCancel={endNodeDrag}
