@@ -1,0 +1,161 @@
+name: Release Closure Candidate Verify
+
+on:
+  pull_request:
+    paths:
+      - .github/release-closure-candidate-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  build-verify-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      LUMI_SHELL_E2E_AUTH: "1"
+      LUMI_PROJECTS_E2E: "1"
+      LUMI_AI_WORKSPACE_E2E: "1"
+      LUMI_INFINITE_CANVAS_E2E: "1"
+      LUMI_BRAND_KIT_E2E: "1"
+      LUMI_VERSIONS_E2E: "1"
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+      EXPECTED_PARENT: d72dffb40239677a5378e66f2714f3f3172b8b23
+      CANDIDATE_BRANCH: diag-release-closure-candidate
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release-closure-p0
+          fetch-depth: 1
+      - name: Assert frozen candidate parent
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_PARENT"
+          git checkout -B "$CANDIDATE_BRANCH"
+      - name: Apply exact code-addressable closure patches
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text()
+              if old not in text:
+                  raise SystemExit(f"expected patch anchor missing: {path}")
+              target.write_text(text.replace(old, new, 1))
+
+          replace(
+              "apps/web/e2e/versions-ui.spec.ts",
+              '''    await page.getByLabel("Wipe position").evaluate((node) => {\n      const input = node as HTMLInputElement;\n      input.value = "70";\n      input.dispatchEvent(new Event("input", { bubbles: true }));\n      input.dispatchEvent(new Event("change", { bubbles: true }));\n    });''',
+              '''    await page.getByLabel("Wipe position").fill("70");''',
+          )
+
+          replace(
+              "apps/web/e2e/brand-kit.spec.ts",
+              '''    const firstReview = reviews.nth(0);\n    const firstReviewLabel = await firstReview.getAttribute("aria-label");\n    expect(firstReviewLabel).not.toBeNull();\n    const firstCandidateId = firstReviewLabel!.replace(/ review$/, "");\n    await firstReview.selectOption("APPROVE");\n    await page\n      .getByLabel(`${firstCandidateId} severity`)\n      .selectOption("HARD");''',
+              '''    const firstReview = reviews.nth(0);\n    const firstCandidate = firstReview.locator("xpath=ancestor::article");\n    await firstReview.selectOption("APPROVE");\n    await firstCandidate\n      .locator('select[aria-label$=" severity"]')\n      .selectOption("HARD");''',
+          )
+
+          store = "apps/agent-runtime/src/lumi_agent_runtime/control_plane/postgres_store.py"
+          replace(
+              store,
+              '''    interrupts_raw = row["interrupts_json"] or []\n    interrupts = tuple(_interrupt_from_json(item) for item in interrupts_raw)''',
+              '''    state_values_raw = _decode_json(row["state_values_json"], {})\n    next_nodes_raw = _decode_json(row["next_nodes_json"], [])\n    interrupts_raw = _decode_json(row["interrupts_json"], [])\n    if not isinstance(state_values_raw, dict):\n        raise GraphRunConflictError("persisted state values are not an object")\n    if not isinstance(next_nodes_raw, list):\n        raise GraphRunConflictError("persisted next nodes are not an array")\n    if not isinstance(interrupts_raw, list):\n        raise GraphRunConflictError("persisted interrupts are not an array")\n    interrupts = tuple(_interrupt_from_json(item) for item in interrupts_raw)''',
+          )
+          replace(
+              store,
+              '''        state_values=dict(row["state_values_json"] or {}),\n        next_nodes=tuple(str(item) for item in (row["next_nodes_json"] or [])),''',
+              '''        state_values=dict(state_values_raw),\n        next_nodes=tuple(str(item) for item in next_nodes_raw),''',
+          )
+          replace(
+              store,
+              '''\ndef _interrupt_json(interrupt: GraphInterrupt) -> dict[str, Any]:''',
+              '''\ndef _decode_json(value: Any, default: Any) -> Any:\n    if value is None:\n        return default\n    if isinstance(value, str):\n        try:\n            return json.loads(value)\n        except json.JSONDecodeError as exc:\n            raise GraphRunConflictError("persisted control JSON is invalid") from exc\n    return value\n\n\ndef _interrupt_json(interrupt: GraphInterrupt) -> dict[str, Any]:''',
+          )
+          PY
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Canonical Prettier write
+        run: |
+          pnpm exec prettier --write \
+            apps/web/e2e/versions-ui.spec.ts \
+            apps/web/e2e/brand-kit.spec.ts \
+            packages/design-ir/src/executor.ts \
+            packages/design-ir/tests/runtime.test.ts
+      - name: Full frontend format gate
+        run: pnpm format:check
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: 0.11.28
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Sync Python workspace
+        run: uv sync --all-packages --frozen
+      - name: Canonical Ruff format write
+        run: |
+          uv run ruff format \
+            apps/agent-runtime/src/lumi_agent_runtime/control_plane/postgres_store.py \
+            apps/agent-runtime/src/lumi_agent_runtime/task_graph/postgres_store.py \
+            apps/api/tests/integration/test_project_security.py
+      - name: Full Python format gate
+        run: uv run ruff format --check apps services evals
+      - name: Python correctness gate
+        run: uv run ruff check apps/agent-runtime/src/lumi_agent_runtime/control_plane apps/agent-runtime/src/lumi_agent_runtime/task_graph apps/api/tests/integration/test_project_security.py
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Verify Brand Kit and Versions browser closure
+        run: pnpm exec playwright test apps/web/e2e/brand-kit.spec.ts apps/web/e2e/versions-ui.spec.ts
+      - name: Start PostgreSQL and dependencies
+        run: |
+          make infra-env
+          make infra-up
+      - name: Upgrade and seed database
+        run: |
+          make db-upgrade
+          make db-seed
+      - name: Verify LangGraph PostgreSQL control closure
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:apps/api/src
+          uv run python scripts/integration_langgraph_postgres_control.py
+      - name: Verify exact changed-path boundary
+        run: |
+          git diff --check
+          actual="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' \
+            apps/agent-runtime/src/lumi_agent_runtime/control_plane/postgres_store.py \
+            apps/agent-runtime/src/lumi_agent_runtime/task_graph/postgres_store.py \
+            apps/api/tests/integration/test_project_security.py \
+            apps/web/e2e/brand-kit.spec.ts \
+            apps/web/e2e/versions-ui.spec.ts \
+            packages/design-ir/src/executor.ts \
+            packages/design-ir/tests/runtime.test.ts | sort)"
+          printf '%s\n' "$actual"
+          test "$actual" = "$expected"
+      - name: Commit verified candidate only
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            apps/agent-runtime/src/lumi_agent_runtime/control_plane/postgres_store.py \
+            apps/agent-runtime/src/lumi_agent_runtime/task_graph/postgres_store.py \
+            apps/api/tests/integration/test_project_security.py \
+            apps/web/e2e/brand-kit.spec.ts \
+            apps/web/e2e/versions-ui.spec.ts \
+            packages/design-ir/src/executor.ts \
+            packages/design-ir/tests/runtime.test.ts
+          git commit -m "fix: close remaining source validation regressions"
+          git push --force origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
+      - name: Cleanup
+        if: always()
+        run: CONFIRM=1 make infra-reset || true
