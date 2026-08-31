@@ -56,7 +56,7 @@ async def main_async() -> None:
             """
             INSERT INTO agent_runs (
                 id, organization_id, project_id, thread_id, graph_version,
-                agent_config_version, status, budget, started_at, version
+                agent_config_version, status, budget_json, started_at, version
             ) VALUES ($1,$2,$3,$4,'1.0.0','agent-v1','pending','{}'::jsonb,now(),1)
             """,
             agent_run_id,
