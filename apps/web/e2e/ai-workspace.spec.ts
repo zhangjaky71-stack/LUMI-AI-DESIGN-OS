@@ -45,6 +45,7 @@ test.describe("NODE-54 AI Design Workspace", () => {
   }) => {
     await page.goto(workspace);
     await startRun(page);
+    const agent = page.getByLabel("Agent 对话与运行");
     await expect(
       page.getByText("正在分析 Brief、Brand Kit 与选中对象。"),
     ).toBeVisible();
@@ -52,10 +53,10 @@ test.describe("NODE-54 AI Design Workspace", () => {
       page.getByText("已锁定产品身份约束，正在生成视觉方向。"),
     ).toHaveCount(1);
     await expect(
-      page.getByRole("heading", { name: "夏季新品主视觉方向 A" }),
+      agent.getByRole("heading", { name: "夏季新品主视觉方向 A" }).first(),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "确认主视觉方向" }),
+      agent.getByRole("heading", { name: "确认主视觉方向" }),
     ).toBeVisible();
     await expect(page.getByText("已暂停", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Approve", exact: true }).click();
@@ -97,15 +98,14 @@ test.describe("NODE-54 AI Design Workspace", () => {
   }) => {
     await page.goto(workspace);
     await startRun(page);
+    const agent = page.getByLabel("Agent 对话与运行");
     await expect(
-      page.getByRole("heading", { name: "夏季新品主视觉方向 A" }),
+      agent.getByRole("heading", { name: "夏季新品主视觉方向 A" }).first(),
     ).toBeVisible();
     await page
       .getByRole("button", { name: "放到 Canvas", exact: true })
       .click();
-    await expect(
-      page.getByLabel("Agent 对话与运行").getByText("Document v8").first(),
-    ).toBeVisible();
+    await expect(agent.getByText("Document v8").first()).toBeVisible();
     await expect(
       page.getByText(/已将 夏季新品主视觉方向 A v1 放到 Canvas/),
     ).toBeVisible();
