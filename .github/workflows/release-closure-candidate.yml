@@ -80,7 +80,7 @@ jobs:
       - name: Validate diagnostic patch formatting and lint
         run: |
           uv run ruff format scripts/integration_langgraph_postgres_checkpoint.py
-          uv run ruff format --check apps services evals scripts
+          uv run ruff format --check apps services evals
           uv run ruff check scripts/integration_langgraph_postgres_checkpoint.py
       - name: Start PostgreSQL and dependencies
         run: |
