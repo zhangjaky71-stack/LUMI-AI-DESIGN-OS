@@ -6,6 +6,8 @@ on:
       - "apps/web/src/app/app/projects/**"
       - "apps/web/src/components/ai-workspace/**"
       - "apps/web/src/lib/ai-workspace/**"
+      - "apps/web/src/components/infinite-canvas/**"
+      - "apps/web/src/lib/infinite-canvas/**"
       - "apps/web/e2e/ai-workspace.spec.ts"
       - "scripts/validate_ai_workspace.py"
       - "scripts/validate_app_shell.py"
@@ -74,6 +76,7 @@ jobs:
       LUMI_SHELL_E2E_AUTH: "0"
       LUMI_PROJECTS_E2E: "0"
       LUMI_AI_WORKSPACE_E2E: "0"
+      LUMI_INFINITE_CANVAS_E2E: "0"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -117,6 +120,7 @@ jobs:
       LUMI_SHELL_E2E_AUTH: "1"
       LUMI_PROJECTS_E2E: "1"
       LUMI_AI_WORKSPACE_E2E: "1"
+      LUMI_INFINITE_CANVAS_E2E: "1"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
