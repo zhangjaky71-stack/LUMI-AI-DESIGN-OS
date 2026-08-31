@@ -45,6 +45,11 @@ def _dsn() -> str:
     return value.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
+def _migration_dsn() -> str:
+    value = os.environ["MIGRATION_DATABASE_URL"]
+    return value.replace("postgresql+asyncpg://", "postgresql://", 1)
+
+
 def _spec(*, content: str = "black coffee cup") -> ImageGenerationSpec:
     return ImageGenerationSpec(
         organization_id=ORG,
@@ -167,7 +172,10 @@ def _pending(*, provider_request_id: str = "req_pg_1") -> PendingInvocationRecor
 
 
 async def _delete_generation() -> None:
-    connection = await asyncpg.connect(_dsn())
+    # Fixture teardown is an administrative concern. Keep the repository under test
+    # on DATABASE_URL so runtime DELETE remains forbidden, and use the migration role
+    # only to reset the deterministic acceptance row between tests.
+    connection = await asyncpg.connect(_migration_dsn())
     try:
         await connection.execute(
             "DELETE FROM generations WHERE organization_id = $1 AND operation_id = $2",
