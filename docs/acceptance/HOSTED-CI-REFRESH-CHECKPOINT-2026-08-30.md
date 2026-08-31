@@ -97,3 +97,33 @@ Validation identity for this refresh:
 - branch: `release-closure-p0`
 
 This refresh is intended to prove the Python lint closure on the exact accumulated repair state and to expose the next real code-level failures, if any. It is still **not** final NODE-73 product acceptance.
+
+## Consolidated repair validation — 2026-08-31
+
+This checkpoint intentionally triggers a new full Hosted matrix after the failures exposed by hosted head `48623a493e6089a2081de1301fb87b2f1e531f80` were classified and repaired without weakening release controls.
+
+The consolidated batch includes:
+
+- LangGraph seeded-run precondition alignment;
+- Queue Event Runtime async acceptance lifecycle correction;
+- Project idempotency state vocabulary alignment and secure FK fixture ordering;
+- Task Graph Pyright fail-closed typing repairs;
+- Constraint benchmark geometry moved above the canonical tolerance rather than changing validator semantics;
+- Versions compare/provenance same-selection races, responsive layout overflow and strict browser locators;
+- Security Release Gate exact PR dependency-review probing with a strict frozen vulnerability/license fallback when GitHub Dependency Graph capability is unavailable;
+- Infinite Canvas stacking and non-modal overlay fixes plus exact scene/context browser locators;
+- Admin Console, Brand Kit, AI Workspace and Agent Timeline browser locators aligned to the actual product DOM without forced clicks;
+- Export aspect-ratio acceptance now changes target preset geometry before asserting Crop/Scale/AI Adapt choices;
+- Cost Ledger teardown preserves immutable append-only financial facts and only removes unreferenced mutable acceptance state;
+- Worker Media image-generation fixture teardown uses the migration role while the repository under test remains bound to the restricted runtime role.
+
+The prior Canvas Renderer Fallback failure was separately classified as an external package mirror synchronization error during Playwright Chromium dependency installation (`File has unexpected size` from the Google Chrome apt repository); renderer logic did not execute in that failed run and is not weakened to mask the infrastructure event.
+
+Validation identity for this refresh:
+
+- pre-refresh branch head: `c13f1a6665af841ba82aac83cd38b2230216cee1`
+- prior full hosted validation head: `48623a493e6089a2081de1301fb87b2f1e531f80`
+- PR: `#135`
+- branch: `release-closure-p0`
+
+This checkpoint is evidence for code-addressable Hosted validation only. It is **not** NODE-73 final authorization, does not replace production/staging/DR evidence, does not create human approvals, and does not relax branch-protection or governance requirements.
