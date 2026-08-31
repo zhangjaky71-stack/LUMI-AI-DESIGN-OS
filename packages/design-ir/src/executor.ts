@@ -139,17 +139,49 @@ function descendants(document: MutableDocument, rootId: string): Set<string> {
   return result;
 }
 
+function isUnsafePropertyPathSegment(key: string): boolean {
+  return key === "__proto__" || key === "prototype" || key === "constructor";
+}
+
+function defineOwnProperty(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): void {
+  Object.defineProperty(target, key, {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
+}
+
 function setPath(node: MutableNode, path: string, value: unknown): void {
   const keys = path.split(".").filter(Boolean);
   if (!keys.length) throw new Error("property path is empty");
+  for (const key of keys) {
+    if (isUnsafePropertyPathSegment(key))
+      throw new Error(`Unsafe property path segment: ${key}`);
+  }
+
   let current: Record<string, unknown> = node;
   for (const key of keys.slice(0, -1)) {
-    const child = current[key];
-    if (child === null || typeof child !== "object" || Array.isArray(child))
-      current[key] = {};
-    current = current[key] as Record<string, unknown>;
+    const child = Object.prototype.hasOwnProperty.call(current, key)
+      ? current[key]
+      : undefined;
+    if (child === null || typeof child !== "object" || Array.isArray(child)) {
+      const next = Object.create(null) as Record<string, unknown>;
+      defineOwnProperty(current, key, next);
+      current = next;
+    } else {
+      current = child as Record<string, unknown>;
+    }
   }
-  current[keys[keys.length - 1]!] = structuredClone(value);
+  defineOwnProperty(
+    current,
+    keys[keys.length - 1]!,
+    structuredClone(value),
+  );
 }
 
 function mutateTransform(
