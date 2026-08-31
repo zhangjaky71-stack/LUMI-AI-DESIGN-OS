@@ -8,10 +8,11 @@ from typing import Annotated, Any
 
 import pytest
 from fastapi import Depends, FastAPI
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete
 
 from lumi_api.api.v1.context import RequestContext
+from lumi_api.api.v1.errors import ApiProblem, api_problem_handler
 from lumi_api.persistence.models import Organization, OrganizationMember, Session, User
 from lumi_api.persistence.seed import ORG_ID, USER_OWNER_ID
 from lumi_api.persistence.session import create_engine, create_session_factory
@@ -133,101 +134,112 @@ async def _cleanup_security_fixtures(
 
 
 def test_project_security_requires_real_principal_tenant_membership_and_csrf() -> None:
-    (
-        engine,
-        factory,
-        owner_token,
-        owner_csrf,
-        viewer_token,
-        viewer_csrf,
-        viewer_id,
-        tenant_b,
-        owner_session_id,
-        viewer_session_id,
-    ) = run(_prepare_security_fixtures())
+    async def scenario() -> None:
+        (
+            engine,
+            factory,
+            owner_token,
+            owner_csrf,
+            viewer_token,
+            viewer_csrf,
+            viewer_id,
+            tenant_b,
+            owner_session_id,
+            viewer_session_id,
+        ) = await _prepare_security_fixtures()
 
-    app = FastAPI()
-    app.state.project_session_factory = factory
-    app.state.project_allowed_origins = frozenset({"http://localhost:3000"})
+        app = FastAPI()
+        app.add_exception_handler(ApiProblem, api_problem_handler)
+        app.state.project_session_factory = factory
+        app.state.project_allowed_origins = frozenset({"http://localhost:3000"})
 
-    @app.get("/probe")
-    async def read_probe(context: ContextDep):
-        return {
-            "actor_id": str(context.actor_id),
-            "organization_id": str(context.organization_id),
-        }
+        @app.get("/probe")
+        async def read_probe(context: ContextDep):
+            return {
+                "actor_id": str(context.actor_id),
+                "organization_id": str(context.organization_id),
+            }
 
-    @app.post("/probe")
-    async def write_probe(context: ContextDep):
-        return {"actor_id": str(context.actor_id)}
+        @app.post("/probe")
+        async def write_probe(context: ContextDep):
+            return {"actor_id": str(context.actor_id)}
 
-    client = TestClient(app)
-    org = str(ORG_ID)
-    try:
-        header_only = client.get("/probe", headers={"X-Lumi-Organization-Id": org})
-        assert header_only.status_code == 401
+        transport = ASGITransport(app=app)
+        org = str(ORG_ID)
+        try:
+            async with AsyncClient(
+                transport=transport,
+                base_url="http://testserver",
+            ) as client:
+                header_only = await client.get(
+                    "/probe", headers={"X-Lumi-Organization-Id": org}
+                )
+                assert header_only.status_code == 401
 
-        owner_read = client.get(
-            "/probe",
-            headers={"X-Lumi-Organization-Id": org},
-            cookies={"lumi_session": owner_token},
-        )
-        assert owner_read.status_code == 200
-        assert owner_read.json()["actor_id"] == str(USER_OWNER_ID)
+                owner_read = await client.get(
+                    "/probe",
+                    headers={"X-Lumi-Organization-Id": org},
+                    cookies={"lumi_session": owner_token},
+                )
+                assert owner_read.status_code == 200
+                assert owner_read.json()["actor_id"] == str(USER_OWNER_ID)
 
-        cross_tenant = client.get(
-            "/probe",
-            headers={"X-Lumi-Organization-Id": str(tenant_b)},
-            cookies={"lumi_session": owner_token},
-        )
-        assert cross_tenant.status_code == 401
+                cross_tenant = await client.get(
+                    "/probe",
+                    headers={"X-Lumi-Organization-Id": str(tenant_b)},
+                    cookies={"lumi_session": owner_token},
+                )
+                assert cross_tenant.status_code == 401
 
-        missing_csrf = client.post(
-            "/probe",
-            headers={"X-Lumi-Organization-Id": org, "Origin": "http://localhost:3000"},
-            cookies={"lumi_session": owner_token},
-        )
-        assert missing_csrf.status_code == 403
-        assert missing_csrf.json()["code"] == "CSRF_VALIDATION_FAILED"
+                missing_csrf = await client.post(
+                    "/probe",
+                    headers={
+                        "X-Lumi-Organization-Id": org,
+                        "Origin": "http://localhost:3000",
+                    },
+                    cookies={"lumi_session": owner_token},
+                )
+                assert missing_csrf.status_code == 403
+                assert missing_csrf.json()["code"] == "CSRF_VALIDATION_FAILED"
 
-        owner_write = client.post(
-            "/probe",
-            headers={
-                "X-Lumi-Organization-Id": org,
-                "Origin": "http://localhost:3000",
-                "X-CSRF-Token": owner_csrf,
-            },
-            cookies={"lumi_session": owner_token},
-        )
-        assert owner_write.status_code == 200
+                owner_write = await client.post(
+                    "/probe",
+                    headers={
+                        "X-Lumi-Organization-Id": org,
+                        "Origin": "http://localhost:3000",
+                        "X-CSRF-Token": owner_csrf,
+                    },
+                    cookies={"lumi_session": owner_token},
+                )
+                assert owner_write.status_code == 200
 
-        viewer_read = client.get(
-            "/probe",
-            headers={"X-Lumi-Organization-Id": org},
-            cookies={"lumi_session": viewer_token},
-        )
-        assert viewer_read.status_code == 200
-        assert viewer_read.json()["actor_id"] == str(viewer_id)
+                viewer_read = await client.get(
+                    "/probe",
+                    headers={"X-Lumi-Organization-Id": org},
+                    cookies={"lumi_session": viewer_token},
+                )
+                assert viewer_read.status_code == 200
+                assert viewer_read.json()["actor_id"] == str(viewer_id)
 
-        viewer_write = client.post(
-            "/probe",
-            headers={
-                "X-Lumi-Organization-Id": org,
-                "Origin": "http://localhost:3000",
-                "X-CSRF-Token": viewer_csrf,
-            },
-            cookies={"lumi_session": viewer_token},
-        )
-        assert viewer_write.status_code == 403
-        assert viewer_write.json()["code"] == "PERMISSION_DENIED"
-    finally:
-        run(
-            _cleanup_security_fixtures(
+                viewer_write = await client.post(
+                    "/probe",
+                    headers={
+                        "X-Lumi-Organization-Id": org,
+                        "Origin": "http://localhost:3000",
+                        "X-CSRF-Token": viewer_csrf,
+                    },
+                    cookies={"lumi_session": viewer_token},
+                )
+                assert viewer_write.status_code == 403
+                assert viewer_write.json()["code"] == "PERMISSION_DENIED"
+        finally:
+            await _cleanup_security_fixtures(
                 factory,
                 viewer_id=viewer_id,
                 tenant_b=tenant_b,
                 owner_session_id=owner_session_id,
                 viewer_session_id=viewer_session_id,
             )
-        )
-        run(engine.dispose())
+            await engine.dispose()
+
+    run(scenario())
