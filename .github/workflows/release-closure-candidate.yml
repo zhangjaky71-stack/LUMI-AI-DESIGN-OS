@@ -14,6 +14,7 @@ jobs:
     timeout-minutes: 20
     env:
       EXPECTED_PARENT: 174929388975069cd7a5388357b9a5cabbf9506e
+      BASE_VERIFIER_COMMIT: 8c2ab60e3b093b80c2d1b046c7eea1b65f72e06e
     steps:
       - uses: actions/checkout@v6
         with:
@@ -21,191 +22,94 @@ jobs:
           fetch-depth: 1
       - name: Assert exact release parent
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_PARENT"
-      - name: Apply first typed closure batch
+      - name: Fetch frozen first closure batch
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_VERIFIER_COMMIT"
+          git show "$BASE_VERIFIER_COMMIT:.github/workflows/release-closure-candidate.yml" > /tmp/base-verifier.yml
+      - name: Apply first and final typed closure batches
         run: |
           python - <<'PY'
           from pathlib import Path
+          import textwrap
+
+          verifier = Path("/tmp/base-verifier.yml").read_text()
+          start = "          python - <<'PY'\n"
+          end = "\n          PY\n      - uses: actions/setup-python@v6"
+          if start not in verifier or end not in verifier:
+              raise SystemExit("frozen verifier patch block not found")
+          first_batch = verifier.split(start, 1)[1].split(end, 1)[0]
+          exec(compile(textwrap.dedent(first_batch), "<frozen-first-batch>", "exec"))
 
           def replace(path: str, old: str, new: str) -> None:
               target = Path(path)
               text = target.read_text()
               if old not in text:
-                  raise SystemExit(f"expected patch anchor missing: {path}: {old[:80]!r}")
+                  raise SystemExit(f"expected final patch anchor missing: {path}: {old[:100]!r}")
               target.write_text(text.replace(old, new, 1))
 
+          app = "apps/worker-media/src/lumi_worker_media/app.py"
           replace(
-              "pyproject.toml",
-              '''  "services/video-generation/src",\n]''',
-              '''  "services/video-generation/src",\n  "services/artifact-history/src",\n  "services/brand-rules/src",\n  "services/constraint-engine/src",\n  "services/design-ir/src",\n  "services/event-contract/src",\n  "services/identity-engine/src",\n  "services/image-edit/src",\n]''',
+              app,
+              "import os\nfrom uuid import UUID",
+              "import os\nfrom typing import Any, cast\nfrom uuid import UUID",
+          )
+          for _ in range(3):
+              replace(app, "        retry = self.retry", "        retry = cast(Any, self).retry")
+          replace(
+              app,
+              "    settings = AssetWorkerSettings()",
+              "    settings = cast(Any, AssetWorkerSettings)()",
           )
 
-          bridge = "apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/approval_bridge.py"
+          event_runtime = "apps/worker-media/src/lumi_worker_media/event_runtime.py"
           replace(
-              bridge,
-              '''class ApprovalFeedbackLike(Protocol):\n    comment: str\n    node_refs: tuple[str, ...]\n    region_refs: tuple[str, ...]\n    requested_changes: tuple[str, ...]\n\n\nclass ApprovalResumeEnvelopeLike(Protocol):\n    approval_id: str\n    decision: str\n    status: str\n    subject_type: str\n    subject_id: str\n    subject_version: str\n    feedback: ApprovalFeedbackLike | None\n''',
-              '''class ApprovalFeedbackLike(Protocol):\n    @property\n    def comment(self) -> str: ...\n\n    @property\n    def node_refs(self) -> tuple[str, ...]: ...\n\n    @property\n    def region_refs(self) -> tuple[str, ...]: ...\n\n    @property\n    def requested_changes(self) -> tuple[str, ...]: ...\n\n\nclass ApprovalResumeEnvelopeLike(Protocol):\n    @property\n    def approval_id(self) -> str: ...\n\n    @property\n    def decision(self) -> str: ...\n\n    @property\n    def status(self) -> str: ...\n\n    @property\n    def subject_type(self) -> str: ...\n\n    @property\n    def subject_id(self) -> str: ...\n\n    @property\n    def subject_version(self) -> str: ...\n\n    @property\n    def feedback(self) -> ApprovalFeedbackLike | None: ...\n''',
+              event_runtime,
+              "from typing import Any, Protocol",
+              "from typing import Any, Protocol, cast",
           )
           replace(
-              "apps/agent-runtime/tests/test_approval_bridge.py",
-              '''    command = resume_command(envelope)\n    payload = resume_payload(envelope)\n    assert command.resume["approval_id"] == "approval-1"''',
-              '''    command = resume_command(envelope)\n    payload = resume_payload(envelope)\n    assert command.resume is not None\n    assert command.resume["approval_id"] == "approval-1"''',
-          )
-
-          router = "apps/api/src/lumi_api/assets/router.py"
-          replace(router, "from typing import Annotated", "from typing import Annotated, Literal, cast")
-          replace(
-              router,
-              '''            upload_mode=upload.upload_mode,\n            status=upload.status,''',
-              '''            upload_mode=cast(Literal["single", "multipart"], upload.upload_mode),\n            status=cast(Literal["pending"], upload.status),''',
+              event_runtime,
+              "            with connection.channel() as channel:",
+              "            with cast(Any, connection.channel()) as channel:",
           )
 
+          task_base = "apps/worker-media/src/lumi_worker_media/task_base.py"
+          replace(task_base, "from typing import Any", "from typing import Any, cast")
           replace(
-              "apps/api/src/lumi_api/persistence/repositories.py",
-              '''        id_column = self.model.id\n        result = await self._session.execute(''',
-              '''        id_column = getattr(self.model, "id", None)\n        if id_column is None:\n            raise TypeError(f"{self.model.__name__} has no id column")\n        result = await self._session.execute(''',
-          )
-          replace(
-              "apps/api/src/lumi_api/persistence/seed.py",
-              '''    table = model.__table__\n    await session.execute(''',
-              '''    table = getattr(model, "__table__", None)\n    if table is None:\n        raise TypeError(f"{model!r} is not a mapped table")\n    await session.execute(''',
+              task_base,
+              "        with Connection(broker_url) as connection, connection.channel() as channel:",
+              "        with Connection(broker_url) as connection, cast(Any, connection.channel()) as channel:",
           )
 
-          security = "apps/api/tests/integration/test_project_security.py"
-          replace(security, "from typing import Annotated, Any", "from typing import Annotated, Any, cast")
+          topology = "apps/worker-media/src/lumi_worker_media/topology.py"
           replace(
-              security,
-              "        app.add_exception_handler(ApiProblem, api_problem_handler)",
-              "        app.add_exception_handler(ApiProblem, cast(Any, api_problem_handler))",
+              topology,
+              "from dataclasses import dataclass\n\nfrom kombu",
+              "from dataclasses import dataclass\nfrom typing import Any, cast\n\nfrom kombu",
           )
           replace(
-              "apps/api/tests/integration/test_tool_gateway_staging_fixture_postgres.py",
-              '''        table_id = model.id\n        return int(''',
-              '''        table_id = getattr(model, "id", None)\n        if table_id is None:\n            raise TypeError(f"{model!r} has no id column")\n        return int(''',
-          )
-
-          admin_test = "apps/api/tests/test_admin_router.py"
-          replace(
-              admin_test,
-              '''    AdminBillingView,\n    AdminConsoleService,''',
-              '''    AdminBillingView,\n    AdminConsoleService,\n    AdminRole,''',
-          )
-          replace(
-              admin_test,
-              '''        mapping = {''',
-              '''        mapping: dict[str, frozenset[AdminRole]] = {''',
-          )
-
-          replace(
-              "apps/api/tests/test_api_v1_contract.py",
-              '''    limit_schema = parameters["limit"]["schema"]\n    assert limit_schema["minimum"] == 1''',
-              '''    limit_schema = parameters["limit"]["schema"]\n    assert isinstance(limit_schema, dict)\n    assert limit_schema["minimum"] == 1''',
-          )
-
-          deep_init = "apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/__init__.py"
-          replace(
-              deep_init,
-              '''        TrustedBackendProvider,\n    )''',
-              '''        TrustedBackendProvider,\n        mark_backend_bound,\n        mark_model_gateway_bound,\n    )''',
-          )
-
-          image_pg = "apps/worker-media/tests/integration/test_image_artifact_event_postgres.py"
-          replace(image_pg, "import os\nfrom decimal import Decimal", "import os\nfrom collections.abc import Iterator\nfrom decimal import Decimal")
-          replace(image_pg, "def cleanup() -> None:", "def cleanup() -> Iterator[None]:")
-
-          replace(
-              "apps/worker-media/tests/integration/test_video_hosted_postgres.py",
-              '''        async def handler(value: JobMessage) -> ExternalWait:\n            assert value == message''',
-              '''        async def handler(message: JobMessage) -> ExternalWait:\n            assert message == dispatch.message''',
-          )
-          replace(
-              "apps/worker-media/tests/test_event_runtime.py",
-              '''        def publish(self, outbox_record: OutboxRecord) -> None:\n            assert outbox_record.event_id == record.event_id\n            assert outbox_record.payload == record.payload''',
-              '''        def publish(self, record: OutboxRecord) -> None:\n            assert record.event_id == expected.event_id\n            assert record.payload == expected.payload''',
-          )
-          replace(
-              "apps/worker-media/tests/test_event_runtime.py",
-              '''    connection = FakeConnection()''',
-              '''    expected = record\n    connection = FakeConnection()''',
-          )
-          replace(
-              "apps/worker-media/tests/test_external_wait_runtime.py",
-              '''    async def handler(value: JobMessage) -> ExternalWait:\n        assert value == message''',
-              '''    async def handler(message: JobMessage) -> ExternalWait:\n        assert message == _dispatch().message''',
+              topology,
+              "    with connection.channel() as channel:",
+              "    with cast(Any, connection.channel()) as channel:",
           )
 
           image_entry = "apps/worker-media/tests/test_image_task_entrypoint.py"
           replace(
               image_entry,
-              "from unittest.mock import AsyncMock, patch\nfrom uuid import UUID",
-              "from typing import Any, cast\nfrom unittest.mock import AsyncMock, patch\nfrom uuid import UUID",
-          )
-          replace(image_entry, "        payload = app.image_transform.run(MESSAGE)", "        payload = cast(Any, app.image_transform).run(MESSAGE)")
-          replace(image_entry, "        app.image_transform.run(MESSAGE)", "        cast(Any, app.image_transform).run(MESSAGE)")
-          replace(image_entry, "        app.image_transform.run(MESSAGE)", "        cast(Any, app.image_transform).run(MESSAGE)")
-          replace(
-              image_entry,
-              '''    kwargs = retry.call_args.kwargs''',
-              '''    assert retry.call_args is not None\n    kwargs = retry.call_args.kwargs''',
+              "    parsed = execute.await_args.args[0]",
+              "    assert execute.await_args is not None\n    parsed = execute.await_args.args[0]",
           )
 
+          sandbox = "services/video-generation/src/lumi_video_generation/media_sandbox.py"
           replace(
-              "apps/worker-media/tests/test_queue_topology.py",
-              '''    for queue in queues.values():\n        assert queue.queue_arguments["x-dead-letter-exchange"] == "lumi.dlx"''',
-              '''    for queue in queues.values():\n        queue_arguments = getattr(queue, "queue_arguments", None)\n        assert isinstance(queue_arguments, dict)\n        assert queue_arguments["x-dead-letter-exchange"] == "lumi.dlx"''',
-          )
-
-          release_test = "evals/tests/test_release_gate.py"
-          replace(release_test, "import copy\nfrom pathlib import Path", "import copy\nfrom pathlib import Path\nfrom typing import Any")
-          replace(release_test, "from evals.release import ReleaseGateError, ReleaseManifest, evaluate_release", "from evals.models import SuiteDefinition\nfrom evals.release import ReleaseGateError, ReleaseManifest, evaluate_release")
-          replace(
-              release_test,
-              "def _smoke_pair() -> tuple[object, dict[str, object], dict[str, object]]:",
-              "def _smoke_pair() -> tuple[SuiteDefinition, dict[str, Any], dict[str, Any]]:",
-          )
-
-          stats_test = "evals/tests/test_statistics.py"
-          replace(
-              stats_test,
-              '''    interval = wilson_interval(18, 20)\n    assert 0 <= interval["ci95_low"] <= interval["rate"] <= interval["ci95_high"] <= 1''',
-              '''    interval = wilson_interval(18, 20)\n    low = interval["ci95_low"]\n    rate = interval["rate"]\n    high = interval["ci95_high"]\n    assert isinstance(low, (int, float))\n    assert isinstance(rate, (int, float))\n    assert isinstance(high, (int, float))\n    assert 0 <= low <= rate <= high <= 1''',
+              sandbox,
+              '''class SandboxPathResolver(Protocol):\n    def resolve_readonly(self, durable_ref: str) -> str: ...\n    def allocate_output(self, suffix: str) -> str: ...\n    async def ingest_rendered_video(self, path: str, timeline: VideoTimeline) -> RenderedVideo: ...\n''',
+              '''class SandboxCompilePathResolver(Protocol):\n    def resolve_readonly(self, durable_ref: str) -> str: ...\n    def allocate_output(self, suffix: str) -> str: ...\n\n\nclass SandboxPathResolver(SandboxCompilePathResolver, Protocol):\n    async def ingest_rendered_video(self, path: str, timeline: VideoTimeline) -> RenderedVideo: ...\n''',
           )
           replace(
-              stats_test,
-              '''    comparison = compare_success_rates(18, 20, 19, 20)\n    assert comparison["delta"] > 0''',
-              '''    comparison = compare_success_rates(18, 20, 19, 20)\n    delta = comparison["delta"]\n    assert isinstance(delta, (int, float))\n    assert delta > 0''',
-          )
-
-          artifact_test = "services/artifact-history/tests/test_artifact_engine_runtime.py"
-          replace(
-              artifact_test,
-              '''    payload = compiler_provenance_payload(value)\n    assert list(payload["resource_versions"]) == ["a", "z"]''',
-              '''    payload = compiler_provenance_payload(value)\n    resource_versions = payload["resource_versions"]\n    assert isinstance(resource_versions, dict)\n    assert list(resource_versions) == ["a", "z"]''',
-          )
-
-          asset_test = "services/asset-storage/tests/test_s3_bounded_bytes.py"
-          replace(
-              asset_test,
-              '''        self.last_put = dict(kwargs)\n        self.objects[(str(kwargs["Bucket"]), str(kwargs["Key"]))] = {''',
-              '''        self.last_put = dict(kwargs)\n        metadata = kwargs.get("Metadata")\n        assert metadata is None or isinstance(metadata, dict)\n        self.objects[(str(kwargs["Bucket"]), str(kwargs["Key"]))] = {''',
-          )
-          replace(asset_test, '''            "metadata": dict(kwargs.get("Metadata") or {}),''', '''            "metadata": dict(metadata or {}),''')
-
-          auth = "services/auth/src/lumi_auth/policy.py"
-          replace(auth, "    roles = tuple(\n", "    roles: tuple[Role, ...] = tuple(\n")
-
-          design_validation = "services/design-ir/src/lumi_design_ir/validation.py"
-          replace(
-              design_validation,
-              '''            component_id = instance.get("component_id")\n            component = nodes.get(component_id)''',
-              '''            component_id = instance.get("component_id")\n            component = nodes.get(component_id) if isinstance(component_id, str) else None''',
-          )
-
-          image_edit_memory = "services/image-edit/src/lumi_image_edit/inmemory.py"
-          replace(image_edit_memory, "from decimal import Decimal\n", "from collections.abc import Mapping\nfrom decimal import Decimal\n")
-          replace(
-              image_edit_memory,
-              '''        self, event_type: str, *, organization_id: str, edit_id: str, payload: dict[str, object]''',
-              '''        self, event_type: str, *, organization_id: str, edit_id: str, payload: Mapping[str, object]''',
+              sandbox,
+              "    def compile(self, timeline: VideoTimeline, resolver: SandboxPathResolver) -> FfmpegInvocation:",
+              "    def compile(\n        self, timeline: VideoTimeline, resolver: SandboxCompilePathResolver\n    ) -> FfmpegInvocation:",
           )
           PY
       - uses: actions/setup-python@v6
