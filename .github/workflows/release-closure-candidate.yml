@@ -50,10 +50,16 @@ jobs:
               '''    await page.getByLabel("Wipe position").fill("70");''',
           )
 
+          brand = "apps/web/src/components/brand-kit/brand-kit.tsx"
           replace(
-              "apps/web/e2e/brand-kit.spec.ts",
-              '''    const firstReview = reviews.nth(0);\n    const firstReviewLabel = await firstReview.getAttribute("aria-label");\n    expect(firstReviewLabel).not.toBeNull();\n    const firstCandidateId = firstReviewLabel!.replace(/ review$/, "");\n    await firstReview.selectOption("APPROVE");\n    await page\n      .getByLabel(`${firstCandidateId} severity`)\n      .selectOption("HARD");''',
-              '''    const firstReview = reviews.nth(0);\n    await firstReview.selectOption("APPROVE");\n    await expect(reviews.nth(0)).toHaveValue("APPROVE");\n    const firstSeverityLabel = await reviews.nth(0).evaluate((node) =>\n      node.parentElement\n        ?.querySelector('select[aria-label$=" severity"]')\n        ?.getAttribute("aria-label"),\n    );\n    expect(firstSeverityLabel).not.toBeNull();\n    const firstSeverity = page.locator(\n      `select[aria-label="${firstSeverityLabel}"]`,\n    );\n    await expect(firstSeverity).toBeEnabled();\n    await firstSeverity.selectOption("HARD");''',
+              brand,
+              '''                          onChange={(event) =>\n                            setGuideDecisions((current) => ({\n                              ...current,\n                              [candidate.candidate_id]: {\n                                candidate_id: candidate.candidate_id,\n                                decision: event.currentTarget.value as\n                                  | "APPROVE"\n                                  | "REJECT",\n                                severity:\n                                  current[candidate.candidate_id]?.severity ??\n                                  candidate.rule.severity,\n                              },\n                            }))\n                          }''',
+              '''                          onChange={(event) => {\n                            const decision = event.currentTarget.value as\n                              | "APPROVE"\n                              | "REJECT";\n                            setGuideDecisions((current) => ({\n                              ...current,\n                              [candidate.candidate_id]: {\n                                candidate_id: candidate.candidate_id,\n                                decision,\n                                severity:\n                                  current[candidate.candidate_id]?.severity ??\n                                  candidate.rule.severity,\n                              },\n                            }));\n                          }}''',
+          )
+          replace(
+              brand,
+              '''                          onChange={(event) =>\n                            setGuideDecisions((current) => ({\n                              ...current,\n                              [candidate.candidate_id]: {\n                                candidate_id: candidate.candidate_id,\n                                decision:\n                                  current[candidate.candidate_id]?.decision ??\n                                  "APPROVE",\n                                severity: event.currentTarget\n                                  .value as BrandRuleSeverity,\n                              },\n                            }))\n                          }''',
+              '''                          onChange={(event) => {\n                            const severity = event.currentTarget\n                              .value as BrandRuleSeverity;\n                            setGuideDecisions((current) => ({\n                              ...current,\n                              [candidate.candidate_id]: {\n                                candidate_id: candidate.candidate_id,\n                                decision:\n                                  current[candidate.candidate_id]?.decision ??\n                                  "APPROVE",\n                                severity,\n                              },\n                            }));\n                          }}''',
           )
 
           store = "apps/agent-runtime/src/lumi_agent_runtime/control_plane/postgres_store.py"
@@ -86,6 +92,7 @@ jobs:
       - name: Canonical Prettier write
         run: |
           pnpm exec prettier --write \
+            apps/web/src/components/brand-kit/brand-kit.tsx \
             apps/web/e2e/versions-ui.spec.ts \
             apps/web/e2e/brand-kit.spec.ts \
             packages/design-ir/src/executor.ts \
@@ -138,6 +145,7 @@ jobs:
             apps/api/tests/integration/test_project_security.py \
             apps/web/e2e/brand-kit.spec.ts \
             apps/web/e2e/versions-ui.spec.ts \
+            apps/web/src/components/brand-kit/brand-kit.tsx \
             packages/design-ir/src/executor.ts \
             packages/design-ir/tests/runtime.test.ts | sort)"
           printf '%s\n' "$actual"
@@ -152,6 +160,7 @@ jobs:
             apps/api/tests/integration/test_project_security.py \
             apps/web/e2e/brand-kit.spec.ts \
             apps/web/e2e/versions-ui.spec.ts \
+            apps/web/src/components/brand-kit/brand-kit.tsx \
             packages/design-ir/src/executor.ts \
             packages/design-ir/tests/runtime.test.ts
           git commit -m "fix: close remaining source validation regressions"
