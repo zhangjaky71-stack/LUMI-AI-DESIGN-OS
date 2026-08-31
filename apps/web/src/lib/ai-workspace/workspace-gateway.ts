@@ -523,7 +523,7 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
       impact: "继续将基于当前构图扩展 3 个交付物。",
       estimated_cost_microusd: "1800000",
       artifact_version_ids: [artifact.version_id],
-      expires_at: "2026-08-16T00:00:00.000Z",
+      expires_at: null,
     };
     const status = (
       id: string,
@@ -698,6 +698,6 @@ export function getAIWorkspaceGateway(
   bootstrap: AIWorkspaceBootstrap,
 ): AIWorkspaceGateway {
   if (bootstrap.mode !== "e2e") return new HttpAIWorkspaceGateway(api);
-  if (!bootstrap.seed) throw new Error("AI_WORKSPACE_E2E_SEED_REQUIRED");
+  if (!bootstrap.seed) throw workspaceProblem("E2E_SEED_MISSING", 500);
   return new DeterministicAIWorkspaceGateway(bootstrap.seed);
 }
