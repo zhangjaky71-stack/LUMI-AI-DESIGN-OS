@@ -9,6 +9,7 @@ test.describe("NODE-55 Infinite Canvas UI", () => {
     await page.goto(workspace);
     const canvas = page.getByLabel("Canvas preview");
     await expect(canvas).toBeVisible();
+    await canvas.getByRole("button", { name: "Fit all", exact: true }).click();
     await expect(
       canvas.getByLabel("Square / 1:1", { exact: true }),
     ).toBeVisible();
@@ -38,13 +39,12 @@ test.describe("NODE-55 Infinite Canvas UI", () => {
   test("Canvas selection becomes exact AI Edit context", async ({ page }) => {
     await page.goto(workspace);
     const canvas = page.getByLabel("Canvas preview");
+    const agent = page.getByLabel("Agent 对话与运行");
     await canvas
       .getByRole("button", { name: "Headline", exact: true })
       .click();
-    await expect(page.getByText("1 selected", { exact: true })).toBeVisible();
-    await expect(
-      page.getByText("Headline", { exact: true }).first(),
-    ).toBeVisible();
+    await expect(agent.getByText("1 selected", { exact: true })).toBeVisible();
+    await expect(agent.getByText("Headline", { exact: true })).toBeVisible();
     await canvas.getByRole("button", { name: "AI Edit", exact: true }).click();
     await expect(page.getByLabel("给 LUMI Agent 的指令")).toHaveValue(
       "针对当前选中对象进行 AI Edit：",
