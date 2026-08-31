@@ -57,7 +57,12 @@ test.describe("NODE-58 Brand Kit UI", () => {
     });
     await expect(page.getByText("UnknownBrand", { exact: true })).toBeVisible();
     await expect(page.getByText(/License unknown/)).toBeVisible();
-    await expect(page.getByText(/UNKNOWN 授权声明/)).toBeVisible();
+    const publishIssues = page.locator("details").filter({
+      hasText: "发布前检查未通过",
+    });
+    await expect(publishIssues).toBeVisible();
+    await publishIssues.locator("summary").click();
+    await expect(publishIssues.getByText(/UNKNOWN 授权声明/)).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Publish BrandRuleSet" }),
     ).toBeDisabled();
@@ -81,9 +86,12 @@ test.describe("NODE-58 Brand Kit UI", () => {
     const reviews = page.locator('select[aria-label$=" review"]');
     await expect(reviews).toHaveCount(3);
     const firstReview = reviews.nth(0);
+    const firstReviewLabel = await firstReview.getAttribute("aria-label");
+    expect(firstReviewLabel).not.toBeNull();
+    const firstCandidateId = firstReviewLabel!.replace(/ review$/, "");
     await firstReview.selectOption("APPROVE");
-    await firstReview
-      .locator("xpath=following-sibling::select[1]")
+    await page
+      .getByLabel(`${firstCandidateId} severity`)
       .selectOption("HARD");
     await reviews.nth(1).selectOption("REJECT");
     await page.getByRole("button", { name: "Apply human review" }).click();
