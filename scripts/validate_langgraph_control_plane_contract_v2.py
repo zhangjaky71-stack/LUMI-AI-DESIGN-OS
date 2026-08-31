@@ -175,14 +175,26 @@ def main() -> int:
         "interrupt(",
         'counts == {"draft": 1, "review": 2, "finish": 1}',
     )
-    require(
+    checkpoint = require(
         "scripts/integration_langgraph_postgres_checkpoint.py",
         "open_postgres_checkpointer",
-        "allow_setup=True",
+        "checkpoint_dsn = runtime_dsn",
         "allow_setup=False",
+        "budget_json",
         "Simulate runtime restart",
         "restarted.resume",
     )
+    for marker in (
+        "allow_setup=True",
+        "CREATE SCHEMA",
+        "DROP SCHEMA",
+        "_with_search_path",
+    ):
+        if marker in checkpoint:
+            raise SystemExit(
+                "runtime checkpoint acceptance must use migration-owned schema; "
+                f"forbidden marker: {marker}"
+            )
     require(
         "scripts/integration_langgraph_postgres_control.py",
         "stale checkpoint persist must fail",
