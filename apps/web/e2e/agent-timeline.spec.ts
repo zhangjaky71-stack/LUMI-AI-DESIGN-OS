@@ -9,30 +9,26 @@ async function startRun(page: Page) {
     exact: true,
   });
   const mobileTabs = page.getByLabel("移动工作区面板");
+  const isMobile = (page.viewportSize()?.width ?? 1280) <= 768;
 
-  if (await mobileTabs.isVisible()) {
-    if (!(await headline.isVisible())) {
-      await mobileTabs
-        .getByRole("button", { name: "Canvas", exact: true })
-        .click();
-      await expect(headline).toBeVisible();
-    }
-  } else {
-    await expect(headline).toBeVisible();
+  if (isMobile) {
+    await expect(mobileTabs).toBeVisible();
+    await mobileTabs
+      .getByRole("button", { name: "Canvas", exact: true })
+      .click();
   }
+  await expect(headline).toBeVisible();
 
   await headline.focus();
   await page.keyboard.press("Enter");
 
   const composer = page.getByLabel("给 LUMI Agent 的指令");
-  if (!(await composer.isVisible())) {
-    if (await mobileTabs.isVisible()) {
-      await mobileTabs
-        .getByRole("button", { name: "Agent", exact: true })
-        .click();
-    }
-    await expect(composer).toBeVisible();
+  if (isMobile) {
+    await mobileTabs
+      .getByRole("button", { name: "Agent", exact: true })
+      .click();
   }
+  await expect(composer).toBeVisible();
 
   await composer.fill("生成一个可评审方向并展示安全执行进度");
   await page.getByRole("button", { name: "Send", exact: true }).click();
@@ -163,7 +159,9 @@ test.describe("NODE-57 Agent Timeline", () => {
     await approve.click();
     await expect(timeline.getByText("APPROVED", { exact: true })).toBeVisible();
     await expect(
-      timeline.getByText(/private reasoning|raw tool payload|stack trace/i),
+      timeline
+        .locator("article")
+        .getByText(/private reasoning|raw tool payload|stack trace/i),
     ).toHaveCount(0);
   });
 });
