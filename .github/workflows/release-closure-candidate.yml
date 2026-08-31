@@ -147,6 +147,7 @@ jobs:
           uv run python scripts/integration_langgraph_postgres_control.py
       - name: Verify exact changed-path boundary
         run: |
+          git checkout -- apps/web/next-env.d.ts
           git diff --check
           actual="$(git diff --name-only | sort)"
           expected="$(printf '%s\n' \
