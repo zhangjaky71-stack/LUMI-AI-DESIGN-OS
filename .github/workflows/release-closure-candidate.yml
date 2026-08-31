@@ -49,6 +49,11 @@ jobs:
               '''    await page.getByLabel("Wipe position").evaluate((node) => {\n      const input = node as HTMLInputElement;\n      input.value = "70";\n      input.dispatchEvent(new Event("input", { bubbles: true }));\n      input.dispatchEvent(new Event("change", { bubbles: true }));\n    });''',
               '''    await page.getByLabel("Wipe position").fill("70");''',
           )
+          replace(
+              "apps/web/e2e/brand-kit.spec.ts",
+              '''    await expect(page.getByText("逐条确认", { exact: false })).toBeVisible();''',
+              '''    await expect(\n      page.getByRole("alert").filter({ hasText: "逐条确认" }),\n    ).toBeVisible();''',
+          )
 
           brand = "apps/web/src/components/brand-kit/brand-kit.tsx"
           replace(
