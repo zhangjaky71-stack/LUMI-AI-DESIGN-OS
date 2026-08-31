@@ -40,9 +40,7 @@ test.describe("NODE-55 Infinite Canvas UI", () => {
     await page.goto(workspace);
     const canvas = page.getByLabel("Canvas preview");
     const agent = page.getByLabel("Agent 对话与运行");
-    await canvas
-      .getByRole("button", { name: "Headline", exact: true })
-      .click();
+    await canvas.getByRole("button", { name: "Headline", exact: true }).click();
     await expect(agent.getByText("1 selected", { exact: true })).toBeVisible();
     await expect(agent.getByText("Headline", { exact: true })).toBeVisible();
     await canvas.getByRole("button", { name: "AI Edit", exact: true }).click();
