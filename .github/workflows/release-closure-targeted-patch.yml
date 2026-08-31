@@ -1,4 +1,4 @@
-name: Versions CSS Prettier Oracle
+name: Versions CSS Targeted Patch
 
 on:
   pull_request:
@@ -6,16 +6,17 @@ on:
       - ".github/release-closure-targeted-patch-trigger"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  format-oracle:
+  patch-versions-css:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
           ref: release-closure-p0
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
@@ -23,14 +24,19 @@ jobs:
         run: corepack enable && corepack prepare pnpm@11.4.0 --activate
       - name: Install frozen workspace
         run: pnpm install --frozen-lockfile
-      - name: Format Versions CSS with repository-pinned Prettier
+      - name: Apply repository-pinned Prettier to Versions CSS
         run: pnpm exec prettier --write apps/web/src/components/versions-ui/versions-ui.module.css
-      - name: Verify exact formatter output
+      - name: Verify exact single-file patch
         run: |
           pnpm exec prettier --check apps/web/src/components/versions-ui/versions-ui.module.css
           git diff --check
-      - name: Print exact formatter diff
-        run: |
-          echo '--- PRETTIER EXACT DIFF START ---'
+          changed="$(git diff --name-only)"
+          test "$changed" = "apps/web/src/components/versions-ui/versions-ui.module.css"
           git diff -- apps/web/src/components/versions-ui/versions-ui.module.css
-          echo '--- PRETTIER EXACT DIFF END ---'
+      - name: Commit exact Versions CSS repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/components/versions-ui/versions-ui.module.css
+          git commit -m "style(versions): apply pinned Prettier output"
+          git push origin HEAD:release-closure-p0
