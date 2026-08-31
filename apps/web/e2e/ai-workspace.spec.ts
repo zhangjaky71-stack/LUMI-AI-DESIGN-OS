@@ -72,7 +72,7 @@ test.describe("NODE-54 AI Design Workspace", () => {
     await expect(stale.getByText("已过期", { exact: true })).toBeVisible();
     await expect(
       stale.getByRole("button", { name: "Approve", exact: true }),
-    ).toBeDisabled();
+    ).toHaveCount(0);
     await expect(stale.getByText(/旧审批不会被提交/)).toBeVisible();
   });
 
@@ -133,12 +133,17 @@ test.describe("NODE-54 AI Design Workspace", () => {
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(workspace);
+    const mobileTabs = page.getByLabel("移动工作区面板");
     await expect(
-      page.getByRole("button", { name: "Agent", exact: true }),
+      mobileTabs.getByRole("button", { name: "Agent", exact: true }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Canvas", exact: true }).click();
+    await mobileTabs
+      .getByRole("button", { name: "Canvas", exact: true })
+      .click();
     await expect(page.getByLabel("Canvas preview")).toBeVisible();
-    await page.getByRole("button", { name: "Inspector", exact: true }).click();
+    await mobileTabs
+      .getByRole("button", { name: "Inspector", exact: true })
+      .click();
     await expect(page.getByLabel("Layers 与 Inspector")).toBeVisible();
   });
 });
