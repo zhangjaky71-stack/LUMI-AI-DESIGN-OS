@@ -171,10 +171,9 @@ def _pending(*, provider_request_id: str = "req_pg_1") -> PendingInvocationRecor
     )
 
 
-async def _delete_generation() -> None:
-    # Fixture teardown is an administrative concern. Keep the repository under test
-    # on DATABASE_URL so runtime DELETE remains forbidden, and use the migration role
-    # only to reset the deterministic acceptance row between tests.
+async def _reset_generation_fixture() -> None:
+    # Fixture setup/teardown is administrative. The repository itself remains on
+    # DATABASE_URL so runtime privileges are still exercised by every operation.
     connection = await asyncpg.connect(_migration_dsn())
     try:
         await connection.execute(
@@ -182,15 +181,34 @@ async def _delete_generation() -> None:
             UUID(ORG),
             UUID(OPERATION),
         )
+        for operation_id, suffix in (
+            (OPERATION, "root"),
+            (VARIANT_OPERATION, "variant"),
+        ):
+            await connection.execute(
+                """
+                INSERT INTO idempotency_operations (
+                    id, organization_id, idempotency_key, operation_type, status,
+                    request_hash, result_json, attempt_count, created_at, updated_at, version
+                ) VALUES (
+                    $1,$2,$3,'image.generate','new',$4,'{}'::jsonb,0,now(),now(),1
+                )
+                ON CONFLICT (id) DO NOTHING
+                """,
+                UUID(operation_id),
+                UUID(ORG),
+                f"image-generation-postgres-{suffix}",
+                "0" * 64,
+            )
     finally:
         await connection.close()
 
 
 @pytest.fixture(autouse=True)
 def cleanup_generation() -> Iterator[None]:
-    asyncio.run(_delete_generation())
+    asyncio.run(_reset_generation_fixture())
     yield
-    asyncio.run(_delete_generation())
+    asyncio.run(_reset_generation_fixture())
 
 
 def test_spec_and_job_round_trip_use_canonical_generations_row() -> None:
