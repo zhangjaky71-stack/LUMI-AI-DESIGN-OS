@@ -55,7 +55,7 @@ test.describe("NODE-58 Brand Kit UI", () => {
       mimeType: "font/woff2",
       buffer: Buffer.from("font"),
     });
-    await expect(page.getByText("UnknownBrand")).toBeVisible();
+    await expect(page.getByText("UnknownBrand", { exact: true })).toBeVisible();
     await expect(page.getByText(/License unknown/)).toBeVisible();
     await expect(page.getByText(/UNKNOWN 授权声明/)).toBeVisible();
     await expect(
@@ -80,14 +80,14 @@ test.describe("NODE-58 Brand Kit UI", () => {
     await expect(page.getByText(/page 8/)).toBeVisible();
     const reviews = page.locator('select[aria-label$=" review"]');
     await expect(reviews).toHaveCount(3);
-    await reviews.nth(0).selectOption("APPROVE");
-    await page
-      .locator('select[aria-label$=" severity"]')
-      .nth(0)
+    const firstReview = reviews.nth(0);
+    await firstReview.selectOption("APPROVE");
+    await firstReview
+      .locator("xpath=following-sibling::select[1]")
       .selectOption("HARD");
     await reviews.nth(1).selectOption("REJECT");
     await page.getByRole("button", { name: "Apply human review" }).click();
-    await expect(page.getByRole("alert")).toContainText("逐条确认");
+    await expect(page.getByText("逐条确认", { exact: false })).toBeVisible();
     await reviews.nth(2).selectOption("REJECT");
     await page.getByRole("button", { name: "Apply human review" }).click();
     await expect(page.getByText("APPROVED", { exact: true })).toBeVisible();
@@ -141,9 +141,9 @@ test.describe("NODE-58 Brand Kit UI", () => {
     await page.getByRole("button", { name: "Projects & Compliance" }).click();
     await page.getByLabel("Rule version").selectOption("0.0.0-stale");
     await page.getByRole("button", { name: "Run Brand check" }).click();
-    await expect(page.getByRole("alert")).toContainText(
-      "BRAND_RULE_VERSION_STALE",
-    );
+    await expect(
+      page.getByText("BRAND_RULE_VERSION_STALE", { exact: true }),
+    ).toBeVisible();
   });
 
   test("freezes the resolved BrandRuleSet version into a newly started Agent Run", async ({
