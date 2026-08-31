@@ -1,4 +1,4 @@
-name: Release Closure Pyright Diagnose
+name: Release Closure Python Candidate
 
 on:
   pull_request:
@@ -6,110 +6,85 @@ on:
       - .github/release-closure-candidate-trigger
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose-pyright-closure:
+  verify-and-push-python-candidate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     env:
       EXPECTED_PARENT: 174929388975069cd7a5388357b9a5cabbf9506e
+      CANDIDATE_BRANCH: release-closure-python-candidate
       BASE_VERIFIER_COMMIT: 8c2ab60e3b093b80c2d1b046c7eea1b65f72e06e
+      TYPED_VERIFIER_COMMIT: 4d0ecaeeaee2058922b7a316f9515d14c23242fa
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
     steps:
       - uses: actions/checkout@v6
         with:
           ref: release-closure-p0
           fetch-depth: 1
-      - name: Assert exact release parent
-        run: test "$(git rev-parse HEAD)" = "$EXPECTED_PARENT"
-      - name: Fetch frozen first closure batch
+      - name: Assert exact release parent and untouched candidate ref
         run: |
-          git fetch --no-tags --depth=1 origin "$BASE_VERIFIER_COMMIT"
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_PARENT"
+          remote_candidate="$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')"
+          test "$remote_candidate" = "$EXPECTED_PARENT"
+      - name: Fetch frozen typed verifier sources
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_VERIFIER_COMMIT" "$TYPED_VERIFIER_COMMIT"
           git show "$BASE_VERIFIER_COMMIT:.github/workflows/release-closure-candidate.yml" > /tmp/base-verifier.yml
-      - name: Apply first and final typed closure batches
+          git show "$TYPED_VERIFIER_COMMIT:.github/workflows/release-closure-candidate.yml" > /tmp/typed-verifier.yml
+      - name: Apply proven typed closure and least-privilege LangGraph restart patch
         run: |
           python - <<'PY'
           from pathlib import Path
           import textwrap
 
-          verifier = Path("/tmp/base-verifier.yml").read_text()
+          typed = Path("/tmp/typed-verifier.yml").read_text()
+          marker = "      - name: Apply first and final typed closure batches\n        run: |\n"
+          if marker not in typed:
+              raise SystemExit("typed verifier step marker not found")
+          body = typed.split(marker, 1)[1]
           start = "          python - <<'PY'\n"
           end = "\n          PY\n      - uses: actions/setup-python@v6"
-          if start not in verifier or end not in verifier:
-              raise SystemExit("frozen verifier patch block not found")
-          first_batch = verifier.split(start, 1)[1].split(end, 1)[0]
-          exec(compile(textwrap.dedent(first_batch), "<frozen-first-batch>", "exec"))
+          if start not in body or end not in body:
+              raise SystemExit("typed verifier patch block not found")
+          typed_batch = body.split(start, 1)[1].split(end, 1)[0]
+          exec(compile(textwrap.dedent(typed_batch), "<frozen-typed-batch>", "exec"))
 
           def replace(path: str, old: str, new: str) -> None:
               target = Path(path)
               text = target.read_text()
               if old not in text:
-                  raise SystemExit(f"expected final patch anchor missing: {path}: {old[:100]!r}")
+                  raise SystemExit(f"expected LangGraph patch anchor missing: {path}: {old[:100]!r}")
               target.write_text(text.replace(old, new, 1))
 
-          app = "apps/worker-media/src/lumi_worker_media/app.py"
+          script = "scripts/integration_langgraph_postgres_checkpoint.py"
+          replace(script, "from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit\n", "")
+          replace(script, '\n_SCHEMA = "node28_checkpoint_acceptance"\n', "")
           replace(
-              app,
-              "import os\nfrom uuid import UUID",
-              "import os\nfrom typing import Any, cast\nfrom uuid import UUID",
-          )
-          for _ in range(3):
-              replace(app, "        retry = self.retry", "        retry = cast(Any, self).retry")
-          replace(
-              app,
-              "    settings = AssetWorkerSettings()",
-              "    settings = cast(Any, AssetWorkerSettings)()",
-          )
-
-          event_runtime = "apps/worker-media/src/lumi_worker_media/event_runtime.py"
-          replace(
-              event_runtime,
-              "from typing import Any, Protocol",
-              "from typing import Any, Protocol, cast",
+              script,
+              '''\ndef _with_search_path(dsn: str, schema: str) -> str:\n    parsed = urlsplit(dsn)\n    query = dict(parse_qsl(parsed.query, keep_blank_values=True))\n    query["options"] = f"-csearch_path={schema},public"\n    return urlunsplit(\n        (parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment)\n    )\n''',
+              "",
           )
           replace(
-              event_runtime,
-              "            with connection.channel() as channel:",
-              "            with cast(Any, connection.channel()) as channel:",
-          )
-
-          task_base = "apps/worker-media/src/lumi_worker_media/task_base.py"
-          replace(task_base, "from typing import Any", "from typing import Any, cast")
-          replace(
-              task_base,
-              "        with Connection(broker_url) as connection, connection.channel() as channel:",
-              "        with Connection(broker_url) as connection, cast(Any, connection.channel()) as channel:",
-          )
-
-          topology = "apps/worker-media/src/lumi_worker_media/topology.py"
-          replace(
-              topology,
-              "from dataclasses import dataclass\n\nfrom kombu",
-              "from dataclasses import dataclass\nfrom typing import Any, cast\n\nfrom kombu",
+              script,
+              "    checkpoint_dsn = _with_search_path(admin_dsn, _SCHEMA)",
+              '''    # Alembic migration 0022 owns checkpoint schema mutation. Runtime must\n    # exercise migration-provisioned tables without setup privileges.\n    checkpoint_dsn = runtime_dsn''',
           )
           replace(
-              topology,
-              "    with connection.channel() as channel:",
-              "    with cast(Any, connection.channel()) as channel:",
+              script,
+              '''        await admin.execute(f'DROP SCHEMA IF EXISTS "{_SCHEMA}" CASCADE')\n        await admin.execute(f'CREATE SCHEMA "{_SCHEMA}"')\n''',
+              "",
           )
-
-          image_entry = "apps/worker-media/tests/test_image_task_entrypoint.py"
+          replace(script, "status, budget, started_at, version", "status, budget_json, started_at, version")
+          replace(script, "            allow_setup=True,", "            allow_setup=False,")
           replace(
-              image_entry,
-              "    parsed = execute.await_args.args[0]",
-              "    assert execute.await_args is not None\n    parsed = execute.await_args.args[0]",
-          )
-
-          sandbox = "services/video-generation/src/lumi_video_generation/media_sandbox.py"
-          replace(
-              sandbox,
-              '''class SandboxPathResolver(Protocol):\n    def resolve_readonly(self, durable_ref: str) -> str: ...\n    def allocate_output(self, suffix: str) -> str: ...\n    async def ingest_rendered_video(self, path: str, timeline: VideoTimeline) -> RenderedVideo: ...\n''',
-              '''class SandboxCompilePathResolver(Protocol):\n    def resolve_readonly(self, durable_ref: str) -> str: ...\n    def allocate_output(self, suffix: str) -> str: ...\n\n\nclass SandboxPathResolver(SandboxCompilePathResolver, Protocol):\n    async def ingest_rendered_video(self, path: str, timeline: VideoTimeline) -> RenderedVideo: ...\n''',
-          )
-          replace(
-              sandbox,
-              "    def compile(self, timeline: VideoTimeline, resolver: SandboxPathResolver) -> FfmpegInvocation:",
-              "    def compile(\n        self, timeline: VideoTimeline, resolver: SandboxCompilePathResolver\n    ) -> FfmpegInvocation:",
+              script,
+              '''        await admin.execute(f'DROP SCHEMA IF EXISTS "{_SCHEMA}" CASCADE')\n''',
+              "",
           )
           PY
       - uses: actions/setup-python@v6
@@ -126,23 +101,131 @@ jobs:
         run: |
           uv run ruff check --fix apps services evals
           uv run ruff format apps services evals
-      - name: Full Python formatting and lint
+          uv run ruff format scripts/integration_langgraph_postgres_checkpoint.py
+      - name: Full Python Ruff and Pyright gates
         run: |
+          set -euo pipefail
           uv run ruff format --check apps services evals
           uv run ruff check apps services evals
-      - name: Run full Pyright
-        id: pyright
-        continue-on-error: true
-        run: uv run pyright
-      - name: Show typed closure boundary
-        if: always()
+          uv run ruff format --check scripts/integration_langgraph_postgres_checkpoint.py
+          uv run ruff check scripts/integration_langgraph_postgres_checkpoint.py
+          uv run pyright
+      - name: Full main-CI Python pytest
+        run: uv run pytest
+      - name: Main-CI eval and contract regression gates
         run: |
+          make eval-smoke
+          bash scripts/ci-contracts
+      - name: LangGraph graph-contract exact gates
+        run: |
+          set -euo pipefail
+          PYTHONPATH=apps/agent-runtime/src python -m compileall -q \
+            apps/agent-runtime/src/lumi_agent_runtime/control_plane \
+            apps/agent-runtime/tests/test_control_plane.py \
+            apps/agent-runtime/tests/test_resume_policy.py \
+            apps/agent-runtime/tests/test_control_plane_client.py \
+            scripts/validate_langgraph_control_plane_contract_v2.py \
+            scripts/integration_langgraph_control_plane.py \
+            scripts/integration_langgraph_postgres_control.py \
+            scripts/integration_langgraph_postgres_checkpoint.py
+          python scripts/validate_idempotency_contract.py
+          PYTHONPATH=services/tool-gateway/src python scripts/validate_tool_gateway_contract.py
+          PYTHONPATH=apps/api/src:services/model-gateway/src python scripts/validate_cost_ledger_contract.py
+          PYTHONPATH=apps/agent-runtime/src python scripts/validate_langgraph_control_plane_contract_v2.py
+          PYTHONPATH=apps/agent-runtime/src python -m unittest discover -s apps/agent-runtime/tests -p 'test_control_plane.py'
+          PYTHONPATH=apps/agent-runtime/src python -m unittest discover -s apps/agent-runtime/tests -p 'test_control_plane_client.py'
+          PYTHONPATH=apps/agent-runtime/src python -m unittest discover -s apps/agent-runtime/tests -p 'test_resume_policy.py'
+      - name: LangGraph graph-quality exact gates
+        run: |
+          set -euo pipefail
+          uv run pytest \
+            apps/agent-runtime/tests/test_control_plane.py \
+            apps/agent-runtime/tests/test_resume_policy.py \
+            apps/agent-runtime/tests/test_control_plane_client.py -q
+          PYTHONPATH=apps/agent-runtime/src uv run python scripts/integration_langgraph_control_plane.py
+          uv run ruff check \
+            apps/agent-runtime/src/lumi_agent_runtime/control_plane \
+            apps/agent-runtime/tests/test_control_plane.py \
+            apps/agent-runtime/tests/test_resume_policy.py \
+            apps/agent-runtime/tests/test_control_plane_client.py \
+            apps/api/alembic/versions/0012_langgraph_control_plane.py \
+            scripts/validate_langgraph_control_plane_contract_v2.py \
+            scripts/integration_langgraph_control_plane.py \
+            scripts/integration_langgraph_postgres_control.py \
+            scripts/integration_langgraph_postgres_checkpoint.py
+          uv run pyright \
+            apps/agent-runtime/src/lumi_agent_runtime/control_plane \
+            apps/agent-runtime/tests/test_control_plane.py \
+            apps/agent-runtime/tests/test_resume_policy.py \
+            apps/agent-runtime/tests/test_control_plane_client.py
+      - name: Start PostgreSQL and dependencies
+        run: |
+          make infra-env
+          make infra-up
+      - name: Upgrade and seed database
+        run: |
+          make db-upgrade
+          make db-seed
+      - name: LangGraph PostgreSQL exact acceptance gates
+        run: |
+          set -euo pipefail
+          PYTHONPATH=apps/agent-runtime/src:apps/api/src uv run python scripts/integration_langgraph_postgres_control.py
+          PYTHONPATH=apps/agent-runtime/src:apps/api/src uv run python scripts/integration_langgraph_postgres_checkpoint.py
+          bash scripts/db-local downgrade-smoke
+      - name: Assert exact candidate change boundary
+        run: |
+          set -euo pipefail
           git diff --check
-          git diff --name-only
-      - name: Require Pyright
-        if: always()
-        env:
-          PYRIGHT_OUTCOME: ${{ steps.pyright.outcome }}
+          cat > /tmp/expected-paths.txt <<'EOF'
+          apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/__init__.py
+          apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/approval_bridge.py
+          apps/agent-runtime/tests/test_approval_bridge.py
+          apps/api/src/lumi_api/assets/router.py
+          apps/api/src/lumi_api/persistence/repositories.py
+          apps/api/src/lumi_api/persistence/seed.py
+          apps/api/tests/integration/test_project_security.py
+          apps/api/tests/integration/test_tool_gateway_staging_fixture_postgres.py
+          apps/api/tests/test_admin_router.py
+          apps/api/tests/test_api_v1_contract.py
+          apps/worker-media/src/lumi_worker_media/app.py
+          apps/worker-media/src/lumi_worker_media/event_runtime.py
+          apps/worker-media/src/lumi_worker_media/task_base.py
+          apps/worker-media/src/lumi_worker_media/topology.py
+          apps/worker-media/tests/integration/test_image_artifact_event_postgres.py
+          apps/worker-media/tests/integration/test_video_hosted_postgres.py
+          apps/worker-media/tests/test_event_runtime.py
+          apps/worker-media/tests/test_external_wait_runtime.py
+          apps/worker-media/tests/test_image_task_entrypoint.py
+          apps/worker-media/tests/test_queue_topology.py
+          evals/tests/test_release_gate.py
+          evals/tests/test_statistics.py
+          pyproject.toml
+          scripts/integration_langgraph_postgres_checkpoint.py
+          services/artifact-history/tests/test_artifact_engine_runtime.py
+          services/asset-storage/tests/test_s3_bounded_bytes.py
+          services/auth/src/lumi_auth/policy.py
+          services/design-ir/src/lumi_design_ir/validation.py
+          services/image-edit/src/lumi_image_edit/inmemory.py
+          services/video-generation/src/lumi_video_generation/media_sandbox.py
+          EOF
+          sed -i 's/^          //' /tmp/expected-paths.txt
+          git diff --name-only | sort > /tmp/actual-paths.txt
+          sort /tmp/expected-paths.txt -o /tmp/expected-paths.txt
+          diff -u /tmp/expected-paths.txt /tmp/actual-paths.txt
+          test "$(wc -l < /tmp/actual-paths.txt)" -eq 30
+      - name: Create and push single validated candidate commit
         run: |
-          echo "pyright=$PYRIGHT_OUTCOME"
-          test "$PYRIGHT_OUTCOME" = success
+          set -euo pipefail
+          remote_candidate="$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')"
+          test "$remote_candidate" = "$EXPECTED_PARENT"
+          git config user.name "LUMI Release Closure"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          test "$(git diff --cached --name-only | wc -l)" -eq 30
+          git commit -m "fix: close Python and LangGraph source gates"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          git push origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
+          echo "candidate_sha=$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Cleanup
+        if: always()
+        run: CONFIRM=1 make infra-reset || true
