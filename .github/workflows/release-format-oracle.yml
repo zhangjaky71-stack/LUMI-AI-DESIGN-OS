@@ -1,0 +1,55 @@
+name: Release Format Oracle
+
+on:
+  pull_request:
+    paths:
+      - .github/formatter-oracle-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  format-oracle:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release-closure-p0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Format exact JS targets
+        run: |
+          pnpm exec prettier --write \
+            apps/web/e2e/brand-kit.spec.ts \
+            packages/design-ir/src/executor.ts \
+            packages/design-ir/tests/runtime.test.ts
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: 0.11.28
+          enable-cache: true
+      - name: Sync Python workspace
+        run: uv sync --all-packages --frozen
+      - name: Format exact Python targets
+        run: |
+          uv run ruff format \
+            apps/agent-runtime/src/lumi_agent_runtime/task_graph/postgres_store.py \
+            apps/api/tests/integration/test_project_security.py
+      - name: Print canonical formatter diff
+        run: |
+          git diff --no-ext-diff -- \
+            apps/web/e2e/brand-kit.spec.ts \
+            packages/design-ir/src/executor.ts \
+            packages/design-ir/tests/runtime.test.ts \
+            apps/agent-runtime/src/lumi_agent_runtime/task_graph/postgres_store.py \
+            apps/api/tests/integration/test_project_security.py
