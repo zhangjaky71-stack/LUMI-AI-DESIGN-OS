@@ -54,6 +54,11 @@ jobs:
               '''    await expect(page.getByText("逐条确认", { exact: false })).toBeVisible();''',
               '''    await expect(\n      page.getByRole("alert").filter({ hasText: "逐条确认" }),\n    ).toBeVisible();''',
           )
+          replace(
+              "apps/web/e2e/brand-kit.spec.ts",
+              '''    await expect(page.getByText("APPROVED_GUIDE_EXTRACTION")).toBeVisible();''',
+              '''    await expect(\n      page.getByText("COLOR · APPROVED_GUIDE_EXTRACTION", { exact: true }),\n    ).toBeVisible();''',
+          )
 
           brand = "apps/web/src/components/brand-kit/brand-kit.tsx"
           replace(
