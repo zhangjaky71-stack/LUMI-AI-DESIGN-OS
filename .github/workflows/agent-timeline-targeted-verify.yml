@@ -1,0 +1,40 @@
+name: Agent Timeline Targeted Verify
+
+on:
+  pull_request:
+    paths:
+      - ".github/agent-timeline-targeted-verify-trigger"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-agent-timeline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      LUMI_SHELL_E2E_AUTH: "1"
+      LUMI_PROJECTS_E2E: "1"
+      LUMI_AI_WORKSPACE_E2E: "1"
+      LUMI_INFINITE_CANVAS_E2E: "1"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release-closure-p0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+      - name: Check Agent Timeline formatting
+        run: pnpm exec prettier --check apps/web/e2e/agent-timeline.spec.ts
+      - name: Run Agent Timeline unit and realtime regressions
+        run: |
+          pnpm --filter @lumi/web exec vitest run src/lib/agent-timeline
+          pnpm --filter @lumi/web exec vitest run src/lib/ai-workspace
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run NODE-57 browser scenarios
+        run: pnpm exec playwright test apps/web/e2e/agent-timeline.spec.ts
