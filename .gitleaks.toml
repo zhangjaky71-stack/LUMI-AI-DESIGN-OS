@@ -1,4 +1,5 @@
 title = "LUMI AI Design OS Gitleaks Policy"
+minVersion = "8.24.3"
 
 [extend]
 useDefault = true
@@ -9,17 +10,14 @@ description = "Deterministic CI sentinel used only for secret-scan fault injecti
 regex = '''LUMI_CI_TEST_SECRET\s*=\s*[A-Za-z0-9_-]{16,}'''
 keywords = ["LUMI_CI_TEST_SECRET"]
 
-[[allowlists]]
-description = "Local-only example credentials and documented placeholders"
+[allowlist]
+description = "Local-only examples plus one exact public immutable GitHub Action pin"
+regexTarget = "line"
 paths = [
   '''(^|/)infra/compose/env\.local\.example$''',
   '''(^|/)\.env\.example$''',
   '''(^|/).*\.env\.example$'''
 ]
-
-[[allowlists]]
-description = "Exact public immutable GitHub Action commit SHA; not a credential"
-regexTarget = "secret"
 regexes = [
-  '''^e6de054238d6b7531b4efff3b6587d9aade6a06c$'''
+  '''["']aws-actions/configure-aws-credentials["']\s*:\s*["']e6de054238d6b7531b4efff3b6587d9aade6a06c["']'''
 ]
