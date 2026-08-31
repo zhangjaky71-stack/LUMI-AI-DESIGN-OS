@@ -8,23 +8,29 @@ async function startRun(page: Page) {
     name: "Headline",
     exact: true,
   });
+  const mobileTabs = page.getByLabel("移动工作区面板");
 
-  if (!(await headline.isVisible())) {
-    const mobileTabs = page.getByLabel("移动工作区面板");
-    await mobileTabs
-      .getByRole("button", { name: "Canvas", exact: true })
-      .click();
+  if (await mobileTabs.isVisible()) {
+    if (!(await headline.isVisible())) {
+      await mobileTabs
+        .getByRole("button", { name: "Canvas", exact: true })
+        .click();
+      await expect(headline).toBeVisible();
+    }
+  } else {
     await expect(headline).toBeVisible();
   }
 
-  await headline.click();
+  await headline.focus();
+  await page.keyboard.press("Enter");
 
   const composer = page.getByLabel("给 LUMI Agent 的指令");
   if (!(await composer.isVisible())) {
-    await page
-      .getByLabel("移动工作区面板")
-      .getByRole("button", { name: "Agent", exact: true })
-      .click();
+    if (await mobileTabs.isVisible()) {
+      await mobileTabs
+        .getByRole("button", { name: "Agent", exact: true })
+        .click();
+    }
     await expect(composer).toBeVisible();
   }
 
