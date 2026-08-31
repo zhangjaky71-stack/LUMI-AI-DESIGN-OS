@@ -1,0 +1,28 @@
+name: Prettier 3.6.2 Diagnostic
+
+on:
+  pull_request:
+    paths:
+      - ".github/prettier-362-diagnostic-trigger"
+
+permissions:
+  contents: read
+
+jobs:
+  format-oracle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+      - name: Print exact Prettier 3.6.2 output
+        run: |
+          echo '===LUMI_PRETTIER_362_BEGIN==='
+          pnpm exec prettier apps/web/e2e/infinite-canvas.spec.ts
+          echo '===LUMI_PRETTIER_362_END==='
