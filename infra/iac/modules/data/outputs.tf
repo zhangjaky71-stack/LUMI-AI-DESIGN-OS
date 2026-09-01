@@ -6,6 +6,18 @@ output "postgres_port" {
   value = aws_db_instance.postgres.port
 }
 
+output "postgres_instance_id" {
+  value = aws_db_instance.postgres.identifier
+}
+
+output "postgres_backup_retention_days" {
+  value = aws_db_instance.postgres.backup_retention_period
+}
+
+output "postgres_db_subnet_group_name" {
+  value = aws_db_subnet_group.this.name
+}
+
 output "postgres_master_secret_arn" {
   value     = try(aws_db_instance.postgres.master_user_secret[0].secret_arn, null)
   sensitive = true

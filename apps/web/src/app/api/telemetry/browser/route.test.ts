@@ -42,7 +42,8 @@ describe("browser telemetry intake", () => {
           version: 1,
           kind: "route_error",
           name: "react_route_error",
-          route: "/app/projects/01930000-0000-7000-8000-000000000099/workspace?token=secret",
+          route:
+            "/app/projects/01930000-0000-7000-8000-000000000099/workspace?token=secret",
           errorCode: "route_boundary",
           requestId: "req-123",
           correlationId: "corr-123",

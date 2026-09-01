@@ -112,7 +112,9 @@ class TaskGraphJoinConditionTests(unittest.TestCase):
         return store, bundle
 
     def _set_state(self, store, task_key: str, status: TaskState, output=None) -> None:
-        task = next(item for item in store.tasks(next(iter(store._graphs))) if item.task_key == task_key)
+        task = next(
+            item for item in store.tasks(next(iter(store._graphs))) if item.task_key == task_key
+        )
         store.replace_task(
             replace(
                 task,

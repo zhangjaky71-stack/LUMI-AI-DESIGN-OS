@@ -4,6 +4,21 @@ from .contracts import ToolDefinition, ToolIdempotency, ToolRisk, ToolRuntime
 from .registry import ToolRegistry
 
 _OBJECT = {"type": "object"}
+_UUID_BODY = (
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+_UUID_PATTERN = rf"^{_UUID_BODY}$"
+_ARTIFACT_REF_PATTERN = rf"^artifact://{_UUID_BODY}$"
+
+
+def _uuid_schema() -> dict[str, object]:
+    return {
+        "type": "string",
+        "minLength": 36,
+        "maxLength": 36,
+        "pattern": _UUID_PATTERN,
+    }
 
 
 def p0_tool_definitions() -> tuple[ToolDefinition, ...]:
@@ -16,7 +31,7 @@ def p0_tool_definitions() -> tuple[ToolDefinition, ...]:
                 "type": "object",
                 "required": ["query"],
                 "properties": {
-                    "query": {"type": "string", "minLength": 1, "maxLength": 2000},
+                    "query": {"type": "string", "minLength": 1, "maxLength": 400},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 20},
                 },
                 "additionalProperties": False,
@@ -68,7 +83,7 @@ def p0_tool_definitions() -> tuple[ToolDefinition, ...]:
             input_schema={
                 "type": "object",
                 "required": ["asset_id"],
-                "properties": {"asset_id": {"type": "string", "minLength": 1, "maxLength": 128}},
+                "properties": {"asset_id": _uuid_schema()},
                 "additionalProperties": False,
             },
             output_schema=_OBJECT,
@@ -81,13 +96,20 @@ def p0_tool_definitions() -> tuple[ToolDefinition, ...]:
         ToolDefinition(
             name="asset.write-derived",
             version="1.0.0",
-            description="Create a tenant-scoped derived Asset through the trusted storage boundary.",
+            description=(
+                "Create a tenant-scoped derived Asset through the trusted storage boundary."
+            ),
             input_schema={
                 "type": "object",
                 "required": ["source_asset_id", "artifact_ref"],
                 "properties": {
-                    "source_asset_id": {"type": "string", "minLength": 1, "maxLength": 128},
-                    "artifact_ref": {"type": "string", "minLength": 1, "maxLength": 2048},
+                    "source_asset_id": _uuid_schema(),
+                    "artifact_ref": {
+                        "type": "string",
+                        "minLength": 47,
+                        "maxLength": 47,
+                        "pattern": _ARTIFACT_REF_PATTERN,
+                    },
                     "metadata": _OBJECT,
                 },
                 "additionalProperties": False,
@@ -102,17 +124,29 @@ def p0_tool_definitions() -> tuple[ToolDefinition, ...]:
         ToolDefinition(
             name="project.query",
             version="1.0.0",
-            description="Execute a tenant-scoped domain query; unrestricted SQL is not exposed.",
+            description="Read the canonical summary for the project bound to the current Task.",
             input_schema={
                 "type": "object",
                 "required": ["query"],
                 "properties": {
-                    "query": {"type": "string", "minLength": 1, "maxLength": 128},
-                    "parameters": _OBJECT,
+                    "query": {
+                        "type": "string",
+                        "enum": ["project.summary"],
+                    }
                 },
                 "additionalProperties": False,
             },
-            output_schema=_OBJECT,
+            output_schema={
+                "type": "object",
+                "required": ["project_id", "name", "status", "summary"],
+                "properties": {
+                    "project_id": _uuid_schema(),
+                    "name": {"type": "string"},
+                    "status": {"type": "string"},
+                    "summary": _OBJECT,
+                },
+                "additionalProperties": False,
+            },
             risk=ToolRisk.READ_INTERNAL,
             idempotency=ToolIdempotency.NOT_REQUIRED,
             permissions=frozenset({"tool.project.query"}),
@@ -122,11 +156,13 @@ def p0_tool_definitions() -> tuple[ToolDefinition, ...]:
         ToolDefinition(
             name="artifact.query",
             version="1.0.0",
-            description="Read Artifact metadata and resource references inside the tenant boundary.",
+            description=(
+                "Read Artifact metadata and resource references inside the tenant boundary."
+            ),
             input_schema={
                 "type": "object",
                 "required": ["artifact_id"],
-                "properties": {"artifact_id": {"type": "string", "minLength": 1, "maxLength": 128}},
+                "properties": {"artifact_id": _uuid_schema()},
                 "additionalProperties": False,
             },
             output_schema=_OBJECT,
@@ -168,7 +204,7 @@ def p0_tool_definitions() -> tuple[ToolDefinition, ...]:
             input_schema={
                 "type": "object",
                 "required": ["asset_id"],
-                "properties": {"asset_id": {"type": "string", "minLength": 1, "maxLength": 128}},
+                "properties": {"asset_id": _uuid_schema()},
                 "additionalProperties": False,
             },
             output_schema=_OBJECT,

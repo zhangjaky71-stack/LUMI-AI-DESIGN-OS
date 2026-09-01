@@ -84,7 +84,9 @@ class CompositeGenerationValidator:
 
         if spec.constraints:
             if self.constraints is None:
-                severity = "HARD" if any(item.severity == "HARD" for item in spec.constraints) else "SOFT"
+                severity = (
+                    "HARD" if any(item.severity == "HARD" for item in spec.constraints) else "SOFT"
+                )
                 findings.append(
                     ValidationFinding(
                         validator="constraint-validator",

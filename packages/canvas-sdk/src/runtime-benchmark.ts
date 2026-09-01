@@ -19,7 +19,10 @@ export interface CanvasRuntimeBenchmarkResult {
 function percentile(values: readonly number[], p: number): number {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * p) - 1));
+  const index = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil(sorted.length * p) - 1),
+  );
   return sorted[index] ?? 0;
 }
 
@@ -31,12 +34,19 @@ export function createMixedDesignDocument(nodeCount: number): DesignDocument {
       id: "root",
       kind: "DOCUMENT_ROOT",
       parent_id: null,
-      children: Array.from({ length: frameCount }, (_, index) => `frame-${index}`),
+      children: Array.from(
+        { length: frameCount },
+        (_, index) => `frame-${index}`,
+      ),
     },
   };
   const perFrame = Math.ceil((count - frameCount - 1) / frameCount);
   let created = 1;
-  for (let frameIndex = 0; frameIndex < frameCount && created < count; frameIndex += 1) {
+  for (
+    let frameIndex = 0;
+    frameIndex < frameCount && created < count;
+    frameIndex += 1
+  ) {
     const frameId = `frame-${frameIndex}`;
     const children: string[] = [];
     nodes[frameId] = {
@@ -55,7 +65,14 @@ export function createMixedDesignDocument(nodeCount: number): DesignDocument {
     for (let local = 0; local < perFrame && created < count; local += 1) {
       const id = `node-${created}`;
       const kindIndex = local % 4;
-      const kind = kindIndex === 0 ? "TEXT" : kindIndex === 1 ? "IMAGE" : kindIndex === 2 ? "SHAPE" : "VECTOR_PATH";
+      const kind =
+        kindIndex === 0
+          ? "TEXT"
+          : kindIndex === 1
+            ? "IMAGE"
+            : kindIndex === 2
+              ? "SHAPE"
+              : "VECTOR_PATH";
       const column = local % 25;
       const row = Math.floor(local / 25);
       children.push(id);
@@ -112,7 +129,9 @@ export function runCanvasRuntimeBenchmark(
 
   const p50 = percentile(samples, 0.5);
   const p95 = percentile(samples, 0.95);
-  const mean = samples.reduce((sum, value) => sum + value, 0) / Math.max(1, samples.length);
+  const mean =
+    samples.reduce((sum, value) => sum + value, 0) /
+    Math.max(1, samples.length);
   return {
     node_count: nodeCount,
     iterations,

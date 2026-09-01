@@ -1,4 +1,8 @@
-import type { DesignDocument, DesignOperation, JsonValue } from "../../design-ir/src/index";
+import type {
+  DesignDocument,
+  DesignOperation,
+  JsonValue,
+} from "../../design-ir/src/index";
 import type { ConstraintViolation } from "../../design-constraints/src/index";
 
 export const QUALITY_DIMENSIONS = [
@@ -18,10 +22,25 @@ export const QUALITY_DIMENSIONS = [
 ] as const;
 export type QualityDimension = (typeof QUALITY_DIMENSIONS)[number];
 
-export const QUALITY_STATUSES = ["PASS", "PASS_WITH_WARNINGS", "FAIL_REPAIRABLE", "FAIL_HARD", "REVIEW_REQUIRED"] as const;
+export const QUALITY_STATUSES = [
+  "PASS",
+  "PASS_WITH_WARNINGS",
+  "FAIL_REPAIRABLE",
+  "FAIL_HARD",
+  "REVIEW_REQUIRED",
+] as const;
 export type QualityStatus = (typeof QUALITY_STATUSES)[number];
 export type QualitySeverity = "HARD" | "MAJOR" | "MINOR" | "ADVISORY";
-export type EvidenceKind = "DETERMINISTIC" | "CONSTRAINT" | "BRAND" | "IDENTITY" | "OCR" | "QR" | "IMAGE_METADATA" | "VISUAL_GRADER" | "HUMAN_CALIBRATION";
+export type EvidenceKind =
+  | "DETERMINISTIC"
+  | "CONSTRAINT"
+  | "BRAND"
+  | "IDENTITY"
+  | "OCR"
+  | "QR"
+  | "IMAGE_METADATA"
+  | "VISUAL_GRADER"
+  | "HUMAN_CALIBRATION";
 
 export interface QualityEvidence {
   readonly evidence_id: string;
@@ -69,7 +88,13 @@ export interface QualityProfileDimension {
 export interface QualityProfile {
   readonly profile_id: string;
   readonly version: string;
-  readonly name: "exploration" | "production-web" | "brand-strict" | "product-strict" | "print" | "social-fast";
+  readonly name:
+    | "exploration"
+    | "production-web"
+    | "brand-strict"
+    | "product-strict"
+    | "print"
+    | "social-fast";
   readonly overall_pass_threshold: number;
   readonly overall_warning_threshold: number;
   readonly review_confidence_threshold: number;
@@ -77,7 +102,13 @@ export interface QualityProfile {
 }
 
 export interface VisualGradeDimension {
-  readonly dimension: Extract<QualityDimension, "COMPOSITION" | "VISUAL_HIERARCHY" | "IMAGE_DEFECTS" | "TYPOGRAPHY_READABILITY">;
+  readonly dimension: Extract<
+    QualityDimension,
+    | "COMPOSITION"
+    | "VISUAL_HIERARCHY"
+    | "IMAGE_DEFECTS"
+    | "TYPOGRAPHY_READABILITY"
+  >;
   readonly score: number;
   readonly confidence: number;
   readonly reason_codes: readonly string[];

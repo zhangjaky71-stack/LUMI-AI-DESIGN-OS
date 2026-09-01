@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 required = [
@@ -47,7 +47,12 @@ if not errors:
         "READY-only signed download": 'job.status !== "READY"' in gateway and "getDownload" in gateway,
         "signed URL refresh is ephemeral": "ExportDownloadLease" in component and "setLease" in component,
         "history keeps exact source": "artifact_version_id" in component and "design_document_version_id" in component,
-        "partial retry not faked": "partial_retry_supported: false" in server and "Per-frame retry is intentionally unavailable" in component,
+        "partial retry not faked": (
+            "partial_retry_supported: false" in server
+            and '!workspace.partial_retry_supported' in component
+            and 'data-testid="partial-retry-boundary"' in component
+            and "intentionally unavailable rather than simulated" in component
+        ),
         "zero AI export cost": "ai_generation_cost: 0" in contracts,
         "deterministic fixture non-production gated": 'process.env.NODE_ENV !== "production"' in server and "LUMI_EXPORT_UI_E2E" in server,
         "browser coverage": all(x in e2e for x in ["exact version", "aspect ratio", "signed link", "batch source", "mobile viewport"]),

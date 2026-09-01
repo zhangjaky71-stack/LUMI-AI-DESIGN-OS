@@ -24,6 +24,8 @@ members = [
   "services/tool-gateway",
   "services/sandbox-runtime",
   "services/asset-storage",
+  "services/image-generation",
+  "services/video-generation",
   "services/memory",
   "services/knowledge",
   "services/visual-critic",
@@ -34,7 +36,11 @@ members = [
 lumi-auth = { workspace = true }
 lumi-domain = { workspace = true }
 lumi-project-core = { workspace = true }
+lumi-model-gateway = { workspace = true }
+lumi-tool-gateway = { workspace = true }
 lumi-asset-storage = { workspace = true }
+lumi-image-generation = { workspace = true }
+lumi-video-generation = { workspace = true }
 
 [tool.ruff]
 target-version = "py312"
@@ -50,6 +56,8 @@ src = [
   "services/tool-gateway/src",
   "services/sandbox-runtime/src",
   "services/asset-storage/src",
+  "services/image-generation/src",
+  "services/video-generation/src",
   "services/memory/src",
   "services/knowledge/src",
   "services/visual-critic/src",
@@ -59,6 +67,7 @@ src = [
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "services/domain/src/lumi_domain/constraint_validator.py" = ["E501"]
@@ -76,6 +85,8 @@ known-first-party = [
   "lumi_tool_gateway",
   "lumi_sandbox_runtime",
   "lumi_asset_storage",
+  "lumi_image_generation",
+  "lumi_video_generation",
   "lumi_memory",
   "lumi_knowledge",
   "lumi_visual_critic",
@@ -97,10 +108,19 @@ extraPaths = [
   "services/tool-gateway/src",
   "services/sandbox-runtime/src",
   "services/asset-storage/src",
+  "services/image-generation/src",
+  "services/video-generation/src",
+  "services/artifact-history/src",
+  "services/brand-rules/src",
+  "services/constraint-engine/src",
+  "services/design-ir/src",
+  "services/event-contract/src",
+  "services/identity-engine/src",
+  "services/image-edit/src",
 ]
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q --import-mode=importlib"
 pythonpath = [
   ".",
   "services/auth/src",
@@ -110,6 +130,15 @@ pythonpath = [
   "services/tool-gateway/src",
   "services/sandbox-runtime/src",
   "services/asset-storage/src",
+  "services/image-generation/src",
+  "services/video-generation/src",
+  "services/artifact-history/src",
+  "services/brand-rules/src",
+  "services/constraint-engine/src",
+  "services/design-ir/src",
+  "services/event-contract/src",
+  "services/identity-engine/src",
+  "services/image-edit/src",
 ]
 testpaths = [
   "apps/api/tests",
@@ -122,5 +151,6 @@ testpaths = [
   "services/tool-gateway/tests",
   "services/sandbox-runtime/tests",
   "services/asset-storage/tests",
+  "services/video-generation/tests",
   "evals/tests",
 ]

@@ -26,9 +26,12 @@ class SandboxExecutor(Protocol):
     async def execute(self, invocation: FfmpegInvocation) -> None: ...
 
 
-class SandboxPathResolver(Protocol):
+class SandboxCompilePathResolver(Protocol):
     def resolve_readonly(self, durable_ref: str) -> str: ...
     def allocate_output(self, suffix: str) -> str: ...
+
+
+class SandboxPathResolver(SandboxCompilePathResolver, Protocol):
     async def ingest_rendered_video(self, path: str, timeline: VideoTimeline) -> RenderedVideo: ...
 
 
@@ -55,14 +58,23 @@ def _audio_gain(gain_db: Decimal) -> str:
 class FfmpegArgvCompiler:
     """Compile typed timeline data into argv only; no shell command is ever created."""
 
-    def compile(self, timeline: VideoTimeline, resolver: SandboxPathResolver) -> FfmpegInvocation:
+    def compile(
+        self, timeline: VideoTimeline, resolver: SandboxCompilePathResolver
+    ) -> FfmpegInvocation:
         if not timeline.clips:
             raise ValueError("VIDEO_TIMELINE_CLIPS_REQUIRED")
         if any(transition.kind != "CUT" for transition in timeline.transitions):
             raise ValueError("VIDEO_FFMPEG_TRANSITION_NOT_SUPPORTED_V1")
-        clip_paths = [_safe_path(resolver.resolve_readonly(clip.durable_ref)) for clip in timeline.clips]
-        audio_paths = [_safe_path(resolver.resolve_readonly(track.durable_ref)) for track in timeline.audio_tracks]
-        overlay_paths = [_safe_path(resolver.resolve_readonly(item.durable_ref)) for item in timeline.overlays]
+        clip_paths = [
+            _safe_path(resolver.resolve_readonly(clip.durable_ref)) for clip in timeline.clips
+        ]
+        audio_paths = [
+            _safe_path(resolver.resolve_readonly(track.durable_ref))
+            for track in timeline.audio_tracks
+        ]
+        overlay_paths = [
+            _safe_path(resolver.resolve_readonly(item.durable_ref)) for item in timeline.overlays
+        ]
         output_path = _safe_path(resolver.allocate_output(".mp4"))
         argv: list[str] = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y"]
         for path in clip_paths:
@@ -114,14 +126,22 @@ class FfmpegArgvCompiler:
         if audio_labels:
             argv.extend(("-map", "[aout]"))
         total_duration = sum((clip.duration_seconds for clip in timeline.clips), Decimal("0"))
-        argv.extend((
-            "-r", str(timeline.output_spec.fps),
-            "-s", f"{timeline.output_spec.width}x{timeline.output_spec.height}",
-            "-t", format(total_duration, "f"),
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
-        ))
+        argv.extend(
+            (
+                "-r",
+                str(timeline.output_spec.fps),
+                "-s",
+                f"{timeline.output_spec.width}x{timeline.output_spec.height}",
+                "-t",
+                format(total_duration, "f"),
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+            )
+        )
         if audio_labels:
             argv.extend(("-c:a", "aac"))
         argv.append(output_path)

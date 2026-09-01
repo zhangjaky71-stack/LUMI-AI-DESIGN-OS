@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from typing import Any
 from uuid import uuid4
 
 from lumi_tool_gateway.contracts import (
@@ -11,6 +12,7 @@ from lumi_tool_gateway.contracts import (
     ToolRequest,
     ToolRisk,
 )
+from lumi_tool_gateway.errors import ToolSSRFBlockedError
 from lumi_tool_gateway.gateway import ToolGateway
 from lumi_tool_gateway.mcp.auth import MCPRequestAuth
 from lumi_tool_gateway.mcp.client import MCPClient
@@ -63,7 +65,7 @@ class TenantCredentialProvider:
 class ModernTransport:
     def __init__(self, *, auth_failure: bool = False) -> None:
         self.auth_failure = auth_failure
-        self.calls: list[dict[str, object]] = []
+        self.calls: list[dict[str, Any]] = []
         self.instances = ["instance-a", "instance-b"]
         self.tool_calls = 0
 
@@ -320,8 +322,7 @@ class ModernMCPTests(unittest.IsolatedAsyncioTestCase):
         tool_calls = [
             call
             for call in transport.calls
-            if isinstance(call["body"], dict)
-            and call["body"].get("method") == "tools/call"
+            if isinstance(call["body"], dict) and call["body"].get("method") == "tools/call"
         ]
         self.assertEqual(tool_calls[0]["headers"]["Mcp-Name"], "search")
         self.assertNotIn("Mcp-Session-Id", tool_calls[0]["headers"])
@@ -414,9 +415,7 @@ class ModernMCPTests(unittest.IsolatedAsyncioTestCase):
             registry=ToolRegistry(plan.definitions),
             adapters=plan.adapters,
         )
-        definition = next(
-            item for item in plan.definitions if item.name.endswith("needs_input")
-        )
+        definition = next(item for item in plan.definitions if item.name.endswith("needs_input"))
         with self.assertRaises(MCPInputRequiredError) as caught:
             await gateway.invoke(
                 tool_request(
@@ -469,7 +468,7 @@ class ModernMCPTests(unittest.IsolatedAsyncioTestCase):
             allowed_tool_patterns=("*",),
             protocol_versions=(MCP_PROTOCOL_2026_07_28,),
         )
-        with self.assertRaises(Exception):
+        with self.assertRaises(ToolSSRFBlockedError):
             MCPServerRegistry(
                 (definition,),
                 ssrf_policy=SSRFPolicy(resolver=StaticResolver()),
@@ -491,9 +490,9 @@ class ModernMCPTests(unittest.IsolatedAsyncioTestCase):
                 response = await super().post(**kwargs)
                 body = kwargs["body"]
                 if body.get("method") == "tools/list" and response.json_body:
-                    response.json_body["result"]["tools"][0]["inputSchema"]["properties"][
-                        "query"
-                    ]["x-mcp-header"] = "Authorization"
+                    response.json_body["result"]["tools"][0]["inputSchema"]["properties"]["query"][
+                        "x-mcp-header"
+                    ] = "Authorization"
                 return response
 
         mcp = client(HeaderSchemaTransport())

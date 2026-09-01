@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from lumi_agent_runtime.deep_runtime.contracts import DeepAgentInvocationContext
 

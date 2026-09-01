@@ -1,14 +1,28 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, cast
+from typing import Any, cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from lumi_model_gateway.gateway import ModelGateway
-from lumi_model_gateway.models import Capability, LatencyProfile, ModelRequest, ModelResult, QualityProfile, ResultStatus
+from lumi_model_gateway.models import (
+    Capability,
+    LatencyProfile,
+    ModelRequest,
+    ModelResult,
+    QualityProfile,
+    ResultStatus,
+)
 
-from .model import CompiledShot, GatewayEstimate, GatewayVideoResult, ProviderJobRecord, VideoTaskSpec
+from .model import (
+    CompiledShot,
+    GatewayEstimate,
+    GatewayVideoResult,
+    ProviderJobRecord,
+    VideoTaskSpec,
+)
 
 
 def _stable_uuid(value: str) -> UUID:
@@ -19,7 +33,11 @@ def _stable_uuid(value: str) -> UUID:
 
 
 def _capability(shot: CompiledShot, continuity_refs: tuple[str, ...]) -> Capability:
-    return Capability.VIDEO_IMAGE_TO_VIDEO if shot.shot.source_ref is not None or continuity_refs else Capability.VIDEO_TEXT_TO_VIDEO
+    return (
+        Capability.VIDEO_IMAGE_TO_VIDEO
+        if shot.shot.source_ref is not None or continuity_refs
+        else Capability.VIDEO_TEXT_TO_VIDEO
+    )
 
 
 def _required_features(shot: CompiledShot, continuity_refs: tuple[str, ...]) -> frozenset[str]:
@@ -41,7 +59,9 @@ class VideoFeatureRegistry:
     def allowed_provider_keys(self, required: frozenset[str]) -> tuple[str, ...]:
         if not required:
             return ()
-        allowed = tuple(sorted(key for key, features in self.provider_features.items() if required <= features))
+        allowed = tuple(
+            sorted(key for key, features in self.provider_features.items() if required <= features)
+        )
         if not allowed:
             raise ValueError("VIDEO_REQUIRED_PROVIDER_FEATURES_UNAVAILABLE")
         return allowed
@@ -62,7 +82,9 @@ def to_model_request(
     required_features = _required_features(shot, continuity_refs)
     if required_features and feature_registry is None:
         raise ValueError("VIDEO_PROVIDER_FEATURE_REGISTRY_REQUIRED")
-    allowed_keys = feature_registry.allowed_provider_keys(required_features) if feature_registry else ()
+    allowed_keys = (
+        feature_registry.allowed_provider_keys(required_features) if feature_registry else ()
+    )
     inputs: dict[str, Any] = {
         "prompt": shot.shot.prompt,
         "negative_prompt": spec.negative_prompt,
@@ -83,7 +105,9 @@ def to_model_request(
     }
     if allowed_keys:
         constraints["allowed_provider_keys"] = list(allowed_keys)
-        constraints["video_feature_registry_snapshot_id"] = feature_registry.snapshot_id if feature_registry else None
+        constraints["video_feature_registry_snapshot_id"] = (
+            feature_registry.snapshot_id if feature_registry else None
+        )
     if excluded_provider_keys:
         constraints["excluded_provider_keys"] = list(dict.fromkeys(excluded_provider_keys))
     return ModelRequest(
@@ -136,7 +160,9 @@ def _normalize(result: ModelResult, routing_reason_codes: tuple[str, ...]) -> Ga
 
 
 class ModelGatewayVideoAdapter:
-    def __init__(self, gateway: ModelGateway, *, feature_registry: VideoFeatureRegistry | None = None) -> None:
+    def __init__(
+        self, gateway: ModelGateway, *, feature_registry: VideoFeatureRegistry | None = None
+    ) -> None:
         self.gateway = gateway
         self.feature_registry = feature_registry
 
@@ -197,7 +223,11 @@ class ModelGatewayVideoAdapter:
         if not result.provider_request_id:
             raise ValueError("VIDEO_PROVIDER_JOB_ID_REQUIRED")
         matching = next(
-            ((index, item) for index, item in enumerate(decision.candidates) if item.provider == result.provider and item.model == result.model),
+            (
+                (index, item)
+                for index, item in enumerate(decision.candidates)
+                if item.provider == result.provider and item.model == result.model
+            ),
             None,
         )
         if matching is None:

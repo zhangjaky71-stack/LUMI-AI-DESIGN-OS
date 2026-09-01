@@ -36,15 +36,11 @@ class AtomicStepCompiler:
             metadata.update(agent_metadata)
         elif step.step_type in {StepType.DETERMINISTIC, StepType.FINALIZE}:
             if step.service_key not in self.deterministic_services:
-                raise RecipeCompileError(
-                    f"unregistered deterministic service: {step.service_key}"
-                )
+                raise RecipeCompileError(f"unregistered deterministic service: {step.service_key}")
             owner = f"DETERMINISTIC_SERVICE:{step.service_key}"
         elif step.step_type == StepType.MEDIA_JOB:
             if step.media_operation not in self.media_operations:
-                raise RecipeCompileError(
-                    f"unregistered media operation: {step.media_operation}"
-                )
+                raise RecipeCompileError(f"unregistered media operation: {step.media_operation}")
             owner = "MEDIA_WORKER"
             metadata["media_operation"] = step.media_operation
         elif step.step_type == StepType.APPROVAL:
@@ -88,9 +84,7 @@ class AtomicStepCompiler:
                 }
             )
         else:
-            raise RecipeCompileError(
-                f"atomic compiler does not support {step.step_type.value}"
-            )
+            raise RecipeCompileError(f"atomic compiler does not support {step.step_type.value}")
         if step.loop is not None:
             metadata["loop"] = {
                 "max_iterations": step.loop.max_iterations,

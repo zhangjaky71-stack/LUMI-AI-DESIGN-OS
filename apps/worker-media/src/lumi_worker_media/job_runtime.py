@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
 import asyncpg
+
+from lumi_domain.performance_events import (
+    PerformanceStage,
+    PerformanceTelemetryContext,
+    emit_performance_interval,
+)
 
 from .queue_contracts import ErrorCategory, JobMessage, JobState, classify_error
 
@@ -14,8 +20,42 @@ class JobCancelled(RuntimeError):
     pass
 
 
+@dataclass(frozen=True, slots=True)
+class ExternalWait:
+    """Normal non-terminal wait for an external asynchronous system.
+
+    This is not an exception and must never consume the task's error-retry budget.
+    A durable wake scheduler will redispatch the same canonical JobDispatch after
+    retry_not_before. The external_ref is an opaque provider-neutral correlation id.
+    """
+
+    wait_reason: str
+    external_ref: str
+    retry_not_before: datetime
+    output: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if (
+            not self.wait_reason
+            or self.wait_reason != self.wait_reason.strip()
+            or len(self.wait_reason) > 255
+            or any(char in self.wait_reason for char in ("\x00", "\n", "\r"))
+        ):
+            raise ValueError("EXTERNAL_WAIT_REASON_INVALID")
+        if (
+            not self.external_ref
+            or self.external_ref != self.external_ref.strip()
+            or len(self.external_ref) > 1024
+            or any(char in self.external_ref for char in ("\x00", "\n", "\r"))
+        ):
+            raise ValueError("EXTERNAL_WAIT_REF_INVALID")
+        if self.retry_not_before.tzinfo is None:
+            raise ValueError("EXTERNAL_WAIT_RETRY_TIMESTAMP_MUST_BE_TIMEZONE_AWARE")
+        _json(self.output)
+
+
 class JobHandler(Protocol):
-    async def __call__(self, message: JobMessage) -> dict[str, Any]: ...
+    async def __call__(self, message: JobMessage) -> dict[str, Any] | ExternalWait: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,50 +66,91 @@ class JobOutcome:
 
 
 class TaskJobStore:
-    """Uses the existing `tasks` table as the business source of truth for generic jobs."""
+    """Uses canonical `tasks` rows for claim/terminal/external-wait lifecycle."""
 
     def __init__(self, dsn: str) -> None:
         self.dsn = dsn
 
     async def claim(self, message: JobMessage) -> int | None:
+        telemetry = PerformanceTelemetryContext.from_environ()
         connection = await asyncpg.connect(self.dsn)
         try:
             row = await connection.fetchrow(
                 """
-                UPDATE tasks
+                WITH candidate AS (
+                    SELECT id, status AS prior_status
+                    FROM tasks
+                    WHERE id = $1
+                      AND organization_id = $2
+                      AND project_id = $3
+                      AND (
+                        (
+                          status IN ('pending', 'retrying')
+                          AND attempt_count < max_attempts
+                          AND (retry_not_before IS NULL OR retry_not_before <= now())
+                        )
+                        OR (
+                          status = 'waiting_external'
+                          AND retry_not_before IS NULL
+                        )
+                      )
+                    FOR UPDATE
+                )
+                UPDATE tasks AS task
                 SET status = 'running',
-                    attempt_count = attempt_count + 1,
-                    started_at = COALESCE(started_at, now()),
+                    attempt_count = task.attempt_count +
+                        CASE WHEN candidate.prior_status = 'waiting_external' THEN 0 ELSE 1 END,
+                    started_at = COALESCE(task.started_at, now()),
                     updated_at = now(),
-                    version = version + 1
-                WHERE id = $1
-                  AND organization_id = $2
-                  AND project_id = $3
-                  AND status IN ('pending', 'retrying')
-                  AND attempt_count < max_attempts
-                RETURNING attempt_count
+                    state_version = task.state_version + 1,
+                    version = task.version + 1
+                FROM candidate
+                WHERE task.id = candidate.id
+                RETURNING task.attempt_count, task.created_at, task.started_at,
+                          candidate.prior_status
                 """,
                 message.job_id,
                 message.organization_id,
                 message.project_id,
             )
-            return int(row["attempt_count"]) if row else None
+            if row is None:
+                return None
+            attempt_count = int(row["attempt_count"])
+            if (
+                telemetry is not None
+                and attempt_count == 1
+                and row["prior_status"] != JobState.WAITING_EXTERNAL.value
+            ):
+                emit_performance_interval(
+                    telemetry,
+                    stage=PerformanceStage.ENQUEUE,
+                    service="worker-media",
+                    operation_id=str(message.operation_id or message.job_id),
+                    task_id=str(message.job_id),
+                    started_at_unix_ns=_datetime_unix_ns(row["created_at"]),
+                    completed_at_unix_ns=_datetime_unix_ns(row["started_at"]),
+                    attempt=attempt_count,
+                )
+            return attempt_count
         finally:
             await connection.close()
 
     async def cancellation_requested(self, message: JobMessage) -> bool:
         connection = await asyncpg.connect(self.dsn)
         try:
-            status = await connection.fetchval(
+            row = await connection.fetchrow(
                 """
-                SELECT status FROM tasks
+                SELECT status, cancellation_requested_at FROM tasks
                 WHERE id = $1 AND organization_id = $2 AND project_id = $3
                 """,
                 message.job_id,
                 message.organization_id,
                 message.project_id,
             )
-            return status == "cancelled"
+            return row is not None and (
+                row["status"] == JobState.CANCELLED.value
+                or row["cancellation_requested_at"] is not None
+            )
         finally:
             await connection.close()
 
@@ -80,14 +161,63 @@ class TaskJobStore:
                 """
                 UPDATE tasks
                 SET status = 'cancelled', finished_at = now(),
-                    updated_at = now(), version = version + 1
+                    wait_reason = NULL, external_ref = NULL, retry_not_before = NULL,
+                    updated_at = now(), state_version = state_version + 1,
+                    version = version + 1
                 WHERE id = $1 AND organization_id = $2 AND project_id = $3
-                  AND status IN ('pending', 'running', 'retrying')
+                  AND status IN ('pending', 'running', 'retrying', 'waiting_external')
                 """,
                 message.job_id,
                 message.organization_id,
                 message.project_id,
             )
+        finally:
+            await connection.close()
+
+    async def wait_external(self, message: JobMessage, wait: ExternalWait) -> None:
+        connection = await asyncpg.connect(self.dsn)
+        try:
+            async with connection.transaction():
+                row = await connection.fetchrow(
+                    """
+                    SELECT status, output_json
+                    FROM tasks
+                    WHERE id = $1 AND organization_id = $2 AND project_id = $3
+                    FOR UPDATE
+                    """,
+                    message.job_id,
+                    message.organization_id,
+                    message.project_id,
+                )
+                if row is None:
+                    raise RuntimeError("JOB_NOT_FOUND")
+                if row["status"] != JobState.RUNNING.value:
+                    raise RuntimeError("JOB_EXTERNAL_WAIT_REQUIRES_RUNNING")
+                output = _json_object(row["output_json"])
+                output.update(wait.output)
+                output["external_wait"] = {
+                    "reason": wait.wait_reason,
+                    "external_ref": wait.external_ref,
+                    "retry_not_before": wait.retry_not_before.astimezone(UTC).isoformat(),
+                }
+                await connection.execute(
+                    """
+                    UPDATE tasks
+                    SET status = 'waiting_external', output_json = $4::jsonb,
+                        wait_reason = $5, external_ref = $6, retry_not_before = $7,
+                        finished_at = NULL, updated_at = now(),
+                        state_version = state_version + 1, version = version + 1
+                    WHERE id = $1 AND organization_id = $2 AND project_id = $3
+                      AND status = 'running'
+                    """,
+                    message.job_id,
+                    message.organization_id,
+                    message.project_id,
+                    _json(output),
+                    wait.wait_reason,
+                    wait.external_ref,
+                    wait.retry_not_before.astimezone(UTC),
+                )
         finally:
             await connection.close()
 
@@ -99,14 +229,17 @@ class TaskJobStore:
                     """
                     UPDATE tasks
                     SET status = 'succeeded', output_json = $4::jsonb,
-                        finished_at = now(), updated_at = now(), version = version + 1
+                        finished_at = now(), wait_reason = NULL,
+                        external_ref = NULL, retry_not_before = NULL,
+                        updated_at = now(), state_version = state_version + 1,
+                        version = version + 1
                     WHERE id = $1 AND organization_id = $2 AND project_id = $3
                       AND status = 'running'
                     """,
                     message.job_id,
                     message.organization_id,
                     message.project_id,
-                    json.dumps(output, ensure_ascii=False, separators=(",", ":")),
+                    _json(output),
                 )
         finally:
             await connection.close()
@@ -139,7 +272,7 @@ class TaskJobStore:
                 max_attempts = int(row["max_attempts"])
                 retry = category == ErrorCategory.TRANSIENT and attempt_count < max_attempts
                 state = JobState.RETRYING if retry else JobState.FAILED
-                output = dict(row["output_json"] or {})
+                output = _json_object(row["output_json"])
                 output["last_error"] = {
                     "category": category.value,
                     "code": error_code,
@@ -151,18 +284,45 @@ class TaskJobStore:
                     UPDATE tasks
                     SET status = $4, output_json = $5::jsonb,
                         finished_at = CASE WHEN $4 = 'failed' THEN now() ELSE NULL END,
-                        updated_at = now(), version = version + 1
+                        wait_reason = NULL, external_ref = NULL, retry_not_before = NULL,
+                        updated_at = now(), state_version = state_version + 1,
+                        version = version + 1
                     WHERE id = $1 AND organization_id = $2 AND project_id = $3
                     """,
                     message.job_id,
                     message.organization_id,
                     message.project_id,
                     state.value,
-                    json.dumps(output, ensure_ascii=False, separators=(",", ":")),
+                    _json(output),
                 )
                 return state
         finally:
             await connection.close()
+
+
+def _json(value: dict[str, Any]) -> str:
+    try:
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("JOB_OUTPUT_JSON_INVALID") from exc
+
+
+def _json_object(value: object) -> dict[str, Any]:
+    try:
+        decoded = json.loads(value) if isinstance(value, str) else value
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("JOB_OUTPUT_JSON_OBJECT_REQUIRED") from exc
+    if not isinstance(decoded, dict) or not all(isinstance(key, str) for key in decoded):
+        raise RuntimeError("JOB_OUTPUT_JSON_OBJECT_REQUIRED")
+    return dict(decoded)
+
+
+def _datetime_unix_ns(value: datetime) -> int:
+    if value.tzinfo is None:
+        raise RuntimeError("PERFORMANCE_TIMESTAMP_MUST_BE_TIMEZONE_AWARE")
+    utc = value.astimezone(UTC)
+    seconds = int(utc.timestamp())
+    return seconds * 1_000_000_000 + utc.microsecond * 1_000
 
 
 async def execute_job(
@@ -177,11 +337,14 @@ async def execute_job(
     if attempt_count is None:
         return JobOutcome(JobState.CANCELLED, 0, {"skipped": "not_claimable"})
     try:
-        output = await handler(message)
+        result = await handler(message)
         if await store.cancellation_requested(message):
             raise JobCancelled("CANCELLED")
-        await store.succeed(message, output)
-        return JobOutcome(JobState.SUCCEEDED, attempt_count, output)
+        if isinstance(result, ExternalWait):
+            await store.wait_external(message, result)
+            return JobOutcome(JobState.WAITING_EXTERNAL, attempt_count, dict(result.output))
+        await store.succeed(message, result)
+        return JobOutcome(JobState.SUCCEEDED, attempt_count, result)
     except JobCancelled:
         await store.cancel(message)
         return JobOutcome(JobState.CANCELLED, attempt_count, {"cancelled": True})

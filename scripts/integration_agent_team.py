@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, get_args, get_origin
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from lumi_agent_runtime.agent_team.contracts import (
     TeamArtifactRef,
@@ -19,7 +17,7 @@ from lumi_agent_runtime.agent_team.delegation import DelegationRuntimeContext
 from lumi_agent_runtime.agent_team.flow import execute_image_team_flow
 from lumi_agent_runtime.agent_team.registry import compile_agent_team
 from lumi_agent_runtime.agent_team.task_graph import image_team_task_graph
-from lumi_model_gateway import MockProvider
+from lumi_model_gateway import Capability, MockProvider, ModelRequest, ResultStatus
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -133,119 +131,22 @@ async def main_async() -> None:
         raise AssertionError("NODE-37 final edited artifact ref is incorrect")
 
 
-def _mock_value(name: str, annotation: Any, model_route: str) -> Any:
-    lower = name.casefold()
-    if "provider" in lower:
-        return "mock"
-    if "model" in lower:
-        return model_route
-    if "capabil" in lower:
-        enum_type = _enum_type(annotation)
-        if enum_type is not None:
-            members = list(enum_type)
-            reasoning = next(
-                (item for item in members if "reason" in str(item.value).casefold()),
-                members[0],
-            )
-            origin = get_origin(annotation)
-            if origin in {tuple, list, set, frozenset}:
-                return origin((reasoning,)) if origin is not tuple else (reasoning,)
-            return reasoning
-        return ()
-    if lower in {"response", "response_text", "output", "output_text", "content"}:
-        return '{"status":"ok","source":"node37-mock-provider"}'
-    if "latency" in lower or lower.endswith("_ms"):
-        return 1
-    if "usage" in lower or "metadata" in lower:
-        return {}
-    if annotation is str:
-        return f"node37-{lower}"
-    if annotation is int:
-        return 1
-    if annotation is float:
-        return 1.0
-    if annotation is bool:
-        return False
-    origin = get_origin(annotation)
-    if origin is list:
-        return []
-    if origin is tuple:
-        return ()
-    if origin is dict:
-        return {}
-    if origin in {set, frozenset}:
-        return origin()
-    return None
-
-
-def _enum_type(annotation: Any):
-    candidates = [annotation, *get_args(annotation)]
-    for candidate in candidates:
-        if inspect.isclass(candidate) and hasattr(candidate, "__members__"):
-            return candidate
-    origin = get_origin(annotation)
-    if origin in {tuple, list, set, frozenset}:
-        for item in get_args(annotation):
-            if inspect.isclass(item) and hasattr(item, "__members__"):
-                return item
-    return None
-
-
-def _construct(callable_obj: Any, model_route: str) -> Any:
-    signature = inspect.signature(callable_obj)
-    kwargs: dict[str, Any] = {}
-    for name, parameter in signature.parameters.items():
-        if name in {"self", "cls"}:
-            continue
-        if parameter.default is not inspect.Parameter.empty:
-            continue
-        value = _mock_value(name, parameter.annotation, model_route)
-        annotation = parameter.annotation
-        if value is None and inspect.isclass(annotation):
-            value = _construct(annotation, model_route)
-        if value is None:
-            raise RuntimeError(f"NODE37_MOCK_CONSTRUCTION_UNSUPPORTED:{name}")
-        kwargs[name] = value
-    return callable_obj(**kwargs)
-
-
 async def _exercise_mock_provider(model_route: str) -> str:
-    provider = _construct(MockProvider, model_route)
-    method = next(
-        (
-            getattr(provider, name)
-            for name in ("invoke", "complete", "generate")
-            if callable(getattr(provider, name, None))
-        ),
-        None,
+    provider = MockProvider(model=model_route)
+    request = ModelRequest(
+        organization_id=UUID("00000000-0000-0000-0000-000000000037"),
+        operation_id=UUID("00000000-0000-0000-0000-000000000137"),
+        capability=Capability.LLM_REASONING,
+        inputs={"prompt": "node37 deterministic provider probe"},
+        trace_id="node37-provider-probe",
     )
-    if method is None:
-        raise RuntimeError("NODE37_MOCK_PROVIDER_NO_INVOCATION_METHOD")
-    signature = inspect.signature(method)
-    kwargs: dict[str, Any] = {}
-    positional: list[Any] = []
-    for name, parameter in signature.parameters.items():
-        if name == "self":
-            continue
-        if parameter.default is not inspect.Parameter.empty:
-            continue
-        annotation = parameter.annotation
-        value = _mock_value(name, annotation, model_route)
-        if value is None and inspect.isclass(annotation):
-            value = _construct(annotation, model_route)
-        if value is None:
-            raise RuntimeError(f"NODE37_MOCK_REQUEST_UNSUPPORTED:{name}")
-        if parameter.kind in {
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        }:
-            positional.append(value)
-        else:
-            kwargs[name] = value
-    outcome = method(*positional, **kwargs)
-    if inspect.isawaitable(outcome):
-        outcome = await outcome
-    return f"{provider.__class__.__module__}.{provider.__class__.__name__}:{type(outcome).__name__}"
+    outcome = await provider.invoke(request)
+    if outcome.status != ResultStatus.SUCCEEDED or not outcome.outputs:
+        raise RuntimeError("NODE37_MOCK_PROVIDER_PROBE_FAILED")
+    return (
+        f"{provider.__class__.__module__}.{provider.__class__.__name__}:"
+        f"{type(outcome).__name__}"
+    )
 
 
 def main() -> int:

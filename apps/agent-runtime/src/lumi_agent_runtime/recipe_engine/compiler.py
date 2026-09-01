@@ -101,15 +101,9 @@ class RecipeCompiler:
             exact_version=definition.version,
             recipe_definition_hash=definition.content_hash,
             release_manifest_revision=resolved.manifest_revision,
-            agents=tuple(
-                bindings.agents[key] for key in sorted(bindings.agents)
-            ),
-            skills=tuple(
-                bindings.skills[key] for key in sorted(bindings.skills)
-            ),
-            subrecipes=tuple(
-                bindings.subrecipes[key] for key in sorted(bindings.subrecipes)
-            ),
+            agents=tuple(bindings.agents[key] for key in sorted(bindings.agents)),
+            skills=tuple(bindings.skills[key] for key in sorted(bindings.skills)),
+            subrecipes=tuple(bindings.subrecipes[key] for key in sorted(bindings.subrecipes)),
             task_graph_template_hash=graph.content_hash,
         )
         return CompiledRecipe(

@@ -19,9 +19,7 @@ def _client(*, production: bool = True, max_request_bytes: int = 16) -> TestClie
 
 
 def test_secret_redaction() -> None:
-    value = redact_secrets(
-        "Authorization: Bearer abc.def api_key=supersecret password=hunter2"
-    )
+    value = redact_secrets("Authorization: Bearer abc.def api_key=supersecret password=hunter2")
     assert "abc.def" not in value
     assert "supersecret" not in value
     assert "hunter2" not in value

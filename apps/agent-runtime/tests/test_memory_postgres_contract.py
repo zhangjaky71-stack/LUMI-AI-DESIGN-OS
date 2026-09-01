@@ -14,13 +14,17 @@ PIPELINE = ROOT / "apps/agent-runtime/src/lumi_agent_runtime/memory_engine/pipel
 class MemoryPostgresContractTests(unittest.TestCase):
     def test_migration_is_stacked_on_task_graph_and_has_two_memory_tables(self) -> None:
         text = MIGRATION.read_text(encoding="utf-8")
+        normalized_sql = " ".join(text.split())
         self.assertIn('down_revision = "0015_task_graph_runtime"', text)
         self.assertIn("CREATE TABLE memory_records", text)
         self.assertIn("CREATE TABLE memory_candidates", text)
         for scope in ("SESSION", "USER", "PROJECT", "BRAND", "AGENT", "ORGANIZATION"):
             self.assertIn(scope, text)
         self.assertIn("embedding vector", text)
-        self.assertIn("REVOKE DELETE ON memory_records, memory_candidates FROM lumi_app", text)
+        self.assertIn(
+            "REVOKE DELETE ON memory_records, memory_candidates FROM lumi_app",
+            normalized_sql,
+        )
 
     def test_orm_matches_migration_identity(self) -> None:
         text = ORM.read_text(encoding="utf-8")
@@ -49,7 +53,9 @@ class MemoryPostgresContractTests(unittest.TestCase):
 
     def test_sensitive_and_cross_scope_rejections_do_not_persist_candidate_content(self) -> None:
         text = PIPELINE.read_text(encoding="utf-8")
-        sensitive_block = text.split("if sensitivity.classification.value != \"NONE\":", 1)[1].split("policy =", 1)[0]
+        sensitive_block = text.split('if sensitivity.classification.value != "NONE":', 1)[1].split(
+            "policy =", 1
+        )[0]
         self.assertNotIn("insert_candidate", sensitive_block)
         policy_block = text.split("if not policy.allowed:", 1)[1].split("if policy.outcome", 1)[0]
         self.assertNotIn("insert_candidate", policy_block)

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 from uuid import UUID
 
 import asyncpg
+
 from lumi_domain import new_uuid7
 
 from .contracts import (
@@ -66,6 +68,8 @@ class SideEffectExecutionError(RuntimeError):
 
 
 class RetryableSideEffectError(SideEffectExecutionError):
+    """A side effect that is proven not to have been accepted by the provider."""
+
     def __init__(self, code: str, message: str) -> None:
         super().__init__(code, message, retryable=True)
 
@@ -80,6 +84,7 @@ class OperationSnapshot:
     status: OperationStatus
     lease_owner: str | None
     lease_expires_at: datetime | None
+    provider_attempt_started_at: datetime | None
     provider_request_id: str | None
     result_ref: str | None
     result_json: dict[str, Any]
@@ -117,11 +122,26 @@ class OperationHandle:
         self._gateway = gateway
         self.snapshot = snapshot
         self.lease_owner = lease_owner
+        self.provider_attempt_started = snapshot.provider_attempt_started_at is not None
         self.provider_request_recorded = snapshot.provider_request_id is not None
 
     @property
     def provider_idempotency_key(self) -> str:
         return self.snapshot.idempotency_key
+
+    async def mark_provider_attempt_started(self) -> None:
+        """Durably close the crash-before-provider-request-id duplicate window.
+
+        Call this immediately before the first outbound provider byte can be
+        sent. Once set, a stale lease without a provider request id fails
+        closed as ambiguous instead of re-executing the paid side effect.
+        """
+
+        await self._gateway.mark_provider_attempt_started(
+            self.snapshot.id,
+            lease_owner=self.lease_owner,
+        )
+        self.provider_attempt_started = True
 
     async def record_provider_request(self, provider_request_id: str) -> None:
         await self._gateway.record_provider_request(
@@ -129,6 +149,7 @@ class OperationHandle:
             lease_owner=self.lease_owner,
             provider_request_id=provider_request_id,
         )
+        self.provider_attempt_started = True
         self.provider_request_recorded = True
 
 
@@ -212,11 +233,39 @@ class SideEffectGateway:
 
                 if current.lease_expires_at is not None and current.lease_expires_at <= now:
                     self.metrics.increment("stale_lease_total")
-                decision = (
-                    ClaimDecision.RECONCILE
-                    if current.provider_request_id
-                    else ClaimDecision.EXECUTE
-                )
+
+                if current.provider_request_id:
+                    decision = ClaimDecision.RECONCILE
+                elif current.provider_attempt_started_at is not None:
+                    # The provider may have accepted a paid request before the
+                    # process died. Without a provider request id there is no
+                    # safe automated reconciliation key, so never execute it
+                    # again merely because the lease expired.
+                    row = await connection.fetchrow(
+                        """
+                        UPDATE idempotency_operations
+                        SET status = 'ambiguous', error_category = 'ambiguous',
+                            error_code = 'PROVIDER_ATTEMPT_OUTCOME_UNKNOWN',
+                            ambiguity_reason = $2, completed_at = now(),
+                            lease_owner = NULL, lease_expires_at = NULL,
+                            updated_at = now(), version = version + 1
+                        WHERE id = $1
+                        RETURNING *
+                        """,
+                        current.id,
+                        (
+                            "provider attempt started before the prior lease was lost, but no "
+                            "provider request id was durably bound; re-execution is forbidden"
+                        ),
+                    )
+                    if row is None:
+                        raise RuntimeError("IDEMPOTENCY_OPERATION_DISAPPEARED")
+                    self.metrics.increment("ambiguous_side_effect_total")
+                    self.metrics.increment("duplicate_prevented_total")
+                    return OperationClaim(ClaimDecision.AMBIGUOUS, _snapshot(row))
+                else:
+                    decision = ClaimDecision.EXECUTE
+
                 row = await connection.fetchrow(
                     """
                     UPDATE idempotency_operations
@@ -238,6 +287,30 @@ class SideEffectGateway:
         finally:
             await connection.close()
 
+    async def mark_provider_attempt_started(
+        self,
+        operation_id: UUID,
+        *,
+        lease_owner: str,
+    ) -> None:
+        connection = await asyncpg.connect(self.dsn)
+        try:
+            row = await connection.fetchrow(
+                """
+                UPDATE idempotency_operations
+                SET provider_attempt_started_at = COALESCE(provider_attempt_started_at, now()),
+                    updated_at = now(), version = version + 1
+                WHERE id = $1 AND lease_owner = $2 AND status = 'in_progress'
+                RETURNING id
+                """,
+                operation_id,
+                lease_owner,
+            )
+            if row is None:
+                raise LeaseLostError("provider attempt could not be bound to the active lease")
+        finally:
+            await connection.close()
+
     async def record_provider_request(
         self,
         operation_id: UUID,
@@ -252,7 +325,8 @@ class SideEffectGateway:
             row = await connection.fetchrow(
                 """
                 UPDATE idempotency_operations
-                SET provider_request_id = COALESCE(provider_request_id, $3),
+                SET provider_attempt_started_at = COALESCE(provider_attempt_started_at, now()),
+                    provider_request_id = COALESCE(provider_request_id, $3),
                     updated_at = now(), version = version + 1
                 WHERE id = $1 AND lease_owner = $2 AND status = 'in_progress'
                   AND (provider_request_id IS NULL OR provider_request_id = $3)
@@ -306,12 +380,16 @@ class SideEffectGateway:
         lease_owner: str,
         error_code: str,
     ) -> None:
+        # A retryable classification is a strong assertion that the provider
+        # did not accept the side effect. Only that assertion is allowed to
+        # clear the pre-call barrier and make a later execution safe.
         await self._fail(
             operation_id,
             lease_owner=lease_owner,
             status=OperationStatus.FAILED_RETRYABLE,
             error_category="transient",
             error_code=error_code,
+            clear_provider_attempt=True,
         )
 
     async def fail_final(
@@ -460,7 +538,27 @@ class SideEffectGateway:
             )
             raise
         except SideEffectExecutionError as exc:
+            if handle.provider_request_recorded:
+                await self.fail_needs_reconciliation(
+                    claim.snapshot.id,
+                    lease_owner=lease_owner,
+                    error_code=exc.code,
+                )
+                raise
+            if handle.provider_attempt_started:
+                await self.mark_ambiguous(
+                    claim.snapshot.id,
+                    lease_owner=lease_owner,
+                    reason=(
+                        "generic retryable/final side-effect error occurred after provider attempt "
+                        "started without a durable provider request id; only an explicit "
+                        "provider-not-accepted classification may clear the barrier"
+                    ),
+                )
+                raise AmbiguousSideEffectError(str(exc)) from exc
             if exc.retryable:
+                # No provider attempt ever began, so retrying cannot duplicate a
+                # paid side effect even though the error type is generic.
                 await self.fail_retryable(
                     claim.snapshot.id,
                     lease_owner=lease_owner,
@@ -521,17 +619,22 @@ class SideEffectGateway:
         status: OperationStatus,
         error_category: str,
         error_code: str,
+        clear_provider_attempt: bool = False,
     ) -> None:
         connection = await asyncpg.connect(self.dsn)
         try:
             row = await connection.fetchrow(
                 """
                 UPDATE idempotency_operations
-                SET status = $3, error_category = $4, error_code = $5,
-                    completed_at = CASE WHEN $3 = 'failed_final' THEN now() ELSE NULL END,
+                SET status = $3::varchar(32), error_category = $4, error_code = $5,
+                    completed_at = CASE
+                        WHEN $3::varchar(32) = 'failed_final' THEN now() ELSE NULL END,
+                    provider_attempt_started_at = CASE
+                        WHEN $6::boolean THEN NULL ELSE provider_attempt_started_at END,
                     lease_owner = NULL, lease_expires_at = NULL,
                     updated_at = now(), version = version + 1
                 WHERE id = $1 AND lease_owner = $2 AND status = 'in_progress'
+                  AND (NOT $6::boolean OR provider_request_id IS NULL)
                 RETURNING id
                 """,
                 operation_id,
@@ -539,8 +642,13 @@ class SideEffectGateway:
                 status.value,
                 error_category,
                 error_code[:64],
+                clear_provider_attempt,
             )
             if row is None:
+                if clear_provider_attempt:
+                    raise LeaseLostError(
+                        "retry-safe failure could not be committed; provider request may be bound"
+                    )
                 raise LeaseLostError("failure state could not be committed because lease was lost")
         finally:
             await connection.close()
@@ -571,6 +679,7 @@ class SideEffectGateway:
                 """
                 UPDATE idempotency_operations
                 SET status = 'failed_retryable', provider_request_id = NULL,
+                    provider_attempt_started_at = NULL,
                     error_category = 'transient', error_code = 'PROVIDER_CONFIRMED_FAILED',
                     lease_owner = NULL, lease_expires_at = NULL,
                     updated_at = now(), version = version + 1
@@ -598,9 +707,10 @@ def _snapshot(row: asyncpg.Record) -> OperationSnapshot:
         status=OperationStatus(row["status"]),
         lease_owner=row["lease_owner"],
         lease_expires_at=row["lease_expires_at"],
+        provider_attempt_started_at=row["provider_attempt_started_at"],
         provider_request_id=row["provider_request_id"],
         result_ref=row["result_ref"],
-        result_json=dict(row["result_json"] or {}),
+        result_json=_json_object(row["result_json"]),
         response_status=row["response_status"],
         error_code=row["error_code"],
         error_category=row["error_category"],
@@ -620,7 +730,21 @@ def _response(snapshot: OperationSnapshot, *, replayed: bool) -> GatewayResponse
     )
 
 
-def _json(value: dict[str, Any]) -> str:
-    import json
+def _json_object(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return dict(value)
+    if isinstance(value, (str, bytes, bytearray)):
+        try:
+            decoded = json.loads(value)
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError) as exc:
+            raise ValueError("IDEMPOTENCY_RESULT_JSON_INVALID") from exc
+        if not isinstance(decoded, dict):
+            raise ValueError("IDEMPOTENCY_RESULT_JSON_INVALID")
+        return decoded
+    raise ValueError("IDEMPOTENCY_RESULT_JSON_INVALID")
 
+
+def _json(value: dict[str, Any]) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))

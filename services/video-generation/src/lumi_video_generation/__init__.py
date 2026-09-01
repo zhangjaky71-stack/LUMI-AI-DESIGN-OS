@@ -1,4 +1,3 @@
-from .artifact_adapter import ArtifactHistoryVideoAdapter
 from .media_sandbox import FfmpegArgvCompiler, FfmpegInvocation, SandboxLimits, TypedFfmpegSandbox
 from .model import (
     AudioTrackSpec,
@@ -29,7 +28,6 @@ from .storyboard import compile_storyboard, retry_shot_operation_id, shot_operat
 from .validation import CompositeVideoValidator
 
 __all__ = [
-    "ArtifactHistoryVideoAdapter",
     "AudioTrackSpec",
     "CompiledShot",
     "CompiledStoryboard",

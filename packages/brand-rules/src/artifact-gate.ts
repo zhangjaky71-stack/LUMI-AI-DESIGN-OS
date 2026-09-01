@@ -4,14 +4,18 @@ import { BrandRuleError } from "./runtime";
 
 export interface BrandApprovalGateResult {
   readonly allowed: boolean;
-  readonly reason_code?: "BRAND_RULE_VERSION_MISSING" | "BRAND_RULE_VERSION_MISMATCH" | "BRAND_HARD_VIOLATION";
+  readonly reason_code?:
+    | "BRAND_RULE_VERSION_MISSING"
+    | "BRAND_RULE_VERSION_MISMATCH"
+    | "BRAND_HARD_VIOLATION";
 }
 
 export function evaluateBrandApprovalGate(
   version: ArtifactVersion,
   report: BrandComplianceReport,
 ): BrandApprovalGateResult {
-  if (!version.brand_rule_set_version) return { allowed: false, reason_code: "BRAND_RULE_VERSION_MISSING" };
+  if (!version.brand_rule_set_version)
+    return { allowed: false, reason_code: "BRAND_RULE_VERSION_MISSING" };
   if (version.brand_rule_set_version !== report.brand_rule_set_version) {
     return { allowed: false, reason_code: "BRAND_RULE_VERSION_MISMATCH" };
   }
@@ -21,7 +25,11 @@ export function evaluateBrandApprovalGate(
   return { allowed: true };
 }
 
-export function assertBrandApprovalAllowed(version: ArtifactVersion, report: BrandComplianceReport): void {
+export function assertBrandApprovalAllowed(
+  version: ArtifactVersion,
+  report: BrandComplianceReport,
+): void {
   const gate = evaluateBrandApprovalGate(version, report);
-  if (!gate.allowed) throw new BrandRuleError(gate.reason_code ?? "brand approval gate failed");
+  if (!gate.allowed)
+    throw new BrandRuleError(gate.reason_code ?? "brand approval gate failed");
 }

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Literal, Mapping
+from typing import Literal
 
 EditRoute = Literal[
     "STRUCTURAL_IR_EDIT",
@@ -46,6 +47,10 @@ def _sha(value: object) -> str:
 def _require_text(value: str, code: str) -> None:
     if not value or not value.strip():
         raise ValueError(code)
+
+
+def _empty_object_mapping() -> dict[str, object]:
+    return {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,7 +115,10 @@ class MaskSpec:
     preview_approved_by: str | None = None
 
     def __post_init__(self) -> None:
-        if self.editable_rect.right > self.source_width or self.editable_rect.bottom > self.source_height:
+        if (
+            self.editable_rect.right > self.source_width
+            or self.editable_rect.bottom > self.source_height
+        ):
             raise ValueError("IMAGE_EDIT_MASK_OUTSIDE_SOURCE")
         if len(self.source_checksum_sha256) != 64 or len(self.checksum_sha256) != 64:
             raise ValueError("IMAGE_EDIT_MASK_CHECKSUM_INVALID")
@@ -142,7 +150,7 @@ class EditConstraint:
     constraint_type: str
     severity: Severity
     snapshot_hash: str
-    parameters: Mapping[str, object] = field(default_factory=dict)
+    parameters: Mapping[str, object] = field(default_factory=_empty_object_mapping)
 
     def __post_init__(self) -> None:
         if len(self.snapshot_hash) != 64:
@@ -206,31 +214,39 @@ class ImageEditSpec:
         if len(self.code_git_sha) != 40:
             raise ValueError("IMAGE_EDIT_GIT_SHA_INVALID")
         if self.mask is not None:
-            if self.mask.source_asset_id != self.source.asset_id or self.mask.source_asset_version != self.source.asset_version:
+            if (
+                self.mask.source_asset_id != self.source.asset_id
+                or self.mask.source_asset_version != self.source.asset_version
+            ):
                 raise ValueError("IMAGE_EDIT_MASK_SOURCE_VERSION_MISMATCH")
             if self.mask.source_checksum_sha256 != self.source.checksum_sha256:
                 raise ValueError("IMAGE_EDIT_MASK_SOURCE_CHECKSUM_MISMATCH")
-            if (self.mask.source_width, self.mask.source_height) != (self.source.width, self.source.height):
+            if (self.mask.source_width, self.mask.source_height) != (
+                self.source.width,
+                self.source.height,
+            ):
                 raise ValueError("IMAGE_EDIT_MASK_SOURCE_DIMENSION_MISMATCH")
 
     @property
     def semantic_hash(self) -> str:
-        return _sha({
-            "organization_id": self.organization_id,
-            "project_id": self.project_id,
-            "task_id": self.task_id,
-            "source": self.source,
-            "intent": self.intent,
-            "constraints": self.constraints,
-            "protected_regions": self.protected_regions,
-            "mask": self.mask,
-            "brand_rule_set_version": self.brand_rule_set_version,
-            "identity_requirement_ids": self.identity_requirement_ids,
-            "design_document_id": self.design_document_id,
-            "design_document_version": self.design_document_version,
-            "selected_node_kind": self.selected_node_kind,
-            "seed": self.seed,
-        })
+        return _sha(
+            {
+                "organization_id": self.organization_id,
+                "project_id": self.project_id,
+                "task_id": self.task_id,
+                "source": self.source,
+                "intent": self.intent,
+                "constraints": self.constraints,
+                "protected_regions": self.protected_regions,
+                "mask": self.mask,
+                "brand_rule_set_version": self.brand_rule_set_version,
+                "identity_requirement_ids": self.identity_requirement_ids,
+                "design_document_id": self.design_document_id,
+                "design_document_version": self.design_document_version,
+                "selected_node_kind": self.selected_node_kind,
+                "seed": self.seed,
+            }
+        )
 
 
 @dataclass(frozen=True, slots=True)

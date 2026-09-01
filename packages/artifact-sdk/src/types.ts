@@ -11,7 +11,12 @@ export type ArtifactType =
   | "ARCHIVE"
   | "EXPORT_PACKAGE";
 
-export type ArtifactVersionStatus = "DRAFT" | "READY" | "APPROVED" | "REJECTED" | "ARCHIVED";
+export type ArtifactVersionStatus =
+  | "DRAFT"
+  | "READY"
+  | "APPROVED"
+  | "REJECTED"
+  | "ARCHIVED";
 export type ArtifactLineageType =
   | "DERIVED_FROM"
   | "EDITED_FROM"

@@ -6,6 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
+    CHAR,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -17,7 +18,8 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..base import Base, CreatedAtMixin, IdMixin, MutableTimestampMixin
@@ -53,7 +55,7 @@ class AgentRun(IdMixin, MutableTimestampMixin, Base):
 class AgentRunStep(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "agent_run_steps"
     __table_args__ = (
-        UniqueConstraint("agent_run_id", "sequence_number", name="agent_run_step_sequence"),
+        UniqueConstraint("agent_run_id", "sequence_number", name="uq_agent_run_steps_sequence"),
         Index("ix_agent_run_steps_org_run", "organization_id", "agent_run_id"),
         Index("ix_agent_run_steps_run_created", "agent_run_id", "created_at"),
     )
@@ -164,9 +166,13 @@ class Task(IdMixin, MutableTimestampMixin, Base):
     budget_limit_usd: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     state_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     lease_owner: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    retry_not_before: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retry_not_before: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     wait_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     external_ref: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     cancellation_requested_at: Mapped[datetime | None] = mapped_column(
@@ -186,7 +192,7 @@ class TaskDependency(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "task_dependencies"
     __table_args__ = (
         CheckConstraint("task_id <> depends_on_task_id", name="task_dependency_no_self_loop"),
-        UniqueConstraint("task_id", "depends_on_task_id", name="task_dependency_identity"),
+        UniqueConstraint("task_id", "depends_on_task_id", name="uq_task_dependencies_identity"),
         Index("ix_task_dependencies_org_task", "organization_id", "task_id"),
         Index("ix_task_dependencies_depends_on", "depends_on_task_id"),
     )
@@ -211,8 +217,36 @@ class TaskDependency(IdMixin, CreatedAtMixin, Base):
 class Approval(IdMixin, MutableTimestampMixin, Base):
     __tablename__ = "approvals"
     __table_args__ = (
+        CheckConstraint(
+            "(task_id IS NULL AND tool_key IS NULL AND tool_request_hash IS NULL) OR "
+            "(task_id IS NOT NULL AND agent_run_id IS NOT NULL "
+            "AND tool_key IS NOT NULL AND tool_request_hash IS NOT NULL)",
+            name="tool_scope_complete",
+        ),
+        CheckConstraint(
+            "tool_request_hash IS NULL OR tool_request_hash ~ '^[0-9a-f]{64}$'",
+            name="tool_request_hash",
+        ),
         Index("ix_approvals_org_project", "organization_id", "project_id"),
         Index("ix_approvals_status_created", "status", "created_at"),
+        Index(
+            "uq_approvals_tool_request",
+            "organization_id",
+            "task_id",
+            "tool_key",
+            "tool_request_hash",
+            unique=True,
+            postgresql_where=text("tool_key IS NOT NULL"),
+        ),
+        Index(
+            "ix_approvals_tool_pending",
+            "organization_id",
+            "project_id",
+            "agent_run_id",
+            "task_id",
+            "status",
+            postgresql_where=text("tool_key IS NOT NULL"),
+        ),
     )
 
     organization_id: Mapped[UUID] = mapped_column(
@@ -235,6 +269,13 @@ class Approval(IdMixin, MutableTimestampMixin, Base):
         ForeignKey("agent_runs.id", ondelete="CASCADE"),
         nullable=True,
     )
+    task_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    tool_key: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    tool_request_hash: Mapped[str | None] = mapped_column(CHAR(64), nullable=True)
     requested_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     decided_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
@@ -249,6 +290,13 @@ class Generation(IdMixin, CreatedAtMixin, Base):
         Index("ix_generations_task_created", "task_id", "created_at"),
         Index("ix_generations_agent_run_created", "agent_run_id", "created_at"),
         Index("ix_generations_status_created", "status", "created_at"),
+        Index(
+            "uq_generations_org_operation",
+            "organization_id",
+            "operation_id",
+            unique=True,
+            postgresql_where=text("operation_id IS NOT NULL"),
+        ),
     )
 
     organization_id: Mapped[UUID] = mapped_column(
@@ -271,7 +319,11 @@ class Generation(IdMixin, CreatedAtMixin, Base):
         ForeignKey("agent_runs.id", ondelete="SET NULL"),
         nullable=True,
     )
-    operation_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    operation_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("idempotency_operations.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     provider: Mapped[str] = mapped_column(String(100), nullable=False)
     model: Mapped[str] = mapped_column(String(255), nullable=False)
     capability: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -283,7 +335,7 @@ class Generation(IdMixin, CreatedAtMixin, Base):
 class ProviderRequest(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "provider_requests"
     __table_args__ = (
-        UniqueConstraint("provider", "provider_request_id", name="provider_request_native_id"),
+        UniqueConstraint("provider", "provider_request_id", name="uq_provider_requests_native"),
         Index("ix_provider_requests_org_generation", "organization_id", "generation_id"),
         Index("ix_provider_requests_native", "provider_request_id"),
     )

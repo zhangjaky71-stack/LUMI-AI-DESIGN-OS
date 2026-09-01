@@ -7,7 +7,14 @@ import time
 from decimal import Decimal
 from statistics import median
 
-from lumi_video_generation.model import ShotSpec, TimelineClip, VideoOutputSpec, VideoTaskSpec, VideoTimeline, timeline_hash
+from lumi_video_generation.model import (
+    ShotSpec,
+    TimelineClip,
+    VideoOutputSpec,
+    VideoTaskSpec,
+    VideoTimeline,
+    timeline_hash,
+)
 from lumi_video_generation.storyboard import compile_storyboard
 
 ORG = "00000000-0000-0000-0000-000000000001"

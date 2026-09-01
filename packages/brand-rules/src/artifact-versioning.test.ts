@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { artifactManifestSha256 } from "../../artifact-sdk/src/hashing";
-import type { ArtifactProvenance, ArtifactVersion } from "../../artifact-sdk/src/types";
+import type {
+  ArtifactProvenance,
+  ArtifactVersion,
+} from "../../artifact-sdk/src/types";
 
 const version: ArtifactVersion = {
   id: "v1",
@@ -28,7 +31,11 @@ const provenance: ArtifactProvenance = {
 describe("NODE-43 artifact brand-version provenance", () => {
   it("keeps legacy manifest identity when no brand rule version exists", async () => {
     const first = await artifactManifestSha256(version, provenance, []);
-    const second = await artifactManifestSha256({ ...version, brand_rule_set_version: null }, provenance, []);
+    const second = await artifactManifestSha256(
+      { ...version, brand_rule_set_version: null },
+      provenance,
+      [],
+    );
     expect(first).toBe(second);
   });
 
@@ -43,10 +50,12 @@ describe("NODE-43 artifact brand-version provenance", () => {
   });
 
   it("rejects version/provenance brand version disagreement", async () => {
-    await expect(artifactManifestSha256(
-      { ...version, brand_rule_set_version: "1.0.0" },
-      { ...provenance, brand_rule_set_version: "2.0.0" },
-      [],
-    )).rejects.toThrow(/brand rule set version mismatch/);
+    await expect(
+      artifactManifestSha256(
+        { ...version, brand_rule_set_version: "1.0.0" },
+        { ...provenance, brand_rule_set_version: "2.0.0" },
+        [],
+      ),
+    ).rejects.toThrow(/brand rule set version mismatch/);
   });
 });

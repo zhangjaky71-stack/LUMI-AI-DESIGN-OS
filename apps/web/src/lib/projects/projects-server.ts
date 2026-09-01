@@ -16,30 +16,30 @@ function brief(
     audience: "品牌现有用户与潜在新客",
     deliverables,
     constraints: ["保持品牌识别一致", "所有关键文字保持清晰可读"],
-    assumptions: ["E2E seed：生产 Structured Brief 由 NODE-17/Brief Agent 持久化。"],
+    assumptions: [
+      "E2E seed：生产 Structured Brief 由 NODE-17/Brief Agent 持久化。",
+    ],
     locale,
     brand_context: null,
     notes: "",
   };
 }
 
-function project(
-  options: {
-    readonly id: string;
-    readonly organization_id: string;
-    readonly workspace_id: string;
-    readonly name: string;
-    readonly status: ProjectStatus;
-    readonly activity: string;
-    readonly created: string;
-    readonly brand?: { readonly id: string; readonly name: string } | null;
-    readonly artifact_count?: number;
-    readonly active_run_count?: number;
-    readonly preview_label?: string;
-    readonly objective?: string;
-    readonly deliverables?: readonly string[];
-  },
-): ProjectDetail {
+function project(options: {
+  readonly id: string;
+  readonly organization_id: string;
+  readonly workspace_id: string;
+  readonly name: string;
+  readonly status: ProjectStatus;
+  readonly activity: string;
+  readonly created: string;
+  readonly brand?: { readonly id: string; readonly name: string } | null;
+  readonly artifact_count?: number;
+  readonly active_run_count?: number;
+  readonly preview_label?: string;
+  readonly objective?: string;
+  readonly deliverables?: readonly string[];
+}): ProjectDetail {
   const structured = brief(
     options.objective ?? `为“${options.name}”建立清晰的设计方向。`,
     "zh-CN",
@@ -218,7 +218,8 @@ const E2E_SEED: DeterministicProjectSeed = {
 
 export function getProjectsBootstrap(): ProjectsBootstrap {
   const e2e =
-    process.env.NODE_ENV !== "production" && process.env.LUMI_PROJECTS_E2E === "1";
+    process.env.NODE_ENV !== "production" &&
+    process.env.LUMI_PROJECTS_E2E === "1";
   if (!e2e) {
     return {
       mode: "http",

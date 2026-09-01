@@ -4,6 +4,7 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from functools import partial
 
 from .budget import RequestBudgetGuard
 from .errors import (
@@ -115,7 +116,7 @@ class ModelGateway:
                         request=request,
                         provider=candidate.provider,
                         model=candidate.model,
-                        invoke=lambda: adapter.invoke(request),
+                        invoke=partial(adapter.invoke, request),
                     )
                     self._validate_result(candidate.provider, candidate.model, result)
                 except ModelGatewayError as exc:
@@ -226,7 +227,7 @@ class ModelGateway:
                     request=request,
                     provider=candidate.provider,
                     model=candidate.model,
-                    open_stream=lambda: adapter.stream(request),
+                    open_stream=partial(adapter.stream, request),
                 )
                 async for chunk in stream:
                     emitted += 1

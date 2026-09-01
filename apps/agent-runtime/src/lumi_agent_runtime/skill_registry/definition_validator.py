@@ -45,9 +45,7 @@ class SkillDefinitionValidator:
             )
         unknown = set(definition.required_capabilities) - self.known_capabilities
         if unknown:
-            raise SkillCapabilityError(
-                f"unknown Skill capabilities: {sorted(unknown)}"
-            )
+            raise SkillCapabilityError(f"unknown Skill capabilities: {sorted(unknown)}")
 
         evidence: list[str] = []
         for requirement in definition.required_tools:
@@ -55,9 +53,7 @@ class SkillDefinitionValidator:
                 requirement.name,
                 requirement.version_constraint,
             )
-            evidence.append(
-                f"tool:{requirement.name}@{tool.exact_version}"
-            )
+            evidence.append(f"tool:{requirement.name}@{tool.exact_version}")
         for kind, key, catalog in (
             ("input_schema", definition.input_schema, self.schemas),
             ("output_schema", definition.output_schema, self.schemas),

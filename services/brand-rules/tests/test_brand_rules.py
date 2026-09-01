@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from lumi_brand_rules import (
     BrandAssetSet,
     BrandRule,
@@ -141,7 +140,7 @@ def test_deterministic_compliance_fails_on_hard_brand_violations() -> None:
         tokens,
         assets,
         verified_asset_ids=frozenset({"logo-a", "font-good"}),
-        font_rights_allowed_asset_ids=frozenset({"font-good"}),
+        font_rights_allowed_asset_ids=frozenset({"font-good", "font-bad"}),
     )
     assert report.decision == "FAIL"
     assert report.hard_violation_count >= 4

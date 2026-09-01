@@ -2,15 +2,22 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any
 
 from lumi_agent_runtime.agent_registry.definition import AgentDefinition
-from lumi_agent_runtime.agent_registry.loader import AgentDefinitionLoader
+from lumi_agent_runtime.agent_registry.loader import load_definition
 
-from .contracts import AgentArchetype, AgentTeamProfile, team_profile
+from .contracts import (
+    AgentArchetype,
+    AgentTeamProfile,
+    definition_permission_names,
+    definition_tool_names,
+    team_profile,
+)
 from .delegation import validate_team_delegation_graph
 
 CANONICAL_AGENT_IDS = (
@@ -160,18 +167,15 @@ def compile_agent_team(
     repo_root: Path,
     manifest_path: Path | None = None,
 ) -> CompiledAgentTeam:
-    manifest = load_team_manifest(
-        manifest_path or repo_root / "config/agent-team/team.v1.json"
-    )
-    loader = AgentDefinitionLoader(repo_root / "agents")
+    manifest = load_team_manifest(manifest_path or repo_root / "config/agent-team/team.v1.json")
     definitions: dict[str, AgentDefinition] = {}
     profiles: dict[str, AgentTeamProfile] = {}
     for member in manifest.members:
-        loaded = loader.load(member.agent_id, member.version)
-        if loaded.definition.agent_id != member.agent_id:
+        definition = load_definition(repo_root / "agents" / member.agent_id / member.version)
+        if definition.agent_id != member.agent_id:
             raise ValueError("AGENT_TEAM_DEFINITION_ID_MISMATCH")
-        definitions[member.agent_id] = loaded.definition
-        profiles[member.agent_id] = team_profile(loaded.definition)
+        definitions[member.agent_id] = definition
+        profiles[member.agent_id] = team_profile(definition)
 
     validate_team_delegation_graph(definitions)
     _validate_role_invariants(definitions, profiles)
@@ -193,9 +197,9 @@ def _validate_role_invariants(
         "asset.write-derived",
         "sandbox.execute",
     }
-    if write_tools & set(critic.allowed_tools):
+    if write_tools & definition_tool_names(critic):
         raise ValueError("AGENT_TEAM_CRITIC_WRITE_TOOL_FORBIDDEN")
-    if any("write" in permission for permission in critic.permissions):
+    if any("write" in permission for permission in definition_permission_names(critic)):
         raise ValueError("AGENT_TEAM_CRITIC_WRITE_PERMISSION_FORBIDDEN")
 
     brand = profiles["brand-strategist"]

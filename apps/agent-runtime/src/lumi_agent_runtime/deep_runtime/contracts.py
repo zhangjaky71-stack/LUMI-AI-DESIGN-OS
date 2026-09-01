@@ -191,8 +191,7 @@ class DeepAgentInvocationContext:
             raise ValueError("DEEP_AGENT_CONTEXT_TOOL_SCOPE_DUPLICATE")
         if self.trace_id is not None and len(self.trace_id) > 128:
             raise ValueError("DEEP_AGENT_TRACE_ID_INVALID")
-        if self.budget_limit_usd is not None and len(self.budget_limit_usd) > 64:
-            raise ValueError("DEEP_AGENT_BUDGET_INVALID")
+        _validate_budget_limit(self.budget_limit_usd)
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,6 +209,7 @@ class SubagentInvocationContext:
     parent_allowed_tools: tuple[str, ...]
     allowed_tools: tuple[str, ...]
     trace_id: str | None = None
+    budget_limit_usd: str | None = None
 
     def __post_init__(self) -> None:
         if not _AGENT_NAME.fullmatch(self.subagent_name):
@@ -220,6 +220,9 @@ class SubagentInvocationContext:
         child = set(self.allowed_tools)
         if not child <= parent:
             raise ValueError("DEEP_SUBAGENT_CONTEXT_TOOL_ESCALATION")
+        if self.trace_id is not None and len(self.trace_id) > 128:
+            raise ValueError("DEEP_AGENT_TRACE_ID_INVALID")
+        _validate_budget_limit(self.budget_limit_usd)
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,6 +234,11 @@ class DelegationUsage:
     def __post_init__(self) -> None:
         if self.total_calls < 0 or self.active_calls < 0 or self.max_depth_seen < 0:
             raise ValueError("DEEP_AGENT_DELEGATION_USAGE_INVALID")
+
+
+def _validate_budget_limit(value: str | None) -> None:
+    if value is not None and (not value or len(value) > 64 or "\x00" in value):
+        raise ValueError("DEEP_AGENT_BUDGET_INVALID")
 
 
 def _json_guard(value: Any, *, path: str, depth: int) -> None:

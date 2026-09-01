@@ -93,8 +93,7 @@ class RegistryAwareModelRouter(ModelRouter):
         )
         if not adapters:
             details = ";".join(
-                f"{key}={','.join(reasons)}"
-                for key, reasons in sorted(registry_rejected.items())
+                f"{key}={','.join(reasons)}" for key, reasons in sorted(registry_rejected.items())
             )
             raise NoRouteError(f"no registry-eligible model route: {details}"[:2000])
         router = ModelRouter(
@@ -102,9 +101,7 @@ class RegistryAwareModelRouter(ModelRouter):
             health=self.health,
             policy_resolver=StaticModelPolicyResolver((policy,)),
         )
-        decision = await router.route(
-            self._apply_registry_preference(request, snapshot)
-        )
+        decision = await router.route(self._apply_registry_preference(request, snapshot))
         snapshot_marker = (
             f"REGISTRY_SNAPSHOT:{snapshot.snapshot_id}",
             f"REGISTRY_VERSION:{snapshot.registry_version}",
@@ -206,9 +203,7 @@ class RegistryAwareModelRouter(ModelRouter):
         return OrganizationModelPolicy(
             organization_id=request.organization_id,
             allowed_providers=base.allowed_providers,
-            denied_providers=base.denied_providers.union(
-                registry_policy.disabled_providers
-            ),
+            denied_providers=base.denied_providers.union(registry_policy.disabled_providers),
             denied_models=base.denied_models.union(registry_policy.denied_models),
             allowed_regions=allowed_regions,
             max_estimated_request_usd=base.max_estimated_request_usd,
@@ -237,11 +232,7 @@ class RegistryAwareModelRouter(ModelRouter):
         model = snapshot.model(model_key)
         quality = snapshot.quality_score(model_key, request.capability)
         return (
-            (
-                "REGISTRY_QUALITY_MEASURED"
-                if quality is not None
-                else "REGISTRY_QUALITY_UNMEASURED"
-            ),
+            ("REGISTRY_QUALITY_MEASURED" if quality is not None else "REGISTRY_QUALITY_UNMEASURED"),
             (
                 "REGISTRY_LATENCY_MEASURED"
                 if model is not None and model.latency_class is not None

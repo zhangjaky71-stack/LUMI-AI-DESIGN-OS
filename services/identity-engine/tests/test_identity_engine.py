@@ -199,9 +199,7 @@ class IdentityEngineTests(unittest.TestCase):
                 profile=self.profile,
                 candidate=candidate(99.0, 98.0),
                 references=(
-                    VerifiedIdentityAsset(
-                        "asset-1", "v2", "org-1", H1, "image/png", "USER_OWNED"
-                    ),
+                    VerifiedIdentityAsset("asset-1", "v2", "org-1", H1, "image/png", "USER_OWNED"),
                 ),
                 severity="HARD",
                 scenario="STRICT_PRESERVE",

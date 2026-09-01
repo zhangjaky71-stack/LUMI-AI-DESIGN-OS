@@ -1,17 +1,36 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
-from typing import Any, Literal, Mapping
+from typing import Any, Literal
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 
-ArtifactType = Literal["DESIGN_DOCUMENT","RASTER_IMAGE","VECTOR_IMAGE","VIDEO","AUDIO","PDF","HTML","ARCHIVE","EXPORT_PACKAGE"]
+ArtifactType = Literal[
+    "DESIGN_DOCUMENT",
+    "RASTER_IMAGE",
+    "VECTOR_IMAGE",
+    "VIDEO",
+    "AUDIO",
+    "PDF",
+    "HTML",
+    "ARCHIVE",
+    "EXPORT_PACKAGE",
+]
 VersionStatus = Literal["DRAFT", "READY", "APPROVED", "REJECTED", "ARCHIVED"]
-LineageType = Literal["DERIVED_FROM","EDITED_FROM","GENERATED_FROM","COMPOSED_FROM","RESIZED_FROM","EXPORTED_FROM","REFERENCE_USED"]
+LineageType = Literal[
+    "DERIVED_FROM",
+    "EDITED_FROM",
+    "GENERATED_FROM",
+    "COMPOSED_FROM",
+    "RESIZED_FROM",
+    "EXPORTED_FROM",
+    "REFERENCE_USED",
+]
 TriState = Literal["ALLOWED", "DENIED", "UNKNOWN"]
 
 
@@ -81,7 +100,10 @@ class ArtifactVersion:
             raise ValueError("quality_score must be in [0,1]")
         if self.brand_rule_set_version is not None and not self.brand_rule_set_version.strip():
             raise ValueError("brand_rule_set_version cannot be blank")
-        if self.identity_validation_snapshot_id is not None and not self.identity_validation_snapshot_id.strip():
+        if (
+            self.identity_validation_snapshot_id is not None
+            and not self.identity_validation_snapshot_id.strip()
+        ):
             raise ValueError("identity_validation_snapshot_id cannot be blank")
 
     @property
@@ -174,10 +196,17 @@ class ProvenanceRecord:
             raise ValueError("code_git_sha must be lowercase 40-character git SHA")
         if self.brand_rule_set_version is not None and not self.brand_rule_set_version.strip():
             raise ValueError("brand_rule_set_version cannot be blank")
-        if self.identity_validation_snapshot_id is not None and not self.identity_validation_snapshot_id.strip():
+        if (
+            self.identity_validation_snapshot_id is not None
+            and not self.identity_validation_snapshot_id.strip()
+        ):
             raise ValueError("identity_validation_snapshot_id cannot be blank")
         object.__setattr__(self, "input_asset_ids", tuple(dict.fromkeys(self.input_asset_ids)))
-        object.__setattr__(self, "input_artifact_version_ids", tuple(dict.fromkeys(self.input_artifact_version_ids)))
+        object.__setattr__(
+            self,
+            "input_artifact_version_ids",
+            tuple(dict.fromkeys(self.input_artifact_version_ids)),
+        )
         object.__setattr__(self, "skill_versions", _freeze(self.skill_versions))
 
 
@@ -186,9 +215,19 @@ class RightsRecord:
     subject_type: Literal["ASSET", "ARTIFACT_VERSION"]
     subject_id: str
     organization_id: str
-    source_type: Literal["USER_UPLOAD","GENERATED","LICENSED","PUBLIC_DOMAIN","THIRD_PARTY","UNKNOWN"]
+    source_type: Literal[
+        "USER_UPLOAD", "GENERATED", "LICENSED", "PUBLIC_DOMAIN", "THIRD_PARTY", "UNKNOWN"
+    ]
     owner_assertion: str | None
-    license_type: Literal["OWNED","COMMERCIAL_LICENSE","NONCOMMERCIAL","PUBLIC_DOMAIN","CC_BY","CC_BY_SA","UNKNOWN"]
+    license_type: Literal[
+        "OWNED",
+        "COMMERCIAL_LICENSE",
+        "NONCOMMERCIAL",
+        "PUBLIC_DOMAIN",
+        "CC_BY",
+        "CC_BY_SA",
+        "UNKNOWN",
+    ]
     commercial_use: TriState
     redistribution: TriState
     training_use: TriState

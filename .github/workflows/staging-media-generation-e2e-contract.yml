@@ -1,0 +1,46 @@
+name: Staging Media Generation E2E Contract
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/staging_media_e2e_collector.py"
+      - "apps/api/src/lumi_api/auth/**"
+      - "apps/api/src/lumi_api/generations/**"
+      - "apps/api/src/lumi_api/media_dispatch.py"
+      - "apps/worker-media/src/lumi_worker_media/image_generation_*.py"
+      - "apps/worker-media/src/lumi_worker_media/job_runtime.py"
+      - "services/image-generation/**"
+      - "services/domain/src/lumi_domain/job_dispatch.py"
+      - "staging/acceptance/media-generation-e2e-v1.json"
+      - "scripts/validate_media_generation_e2e_evidence.py"
+      - "scripts/validate_staging_media_e2e_collector_contract.py"
+      - ".github/workflows/collect-staging-media-generation-e2e.yml"
+      - ".github/workflows/freeze-staging-media-generation-e2e.yml"
+      - ".github/workflows/staging-media-generation-e2e-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Compile collector and evidence contracts
+        run: >-
+          python -m compileall -q
+          apps/api/src/lumi_api/staging_media_e2e_collector.py
+          scripts/validate_media_generation_e2e_evidence.py
+          scripts/validate_staging_media_e2e_collector_contract.py
+
+      - name: Validate fail-closed collector source boundaries
+        run: python scripts/validate_staging_media_e2e_collector_contract.py
+
+      - name: Run media-generation evidence positive and negative drills
+        run: python scripts/validate_media_generation_e2e_evidence.py --self-test

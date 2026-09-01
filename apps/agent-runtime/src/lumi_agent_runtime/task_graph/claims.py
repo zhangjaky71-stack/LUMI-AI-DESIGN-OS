@@ -45,9 +45,12 @@ def claim_ready_tasks(
     for task in candidates:
         if len(claimed) >= limit:
             break
-        if task.concurrency_group and task.concurrency_limit is not None:
-            if running_by_group.get(task.concurrency_group, 0) >= task.concurrency_limit:
-                continue
+        if (
+            task.concurrency_group
+            and task.concurrency_limit is not None
+            and running_by_group.get(task.concurrency_group, 0) >= task.concurrency_limit
+        ):
+            continue
         assert_transition(task.status, TaskState.RUNNING)
         attempt_number = task.attempt_count + 1
         updated = replace(

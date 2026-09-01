@@ -66,14 +66,14 @@ def op(operation_id: str, node: str, prop: str, value: object) -> CollaborationO
 
 def test_two_users_different_nodes_rebase_without_lost_update() -> None:
     engine, _, _, canonical, constraints, _, _ = setup_engine()
-    first = engine.submit_operations(actor("owner"), PROJECT, DOC, "design-v4", (
-        op("op-a", "hero-title", "text", "New title"),
-    ))
+    first = engine.submit_operations(
+        actor("owner"), PROJECT, DOC, "design-v4", (op("op-a", "hero-title", "text", "New title"),)
+    )
     assert first.canonical_version_after == "design-v5"
 
-    second = engine.submit_operations(actor("editor"), PROJECT, DOC, "design-v4", (
-        op("op-b", "cta", "fill", "#111111"),
-    ))
+    second = engine.submit_operations(
+        actor("editor"), PROJECT, DOC, "design-v4", (op("op-b", "cta", "fill", "#111111"),)
+    )
     assert second.rebased is True
     assert second.conflicts == ()
     assert second.accepted_operation_ids == ("op-b",)
@@ -84,12 +84,20 @@ def test_two_users_different_nodes_rebase_without_lost_update() -> None:
 
 def test_same_property_conflict_is_explicit_and_local_edit_is_preserved() -> None:
     engine, _, _, canonical, _, audit, _ = setup_engine()
-    engine.submit_operations(actor("owner"), PROJECT, DOC, "design-v4", (
-        op("remote-op", "hero-title", "text", "Remote"),
-    ))
-    result = engine.reconnect(actor("editor"), PROJECT, DOC, "design-v4", (
-        op("local-op", "hero-title", "text", "Local buffered"),
-    ))
+    engine.submit_operations(
+        actor("owner"),
+        PROJECT,
+        DOC,
+        "design-v4",
+        (op("remote-op", "hero-title", "text", "Remote"),),
+    )
+    result = engine.reconnect(
+        actor("editor"),
+        PROJECT,
+        DOC,
+        "design-v4",
+        (op("local-op", "hero-title", "text", "Local buffered"),),
+    )
     assert result.rebased is True
     assert result.accepted_operation_ids == ()
     assert len(result.conflicts) == 1
@@ -101,8 +109,12 @@ def test_same_property_conflict_is_explicit_and_local_edit_is_preserved() -> Non
 
 def test_presence_is_ephemeral_and_tenant_isolated() -> None:
     engine, _, presence, _, _, _, _ = setup_engine()
-    engine.update_presence(actor("owner"), PROJECT, DOC, cursor=(10.0, 20.0), selection_ids=("hero",))
-    assert [item.actor.actor_id for item in engine.list_presence(actor("viewer"), PROJECT, DOC)] == ["owner"]
+    engine.update_presence(
+        actor("owner"), PROJECT, DOC, cursor=(10.0, 20.0), selection_ids=("hero",)
+    )
+    assert [
+        item.actor.actor_id for item in engine.list_presence(actor("viewer"), PROJECT, DOC)
+    ] == ["owner"]
 
     outsider = CollaborationActor("outsider", "org-b", "outsider")
     with pytest.raises(CollaborationError, match="COLLABORATION_FORBIDDEN"):
@@ -117,9 +129,9 @@ def test_comment_keeps_exact_old_version_context_after_design_advances() -> None
         CommentAnchor(PROJECT, "artifact-version-v2", "design-v2", node_id="deleted-node"),
         "This belongs to the historical layout.",
     )
-    engine.submit_operations(actor("owner"), PROJECT, DOC, "design-v4", (
-        op("op-new", "hero", "opacity", 0.9),
-    ))
+    engine.submit_operations(
+        actor("owner"), PROJECT, DOC, "design-v4", (op("op-new", "hero", "opacity", 0.9),)
+    )
     stored = repo.get_thread(ORG, PROJECT, thread.thread_id)
     assert stored is not None
     assert stored.anchor.design_document_version_id == "design-v2"
@@ -139,11 +151,17 @@ def test_mention_requires_target_access_to_same_project() -> None:
 
 
 def test_hard_constraint_failure_blocks_canonical_commit() -> None:
-    engine, _, _, canonical, constraints, _, _ = setup_engine(forbidden=frozenset({"logo.identity"}))
+    engine, _, _, canonical, constraints, _, _ = setup_engine(
+        forbidden=frozenset({"logo.identity"})
+    )
     with pytest.raises(CollaborationError, match="COLLABORATION_HARD_CONSTRAINT_FAILED"):
-        engine.submit_operations(actor("editor"), PROJECT, DOC, "design-v4", (
-            op("op-logo", "logo", "logo.identity", "mutate-protected-mark"),
-        ))
+        engine.submit_operations(
+            actor("editor"),
+            PROJECT,
+            DOC,
+            "design-v4",
+            (op("op-logo", "logo", "logo.identity", "mutate-protected-mark"),),
+        )
     assert canonical.current_version(PROJECT, DOC) == "design-v4"
     assert len(constraints.calls) == 1
 
@@ -171,9 +189,9 @@ def test_realtime_restart_does_not_erase_canonical_truth() -> None:
         "Persist this review context.",
     )
     engine.update_presence(actor("owner"), PROJECT, DOC)
-    engine.submit_operations(actor("owner"), PROJECT, DOC, "design-v4", (
-        op("op-persist", "hero", "fill", "#222222"),
-    ))
+    engine.submit_operations(
+        actor("owner"), PROJECT, DOC, "design-v4", (op("op-persist", "hero", "fill", "#222222"),)
+    )
 
     restarted = CollaborationEngine(
         authorization=engine._authorization,

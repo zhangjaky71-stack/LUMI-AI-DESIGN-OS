@@ -41,8 +41,14 @@ describe("Canvas scene diagnostics", () => {
     const scene = projectDesignDocument(malformed());
     expect(scene.nodes.has("frame")).toBe(true);
     expect(scene.nodes.has("orphan")).toBe(true);
-    expect(scene.diagnostics.some((item) => item.code === "MISSING_CHILD")).toBe(true);
-    expect(scene.diagnostics.some((item) => item.code === "MISSING_PARENT")).toBe(true);
-    expect(scene.diagnostics.some((item) => item.code === "UNSUPPORTED_KIND")).toBe(true);
+    expect(
+      scene.diagnostics.some((item) => item.code === "MISSING_CHILD"),
+    ).toBe(true);
+    expect(
+      scene.diagnostics.some((item) => item.code === "MISSING_PARENT"),
+    ).toBe(true);
+    expect(
+      scene.diagnostics.some((item) => item.code === "UNSUPPORTED_KIND"),
+    ).toBe(true);
   });
 });

@@ -4,6 +4,10 @@ import ast
 import json
 from pathlib import Path
 
+from lumi_agent_runtime.agent_team.contracts import (
+    definition_permission_names,
+    definition_tool_names,
+)
 from lumi_agent_runtime.agent_team.evals import (
     load_role_eval_contracts,
     validate_role_eval_bindings,
@@ -73,9 +77,9 @@ def main() -> int:
         if f'"{definition.model_policy}"' not in route_text:
             raise SystemExit(f"NODE-37 unknown model route: {agent_id}:{definition.model_policy}")
         for skill in definition.skills:
-            if skill.id not in skills:
-                raise SystemExit(f"NODE-37 unknown skill: {agent_id}:{skill.id}")
-        unknown_tools = set(definition.allowed_tools) - TOOL_NAMES
+            if skill.skill_id not in skills:
+                raise SystemExit(f"NODE-37 unknown skill: {agent_id}:{skill.skill_id}")
+        unknown_tools = definition_tool_names(definition) - TOOL_NAMES
         if unknown_tools:
             raise SystemExit(
                 f"NODE-37 unknown tools: {agent_id}:" + ",".join(sorted(unknown_tools))
@@ -127,9 +131,11 @@ def main() -> int:
         raise SystemExit("NODE-37 flow contains unbounded loop")
 
     critic = team.resolve("critic-agent")
-    if {"asset.write-derived", "sandbox.execute"} & set(critic.allowed_tools):
+    if {"asset.write-derived", "sandbox.execute"} & definition_tool_names(critic):
         raise SystemExit("NODE-37 Critic has a write-capable tool")
-    if any("write" in permission for permission in critic.permissions):
+    if any(
+        "write" in permission for permission in definition_permission_names(critic)
+    ):
         raise SystemExit("NODE-37 Critic has a write permission")
     brand = team.profiles["brand-strategist"]
     if "brand-rule.write" not in brand.approval_gated_actions:
@@ -164,14 +170,24 @@ def main() -> int:
             if isinstance(node, ast.ClassDef) and node.name == "AgentDefinition":
                 raise SystemExit("NODE-37 creates a competing AgentDefinition")
 
-    # NODE-37 intentionally pins candidate versions in its team manifest. It does
-    # not rewrite the NODE-28 production release registry in this node.
-    production_registry = json.loads(
+    # NODE-37 candidates must be represented in the NODE-30 release registry as
+    # CANDIDATE rows, but must never silently replace a production alias.
+    release_registry = json.loads(
         (ROOT / "agents/registry.json").read_text(encoding="utf-8")
     )
-    production_text = json.dumps(production_registry, ensure_ascii=False)
-    if "2.0.0" in production_text:
-        raise SystemExit("NODE-37 silently promoted team candidates in production registry")
+    release_rows = {
+        (str(item.get("id")), str(item.get("version"))): item
+        for item in release_registry.get("releases", [])
+        if isinstance(item, dict)
+    }
+    aliases = release_registry.get("aliases", {})
+    for agent_id in CANONICAL_AGENT_IDS:
+        row = release_rows.get((agent_id, "2.0.0"))
+        if row is None or row.get("status") != "CANDIDATE":
+            raise SystemExit(f"NODE-37 candidate release registration drifted: {agent_id}")
+        agent_aliases = aliases.get(agent_id, {}) if isinstance(aliases, dict) else {}
+        if isinstance(agent_aliases, dict) and agent_aliases.get("production") == "2.0.0":
+            raise SystemExit(f"NODE-37 silently promoted team candidate: {agent_id}")
 
     print("NODE-37 Agent Team static contract: PASS")
     return 0

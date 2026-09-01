@@ -4,11 +4,12 @@ import os
 from typing import Any
 
 DEFAULT_MAX_LIVE_EVAL_BUDGET_USD = 25.0
+AUTHORIZATION_ONLY_MODE = "authorization-only"
 
 
 def live_preflight(suite: str) -> dict[str, Any]:
     enabled = os.getenv("LUMI_LIVE_EVAL_ENABLED") == "1"
-    api_key = os.getenv("LUMI_LIVE_EVAL_API_KEY")
+    preflight_mode = os.getenv("LUMI_LIVE_EVAL_PREFLIGHT_MODE")
     budget_raw = os.getenv("LUMI_LIVE_EVAL_BUDGET_USD")
     if not enabled:
         return {
@@ -16,11 +17,17 @@ def live_preflight(suite: str) -> dict[str, Any]:
             "suite": suite,
             "reason": "LUMI_LIVE_EVAL_ENABLED is not 1",
         }
-    if not api_key:
+    if preflight_mode != AUTHORIZATION_ONLY_MODE:
         return {
             "status": "SKIPPED",
             "suite": suite,
-            "reason": "LUMI_LIVE_EVAL_API_KEY is not configured",
+            "reason": f"LUMI_LIVE_EVAL_PREFLIGHT_MODE must be {AUTHORIZATION_ONLY_MODE}",
+        }
+    if os.getenv("LUMI_LIVE_EVAL_API_KEY"):
+        return {
+            "status": "SKIPPED",
+            "suite": suite,
+            "reason": "provider credentials must not be exposed to authorization-only preflight",
         }
     if budget_raw is None:
         return {
@@ -62,8 +69,14 @@ def live_preflight(suite: str) -> dict[str, Any]:
     return {
         "status": "READY",
         "suite": suite,
+        "preflight_mode": AUTHORIZATION_ONLY_MODE,
         "budget_usd": budget,
         "max_budget_usd": max_budget,
         "side_effect_mode": "none",
-        "reason": "live provider evaluation is explicitly authorized for this suite and budget",
+        "credential_check": "NOT_PERFORMED",
+        "network_execution": False,
+        "reason": (
+            "live-provider execution parameters are authorized; provider credentials are deliberately "
+            "not exposed or validated by this preflight"
+        ),
     }

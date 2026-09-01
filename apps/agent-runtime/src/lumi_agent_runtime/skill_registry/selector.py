@@ -24,9 +24,7 @@ class SkillSelector:
             if context.task_type in definition.task_types
             and context.execution.agent_id in definition.compatible_agents
             and bool(definition.metadata.get("selector_primary", False))
-            and self.registry.resolve(
-                f"{definition.skill_id}@{definition.version}"
-            ).release_status
+            and self.registry.resolve(f"{definition.skill_id}@{definition.version}").release_status
             == SkillReleaseStatus.PRODUCTION
         ]
         if len(candidates) != 1:

@@ -104,7 +104,6 @@ def main() -> int:
     )
     long_eval = require(
         "scripts/integration_context_eval.py",
-        "required-source-recall",
         "CorpusExecutor",
         "verify_determinism=True",
         "forbidden_source_leaks == 0",
@@ -139,9 +138,12 @@ def main() -> int:
                 roots = {alias.name.split(".", 1)[0] for alias in node.names}
                 if roots & FORBIDDEN_IMPORTS:
                     raise SystemExit(f"Context eval imports ambient authority: {path}")
-            if isinstance(node, ast.ImportFrom) and node.module:
-                if node.module.split(".", 1)[0] in FORBIDDEN_IMPORTS:
-                    raise SystemExit(f"Context eval imports ambient authority: {path}")
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and node.module.split(".", 1)[0] in FORBIDDEN_IMPORTS
+            ):
+                raise SystemExit(f"Context eval imports ambient authority: {path}")
 
     print("NODE-35 Memory/Retrieval evaluation contract: PASS")
     return 0

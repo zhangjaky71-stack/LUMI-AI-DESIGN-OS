@@ -47,7 +47,4 @@ class GraphRegistry:
         return definition
 
     def definitions(self) -> tuple[GraphDefinition, ...]:
-        return tuple(
-            self._definitions[key]
-            for key in sorted(self._definitions)
-        )
+        return tuple(self._definitions[key] for key in sorted(self._definitions))

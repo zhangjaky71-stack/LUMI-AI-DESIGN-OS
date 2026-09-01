@@ -1,0 +1,161 @@
+name: Tool Gateway Durable Audit
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lumi_api/tool_audit_control.py"
+      - "apps/api/src/lumi_api/product_app.py"
+      - "apps/api/src/lumi_api/persistence/models/platform.py"
+      - "apps/api/tests/test_tool_audit_control.py"
+      - "apps/api/tests/integration/test_tool_audit_control_postgres.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/audit.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/audit_control.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/errors.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/gateway.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/ports.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/service.py"
+      - "services/tool-gateway/tests/test_audit_control.py"
+      - "services/tool-gateway/tests/test_tool_gateway.py"
+      - "infra/iac/modules/platform-app/internal-path-deny.tf"
+      - "infra/iac/environments/staging/core/main.tf"
+      - "infra/iac/environments/staging/app/main.tf"
+      - "infra/iac/environments/production/core/main.tf"
+      - "infra/iac/environments/production/app/main.tf"
+      - "uv.lock"
+      - ".github/workflows/tool-gateway-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile durable audit boundaries
+        run: >-
+          python -m compileall -q
+          apps/api/src/lumi_api/tool_audit_control.py
+          apps/api/src/lumi_api/product_app.py
+          apps/api/tests/test_tool_audit_control.py
+          apps/api/tests/integration/test_tool_audit_control_postgres.py
+          services/tool-gateway/src/lumi_tool_gateway/audit.py
+          services/tool-gateway/src/lumi_tool_gateway/audit_control.py
+          services/tool-gateway/src/lumi_tool_gateway/gateway.py
+          services/tool-gateway/src/lumi_tool_gateway/ports.py
+          services/tool-gateway/src/lumi_tool_gateway/service.py
+          services/tool-gateway/tests/test_audit_control.py
+
+  audit-quality:
+    needs: audit-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Durable audit Ruff gate
+        run: >-
+          uv run ruff check
+          apps/api/src/lumi_api/tool_audit_control.py
+          apps/api/src/lumi_api/product_app.py
+          apps/api/tests/test_tool_audit_control.py
+          apps/api/tests/integration/test_tool_audit_control_postgres.py
+          services/tool-gateway/src/lumi_tool_gateway/audit.py
+          services/tool-gateway/src/lumi_tool_gateway/audit_control.py
+          services/tool-gateway/src/lumi_tool_gateway/errors.py
+          services/tool-gateway/src/lumi_tool_gateway/gateway.py
+          services/tool-gateway/src/lumi_tool_gateway/ports.py
+          services/tool-gateway/src/lumi_tool_gateway/service.py
+          services/tool-gateway/tests/test_audit_control.py
+          services/tool-gateway/tests/test_tool_gateway.py
+      - name: Durable audit Pyright gate
+        run: >-
+          uv run pyright
+          apps/api/src/lumi_api/tool_audit_control.py
+          apps/api/src/lumi_api/product_app.py
+          apps/api/tests/test_tool_audit_control.py
+          apps/api/tests/integration/test_tool_audit_control_postgres.py
+          services/tool-gateway/src/lumi_tool_gateway/audit.py
+          services/tool-gateway/src/lumi_tool_gateway/audit_control.py
+          services/tool-gateway/src/lumi_tool_gateway/gateway.py
+          services/tool-gateway/src/lumi_tool_gateway/ports.py
+          services/tool-gateway/src/lumi_tool_gateway/service.py
+          services/tool-gateway/tests/test_audit_control.py
+      - name: Durable audit unit tests
+        run: >-
+          uv run pytest
+          apps/api/tests/test_tool_audit_control.py
+          services/tool-gateway/tests/test_audit_control.py
+          services/tool-gateway/tests/test_tool_gateway.py
+          -q
+
+  audit-postgres:
+    needs: audit-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Start canonical local infrastructure
+        run: |
+          make infra-env
+          make infra-up
+      - name: Migrate, verify schema, and seed
+        run: |
+          make db-upgrade
+          bash scripts/db-local schema-check
+          make db-seed
+      - name: Canonical audit PostgreSQL acceptance
+        env:
+          LUMI_DB_INTEGRATION: "1"
+        run: >-
+          uv run pytest
+          apps/api/tests/integration/test_tool_audit_control_postgres.py
+          -q
+      - name: Capture PostgreSQL diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p reports/nodes/NODE-25/tool-audit
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml ps \
+            > reports/nodes/NODE-25/tool-audit/compose-ps.txt 2>&1 || true
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml logs \
+            --no-color --tail=300 postgres \
+            > reports/nodes/NODE-25/tool-audit/postgres.log 2>&1 || true
+      - name: Upload audit diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-25-tool-audit-${{ github.run_id }}
+          path: reports/nodes/NODE-25/tool-audit
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Cleanup
+        if: always()
+        run: CONFIRM=1 make infra-reset || true

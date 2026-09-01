@@ -258,9 +258,7 @@ class MockProvider:
             Capability.OCR_DOCUMENT,
         }:
             text = f"mock:{request.capability.value}:{digest}"
-            outputs = (
-                ModelOutput(kind="text", value=text, mime_type="text/plain"),
-            )
+            outputs = (ModelOutput(kind="text", value=text, mime_type="text/plain"),)
             usage = Usage(input_tokens=32, output_tokens=16, total_tokens=48)
         elif request.capability in {
             Capability.IMAGE_GENERATE,
@@ -296,8 +294,7 @@ class MockProvider:
             usage = Usage(seconds=seconds)
         else:
             vector = [
-                round(int(digest[index : index + 2], 16) / 255, 6)
-                for index in range(0, 16, 2)
+                round(int(digest[index : index + 2], 16) / 255, 6) for index in range(0, 16, 2)
             ]
             outputs = (ModelOutput(kind="embedding", value=vector),)
             usage = Usage(input_tokens=16, total_tokens=16)
@@ -305,9 +302,7 @@ class MockProvider:
         cost = CostEstimate(
             amount_usd=estimate.amount_usd,
             confidence=(
-                CostConfidence.EXACT
-                if estimate.amount_usd is not None
-                else CostConfidence.UNKNOWN
+                CostConfidence.EXACT if estimate.amount_usd is not None else CostConfidence.UNKNOWN
             ),
             price_snapshot_id=estimate.price_snapshot_id,
             detail=estimate.detail,

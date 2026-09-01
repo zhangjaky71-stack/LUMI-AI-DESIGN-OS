@@ -25,6 +25,9 @@ jobs:
   auth-integration-v2:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    env:
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -50,7 +53,7 @@ jobs:
       - name: Upgrade empty database to current head
         run: make db-upgrade
       - name: Check ORM / Alembic drift
-        run: bash scripts/db-local check
+        run: bash scripts/db-local schema-check
       - name: Complete Auth/Tenant PostgreSQL suite
         env:
           LUMI_AUTH_INTEGRATION: "1"

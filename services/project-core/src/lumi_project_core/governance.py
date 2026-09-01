@@ -4,13 +4,17 @@ import base64
 import csv
 import io
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from threading import RLock
-from typing import Literal, Mapping, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from lumi_project_core.admin_console import AdminAuditEvent
 
 AuditActorType = Literal["USER", "PLATFORM_ADMIN", "AGENT", "SERVICE"]
 AuditResult = Literal["SUCCESS", "DENIED", "FAILED"]
@@ -321,7 +325,9 @@ class GovernanceDataPort(Protocol):
     def resources_for_subject(
         self, subject_user_id: str, organization_id: str
     ) -> tuple[GovernanceResourceRef, ...]: ...
-    def retention_resources(self, organization_id: str | None) -> tuple[GovernanceResourceRef, ...]: ...
+    def retention_resources(
+        self, organization_id: str | None
+    ) -> tuple[GovernanceResourceRef, ...]: ...
     def deactivate_subject(self, subject_user_id: str, organization_id: str) -> None: ...
     def erase_resource(self, resource: GovernanceResourceRef, mode: ErasureMode) -> None: ...
     def gc_object(self, object_ref: str) -> None: ...
@@ -329,8 +335,12 @@ class GovernanceDataPort(Protocol):
 
 
 class AuditExportStoragePort(Protocol):
-    def put(self, job_id: str, export_format: ExportFormat, payload: bytes) -> StoredAuditExport: ...
-    def create_download(self, stored: StoredAuditExport, ttl_seconds: int) -> AuditDownloadLease: ...
+    def put(
+        self, job_id: str, export_format: ExportFormat, payload: bytes
+    ) -> StoredAuditExport: ...
+    def create_download(
+        self, stored: StoredAuditExport, ttl_seconds: int
+    ) -> AuditDownloadLease: ...
 
 
 def _now() -> datetime:
@@ -359,7 +369,9 @@ def _safe_url(value: str) -> str:
     parsed = urlsplit(value)
     if not parsed.scheme or not parsed.netloc:
         return "[REDACTED_URL]"
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "[REDACTED]" if parsed.query else "", ""))
+    return urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, "[REDACTED]" if parsed.query else "", "")
+    )
 
 
 def sanitize_metadata(metadata: Mapping[str, object] | None) -> tuple[tuple[str, str], ...]:
@@ -372,9 +384,7 @@ def sanitize_metadata(metadata: Mapping[str, object] | None) -> tuple[tuple[str,
         value = "" if raw_value is None else str(raw_value)
         if any(fragment in normalized for fragment in _SECRET_KEY_FRAGMENTS):
             rendered = "[REDACTED]"
-        elif normalized in _HASH_ONLY_KEYS:
-            rendered = _hash_text(value)
-        elif normalized in _IP_KEYS:
+        elif normalized in _HASH_ONLY_KEYS or normalized in _IP_KEYS:
             rendered = _hash_text(value)
         elif "url" in normalized:
             rendered = _safe_url(value)
@@ -391,7 +401,9 @@ def _event_payload(event: AuditEvent) -> dict[str, object]:
 
 
 def _event_hash(event: AuditEvent) -> str:
-    encoded = json.dumps(_event_payload(event), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    encoded = json.dumps(
+        _event_payload(event), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    )
     return sha256(encoded.encode("utf-8")).hexdigest()
 
 
@@ -451,7 +463,12 @@ class GovernanceEngine:
         organization_id: str | None = None,
         occurred_at: str | None = None,
     ) -> AuditEvent:
-        if not action.strip() or not resource_type.strip() or not resource_id.strip() or not reason_code.strip():
+        if (
+            not action.strip()
+            or not resource_type.strip()
+            or not resource_id.strip()
+            or not reason_code.strip()
+        ):
             raise GovernanceError("AUDIT_EVENT_IDENTITY_REQUIRED")
         effective_org = organization_id if organization_id is not None else actor.organization_id
         if actor.organization_id is not None and effective_org not in {None, actor.organization_id}:
@@ -526,7 +543,9 @@ class GovernanceEngine:
         return self._repository.search_audit(scoped)
 
     def list_retention_policies(self, actor: GovernanceActor) -> tuple[RetentionPolicy, ...]:
-        self._require_any(actor, {"governance.retention.read", "governance.retention.manage", "admin.audit.read"})
+        self._require_any(
+            actor, {"governance.retention.read", "governance.retention.manage", "admin.audit.read"}
+        )
         return self._repository.list_retention_policies()
 
     def publish_retention_policy(
@@ -565,7 +584,9 @@ class GovernanceEngine:
     def retention_candidates(
         self, actor: GovernanceActor, *, organization_id: str | None = None, now: str | None = None
     ) -> tuple[RetentionCandidate, ...]:
-        self._require_any(actor, {"governance.retention.read", "governance.retention.manage", "admin.audit.read"})
+        self._require_any(
+            actor, {"governance.retention.read", "governance.retention.manage", "admin.audit.read"}
+        )
         scoped_org = self._scope_organization(actor, organization_id)
         instant = _parse_time(now) if now else _now()
         holds = self.active_holds(actor, organization_id=scoped_org)
@@ -577,9 +598,15 @@ class GovernanceEngine:
             eligible_at = _parse_time(resource.created_at) + timedelta(days=policy.retention_days)
             if eligible_at <= instant:
                 candidates.append(
-                    RetentionCandidate(resource=resource, policy_version=policy.version, eligible_at=_iso(eligible_at))
+                    RetentionCandidate(
+                        resource=resource,
+                        policy_version=policy.version,
+                        eligible_at=_iso(eligible_at),
+                    )
                 )
-        return tuple(sorted(candidates, key=lambda item: (item.eligible_at, item.resource.resource_id)))
+        return tuple(
+            sorted(candidates, key=lambda item: (item.eligible_at, item.resource.resource_id))
+        )
 
     def create_hold(
         self,
@@ -619,7 +646,11 @@ class GovernanceEngine:
             resource_id=hold_id,
             result="SUCCESS",
             reason_code=reason_code,
-            security_metadata={"ticket_ref": ticket_ref, "scope_type": scope_type, "scope_id": scope_id},
+            security_metadata={
+                "ticket_ref": ticket_ref,
+                "scope_type": scope_type,
+                "scope_id": scope_id,
+            },
             organization_id=scoped_org,
         )
         return ActiveLegalHold(
@@ -643,7 +674,9 @@ class GovernanceEngine:
         ticket_ref: str,
     ) -> ActiveLegalHold:
         self._require(actor, "governance.legal_hold.manage")
-        active = next((item for item in self._active_holds_unscoped() if item.hold_id == hold_id), None)
+        active = next(
+            (item for item in self._active_holds_unscoped() if item.hold_id == hold_id), None
+        )
         if active is None:
             raise GovernanceError("LEGAL_HOLD_NOT_ACTIVE", 404)
         self._scope_organization(actor, active.organization_id)
@@ -677,10 +710,15 @@ class GovernanceEngine:
     def active_holds(
         self, actor: GovernanceActor, *, organization_id: str | None = None
     ) -> tuple[ActiveLegalHold, ...]:
-        self._require_any(actor, {"governance.legal_hold.read", "governance.legal_hold.manage", "admin.audit.read"})
+        self._require_any(
+            actor,
+            {"governance.legal_hold.read", "governance.legal_hold.manage", "admin.audit.read"},
+        )
         scoped_org = self._scope_organization(actor, organization_id)
         return tuple(
-            item for item in self._active_holds_unscoped() if scoped_org is None or item.organization_id == scoped_org
+            item
+            for item in self._active_holds_unscoped()
+            if scoped_org is None or item.organization_id == scoped_org
         )
 
     def request_deletion(
@@ -738,10 +776,19 @@ class GovernanceEngine:
         if current.status == "COMPLETED":
             return current
         self._scope_organization(actor, current.organization_id)
-        resources = self._data.resources_for_subject(current.subject_user_id, current.organization_id)
+        resources = self._data.resources_for_subject(
+            current.subject_user_id, current.organization_id
+        )
         holds = self._active_holds_unscoped()
         blocking = tuple(
-            sorted({hold.hold_id for resource in resources for hold in holds if self._hold_matches(resource, hold)})
+            sorted(
+                {
+                    hold.hold_id
+                    for resource in resources
+                    for hold in holds
+                    if self._hold_matches(resource, hold)
+                }
+            )
         )
         if blocking:
             self._append_deletion_status(current, actor, "BLOCKED_HOLD", blocked_hold_ids=blocking)
@@ -801,7 +848,9 @@ class GovernanceEngine:
         except GovernanceError:
             raise
         except Exception as exc:
-            self._append_deletion_status(current, actor, "FAILED", error_code="DELETION_ADAPTER_FAILED")
+            self._append_deletion_status(
+                current, actor, "FAILED", error_code="DELETION_ADAPTER_FAILED"
+            )
             raise GovernanceError("DELETION_ADAPTER_FAILED", 502) from exc
         return self._deletion_view(self._repository.list_deletion_events(request_id))
 
@@ -878,7 +927,10 @@ class GovernanceEngine:
                 result="SUCCESS",
                 reason_code="AUDIT_EXPORT_RENDERED",
                 retention_class="EXPORT",
-                security_metadata={"record_count": len(events), "checksum_sha256": stored.checksum_sha256},
+                security_metadata={
+                    "record_count": len(events),
+                    "checksum_sha256": stored.checksum_sha256,
+                },
                 organization_id=job.organization_id,
             )
             return ready
@@ -894,7 +946,9 @@ class GovernanceEngine:
         self._authorize_export_scope(actor, job)
         return job
 
-    def get_download(self, actor: GovernanceActor, job_id: str, ttl_seconds: int = 300) -> AuditDownloadLease:
+    def get_download(
+        self, actor: GovernanceActor, job_id: str, ttl_seconds: int = 300
+    ) -> AuditDownloadLease:
         if ttl_seconds < 30 or ttl_seconds > 900:
             raise GovernanceError("AUDIT_DOWNLOAD_TTL_INVALID")
         job = self._require_export_job(job_id)
@@ -933,7 +987,9 @@ class GovernanceEngine:
             raise GovernanceError("AUDIT_ORGANIZATION_REQUIRED", 403)
         return tuple(item for item in values if item.organization_id == actor.organization_id)
 
-    def _scope_query(self, actor: GovernanceActor, query: AuditQuery, *, permission: str) -> AuditQuery:
+    def _scope_query(
+        self, actor: GovernanceActor, query: AuditQuery, *, permission: str
+    ) -> AuditQuery:
         platform = actor.actor_type == "PLATFORM_ADMIN" and "admin.audit.read" in actor.permissions
         if platform:
             return query
@@ -944,7 +1000,9 @@ class GovernanceEngine:
             raise GovernanceError("AUDIT_TENANT_SCOPE_MISMATCH", 403)
         return replace(query, organization_id=actor.organization_id)
 
-    def _scope_organization(self, actor: GovernanceActor, organization_id: str | None) -> str | None:
+    def _scope_organization(
+        self, actor: GovernanceActor, organization_id: str | None
+    ) -> str | None:
         if actor.actor_type == "PLATFORM_ADMIN" and "admin.audit.read" in actor.permissions:
             return organization_id
         if actor.organization_id is None:
@@ -1094,24 +1152,28 @@ class GovernanceEngine:
         if export_format == "JSON":
             return json.dumps(rows, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         output = io.StringIO()
-        fields = list(rows[0].keys()) if rows else [
-            "id",
-            "organization_id",
-            "actor_type",
-            "actor_id",
-            "action",
-            "resource_type",
-            "resource_id",
-            "resource_version",
-            "result",
-            "reason_code",
-            "request_id",
-            "trace_id",
-            "retention_class",
-            "retention_policy_version",
-            "occurred_at",
-            "event_hash",
-        ]
+        fields = (
+            list(rows[0].keys())
+            if rows
+            else [
+                "id",
+                "organization_id",
+                "actor_type",
+                "actor_id",
+                "action",
+                "resource_type",
+                "resource_id",
+                "resource_version",
+                "result",
+                "reason_code",
+                "request_id",
+                "trace_id",
+                "retention_class",
+                "retention_policy_version",
+                "occurred_at",
+                "event_hash",
+            ]
+        )
         writer = csv.DictWriter(output, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
@@ -1207,12 +1269,17 @@ class InMemoryGovernanceRepository:
 
     def list_retention_policies(self) -> tuple[RetentionPolicy, ...]:
         return tuple(
-            sorted(self.retention_policies.values(), key=lambda item: (item.retention_class, item.version))
+            sorted(
+                self.retention_policies.values(),
+                key=lambda item: (item.retention_class, item.version),
+            )
         )
 
     def current_retention_policy(self, retention_class: RetentionClass) -> RetentionPolicy:
         values = [
-            item for item in self.retention_policies.values() if item.retention_class == retention_class
+            item
+            for item in self.retention_policies.values()
+            if item.retention_class == retention_class
         ]
         if not values:
             raise GovernanceError("RETENTION_POLICY_NOT_FOUND", 500)
@@ -1247,7 +1314,9 @@ class InMemoryGovernanceRepository:
         return self.export_jobs.get(job_id)
 
     def list_export_jobs(self) -> tuple[AuditExportJob, ...]:
-        return tuple(sorted(self.export_jobs.values(), key=lambda item: item.created_at, reverse=True))
+        return tuple(
+            sorted(self.export_jobs.values(), key=lambda item: item.created_at, reverse=True)
+        )
 
     def verify_hash_chains(self) -> bool:
         previous: dict[str, str | None] = {}
@@ -1328,13 +1397,13 @@ class Node64AdminAuditSink:
         self._engine = engine
         self._repository = repository
 
-    def emit(self, event: object) -> None:
-        event_type = str(getattr(event, "event_type"))
-        actor_id = str(getattr(event, "actor_id"))
-        target_type = str(getattr(event, "target_type"))
-        target_id = str(getattr(event, "target_id"))
-        reason = str(getattr(event, "reason"))
-        ticket_ref = str(getattr(event, "ticket_ref"))
+    def emit(self, event: AdminAuditEvent) -> None:
+        event_type = str(event.event_type)
+        actor_id = str(event.actor_id)
+        target_type = str(event.target_type)
+        target_id = str(event.target_id)
+        reason = str(event.reason)
+        ticket_ref = str(event.ticket_ref)
         safe_metadata = dict(getattr(event, "safe_metadata", ()))
         organization_id = safe_metadata.get("organization_id")
         if target_type == "ORGANIZATION":
@@ -1358,10 +1427,10 @@ class Node64AdminAuditSink:
                 "reason_hash": _hash_text(reason),
             },
             organization_id=organization_id,
-            occurred_at=str(getattr(event, "created_at")),
+            occurred_at=str(event.created_at),
         )
 
-    def recent(self) -> tuple[object, ...]:
+    def recent(self) -> tuple[AdminAuditEvent, ...]:
         from lumi_project_core.admin_console import AdminAuditEvent
 
         page = self._repository.search_audit(AuditQuery(limit=100))

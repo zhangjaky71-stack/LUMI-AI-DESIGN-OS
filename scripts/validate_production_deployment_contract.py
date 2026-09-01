@@ -10,15 +10,21 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 GATE_PATH = ROOT / "scripts" / "production-deployment-gate.py"
+CAPACITY_CONTRACT_PATH = ROOT / "scripts" / "validate_capacity_autoscaling_contract.py"
+MANIFEST_TEMPLATE_PATH = ROOT / "production" / "deployment" / "manifest-template.json"
 
 
-def load_gate() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("lumi_production_deployment_gate", GATE_PATH)
+def load_module(path: Path, name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise SystemExit("unable to import production deployment gate")
+        raise SystemExit(f"unable to import {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_gate() -> ModuleType:
+    return load_module(GATE_PATH, "lumi_production_deployment_gate")
 
 
 def require(condition: bool, message: str) -> None:
@@ -37,6 +43,7 @@ def clean_manifest(acceptance_path: str) -> dict[str, Any]:
             "version": "1.0.0-rc.1",
             "migration_head": "20260815_001",
             "staging_acceptance_decision_id": "acceptance-contract-001",
+            "staging_acceptance_run_id": "123",
             "staging_acceptance_path": acceptance_path,
         },
         "aws": {
@@ -52,7 +59,14 @@ def clean_manifest(acceptance_path: str) -> dict[str, Any]:
         },
         "images": {
             name: f"123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/lumi-{name}@{digest}"
-            for name in ["api", "agent-runtime", "model-gateway", "tool-gateway", "worker-media", "sandbox-runtime"]
+            for name in [
+                "api",
+                "agent-runtime",
+                "model-gateway",
+                "tool-gateway",
+                "worker-media",
+                "sandbox-runtime",
+            ]
         },
         "rollout": {
             "public_api_strategy": "ECS_CANARY",
@@ -61,16 +75,23 @@ def clean_manifest(acceptance_path: str) -> dict[str, Any]:
             "public_api_alarm_rollback": True,
             "internal_service_strategy": "ROLLING_CIRCUIT_BREAKER",
         },
+        "recovery": {
+            "database_pitr_max_rpo_minutes": 5,
+            "database_pitr_max_rto_minutes": 60,
+            "object_version_recovery_required": True,
+        },
         "first_day_limits": {
             "max_org_concurrent_agent_runs": 4,
             "max_org_concurrent_generations": 4,
             "max_org_concurrent_video_jobs": 1,
-            "daily_provider_spend_usd": 250,
+            "daily_provider_spend_usd": 100,
             "invite_rate_per_hour": 20,
         },
         "rollback": {
             "previous_deployment_id": "prod-previous-001",
-            "previous_manifest_ref": "reports/production-deployments/prod-previous-001/manifest.json",
+            "previous_manifest_ref": (
+                "reports/production-deployments/prod-previous-001/manifest.json"
+            ),
             "database_backward_compatible": True,
         },
         "external_dependencies": {
@@ -89,73 +110,293 @@ def clean_manifest(acceptance_path: str) -> dict[str, Any]:
     }
 
 
-def clean_decision() -> dict[str, Any]:
+def clean_decision(images: dict[str, str]) -> dict[str, Any]:
+    git_sha = "c" * 40
+    image_set_ref = (
+        "https://github.com/example/lumi/actions/runs/456"
+        f"#artifact=runtime-image-set-{git_sha}/container-image-set.json"
+    )
     return {
         "schema_version": 1,
         "decision_id": "acceptance-contract-001",
         "passed": True,
         "release_candidate": {
-            "git_sha": "c" * 40,
+            "git_sha": git_sha,
             "version": "1.0.0-rc.1",
             "migration_head": "20260815_001",
+            "container_image_set_ref": image_set_ref,
+        },
+        "runtime_image_binding": {
+            "status": "PASS",
+            "git_sha": git_sha,
+            "version": "1.0.0-rc.1",
+            "build_run_id": "456",
+            "container_image_set_ref": image_set_ref,
+            "attestation_report_sha256": "a" * 64,
+            "attestation_source_digest": git_sha,
+            "runtime_count": 6,
+        },
+        "container_image_set": {
+            "images": copy.deepcopy(images),
+            "provenance": {},
         },
     }
 
 
 def main() -> int:
+    require(CAPACITY_CONTRACT_PATH.is_file(), "capacity autoscaling contract missing")
+    capacity_contract = load_module(
+        CAPACITY_CONTRACT_PATH,
+        "lumi_capacity_autoscaling_contract",
+    )
+    capacity_contract.validate_repo()
+
     gate = load_gate()
-    acceptance_path = Path("reports/staging-acceptance/contract/decision.json")
+    acceptance_path = Path(gate.CANONICAL_STAGING_ACCEPTANCE_PATH)
     clean = clean_manifest(acceptance_path.as_posix())
-    decision = clean_decision()
+    decision = clean_decision(clean["images"])
+
+    template = json.loads(MANIFEST_TEMPLATE_PATH.read_text(encoding="utf-8"))
+    require(
+        template["release_candidate"]["staging_acceptance_run_id"] == "PENDING",
+        "production manifest template must require explicit NODE-71 run identity",
+    )
+    require(
+        template["release_candidate"]["staging_acceptance_path"]
+        == gate.CANONICAL_STAGING_ACCEPTANCE_PATH.as_posix(),
+        "production manifest template must use the canonical downloaded NODE-71 decision path",
+    )
+    require(
+        template["first_day_limits"]["daily_provider_spend_usd"] == 100,
+        "production manifest template must encode the $100 provider hard stop",
+    )
+    require(
+        template["recovery"]
+        == {
+            "database_pitr_max_rpo_minutes": 5,
+            "database_pitr_max_rto_minutes": 60,
+            "object_version_recovery_required": True,
+        },
+        "production manifest template must encode the canonical launch recovery policy",
+    )
+
+    gate_source = GATE_PATH.read_text(encoding="utf-8")
+    for marker in (
+        'parser.add_argument("--acceptance-provenance", required=True)',
+        'parser.add_argument("--acceptance-run-id", required=True)',
+        'parser.add_argument("--repository", required=True)',
+        "_validate_node71_artifact(",
+        "_validate_runtime_image_seal(",
+        'decision.get("runtime_image_binding")',
+        'binding.get("attestation_source_digest") == manifest_sha',
+        'binding.get("runtime_count") == 6',
+        "production manifest staging_acceptance_run_id differs from requested NODE-71 run",
+    ):
+        require(marker in gate_source, f"production gate missing NODE-71 artifact/runtime-attestation binding marker: {marker}")
+
     result = gate.evaluate(clean, decision, acceptance_path)
     require(result["passed"] is True, "clean contract fixture must pass")
+    require(
+        result["runtime_image_binding"] == decision["runtime_image_binding"],
+        "production gate result must retain exact NODE-71 runtime-image seal",
+    )
+
+    invalid_run_id = copy.deepcopy(clean)
+    invalid_run_id["release_candidate"]["staging_acceptance_run_id"] = "PENDING"
+    require(
+        gate.evaluate(invalid_run_id, decision, acceptance_path)["passed"] is False,
+        "missing NODE-71 run id must block",
+    )
+
+    run_id_zero = copy.deepcopy(clean)
+    run_id_zero["release_candidate"]["staging_acceptance_run_id"] = "0"
+    require(
+        gate.evaluate(run_id_zero, decision, acceptance_path)["passed"] is False,
+        "zero NODE-71 run id must block",
+    )
+
+    path_swap = copy.deepcopy(clean)
+    path_swap["release_candidate"]["staging_acceptance_path"] = (
+        "reports/staging-acceptance/manual/decision.json"
+    )
+    require(
+        gate.evaluate(path_swap, decision, acceptance_path)["passed"] is False,
+        "manual NODE-71 decision path must block",
+    )
 
     not_accepted = copy.deepcopy(decision)
     not_accepted["passed"] = False
-    require(gate.evaluate(clean, not_accepted, acceptance_path)["passed"] is False, "NODE-71 passed=false must block")
+    require(
+        gate.evaluate(clean, not_accepted, acceptance_path)["passed"] is False,
+        "NODE-71 passed=false must block",
+    )
 
     sha_swap = copy.deepcopy(decision)
     sha_swap["release_candidate"]["git_sha"] = "e" * 40
-    require(gate.evaluate(clean, sha_swap, acceptance_path)["passed"] is False, "accepted SHA mismatch must block")
+    require(
+        gate.evaluate(clean, sha_swap, acceptance_path)["passed"] is False,
+        "accepted SHA mismatch must block",
+    )
 
     migration_swap = copy.deepcopy(clean)
     migration_swap["release_candidate"]["migration_head"] = "different-head"
-    require(gate.evaluate(migration_swap, decision, acceptance_path)["passed"] is False, "migration-head mismatch must block")
+    require(
+        gate.evaluate(migration_swap, decision, acceptance_path)["passed"] is False,
+        "migration-head mismatch must block",
+    )
+
+    missing_runtime_seal = copy.deepcopy(decision)
+    missing_runtime_seal.pop("runtime_image_binding")
+    require(
+        gate.evaluate(clean, missing_runtime_seal, acceptance_path)["passed"] is False,
+        "missing NODE-71 runtime-image attestation seal must block",
+    )
+
+    runtime_source_swap = copy.deepcopy(decision)
+    runtime_source_swap["runtime_image_binding"]["attestation_source_digest"] = "e" * 40
+    require(
+        gate.evaluate(clean, runtime_source_swap, acceptance_path)["passed"] is False,
+        "runtime-image attestation source SHA mismatch must block",
+    )
+
+    runtime_build_run_zero = copy.deepcopy(decision)
+    runtime_build_run_zero["runtime_image_binding"]["build_run_id"] = "0"
+    require(
+        gate.evaluate(clean, runtime_build_run_zero, acceptance_path)["passed"] is False,
+        "invalid runtime-image build run id must block",
+    )
+
+    runtime_hash_invalid = copy.deepcopy(decision)
+    runtime_hash_invalid["runtime_image_binding"]["attestation_report_sha256"] = "invalid"
+    require(
+        gate.evaluate(clean, runtime_hash_invalid, acceptance_path)["passed"] is False,
+        "invalid runtime-image attestation report hash must block",
+    )
+
+    runtime_ref_swap = copy.deepcopy(decision)
+    runtime_ref_swap["runtime_image_binding"]["container_image_set_ref"] = "other"
+    require(
+        gate.evaluate(clean, runtime_ref_swap, acceptance_path)["passed"] is False,
+        "runtime-image artifact ref mismatch must block",
+    )
+
+    runtime_extra_field = copy.deepcopy(decision)
+    runtime_extra_field["runtime_image_binding"]["untrusted"] = True
+    require(
+        gate.evaluate(clean, runtime_extra_field, acceptance_path)["passed"] is False,
+        "runtime-image seal unexpected fields must block",
+    )
 
     mutable_image = copy.deepcopy(clean)
     mutable_image["images"]["api"] = "example.invalid/lumi-api:latest"
-    require(gate.evaluate(mutable_image, decision, acceptance_path)["passed"] is False, "mutable image tag must block")
+    require(
+        gate.evaluate(mutable_image, decision, acceptance_path)["passed"] is False,
+        "mutable image tag must block",
+    )
+
+    accepted_image_swap = copy.deepcopy(clean)
+    accepted_image_swap["images"]["model-gateway"] = (
+        "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/"
+        "lumi-model-gateway@sha256:" + "e" * 64
+    )
+    require(
+        gate.evaluate(accepted_image_swap, decision, acceptance_path)["passed"] is False,
+        "production must not replace a NODE-71 accepted image with another valid digest",
+    )
 
     rollout_swap = copy.deepcopy(clean)
     rollout_swap["rollout"]["public_api_canary_percent"] = 100
-    require(gate.evaluate(rollout_swap, decision, acceptance_path)["passed"] is False, "all-at-once public rollout must block")
+    require(
+        gate.evaluate(rollout_swap, decision, acceptance_path)["passed"] is False,
+        "all-at-once public rollout must block",
+    )
+
+    relaxed_rpo = copy.deepcopy(clean)
+    relaxed_rpo["recovery"]["database_pitr_max_rpo_minutes"] = 30
+    require(
+        gate.evaluate(relaxed_rpo, decision, acceptance_path)["passed"] is False,
+        "release must not relax the 5-minute launch RPO policy",
+    )
+
+    relaxed_rto = copy.deepcopy(clean)
+    relaxed_rto["recovery"]["database_pitr_max_rto_minutes"] = 240
+    require(
+        gate.evaluate(relaxed_rto, decision, acceptance_path)["passed"] is False,
+        "release must not relax the 60-minute launch RTO policy",
+    )
+
+    object_recovery_disabled = copy.deepcopy(clean)
+    object_recovery_disabled["recovery"]["object_version_recovery_required"] = False
+    require(
+        gate.evaluate(object_recovery_disabled, decision, acceptance_path)["passed"] is False,
+        "release must not disable object version recovery rehearsal",
+    )
+
+    provider_spend_above_hard_stop = copy.deepcopy(clean)
+    provider_spend_above_hard_stop["first_day_limits"]["daily_provider_spend_usd"] = 100.01
+    require(
+        gate.evaluate(provider_spend_above_hard_stop, decision, acceptance_path)["passed"]
+        is False,
+        "production provider spend limit above $100 must block",
+    )
 
     no_rollback = copy.deepcopy(clean)
     no_rollback["rollback"]["database_backward_compatible"] = False
-    require(gate.evaluate(no_rollback, decision, acceptance_path)["passed"] is False, "unproven DB rollback compatibility must block")
+    require(
+        gate.evaluate(no_rollback, decision, acceptance_path)["passed"] is False,
+        "unproven DB rollback compatibility must block",
+    )
 
     external_pending = copy.deepcopy(clean)
     external_pending["external_dependencies"]["dns"] = "PENDING"
-    require(gate.evaluate(external_pending, decision, acceptance_path)["passed"] is False, "pending core external dependency must block")
+    require(
+        gate.evaluate(external_pending, decision, acceptance_path)["passed"] is False,
+        "pending core external dependency must block",
+    )
 
     missing_approval = copy.deepcopy(clean)
     missing_approval["approvals"]["security"] = "PENDING"
-    require(gate.evaluate(missing_approval, decision, acceptance_path)["passed"] is False, "missing security approval must block")
+    require(
+        gate.evaluate(missing_approval, decision, acceptance_path)["passed"] is False,
+        "missing security approval must block",
+    )
 
-    print(json.dumps({
-        "status": "PASS",
-        "clean_gate_id": result["gate_id"],
-        "drills": {
-            "node71_not_passed_blocked": True,
-            "accepted_sha_swap_blocked": True,
-            "migration_swap_blocked": True,
-            "mutable_image_blocked": True,
-            "all_at_once_rollout_blocked": True,
-            "db_rollback_unproven_blocked": True,
-            "external_pending_blocked": True,
-            "missing_approval_blocked": True
-        }
-    }, indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "status": "PASS",
+                "clean_gate_id": result["gate_id"],
+                "drills": {
+                    "node71_run_id_missing_blocked": True,
+                    "node71_run_id_zero_blocked": True,
+                    "manual_node71_path_blocked": True,
+                    "node71_artifact_cli_binding_required": True,
+                    "node71_not_passed_blocked": True,
+                    "accepted_sha_swap_blocked": True,
+                    "migration_swap_blocked": True,
+                    "runtime_attestation_seal_missing_blocked": True,
+                    "runtime_attestation_source_swap_blocked": True,
+                    "runtime_build_run_invalid_blocked": True,
+                    "runtime_attestation_hash_invalid_blocked": True,
+                    "runtime_artifact_ref_swap_blocked": True,
+                    "runtime_seal_extra_field_blocked": True,
+                    "mutable_image_blocked": True,
+                    "accepted_image_swap_blocked": True,
+                    "all_at_once_rollout_blocked": True,
+                    "recovery_rpo_relaxation_blocked": True,
+                    "recovery_rto_relaxation_blocked": True,
+                    "object_recovery_disable_blocked": True,
+                    "provider_spend_above_100_blocked": True,
+                    "db_rollback_unproven_blocked": True,
+                    "external_pending_blocked": True,
+                    "missing_approval_blocked": True,
+                    "unmeasured_autoscaling_blocked": True
+                }
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
     return 0
 
 

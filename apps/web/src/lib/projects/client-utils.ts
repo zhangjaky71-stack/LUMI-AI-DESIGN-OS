@@ -5,7 +5,9 @@ import type {
   StagedReference,
 } from "./types";
 
-export function projectListQueryKey(filters: ProjectListFilters): readonly (string | number | null)[] {
+export function projectListQueryKey(
+  filters: ProjectListFilters,
+): readonly (string | number | null)[] {
   return [
     "projects",
     filters.query,

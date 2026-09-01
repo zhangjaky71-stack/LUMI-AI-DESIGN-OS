@@ -29,9 +29,7 @@ def make_app():
         "owner": CollaborationActor("owner", ORG, "Owner"),
         "editor": CollaborationActor("editor", ORG, "Editor"),
     }
-    permissions = {
-        key: {PROJECT: frozenset({"VIEW", "COMMENT", "EDIT"})} for key in actors
-    }
+    permissions = {key: {PROJECT: frozenset({"VIEW", "COMMENT", "EDIT"})} for key in actors}
     auth = StaticCollaborationAuthorization(permissions, {key: ORG for key in actors})
     repo = InMemoryCollaborationRepository()
     presence = InMemoryPresenceStore()

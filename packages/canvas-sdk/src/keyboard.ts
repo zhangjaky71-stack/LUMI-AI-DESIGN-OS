@@ -23,7 +23,9 @@ export interface KeyboardLikeEvent {
   readonly target: EventTarget | null;
 }
 
-export function canvasKeyboardAction(event: KeyboardLikeEvent): CanvasKeyboardAction | null {
+export function canvasKeyboardAction(
+  event: KeyboardLikeEvent,
+): CanvasKeyboardAction | null {
   if (isTextInputTarget(event.target)) return null;
   const command = Boolean(event.metaKey || event.ctrlKey);
   const key = event.key.toLowerCase();

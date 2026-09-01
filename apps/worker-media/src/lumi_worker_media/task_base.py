@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Any
+from contextlib import suppress
+from typing import Any, cast
 from uuid import UUID
 
 from celery import Task
@@ -35,11 +36,9 @@ class RuntimeTask(Task):
         kwargs: dict[str, Any],
         einfo: Any,
     ) -> None:
-        try:
+        # Failure reporting must never mask Celery's original failure state.
+        with suppress(Exception):
             _record_final_failure(self, exc=exc, task_id=task_id, args=args, kwargs=kwargs)
-        except Exception:
-            # Failure reporting must never mask Celery's original failure state.
-            pass
         super().on_failure(exc, task_id, args, kwargs, einfo)
 
 
@@ -99,16 +98,15 @@ def _record_final_failure(
         )
     broker_url = os.getenv("RABBITMQ_URL")
     if broker_url:
-        with Connection(broker_url) as connection:
-            with connection.channel() as channel:
-                Producer(channel, serializer="json").publish(
-                    dlq_body,
-                    exchange=DEAD_LETTER_EXCHANGE,
-                    routing_key=f"{source_queue}.dead",
-                    serializer="json",
-                    declare=[DEAD_LETTER_EXCHANGE],
-                    retry=True,
-                )
+        with Connection(broker_url) as connection, cast(Any, connection.channel()) as channel:
+            Producer(channel, serializer="json").publish(
+                dlq_body,
+                exchange=DEAD_LETTER_EXCHANGE,
+                routing_key=f"{source_queue}.dead",
+                serializer="json",
+                declare=[DEAD_LETTER_EXCHANGE],
+                retry=True,
+            )
 
 
 def _database_dsn() -> str | None:

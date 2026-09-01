@@ -22,21 +22,29 @@ export function buildConstraintSnapshot(
 ): ConstraintSnapshot {
   const resolved = resolveConstraints(document, constraints);
   const documentVersion =
-    typeof document.metadata.document_version === "number" ? document.metadata.document_version : 0;
+    typeof document.metadata.document_version === "number"
+      ? document.metadata.document_version
+      : 0;
   return {
     document_id: document.document_id,
     document_version: documentVersion,
-    effective_constraints: [...resolved.constraints].sort((a, b) => a.id.localeCompare(b.id)),
+    effective_constraints: [...resolved.constraints].sort((a, b) =>
+      a.id.localeCompare(b.id),
+    ),
     conflicts: [...resolved.conflicts],
     stale_constraint_ids: [...resolved.stale_constraint_ids],
   };
 }
 
-export function canonicalConstraintSnapshot(snapshot: ConstraintSnapshot): string {
+export function canonicalConstraintSnapshot(
+  snapshot: ConstraintSnapshot,
+): string {
   return canonicalStringify(snapshot);
 }
 
-export async function hashConstraintSnapshot(snapshot: ConstraintSnapshot): Promise<string> {
+export async function hashConstraintSnapshot(
+  snapshot: ConstraintSnapshot,
+): Promise<string> {
   return canonicalSha256(snapshot);
 }
 
@@ -53,11 +61,13 @@ export function summarizeConstraintsForAgent(
   document: DesignDocument,
   constraints: readonly DesignConstraint[],
 ): readonly CompactConstraintSummaryItem[] {
-  return resolveConstraints(document, constraints).constraints.map((constraint) => ({
-    id: constraint.id,
-    type: constraint.type,
-    severity: constraint.severity,
-    node_ids: [...(constraint.scope.node_ids ?? [])],
-    parameters: constraint.parameters,
-  }));
+  return resolveConstraints(document, constraints).constraints.map(
+    (constraint) => ({
+      id: constraint.id,
+      type: constraint.type,
+      severity: constraint.severity,
+      node_ids: [...(constraint.scope.node_ids ?? [])],
+      parameters: constraint.parameters,
+    }),
+  );
 }

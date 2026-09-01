@@ -1,4 +1,8 @@
-import type { ExportFormat, ExportJobStatus, ExportSpec } from "@lumi/artifact-sdk";
+import type {
+  ExportFormat,
+  ExportJobStatus,
+  ExportSpec,
+} from "@lumi/artifact-sdk";
 import { LumiApiClient, LumiApiError } from "@/lib/app-shell/api-client";
 import { exportProblem } from "./contracts";
 import type {
@@ -10,11 +14,21 @@ import type {
 } from "./types";
 
 export interface ExportGateway {
-  loadWorkspace(projectId: string, signal?: AbortSignal): Promise<ExportWorkspaceSnapshot>;
+  loadWorkspace(
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<ExportWorkspaceSnapshot>;
   createExport(spec: ExportSpec, signal?: AbortSignal): Promise<ExportJobView>;
   getExport(exportJobId: string, signal?: AbortSignal): Promise<ExportJobView>;
-  getDownload(exportJobId: string, fileId: string, signal?: AbortSignal): Promise<ExportDownloadLease>;
-  listHistory(projectId: string, signal?: AbortSignal): Promise<readonly ExportHistoryItem[]>;
+  getDownload(
+    exportJobId: string,
+    fileId: string,
+    signal?: AbortSignal,
+  ): Promise<ExportDownloadLease>;
+  listHistory(
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<readonly ExportHistoryItem[]>;
 }
 
 function request(signal?: AbortSignal): { signal?: AbortSignal } {
@@ -24,8 +38,14 @@ function request(signal?: AbortSignal): { signal?: AbortSignal } {
 function mapApiError(error: unknown): never {
   if (error instanceof LumiApiError) {
     const requestId = error.problem.request_id ?? null;
-    const safe = exportProblem(error.problem.code, error.problem.status, requestId);
-    safe.message = requestId ? `${error.problem.code}::request:${requestId}` : error.problem.code;
+    const safe = exportProblem(
+      error.problem.code,
+      error.problem.status,
+      requestId,
+    );
+    safe.message = requestId
+      ? `${error.problem.code}::request:${requestId}`
+      : error.problem.code;
     throw safe;
   }
   throw error;
@@ -33,11 +53,16 @@ function mapApiError(error: unknown): never {
 
 export class HttpExportGateway implements ExportGateway {
   readonly #api: LumiApiClient;
-  constructor(api = new LumiApiClient()) { this.#api = api; }
+  constructor(api = new LumiApiClient()) {
+    this.#api = api;
+  }
 
   loadWorkspace(projectId: string, signal?: AbortSignal) {
     return this.#api
-      .get<ExportWorkspaceSnapshot>(`/projects/${encodeURIComponent(projectId)}/exports`, request(signal))
+      .get<ExportWorkspaceSnapshot>(
+        `/projects/${encodeURIComponent(projectId)}/exports`,
+        request(signal),
+      )
       .catch(mapApiError);
   }
 
@@ -52,23 +77,27 @@ export class HttpExportGateway implements ExportGateway {
 
   getExport(exportJobId: string, signal?: AbortSignal) {
     return this.#api
-      .get<ExportJobView>(`/exports/${encodeURIComponent(exportJobId)}`, request(signal))
-      .catch(mapApiError);
-  }
-
-  getDownload(exportJobId: string, fileId: string, signal?: AbortSignal) {
-    return this.#api
-      .post<ExportDownloadLease, { expires_seconds: number }>(
-        `/exports/${encodeURIComponent(exportJobId)}/files/${encodeURIComponent(fileId)}:download`,
-        { expires_seconds: 300 },
+      .get<ExportJobView>(
+        `/exports/${encodeURIComponent(exportJobId)}`,
         request(signal),
       )
       .catch(mapApiError);
   }
 
+  getDownload(exportJobId: string, fileId: string, signal?: AbortSignal) {
+    return this.#api
+      .post<
+        ExportDownloadLease,
+        { expires_seconds: number }
+      >(`/exports/${encodeURIComponent(exportJobId)}/files/${encodeURIComponent(fileId)}:download`, { expires_seconds: 300 }, request(signal))
+      .catch(mapApiError);
+  }
+
   async listHistory(projectId: string, signal?: AbortSignal) {
     try {
-      const response = await this.#api.get<{ items: readonly ExportHistoryItem[] }>(
+      const response = await this.#api.get<{
+        items: readonly ExportHistoryItem[];
+      }>(
         `/projects/${encodeURIComponent(projectId)}/exports/history`,
         request(signal),
       );
@@ -79,7 +108,9 @@ export class HttpExportGateway implements ExportGateway {
   }
 }
 
-function clone<T>(value: T): T { return structuredClone(value); }
+function clone<T>(value: T): T {
+  return structuredClone(value);
+}
 
 export class DeterministicExportGateway implements ExportGateway {
   readonly #workspace: ExportWorkspaceSnapshot;
@@ -106,16 +137,25 @@ export class DeterministicExportGateway implements ExportGateway {
 
   async loadWorkspace(projectId: string, signal?: AbortSignal) {
     this.#assert(signal);
-    if (projectId !== this.#workspace.project_id) throw exportProblem("EXPORT_PROJECT_NOT_FOUND", 404);
-    return clone({ ...this.#workspace, history: await this.listHistory(projectId, signal) });
+    if (projectId !== this.#workspace.project_id)
+      throw exportProblem("EXPORT_PROJECT_NOT_FOUND", 404);
+    return clone({
+      ...this.#workspace,
+      history: await this.listHistory(projectId, signal),
+    });
   }
 
   async createExport(spec: ExportSpec, signal?: AbortSignal) {
     this.#assert(signal);
-    if (/^(latest|head|current)$/i.test(spec.artifact_version_id) || /^(latest|head|current)$/i.test(spec.design_document_version_id)) {
+    if (
+      /^(latest|head|current)$/i.test(spec.artifact_version_id) ||
+      /^(latest|head|current)$/i.test(spec.design_document_version_id)
+    ) {
       throw exportProblem("EXPORT_VERSION_MUST_BE_EXACT");
     }
-    const existing = [...this.#specs.entries()].find(([, value]) => value.operation_id === spec.operation_id);
+    const existing = [...this.#specs.entries()].find(
+      ([, value]) => value.operation_id === spec.operation_id,
+    );
     if (existing) return clone(this.#jobs.get(existing[0])!);
     const id = `export-job-${++this.#counter}`;
     const job: ExportJobView = {
@@ -136,7 +176,12 @@ export class DeterministicExportGateway implements ExportGateway {
     this.#assert(signal);
     const current = this.#jobs.get(exportJobId);
     if (!current) throw exportProblem("EXPORT_JOB_NOT_FOUND", 404);
-    if (current.status === "READY" || current.status === "FAILED" || current.status === "EXPIRED") return clone(current);
+    if (
+      current.status === "READY" ||
+      current.status === "FAILED" ||
+      current.status === "EXPIRED"
+    )
+      return clone(current);
     const next = this.#advance(current);
     this.#jobs.set(exportJobId, next);
     return clone(next);
@@ -145,20 +190,25 @@ export class DeterministicExportGateway implements ExportGateway {
   async getDownload(exportJobId: string, fileId: string, signal?: AbortSignal) {
     this.#assert(signal);
     const job = this.#jobs.get(exportJobId);
-    if (!job || job.status !== "READY") throw exportProblem("EXPORT_DOWNLOAD_NOT_READY", 409);
+    if (!job || job.status !== "READY")
+      throw exportProblem("EXPORT_DOWNLOAD_NOT_READY", 409);
     const file = job.files.find((item) => item.file_id === fileId);
     if (!file) throw exportProblem("EXPORT_FILE_NOT_FOUND", 404);
     this.#downloadCounter += 1;
     return {
       url: `https://signed.invalid/${encodeURIComponent(file.filename)}?lease=${this.#downloadCounter}&ttl=300`,
-      expires_at: new Date(Date.parse("2030-01-01T00:00:00.000Z") + this.#downloadCounter * 300_000).toISOString(),
+      expires_at: new Date(
+        Date.parse("2030-01-01T00:00:00.000Z") +
+          this.#downloadCounter * 300_000,
+      ).toISOString(),
       filename: file.filename,
     };
   }
 
   async listHistory(projectId: string, signal?: AbortSignal) {
     this.#assert(signal);
-    if (projectId !== this.#workspace.project_id) throw exportProblem("EXPORT_PROJECT_NOT_FOUND", 404);
+    if (projectId !== this.#workspace.project_id)
+      throw exportProblem("EXPORT_PROJECT_NOT_FOUND", 404);
     const generated: ExportHistoryItem[] = [];
     for (const job of this.#jobs.values()) {
       if (!job.export_job_id.startsWith("export-job-")) continue;
@@ -177,7 +227,10 @@ export class DeterministicExportGateway implements ExportGateway {
   }
 
   #advance(job: ExportJobView): ExportJobView {
-    const next: Record<ExportJobStatus, { status: ExportJobStatus; progress: number }> = {
+    const next: Record<
+      ExportJobStatus,
+      { status: ExportJobStatus; progress: number }
+    > = {
       PENDING: { status: "RENDERING", progress: 25 },
       RENDERING: { status: "PACKAGING", progress: 60 },
       PACKAGING: { status: "VALIDATING", progress: 85 },
@@ -190,16 +243,27 @@ export class DeterministicExportGateway implements ExportGateway {
     if (state.status !== "READY") return { ...job, ...state };
     const spec = this.#specs.get(job.export_job_id);
     const format: ExportFormat = spec?.variants[0]?.format ?? "PNG";
-    const extension = format === "LUMI_PACKAGE" ? "lumi.zip" : format === "JPEG" ? "jpg" : format.toLowerCase();
+    const extension =
+      format === "LUMI_PACKAGE"
+        ? "lumi.zip"
+        : format === "JPEG"
+          ? "jpg"
+          : format.toLowerCase();
     const mime: Record<ExportFormat, string> = {
-      PNG: "image/png", JPEG: "image/jpeg", WEBP: "image/webp", SVG: "image/svg+xml",
-      PDF: "application/pdf", ZIP: "application/zip", LUMI_PACKAGE: "application/zip",
+      PNG: "image/png",
+      JPEG: "image/jpeg",
+      WEBP: "image/webp",
+      SVG: "image/svg+xml",
+      PDF: "application/pdf",
+      ZIP: "application/zip",
+      LUMI_PACKAGE: "application/zip",
     };
     const file = {
       file_id: `${job.export_job_id}-file-1`,
       filename: `summer-launch.${extension}`,
       mime_type: mime[format],
-      checksum_sha256: "9e1d77c903e54e44e7d571d9a98e5bf4f6942962880d1d6271b356f05284d934",
+      checksum_sha256:
+        "9e1d77c903e54e44e7d571d9a98e5bf4f6942962880d1d6271b356f05284d934",
       size_bytes: format === "PDF" ? 842331 : 428116,
     };
     return { ...job, ...state, files: [file] };
@@ -211,6 +275,7 @@ export class DeterministicExportGateway implements ExportGateway {
 }
 
 export function createExportGateway(bootstrap: ExportBootstrap): ExportGateway {
-  if (bootstrap.mode === "DETERMINISTIC" && bootstrap.workspace) return new DeterministicExportGateway(bootstrap.workspace);
+  if (bootstrap.mode === "DETERMINISTIC" && bootstrap.workspace)
+    return new DeterministicExportGateway(bootstrap.workspace);
   return new HttpExportGateway();
 }

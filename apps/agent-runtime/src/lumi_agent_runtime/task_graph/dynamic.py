@@ -32,15 +32,16 @@ def expand_dynamic_task(
     if parent.dynamic_depth >= 4:
         raise TaskGraphExpansionError("TASK_DYNAMIC_DEPTH_LIMIT")
     siblings = [
-        item
-        for item in store.tasks(parent.graph_id)
-        if item.parent_task_id == parent.task_id
+        item for item in store.tasks(parent.graph_id) if item.parent_task_id == parent.task_id
     ]
     if len(siblings) >= parent.dynamic_child_limit:
         raise TaskGraphExpansionError("TASK_DYNAMIC_CHILD_LIMIT")
-    if budget_limit_usd is not None and parent.budget_limit_usd is not None:
-        if Decimal(budget_limit_usd) > Decimal(parent.budget_limit_usd):
-            raise TaskGraphBudgetError("TASK_DYNAMIC_BUDGET_ESCALATION")
+    if (
+        budget_limit_usd is not None
+        and parent.budget_limit_usd is not None
+        and Decimal(budget_limit_usd) > Decimal(parent.budget_limit_usd)
+    ):
+        raise TaskGraphBudgetError("TASK_DYNAMIC_BUDGET_ESCALATION")
     if (
         concurrency_limit is not None
         and parent.concurrency_limit is not None

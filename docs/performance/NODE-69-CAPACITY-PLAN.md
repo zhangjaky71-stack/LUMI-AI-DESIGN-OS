@@ -7,6 +7,18 @@
 
 No production component scales from CPU alone. Scale decisions combine service pressure, latency/age and resource saturation. Paid-provider latency/capacity is tracked separately from LUMI platform capacity.
 
+## Current release IaC mode — fail closed before measurement
+
+Until production-like Profile G produces measured safe concurrency **and** the selected scale signal has a production emitter, Staging and Production run exact fixed ECS capacity:
+
+- `autoscaling_enabled = false` for all seven ECS services;
+- `desired_count == min_capacity == max_capacity` per service;
+- no unproven `LUMI/Capacity` custom metric name or target is declared by the environment;
+- Terraform owns `desired_count` and does not ignore replica-count drift;
+- App Auto Scaling target-tracking resources are created only from the gated `autoscaled_services` set, which the current release contract requires to remain empty.
+
+This is not a claim that fixed capacity is sufficient for launch. It prevents Terraform from pretending that a queue/concurrency metric exists before NODE-69 has measured the threshold and a real emitter has been deployed. Enabling dynamic scaling is a future release-contract change that must carry Profile G/component evidence plus an executable metric-emitter contract.
+
 | Component | Baseline instance | Safe concurrency | Primary bottleneck | Scale signal |
 |---|---|---|---|---|
 | API | NODE-72 deployment size TBD | **PENDING load evidence** | event loop / DB pool / CPU | p95 latency + inflight + CPU + DB-pool pressure |
@@ -69,4 +81,4 @@ NODE-72 freezes provider/region/instance prices. NODE-69 supplies measured safe 
 
 ## Release gate
 
-This plan is structurally complete, but every `PENDING` safe-concurrency value is a release blocker until production-like Profile G and component-specific profiles have actually run. A CI-local mock smoke is only harness validation, not launch capacity evidence.
+This plan is structurally complete, but every `PENDING` safe-concurrency value is a release blocker until production-like Profile G and component-specific profiles have actually run. A CI-local mock smoke is only harness validation, not launch capacity evidence. Dynamic target tracking must remain disabled until the corresponding measured signal and production emitter are both proven.

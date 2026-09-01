@@ -1,16 +1,33 @@
-import { canonicalSha256, getDocumentVersion, type DesignOperation } from "../../design-ir/src/index";
+import {
+  canonicalSha256,
+  getDocumentVersion,
+  type DesignOperation,
+} from "../../design-ir/src/index";
 import type { QualityViolation } from "../../quality-engine/src/index";
 import type { RepairCostEstimatorPort } from "./ports";
-import type { AutoRepairPolicy, RepairActionKind, RepairPlan, RepairPlanItem, RepairSource } from "./types";
+import type {
+  AutoRepairPolicy,
+  RepairActionKind,
+  RepairPlan,
+  RepairPlanItem,
+  RepairSource,
+} from "./types";
 
 function severityRank(value: QualityViolation["severity"]): number {
   return { HARD: 0, MAJOR: 1, MINOR: 2, ADVISORY: 3 }[value];
 }
 
 function actionFor(violation: QualityViolation): RepairActionKind {
-  if (violation.dimension === "IMAGE_DEFECTS" || violation.dimension === "COMPOSITION" || violation.dimension === "VISUAL_HIERARCHY") return "LOCAL_IMAGE_EDIT";
-  if (violation.dimension === "IDENTITY_CONSISTENCY") return "REGENERATE_ELEMENT";
-  if (violation.dimension === "RESOLUTION_EXPORT_READINESS") return "RESOLUTION_UPSCALE";
+  if (
+    violation.dimension === "IMAGE_DEFECTS" ||
+    violation.dimension === "COMPOSITION" ||
+    violation.dimension === "VISUAL_HIERARCHY"
+  )
+    return "LOCAL_IMAGE_EDIT";
+  if (violation.dimension === "IDENTITY_CONSISTENCY")
+    return "REGENERATE_ELEMENT";
+  if (violation.dimension === "RESOLUTION_EXPORT_READINESS")
+    return "RESOLUTION_UPSCALE";
   return "MANUAL_REVIEW";
 }
 
@@ -36,8 +53,12 @@ function expectedGain(kind: RepairActionKind): number {
   }[kind];
 }
 
-function operationTargets(operations: readonly DesignOperation[]): readonly string[] {
-  return [...new Set(operations.flatMap((item) => [...item.target_ids]))].sort();
+function operationTargets(
+  operations: readonly DesignOperation[],
+): readonly string[] {
+  return [
+    ...new Set(operations.flatMap((item) => [...item.target_ids])),
+  ].sort();
 }
 
 export async function buildRepairPlan(input: {
@@ -51,9 +72,18 @@ export async function buildRepairPlan(input: {
   const { source } = input;
   const items: RepairPlanItem[] = [];
   const version = getDocumentVersion(source.subject.design_document);
-  const operations = source.quality.repair_actions.filter((item) => item.expected_document_version === version);
+  const operations = source.quality.repair_actions.filter(
+    (item) => item.expected_document_version === version,
+  );
   if (operations.length) {
-    const fingerprint = await canonicalSha256({ kind: "STRUCTURAL_DESIGN_OP", operations: operations.map((item) => ({ type: item.type, target_ids: item.target_ids, payload: item.payload })) });
+    const fingerprint = await canonicalSha256({
+      kind: "STRUCTURAL_DESIGN_OP",
+      operations: operations.map((item) => ({
+        type: item.type,
+        target_ids: item.target_ids,
+        payload: item.payload,
+      })),
+    });
     if (!input.attempted_fingerprints.has(fingerprint)) {
       items.push({
         item_id: `repair-item:${fingerprint.slice(0, 24)}`,
@@ -64,18 +94,36 @@ export async function buildRepairPlan(input: {
         paid: false,
         estimated_cost_usd: "0",
         expected_gain: expectedGain("STRUCTURAL_DESIGN_OP"),
-        reason_codes: [...new Set(source.quality.violations.filter((item) => item.repairable).map((item) => item.reason_code))].sort(),
+        reason_codes: [
+          ...new Set(
+            source.quality.violations
+              .filter((item) => item.repairable)
+              .map((item) => item.reason_code),
+          ),
+        ].sort(),
         target_ids: operationTargets(operations),
         operations,
       });
     }
   }
 
-  const orderedViolations = [...source.quality.violations].sort((a, b) => severityRank(a.severity) - severityRank(b.severity) || a.violation_id.localeCompare(b.violation_id));
+  const orderedViolations = [...source.quality.violations].sort(
+    (a, b) =>
+      severityRank(a.severity) - severityRank(b.severity) ||
+      a.violation_id.localeCompare(b.violation_id),
+  );
   for (const violation of orderedViolations) {
     const kind = actionFor(violation);
-    const fingerprint = await canonicalSha256({ kind, reason_code: violation.reason_code, target_id: violation.target_id ?? null });
-    if (input.attempted_fingerprints.has(fingerprint) || items.some((item) => item.fingerprint === fingerprint)) continue;
+    const fingerprint = await canonicalSha256({
+      kind,
+      reason_code: violation.reason_code,
+      target_id: violation.target_id ?? null,
+    });
+    if (
+      input.attempted_fingerprints.has(fingerprint) ||
+      items.some((item) => item.fingerprint === fingerprint)
+    )
+      continue;
     const base = {
       item_id: `repair-item:${fingerprint.slice(0, 24)}`,
       fingerprint,
@@ -92,7 +140,10 @@ export async function buildRepairPlan(input: {
       continue;
     }
     if (!input.estimator) {
-      const manualFingerprint = await canonicalSha256({ kind: "MANUAL_REVIEW", reason_code: `COST_ESTIMATOR_UNAVAILABLE:${violation.reason_code}` });
+      const manualFingerprint = await canonicalSha256({
+        kind: "MANUAL_REVIEW",
+        reason_code: `COST_ESTIMATOR_UNAVAILABLE:${violation.reason_code}`,
+      });
       items.push({
         item_id: `repair-item:${manualFingerprint.slice(0, 24)}`,
         fingerprint: manualFingerprint,
@@ -107,17 +158,33 @@ export async function buildRepairPlan(input: {
       });
       continue;
     }
-    const estimated = await input.estimator.estimate({ ...base, paid: true } as Omit<RepairPlanItem, "estimated_cost_usd">, source);
+    const estimated = await input.estimator.estimate(
+      { ...base, paid: true } as Omit<RepairPlanItem, "estimated_cost_usd">,
+      source,
+    );
     items.push({ ...base, paid: true, estimated_cost_usd: estimated });
   }
 
-  items.sort((a, b) => a.priority - b.priority || b.expected_gain - a.expected_gain || a.item_id.localeCompare(b.item_id));
-  const planIdentity = { loop_id: input.loop_id, iteration: input.iteration, source_quality_result_id: source.quality.quality_result_id, policy_id: input.policy.policy_id, policy_version: input.policy.version, items: items.map((item) => item.fingerprint) };
+  items.sort(
+    (a, b) =>
+      a.priority - b.priority ||
+      b.expected_gain - a.expected_gain ||
+      a.item_id.localeCompare(b.item_id),
+  );
+  const planIdentity = {
+    loop_id: input.loop_id,
+    iteration: input.iteration,
+    source_quality_result_id: source.quality.quality_result_id,
+    policy_id: input.policy.policy_id,
+    policy_version: input.policy.version,
+    items: items.map((item) => item.fingerprint),
+  };
   return {
     plan_id: `repair-plan:${await canonicalSha256(planIdentity)}`,
     source_quality_result_id: source.quality.quality_result_id,
     source_artifact_version_id: source.subject.artifact_version_id,
-    source_design_document_version_id: source.subject.design_document_version_id,
+    source_design_document_version_id:
+      source.subject.design_document_version_id,
     policy_id: input.policy.policy_id,
     policy_version: input.policy.version,
     iteration: input.iteration,

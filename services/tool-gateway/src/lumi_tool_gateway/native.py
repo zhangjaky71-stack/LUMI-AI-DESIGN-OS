@@ -132,13 +132,15 @@ class SafeWebFetchAdapter:
             if response.status in self._REDIRECTS:
                 location = _header(response.headers, "location")
                 if not location:
-                    break
+                    raise ToolRedirectLimitError("web redirect missing location")
                 redirects += 1
                 if redirects > self.max_redirects:
                     raise ToolRedirectLimitError("web redirect limit exceeded")
                 current_url = urljoin(current_url, location)
                 continue
-            content_type = _header(response.headers, "content-type").split(";", 1)[0].strip().lower()
+            content_type = (
+                _header(response.headers, "content-type").split(";", 1)[0].strip().lower()
+            )
             if content_type not in self.allowed_content_types:
                 raise ToolUnsupportedContentTypeError(
                     f"blocked web content type: {content_type or 'unknown'}"
@@ -180,8 +182,10 @@ class SandboxExecuteAdapter:
         request: ToolRequest,
     ) -> ToolAdapterOutput:
         command = request.arguments.get("command")
-        if not isinstance(command, list) or not command or not all(
-            isinstance(item, str) and item for item in command
+        if (
+            not isinstance(command, list)
+            or not command
+            or not all(isinstance(item, str) and item for item in command)
         ):
             raise ValueError("TOOL_SANDBOX_COMMAND_INVALID")
         result = await self.executor.execute(

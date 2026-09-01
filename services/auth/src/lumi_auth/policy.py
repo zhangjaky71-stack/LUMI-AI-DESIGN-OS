@@ -18,17 +18,36 @@ Permission = Literal[
 ]
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
-    "OWNER": frozenset({
-        "project.read","project.write","asset.upload","artifact.approve","brand.manage",
-        "member.invite","api_token.manage","billing.read","billing.manage","admin.audit.read",
-    }),
-    "ADMIN": frozenset({
-        "project.read","project.write","asset.upload","artifact.approve","brand.manage",
-        "member.invite","api_token.manage","billing.read","admin.audit.read",
-    }),
-    "EDITOR": frozenset({"project.read","project.write","asset.upload","brand.manage"}),
+    "OWNER": frozenset(
+        {
+            "project.read",
+            "project.write",
+            "asset.upload",
+            "artifact.approve",
+            "brand.manage",
+            "member.invite",
+            "api_token.manage",
+            "billing.read",
+            "billing.manage",
+            "admin.audit.read",
+        }
+    ),
+    "ADMIN": frozenset(
+        {
+            "project.read",
+            "project.write",
+            "asset.upload",
+            "artifact.approve",
+            "brand.manage",
+            "member.invite",
+            "api_token.manage",
+            "billing.read",
+            "admin.audit.read",
+        }
+    ),
+    "EDITOR": frozenset({"project.read", "project.write", "asset.upload", "brand.manage"}),
     "VIEWER": frozenset({"project.read"}),
-    "BILLING": frozenset({"project.read","billing.read","billing.manage"}),
+    "BILLING": frozenset({"project.read", "billing.read", "billing.manage"}),
 }
 
 
@@ -73,7 +92,7 @@ def build_request_context(
     trace_id: str,
     workspace_id: str | None = None,
 ) -> RequestContext:
-    roles = tuple(
+    roles: tuple[Role, ...] = tuple(
         membership.role
         for membership in memberships
         if membership.user_id == actor_id

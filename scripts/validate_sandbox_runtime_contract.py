@@ -29,9 +29,12 @@ def assert_agent_adapter_has_no_host_exec() -> None:
             names = {alias.name.split(".", 1)[0] for alias in node.names}
             if names & forbidden:
                 raise SystemExit("Deep Agent sandbox adapter imports host execution modules")
-        if isinstance(node, ast.ImportFrom) and node.module:
-            if node.module.split(".", 1)[0] in forbidden:
-                raise SystemExit("Deep Agent sandbox adapter imports host execution modules")
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and node.module.split(".", 1)[0] in forbidden
+        ):
+            raise SystemExit("Deep Agent sandbox adapter imports host execution modules")
 
 
 def main() -> int:

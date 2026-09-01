@@ -44,19 +44,34 @@ function formatActivity(value: string): string {
   }).format(date);
 }
 
-function matchesFilters(project: ProjectSummary, filters: ProjectListFilters): boolean {
-  if (filters.status !== "ALL" && project.status !== filters.status) return false;
-  if (filters.workspace_id && project.workspace_id !== filters.workspace_id) return false;
+function matchesFilters(
+  project: ProjectSummary,
+  filters: ProjectListFilters,
+): boolean {
+  if (filters.status !== "ALL" && project.status !== filters.status)
+    return false;
+  if (filters.workspace_id && project.workspace_id !== filters.workspace_id)
+    return false;
   if (filters.brand_id && project.brand?.id !== filters.brand_id) return false;
-  if (filters.query && !project.name.toLocaleLowerCase("zh-CN").includes(filters.query.toLocaleLowerCase("zh-CN"))) {
+  if (
+    filters.query &&
+    !project.name
+      .toLocaleLowerCase("zh-CN")
+      .includes(filters.query.toLocaleLowerCase("zh-CN"))
+  ) {
     return false;
   }
   return true;
 }
 
-export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsBootstrap }>) {
+export function ProjectsDashboard({
+  bootstrap,
+}: Readonly<{ bootstrap: ProjectsBootstrap }>) {
   const { activeOrganization, api, queryCache } = useShell();
-  const gateway = useMemo(() => getProjectsGateway(api, bootstrap), [api, bootstrap]);
+  const gateway = useMemo(
+    () => getProjectsGateway(api, bootstrap),
+    [api, bootstrap],
+  );
   const [filters, setFilters] = useState<ProjectListFilters>({
     query: "",
     status: "ALL",
@@ -77,7 +92,9 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<ProjectSummary | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [archiveTarget, setArchiveTarget] = useState<ProjectSummary | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<ProjectSummary | null>(
+    null,
+  );
   const [mutationBusy, setMutationBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -93,18 +110,18 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
       const page = await queryCache.fetchQuery(
         projectListQueryKey(effectiveFilters),
         (signal) =>
-          gateway.listProjects(
-            activeOrganization.id,
-            effectiveFilters,
-            signal,
-          ),
+          gateway.listProjects(activeOrganization.id, effectiveFilters, signal),
         15_000,
       );
       setProjects([...page.items]);
       setNextCursor(page.next_cursor);
       setHasMore(page.has_more);
     } catch (loadError) {
-      if (loadError instanceof Error && loadError.message === "QUERY_SCOPE_CHANGED") return;
+      if (
+        loadError instanceof Error &&
+        loadError.message === "QUERY_SCOPE_CHANGED"
+      )
+        return;
       setProjects([]);
       setError(projectUiError(loadError));
     } finally {
@@ -113,7 +130,9 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
   }, [activeOrganization.id, effectiveFilters, gateway, queryCache]);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const loadMore = async () => {
@@ -124,7 +143,8 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
     try {
       const page = await queryCache.fetchQuery(
         projectListQueryKey(moreFilters),
-        (signal) => gateway.listProjects(activeOrganization.id, moreFilters, signal),
+        (signal) =>
+          gateway.listProjects(activeOrganization.id, moreFilters, signal),
         15_000,
       );
       setProjects((current) => {
@@ -169,11 +189,11 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
       setNotice("项目名称已更新。");
     } catch (renameError) {
       setProjects(previous);
-      setError(projectUiError(renameError));
       if (isVersionConflict(renameError)) {
         queryCache.clear();
         void load();
       }
+      setError(projectUiError(renameError));
     } finally {
       setMutationBusy(false);
     }
@@ -191,7 +211,8 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
       );
       queryCache.clear();
       setProjects((current) =>
-        effectiveFilters.status !== "ALL" && effectiveFilters.status !== "ARCHIVED"
+        effectiveFilters.status !== "ALL" &&
+        effectiveFilters.status !== "ARCHIVED"
           ? current.filter((project) => project.id !== archiveTarget.id)
           : mergeProject(current, result.project),
       );
@@ -227,7 +248,9 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
     }
   };
 
-  const recent = projects.filter((project) => project.status !== "ARCHIVED").slice(0, 3);
+  const recent = projects
+    .filter((project) => project.status !== "ARCHIVED")
+    .slice(0, 3);
 
   return (
     <div className={styles.projectsPage}>
@@ -247,15 +270,24 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
       </section>
 
       {recent.length > 0 && !filters.query && filters.status === "ALL" ? (
-        <section aria-labelledby="recent-projects-title" className={styles.recentSection}>
+        <section
+          aria-labelledby="recent-projects-title"
+          className={styles.recentSection}
+        >
           <div className={styles.sectionHeading}>
             <h2 id="recent-projects-title">最近项目</h2>
             <span>{activeOrganization.name}</span>
           </div>
           <div className={styles.recentGrid}>
             {recent.map((project) => (
-              <Link key={project.id} href={`/app/projects/${project.id}`} className={styles.recentCard}>
-                <span className={styles.previewMini}>{project.preview_label ?? "Project"}</span>
+              <Link
+                key={project.id}
+                href={`/app/projects/${project.id}`}
+                className={styles.recentCard}
+              >
+                <span className={styles.previewMini}>
+                  {project.preview_label ?? "Project"}
+                </span>
                 <strong>{project.name}</strong>
                 <span>{formatActivity(project.last_activity_at)}</span>
               </Link>
@@ -264,15 +296,30 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
         </section>
       ) : null}
 
-      <section className={styles.projectPanel} aria-labelledby="all-projects-title">
+      <section
+        className={styles.projectPanel}
+        aria-labelledby="all-projects-title"
+      >
         <div className={styles.panelHeader}>
           <div>
             <h2 id="all-projects-title">全部项目</h2>
             <p>列表数据始终以当前 Organization 为 scope。</p>
           </div>
           <div className={styles.viewToggle} aria-label="项目视图">
-            <button type="button" data-active={viewMode === "grid"} onClick={() => setViewMode("grid")}>卡片</button>
-            <button type="button" data-active={viewMode === "list"} onClick={() => setViewMode("list")}>列表</button>
+            <button
+              type="button"
+              data-active={viewMode === "grid"}
+              onClick={() => setViewMode("grid")}
+            >
+              卡片
+            </button>
+            <button
+              type="button"
+              data-active={viewMode === "list"}
+              onClick={() => setViewMode("list")}
+            >
+              列表
+            </button>
           </div>
         </div>
 
@@ -282,7 +329,12 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
             <input
               type="search"
               value={filters.query}
-              onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  query: event.target.value,
+                }))
+              }
               placeholder="搜索项目…"
             />
           </label>
@@ -290,7 +342,10 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
             aria-label="项目状态"
             value={filters.status}
             onChange={(event) =>
-              setFilters((current) => ({ ...current, status: event.target.value as ProjectStatus | "ALL" }))
+              setFilters((current) => ({
+                ...current,
+                status: event.target.value as ProjectStatus | "ALL",
+              }))
             }
           >
             <option value="ALL">全部状态</option>
@@ -304,12 +359,17 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
               aria-label="工作区"
               value={filters.workspace_id ?? ""}
               onChange={(event) =>
-                setFilters((current) => ({ ...current, workspace_id: event.target.value || null }))
+                setFilters((current) => ({
+                  ...current,
+                  workspace_id: event.target.value || null,
+                }))
               }
             >
               <option value="">全部工作区</option>
               {bootstrap.workspace_options.map((workspace) => (
-                <option key={workspace.id} value={workspace.id}>{workspace.name}</option>
+                <option key={workspace.id} value={workspace.id}>
+                  {workspace.name}
+                </option>
               ))}
             </select>
           ) : null}
@@ -318,12 +378,17 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
               aria-label="品牌"
               value={filters.brand_id ?? ""}
               onChange={(event) =>
-                setFilters((current) => ({ ...current, brand_id: event.target.value || null }))
+                setFilters((current) => ({
+                  ...current,
+                  brand_id: event.target.value || null,
+                }))
               }
             >
               <option value="">全部品牌</option>
               {bootstrap.brand_options.map((brand) => (
-                <option key={brand.id} value={brand.id}>{brand.name}</option>
+                <option key={brand.id} value={brand.id}>
+                  {brand.name}
+                </option>
               ))}
             </select>
           ) : null}
@@ -331,7 +396,10 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
             aria-label="排序"
             value={filters.sort}
             onChange={(event) =>
-              setFilters((current) => ({ ...current, sort: event.target.value as ProjectListFilters["sort"] }))
+              setFilters((current) => ({
+                ...current,
+                sort: event.target.value as ProjectListFilters["sort"],
+              }))
             }
           >
             <option value="recent">最近活动</option>
@@ -340,50 +408,100 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
           </select>
         </div>
 
-        {notice ? <p className={styles.notice} role="status">{notice}</p> : null}
+        {notice ? (
+          <p className={styles.notice} role="status">
+            {notice}
+          </p>
+        ) : null}
         {error ? (
           <div className={styles.errorState} role="alert">
             <p>{error}</p>
-            <button type="button" className={styles.secondaryButton} onClick={() => void load()}>重试</button>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => void load()}
+            >
+              重试
+            </button>
           </div>
         ) : null}
 
         {loading ? (
           <div className={styles.projectSkeletonGrid} aria-label="正在加载项目">
-            {Array.from({ length: 4 }, (_, index) => <span key={index} />)}
+            {Array.from({ length: 4 }, (_, index) => (
+              <span key={index} />
+            ))}
           </div>
         ) : projects.length === 0 ? (
           <div className={styles.emptyProjects}>
-            <div className={styles.emptyGlyph} aria-hidden="true">✦</div>
-            <h3>{filters.query || filters.status !== "ALL" ? "没有匹配项目" : "从第一个设计任务开始"}</h3>
+            <div className={styles.emptyGlyph} aria-hidden="true">
+              ✦
+            </div>
+            <h3>
+              {filters.query || filters.status !== "ALL"
+                ? "没有匹配项目"
+                : "从第一个设计任务开始"}
+            </h3>
             <p>
               {filters.query || filters.status !== "ALL"
                 ? "调整搜索或筛选条件。"
                 : "你可以只说一句“帮我做一套新品发布视觉”，其余上下文稍后再补。"}
             </p>
-            <button type="button" className={styles.primaryButton} onClick={() => setNewProjectOpen(true)}>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => setNewProjectOpen(true)}
+            >
               新建项目
             </button>
           </div>
         ) : (
-          <div className={viewMode === "grid" ? styles.projectGrid : styles.projectList} data-view={viewMode}>
+          <div
+            className={
+              viewMode === "grid" ? styles.projectGrid : styles.projectList
+            }
+            data-view={viewMode}
+          >
             {projects.map((project) => (
               <article key={project.id} className={styles.projectCard}>
-                <Link href={`/app/projects/${project.id}`} className={styles.projectPreview} aria-label={`打开项目 ${project.name}`}>
-                  <span className={styles.previewLabel}>{project.preview_label ?? "LUMI Project"}</span>
-                  <span className={styles.previewMetric}>{project.artifact_count} artifacts</span>
+                <Link
+                  href={`/app/projects/${project.id}`}
+                  className={styles.projectPreview}
+                  aria-label="打开项目详情"
+                >
+                  <span className={styles.previewLabel}>
+                    {project.preview_label ?? "LUMI Project"}
+                  </span>
+                  <span className={styles.previewMetric}>
+                    {project.artifact_count} artifacts
+                  </span>
                 </Link>
                 <div className={styles.projectCardBody}>
                   <div className={styles.projectTitleRow}>
                     <div>
-                      <span className={styles.statusPill} data-status={project.status}>{STATUS_LABEL[project.status]}</span>
-                      <h3><Link href={`/app/projects/${project.id}`}>{project.name}</Link></h3>
+                      <span
+                        className={styles.statusPill}
+                        data-status={project.status}
+                      >
+                        {STATUS_LABEL[project.status]}
+                      </span>
+                      <h3>
+                        <Link href={`/app/projects/${project.id}`}>
+                          {project.name}
+                        </Link>
+                      </h3>
                     </div>
-                    <span className={styles.activityTime}>{formatActivity(project.last_activity_at)}</span>
+                    <span className={styles.activityTime}>
+                      {formatActivity(project.last_activity_at)}
+                    </span>
                   </div>
                   <div className={styles.projectMeta}>
                     <span>{project.brand?.name ?? "未绑定 Brand"}</span>
-                    <span>{project.active_run_count > 0 ? `${project.active_run_count} Agent running` : "Agent idle"}</span>
+                    <span>
+                      {project.active_run_count > 0
+                        ? `${project.active_run_count} Agent running`
+                        : "Agent idle"}
+                    </span>
                   </div>
                   <div className={styles.projectActions}>
                     <button
@@ -398,11 +516,20 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
                       重命名
                     </button>
                     {project.status === "ARCHIVED" ? (
-                      <button type="button" className={styles.textButton} disabled={mutationBusy} onClick={() => void restore(project)}>
+                      <button
+                        type="button"
+                        className={styles.textButton}
+                        disabled={mutationBusy}
+                        onClick={() => void restore(project)}
+                      >
                         恢复
                       </button>
                     ) : (
-                      <button type="button" className={styles.textButtonDanger} onClick={() => setArchiveTarget(project)}>
+                      <button
+                        type="button"
+                        className={styles.textButtonDanger}
+                        onClick={() => setArchiveTarget(project)}
+                      >
                         归档
                       </button>
                     )}
@@ -415,27 +542,41 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
 
         {hasMore ? (
           <div className={styles.loadMoreRow}>
-            <button type="button" className={styles.secondaryButton} onClick={() => void loadMore()} disabled={loadingMore}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => void loadMore()}
+              disabled={loadingMore}
+            >
               {loadingMore ? "加载中…" : "加载更多"}
             </button>
           </div>
         ) : null}
       </section>
 
-      <NewProjectDialog
-        open={newProjectOpen}
-        organizationId={activeOrganization.id}
-        bootstrap={bootstrap}
-        gateway={gateway}
-        onClose={() => setNewProjectOpen(false)}
-        onCreated={handleCreated}
-      />
+      {newProjectOpen ? (
+        <NewProjectDialog
+          key={activeOrganization.id}
+          organizationId={activeOrganization.id}
+          bootstrap={bootstrap}
+          gateway={gateway}
+          onClose={() => setNewProjectOpen(false)}
+          onCreated={handleCreated}
+        />
+      ) : null}
 
       {renameTarget ? (
         <div className={styles.modalBackdrop}>
-          <section className={styles.smallDialog} role="dialog" aria-modal="true" aria-labelledby="rename-project-title">
+          <section
+            className={styles.smallDialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rename-project-title"
+          >
             <h2 id="rename-project-title">重命名项目</h2>
-            <label className={styles.fieldLabel} htmlFor="rename-project-input">项目名称</label>
+            <label className={styles.fieldLabel} htmlFor="rename-project-input">
+              项目名称
+            </label>
             <input
               id="rename-project-input"
               autoFocus
@@ -445,8 +586,20 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
               maxLength={120}
             />
             <div className={styles.dialogFooter}>
-              <button type="button" className={styles.secondaryButton} onClick={() => setRenameTarget(null)} disabled={mutationBusy}>取消</button>
-              <button type="button" className={styles.primaryButton} onClick={() => void saveRename()} disabled={mutationBusy || !renameValue.trim()}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setRenameTarget(null)}
+                disabled={mutationBusy}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => void saveRename()}
+                disabled={mutationBusy || !renameValue.trim()}
+              >
                 {mutationBusy ? "保存中…" : "保存"}
               </button>
             </div>
@@ -456,13 +609,33 @@ export function ProjectsDashboard({ bootstrap }: Readonly<{ bootstrap: ProjectsB
 
       {archiveTarget ? (
         <div className={styles.modalBackdrop}>
-          <section className={styles.smallDialog} role="alertdialog" aria-modal="true" aria-labelledby="archive-project-title">
+          <section
+            className={styles.smallDialog}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="archive-project-title"
+          >
             <p className={styles.eyebrow}>ARCHIVE</p>
             <h2 id="archive-project-title">归档“{archiveTarget.name}”？</h2>
-            <p>归档不会永久删除素材、Artifact 或历史 Agent Run，也不会自动取消数据保留策略。</p>
+            <p>
+              归档不会永久删除素材、Artifact 或历史 Agent
+              Run，也不会自动取消数据保留策略。
+            </p>
             <div className={styles.dialogFooter}>
-              <button type="button" className={styles.secondaryButton} onClick={() => setArchiveTarget(null)} disabled={mutationBusy}>取消</button>
-              <button type="button" className={styles.dangerButton} onClick={() => void archive()} disabled={mutationBusy}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setArchiveTarget(null)}
+                disabled={mutationBusy}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className={styles.dangerButton}
+                onClick={() => void archive()}
+                disabled={mutationBusy}
+              >
                 {mutationBusy ? "归档中…" : "确认归档"}
               </button>
             </div>

@@ -89,10 +89,7 @@ class ProviderInvocationError(ModelGatewayError):
 
     @property
     def fallbackable(self) -> bool:
-        return (
-            self.category in _FALLBACKABLE
-            and self.delivery_state == DeliveryState.NOT_ACCEPTED
-        )
+        return self.category in _FALLBACKABLE and self.delivery_state == DeliveryState.NOT_ACCEPTED
 
     @property
     def ambiguous(self) -> bool:

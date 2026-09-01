@@ -17,8 +17,8 @@ from lumi_agent_runtime.knowledge_engine import (
     KnowledgeAccessContext,
     KnowledgeContextSource,
     KnowledgeExtractionResult,
-    KnowledgeIndexRequest,
     KnowledgeIndexer,
+    KnowledgeIndexRequest,
     KnowledgePermissionScope,
     KnowledgeRetriever,
     KnowledgeSearchQuery,
@@ -105,10 +105,7 @@ class FixtureEmbedder:
     async def embed(self, chunks, *, embedding_space_id: str):
         output = []
         for chunk in chunks:
-            if "unrelated prose" in chunk.text:
-                vector = (1.0, 0.0)
-            else:
-                vector = (0.7, 0.7)
+            vector = (1.0, 0.0) if "unrelated prose" in chunk.text else (0.7, 0.7)
             output.append(
                 replace(
                     chunk,
@@ -126,8 +123,13 @@ class FixtureExtractor:
         self.native = native
         self.ocr_calls = 0
 
-    async def extract_native(self, source_ref, *, access):
-        del source_ref, access
+    async def extract_native(
+        self,
+        source: KnowledgeSourceRef,
+        *,
+        access: KnowledgeAccessContext,
+    ) -> KnowledgeExtractionResult | None:
+        del source, access
         if not self.native:
             return None
         return KnowledgeExtractionResult(
@@ -138,8 +140,13 @@ class FixtureExtractor:
             used_ocr=False,
         )
 
-    async def extract_ocr(self, source_ref, *, access):
-        del source_ref, access
+    async def extract_ocr(
+        self,
+        source: KnowledgeSourceRef,
+        *,
+        access: KnowledgeAccessContext,
+    ) -> KnowledgeExtractionResult | None:
+        del source, access
         self.ocr_calls += 1
         return KnowledgeExtractionResult(
             normalized_text="ocr document text",
@@ -213,9 +220,7 @@ class KnowledgeEngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(without_read, ())
         with_read = await self.service.search(
             KnowledgeSearchQuery(
-                access=access(
-                    permissions=frozenset({"knowledge.organization.read"})
-                ),
+                access=access(permissions=frozenset({"knowledge.organization.read"})),
                 text="approved policy",
             )
         )
@@ -292,9 +297,7 @@ class KnowledgeEngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(results, ())
 
     async def test_reindex_supersedes_previous_ready_version(self) -> None:
-        first = await self.service.index(
-            request("guide", "Old brand guidance", source_version="1")
-        )
+        first = await self.service.index(request("guide", "Old brand guidance", source_version="1"))
         second = await self.service.index(
             request("guide", "New brand guidance", source_version="2")
         )

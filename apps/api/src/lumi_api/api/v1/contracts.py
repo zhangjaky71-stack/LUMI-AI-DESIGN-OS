@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Literal, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -25,12 +25,12 @@ class PageMeta(ResponseMeta):
     has_more: bool = False
 
 
-class DataEnvelope(StrictModel, Generic[T]):
+class DataEnvelope[T](StrictModel):
     data: T
     meta: ResponseMeta
 
 
-class CollectionEnvelope(StrictModel, Generic[T]):
+class CollectionEnvelope[T](StrictModel):
     data: list[T]
     meta: PageMeta
 

@@ -13,9 +13,11 @@ describe("browser observability privacy contract", () => {
         "https://app.example/app/projects/01930000-0000-7000-8000-000000000099/workspace?token=secret#x",
       ),
     ).toBe("/app/projects/:id/workspace");
-    expect(normalizeTelemetryRoute("/api/v1/assets/123456789/download?signed=secret")).toBe(
-      "/api/v1/assets/:id/download",
-    );
+    expect(
+      normalizeTelemetryRoute(
+        "/api/v1/assets/123456789/download?signed=secret",
+      ),
+    ).toBe("/api/v1/assets/:id/download");
   });
 
   it("rejects unsafe correlation identifiers", () => {
@@ -29,7 +31,8 @@ describe("browser observability privacy contract", () => {
       version: 1,
       kind: "route_error",
       name: "react_route_error",
-      route: "/app/projects/01930000-0000-7000-8000-000000000099/workspace?prompt=secret",
+      route:
+        "/app/projects/01930000-0000-7000-8000-000000000099/workspace?prompt=secret",
       errorCode: "route_boundary",
       prompt: "PRIVATE PROMPT",
       stack: "PRIVATE STACK",
@@ -87,7 +90,12 @@ describe("browser observability privacy contract", () => {
 
   it("rejects unknown event kinds and free-form names", () => {
     expect(
-      sanitizeBrowserTelemetry({ version: 1, kind: "prompt", name: "x", route: "/" }),
+      sanitizeBrowserTelemetry({
+        version: 1,
+        kind: "prompt",
+        name: "x",
+        route: "/",
+      }),
     ).toBeNull();
     expect(
       sanitizeBrowserTelemetry({

@@ -1,7 +1,14 @@
 import { canonicalSha256, canonicalStringify } from "../../design-ir/src/index";
-import type { ArtifactFile, ArtifactProvenance, ArtifactVersion, CompilerArtifactProvenance } from "./types";
+import type {
+  ArtifactFile,
+  ArtifactProvenance,
+  ArtifactVersion,
+  CompilerArtifactProvenance,
+} from "./types";
 
-function compilerIdentity(value: CompilerArtifactProvenance | undefined): unknown {
+function compilerIdentity(
+  value: CompilerArtifactProvenance | undefined,
+): unknown {
   if (!value) return null;
   return {
     compiler_version: value.compiler_version,
@@ -15,33 +22,54 @@ function compilerIdentity(value: CompilerArtifactProvenance | undefined): unknow
 }
 
 export function artifactStableManifest(
-  version: Pick<ArtifactVersion, "artifact_id" | "schema_version" | "content_hash" | "constraint_snapshot_hash" | "brand_rule_set_version" | "identity_validation_snapshot_id">,
+  version: Pick<
+    ArtifactVersion,
+    | "artifact_id"
+    | "schema_version"
+    | "content_hash"
+    | "constraint_snapshot_hash"
+    | "brand_rule_set_version"
+    | "identity_validation_snapshot_id"
+  >,
   provenance: ArtifactProvenance,
   files: readonly ArtifactFile[],
 ): unknown {
-  const brandRuleSetVersion = provenance.brand_rule_set_version ?? version.brand_rule_set_version ?? null;
+  const brandRuleSetVersion =
+    provenance.brand_rule_set_version ?? version.brand_rule_set_version ?? null;
   if (
-    provenance.brand_rule_set_version !== undefined
-    && version.brand_rule_set_version != null
-    && provenance.brand_rule_set_version !== version.brand_rule_set_version
+    provenance.brand_rule_set_version !== undefined &&
+    version.brand_rule_set_version != null &&
+    provenance.brand_rule_set_version !== version.brand_rule_set_version
   ) {
-    throw new Error("brand rule set version mismatch between ArtifactVersion and provenance");
+    throw new Error(
+      "brand rule set version mismatch between ArtifactVersion and provenance",
+    );
   }
-  const identityValidationSnapshotId = provenance.identity_validation_snapshot_id ?? version.identity_validation_snapshot_id ?? null;
+  const identityValidationSnapshotId =
+    provenance.identity_validation_snapshot_id ??
+    version.identity_validation_snapshot_id ??
+    null;
   if (
-    provenance.identity_validation_snapshot_id !== undefined
-    && version.identity_validation_snapshot_id != null
-    && provenance.identity_validation_snapshot_id !== version.identity_validation_snapshot_id
+    provenance.identity_validation_snapshot_id !== undefined &&
+    version.identity_validation_snapshot_id != null &&
+    provenance.identity_validation_snapshot_id !==
+      version.identity_validation_snapshot_id
   ) {
-    throw new Error("identity validation snapshot mismatch between ArtifactVersion and provenance");
+    throw new Error(
+      "identity validation snapshot mismatch between ArtifactVersion and provenance",
+    );
   }
   return {
     artifact_id: version.artifact_id,
     schema_version: version.schema_version,
     content_hash: version.content_hash,
     constraint_snapshot_hash: version.constraint_snapshot_hash,
-    ...(brandRuleSetVersion ? { brand_rule_set_version: brandRuleSetVersion } : {}),
-    ...(identityValidationSnapshotId ? { identity_validation_snapshot_id: identityValidationSnapshotId } : {}),
+    ...(brandRuleSetVersion
+      ? { brand_rule_set_version: brandRuleSetVersion }
+      : {}),
+    ...(identityValidationSnapshotId
+      ? { identity_validation_snapshot_id: identityValidationSnapshotId }
+      : {}),
     compiler: compilerIdentity(provenance.compiler),
     code_git_sha: provenance.code_git_sha,
     prompt_hash: provenance.prompt_hash ?? null,
@@ -49,7 +77,9 @@ export function artifactStableManifest(
     recipe_version: provenance.recipe_version ?? null,
     skill_versions: provenance.skill_versions ?? {},
     input_asset_ids: [...new Set(provenance.input_asset_ids ?? [])].sort(),
-    input_artifact_version_ids: [...new Set(provenance.input_artifact_version_ids ?? [])].sort(),
+    input_artifact_version_ids: [
+      ...new Set(provenance.input_artifact_version_ids ?? []),
+    ].sort(),
     files: [...files]
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((file) => ({
@@ -67,7 +97,15 @@ export function artifactStableManifest(
 }
 
 export async function artifactManifestSha256(
-  version: Pick<ArtifactVersion, "artifact_id" | "schema_version" | "content_hash" | "constraint_snapshot_hash" | "brand_rule_set_version" | "identity_validation_snapshot_id">,
+  version: Pick<
+    ArtifactVersion,
+    | "artifact_id"
+    | "schema_version"
+    | "content_hash"
+    | "constraint_snapshot_hash"
+    | "brand_rule_set_version"
+    | "identity_validation_snapshot_id"
+  >,
   provenance: ArtifactProvenance,
   files: readonly ArtifactFile[],
 ): Promise<string> {
@@ -79,8 +117,13 @@ export function contentAddressedObjectKey(
   checksumSha256: string,
   extension: string,
 ): string {
-  if (!/^[0-9a-f]{64}$/.test(checksumSha256)) throw new Error("checksum must be lowercase SHA-256");
-  const safeExt = extension.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10) || "bin";
+  if (!/^[0-9a-f]{64}$/.test(checksumSha256))
+    throw new Error("checksum must be lowercase SHA-256");
+  const safeExt =
+    extension
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 10) || "bin";
   return `org/${organizationId}/artifacts/sha256/${checksumSha256.slice(0, 2)}/${checksumSha256}.${safeExt}`;
 }
 

@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from fontTools.ttLib import TTFont
-from lumi_asset_storage import sanitize_svg, sniff_media_type
 from PIL import Image, ImageOps
+
+from lumi_asset_storage import sanitize_svg, sniff_media_type
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,7 +157,7 @@ def _inspect_svg(path: str, workspace: str) -> MediaInspection:
 def _inspect_font(path: str, mime_type: str) -> MediaInspection:
     font = TTFont(path, lazy=True, recalcBBoxes=False, recalcTimestamp=False)
     try:
-        names = font["name"] if "name" in font else None
+        names = font.get("name", None)
         family = _font_name(names, 1) if names is not None else None
         subfamily = _font_name(names, 2) if names is not None else None
         full_name = _font_name(names, 4) if names is not None else None
@@ -222,7 +223,11 @@ async def _inspect_video(
         raise ValueError("FFPROBE_OUTPUT_INVALID") from exc
     streams = payload.get("streams", [])
     video_stream = next(
-        (stream for stream in streams if isinstance(stream, dict) and stream.get("codec_type") == "video"),
+        (
+            stream
+            for stream in streams
+            if isinstance(stream, dict) and stream.get("codec_type") == "video"
+        ),
         None,
     )
     if video_stream is None:

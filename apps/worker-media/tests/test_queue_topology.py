@@ -25,7 +25,9 @@ def test_media_queues_are_separated_and_dead_lettered() -> None:
         "lumi.asset.processing",
     }
     for queue in queues.values():
-        assert queue.queue_arguments["x-dead-letter-exchange"] == "lumi.dlx"
+        queue_arguments = getattr(queue, "queue_arguments", None)
+        assert isinstance(queue_arguments, dict)
+        assert queue_arguments["x-dead-letter-exchange"] == "lumi.dlx"
     assert len(build_dlq_queues()) == 4
 
 

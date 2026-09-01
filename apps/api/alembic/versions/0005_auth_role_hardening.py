@@ -32,6 +32,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "ALTER TABLE organization_members DROP CONSTRAINT ck_organization_members_role"
-    )
+    op.execute("ALTER TABLE organization_members DROP CONSTRAINT ck_organization_members_role")

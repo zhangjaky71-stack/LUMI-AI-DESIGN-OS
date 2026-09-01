@@ -37,9 +37,7 @@ class ValidDefinition:
 
 class AgentReleaseTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.definitions = {
-            item.identity: item for item in load_definitions(ROOT / "agents")
-        }
+        self.definitions = {item.identity: item for item in load_definitions(ROOT / "agents")}
         self.manifest = load_release_manifest(ROOT / "agents/registry.json")
 
     def test_candidate_promotion_requires_eval_and_moves_alias(self) -> None:
@@ -48,7 +46,7 @@ class AgentReleaseTests(unittest.TestCase):
             self.manifest,
             candidate,
         )
-        self.assertEqual(promoted.revision, 2)
+        self.assertEqual(promoted.revision, self.manifest.revision + 1)
         self.assertEqual(
             promoted.aliases["creative-director"]["production"],
             "1.2.0",
@@ -78,7 +76,7 @@ class AgentReleaseTests(unittest.TestCase):
             "creative-director",
             "1.1.0",
         )
-        self.assertEqual(rolled.revision, 3)
+        self.assertEqual(rolled.revision, self.manifest.revision + 2)
         self.assertEqual(
             rolled.aliases["creative-director"]["production"],
             "1.1.0",

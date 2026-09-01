@@ -8,6 +8,8 @@ from lumi_agent_runtime.agent_team.contracts import (
     TeamTaskInput,
     TeamTaskResult,
     TeamTaskStatus,
+    definition_permission_names,
+    definition_tool_names,
     team_profile,
 )
 from lumi_agent_runtime.agent_team.delegation import (
@@ -62,15 +64,13 @@ class AgentTeamTests(unittest.TestCase):
             self.assertEqual(definition.output_schema, "TeamTaskResult")
             profile = team_profile(definition)
             self.assertTrue(profile.objective)
-            self.assertTrue(definition.prompt.text.strip())
+            self.assertTrue(definition.system_prompt.strip())
             self.assertTrue(definition.model_policy)
             self.assertTrue(definition.eval_profile.startswith("team-"))
-            self.assertFalse(definition.memory_policy.get("write", []), agent_id)
+            self.assertFalse(definition.memory_policy.write, agent_id)
 
     def test_role_static_eval_bindings_cover_all_16(self) -> None:
-        contracts = load_role_eval_contracts(
-            ROOT / "evals/profiles/agents/agent-team-v1.json"
-        )
+        contracts = load_role_eval_contracts(ROOT / "evals/profiles/agents/agent-team-v1.json")
         validate_role_eval_bindings(self.team, contracts)
         self.assertEqual(set(contracts), set(CANONICAL_AGENT_IDS))
 
@@ -79,9 +79,11 @@ class AgentTeamTests(unittest.TestCase):
         profile = team_profile(critic)
         self.assertEqual(profile.archetype.value, "critic")
         self.assertEqual(profile.risk_profile, "read-only")
-        self.assertNotIn("asset.write-derived", critic.allowed_tools)
-        self.assertNotIn("sandbox.execute", critic.allowed_tools)
-        self.assertFalse(any("write" in permission for permission in critic.permissions))
+        self.assertNotIn("asset.write-derived", definition_tool_names(critic))
+        self.assertNotIn("sandbox.execute", definition_tool_names(critic))
+        self.assertFalse(
+            any("write" in permission for permission in definition_permission_names(critic))
+        )
 
     def test_brand_write_is_approval_gated(self) -> None:
         brand = self.team.resolve("brand-strategist")
@@ -130,8 +132,8 @@ class AgentTeamTests(unittest.TestCase):
             child=child,
             runtime=runtime,
         )
-        self.assertEqual(grant.allowed_tools, frozenset(child.allowed_tools))
-        self.assertEqual(grant.granted_permissions, frozenset(child.permissions))
+        self.assertEqual(grant.allowed_tools, definition_tool_names(child))
+        self.assertEqual(grant.granted_permissions, definition_permission_names(child))
         self.assertEqual(grant.remaining_depth, 0)
         self.assertEqual(grant.budget_remaining_usd, 12.5)
         self.assertEqual(grant.deadline_at, runtime.deadline_at)

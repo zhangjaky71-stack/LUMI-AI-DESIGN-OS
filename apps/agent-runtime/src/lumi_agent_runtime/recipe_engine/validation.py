@@ -31,9 +31,7 @@ def topological_steps(definition: RecipeDefinition) -> tuple[RecipeStep, ...]:
         if step_id in visited:
             return
         if step_id in visiting:
-            raise RecipeCycleError(
-                "Recipe dependency cycle: " + " -> ".join((*visiting, step_id))
-            )
+            raise RecipeCycleError("Recipe dependency cycle: " + " -> ".join((*visiting, step_id)))
         visiting.append(step_id)
         for dependency in sorted(by_id[step_id].depends_on):
             visit(dependency)
@@ -108,9 +106,7 @@ def validate_reference(
                 f"Recipe step reference is not an upstream dependency: {reference}"
             )
         if len(parts) < 3 or parts[2] != "output":
-            raise RecipeReferenceError(
-                f"Recipe step reference must use .output: {reference}"
-            )
+            raise RecipeReferenceError(f"Recipe step reference must use .output: {reference}")
         return
     raise RecipeReferenceError(f"Recipe reference root forbidden: {reference}")
 
@@ -121,6 +117,4 @@ def validate_expression_step_refs(
 ) -> None:
     for source in _STEP_EXPR.findall(expression):
         if source not in available_sources:
-            raise RecipeReferenceError(
-                f"condition reads non-upstream step: {source}"
-            )
+            raise RecipeReferenceError(f"condition reads non-upstream step: {source}")

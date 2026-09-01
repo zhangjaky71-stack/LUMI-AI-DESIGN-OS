@@ -26,15 +26,11 @@ for relative in REQUIRED:
 engine = (ROOT / "services/project-core/src/lumi_project_core/collaboration.py").read_text()
 router = (ROOT / "apps/api/src/lumi_api/collaboration_router.py").read_text()
 migration = (ROOT / "db/migrations/0011_collaboration.sql").read_text().lower()
-frontend = "\n".join(
-    path.read_text()
-    for path in [
-        ROOT / "apps/web/src/components/collaboration/collaboration.tsx",
-        ROOT / "apps/web/src/lib/collaboration/contracts.ts",
-        ROOT / "apps/web/src/lib/collaboration/collaboration-gateway.ts",
-        ROOT / "apps/web/src/lib/collaboration/collaboration-server.ts",
-    ]
-)
+component = (ROOT / "apps/web/src/components/collaboration/collaboration.tsx").read_text()
+contracts = (ROOT / "apps/web/src/lib/collaboration/contracts.ts").read_text()
+gateway = (ROOT / "apps/web/src/lib/collaboration/collaboration-gateway.ts").read_text()
+server = (ROOT / "apps/web/src/lib/collaboration/collaboration-server.ts").read_text()
+frontend = "\n".join([component, contracts, gateway, server])
 
 for token in [
     "CommentAnchor",
@@ -75,16 +71,19 @@ for forbidden in ["localStorage", "sessionStorage", "indexedDB"]:
     if forbidden in frontend:
         raise SystemExit(f"NODE-61 browser canonical persistence forbidden: {forbidden}")
 
-for required in [
-    "HTTP Design Operation API",
-    "CRDT/realtime state is never the sole design history",
-    "Hard Constraints execute server-side",
-    "LUMI_COLLABORATION_E2E",
-]:
-    if required not in frontend:
-        raise SystemExit(f"NODE-61 frontend truth boundary missing: {required}")
+if 'canonical_write_transport: "HTTP_DESIGN_OPERATION_API"' not in server:
+    raise SystemExit("NODE-61 canonical write transport must remain the HTTP Design Operation API")
+if "/collaboration/operations" not in gateway or "submitOperations" not in gateway:
+    raise SystemExit("NODE-61 browser canonical writes must use the HTTP operation endpoint")
+if "new WebSocket" not in gateway or "PRESENCE_SNAPSHOT" not in gateway or "AWARENESS_UPDATE" not in gateway:
+    raise SystemExit("NODE-61 realtime channel must remain presence/awareness oriented")
+if "presence_is_ephemeral: true" not in server:
+    raise SystemExit("NODE-61 realtime presence must remain explicitly ephemeral")
+if "COLLABORATION_HARD_CONSTRAINT_FAILED" not in contracts:
+    raise SystemExit("NODE-61 frontend must preserve the server hard-constraint rejection contract")
+if "LUMI_COLLABORATION_E2E" not in server:
+    raise SystemExit("NODE-61 deterministic collaboration fixture gate is missing")
 
-server = (ROOT / "apps/web/src/lib/collaboration/collaboration-server.ts").read_text()
 if 'process.env.NODE_ENV !== "production"' not in server:
     raise SystemExit("NODE-61 deterministic fixture must be non-production gated")
 

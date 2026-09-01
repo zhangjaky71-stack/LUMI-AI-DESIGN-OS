@@ -29,7 +29,7 @@ def _capability(plan: EditPlan) -> Capability:
 def _request(spec: ImageEditSpec, plan: EditPlan, mask: MaskSpec | None) -> ModelRequest:
     if plan.requires_mask and mask is None:
         raise ValueError("IMAGE_EDIT_PROVIDER_MASK_REQUIRED")
-    required_capabilities = []
+    required_capabilities: list[str] = []
     if spec.protected_regions or spec.identity_requirement_ids:
         required_capabilities.append(Capability.IMAGE_REFERENCE_CONSISTENCY.value)
     inputs: dict[str, Any] = {
@@ -121,11 +121,17 @@ class ModelGatewayImageEditAdapter:
         decision = await self.gateway.router.route(request)
         result = await self.gateway.invoke(request)
         match = next(
-            (candidate for candidate in decision.candidates if candidate.provider == result.provider and candidate.model == result.model),
+            (
+                candidate
+                for candidate in decision.candidates
+                if candidate.provider == result.provider and candidate.model == result.model
+            ),
             None,
         )
         normalized = _normalize(result, seed=spec.seed)
-        reasons = match.reason_codes if match is not None else ("ROUTE_DECISION_CHANGED_DURING_INVOKE",)
+        reasons = (
+            match.reason_codes if match is not None else ("ROUTE_DECISION_CHANGED_DURING_INVOKE",)
+        )
         return GatewayEditResult(
             status=normalized.status,
             provider=normalized.provider,

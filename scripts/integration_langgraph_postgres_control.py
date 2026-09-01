@@ -50,24 +50,13 @@ async def main_async() -> None:
     graph_id = uuid4()
     agent_run_id = uuid4()
     try:
-        seeded_run = await admin.fetchrow(
-            """
-            SELECT thread_id, graph_version, agent_config_version
-            FROM agent_runs
-            WHERE organization_id=$1 AND project_id=$2
-            ORDER BY created_at LIMIT 1
-            """,
-            ORG_ID,
-            PROJECT_A_ID,
-        )
-        assert seeded_run is not None
         # NODE-28 acceptance owns its own AgentRun so thread/version identity is explicit.
         thread_id = f"node28-{uuid4()}"
         await admin.execute(
             """
             INSERT INTO agent_runs (
                 id, organization_id, project_id, thread_id, graph_version,
-                agent_config_version, status, budget, started_at, version
+                agent_config_version, status, budget_json, started_at, version
             ) VALUES ($1,$2,$3,$4,'1.0.0','agent-v1','pending','{}'::jsonb,now(),1)
             """,
             agent_run_id,

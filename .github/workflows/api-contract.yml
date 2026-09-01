@@ -45,6 +45,5 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git add -N contracts/api/openapi-v1.json packages/api-client-v1/src/generated.ts
           git diff --exit-code -- contracts/api/openapi-v1.json packages/api-client-v1/src/generated.ts
           test -z "$(git status --porcelain -- contracts/api/openapi-v1.json packages/api-client-v1/src/generated.ts)"

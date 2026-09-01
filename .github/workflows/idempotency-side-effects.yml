@@ -4,9 +4,22 @@ on:
   pull_request:
     paths:
       - "apps/api/src/lumi_api/idempotency/**"
+      - "apps/api/src/lumi_api/tool_side_effect_control.py"
+      - "apps/api/src/lumi_api/product_app.py"
       - "apps/api/src/lumi_api/persistence/models/platform.py"
       - "apps/api/alembic/versions/0009_idempotency_side_effects.py"
+      - "apps/api/alembic/versions/0019_side_effect_provider_attempt_barrier.py"
       - "apps/api/tests/test_idempotency_contracts.py"
+      - "apps/api/tests/test_tool_side_effect_control.py"
+      - "apps/api/tests/integration/test_idempotency_provider_attempt_barrier.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/side_effect_control.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/service.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/errors.py"
+      - "services/tool-gateway/tests/test_side_effect_control.py"
+      - "infra/iac/environments/staging/core/main.tf"
+      - "infra/iac/environments/staging/app/main.tf"
+      - "infra/iac/environments/production/core/main.tf"
+      - "infra/iac/environments/production/app/main.tf"
       - "scripts/validate_idempotency_contract.py"
       - "scripts/integration_idempotency_side_effects.py"
       - "docs/runtime/IDEMPOTENCY-SIDE-EFFECT-GATEWAY-V1.md"
@@ -36,6 +49,16 @@ jobs:
       - name: Frozen workspace install
         run: uv sync --all-packages --frozen
 
+      - name: Compile NODE-20 and Tool Gateway bridge
+        run: >-
+          python -m compileall -q
+          apps/api/src/lumi_api/idempotency
+          apps/api/src/lumi_api/tool_side_effect_control.py
+          apps/api/src/lumi_api/product_app.py
+          apps/api/tests/test_tool_side_effect_control.py
+          services/tool-gateway/src/lumi_tool_gateway/side_effect_control.py
+          services/tool-gateway/tests/test_side_effect_control.py
+
       - name: Static NODE-20 contract
         run: uv run python scripts/validate_idempotency_contract.py
 
@@ -43,9 +66,18 @@ jobs:
         run: >-
           uv run ruff check
           apps/api/src/lumi_api/idempotency
+          apps/api/src/lumi_api/tool_side_effect_control.py
+          apps/api/src/lumi_api/product_app.py
           apps/api/src/lumi_api/persistence/models/platform.py
           apps/api/alembic/versions/0009_idempotency_side_effects.py
+          apps/api/alembic/versions/0019_side_effect_provider_attempt_barrier.py
           apps/api/tests/test_idempotency_contracts.py
+          apps/api/tests/test_tool_side_effect_control.py
+          apps/api/tests/integration/test_idempotency_provider_attempt_barrier.py
+          services/tool-gateway/src/lumi_tool_gateway/side_effect_control.py
+          services/tool-gateway/src/lumi_tool_gateway/service.py
+          services/tool-gateway/src/lumi_tool_gateway/errors.py
+          services/tool-gateway/tests/test_side_effect_control.py
           scripts/validate_idempotency_contract.py
           scripts/integration_idempotency_side_effects.py
 
@@ -53,10 +85,21 @@ jobs:
         run: >-
           uv run pyright
           apps/api/src/lumi_api/idempotency
+          apps/api/src/lumi_api/tool_side_effect_control.py
+          apps/api/src/lumi_api/product_app.py
           apps/api/tests/test_idempotency_contracts.py
+          apps/api/tests/test_tool_side_effect_control.py
+          apps/api/tests/integration/test_idempotency_provider_attempt_barrier.py
+          services/tool-gateway/src/lumi_tool_gateway/side_effect_control.py
+          services/tool-gateway/tests/test_side_effect_control.py
 
-      - name: Idempotency unit tests
-        run: uv run pytest apps/api/tests/test_idempotency_contracts.py -q
+      - name: Idempotency and private control unit tests
+        run: >-
+          uv run pytest
+          apps/api/tests/test_idempotency_contracts.py
+          apps/api/tests/test_tool_side_effect_control.py
+          services/tool-gateway/tests/test_side_effect_control.py
+          -q
 
       - name: Prepare local infrastructure
         run: make infra-env
@@ -72,6 +115,14 @@ jobs:
 
       - name: Idempotency failure-injection acceptance
         run: uv run python scripts/integration_idempotency_side_effects.py
+
+      - name: Provider attempt crash barrier PostgreSQL acceptance
+        env:
+          LUMI_DB_INTEGRATION: "1"
+        run: >-
+          uv run pytest
+          apps/api/tests/integration/test_idempotency_provider_attempt_barrier.py
+          -q
 
       - name: Migration downgrade/upgrade smoke
         run: bash scripts/db-local downgrade-smoke

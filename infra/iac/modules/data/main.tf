@@ -19,12 +19,6 @@ resource "aws_security_group" "postgres" {
     security_groups = [var.app_security_group_id]
   }
 
-  egress {
-    protocol    = "-1"
-    from_port   = 0
-    to_port     = 0
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 
   tags = merge(local.tags, { Name = "${local.name}-postgres-sg" })
 }

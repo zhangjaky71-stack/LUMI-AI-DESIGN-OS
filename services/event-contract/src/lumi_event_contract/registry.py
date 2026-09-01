@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 from uuid import UUID
 
 from .envelope import EventEnvelope
@@ -113,7 +114,9 @@ def load_registry(contract_root: Path | None = None) -> EventRegistry:
     if frozenset(definitions) != EXPECTED_DOMAIN_EVENTS:
         missing = EXPECTED_DOMAIN_EVENTS - frozenset(definitions)
         extra = frozenset(definitions) - EXPECTED_DOMAIN_EVENTS
-        raise ValueError(f"event vocabulary mismatch; missing={sorted(missing)}, extra={sorted(extra)}")
+        raise ValueError(
+            f"event vocabulary mismatch; missing={sorted(missing)}, extra={sorted(extra)}"
+        )
     if registry_json["delivery_semantics"] != "at_least_once":
         raise ValueError("NODE-12 must not claim delivery semantics other than at_least_once")
     if registry_json["ordering_scope"] != "partitionkey":
@@ -131,7 +134,9 @@ def load_registry(contract_root: Path | None = None) -> EventRegistry:
 def validate_payload(definition: EventDefinition, payload: Mapping[str, Any]) -> None:
     missing = definition.required_payload_fields - payload.keys()
     if missing:
-        raise ValueError(f"missing required payload fields for {definition.name}: {sorted(missing)}")
+        raise ValueError(
+            f"missing required payload fields for {definition.name}: {sorted(missing)}"
+        )
     partition_value = payload.get(definition.partition_field)
     if partition_value in (None, ""):
         raise ValueError(

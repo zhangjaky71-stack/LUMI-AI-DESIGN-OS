@@ -157,9 +157,10 @@ class ToolRequest:
             raise ValueError("TOOL_PURPOSE_INVALID")
         if self.organization_id != self.permission_context.organization_id:
             raise ValueError("TOOL_TENANT_CONTEXT_MISMATCH")
-        if self.idempotency_key is not None:
-            if not self.idempotency_key or len(self.idempotency_key) > 512:
-                raise ValueError("TOOL_IDEMPOTENCY_KEY_INVALID")
+        if self.idempotency_key is not None and (
+            not self.idempotency_key or len(self.idempotency_key) > 512
+        ):
+            raise ValueError("TOOL_IDEMPOTENCY_KEY_INVALID")
         if self.approval_token is not None and len(self.approval_token) > 1024:
             raise ValueError("TOOL_APPROVAL_TOKEN_INVALID")
         if self.trace_id is not None and len(self.trace_id) > 128:

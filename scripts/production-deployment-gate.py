@@ -3,18 +3,31 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import re
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
+RUN_ID = re.compile(r"^[1-9][0-9]*$")
 DIGEST_IMAGE = re.compile(r"^[^\s@]+@sha256:[0-9a-f]{64}$")
 ACCOUNT_ID = re.compile(r"^[0-9]{12}$")
 REGION = re.compile(r"^[a-z]{2}(?:-gov)?-[a-z]+-[0-9]+$")
 ROLE_ARN = re.compile(r"^arn:aws(?:-[a-z]+)?:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$")
 CERT_ARN = re.compile(r"^arn:aws(?:-[a-z]+)?:acm:[a-z0-9-]+:[0-9]{12}:certificate/[A-Za-z0-9-]+$")
 READY_EXTERNAL = {"READY", "DISABLED_BY_RELEASE_SCOPE"}
+MAX_DAILY_PROVIDER_SPEND_USD = 100.0
+CANONICAL_STAGING_ACCEPTANCE_PATH = Path(
+    "reports/production-deployments/runtime/node71/decision.json"
+)
+EXPECTED_RECOVERY_POLICY = {
+    "database_pitr_max_rpo_minutes": 5,
+    "database_pitr_max_rto_minutes": 60,
+    "object_version_recovery_required": True,
+}
 
 
 class DeploymentGateError(RuntimeError):
@@ -37,6 +50,16 @@ def require(condition: bool, message: str, blockers: list[str]) -> None:
         blockers.append(message)
 
 
+def _load_node71_artifact_validator() -> ModuleType:
+    path = Path(__file__).resolve().with_name("validate_node71_decision_artifact.py")
+    spec = importlib.util.spec_from_file_location("lumi_node71_decision_artifact", path)
+    if spec is None or spec.loader is None:
+        raise DeploymentGateError("unable to load NODE-71 decision artifact validator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def validate_manifest(manifest: dict[str, Any]) -> list[str]:
     blockers: list[str] = []
     require(manifest.get("schema_version") == 1, "manifest schema_version must be 1", blockers)
@@ -49,8 +72,21 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
     else:
         sha = rc.get("git_sha")
         require(isinstance(sha, str) and bool(SHA40.fullmatch(sha.lower())), "release_candidate.git_sha must be exact SHA40", blockers)
-        for key in ["version", "migration_head", "staging_acceptance_decision_id", "staging_acceptance_path"]:
+        for key in ["version", "migration_head", "staging_acceptance_decision_id"]:
             require(present(rc.get(key)), f"release_candidate.{key} is missing/PENDING", blockers)
+        run_id = rc.get("staging_acceptance_run_id")
+        require(
+            isinstance(run_id, str) and bool(RUN_ID.fullmatch(run_id)),
+            "release_candidate.staging_acceptance_run_id must be a positive decimal GitHub Actions run id",
+            blockers,
+        )
+        configured_path = rc.get("staging_acceptance_path")
+        require(
+            isinstance(configured_path, str)
+            and Path(configured_path).as_posix() == CANONICAL_STAGING_ACCEPTANCE_PATH.as_posix(),
+            "release_candidate.staging_acceptance_path must use the canonical downloaded NODE-71 decision path",
+            blockers,
+        )
 
     aws = manifest.get("aws")
     if not isinstance(aws, dict):
@@ -93,6 +129,16 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
     else:
         require(rollout == expected_rollout, "rollout must match the versioned NODE-72 ECS canary/rolling policy", blockers)
 
+    recovery = manifest.get("recovery")
+    if not isinstance(recovery, dict):
+        blockers.append("recovery object missing")
+    else:
+        require(
+            recovery == EXPECTED_RECOVERY_POLICY,
+            "recovery must match the versioned NODE-72 launch RPO/RTO/object-recovery policy",
+            blockers,
+        )
+
     limits = manifest.get("first_day_limits")
     required_limits = {
         "max_org_concurrent_agent_runs",
@@ -108,6 +154,14 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
         for key in sorted(required_limits):
             value = limits.get(key)
             require(isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < float(value) <= 100000, f"first_day_limits.{key} must be finite and positive", blockers)
+        provider_limit = limits.get("daily_provider_spend_usd")
+        require(
+            isinstance(provider_limit, (int, float))
+            and not isinstance(provider_limit, bool)
+            and 0 < float(provider_limit) <= MAX_DAILY_PROVIDER_SPEND_USD,
+            "first_day_limits.daily_provider_spend_usd must be > 0 and <= 100",
+            blockers,
+        )
 
     rollback = manifest.get("rollback")
     if not isinstance(rollback, dict):
@@ -135,6 +189,73 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
     return blockers
 
 
+def _validate_runtime_image_seal(
+    decision: dict[str, Any],
+    decision_rc: dict[str, Any],
+    manifest_rc: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    blockers: list[str] = []
+    binding = decision.get("runtime_image_binding")
+    if not isinstance(binding, dict):
+        return {}, ["NODE-71 decision runtime_image_binding seal is missing"]
+    require(binding.get("status") == "PASS", "NODE-71 runtime-image binding status is not PASS", blockers)
+    manifest_sha = manifest_rc.get("git_sha")
+    decision_sha = decision_rc.get("git_sha")
+    binding_sha = binding.get("git_sha")
+    require(
+        isinstance(binding_sha, str)
+        and bool(SHA40.fullmatch(binding_sha.lower()))
+        and binding_sha == decision_sha == manifest_sha,
+        "NODE-71 runtime-image binding git_sha must equal accepted Production RC SHA",
+        blockers,
+    )
+    require(
+        binding.get("version") == decision_rc.get("version") == manifest_rc.get("version"),
+        "NODE-71 runtime-image binding version must equal accepted Production RC version",
+        blockers,
+    )
+    build_run_id = binding.get("build_run_id")
+    require(
+        isinstance(build_run_id, str) and bool(RUN_ID.fullmatch(build_run_id)),
+        "NODE-71 runtime-image binding build_run_id is invalid",
+        blockers,
+    )
+    artifact_ref = binding.get("container_image_set_ref")
+    require(
+        present(artifact_ref) and artifact_ref == decision_rc.get("container_image_set_ref"),
+        "NODE-71 runtime-image binding artifact ref differs from accepted decision RC",
+        blockers,
+    )
+    report_sha = binding.get("attestation_report_sha256")
+    require(
+        isinstance(report_sha, str) and bool(SHA256.fullmatch(report_sha)),
+        "NODE-71 runtime-image binding attestation report SHA-256 is invalid",
+        blockers,
+    )
+    require(
+        binding.get("attestation_source_digest") == manifest_sha,
+        "NODE-71 runtime-image attestation source digest must equal Production RC SHA",
+        blockers,
+    )
+    require(binding.get("runtime_count") == 6, "NODE-71 runtime-image binding must cover exactly six runtimes", blockers)
+    normalized = {
+        "status": binding.get("status"),
+        "git_sha": binding.get("git_sha"),
+        "version": binding.get("version"),
+        "build_run_id": build_run_id,
+        "container_image_set_ref": artifact_ref,
+        "attestation_report_sha256": report_sha,
+        "attestation_source_digest": binding.get("attestation_source_digest"),
+        "runtime_count": binding.get("runtime_count"),
+    }
+    require(
+        binding == normalized,
+        "NODE-71 runtime-image binding seal contains unexpected or missing fields",
+        blockers,
+    )
+    return normalized, blockers
+
+
 def validate_acceptance(manifest: dict[str, Any], decision: dict[str, Any], acceptance_path: Path) -> list[str]:
     blockers: list[str] = []
     rc = manifest.get("release_candidate", {})
@@ -147,6 +268,7 @@ def validate_acceptance(manifest: dict[str, Any], decision: dict[str, Any], acce
     decision_rc = decision.get("release_candidate")
     if not isinstance(decision_rc, dict):
         blockers.append("NODE-71 decision release_candidate missing")
+        decision_rc = {}
     else:
         if decision_rc.get("git_sha") != rc.get("git_sha"):
             blockers.append("NODE-71 accepted RC SHA does not match production deployment RC")
@@ -154,6 +276,21 @@ def validate_acceptance(manifest: dict[str, Any], decision: dict[str, Any], acce
             blockers.append("NODE-71 accepted RC version does not match production deployment RC")
         if decision_rc.get("migration_head") != rc.get("migration_head"):
             blockers.append("NODE-71 accepted migration head does not match production deployment")
+
+    _, seal_blockers = _validate_runtime_image_seal(decision, decision_rc, rc)
+    blockers.extend(seal_blockers)
+
+    accepted_image_set = decision.get("container_image_set")
+    accepted_images = (
+        accepted_image_set.get("images")
+        if isinstance(accepted_image_set, dict)
+        else None
+    )
+    if not isinstance(accepted_images, dict):
+        blockers.append("NODE-71 decision does not freeze accepted container image digests")
+    elif accepted_images != manifest.get("images"):
+        blockers.append("production image digests do not exactly match NODE-71 accepted images")
+
     configured_path = rc.get("staging_acceptance_path")
     if isinstance(configured_path, str):
         if Path(configured_path).as_posix() != acceptance_path.as_posix():
@@ -170,7 +307,9 @@ def evaluate(manifest: dict[str, Any], decision: dict[str, Any], acceptance_path
         "release_candidate": manifest.get("release_candidate", {}),
         "aws": manifest.get("aws", {}),
         "images": manifest.get("images", {}),
+        "runtime_image_binding": decision.get("runtime_image_binding", {}),
         "rollout": manifest.get("rollout", {}),
+        "recovery": manifest.get("recovery", {}),
         "staging_acceptance_decision_id": decision.get("decision_id"),
         "passed": not blockers,
         "blockers": sorted(set(blockers)),
@@ -179,16 +318,59 @@ def evaluate(manifest: dict[str, Any], decision: dict[str, Any], acceptance_path
     return {"gate_id": hashlib.sha256(canonical.encode()).hexdigest()[:24], **payload}
 
 
+def _validate_node71_artifact(
+    *,
+    decision_path: Path,
+    provenance_path: Path,
+    expected_run_id: str,
+    expected_repository: str,
+) -> None:
+    if provenance_path != decision_path.with_name("decision-provenance.json"):
+        raise DeploymentGateError("NODE-71 provenance must be decision-provenance.json beside decision.json")
+    module = _load_node71_artifact_validator()
+    try:
+        module.validate_artifact(
+            decision_path=decision_path,
+            provenance_path=provenance_path,
+            expected_run_id=expected_run_id,
+            expected_repository=expected_repository,
+        )
+    except Exception as exc:
+        raise DeploymentGateError(f"NODE-71 decision artifact provenance rejected: {exc}") from exc
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Gate LUMI production deployment against exact NODE-71 acceptance evidence")
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--acceptance-decision", required=True)
+    parser.add_argument("--acceptance-provenance", required=True)
+    parser.add_argument("--acceptance-run-id", required=True)
+    parser.add_argument("--repository", required=True)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     try:
         manifest_path = Path(args.manifest)
         acceptance_path = Path(args.acceptance_decision)
-        result = evaluate(load_json(manifest_path), load_json(acceptance_path), acceptance_path)
+        provenance_path = Path(args.acceptance_provenance)
+        manifest = load_json(manifest_path)
+        decision = load_json(acceptance_path)
+        rc = manifest.get("release_candidate")
+        if not isinstance(rc, dict):
+            raise DeploymentGateError("release_candidate object missing")
+        manifest_run_id = rc.get("staging_acceptance_run_id")
+        if manifest_run_id != args.acceptance_run_id:
+            raise DeploymentGateError(
+                "production manifest staging_acceptance_run_id differs from requested NODE-71 run"
+            )
+        if acceptance_path.as_posix() != CANONICAL_STAGING_ACCEPTANCE_PATH.as_posix():
+            raise DeploymentGateError("production gate must evaluate the canonical downloaded NODE-71 path")
+        _validate_node71_artifact(
+            decision_path=acceptance_path,
+            provenance_path=provenance_path,
+            expected_run_id=args.acceptance_run_id,
+            expected_repository=args.repository,
+        )
+        result = evaluate(manifest, decision, acceptance_path)
     except (DeploymentGateError, OSError, json.JSONDecodeError) as exc:
         raise SystemExit(f"production deployment gate invalid: {exc}") from exc
     output = Path(args.output)

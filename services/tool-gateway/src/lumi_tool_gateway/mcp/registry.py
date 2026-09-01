@@ -46,10 +46,7 @@ class MCPServerRegistry:
             raise MCPPolicyDeniedError("MCP_SERVER_NOT_APPROVED")
         if not definition.enabled:
             raise MCPPolicyDeniedError("MCP_SERVER_DISABLED")
-        if (
-            definition.organization_id is not None
-            and definition.organization_id != organization_id
-        ):
+        if definition.organization_id is not None and definition.organization_id != organization_id:
             raise MCPPolicyDeniedError("MCP_SERVER_TENANT_DENIED")
         return definition
 

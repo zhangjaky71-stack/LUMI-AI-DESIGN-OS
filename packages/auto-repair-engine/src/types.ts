@@ -1,5 +1,12 @@
-import type { DesignConstraint, DesignDocument, DesignOperation } from "../../design-constraints/src/index";
-import type { CriticSubject, QualityResult } from "../../quality-engine/src/index";
+import type {
+  DesignConstraint,
+  DesignDocument,
+  DesignOperation,
+} from "../../design-constraints/src/index";
+import type {
+  CriticSubject,
+  QualityResult,
+} from "../../quality-engine/src/index";
 
 export const REPAIR_ACTION_KINDS = [
   "STRUCTURAL_DESIGN_OP",
@@ -22,7 +29,11 @@ export const REPAIR_LOOP_STATUSES = [
 ] as const;
 export type RepairLoopStatus = (typeof REPAIR_LOOP_STATUSES)[number];
 
-export type RepairCandidateDisposition = "PROMOTED_READY" | "PROMOTED_DRAFT" | "REJECTED" | "REVIEW";
+export type RepairCandidateDisposition =
+  | "PROMOTED_READY"
+  | "PROMOTED_DRAFT"
+  | "REJECTED"
+  | "REVIEW";
 
 export interface AutoRepairPolicy {
   readonly policy_id: string;

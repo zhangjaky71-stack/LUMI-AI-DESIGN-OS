@@ -59,7 +59,7 @@ def build_transaction(operation_count: int = 100) -> tuple[list[dict[str, Any]],
                 "type": "MOVE_NODE",
                 "target_ids": [node_id],
                 "expected_document_version": 10,
-                "payload": {"dx": 0.1, "dy": 0.1},
+                "payload": {"dx": 0.5, "dy": 0.5},
             }
         )
         constraints.append(

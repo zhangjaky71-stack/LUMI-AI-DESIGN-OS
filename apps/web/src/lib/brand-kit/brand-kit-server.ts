@@ -254,6 +254,7 @@ function seed(): BrandKitSnapshot {
 
 export function getBrandKitBootstrap(): BrandKitBootstrap {
   const e2e =
-    process.env.NODE_ENV !== "production" && process.env.LUMI_BRAND_KIT_E2E === "1";
+    process.env.NODE_ENV !== "production" &&
+    process.env.LUMI_BRAND_KIT_E2E === "1";
   return e2e ? { mode: "e2e", seed: seed() } : { mode: "http", seed: null };
 }

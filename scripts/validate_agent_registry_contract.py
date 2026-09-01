@@ -15,13 +15,38 @@ def require(path: str, *markers: str) -> str:
     return text
 
 
+def _validate_eval_profile_source(source: object) -> None:
+    if not isinstance(source, str) or not source:
+        raise SystemExit(f"eval profile source missing: {source}")
+    source_path, separator, fragment = source.partition("#")
+    path = ROOT / source_path
+    if not path.is_file():
+        raise SystemExit(f"eval profile source missing: {source}")
+    if not separator:
+        return
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    roles = payload.get("roles") if isinstance(payload, dict) else None
+    if not fragment or not isinstance(roles, dict) or fragment not in roles:
+        raise SystemExit(f"eval profile fragment missing: {source}")
+
+
 def main() -> int:
     schema = json.loads((ROOT / "schemas/agent-definition-v1.schema.json").read_text())
     required = set(schema.get("required", []))
     expected = {
-        "id", "version", "role", "description", "model_policy", "tools",
-        "skills", "context_policy", "memory_policy", "budget_policy",
-        "permissions", "output_schema", "eval_profile",
+        "id",
+        "version",
+        "role",
+        "description",
+        "model_policy",
+        "tools",
+        "skills",
+        "context_policy",
+        "memory_policy",
+        "budget_policy",
+        "permissions",
+        "output_schema",
+        "eval_profile",
     }
     if not expected <= required:
         raise SystemExit("AgentDefinition schema misses required fields")
@@ -57,7 +82,13 @@ def main() -> int:
     bootstrap = json.loads(
         (ROOT / "config/agent-registry/bootstrap-dependencies.v1.json").read_text()
     )
-    for section in ("skills", "context_policies", "budget_policies", "output_schemas", "eval_profiles"):
+    for section in (
+        "skills",
+        "context_policies",
+        "budget_policies",
+        "output_schemas",
+        "eval_profiles",
+    ):
         if not bootstrap.get(section):
             raise SystemExit(f"bootstrap dependency section missing: {section}")
     for row in bootstrap["output_schemas"].values():
@@ -65,9 +96,7 @@ def main() -> int:
         if not source or not (ROOT / source).exists():
             raise SystemExit(f"output schema source missing: {source}")
     for row in bootstrap["eval_profiles"].values():
-        source = row.get("source_ref")
-        if not source or not (ROOT / source).exists():
-            raise SystemExit(f"eval profile source missing: {source}")
+        _validate_eval_profile_source(row.get("source_ref"))
 
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/agent_registry/registry.py",
@@ -111,7 +140,9 @@ def main() -> int:
             if isinstance(node, ast.Import):
                 names = {alias.name.split(".", 1)[0] for alias in node.names}
                 if names & forbidden:
-                    raise SystemExit(f"Agent Registry imports ambient authority: {path}:{names & forbidden}")
+                    raise SystemExit(
+                        f"Agent Registry imports ambient authority: {path}:{names & forbidden}"
+                    )
             if isinstance(node, ast.ImportFrom) and node.module:
                 root = node.module.split(".", 1)[0]
                 if root in forbidden:

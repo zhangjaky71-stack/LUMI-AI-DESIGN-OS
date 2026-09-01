@@ -28,15 +28,52 @@ export interface WorkspaceStreamOptions {
 }
 
 export interface AIWorkspaceGateway {
-  getWorkspace(organizationId: string, projectId: string, signal?: AbortSignal): Promise<AIWorkspaceSnapshot>;
-  startRun(organizationId: string, input: StartRunInput, signal?: AbortSignal): Promise<AIWorkspaceSnapshot>;
-  pauseRun(organizationId: string, input: RunControlInput, signal?: AbortSignal): Promise<AgentRunSnapshot>;
-  resumeRun(organizationId: string, input: RunControlInput, signal?: AbortSignal): Promise<AgentRunSnapshot>;
-  stopRun(organizationId: string, input: RunControlInput, signal?: AbortSignal): Promise<AgentRunSnapshot>;
-  retryTask(organizationId: string, input: RetryTaskInput, signal?: AbortSignal): Promise<AgentRunSnapshot>;
-  decideApproval(organizationId: string, input: ApprovalDecisionInput, signal?: AbortSignal): Promise<AIWorkspaceSnapshot>;
-  placeArtifact(organizationId: string, input: PlaceArtifactInput, signal?: AbortSignal): Promise<AIWorkspaceSnapshot>;
-  streamRun(organizationId: string, projectId: string, runId: string, options: WorkspaceStreamOptions): Promise<void>;
+  getWorkspace(
+    organizationId: string,
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<AIWorkspaceSnapshot>;
+  startRun(
+    organizationId: string,
+    input: StartRunInput,
+    signal?: AbortSignal,
+  ): Promise<AIWorkspaceSnapshot>;
+  pauseRun(
+    organizationId: string,
+    input: RunControlInput,
+    signal?: AbortSignal,
+  ): Promise<AgentRunSnapshot>;
+  resumeRun(
+    organizationId: string,
+    input: RunControlInput,
+    signal?: AbortSignal,
+  ): Promise<AgentRunSnapshot>;
+  stopRun(
+    organizationId: string,
+    input: RunControlInput,
+    signal?: AbortSignal,
+  ): Promise<AgentRunSnapshot>;
+  retryTask(
+    organizationId: string,
+    input: RetryTaskInput,
+    signal?: AbortSignal,
+  ): Promise<AgentRunSnapshot>;
+  decideApproval(
+    organizationId: string,
+    input: ApprovalDecisionInput,
+    signal?: AbortSignal,
+  ): Promise<AIWorkspaceSnapshot>;
+  placeArtifact(
+    organizationId: string,
+    input: PlaceArtifactInput,
+    signal?: AbortSignal,
+  ): Promise<AIWorkspaceSnapshot>;
+  streamRun(
+    organizationId: string,
+    projectId: string,
+    runId: string,
+    options: WorkspaceStreamOptions,
+  ): Promise<void>;
 }
 
 function requestOptions(signal?: AbortSignal): { signal?: AbortSignal } {
@@ -47,19 +84,30 @@ export class HttpAIWorkspaceGateway implements AIWorkspaceGateway {
   readonly #api: LumiApiClient;
   readonly #transport: typeof fetch;
 
-  constructor(api: LumiApiClient, transport: typeof fetch = globalThis.fetch.bind(globalThis)) {
+  constructor(
+    api: LumiApiClient,
+    transport: typeof fetch = globalThis.fetch.bind(globalThis),
+  ) {
     this.#api = api;
     this.#transport = transport;
   }
 
-  getWorkspace(_organizationId: string, projectId: string, signal?: AbortSignal) {
+  getWorkspace(
+    _organizationId: string,
+    projectId: string,
+    signal?: AbortSignal,
+  ) {
     return this.#api.get<AIWorkspaceSnapshot>(
       `/projects/${encodeURIComponent(projectId)}/ai-workspace`,
       requestOptions(signal),
     );
   }
 
-  startRun(_organizationId: string, input: StartRunInput, signal?: AbortSignal) {
+  startRun(
+    _organizationId: string,
+    input: StartRunInput,
+    signal?: AbortSignal,
+  ) {
     const safe = validateStartRunInput(input);
     return this.#api.post<AIWorkspaceSnapshot, StartRunInput>(
       `/projects/${encodeURIComponent(safe.project_id)}/agent-runs`,
@@ -68,19 +116,35 @@ export class HttpAIWorkspaceGateway implements AIWorkspaceGateway {
     );
   }
 
-  pauseRun(_organizationId: string, input: RunControlInput, signal?: AbortSignal) {
+  pauseRun(
+    _organizationId: string,
+    input: RunControlInput,
+    signal?: AbortSignal,
+  ) {
     return this.#control(input, "pause", signal);
   }
 
-  resumeRun(_organizationId: string, input: RunControlInput, signal?: AbortSignal) {
+  resumeRun(
+    _organizationId: string,
+    input: RunControlInput,
+    signal?: AbortSignal,
+  ) {
     return this.#control(input, "resume", signal);
   }
 
-  stopRun(_organizationId: string, input: RunControlInput, signal?: AbortSignal) {
+  stopRun(
+    _organizationId: string,
+    input: RunControlInput,
+    signal?: AbortSignal,
+  ) {
     return this.#control(input, "cancel", signal);
   }
 
-  retryTask(_organizationId: string, input: RetryTaskInput, signal?: AbortSignal) {
+  retryTask(
+    _organizationId: string,
+    input: RetryTaskInput,
+    signal?: AbortSignal,
+  ) {
     return this.#api.post<AgentRunSnapshot, { expected_run_version: number }>(
       `/agent-runs/${encodeURIComponent(input.run_id)}/tasks/${encodeURIComponent(input.task_id)}/retry`,
       { expected_run_version: input.expected_run_version },
@@ -88,7 +152,11 @@ export class HttpAIWorkspaceGateway implements AIWorkspaceGateway {
     );
   }
 
-  decideApproval(_organizationId: string, input: ApprovalDecisionInput, signal?: AbortSignal) {
+  decideApproval(
+    _organizationId: string,
+    input: ApprovalDecisionInput,
+    signal?: AbortSignal,
+  ) {
     return this.#api.post<AIWorkspaceSnapshot, ApprovalDecisionInput>(
       `/approvals/${encodeURIComponent(input.approval_id)}/decisions`,
       input,
@@ -96,7 +164,11 @@ export class HttpAIWorkspaceGateway implements AIWorkspaceGateway {
     );
   }
 
-  placeArtifact(_organizationId: string, input: PlaceArtifactInput, signal?: AbortSignal) {
+  placeArtifact(
+    _organizationId: string,
+    input: PlaceArtifactInput,
+    signal?: AbortSignal,
+  ) {
     return this.#api.post<AIWorkspaceSnapshot, PlaceArtifactInput>(
       `/canvas/documents/${encodeURIComponent(input.document_id)}/artifact-placements`,
       input,
@@ -115,7 +187,8 @@ export class HttpAIWorkspaceGateway implements AIWorkspaceGateway {
       "cache-control": "no-cache",
       "x-lumi-organization-id": organizationId,
     });
-    if (options.last_event_id) headers.set("last-event-id", options.last_event_id);
+    if (options.last_event_id)
+      headers.set("last-event-id", options.last_event_id);
     const response = await this.#transport(
       `/api/v1/projects/${encodeURIComponent(projectId)}/agent-runs/${encodeURIComponent(runId)}/events`,
       {
@@ -125,7 +198,8 @@ export class HttpAIWorkspaceGateway implements AIWorkspaceGateway {
         signal: options.signal,
       },
     );
-    if (!response.ok) throw workspaceProblem("STREAM_UNAVAILABLE", response.status);
+    if (!response.ok)
+      throw workspaceProblem("STREAM_UNAVAILABLE", response.status);
     if (!response.body) throw workspaceProblem("STREAM_BODY_MISSING", 502);
 
     const reader = response.body.getReader();
@@ -133,7 +207,9 @@ export class HttpAIWorkspaceGateway implements AIWorkspaceGateway {
     let buffer = "";
     while (true) {
       const { value, done } = await reader.read();
-      buffer += decoder.decode(value, { stream: !done }).replaceAll("\r\n", "\n");
+      buffer += decoder
+        .decode(value, { stream: !done })
+        .replaceAll("\r\n", "\n");
       let boundary = buffer.indexOf("\n\n");
       while (boundary >= 0) {
         const frame = buffer.slice(0, boundary);
@@ -150,7 +226,11 @@ export class HttpAIWorkspaceGateway implements AIWorkspaceGateway {
     }
   }
 
-  #control(input: RunControlInput, action: "pause" | "resume" | "cancel", signal?: AbortSignal) {
+  #control(
+    input: RunControlInput,
+    action: "pause" | "resume" | "cancel",
+    signal?: AbortSignal,
+  ) {
     return this.#api.post<AgentRunSnapshot, { expected_run_version: number }>(
       `/agent-runs/${encodeURIComponent(input.run_id)}/${action}`,
       { expected_run_version: input.expected_run_version },
@@ -195,12 +275,20 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
     this.#staleApprovalId = seed.stale_approval_id;
   }
 
-  async getWorkspace(organizationId: string, projectId: string, signal?: AbortSignal) {
+  async getWorkspace(
+    organizationId: string,
+    projectId: string,
+    signal?: AbortSignal,
+  ) {
     this.#assertScope(organizationId, projectId, signal);
     return clone(this.#snapshot);
   }
 
-  async startRun(organizationId: string, input: StartRunInput, signal?: AbortSignal) {
+  async startRun(
+    organizationId: string,
+    input: StartRunInput,
+    signal?: AbortSignal,
+  ) {
     this.#assertScope(organizationId, input.project_id, signal);
     const safe = validateStartRunInput(input);
     const runId = `run-e2e-${++this.#counter}`;
@@ -214,10 +302,22 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
       selected_node_ids: safe.selected_node_ids,
       document_version: safe.document_version,
       brand_rule_set_version:
-        safe.brand_rule_set_version ?? this.#snapshot.brand_binding?.resolved_rule_set_version ?? null,
+        safe.brand_rule_set_version ??
+        this.#snapshot.brand_binding?.resolved_rule_set_version ??
+        null,
       tasks: [
-        { task_id: `${runId}:brief`, label: "理解 Brief", status: "RUNNING", retryable: false },
-        { task_id: `${runId}:visual`, label: "生成视觉方向", status: "PENDING", retryable: true },
+        {
+          task_id: `${runId}:brief`,
+          label: "理解 Brief",
+          status: "RUNNING",
+          retryable: false,
+        },
+        {
+          task_id: `${runId}:visual`,
+          label: "生成视觉方向",
+          status: "PENDING",
+          retryable: true,
+        },
       ],
     };
     const user: WorkspaceMessage = {
@@ -230,23 +330,47 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
       approval_id: null,
       warning_code: null,
     };
-    this.#snapshot = { ...this.#snapshot, run, messages: [...this.#snapshot.messages, user] };
+    this.#snapshot = {
+      ...this.#snapshot,
+      run,
+      messages: [...this.#snapshot.messages, user],
+    };
     return clone(this.#snapshot);
   }
 
-  async pauseRun(organizationId: string, input: RunControlInput, signal?: AbortSignal) {
+  async pauseRun(
+    organizationId: string,
+    input: RunControlInput,
+    signal?: AbortSignal,
+  ) {
     const run = this.#requireRun(organizationId, input, signal);
     if (run.status !== "RUNNING") throw workspaceProblem("RUN_NOT_PAUSABLE");
-    return this.#replaceRun({ ...run, version: run.version + 1, status: "PAUSED" });
+    return this.#replaceRun({
+      ...run,
+      version: run.version + 1,
+      status: "PAUSED",
+    });
   }
 
-  async resumeRun(organizationId: string, input: RunControlInput, signal?: AbortSignal) {
+  async resumeRun(
+    organizationId: string,
+    input: RunControlInput,
+    signal?: AbortSignal,
+  ) {
     const run = this.#requireRun(organizationId, input, signal);
     if (run.status !== "PAUSED") throw workspaceProblem("RUN_NOT_RESUMABLE");
-    return this.#replaceRun({ ...run, version: run.version + 1, status: "RUNNING" });
+    return this.#replaceRun({
+      ...run,
+      version: run.version + 1,
+      status: "RUNNING",
+    });
   }
 
-  async stopRun(organizationId: string, input: RunControlInput, signal?: AbortSignal) {
+  async stopRun(
+    organizationId: string,
+    input: RunControlInput,
+    signal?: AbortSignal,
+  ) {
     const run = this.#requireRun(organizationId, input, signal);
     if (!["RUNNING", "PAUSED", "QUEUED"].includes(run.status)) {
       throw workspaceProblem("RUN_NOT_CANCELABLE");
@@ -264,7 +388,11 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
     });
   }
 
-  async retryTask(organizationId: string, input: RetryTaskInput, signal?: AbortSignal) {
+  async retryTask(
+    organizationId: string,
+    input: RetryTaskInput,
+    signal?: AbortSignal,
+  ) {
     const run = this.#requireRun(organizationId, input, signal);
     const target = run.tasks.find((task) => task.task_id === input.task_id);
     if (!target || target.status !== "FAILED" || !target.retryable) {
@@ -276,16 +404,25 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
       status: "RUNNING",
       completed_at: null,
       tasks: run.tasks.map((task) =>
-        task.task_id === input.task_id ? { ...task, status: "RUNNING" as const } : task,
+        task.task_id === input.task_id
+          ? { ...task, status: "RUNNING" as const }
+          : task,
       ),
     });
   }
 
-  async decideApproval(organizationId: string, input: ApprovalDecisionInput, signal?: AbortSignal) {
+  async decideApproval(
+    organizationId: string,
+    input: ApprovalDecisionInput,
+    signal?: AbortSignal,
+  ) {
     this.#assertScope(organizationId, this.#snapshot.project_id, signal);
-    const approval = this.#snapshot.approvals.find((value) => value.approval_id === input.approval_id);
+    const approval = this.#snapshot.approvals.find(
+      (value) => value.approval_id === input.approval_id,
+    );
     if (!approval) throw workspaceProblem("APPROVAL_NOT_FOUND", 404);
-    if (input.approval_id === this.#staleApprovalId) throw workspaceProblem("APPROVAL_STALE");
+    if (input.approval_id === this.#staleApprovalId)
+      throw workspaceProblem("APPROVAL_STALE");
     const safe = validateApprovalDecision(input, approval, this.#snapshot.run);
     const state: WorkspaceApproval["state"] =
       safe.decision === "APPROVE"
@@ -315,7 +452,11 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
     return clone(this.#snapshot);
   }
 
-  async placeArtifact(organizationId: string, input: PlaceArtifactInput, signal?: AbortSignal) {
+  async placeArtifact(
+    organizationId: string,
+    input: PlaceArtifactInput,
+    signal?: AbortSignal,
+  ) {
     this.#assertScope(organizationId, input.project_id, signal);
     if (input.document_id !== this.#snapshot.document.document_id) {
       throw workspaceProblem("DOCUMENT_NOT_FOUND", 404);
@@ -325,12 +466,16 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
     }
     const artifact = this.#snapshot.artifacts.find(
       (value) =>
-        value.artifact_id === input.artifact_id && value.version_id === input.artifact_version_id,
+        value.artifact_id === input.artifact_id &&
+        value.version_id === input.artifact_version_id,
     );
     if (!artifact) throw workspaceProblem("ARTIFACT_VERSION_NOT_FOUND", 404);
     this.#snapshot = {
       ...this.#snapshot,
-      document: { ...this.#snapshot.document, version: this.#snapshot.document.version + 1 },
+      document: {
+        ...this.#snapshot.document,
+        version: this.#snapshot.document.version + 1,
+      },
       messages: [
         ...this.#snapshot.messages,
         {
@@ -356,7 +501,8 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
   ): Promise<void> {
     this.#assertScope(organizationId, projectId, options.signal);
     const run = this.#snapshot.run;
-    if (!run || run.run_id !== runId) throw workspaceProblem("RUN_NOT_FOUND", 404);
+    if (!run || run.run_id !== runId)
+      throw workspaceProblem("RUN_NOT_FOUND", 404);
 
     const artifact: WorkspaceArtifact = {
       artifact_id: `artifact-${runId}`,
@@ -377,9 +523,13 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
       impact: "继续将基于当前构图扩展 3 个交付物。",
       estimated_cost_microusd: "1800000",
       artifact_version_ids: [artifact.version_id],
-      expires_at: "2026-08-16T00:00:00.000Z",
+      expires_at: null,
     };
-    const status = (id: string, text: string, sequence: number): WorkspaceMessage => ({
+    const status = (
+      id: string,
+      text: string,
+      sequence: number,
+    ): WorkspaceMessage => ({
       id,
       kind: "STATUS",
       created_at: at(sequence),
@@ -395,14 +545,22 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
         sequence: 1,
         run_id: runId,
         type: "message.created",
-        message: status(`${runId}:message:1`, "正在分析 Brief、Brand Kit 与选中对象。", 28),
+        message: status(
+          `${runId}:message:1`,
+          "正在分析 Brief、Brand Kit 与选中对象。",
+          28,
+        ),
       },
       {
         id: `${runId}:2`,
         sequence: 2,
         run_id: runId,
         type: "message.created",
-        message: status(`${runId}:message:2`, "已锁定产品身份约束，正在生成视觉方向。", 29),
+        message: status(
+          `${runId}:message:2`,
+          "已锁定产品身份约束，正在生成视觉方向。",
+          29,
+        ),
       },
       {
         id: `${runId}:3`,
@@ -411,7 +569,11 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
         type: "artifact.created",
         artifact,
         message: {
-          ...status(`${runId}:message:3`, "已生成可评审的主视觉 Artifact v1。", 31),
+          ...status(
+            `${runId}:message:3`,
+            "已生成可评审的主视觉 Artifact v1。",
+            31,
+          ),
           kind: "ARTIFACT",
           artifact_version_id: artifact.version_id,
         },
@@ -453,8 +615,13 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
     if (event.type === "run.status") {
       this.#snapshot = { ...this.#snapshot, run: event.run };
     } else if (event.type === "message.created") {
-      if (!this.#snapshot.messages.some((value) => value.id === event.message.id)) {
-        this.#snapshot = { ...this.#snapshot, messages: [...this.#snapshot.messages, event.message] };
+      if (
+        !this.#snapshot.messages.some((value) => value.id === event.message.id)
+      ) {
+        this.#snapshot = {
+          ...this.#snapshot,
+          messages: [...this.#snapshot.messages, event.message],
+        };
       }
     } else if (event.type === "artifact.created") {
       this.#snapshot = {
@@ -464,7 +631,9 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
         )
           ? this.#snapshot.artifacts
           : [...this.#snapshot.artifacts, event.artifact],
-        messages: this.#snapshot.messages.some((value) => value.id === event.message.id)
+        messages: this.#snapshot.messages.some(
+          (value) => value.id === event.message.id,
+        )
           ? this.#snapshot.messages
           : [...this.#snapshot.messages, event.message],
       };
@@ -476,7 +645,9 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
         )
           ? this.#snapshot.approvals
           : [...this.#snapshot.approvals, event.approval],
-        messages: this.#snapshot.messages.some((value) => value.id === event.message.id)
+        messages: this.#snapshot.messages.some(
+          (value) => value.id === event.message.id,
+        )
           ? this.#snapshot.messages
           : [...this.#snapshot.messages, event.message],
       };
@@ -501,17 +672,24 @@ export class DeterministicAIWorkspaceGateway implements AIWorkspaceGateway {
   ): AgentRunSnapshot {
     this.#assertScope(organizationId, this.#snapshot.project_id, signal);
     const run = this.#snapshot.run;
-    if (!run || run.run_id !== input.run_id) throw workspaceProblem("RUN_NOT_FOUND", 404);
-    if (run.version !== input.expected_run_version) throw workspaceProblem("RUN_VERSION_CONFLICT");
+    if (!run || run.run_id !== input.run_id)
+      throw workspaceProblem("RUN_NOT_FOUND", 404);
+    if (run.version !== input.expected_run_version)
+      throw workspaceProblem("RUN_VERSION_CONFLICT");
     return run;
   }
 
-  #assertScope(organizationId: string, projectId: string, signal?: AbortSignal): void {
+  #assertScope(
+    organizationId: string,
+    projectId: string,
+    signal?: AbortSignal,
+  ): void {
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     if (organizationId !== "org-lumi" && organizationId !== "org-northstar") {
       throw workspaceProblem("ORGANIZATION_FORBIDDEN", 403);
     }
-    if (projectId !== this.#snapshot.project_id) throw workspaceProblem("PROJECT_NOT_FOUND", 404);
+    if (projectId !== this.#snapshot.project_id)
+      throw workspaceProblem("PROJECT_NOT_FOUND", 404);
   }
 }
 
@@ -520,6 +698,6 @@ export function getAIWorkspaceGateway(
   bootstrap: AIWorkspaceBootstrap,
 ): AIWorkspaceGateway {
   if (bootstrap.mode !== "e2e") return new HttpAIWorkspaceGateway(api);
-  if (!bootstrap.seed) throw new Error("AI_WORKSPACE_E2E_SEED_REQUIRED");
+  if (!bootstrap.seed) throw workspaceProblem("E2E_SEED_MISSING", 500);
   return new DeterministicAIWorkspaceGateway(bootstrap.seed);
 }

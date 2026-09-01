@@ -7,7 +7,8 @@
     "version": "PENDING",
     "migration_head": "PENDING",
     "staging_acceptance_decision_id": "PENDING",
-    "staging_acceptance_path": "PENDING"
+    "staging_acceptance_run_id": "PENDING",
+    "staging_acceptance_path": "reports/production-deployments/runtime/node71/decision.json"
   },
   "aws": {
     "account_id": "PENDING",
@@ -35,11 +36,16 @@
     "public_api_alarm_rollback": true,
     "internal_service_strategy": "ROLLING_CIRCUIT_BREAKER"
   },
+  "recovery": {
+    "database_pitr_max_rpo_minutes": 5,
+    "database_pitr_max_rto_minutes": 60,
+    "object_version_recovery_required": true
+  },
   "first_day_limits": {
     "max_org_concurrent_agent_runs": 4,
     "max_org_concurrent_generations": 4,
     "max_org_concurrent_video_jobs": 1,
-    "daily_provider_spend_usd": 250,
+    "daily_provider_spend_usd": 100,
     "invite_rate_per_hour": 20
   },
   "rollback": {

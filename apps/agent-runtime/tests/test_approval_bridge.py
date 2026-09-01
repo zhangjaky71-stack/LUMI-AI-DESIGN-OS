@@ -14,6 +14,7 @@ def test_resume_command_uses_exact_approval_and_subject_version():
     )
     command = resume_command(envelope)
     payload = resume_payload(envelope)
+    assert command.resume is not None
     assert command.resume["approval_id"] == "approval-1"
     assert payload["subject_version"] == "artifact-v7"
     assert payload["decision"] == "APPROVE"

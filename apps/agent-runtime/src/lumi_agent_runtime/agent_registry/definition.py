@@ -83,10 +83,15 @@ class AgentDefinition:
             "role": self.role,
             "description": self.description,
             "model_policy": self.model_policy,
-            "tools": [{"name": item.name, "version": item.version_constraint} for item in self.tools],
+            "tools": [
+                {"name": item.name, "version": item.version_constraint} for item in self.tools
+            ],
             "skills": [item.ref for item in self.skills],
             "context_policy": self.context_policy,
-            "memory_policy": {"read": list(self.memory_policy.read), "write": list(self.memory_policy.write)},
+            "memory_policy": {
+                "read": list(self.memory_policy.read),
+                "write": list(self.memory_policy.write),
+            },
             "budget_policy": self.budget_policy,
             "permissions": self.permissions,
             "output_schema": self.output_schema,
@@ -95,7 +100,9 @@ class AgentDefinition:
             "max_steps": self.max_steps,
             "metadata": self.metadata,
         }
-        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        encoded = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
 
 

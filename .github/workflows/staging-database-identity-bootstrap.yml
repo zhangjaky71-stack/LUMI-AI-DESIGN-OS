@@ -1,0 +1,208 @@
+name: Staging Database Identity Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Database identity bootstrap operation"
+        required: true
+        type: choice
+        options:
+          - plan-database-bootstrap
+          - apply-database-bootstrap
+          - run-database-bootstrap
+      apply_ack:
+        description: "Required for apply/run mutations: APPLY_STAGING_DATABASE_BOOTSTRAP"
+        required: false
+        type: string
+      release_git_sha:
+        description: "Exact frozen runtime RC SHA"
+        required: true
+        type: string
+      promoted_image_set_json:
+        description: "Exact six-image Staging ECR digest map from verified promotion"
+        required: true
+        type: string
+      credential_generation:
+        description: "Positive database credential generation number"
+        required: false
+        default: "1"
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  OPERATION: ${{ inputs.operation }}
+  APPLY_ACK: ${{ inputs.apply_ack }}
+  RELEASE_GIT_SHA: ${{ inputs.release_git_sha }}
+  PROMOTED_IMAGE_SET_JSON: ${{ inputs.promoted_image_set_json }}
+  CREDENTIAL_GENERATION: ${{ inputs.credential_generation }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+  TF_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+  TF_VAR_account_id: ${{ vars.AWS_ACCOUNT_ID }}
+  TF_VAR_region: ${{ vars.AWS_REGION }}
+  TF_VAR_core_state_bucket: ${{ vars.TERRAFORM_STATE_BUCKET }}
+
+jobs:
+  database-identity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: staging
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+
+      - name: Validate protected Staging database-bootstrap preflight
+        run: python3 scripts/validate_staging_database_bootstrap_preflight.py
+
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: lumi-staging-db-bootstrap-${{ github.run_id }}
+
+      - name: Require explicit acknowledgement for mutations
+        if: inputs.operation == 'apply-database-bootstrap' || inputs.operation == 'run-database-bootstrap'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$APPLY_ACK" = "APPLY_STAGING_DATABASE_BOOTSTRAP"
+
+      - name: Bind release identity and immutable promoted API image
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/staging-database-identity/runtime
+          [[ "$RELEASE_GIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CREDENTIAL_GENERATION" =~ ^[1-9][0-9]*$ ]]
+
+          PROMOTED_IMAGE_SET_JSON="$PROMOTED_IMAGE_SET_JSON" \
+          AWS_ACCOUNT_ID="$TF_VAR_account_id" \
+          AWS_REGION="$AWS_REGION" \
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+
+          payload = json.loads(os.environ["PROMOTED_IMAGE_SET_JSON"])
+          services = {
+              "api",
+              "agent-runtime",
+              "model-gateway",
+              "tool-gateway",
+              "worker-media",
+              "sandbox-runtime",
+          }
+          if not isinstance(payload, dict) or set(payload) != services:
+              raise SystemExit("promoted_image_set_json must contain exactly the six runtime services")
+
+          account = os.environ["AWS_ACCOUNT_ID"]
+          region = os.environ["AWS_REGION"]
+          if not re.fullmatch(r"[0-9]{12}", account):
+              raise SystemExit("AWS_ACCOUNT_ID must be a 12-digit account id")
+          if not re.fullmatch(r"[a-z]{2}(?:-gov)?-[a-z]+-[0-9]+", region):
+              raise SystemExit("AWS_REGION is invalid")
+
+          for service in sorted(services):
+              image = payload[service]
+              expected = f"{account}.dkr.ecr.{region}.amazonaws.com/lumi-staging-{service}"
+              if not isinstance(image, str) or not re.fullmatch(
+                  re.escape(expected) + r"@sha256:[0-9a-f]{64}", image
+              ):
+                  raise SystemExit(f"invalid promoted ECR digest for {service}: {image!r}")
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+              handle.write(f"TF_VAR_api_image={payload['api']}\n")
+          PY
+
+          printf 'TF_VAR_release_git_sha=%s\n' "$RELEASE_GIT_SHA" >> "$GITHUB_ENV"
+          printf 'TF_VAR_credential_generation=%s\n' "$CREDENTIAL_GENERATION" >> "$GITHUB_ENV"
+
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schema_version": 1,
+              "kind": "LUMI_STAGING_DATABASE_IDENTITY_REQUEST_V1",
+              "operation": os.environ["OPERATION"],
+              "release_git_sha": os.environ["RELEASE_GIT_SHA"],
+              "credential_generation": int(os.environ["CREDENTIAL_GENERATION"]),
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "workflow_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "workflow_head_sha": os.environ["GITHUB_SHA"],
+              "secret_values_recorded": False,
+          }
+          Path("reports/staging-database-identity/runtime/request.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Initialize encrypted database-bootstrap state
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="infra/iac/environments/staging/database-bootstrap"
+          STATE_KEY="lumi/staging/database-bootstrap/terraform.tfstate"
+          printf 'ROOT=%s\nSTATE_KEY=%s\n' "$ROOT" "$STATE_KEY" >> "$GITHUB_ENV"
+          cat > /tmp/backend.hcl <<EOF
+          bucket       = "$TF_STATE_BUCKET"
+          key          = "$STATE_KEY"
+          region       = "$AWS_REGION"
+          encrypt      = true
+          use_lockfile = true
+          EOF
+          terraform -chdir="$ROOT" init -input=false -backend-config=/tmp/backend.hcl
+
+      - name: Terraform database-bootstrap plan
+        if: inputs.operation == 'plan-database-bootstrap' || inputs.operation == 'apply-database-bootstrap'
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform -chdir="$ROOT" plan -input=false -out=tfplan
+          terraform -chdir="$ROOT" show -no-color tfplan \
+            > reports/staging-database-identity/runtime/terraform-plan.txt
+
+      - name: Terraform database-bootstrap apply reviewed plan
+        if: inputs.operation == 'apply-database-bootstrap'
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform -chdir="$ROOT" apply -input=false -auto-approve tfplan
+
+      - name: Run private one-shot database identity bootstrap
+        if: inputs.operation == 'run-database-bootstrap'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/ecs-run-database-bootstrap-task.sh \
+            "$ROOT" \
+            "$RELEASE_GIT_SHA" \
+            reports/staging-database-identity/runtime/database-identity-run.json
+          jq -e '
+            .schema_version == 1 and
+            .kind == "LUMI_STAGING_DATABASE_IDENTITY_RUN_V1" and
+            .status == "PASS" and
+            .release_git_sha == env.RELEASE_GIT_SHA
+          ' reports/staging-database-identity/runtime/database-identity-run.json >/dev/null
+
+      - name: Upload immutable database identity operation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: staging-database-identity-${{ inputs.operation }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/staging-database-identity/runtime/
+          if-no-files-found: error
+          retention-days: 180

@@ -6,19 +6,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from lumi_auth import (
-    InMemorySlidingWindowRateLimiter,
-    Membership,
-    RateLimiter,
-    SessionRecord,
-    SingleUseTokenRecord,
-    build_request_context,
-    consume_single_use_token,
-    hash_token,
-    issue_opaque_token,
-    validate_csrf,
-)
-from lumi_domain import new_uuid7
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,8 +22,27 @@ from lumi_api.persistence.models import (
     User,
     Workspace,
 )
+from lumi_auth import (
+    InMemorySlidingWindowRateLimiter,
+    Membership,
+    RateLimiter,
+    SessionRecord,
+    SingleUseTokenRecord,
+    build_request_context,
+    consume_single_use_token,
+    hash_token,
+    issue_opaque_token,
+    validate_csrf,
+)
+from lumi_domain import new_uuid7
 
-from .errors import InvalidCredentials, PermissionDenied, RegistrationRejected, SessionInvalid, TokenInvalid
+from .errors import (
+    InvalidCredentials,
+    PermissionDenied,
+    RegistrationRejected,
+    SessionInvalid,
+    TokenInvalid,
+)
 from .password import Argon2idPasswordService
 
 _SLUG = re.compile(r"[^a-z0-9-]+")
@@ -154,7 +160,9 @@ class AuthService:
         existing = await self.session.scalar(select(User).where(User.email == normalized_email))
         if existing is not None:
             raise RegistrationRejected("registration is not available")
-        existing_org = await self.session.scalar(select(Organization).where(Organization.slug == slug))
+        existing_org = await self.session.scalar(
+            select(Organization).where(Organization.slug == slug)
+        )
         if existing_org is not None:
             raise RegistrationRejected("registration is not available")
 
@@ -173,6 +181,9 @@ class AuthService:
                     status="active",
                 )
             )
+            # Flush the parent before FK-bound credential/token rows. The full
+            # registration remains atomic inside this SAVEPOINT.
+            await self.session.flush()
             self.session.add(
                 PasswordCredential(
                     id=new_uuid7(),
@@ -191,6 +202,9 @@ class AuthService:
                     settings_json={},
                 )
             )
+            # Persist the organization parent before membership/workspace/audit
+            # children so databases enforce the FK boundary deterministically.
+            await self.session.flush()
             self.session.add(
                 OrganizationMember(
                     id=new_uuid7(),
@@ -237,7 +251,9 @@ class AuthService:
         )
         if row is None:
             raise TokenInvalid("token invalid or expired")
-        record = SingleUseTokenRecord(row.token_hash, row.expires_at, row.consumed_at, row.revoked_at)
+        record = SingleUseTokenRecord(
+            row.token_hash, row.expires_at, row.consumed_at, row.revoked_at
+        )
         try:
             consumed = consume_single_use_token(record, plaintext_token, now=now)
         except PermissionError as exc:
@@ -272,7 +288,9 @@ class AuthService:
             credential = await self.session.scalar(
                 select(PasswordCredential).where(PasswordCredential.user_id == user.id)
             )
-        candidate_hash = credential.password_hash if credential is not None else self._dummy_password_hash
+        candidate_hash = (
+            credential.password_hash if credential is not None else self._dummy_password_hash
+        )
         password_ok = self.passwords.verify_password(candidate_hash, password)
         if user is None or credential is None or user.status != "active" or not password_ok:
             raise InvalidCredentials("invalid email or password")
@@ -425,7 +443,9 @@ class AuthService:
         )
         if row is None:
             raise TokenInvalid("token invalid or expired")
-        record = SingleUseTokenRecord(row.token_hash, row.expires_at, row.consumed_at, row.revoked_at)
+        record = SingleUseTokenRecord(
+            row.token_hash, row.expires_at, row.consumed_at, row.revoked_at
+        )
         try:
             consumed = consume_single_use_token(record, plaintext_token, now=now)
         except PermissionError as exc:
@@ -502,7 +522,11 @@ class AuthService:
             select(OrganizationInvite).where(OrganizationInvite.token_hash == token_hash)
         )
         user = await self.session.get(User, actor_id)
-        if invite is None or user is None or self.normalize_email(user.email) != self.normalize_email(invite.email):
+        if (
+            invite is None
+            or user is None
+            or self.normalize_email(user.email) != self.normalize_email(invite.email)
+        ):
             raise TokenInvalid("token invalid or expired")
         record = SingleUseTokenRecord(
             invite.token_hash, invite.expires_at, invite.consumed_at, invite.revoked_at

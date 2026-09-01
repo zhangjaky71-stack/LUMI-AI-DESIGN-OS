@@ -13,8 +13,17 @@ locals {
     "rabbitmq/url",
     "providers/model",
     "providers/media",
+    "providers/search",
     "billing/webhook",
     "auth/signing",
+    "internal/model-gateway",
+    "internal/tool-gateway",
+    "internal/sandbox-runtime",
+    "internal/side-effect-control",
+    "internal/tool-audit",
+    "internal/tool-approval",
+    "internal/tool-data",
+    "internal/agent-control",
   ])
 }
 
@@ -32,14 +41,14 @@ module "platform_core" {
   data_subnet_cidrs       = ["10.80.80.0/24", "10.80.81.0/24", "10.80.82.0/24"]
   postgres_engine_version = var.postgres_engine_version
   db_instance_class       = var.db_instance_class
-  db_multi_az              = true
-  redis_engine_version     = var.redis_engine_version
-  redis_node_type          = var.redis_node_type
-  redis_auth_token         = var.redis_auth_token
-  rabbitmq_engine_version  = var.rabbitmq_engine_version
-  rabbitmq_instance_type   = var.rabbitmq_instance_type
-  rabbitmq_username        = var.rabbitmq_username
-  rabbitmq_password        = var.rabbitmq_password
-  secret_names             = local.secret_names
-  tags                     = local.tags
+  db_multi_az             = true
+  redis_engine_version    = var.redis_engine_version
+  redis_node_type         = var.redis_node_type
+  redis_auth_token        = var.redis_auth_token
+  rabbitmq_engine_version = var.rabbitmq_engine_version
+  rabbitmq_instance_type  = var.rabbitmq_instance_type
+  rabbitmq_username       = var.rabbitmq_username
+  rabbitmq_password       = var.rabbitmq_password
+  secret_names            = local.secret_names
+  tags                    = local.tags
 }

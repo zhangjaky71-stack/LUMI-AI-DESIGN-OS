@@ -1,0 +1,87 @@
+name: Tool Gateway Result Offload
+
+on:
+  pull_request:
+    paths:
+      - "services/tool-gateway/Dockerfile"
+      - "services/tool-gateway/pyproject.toml"
+      - "services/tool-gateway/src/lumi_tool_gateway/result_offload.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/service.py"
+      - "services/tool-gateway/src/lumi_tool_gateway/errors.py"
+      - "services/tool-gateway/tests/test_result_offload.py"
+      - "services/asset-storage/src/lumi_asset_storage/s3.py"
+      - "infra/iac/modules/storage/main.tf"
+      - "infra/iac/modules/compute/main.tf"
+      - "infra/iac/environments/staging/app/main.tf"
+      - "infra/iac/environments/production/app/main.tf"
+      - "staging/acceptance/evidence-template.json"
+      - "scripts/validate_tool_result_offload_provenance.py"
+      - ".github/workflows/tool-result-offload.yml"
+      - "uv.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  result-offload-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile result-offload source and release contract
+        run: |
+          python -m compileall -q \
+            services/tool-gateway/src/lumi_tool_gateway/result_offload.py \
+            services/tool-gateway/tests/test_result_offload.py \
+            scripts/validate_tool_result_offload_provenance.py
+      - name: Require durable S3/KMS/least-privilege closure
+        run: python scripts/validate_tool_result_offload_provenance.py --self-test
+
+  result-offload-quality:
+    needs: result-offload-source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Require canonical frozen workspace
+        run: uv sync --all-packages --frozen
+      - name: Ruff durable result-offload boundary
+        run: >-
+          uv run ruff check
+          services/tool-gateway/src/lumi_tool_gateway/result_offload.py
+          services/tool-gateway/src/lumi_tool_gateway/service.py
+          services/tool-gateway/tests/test_result_offload.py
+          scripts/validate_tool_result_offload_provenance.py
+      - name: Pyright durable result-offload boundary
+        run: >-
+          uv run pyright
+          services/tool-gateway/src/lumi_tool_gateway/result_offload.py
+          services/tool-gateway/src/lumi_tool_gateway/service.py
+          services/tool-gateway/tests/test_result_offload.py
+      - name: Unit acceptance
+        run: uv run pytest services/tool-gateway/tests/test_result_offload.py -q
+
+  result-offload-image:
+    needs: result-offload-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build canonical Tool Gateway image with frozen workspace
+        run: docker build --file services/tool-gateway/Dockerfile --tag lumi-tool-gateway:offload .
+      - name: Verify immutable Tool Gateway image identity
+        run: |
+          test "$(docker image inspect lumi-tool-gateway:offload --format '{{.Config.User}}')" = "10001:10001"
+          test "$(docker image inspect lumi-tool-gateway:offload --format '{{json .Config.Cmd}}')" = '["lumi-tool-gateway"]'

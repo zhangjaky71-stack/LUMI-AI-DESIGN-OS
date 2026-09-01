@@ -52,7 +52,11 @@ export interface AdminProvider {
   readonly health: "HEALTHY" | "DEGRADED" | "UNAVAILABLE" | "DISABLED";
   readonly circuit: "CLOSED" | "OPEN" | "HALF_OPEN";
   readonly routing_weight_basis_points: number;
-  readonly synthetic_health: "HEALTHY" | "DEGRADED" | "UNAVAILABLE" | "DISABLED";
+  readonly synthetic_health:
+    | "HEALTHY"
+    | "DEGRADED"
+    | "UNAVAILABLE"
+    | "DISABLED";
   readonly pricing_snapshot_id: string | null;
   readonly disabled_until: string | null;
   readonly disabled_reason: string | null;

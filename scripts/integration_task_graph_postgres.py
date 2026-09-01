@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import asyncpg
-
 from integration_recipe_engine import build_compiler
+
 from lumi_agent_runtime.task_graph import PostgresTaskGraphStore, instantiate_compiled_recipe
 
 ORG_ID = UUID("01900000-0000-7000-8000-000000000001")
@@ -34,8 +34,18 @@ async def main_async() -> None:
     agent_run_id = uuid4()
     graph_id: UUID | None = None
     try:
-        assert await migration.fetchval("SELECT count(*) FROM organizations WHERE id = $1", ORG_ID) == 1
-        assert await migration.fetchval("SELECT count(*) FROM projects WHERE id = $1", PROJECT_ID) == 1
+        assert (
+            await migration.fetchval(
+                "SELECT count(*) FROM organizations WHERE id = $1", ORG_ID
+            )
+            == 1
+        )
+        assert (
+            await migration.fetchval(
+                "SELECT count(*) FROM projects WHERE id = $1", PROJECT_ID
+            )
+            == 1
+        )
         await migration.execute(
             """
             INSERT INTO agent_runs (

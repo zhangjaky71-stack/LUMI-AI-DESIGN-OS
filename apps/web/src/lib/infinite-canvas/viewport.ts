@@ -1,4 +1,9 @@
-import type { CanvasSceneNode, CameraState, CanvasViewport, Rect } from "@lumi/canvas-sdk";
+import type {
+  CanvasSceneNode,
+  CameraState,
+  CanvasViewport,
+  Rect,
+} from "@lumi/canvas-sdk";
 import { viewportWorldRect } from "@lumi/canvas-sdk";
 
 export function intersects(left: Rect, right: Rect, padding = 0): boolean {
@@ -20,10 +25,12 @@ export function cullSceneNodes(
   const padding = 180 / Math.max(camera.zoom, 0.05);
   const lowZoom = camera.zoom < 0.18;
   return nodes.filter((node) => {
-    if (!node.visible || node.kind === "DOCUMENT_ROOT" || node.kind === "GUIDE") return false;
+    if (!node.visible || node.kind === "DOCUMENT_ROOT" || node.kind === "GUIDE")
+      return false;
     if (selectedIds.has(node.id)) return true;
     if (!intersects(node.world_bounds, world, padding)) return false;
-    if (lowZoom && !["FRAME", "IMAGE", "SHAPE"].includes(node.kind)) return false;
+    if (lowZoom && !["FRAME", "IMAGE", "SHAPE"].includes(node.kind))
+      return false;
     return true;
   });
 }

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizeBranchName, safeProvenance, validateForkInput } from "./contracts";
+import {
+  normalizeBranchName,
+  safeProvenance,
+  validateForkInput,
+} from "./contracts";
 import type { VersionTimelineItem } from "./types";
 
 const item: VersionTimelineItem = {
@@ -46,12 +50,30 @@ const item: VersionTimelineItem = {
 describe("Versions UI contracts", () => {
   it("normalizes a human branch name without creating an implicit merge", () => {
     expect(normalizeBranchName("  Dark Direction  ")).toBe("dark-direction");
-    expect(validateForkInput({ artifact_id: "a", source_version_id: "v1", name: "Dark Direction" }).name).toBe("dark-direction");
+    expect(
+      validateForkInput({
+        artifact_id: "a",
+        source_version_id: "v1",
+        name: "Dark Direction",
+      }).name,
+    ).toBe("dark-direction");
   });
 
   it("rejects branch names outside the bounded product contract", () => {
-    expect(() => validateForkInput({ artifact_id: "a", source_version_id: "v1", name: "x" })).toThrow();
-    expect(() => validateForkInput({ artifact_id: "a", source_version_id: "v1", name: "../../main" })).toThrow();
+    expect(() =>
+      validateForkInput({
+        artifact_id: "a",
+        source_version_id: "v1",
+        name: "x",
+      }),
+    ).toThrow();
+    expect(() =>
+      validateForkInput({
+        artifact_id: "a",
+        source_version_id: "v1",
+        name: "../../main",
+      }),
+    ).toThrow();
   });
 
   it("projects safe provenance hashes instead of raw prompts or private reasoning", () => {

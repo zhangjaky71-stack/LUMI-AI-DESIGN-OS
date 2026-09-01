@@ -3,7 +3,8 @@ import { readStoreZipEntries, writeStoreZip } from "./export-zip";
 
 function payload(index: number): Uint8Array {
   const bytes = new Uint8Array(8192);
-  for (let offset = 0; offset < bytes.length; offset += 1) bytes[offset] = (index * 31 + offset * 17) & 0xff;
+  for (let offset = 0; offset < bytes.length; offset += 1)
+    bytes[offset] = (index * 31 + offset * 17) & 0xff;
   return bytes;
 }
 
@@ -25,6 +26,14 @@ describe("NODE-49 packaging benchmark harness", () => {
     expect([...unpacked.keys()][99]).toBe("outputs/variant-099.bin");
     expect(packedMs).toBeGreaterThanOrEqual(0);
     expect(validatedMs).toBeGreaterThanOrEqual(0);
-    console.log(JSON.stringify({ entries: 100, payload_bytes: 8192 * 100, zip_bytes: zip.length, packed_ms: Math.round(packedMs * 1000) / 1000, validated_ms: Math.round(validatedMs * 1000) / 1000 }));
+    console.log(
+      JSON.stringify({
+        entries: 100,
+        payload_bytes: 8192 * 100,
+        zip_bytes: zip.length,
+        packed_ms: Math.round(packedMs * 1000) / 1000,
+        validated_ms: Math.round(validatedMs * 1000) / 1000,
+      }),
+    );
   });
 });

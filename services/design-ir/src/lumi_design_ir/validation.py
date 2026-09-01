@@ -7,7 +7,6 @@ from typing import Any
 from .errors import ResourceReferenceError, StructuralValidationError
 from .unicode_ranges import validate_codepoint_spans
 
-
 NODE_KINDS = frozenset(
     {
         "DOCUMENT_ROOT",
@@ -116,7 +115,9 @@ def validate_document(document: Mapping[str, Any]) -> None:
         if parent_id is not None and not isinstance(parent_id, str):
             raise StructuralValidationError(f"parent_id must be string/null at {node_key}")
         raw_children = node.get("children")
-        if not isinstance(raw_children, list) or not all(isinstance(child, str) for child in raw_children):
+        if not isinstance(raw_children, list) or not all(
+            isinstance(child, str) for child in raw_children
+        ):
             raise StructuralValidationError(f"children must be a string list at {node_key}")
         if len(raw_children) != len(set(raw_children)):
             raise StructuralValidationError(f"duplicate child id at {node_key}")
@@ -142,7 +143,9 @@ def validate_document(document: Mapping[str, Any]) -> None:
     for parent_id, child_ids in children_map.items():
         for child_id in child_ids:
             if child_id not in nodes:
-                raise StructuralValidationError(f"parent {parent_id} references missing child {child_id}")
+                raise StructuralValidationError(
+                    f"parent {parent_id} references missing child {child_id}"
+                )
             if parents[child_id] != parent_id:
                 raise StructuralValidationError(
                     f"child {child_id} parent_id does not match parent {parent_id}"
@@ -182,12 +185,16 @@ def validate_document(document: Mapping[str, Any]) -> None:
             image = _require_mapping(node.get("image"), f"nodes.{node_id}.image")
             asset_id = image.get("asset_id")
             if asset_id not in asset_ids:
-                raise ResourceReferenceError(f"image node {node_id} references missing asset {asset_id}")
+                raise ResourceReferenceError(
+                    f"image node {node_id} references missing asset {asset_id}"
+                )
             mask_id = image.get("mask_id")
             if mask_id is not None:
                 mask = nodes.get(mask_id)
                 if not isinstance(mask, Mapping) or mask.get("kind") != "MASK":
-                    raise ResourceReferenceError(f"image node {node_id} references invalid mask {mask_id}")
+                    raise ResourceReferenceError(
+                        f"image node {node_id} references invalid mask {mask_id}"
+                    )
         elif kind == "VIDEO":
             video = _require_mapping(node.get("video"), f"nodes.{node_id}.video")
             for field in ("asset_id", "poster_asset_id"):
@@ -206,7 +213,7 @@ def validate_document(document: Mapping[str, Any]) -> None:
         elif kind == "INSTANCE":
             instance = _require_mapping(node.get("instance"), f"nodes.{node_id}.instance")
             component_id = instance.get("component_id")
-            component = nodes.get(component_id)
+            component = nodes.get(component_id) if isinstance(component_id, str) else None
             if not isinstance(component, Mapping) or component.get("kind") != "COMPONENT":
                 raise ResourceReferenceError(
                     f"instance node {node_id} references invalid component {component_id}"

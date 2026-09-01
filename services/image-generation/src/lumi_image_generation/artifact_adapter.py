@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from lumi_artifacts.history import ArtifactHistory
@@ -95,7 +95,7 @@ class ArtifactHistoryCandidateAdapter:
             constraint_snapshot_hash=constraint_hash,
             created_by_type="AGENT",
             created_by_id=spec.agent_run_id or spec.task_id,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             primary_file_id=file_id,
             brand_rule_set_version=spec.brand_rule_set_version,
             identity_validation_snapshot_id=validation.identity_validation_snapshot_id,

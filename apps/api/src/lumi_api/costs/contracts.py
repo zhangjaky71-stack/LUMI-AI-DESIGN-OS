@@ -117,9 +117,10 @@ class ActualCost:
         _validate_currency(self.currency)
         if self.pricing_snapshot_id is not None and len(self.pricing_snapshot_id) > 128:
             raise ValueError("COST_PRICING_SNAPSHOT_INVALID")
-        if self.external_provider_request_id is not None and len(
-            self.external_provider_request_id
-        ) > 512:
+        if (
+            self.external_provider_request_id is not None
+            and len(self.external_provider_request_id) > 512
+        ):
             raise ValueError("COST_PROVIDER_REQUEST_ID_INVALID")
         if not self.entry_key or len(self.entry_key) > 128:
             raise ValueError("COST_ENTRY_KEY_INVALID")

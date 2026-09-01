@@ -62,7 +62,10 @@ function fatalValidationIssue(issue: IrValidationIssue): boolean {
 function compileDiagnosticFromIr(issue: IrValidationIssue): CompileDiagnostic {
   const fatal = fatalValidationIssue(issue);
   return {
-    code: issue.code === "IR_VERSION_UNSUPPORTED" ? "SCHEMA_UNSUPPORTED" : "STRUCTURAL_INVALID",
+    code:
+      issue.code === "IR_VERSION_UNSUPPORTED"
+        ? "SCHEMA_UNSUPPORTED"
+        : "STRUCTURAL_INVALID",
     severity: fatal ? "ERROR" : "WARNING",
     message: issue.message,
     pointer: issue.pointer,
@@ -73,7 +76,8 @@ function compileDiagnosticFromIr(issue: IrValidationIssue): CompileDiagnostic {
 
 function sceneDiagnostic(value: CanvasNodeDiagnostic): CompileDiagnostic {
   return {
-    code: value.code === "UNSUPPORTED_KIND" ? "NODE_PLACEHOLDER" : "IR_DIAGNOSTIC",
+    code:
+      value.code === "UNSUPPORTED_KIND" ? "NODE_PLACEHOLDER" : "IR_DIAGNOSTIC",
     severity: value.code === "CYCLE" ? "ERROR" : "WARNING",
     message: value.detail ?? value.code,
     node_id: value.node_id,
@@ -101,7 +105,11 @@ function pendingResource(
     variant,
     version: "unresolved",
     status: "PENDING",
-    fingerprint: canonicalStringify({ asset_id: assetId, variant, version: "unresolved" }),
+    fingerprint: canonicalStringify({
+      asset_id: assetId,
+      variant,
+      version: "unresolved",
+    }),
   };
 }
 
@@ -111,7 +119,8 @@ function withDirectVisualStyle(
 ): ResolvedCompilerStyle {
   const merged: Record<string, JsonValue> = { ...style };
   merged.opacity = typeof source?.opacity === "number" ? source.opacity : 1;
-  merged.blend_mode = typeof source?.blend_mode === "string" ? source.blend_mode : "normal";
+  merged.blend_mode =
+    typeof source?.blend_mode === "string" ? source.blend_mode : "normal";
   return merged;
 }
 
@@ -131,7 +140,9 @@ function renderPlanItem(node: CompiledSceneNode): CanvasRenderPlanItem {
     interaction_flags: node.interaction_flags,
     placeholder: node.placeholder,
     ...(node.resolved_text ? { resolved_text: node.resolved_text } : {}),
-    ...(node.resolved_resource ? { resolved_resource: node.resolved_resource } : {}),
+    ...(node.resolved_resource
+      ? { resolved_resource: node.resolved_resource }
+      : {}),
     ...(node.clip_id ? { clip_id: node.clip_id } : {}),
     ...(node.mask_id ? { mask_id: node.mask_id } : {}),
   };
@@ -153,7 +164,9 @@ function makeRenderPlan(
   };
 }
 
-function hashableResource(resource: ResolvedCompilerResource | undefined): unknown {
+function hashableResource(
+  resource: ResolvedCompilerResource | undefined,
+): unknown {
   if (!resource) return null;
   return {
     asset_id: resource.asset_id,
@@ -225,23 +238,32 @@ function hashablePlan(
   };
 }
 
-function resourceVersions(nodes: ReadonlyMap<string, CompiledSceneNode>): Record<string, string> {
+function resourceVersions(
+  nodes: ReadonlyMap<string, CompiledSceneNode>,
+): Record<string, string> {
   const versions: Record<string, string> = {};
   for (const node of nodes.values()) {
-    for (const [ref, version] of Object.entries(node.style_versions)) versions[ref] = version;
+    for (const [ref, version] of Object.entries(node.style_versions))
+      versions[ref] = version;
     const resource = node.resolved_resource;
     if (resource) versions[resource.asset_id] = resource.version;
   }
-  return Object.fromEntries(Object.entries(versions).sort(([a], [b]) => a.localeCompare(b)));
+  return Object.fromEntries(
+    Object.entries(versions).sort(([a], [b]) => a.localeCompare(b)),
+  );
 }
 
-function fontVersions(nodes: ReadonlyMap<string, CompiledSceneNode>): Record<string, string> {
+function fontVersions(
+  nodes: ReadonlyMap<string, CompiledSceneNode>,
+): Record<string, string> {
   const versions: Record<string, string> = {};
   for (const node of nodes.values()) {
     const font = node.resolved_text?.font;
     if (font) versions[font.font_ref] = font.version;
   }
-  return Object.fromEntries(Object.entries(versions).sort(([a], [b]) => a.localeCompare(b)));
+  return Object.fromEntries(
+    Object.entries(versions).sort(([a], [b]) => a.localeCompare(b)),
+  );
 }
 
 function hydratedRenderKey(
@@ -262,8 +284,13 @@ function hydratedRenderKey(
   });
 }
 
-function sameNode(left: CompiledSceneNode | undefined, right: CompiledSceneNode): boolean {
-  return Boolean(left && canonicalStringify(left) === canonicalStringify(right));
+function sameNode(
+  left: CompiledSceneNode | undefined,
+  right: CompiledSceneNode,
+): boolean {
+  return Boolean(
+    left && canonicalStringify(left) === canonicalStringify(right),
+  );
 }
 
 function reuseResolvedNode(
@@ -300,7 +327,11 @@ function reuseResolvedNode(
   };
   return {
     ...merged,
-    render_key: hydratedRenderKey(compilerVersion, structural.render_key, merged),
+    render_key: hydratedRenderKey(
+      compilerVersion,
+      structural.render_key,
+      merged,
+    ),
   };
 }
 
@@ -313,13 +344,20 @@ export class CanvasCompiler {
   readonly #textMeasurer: CompilerTextMeasurer;
   readonly #cache: CanvasCompilerCache;
 
-  constructor(options: CanvasCompilerOptions = {}, cache = new CanvasCompilerCache()) {
+  constructor(
+    options: CanvasCompilerOptions = {},
+    cache = new CanvasCompilerCache(),
+  ) {
     this.#compilerVersion = options.compiler_version ?? CANVAS_COMPILER_VERSION;
     this.#variant = options.resource_variant ?? "preview";
-    this.#assetResolver = options.asset_resolver ?? new DocumentCompilerAssetResolver();
-    this.#fontResolver = options.font_resolver ?? new DocumentCompilerFontResolver();
-    this.#styleResolver = options.style_resolver ?? new DocumentCompilerStyleResolver();
-    this.#textMeasurer = options.text_measurer ?? new DeterministicTextMeasurer();
+    this.#assetResolver =
+      options.asset_resolver ?? new DocumentCompilerAssetResolver();
+    this.#fontResolver =
+      options.font_resolver ?? new DocumentCompilerFontResolver();
+    this.#styleResolver =
+      options.style_resolver ?? new DocumentCompilerStyleResolver();
+    this.#textMeasurer =
+      options.text_measurer ?? new DeterministicTextMeasurer();
     this.#cache = cache;
   }
 
@@ -329,7 +367,9 @@ export class CanvasCompiler {
 
   compileStructure(document: DesignDocument): CompileResult {
     const validation = validateDocument(document);
-    const validationDiagnostics = validation.issues.map(compileDiagnosticFromIr);
+    const validationDiagnostics = validation.issues.map(
+      compileDiagnosticFromIr,
+    );
     if (validation.issues.some(fatalValidationIssue)) {
       return { ok: false, diagnostics: validationDiagnostics };
     }
@@ -345,7 +385,10 @@ export class CanvasCompiler {
       const node = base.nodes.get(id);
       const source = document.nodes[id];
       if (!node || !source) continue;
-      const styleResult = this.#styleResolver.resolveStyle(document, source.style_refs ?? []);
+      const styleResult = this.#styleResolver.resolveStyle(
+        document,
+        source.style_refs ?? [],
+      );
       const resolvedStyle = withDirectVisualStyle(styleResult.style, source);
       for (const missing of styleResult.missing_refs) {
         diagnostics.push({
@@ -357,7 +400,9 @@ export class CanvasCompiler {
         });
       }
       const fontRef =
-        metadataString(node, "font_asset_id") ?? metadataString(node, "font_ref") ?? undefined;
+        metadataString(node, "font_asset_id") ??
+        metadataString(node, "font_ref") ??
+        undefined;
       const clipId = metadataString(node, "clip_id") ?? undefined;
       const maskId = metadataString(node, "mask_id") ?? undefined;
       const placeholder = base.diagnostics.some(
@@ -424,14 +469,21 @@ export class CanvasCompiler {
     return { ok: true, snapshot, diagnostics };
   }
 
-  async fullCompile(document: DesignDocument, useCache = false): Promise<CompileResult> {
+  async fullCompile(
+    document: DesignDocument,
+    useCache = false,
+  ): Promise<CompileResult> {
     const cacheKey = useCache
       ? await canvasCompilerCacheKey(this.#compilerVersion, document)
       : null;
     if (cacheKey) {
       const cached = this.#cache.get(cacheKey);
       if (cached) {
-        return { ok: true, snapshot: cached, diagnostics: cached.compile_diagnostics };
+        return {
+          ok: true,
+          snapshot: cached,
+          diagnostics: cached.compile_diagnostics,
+        };
       }
     }
 
@@ -444,7 +496,12 @@ export class CanvasCompiler {
       if (!node) continue;
       nodes.set(id, await this.#hydrateNode(document, node, diagnostics));
     }
-    const snapshot = await this.#finalize(document, structure.snapshot, nodes, diagnostics);
+    const snapshot = await this.#finalize(
+      document,
+      structure.snapshot,
+      nodes,
+      diagnostics,
+    );
     if (cacheKey) this.#cache.set(cacheKey, snapshot);
     return { ok: true, snapshot, diagnostics: snapshot.compile_diagnostics };
   }
@@ -454,7 +511,8 @@ export class CanvasCompiler {
   ): Promise<CompileResult | IncrementalCompileResult> {
     const diff = request.diff ?? semanticDiff(request.before, request.after);
     const plan = planCompilerDirtyNodes(request.before, request.after, diff);
-    const versionMismatch = request.previous.compiler_version !== this.#compilerVersion;
+    const versionMismatch =
+      request.previous.compiler_version !== this.#compilerVersion;
 
     if (plan.requires_full_compile || versionMismatch) {
       const full = await this.fullCompile(request.after);
@@ -504,9 +562,15 @@ export class CanvasCompiler {
       if (!structural) continue;
       const previous = request.previous.nodes.get(id);
       if (!previous || dirty.has(id)) {
-        nodes.set(id, await this.#hydrateNode(request.after, structural, diagnostics));
+        nodes.set(
+          id,
+          await this.#hydrateNode(request.after, structural, diagnostics),
+        );
       } else {
-        nodes.set(id, reuseResolvedNode(this.#compilerVersion, previous, structural));
+        nodes.set(
+          id,
+          reuseResolvedNode(this.#compilerVersion, previous, structural),
+        );
       }
     }
 
@@ -578,7 +642,9 @@ export class CanvasCompiler {
           code: "RESOURCE_RESOLUTION_FAILED",
           severity: "WARNING",
           message:
-            error instanceof Error ? error.message : `Asset ${node.asset_id} resolution failed`,
+            error instanceof Error
+              ? error.message
+              : `Asset ${node.asset_id} resolution failed`,
           node_id: node.id,
           source: node.asset_id,
         });
@@ -590,7 +656,10 @@ export class CanvasCompiler {
       let font: ResolvedCompilerFont | null = null;
       if (resolvedText.font_ref) {
         try {
-          font = await this.#fontResolver.resolveFont(document, resolvedText.font_ref);
+          font = await this.#fontResolver.resolveFont(
+            document,
+            resolvedText.font_ref,
+          );
           if (!font) {
             diagnostics.push({
               code: "FONT_MISSING",
@@ -628,7 +697,8 @@ export class CanvasCompiler {
         diagnostics.push({
           code: "TEXT_MEASURE_FAILED",
           severity: "WARNING",
-          message: error instanceof Error ? error.message : "Text measurement failed",
+          message:
+            error instanceof Error ? error.message : "Text measurement failed",
           node_id: node.id,
         });
       }
@@ -641,7 +711,11 @@ export class CanvasCompiler {
     };
     return {
       ...hydrated,
-      render_key: hydratedRenderKey(this.#compilerVersion, node.render_key, hydrated),
+      render_key: hydratedRenderKey(
+        this.#compilerVersion,
+        node.render_key,
+        hydrated,
+      ),
     };
   }
 

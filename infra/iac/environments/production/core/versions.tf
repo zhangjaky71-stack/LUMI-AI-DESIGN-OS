@@ -22,3 +22,18 @@ provider "aws" {
     }
   }
 }
+
+provider "aws" {
+  alias               = "object_dr"
+  region              = var.object_dr_region
+  allowed_account_ids = [var.account_id]
+
+  default_tags {
+    tags = {
+      Project       = "lumi"
+      Environment   = "production"
+      ManagedBy     = "terraform"
+      RecoveryClass = "cross-region-object-dr"
+    }
+  }
+}

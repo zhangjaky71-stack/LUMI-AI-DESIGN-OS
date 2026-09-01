@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 from decimal import Decimal, InvalidOperation
-from typing import Annotated, Awaitable, Callable
+from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
@@ -33,7 +34,9 @@ def _problem(error: BillingError, request_id: str | None) -> HTTPException:
     )
 
 
-def create_billing_router(*, engine: BillingEngine, resolve_actor: BillingActorResolver) -> APIRouter:
+def create_billing_router(
+    *, engine: BillingEngine, resolve_actor: BillingActorResolver
+) -> APIRouter:
     router = APIRouter(prefix="/billing", tags=["billing"])
 
     @router.get("")

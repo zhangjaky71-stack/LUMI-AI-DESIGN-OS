@@ -7,20 +7,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from lumi_domain import InvalidTransition, Project as DomainProject, ProjectStatus, new_uuid7
-from lumi_project_core import (
-    BriefValidationError,
-    ProjectCursor,
-    ProjectListFilter,
-    ProjectSettingsError,
-    brief_hash,
-    decode_cursor,
-    encode_cursor,
-    normalize_brief,
-    normalize_project_settings,
-    require_paid_command_allowed,
-    restore,
-)
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +20,21 @@ from lumi_api.persistence.models import (
     ProjectBriefVersion,
     ProjectSummary,
     Workspace,
+)
+from lumi_domain import InvalidTransition, ProjectStatus, new_uuid7
+from lumi_domain import Project as DomainProject
+from lumi_project_core import (
+    BriefValidationError,
+    ProjectCursor,
+    ProjectListFilter,
+    ProjectSettingsError,
+    brief_hash,
+    decode_cursor,
+    encode_cursor,
+    normalize_brief,
+    normalize_project_settings,
+    require_paid_command_allowed,
+    restore,
 )
 
 from .errors import ProjectConflict, ProjectInvalid, ProjectNotFound
@@ -147,7 +148,7 @@ class ProjectService:
                     "IDEMPOTENCY_KEY_REUSED",
                     "idempotency key was already used for a different request",
                 )
-            if existing.status == "completed" and existing.result_ref:
+            if existing.status == "succeeded" and existing.result_ref:
                 try:
                     project_id = UUID(existing.result_ref)
                 except ValueError as exc:
@@ -163,7 +164,7 @@ class ProjectService:
             organization_id=organization_id,
             idempotency_key=idempotency_key,
             operation_type="project.create",
-            status="pending",
+            status="new",
             request_hash=request_hash,
         )
         project = Project(
@@ -217,7 +218,7 @@ class ProjectService:
             action="project.created",
             metadata={"workspace_id": str(workspace_id)},
         )
-        operation.status = "completed"
+        operation.status = "succeeded"
         operation.result_ref = str(project.id)
         await self.session.flush()
         return project
@@ -260,7 +261,9 @@ class ProjectService:
 
         if "status" in changes and changes["status"] is not None:
             target = changes["status"]
-            target_status = target if isinstance(target, ProjectStatus) else ProjectStatus(str(target))
+            target_status = (
+                target if isinstance(target, ProjectStatus) else ProjectStatus(str(target))
+            )
             if target_status != ProjectStatus(row.status):
                 domain = self._to_domain(row)
                 try:
@@ -289,7 +292,10 @@ class ProjectService:
                 values["brief_version"] = new_brief_version
                 brief_history = (new_brief_version, normalized, new_hash)
                 events.append(
-                    ("project.brief.updated", {"brief_version": new_brief_version, "brief_hash": new_hash})
+                    (
+                        "project.brief.updated",
+                        {"brief_version": new_brief_version, "brief_hash": new_hash},
+                    )
                 )
 
         if "settings" in changes and changes["settings"] is not None:
@@ -344,9 +350,7 @@ class ProjectService:
                     created_by=actor_id,
                 )
             )
-        if not events:
-            events.append(("project.updated", {"fields": sorted(values)}))
-        elif all(event_name != "project.updated" for event_name, _ in events):
+        if not events or all(event_name != "project.updated" for event_name, _ in events):
             events.append(("project.updated", {"fields": sorted(values)}))
         for event_name, payload in events:
             self._append_event(

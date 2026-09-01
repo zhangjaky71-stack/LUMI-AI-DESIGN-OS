@@ -1,5 +1,13 @@
 variable "account_id" { type = string }
 variable "region" { type = string }
+variable "object_dr_region" {
+  type    = string
+  default = "ap-southeast-1"
+  validation {
+    condition     = length(trimspace(var.object_dr_region)) > 0 && var.object_dr_region != var.region
+    error_message = "Production object_dr_region must be configured and differ from the primary region."
+  }
+}
 variable "availability_zones" {
   type = list(string)
   validation {
@@ -8,11 +16,26 @@ variable "availability_zones" {
   }
 }
 variable "postgres_engine_version" { type = string }
-variable "db_instance_class" { type = string, default = "db.r6g.large" }
+variable "db_instance_class" {
+  type    = string
+  default = "db.r6g.large"
+}
 variable "redis_engine_version" { type = string }
-variable "redis_node_type" { type = string, default = "cache.r6g.large" }
+variable "redis_node_type" {
+  type    = string
+  default = "cache.r6g.large"
+}
 variable "rabbitmq_engine_version" { type = string }
 variable "rabbitmq_instance_type" { type = string }
-variable "redis_auth_token" { type = string, sensitive = true }
-variable "rabbitmq_username" { type = string, sensitive = true }
-variable "rabbitmq_password" { type = string, sensitive = true }
+variable "redis_auth_token" {
+  type      = string
+  sensitive = true
+}
+variable "rabbitmq_username" {
+  type      = string
+  sensitive = true
+}
+variable "rabbitmq_password" {
+  type      = string
+  sensitive = true
+}

@@ -8,10 +8,11 @@ import subprocess
 import tempfile
 import threading
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, cast
 from uuid import UUID, uuid4
 
 from .audit import JsonlAuditSink
@@ -64,6 +65,49 @@ resolved = os.path.realpath(target)
 if resolved != root and not resolved.startswith(root + os.sep):
     raise SystemExit(42)
 print(resolved)
+""".strip()
+
+_WRITE_FILE_SCRIPT = r"""
+import os, stat, sys
+target = sys.argv[1]
+if os.path.lexists(target):
+    st = os.lstat(target)
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode):
+        raise SystemExit(43)
+with open(target, "wb") as handle:
+    while True:
+        chunk = sys.stdin.buffer.read(64 * 1024)
+        if not chunk:
+            break
+        handle.write(chunk)
+""".strip()
+
+_EXPORT_FILE_SCRIPT = r"""
+import os, stat, sys
+target = sys.argv[1]
+limit = int(sys.argv[2])
+flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+try:
+    fd = os.open(target, flags)
+except OSError:
+    raise SystemExit(43)
+try:
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode):
+        raise SystemExit(43)
+    if st.st_size > limit:
+        raise SystemExit(47)
+    total = 0
+    while True:
+        chunk = os.read(fd, 64 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise SystemExit(47)
+        sys.stdout.buffer.write(chunk)
+finally:
+    os.close(fd)
 """.strip()
 
 _LIST_SCRIPT = r"""
@@ -304,16 +348,17 @@ class DockerSandboxBackend:
                 shell=False,
             )
             log_cap = min(record.spec.max_output_bytes * 8, 64 * 1024 * 1024)
-            stdout_thread = _stream_to_file(process.stdout, stdout_path, log_cap)
-            stderr_thread = _stream_to_file(process.stderr, stderr_path, log_cap)
+            if process.stdout is None or process.stderr is None:
+                process.kill()
+                raise SandboxError("SANDBOX_EXEC_PIPE_MISSING")
+            stdout_thread = _stream_to_file(cast(BinaryIO, process.stdout), stdout_path, log_cap)
+            stderr_thread = _stream_to_file(cast(BinaryIO, process.stderr), stderr_path, log_cap)
             try:
                 exit_code = process.wait(timeout=timeout)
             except subprocess.TimeoutExpired as exc:
                 process.kill()
-                try:
+                with suppress(subprocess.TimeoutExpired):
                     process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    pass
                 self._best_effort_kill(record.container_name)
                 stdout_thread.join(timeout=5)
                 stderr_thread.join(timeout=5)
@@ -388,12 +433,29 @@ class DockerSandboxBackend:
                 raise ValueError("SANDBOX_READ_LIMIT_INVALID")
             with tempfile.TemporaryDirectory(dir=record.root / "staging") as temp_dir:
                 target = Path(temp_dir) / "file"
-                self._docker(
-                    ["cp", f"{record.container_name}:{resolved}", str(target)],
+                result = self._docker_to_file(
+                    [
+                        "exec",
+                        record.container_name,
+                        "python",
+                        "-c",
+                        _EXPORT_FILE_SCRIPT,
+                        resolved,
+                        str(limit),
+                    ],
+                    target=target,
                     timeout=30,
+                    allow_failure=True,
                 )
-                if target.is_symlink() or not target.is_file():
+                if result.returncode == 43:
                     raise SandboxPolicyError("SANDBOX_FILE_TYPE_FORBIDDEN")
+                if result.returncode == 47:
+                    raise SandboxPolicyError("SANDBOX_FILE_TOO_LARGE")
+                if result.returncode != 0:
+                    message = redact_text(result.stderr.decode("utf-8", errors="replace").strip())[
+                        :2000
+                    ]
+                    raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
                 if target.stat().st_size > limit:
                     raise SandboxPolicyError("SANDBOX_FILE_TOO_LARGE")
                 data = target.read_bytes()
@@ -415,19 +477,27 @@ class DockerSandboxBackend:
             zone, _ = normalize_workspace_path(path, writable=True)
             target = workspace_absolute(path, writable=True)
             resolved = self._prepare_write_path(record, zone=zone, target=target)
-            with tempfile.NamedTemporaryFile(
-                dir=record.root / "staging",
-                delete=False,
-            ) as handle:
-                handle.write(data)
-                staged = Path(handle.name)
-            try:
-                self._docker(
-                    ["cp", str(staged), f"{record.container_name}:{resolved}"],
-                    timeout=30,
-                )
-            finally:
-                staged.unlink(missing_ok=True)
+            result = self._docker_with_input(
+                [
+                    "exec",
+                    "-i",
+                    record.container_name,
+                    "python",
+                    "-c",
+                    _WRITE_FILE_SCRIPT,
+                    resolved,
+                ],
+                input_data=data,
+                timeout=30,
+                allow_failure=True,
+            )
+            if result.returncode == 43:
+                raise SandboxPolicyError("SANDBOX_FILE_TYPE_FORBIDDEN")
+            if result.returncode != 0:
+                message = redact_text(result.stderr.decode("utf-8", errors="replace").strip())[
+                    :2000
+                ]
+                raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
             self._audit(
                 record,
                 "sandbox.file.written",
@@ -502,16 +572,35 @@ class DockerSandboxBackend:
             if zone != "output" or not relative:
                 raise SandboxPolicyError("SANDBOX_ARTIFACT_MUST_BE_OUTPUT_FILE")
             resolved = self._resolve_container_path(record, path, expected="file")
+            max_bytes = record.spec.disk_limit_mb * 1024 * 1024
             with tempfile.TemporaryDirectory(dir=record.root / "staging") as temp_dir:
                 staged = Path(temp_dir) / safe_filename(Path(relative).name)
-                self._docker(
-                    ["cp", f"{record.container_name}:{resolved}", str(staged)],
+                result = self._docker_to_file(
+                    [
+                        "exec",
+                        record.container_name,
+                        "python",
+                        "-c",
+                        _EXPORT_FILE_SCRIPT,
+                        resolved,
+                        str(max_bytes),
+                    ],
+                    target=staged,
                     timeout=60,
+                    allow_failure=True,
                 )
-                if staged.is_symlink() or not staged.is_file():
+                if result.returncode == 43:
+                    raise SandboxPolicyError("SANDBOX_ARTIFACT_FILE_TYPE_INVALID")
+                if result.returncode == 47:
+                    raise SandboxPolicyError("SANDBOX_ARTIFACT_TOO_LARGE")
+                if result.returncode != 0:
+                    message = redact_text(result.stderr.decode("utf-8", errors="replace").strip())[
+                        :2000
+                    ]
+                    raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
+                if not staged.is_file():
                     raise SandboxPolicyError("SANDBOX_ARTIFACT_FILE_TYPE_INVALID")
                 size = staged.stat().st_size
-                max_bytes = record.spec.disk_limit_mb * 1024 * 1024
                 if size > max_bytes:
                     raise SandboxPolicyError("SANDBOX_ARTIFACT_TOO_LARGE")
                 checksum = sha256_file(staged)
@@ -568,7 +657,8 @@ class DockerSandboxBackend:
             expired = tuple(
                 sandbox_id
                 for sandbox_id, record in self._records.items()
-                if record.state not in {
+                if record.state
+                not in {
                     SandboxState.TERMINATED,
                     SandboxState.TERMINATING,
                 }
@@ -591,7 +681,7 @@ class DockerSandboxBackend:
                 [
                     "inspect",
                     "--format",
-                    "{{ index .Config.Labels \"lumi.sandbox.expires_at\" }}",
+                    '{{ index .Config.Labels "lumi.sandbox.expires_at" }}',
                     container_id,
                 ],
                 timeout=10,
@@ -738,21 +828,61 @@ class DockerSandboxBackend:
             raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
         return result
 
+    def _docker_with_input(
+        self,
+        args: list[str],
+        *,
+        input_data: bytes,
+        timeout: int,
+        allow_failure: bool = False,
+    ) -> subprocess.CompletedProcess[bytes]:
+        result = subprocess.run(
+            [self.docker_binary, *args],
+            input=input_data,
+            capture_output=True,
+            shell=False,
+            timeout=timeout,
+            check=False,
+        )
+        if result.returncode != 0 and not allow_failure:
+            message = redact_text(result.stderr.decode("utf-8", errors="replace").strip())[:2000]
+            raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
+        return result
+
+    def _docker_to_file(
+        self,
+        args: list[str],
+        *,
+        target: Path,
+        timeout: int,
+        allow_failure: bool = False,
+    ) -> subprocess.CompletedProcess[bytes]:
+        with target.open("wb") as output:
+            result = subprocess.run(
+                [self.docker_binary, *args],
+                stdin=subprocess.DEVNULL,
+                stdout=output,
+                stderr=subprocess.PIPE,
+                shell=False,
+                timeout=timeout,
+                check=False,
+            )
+        if result.returncode != 0 and not allow_failure:
+            message = redact_text(result.stderr.decode("utf-8", errors="replace").strip())[:2000]
+            raise SandboxError(f"SANDBOX_DOCKER_COMMAND_FAILED:{message}")
+        return result
+
     def _best_effort_remove(self, container: str) -> None:
-        try:
+        with suppress(Exception):
             self._docker(
                 ["rm", "-f", "-v", container],
                 timeout=20,
                 allow_failure=True,
             )
-        except Exception:
-            pass
 
     def _best_effort_kill(self, container: str) -> None:
-        try:
+        with suppress(Exception):
             self._docker(["kill", container], timeout=10, allow_failure=True)
-        except Exception:
-            pass
 
 
 def _host_uid() -> int:

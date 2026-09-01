@@ -27,6 +27,10 @@ from lumi_tool_gateway.testing import (
     MemoryResultOffloader,
 )
 
+PROJECT_ID = "01900000-0000-7000-8000-000000000001"
+SOURCE_ASSET_ID = "01900000-0000-7000-8000-000000000002"
+DERIVED_ARTIFACT_REF = "artifact://01900000-0000-7000-8000-000000000003"
+
 
 class SearchBackend:
     async def search(self, query: str, *, limit: int) -> list[dict[str, Any]]:
@@ -109,9 +113,14 @@ class DerivedAssetHandler:
 
 
 async def project_query_handler(definition, request) -> ToolAdapterOutput:
-    del definition
+    del definition, request
     return ToolAdapterOutput(
-        data={"query": request.arguments["query"], "rows": []},
+        data={
+            "project_id": PROJECT_ID,
+            "name": "LUMI integration project",
+            "status": "active",
+            "summary": {"source": "deterministic-tool-gateway-integration"},
+        },
         summary="Tenant-scoped domain query fixture.",
     )
 
@@ -224,18 +233,22 @@ async def main_async() -> None:
     assert fetched.full_result_ref in offloader.objects
     assert transport.calls[0]["resolved_ip"] == "8.8.8.8"
 
-    await gateway.invoke(
+    project = await gateway.invoke(
         make_request(
             "project.query",
-            {"query": "project.summary", "parameters": {}},
+            {"query": "project.summary"},
             organization_id=organization_id,
         )
     )
+    assert project.data["project_id"] == PROJECT_ID
 
     task_id = uuid4()
     first_write = make_request(
         "asset.write-derived",
-        {"source_asset_id": "asset-1", "artifact_ref": "artifact://1"},
+        {
+            "source_asset_id": SOURCE_ASSET_ID,
+            "artifact_ref": DERIVED_ARTIFACT_REF,
+        },
         organization_id=organization_id,
         operation_key="asset-derived-1",
         task_id=task_id,
@@ -309,10 +322,7 @@ async def main_async() -> None:
     assert guard.invocations == 2
     assert guard.replays == 1
     assert audit.records
-    assert all(
-        record.organization_id == str(organization_id)
-        for record in audit.records
-    )
+    assert all(record.organization_id == str(organization_id) for record in audit.records)
     print(
         "NODE-25 Tool Gateway integration: PASS "
         f"audit={len(audit.records)} offloaded={len(offloader.objects)} "

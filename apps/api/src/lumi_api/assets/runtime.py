@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from lumi_asset_storage.models import ObjectStore
-from lumi_asset_storage.s3 import S3ObjectStore
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lumi_api.config import Settings
+from lumi_asset_storage.models import ObjectStore
+from lumi_asset_storage.s3 import S3ObjectStore
 
 
 @dataclass(frozen=True, slots=True)

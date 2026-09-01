@@ -2,9 +2,15 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime
-from typing import Any
 
-from .model import Artifact, ArtifactBranch, ArtifactFile, ArtifactVersion, LineageEdge, ProvenanceRecord
+from .model import (
+    Artifact,
+    ArtifactBranch,
+    ArtifactFile,
+    ArtifactVersion,
+    LineageEdge,
+    ProvenanceRecord,
+)
 
 
 class ArtifactHistoryError(ValueError):
@@ -73,7 +79,10 @@ class ArtifactHistory:
         branch = self.branches.get(version.branch_id)
         if artifact is None or branch is None:
             raise ArtifactHistoryError("version artifact/branch must exist")
-        if artifact.organization_id != version.organization_id or branch.organization_id != version.organization_id:
+        if (
+            artifact.organization_id != version.organization_id
+            or branch.organization_id != version.organization_id
+        ):
             raise ArtifactHistoryError("version tenant mismatch")
         if branch.artifact_id != version.artifact_id:
             raise ArtifactHistoryError("version branch belongs to another artifact")
@@ -91,7 +100,10 @@ class ArtifactHistory:
             parent = self.versions.get(version.parent_version_id)
             if parent is None:
                 raise ArtifactHistoryError("parent version missing")
-            if parent.artifact_id != version.artifact_id or parent.organization_id != version.organization_id:
+            if (
+                parent.artifact_id != version.artifact_id
+                or parent.organization_id != version.organization_id
+            ):
                 raise ArtifactHistoryError("parent version must belong to same artifact and tenant")
         self.versions[version.id] = version
         if advance_branch_head:
@@ -135,9 +147,13 @@ class ArtifactHistory:
         version = self.versions[version_id]
         allowed = _ALLOWED_STATUS_TRANSITIONS[version.status]
         if target_status not in allowed:
-            raise ArtifactHistoryError(f"invalid version status transition {version.status}->{target_status}")
+            raise ArtifactHistoryError(
+                f"invalid version status transition {version.status}->{target_status}"
+            )
         if target_status == "APPROVED" and not required_validation_passed:
-            raise ArtifactHistoryError("READY version cannot be APPROVED without required validation")
+            raise ArtifactHistoryError(
+                "READY version cannot be APPROVED without required validation"
+            )
         updated = replace(version, status=target_status, quality_score=quality_score)  # type: ignore[arg-type]
         if updated.immutable_content_identity != version.immutable_content_identity:
             raise AssertionError("status transition mutated immutable version content identity")
@@ -186,7 +202,10 @@ class ArtifactHistory:
         branch = self.branches.get(branch_id)
         if source is None or branch is None:
             raise ArtifactHistoryError("restore source/branch missing")
-        if source.artifact_id != branch.artifact_id or source.organization_id != branch.organization_id:
+        if (
+            source.artifact_id != branch.artifact_id
+            or source.organization_id != branch.organization_id
+        ):
             raise ArtifactHistoryError("restore source must belong to branch artifact/tenant")
         restored = ArtifactVersion(
             id=new_version_id,
@@ -224,7 +243,10 @@ class ArtifactHistory:
         target = self.versions.get(edge.to_version_id)
         if source is None or target is None:
             raise ArtifactHistoryError("lineage endpoints must exist")
-        if source.organization_id != target.organization_id or edge.organization_id != source.organization_id:
+        if (
+            source.organization_id != target.organization_id
+            or edge.organization_id != source.organization_id
+        ):
             raise CrossTenantLineageError("cross-tenant lineage is forbidden")
         if edge.id in self.edges:
             raise ArtifactHistoryError(f"lineage edge already exists: {edge.id}")
@@ -255,13 +277,16 @@ class ArtifactHistory:
             pending.extend(adjacency.get(current, ()))
         return False
 
-    def find_versions_by_content_hash(self, organization_id: str, content_hash: str) -> tuple[ArtifactVersion, ...]:
+    def find_versions_by_content_hash(
+        self, organization_id: str, content_hash: str
+    ) -> tuple[ArtifactVersion, ...]:
         return tuple(
             sorted(
                 (
                     version
                     for version in self.versions.values()
-                    if version.organization_id == organization_id and version.content_hash == content_hash
+                    if version.organization_id == organization_id
+                    and version.content_hash == content_hash
                 ),
                 key=lambda item: (item.created_at, item.id),
             )
@@ -269,11 +294,11 @@ class ArtifactHistory:
 
     def lineage_parents(self, version_id: str) -> tuple[ArtifactVersion, ...]:
         parent_ids = {
-            edge.from_version_id
-            for edge in self.edges.values()
-            if edge.to_version_id == version_id
+            edge.from_version_id for edge in self.edges.values() if edge.to_version_id == version_id
         }
-        return tuple(sorted((self.versions[parent_id] for parent_id in parent_ids), key=lambda item: item.id))
+        return tuple(
+            sorted((self.versions[parent_id] for parent_id in parent_ids), key=lambda item: item.id)
+        )
 
     def validate_integrity(self) -> None:
         for branch in self.branches.values():

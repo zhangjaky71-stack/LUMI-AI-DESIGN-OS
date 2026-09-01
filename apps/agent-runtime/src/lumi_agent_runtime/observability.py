@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, TypeVar
+from typing import Any
 
-_T = TypeVar("_T")
 _ALLOWED_TRACING_MODES = frozenset({"langsmith", "otel", "hybrid"})
 
 
@@ -70,12 +70,12 @@ def best_effort_trace(observer: Callable[[], Any] | None) -> bool:
         return False
 
 
-def best_effort_observed_call(
-    operation: Callable[[], _T],
+def best_effort_observed_call[T](
+    operation: Callable[[], T],
     *,
     before: Callable[[], Any] | None = None,
     after: Callable[[], Any] | None = None,
-) -> _T:
+) -> T:
     best_effort_trace(before)
     try:
         return operation()

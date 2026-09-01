@@ -51,7 +51,11 @@ export function validateCreateProjectInput(
 export function validateProjectListFilters(
   filters: ProjectListFilters,
 ): ProjectListFilters {
-  if (!Number.isInteger(filters.limit) || filters.limit < 1 || filters.limit > MAX_PAGE_SIZE) {
+  if (
+    !Number.isInteger(filters.limit) ||
+    filters.limit < 1 ||
+    filters.limit > MAX_PAGE_SIZE
+  ) {
     throw new Error("PROJECT_LIST_LIMIT_INVALID");
   }
   return {
@@ -60,7 +64,9 @@ export function validateProjectListFilters(
   };
 }
 
-export function validateStructuredBrief(brief: StructuredBrief): StructuredBrief {
+export function validateStructuredBrief(
+  brief: StructuredBrief,
+): StructuredBrief {
   const fields = [brief.objective, brief.audience, brief.notes];
   if (fields.some((value) => value.length > MAX_BRIEF_FIELD_LENGTH)) {
     throw new Error("PROJECT_BRIEF_FIELD_TOO_LONG");
@@ -72,9 +78,15 @@ export function validateStructuredBrief(brief: StructuredBrief): StructuredBrief
     audience: brief.audience.trim(),
     notes: brief.notes.trim(),
     locale: brief.locale.trim(),
-    deliverables: Object.freeze(brief.deliverables.map((value) => value.trim()).filter(Boolean)),
-    constraints: Object.freeze(brief.constraints.map((value) => value.trim()).filter(Boolean)),
-    assumptions: Object.freeze(brief.assumptions.map((value) => value.trim()).filter(Boolean)),
+    deliverables: Object.freeze(
+      brief.deliverables.map((value) => value.trim()).filter(Boolean),
+    ),
+    constraints: Object.freeze(
+      brief.constraints.map((value) => value.trim()).filter(Boolean),
+    ),
+    assumptions: Object.freeze(
+      brief.assumptions.map((value) => value.trim()).filter(Boolean),
+    ),
   };
 }
 
@@ -89,7 +101,9 @@ export function projectProblem(code: string, status = 409): LumiApiError {
 }
 
 export function isVersionConflict(error: unknown): boolean {
-  return error instanceof LumiApiError && error.problem.code === "VERSION_CONFLICT";
+  return (
+    error instanceof LumiApiError && error.problem.code === "VERSION_CONFLICT"
+  );
 }
 
 export function formatMicrousd(value: bigint | null): string | null {

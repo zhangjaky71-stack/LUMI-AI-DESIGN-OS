@@ -69,6 +69,5 @@ def system_metadata_from_asset(
 
 def user_metadata_fields(values: dict[str, object]) -> tuple[MetadataField, ...]:
     return tuple(
-        MetadataField(key, value, "USER", confidence=1.0)
-        for key, value in sorted(values.items())
+        MetadataField(key, value, "USER", confidence=1.0) for key, value in sorted(values.items())
     )

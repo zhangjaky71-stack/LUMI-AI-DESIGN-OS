@@ -39,7 +39,8 @@ def _violation(
         actual=actual,
         message_code=code,
         repair_hint=repair_hint or {},
-        overrideable=constraint.source != "SAFETY_SYSTEM" and constraint.override_policy == "AUTHORIZED",
+        overrideable=constraint.source != "SAFETY_SYSTEM"
+        and constraint.override_policy == "AUTHORIZED",
     )
 
 
@@ -51,24 +52,46 @@ def _target_id(constraint: Constraint) -> str | None:
     return None
 
 
-def _threshold(constraint: Constraint, evidence: PostflightEvidence) -> tuple[bool, Mapping[str, Any], Mapping[str, Any], str]:
+def _threshold(
+    constraint: Constraint, evidence: PostflightEvidence
+) -> tuple[bool, Mapping[str, Any], Mapping[str, Any], str]:
     actual = evidence.actual
     if constraint.type == "REQUIRE_CONTRAST":
         minimum = float(constraint.parameters.get("min_ratio", 4.5))
         value = float(actual.get("ratio", 0))
-        return value >= minimum, {"min_ratio": minimum}, {"ratio": value}, "CONSTRAINT_CONTRAST_TOO_LOW"
+        return (
+            value >= minimum,
+            {"min_ratio": minimum},
+            {"ratio": value},
+            "CONSTRAINT_CONTRAST_TOO_LOW",
+        )
     if constraint.type == "REQUIRE_TEXT_READABILITY":
         minimum = float(constraint.parameters.get("min_score", 0.7))
         value = float(actual.get("score", 0))
-        return value >= minimum, {"min_score": minimum}, {"score": value}, "CONSTRAINT_TEXT_NOT_READABLE"
+        return (
+            value >= minimum,
+            {"min_score": minimum},
+            {"score": value},
+            "CONSTRAINT_TEXT_NOT_READABLE",
+        )
     if constraint.type in {"REQUIRE_BRAND_COMPLIANCE", "LOCK_BRAND"}:
         minimum = float(constraint.parameters.get("min_score", 0.8))
         value = float(actual.get("score", 0))
-        return value >= minimum, {"min_score": minimum}, {"score": value}, "CONSTRAINT_BRAND_COMPLIANCE_FAILED"
+        return (
+            value >= minimum,
+            {"min_score": minimum},
+            {"score": value},
+            "CONSTRAINT_BRAND_COMPLIANCE_FAILED",
+        )
     if constraint.type in {"REQUIRE_IDENTITY_SCORE", "LOCK_IDENTITY"}:
         minimum = float(constraint.parameters.get("min_score", 0.85))
         value = float(actual.get("score", 0))
-        return value >= minimum, {"min_score": minimum}, {"score": value}, "CONSTRAINT_IDENTITY_SCORE_TOO_LOW"
+        return (
+            value >= minimum,
+            {"min_score": minimum},
+            {"score": value},
+            "CONSTRAINT_IDENTITY_SCORE_TOO_LOW",
+        )
     return evidence.passed, {"passed": True}, dict(actual), "CONSTRAINT_POSTFLIGHT_FAILED"
 
 

@@ -10,7 +10,11 @@ IDEMPOTENT_REPLAYED_HEADER = "Idempotent-Replayed"
 
 def extract_idempotency_key(headers: Mapping[str, str]) -> str:
     value = next(
-        (header_value for name, header_value in headers.items() if name.lower() == "idempotency-key"),
+        (
+            header_value
+            for name, header_value in headers.items()
+            if name.lower() == "idempotency-key"
+        ),
         "",
     ).strip()
     if not value or len(value) > 512:

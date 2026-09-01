@@ -64,9 +64,7 @@ def load_recipe(version_dir: Path) -> RecipeDefinition:
                 ).items()
             },
             budget_limit_usd=_optional_decimal_string(payload.get("budget_limit_usd")),
-            metadata=dict(
-                _object(payload.get("metadata", {}), "RECIPE_METADATA_INVALID")
-            ),
+            metadata=dict(_object(payload.get("metadata", {}), "RECIPE_METADATA_INVALID")),
         )
     except (TypeError, ValueError) as exc:
         raise RecipeDefinitionInvalidError(str(exc)) from exc
@@ -91,18 +89,12 @@ def load_release_manifest(path: Path) -> RecipeReleaseManifest:
             status=RecipeReleaseStatus(
                 _string(row.get("status"), "RECIPE_RELEASE_STATUS_REQUIRED")
             ),
-            eval_profile=_string(
-                row.get("eval_profile"), "RECIPE_RELEASE_EVAL_PROFILE_REQUIRED"
-            ),
+            eval_profile=_string(row.get("eval_profile"), "RECIPE_RELEASE_EVAL_PROFILE_REQUIRED"),
             eval_status=(
-                row.get("eval_status")
-                if isinstance(row.get("eval_status"), str)
-                else None
+                row.get("eval_status") if isinstance(row.get("eval_status"), str) else None
             ),
             eval_evidence=(
-                row.get("eval_evidence")
-                if isinstance(row.get("eval_evidence"), str)
-                else None
+                row.get("eval_evidence") if isinstance(row.get("eval_evidence"), str) else None
             ),
         )
         for row in (
@@ -151,9 +143,7 @@ def _step(payload: dict[str, Any]) -> RecipeStep:
     step = RecipeStep(
         step_id=_string(payload.get("id"), "RECIPE_STEP_ID_REQUIRED"),
         step_type=step_type,
-        depends_on=tuple(
-            _strings(payload.get("depends_on", []), "RECIPE_DEPENDENCIES_INVALID")
-        ),
+        depends_on=tuple(_strings(payload.get("depends_on", []), "RECIPE_DEPENDENCIES_INVALID")),
         input_bindings={
             str(key): _string(value, "RECIPE_INPUT_BINDING_INVALID")
             for key, value in _object(
@@ -167,9 +157,7 @@ def _step(payload: dict[str, Any]) -> RecipeStep:
         condition=condition,
         budget_limit_usd=_optional_decimal_string(payload.get("budget_limit_usd")),
         agent_ref=_optional_string(payload.get("agent")),
-        skill_refs=tuple(
-            _strings(payload.get("skills", []), "RECIPE_SKILLS_INVALID")
-        ),
+        skill_refs=tuple(_strings(payload.get("skills", []), "RECIPE_SKILLS_INVALID")),
         service_key=_optional_string(payload.get("service")),
         media_operation=_optional_string(payload.get("operation")),
         recipe_ref=_optional_string(payload.get("recipe")),
@@ -184,9 +172,7 @@ def _step(payload: dict[str, Any]) -> RecipeStep:
         approval=_approval(payload.get("approval")),
         quality_gate=_quality_gate(payload.get("quality_gate")),
         loop=loop,
-        metadata=dict(
-            _object(payload.get("metadata", {}), "RECIPE_STEP_METADATA_INVALID")
-        ),
+        metadata=dict(_object(payload.get("metadata", {}), "RECIPE_STEP_METADATA_INVALID")),
     )
     _validate_step_shape(step)
     return step
@@ -198,9 +184,8 @@ def _validate_step_shape(step: RecipeStep) -> None:
             raise RecipeDefinitionInvalidError("RECIPE_AGENT_REF_REQUIRED")
     elif step.skill_refs:
         raise RecipeDefinitionInvalidError("RECIPE_SKILLS_ONLY_ALLOWED_ON_AGENT")
-    if step.step_type in {StepType.DETERMINISTIC, StepType.FINALIZE}:
-        if step.service_key is None:
-            raise RecipeDefinitionInvalidError("RECIPE_SERVICE_KEY_REQUIRED")
+    if step.step_type in {StepType.DETERMINISTIC, StepType.FINALIZE} and step.service_key is None:
+        raise RecipeDefinitionInvalidError("RECIPE_SERVICE_KEY_REQUIRED")
     if step.step_type == StepType.MEDIA_JOB and step.media_operation is None:
         raise RecipeDefinitionInvalidError("RECIPE_MEDIA_OPERATION_REQUIRED")
     if step.step_type == StepType.SUBRECIPE and step.recipe_ref is None:
@@ -236,11 +221,7 @@ def _parallel(value: Any) -> ParallelPolicy | None:
         join_policy=JoinPolicy(
             _string(raw.get("join_policy", "ALL"), "RECIPE_JOIN_POLICY_INVALID").upper()
         ),
-        min_success=(
-            int(raw["min_success"])
-            if isinstance(raw.get("min_success"), int)
-            else None
-        ),
+        min_success=(int(raw["min_success"]) if isinstance(raw.get("min_success"), int) else None),
         budget_limit_usd=_optional_decimal_string(raw.get("budget_limit_usd")),
         budget_split=tuple(
             _decimal_strings(raw.get("budget_split", []), "RECIPE_BUDGET_SPLIT_INVALID")
@@ -264,9 +245,7 @@ def _approval(value: Any) -> ApprovalPolicy | None:
             _strings(raw.get("option_refs", []), "RECIPE_APPROVAL_OPTION_REFS_INVALID")
         ),
         expiry_seconds=(
-            int(raw["expiry_seconds"])
-            if isinstance(raw.get("expiry_seconds"), int)
-            else None
+            int(raw["expiry_seconds"]) if isinstance(raw.get("expiry_seconds"), int) else None
         ),
         resume_mapping={
             str(key): _string(mapped, "RECIPE_APPROVAL_RESUME_MAPPING_INVALID")

@@ -92,7 +92,10 @@ class VerifiedVideoOutputAdapter:
             probe = await self.probe_worker.probe(staging_key=staged.staging_key)
             if not probe.decode_ok:
                 raise ValueError("VIDEO_PROVIDER_OUTPUT_NOT_DECODABLE")
-            if probe.mime_type != "video/mp4" or probe.container.casefold() not in {"mp4", "mov,mp4,m4a,3gp,3g2,mj2"}:
+            if probe.mime_type != "video/mp4" or probe.container.casefold() not in {
+                "mp4",
+                "mov,mp4,m4a,3gp,3g2,mj2",
+            }:
                 raise ValueError("VIDEO_PROVIDER_CONTAINER_UNSUPPORTED")
             stored = await self.store.promote(spec=spec, shot=shot, staged=staged, probe=probe)
             if stored.checksum_sha256 != staged.checksum_sha256:

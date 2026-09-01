@@ -1,0 +1,13 @@
+name: Release Projects Rename Conflict Fix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retired:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "Retired after verified source remediation."

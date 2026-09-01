@@ -15,13 +15,7 @@ def new_uuid7(*, unix_ms: int | None = None) -> DomainId:
 
     random_a = secrets.randbits(12)
     random_b = secrets.randbits(62)
-    value = (
-        (timestamp_ms << 80)
-        | (0x7 << 76)
-        | (random_a << 64)
-        | (0b10 << 62)
-        | random_b
-    )
+    value = (timestamp_ms << 80) | (0x7 << 76) | (random_a << 64) | (0b10 << 62) | random_b
     return UUID(int=value)
 
 

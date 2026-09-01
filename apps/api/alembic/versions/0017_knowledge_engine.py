@@ -7,11 +7,20 @@ Revises: 0016_memory_engine
 from __future__ import annotations
 
 from alembic import op
+from sqlalchemy import text
 
 revision = "0017_knowledge_engine"
 down_revision = "0016_memory_engine"
 branch_labels = None
 depends_on = None
+
+
+def _lumi_app_exists() -> bool:
+    return bool(
+        op.get_bind()
+        .execute(text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')"))
+        .scalar_one()
+    )
 
 
 UPGRADE_STATEMENTS = (
@@ -181,7 +190,10 @@ DOWNGRADE_STATEMENTS = (
 
 
 def upgrade() -> None:
+    app_role_exists = _lumi_app_exists()
     for statement in UPGRADE_STATEMENTS:
+        if "lumi_app" in statement and not app_role_exists:
+            continue
         op.execute(statement)
 
 

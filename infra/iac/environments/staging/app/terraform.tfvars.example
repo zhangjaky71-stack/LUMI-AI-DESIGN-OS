@@ -5,6 +5,9 @@ certificate_arn   = "arn:aws:acm:ap-northeast-1:123456789012:certificate/REPLACE
 domain_name       = "staging.example.com"
 hosted_zone_id    = "REPLACE_WITH_ROUTE53_ZONE_ID"
 
+# Must exactly match a logical profile declared by the promoted media secret's video_models[*].profiles.
+video_model_profile = "REPLACE_WITH_MEDIA_SECRET_VIDEO_PROFILE"
+
 # The same immutable image digests accepted by NODE-71 must be promoted; never use floating tags.
 api_image             = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/lumi-api@sha256:REPLACE_64_HEX"
 agent_runtime_image   = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/lumi-agent-runtime@sha256:REPLACE_64_HEX"

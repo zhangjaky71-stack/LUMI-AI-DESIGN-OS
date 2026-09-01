@@ -2,26 +2,13 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
 import pytest
 from lumi_artifacts.history import ArtifactHistory
 from lumi_artifacts.model import Artifact, ArtifactBranch, ArtifactVersion
-from lumi_model_gateway import (
-    Capability,
-    CostConfidence,
-    CostEstimate,
-    InMemoryProviderHealthRegistry,
-    InMemoryProviderRegistry,
-    ModelRequest,
-    ModelRouter,
-    NoRouteError,
-    ProviderLatencyClass,
-    ProviderModel,
-)
-
 from lumi_image_edit.artifact_adapter import ArtifactHistoryImageEditAdapter
 from lumi_image_edit.inmemory import (
     MemoryComposite,
@@ -48,6 +35,19 @@ from lumi_image_edit.planner import plan_edit
 from lumi_image_edit.ports import StoredEditedImage
 from lumi_image_edit.repository import ImageEditOperationConflict, InMemoryImageEditRepository
 from lumi_image_edit.validation import CompositeEditValidator
+
+from lumi_model_gateway import (
+    Capability,
+    CostConfidence,
+    CostEstimate,
+    InMemoryProviderHealthRegistry,
+    InMemoryProviderRegistry,
+    ModelRequest,
+    ModelRouter,
+    NoRouteError,
+    ProviderLatencyClass,
+    ProviderModel,
+)
 
 ORG = "00000000-0000-0000-0000-000000000001"
 PROJECT = "00000000-0000-0000-0000-000000000002"
@@ -177,7 +177,7 @@ def make_history() -> ArtifactHistory:
             constraint_snapshot_hash="e" * 64,
             created_by_type="USER",
             created_by_id="user",
-            created_at=datetime(2026, 8, 14, tzinfo=timezone.utc),
+            created_at=datetime(2026, 8, 14, tzinfo=UTC),
         )
     )
     return value
@@ -299,8 +299,7 @@ def test_qr_lock_fails_closed_when_qr_decoder_unavailable() -> None:
     )
     assert report.decision == "REJECT"
     assert any(
-        item.reason_code == "IMAGE_EDIT_QR_VALIDATOR_UNAVAILABLE"
-        for item in report.findings
+        item.reason_code == "IMAGE_EDIT_QR_VALIDATOR_UNAVAILABLE" for item in report.findings
     )
 
 
@@ -504,9 +503,7 @@ def model_request() -> ModelRequest:
         operation_id=UUID(OP),
         capability=Capability.IMAGE_MASK_EDIT,
         inputs={"instruction": "background black"},
-        constraints={
-            "required_capabilities": [Capability.IMAGE_REFERENCE_CONSISTENCY.value]
-        },
+        constraints={"required_capabilities": [Capability.IMAGE_REFERENCE_CONSISTENCY.value]},
     )
 
 

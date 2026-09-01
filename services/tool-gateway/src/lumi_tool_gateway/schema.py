@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .errors import ToolInputValidationError, ToolOutputValidationError
@@ -89,6 +90,17 @@ class SchemaValidator:
                 self._fail(f"{path}: string too short", output=output)
             if isinstance(max_length, int) and len(value) > max_length:
                 self._fail(f"{path}: string too long", output=output)
+            pattern = schema.get("pattern")
+            if pattern is not None:
+                if not isinstance(pattern, str):
+                    self._fail(f"{path}: pattern must be string", output=output)
+                try:
+                    matched = re.search(pattern, value)
+                except re.error:
+                    self._fail(f"{path}: pattern invalid", output=output)
+                    return
+                if matched is None:
+                    self._fail(f"{path}: string pattern mismatch", output=output)
 
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             minimum = schema.get("minimum")

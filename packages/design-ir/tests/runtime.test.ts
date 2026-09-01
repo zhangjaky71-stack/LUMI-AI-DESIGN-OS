@@ -18,7 +18,9 @@ describe("NODE-38 Design IR runtime", () => {
     expect(await canonicalSha256(source)).toBe(fixture.expected_input_sha256);
     const result = executeOperations(source, operations);
     expect(result.ok).toBe(true);
-    expect(await canonicalSha256(result.document)).toBe(fixture.expected_output_sha256);
+    expect(await canonicalSha256(result.document)).toBe(
+      fixture.expected_output_sha256,
+    );
   });
 
   it("does not mutate the caller document", () => {
@@ -43,7 +45,9 @@ describe("NODE-38 Design IR runtime", () => {
     const result = executeOperations(source, failing);
     expect(result.ok).toBe(false);
     expect(result.document).toBe(source);
-    expect(canonicalStringify(result.document)).toBe(canonicalStringify(source));
+    expect(canonicalStringify(result.document)).toBe(
+      canonicalStringify(source),
+    );
     if (!result.ok) expect(result.failures[0]?.code).toBe("TARGET_NOT_FOUND");
   });
 
@@ -55,10 +59,47 @@ describe("NODE-38 Design IR runtime", () => {
     if (!result.ok) expect(result.failures[0]?.code).toBe("VERSION_CONFLICT");
   });
 
+  it("rejects prototype-polluting property paths", () => {
+    const marker = "__lumi_design_ir_polluted__";
+    expect(
+      (Object.prototype as Record<string, unknown>)[marker],
+    ).toBeUndefined();
+
+    const maliciousPaths = [
+      `__proto__.${marker}`,
+      `constructor.prototype.${marker}`,
+      `style.__proto__.${marker}`,
+    ];
+    for (const path of maliciousPaths) {
+      const result = executeOperations(source, [
+        {
+          operation_id: `prototype-pollution:${path}`,
+          type: "SET_PROPERTY",
+          target_ids: ["headline"],
+          expected_document_version: operations[0]!.expected_document_version,
+          payload: { path, value: "polluted" },
+        },
+      ]);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.failures[0]?.code).toBe("INVALID_OPERATION");
+        expect(result.failures[0]?.message).toContain(
+          "Unsafe property path segment",
+        );
+      }
+      expect(
+        (Object.prototype as Record<string, unknown>)[marker],
+      ).toBeUndefined();
+    }
+  });
+
   it("is deterministic across repeated equivalent transactions", () => {
     const hashes = new Set<string>();
     for (let index = 0; index < 50; index += 1) {
-      const result = executeOperations(structuredClone(source), structuredClone(operations));
+      const result = executeOperations(
+        structuredClone(source),
+        structuredClone(operations),
+      );
       expect(result.ok).toBe(true);
       hashes.add(canonicalStringify(result.document));
     }
@@ -70,8 +111,12 @@ describe("NODE-38 Design IR runtime", () => {
     expect(result.ok).toBe(true);
     const diff = semanticDiff(source, result.document);
     expect(diff.changed_node_ids).toContain("headline");
-    expect(diff.changes.some((change) => change.kind === "TEXT_CHANGED")).toBe(true);
-    expect(diff.changes.some((change) => change.kind === "GEOMETRY_CHANGED")).toBe(true);
+    expect(diff.changes.some((change) => change.kind === "TEXT_CHANGED")).toBe(
+      true,
+    );
+    expect(
+      diff.changes.some((change) => change.kind === "GEOMETRY_CHANGED"),
+    ).toBe(true);
   });
 
   it("preserves provenance during registered migrations", () => {

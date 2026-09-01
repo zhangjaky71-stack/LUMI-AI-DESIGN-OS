@@ -48,11 +48,13 @@ def main() -> int:
     for definition in definitions:
         validator.validate(definition)
     for release in manifest.releases:
-        if release.status == SkillReleaseStatus.PRODUCTION:
-            if release.eval_status != "passed" or not release.eval_evidence:
-                raise SystemExit(
-                    f"production Skill lacks eval evidence: {release.skill_id}@{release.version}"
-                )
+        if (
+            release.status == SkillReleaseStatus.PRODUCTION
+            and (release.eval_status != "passed" or not release.eval_evidence)
+        ):
+            raise SystemExit(
+                f"production Skill lacks eval evidence: {release.skill_id}@{release.version}"
+            )
 
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/skill_registry/registry.py",

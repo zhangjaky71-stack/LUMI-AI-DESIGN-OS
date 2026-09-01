@@ -5,6 +5,7 @@ import asyncio
 from pathlib import Path
 
 from integration_context_eval import CorpusExecutor
+
 from lumi_agent_runtime.context_eval import (
     compare_to_baseline,
     load_baseline,
@@ -17,7 +18,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run NODE-35 Context evaluation and emit JSON report")
+    parser = argparse.ArgumentParser(
+        description="Run NODE-35 Context evaluation and emit JSON report"
+    )
     parser.add_argument(
         "--output",
         type=Path,
@@ -27,9 +30,7 @@ def parse_args() -> argparse.Namespace:
 
 
 async def run(output: Path) -> None:
-    suite_id, thresholds, cases = load_eval_corpus(
-        ROOT / "evals/context/memory-retrieval-v1.json"
-    )
+    suite_id, thresholds, cases = load_eval_corpus(ROOT / "evals/context/memory-retrieval-v1.json")
     evaluation = await run_eval_suite(
         suite_id,
         cases,
@@ -46,9 +47,7 @@ async def run(output: Path) -> None:
         }
         raise AssertionError(f"NODE-35 evaluation failed: {failures}")
 
-    baseline = load_baseline(
-        ROOT / "evals/context/memory-retrieval-baseline-v1.json"
-    )
+    baseline = load_baseline(ROOT / "evals/context/memory-retrieval-baseline-v1.json")
     regression = compare_to_baseline(evaluation.report, baseline)
     if not regression.passed:
         raise AssertionError(f"NODE-35 baseline regression: {regression.reasons}")

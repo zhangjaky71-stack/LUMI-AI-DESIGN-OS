@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from uuid import uuid4
+
+from langchain_core.messages import ToolMessage
 
 from lumi_agent_runtime.deep_runtime.contracts import DeepAgentInvocationContext
 from lumi_agent_runtime.deep_runtime.node25_adapter import StaticToolDefinitionReader
@@ -71,7 +74,12 @@ async def main_async() -> None:
     expected = f"deep-agent:{context.agent_run_id}:{call_id}"
     assert gateway.calls[0]["idempotency_key"] == expected
     assert gateway.calls[0]["tool_call_id"] == call_id
-    assert result["idempotency_key"] == expected
+    assert isinstance(result, ToolMessage), type(result)
+    assert result.tool_call_id == call_id
+    assert result.name == tool.name
+    assert isinstance(result.content, str), result.content
+    content = json.loads(result.content)
+    assert content["idempotency_key"] == expected
 
 
 def main() -> int:

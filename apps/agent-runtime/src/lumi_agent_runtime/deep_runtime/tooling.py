@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 import re
 from dataclasses import dataclass
@@ -111,7 +109,7 @@ class LumiToolGatewayProvider:
 
         async def call(
             payload: dict[str, Any],
-            tool_call_id: str,
+            tool_call_id: Annotated[str, injected_type],
         ) -> Any:
             if not isinstance(payload, dict):
                 raise DeepAgentToolScopeError("Deep Agent tool payload must be an object")
@@ -128,20 +126,19 @@ class LumiToolGatewayProvider:
                 idempotency_key=idempotency_key,
             )
 
-        # LangChain hides InjectedToolCallId from the model-facing schema while still
-        # supplying the stable framework tool-call identity at execution time.
-        call.__annotations__ = {
-            "payload": dict[str, Any],
-            "tool_call_id": Annotated[str, injected_type],
-            "return": Any,
-        }
+        # Keep the runtime-injected call identity on the executable signature, but
+        # give StructuredTool a narrower fail-closed model schema. LangChain then
+        # re-injects the top-level ToolCall id through _injected_args_keys instead
+        # of allowing the model to supply or override that identity in `args`.
         call.__name__ = _langchain_name(definition.name)
         call.__doc__ = _trusted_description(definition)
+        args_schema = _langchain_payload_schema(call.__name__)
         try:
             tool = structured_tool_type.from_function(
                 coroutine=call,
                 name=call.__name__,
                 description=call.__doc__,
+                args_schema=args_schema,
             )
         except Exception as exc:
             raise DeepAgentToolScopeError(
@@ -156,13 +153,30 @@ class LumiToolGatewayProvider:
 def _langchain_tool_types() -> tuple[Any, Any]:
     try:
         tools_module = import_module("langchain_core.tools")
-        injected = getattr(tools_module, "InjectedToolCallId")
-        structured = getattr(tools_module, "StructuredTool")
+        injected = tools_module.InjectedToolCallId
+        structured = tools_module.StructuredTool
     except (ImportError, AttributeError) as exc:
         raise DeepAgentToolScopeError(
             "current langchain-core StructuredTool/InjectedToolCallId is required"
         ) from exc
     return injected, structured
+
+
+def _langchain_payload_schema(tool_name: str) -> Any:
+    try:
+        pydantic_module = import_module("pydantic")
+        config_dict = pydantic_module.ConfigDict
+        create_model = pydantic_module.create_model
+    except (ImportError, AttributeError) as exc:
+        raise DeepAgentToolScopeError(
+            "current pydantic create_model/ConfigDict is required for LangChain tool schema"
+        ) from exc
+    model_name = _LANGCHAIN_NAME.sub("_", tool_name).replace("-", "_")
+    return create_model(
+        f"{model_name}_Input",
+        __config__=config_dict(extra="forbid"),
+        payload=(dict[str, Any], ...),
+    )
 
 
 def _langchain_name(canonical: str) -> str:

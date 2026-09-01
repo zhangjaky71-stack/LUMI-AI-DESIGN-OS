@@ -45,11 +45,11 @@ jobs:
       - name: Revalidate NODE-29 Deep Agents Runtime
         run: >-
           PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
-          python scripts/validate_deep_agent_runtime.py
-      - name: Revalidate NODE-31 Skill Runtime
+          python scripts/validate_deep_agents_runtime_contract_v2.py
+      - name: Revalidate NODE-31 Skill Registry
         run: >-
           PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
-          python scripts/validate_skill_runtime_contract.py
+          python scripts/validate_skill_registry_contract.py
       - name: Revalidate NODE-33 TaskGraph
         run: >-
           PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src

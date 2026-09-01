@@ -7,8 +7,19 @@ import type {
 
 export type TimelineCategory = "AGENT" | "GENERATION" | "APPROVAL" | "ERROR";
 export type TimelineFilter = "ALL" | TimelineCategory;
-export type TimelineItemType = "RUN" | "TASK" | "MESSAGE" | "ARTIFACT" | "APPROVAL" | "WARNING";
-export type TimelineItemStatus = AgentTaskStatus | AgentRunStatus | "WAITING_USER" | "WARNING" | "INFO";
+export type TimelineItemType =
+  | "RUN"
+  | "TASK"
+  | "MESSAGE"
+  | "ARTIFACT"
+  | "APPROVAL"
+  | "WARNING";
+export type TimelineItemStatus =
+  | AgentTaskStatus
+  | AgentRunStatus
+  | "WAITING_USER"
+  | "WARNING"
+  | "INFO";
 
 export interface TimelineProgress {
   readonly completed: number;

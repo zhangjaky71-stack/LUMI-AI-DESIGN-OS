@@ -149,10 +149,7 @@ class QrScannabilityEvaluator:
                 )
             )
         minimum_quiet = _number(parameters.get("min_quiet_zone_modules"), 4.0)
-        if (
-            decoded.quiet_zone_modules is not None
-            and decoded.quiet_zone_modules < minimum_quiet
-        ):
+        if decoded.quiet_zone_modules is not None and decoded.quiet_zone_modules < minimum_quiet:
             warning = _violation(
                 constraint,
                 self.name,
@@ -436,8 +433,7 @@ def _changed(
     tolerance: float,
 ) -> bool:
     return any(
-        not _close(_number(before.get(key)), _number(after.get(key)), tolerance)
-        for key in keys
+        not _close(_number(before.get(key)), _number(after.get(key)), tolerance) for key in keys
     )
 
 
@@ -456,8 +452,7 @@ def _safe_area_bounds(
         return None
     frame_bounds = _bounds(frame)
     return {
-        "x": _number(frame_bounds["x"])
-        + _number(region.get("x")) * _number(frame_bounds["width"]),
+        "x": _number(frame_bounds["x"]) + _number(region.get("x")) * _number(frame_bounds["width"]),
         "y": _number(frame_bounds["y"])
         + _number(region.get("y")) * _number(frame_bounds["height"]),
         "width": _number(region.get("width")) * _number(frame_bounds["width"]),
@@ -867,9 +862,7 @@ def guarded_execute(
                 "decision": "DENY",
                 "violations": aggregate_violations(violations),
                 "conflicts": resolved["conflicts"],
-                "effective_constraint_ids": [
-                    item.get("id") for item in resolved["constraints"]
-                ],
+                "effective_constraint_ids": [item.get("id") for item in resolved["constraints"]],
             }
         }
 
@@ -880,9 +873,7 @@ def guarded_execute(
                 "decision": "DENY",
                 "violations": violations,
                 "conflicts": resolved["conflicts"],
-                "effective_constraint_ids": [
-                    item.get("id") for item in resolved["constraints"]
-                ],
+                "effective_constraint_ids": [item.get("id") for item in resolved["constraints"]],
             },
             "execution": execution,
         }
@@ -941,7 +932,10 @@ def postflight_validate(
         constraint_type = str(constraint.get("type"))
         matching = [item for item in evaluators if constraint_type in item.supported_types]
         if not matching:
-            if constraint.get("severity") == "HARD" and constraint_type in POSTFLIGHT_REQUIRED_TYPES:
+            if (
+                constraint.get("severity") == "HARD"
+                and constraint_type in POSTFLIGHT_REQUIRED_TYPES
+            ):
                 validator = f"missing:{constraint_type}"
                 unavailable.add(validator)
                 violations.append(

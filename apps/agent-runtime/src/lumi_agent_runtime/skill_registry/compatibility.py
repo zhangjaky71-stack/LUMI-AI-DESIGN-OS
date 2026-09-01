@@ -28,13 +28,9 @@ class AgentSkillCompatibilityValidator:
                 raise SkillCompatibilityError(
                     f"Agent {definition.agent_id} cannot use {skill.identity}"
                 )
-            missing_tools = {
-                item.name for item in skill.required_tools
-            } - allowed_tools
+            missing_tools = {item.name for item in skill.required_tools} - allowed_tools
             missing_permissions = set(skill.permissions) - granted_permissions
-            missing_capabilities = (
-                set(skill.required_capabilities) - self.available_capabilities
-            )
+            missing_capabilities = set(skill.required_capabilities) - self.available_capabilities
             if missing_tools or missing_permissions:
                 raise SkillPermissionError(
                     "Skill expands Agent scope: "
@@ -43,6 +39,5 @@ class AgentSkillCompatibilityValidator:
                 )
             if missing_capabilities:
                 raise SkillCapabilityError(
-                    "Agent model policy lacks Skill capabilities: "
-                    f"{sorted(missing_capabilities)}"
+                    f"Agent model policy lacks Skill capabilities: {sorted(missing_capabilities)}"
                 )

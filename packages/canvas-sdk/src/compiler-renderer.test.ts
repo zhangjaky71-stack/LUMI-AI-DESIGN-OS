@@ -15,7 +15,12 @@ function fixture(): DesignDocument {
     unit: "px",
     root_id: "root",
     nodes: {
-      root: { id: "root", kind: "DOCUMENT_ROOT", parent_id: null, children: ["frame"] },
+      root: {
+        id: "root",
+        kind: "DOCUMENT_ROOT",
+        parent_id: null,
+        children: ["frame"],
+      },
       frame: {
         id: "frame",
         kind: "FRAME",
@@ -51,7 +56,10 @@ function fixture(): DesignDocument {
     },
     resources: {
       "shape-style": { style: { fill: "#ffcc00" }, version: "s1" },
-      "text-style": { style: { fill: "#111111", font_size: 24 }, version: "t1" },
+      "text-style": {
+        style: { fill: "#111111", font_size: 24 },
+        version: "t1",
+      },
     },
     metadata: { document_version: 1 },
   };
@@ -94,8 +102,12 @@ describe("NODE-41 compiler to Pixi bridge", () => {
     const compiled = new CanvasCompiler().compileStructure(fixture());
     expect(compiled.ok).toBe(true);
     if (!compiled.ok) return;
-    expect(compiled.snapshot.nodes.get("shape")?.resolved_style.fill).toBe("#ffcc00");
-    expect(compiled.snapshot.nodes.get("title")?.resolved_style.font_size).toBe(24);
+    expect(compiled.snapshot.nodes.get("shape")?.resolved_style.fill).toBe(
+      "#ffcc00",
+    );
+    expect(compiled.snapshot.nodes.get("title")?.resolved_style.font_size).toBe(
+      24,
+    );
 
     const { bindings, handles } = bindingsFixture();
     const renderer = new PixiV8RendererAdapter(bindings);
@@ -115,6 +127,9 @@ describe("NODE-41 compiler to Pixi bridge", () => {
         resolved_style: expect.objectContaining({ font_size: 24 }),
       }),
     );
-    expect(bindings.setMask).toHaveBeenCalledWith(handles.get("shape"), handles.get("mask"));
+    expect(bindings.setMask).toHaveBeenCalledWith(
+      handles.get("shape"),
+      handles.get("mask"),
+    );
   });
 });

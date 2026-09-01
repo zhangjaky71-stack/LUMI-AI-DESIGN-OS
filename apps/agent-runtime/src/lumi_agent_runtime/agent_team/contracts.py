@@ -114,9 +114,7 @@ class AgentTeamProfile:
             raise ValueError("AGENT_TEAM_OBJECTIVE_REQUIRED")
         if not 0 <= self.max_delegation_depth <= 5:
             raise ValueError("AGENT_TEAM_DELEGATION_DEPTH_INVALID")
-        if not self.can_delegate and (
-            self.delegation_allowlist or self.max_delegation_depth != 0
-        ):
+        if not self.can_delegate and (self.delegation_allowlist or self.max_delegation_depth != 0):
             raise ValueError("AGENT_TEAM_NON_DELEGATOR_HAS_DELEGATION_CONFIG")
         if self.can_delegate and not self.delegation_allowlist:
             raise ValueError("AGENT_TEAM_DELEGATION_ALLOWLIST_REQUIRED")
@@ -147,6 +145,14 @@ class DelegationGrant:
     deadline_at: datetime | None
 
 
+def definition_tool_names(definition: AgentDefinition) -> frozenset[str]:
+    return frozenset(item.name for item in definition.tools)
+
+
+def definition_permission_names(definition: AgentDefinition) -> frozenset[str]:
+    return frozenset(key for key, enabled in definition.permissions.items() if enabled)
+
+
 def team_profile(definition: AgentDefinition) -> AgentTeamProfile:
     raw = definition.metadata.get("team")
     if not isinstance(raw, dict):
@@ -167,8 +173,7 @@ def team_profile(definition: AgentDefinition) -> AgentTeamProfile:
     unknown = set(raw) - allowed_keys
     if unknown:
         raise ValueError(
-            f"AGENT_TEAM_PROFILE_UNKNOWN_FIELDS:{definition.agent_id}:"
-            + ",".join(sorted(unknown))
+            f"AGENT_TEAM_PROFILE_UNKNOWN_FIELDS:{definition.agent_id}:" + ",".join(sorted(unknown))
         )
     profile = AgentTeamProfile(
         archetype=AgentArchetype(str(raw["archetype"])),
@@ -176,9 +181,7 @@ def team_profile(definition: AgentDefinition) -> AgentTeamProfile:
         can_delegate=bool(raw["can_delegate"]),
         delegation_allowlist=_string_tuple(raw.get("delegation_allowlist", [])),
         max_delegation_depth=int(raw.get("max_delegation_depth", 0)),
-        delegation_tool_ceiling=frozenset(
-            _string_tuple(raw.get("delegation_tool_ceiling", []))
-        ),
+        delegation_tool_ceiling=frozenset(_string_tuple(raw.get("delegation_tool_ceiling", []))),
         delegation_permission_ceiling=frozenset(
             _string_tuple(raw.get("delegation_permission_ceiling", []))
         ),
@@ -187,14 +190,10 @@ def team_profile(definition: AgentDefinition) -> AgentTeamProfile:
         approval_gated_actions=_string_tuple(raw.get("approval_gated_actions", [])),
         supports_waiting_external=bool(raw.get("supports_waiting_external", False)),
     )
-    if set(definition.allowed_tools) - profile.delegation_tool_ceiling:
-        raise ValueError(
-            f"AGENT_TEAM_DIRECT_TOOL_OUTSIDE_CEILING:{definition.agent_id}"
-        )
-    if set(definition.permissions) - profile.delegation_permission_ceiling:
-        raise ValueError(
-            f"AGENT_TEAM_DIRECT_PERMISSION_OUTSIDE_CEILING:{definition.agent_id}"
-        )
+    if definition_tool_names(definition) - profile.delegation_tool_ceiling:
+        raise ValueError(f"AGENT_TEAM_DIRECT_TOOL_OUTSIDE_CEILING:{definition.agent_id}")
+    if definition_permission_names(definition) - profile.delegation_permission_ceiling:
+        raise ValueError(f"AGENT_TEAM_DIRECT_PERMISSION_OUTSIDE_CEILING:{definition.agent_id}")
     return profile
 
 

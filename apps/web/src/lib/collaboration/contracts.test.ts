@@ -26,8 +26,12 @@ const thread: CollaborationThread = {
 
 describe("NODE-61 collaboration contracts", () => {
   it("rejects floating version anchors", () => {
-    expect(() => assertExactCollaborationVersion("latest", "design_version")).toThrow(/MUST_BE_EXACT/);
-    expect(() => assertExactCollaborationVersion("design-v4", "design_version")).not.toThrow();
+    expect(() =>
+      assertExactCollaborationVersion("latest", "design_version"),
+    ).toThrow(/MUST_BE_EXACT/);
+    expect(() =>
+      assertExactCollaborationVersion("design-v4", "design_version"),
+    ).not.toThrow();
   });
 
   it("uses canonical NODE-16 roles instead of a parallel client role", () => {
@@ -47,6 +51,13 @@ describe("NODE-61 collaboration contracts", () => {
   it("validates comments and stable property conflict keys", () => {
     expect(validateCommentBody("  review this  ")).toBe("review this");
     expect(() => validateCommentBody("   ")).toThrow(/EMPTY/);
-    expect(operationConflictKey({ operation_id: "op-1", node_id: "hero", property_name: "text", value: "x" })).toBe("hero::text");
+    expect(
+      operationConflictKey({
+        operation_id: "op-1",
+        node_id: "hero",
+        property_name: "text",
+        value: "x",
+      }),
+    ).toBe("hero::text");
   });
 });

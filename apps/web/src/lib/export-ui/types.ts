@@ -5,7 +5,11 @@ import type {
   ExportSpec,
 } from "@lumi/artifact-sdk";
 
-export type ExportEntryKind = "FRAME" | "ARTIFACT_VERSION" | "DELIVERABLE" | "BATCH";
+export type ExportEntryKind =
+  | "FRAME"
+  | "ARTIFACT_VERSION"
+  | "DELIVERABLE"
+  | "BATCH";
 
 export interface ExportSourceOption {
   readonly id: string;

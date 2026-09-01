@@ -20,21 +20,14 @@ def load_skill(version_dir: Path) -> SkillDefinition:
         _read_json(version_dir / "skill.yaml"),
         "SKILL_DEFINITION_OBJECT_REQUIRED",
     )
-    if (
-        payload.get("id") != version_dir.parent.name
-        or payload.get("version") != version_dir.name
-    ):
+    if payload.get("id") != version_dir.parent.name or payload.get("version") != version_dir.name:
         raise SkillDefinitionInvalidError("Skill path must match id/version")
     markdown = (version_dir / "SKILL.md").read_text(encoding="utf-8")
     frontmatter = _frontmatter(markdown)
     if frontmatter.get("name") != payload.get("id"):
-        raise SkillDefinitionInvalidError(
-            "SKILL.md frontmatter name must match Skill id"
-        )
+        raise SkillDefinitionInvalidError("SKILL.md frontmatter name must match Skill id")
     if frontmatter.get("description") != payload.get("summary"):
-        raise SkillDefinitionInvalidError(
-            "SKILL.md description must match skill summary"
-        )
+        raise SkillDefinitionInvalidError("SKILL.md description must match skill summary")
     resources: dict[str, str] = {}
     for path in sorted(version_dir.rglob("*")):
         if not path.is_file() or path.name in {"skill.yaml", "SKILL.md"}:
@@ -85,9 +78,7 @@ def load_skill(version_dir: Path) -> SkillDefinition:
                 )
             ),
             dependencies=tuple(
-                SkillRequirement.parse(
-                    _string(item, "SKILL_DEPENDENCY_INVALID")
-                )
+                SkillRequirement.parse(_string(item, "SKILL_DEPENDENCY_INVALID"))
                 for item in _list(
                     payload.get("dependencies", []),
                     "SKILL_DEPENDENCIES_INVALID",
@@ -131,22 +122,16 @@ def load_release_manifest(path: Path) -> SkillReleaseManifest:
         SkillReleaseRecord(
             skill_id=_string(row.get("id"), "SKILL_RELEASE_ID_REQUIRED"),
             version=_string(row.get("version"), "SKILL_RELEASE_VERSION_REQUIRED"),
-            status=SkillReleaseStatus(
-                _string(row.get("status"), "SKILL_RELEASE_STATUS_REQUIRED")
-            ),
+            status=SkillReleaseStatus(_string(row.get("status"), "SKILL_RELEASE_STATUS_REQUIRED")),
             eval_profile=_string(
                 row.get("eval_profile"),
                 "SKILL_RELEASE_EVAL_REQUIRED",
             ),
             eval_status=(
-                row.get("eval_status")
-                if isinstance(row.get("eval_status"), str)
-                else None
+                row.get("eval_status") if isinstance(row.get("eval_status"), str) else None
             ),
             eval_evidence=(
-                row.get("eval_evidence")
-                if isinstance(row.get("eval_evidence"), str)
-                else None
+                row.get("eval_evidence") if isinstance(row.get("eval_evidence"), str) else None
             ),
         )
         for row in (
@@ -190,13 +175,9 @@ def _frontmatter(markdown: str) -> dict[str, str]:
     else:
         raise SkillDefinitionInvalidError("SKILL.md frontmatter is not terminated")
     if not result.get("name") or not result.get("description"):
-        raise SkillDefinitionInvalidError(
-            "SKILL.md frontmatter requires name and description"
-        )
+        raise SkillDefinitionInvalidError("SKILL.md frontmatter requires name and description")
     if len(result["description"]) > 1024:
-        raise SkillDefinitionInvalidError(
-            "SKILL.md description exceeds Deep Agents limit"
-        )
+        raise SkillDefinitionInvalidError("SKILL.md description exceeds Deep Agents limit")
     return result
 
 
@@ -214,9 +195,7 @@ def _read_json(path: Path) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise SkillDefinitionInvalidError(
-            f"invalid JSON-compatible YAML: {path}"
-        ) from exc
+        raise SkillDefinitionInvalidError(f"invalid JSON-compatible YAML: {path}") from exc
 
 
 def _object(value: Any, code: str) -> dict[str, Any]:

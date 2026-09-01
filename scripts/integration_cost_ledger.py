@@ -67,12 +67,18 @@ async def _cleanup(
             "DELETE FROM cost_reservations WHERE operation_id = ANY($1::uuid[])",
             operation_ids,
         )
+        # cost_ledger is append-only by database trigger. Preserve those acceptance facts
+        # until the ephemeral Hosted database volume is destroyed, and only remove
+        # idempotency operations that are not referenced by immutable ledger entries.
         await migration.execute(
-            "DELETE FROM cost_ledger WHERE operation_id = ANY($1::uuid[])",
-            operation_ids,
-        )
-        await migration.execute(
-            "DELETE FROM idempotency_operations WHERE id = ANY($1::uuid[])",
+            """
+            DELETE FROM idempotency_operations AS operation
+            WHERE operation.id = ANY($1::uuid[])
+              AND NOT EXISTS (
+                  SELECT 1 FROM cost_ledger AS ledger
+                  WHERE ledger.operation_id = operation.id
+              )
+            """,
             operation_ids,
         )
     if budget_ids:
@@ -100,7 +106,8 @@ async def main_async() -> None:
         # Idempotent cleanup from any interrupted prior run uses no fixed operation IDs;
         # this run therefore owns only the UUIDs created below.
         task_id = await migration.fetchval(
-            "SELECT id FROM tasks WHERE organization_id=$1 AND project_id=$2 ORDER BY created_at LIMIT 1",
+            "SELECT id FROM tasks WHERE organization_id=$1 AND project_id=$2 "
+            "ORDER BY created_at LIMIT 1",
             ORG_ID,
             PROJECT_A_ID,
         )

@@ -247,18 +247,18 @@ def _parse_tools(result: dict[str, Any]) -> tuple[MCPDiscoveredTool, ...]:
     for raw in raw_tools:
         if not isinstance(raw, dict):
             raise MCPSchemaInvalidError("MCP tool descriptor must be an object")
+        input_schema = raw.get("inputSchema")
+        if not isinstance(input_schema, dict):
+            raise MCPSchemaInvalidError("MCP tool inputSchema must be an object")
+        annotations = raw.get("annotations")
         try:
             tools.append(
                 MCPDiscoveredTool(
                     remote_name=str(raw.get("name", "")),
                     description=str(raw.get("description", "")),
-                    input_schema=raw.get("inputSchema"),
+                    input_schema=input_schema,
                     output_schema=raw.get("outputSchema"),
-                    annotations=(
-                        raw.get("annotations")
-                        if isinstance(raw.get("annotations"), dict)
-                        else {}
-                    ),
+                    annotations=annotations if isinstance(annotations, dict) else {},
                 )
             )
         except (TypeError, ValueError) as exc:
@@ -275,9 +275,7 @@ def _parse_call_result(
     if not isinstance(result_type, str):
         raise MCPProtocolMismatchError("MCP resultType missing or invalid")
     raw_content = result.get("content", [])
-    if not isinstance(raw_content, list) or not all(
-        isinstance(item, dict) for item in raw_content
-    ):
+    if not isinstance(raw_content, list) or not all(isinstance(item, dict) for item in raw_content):
         raise MCPProtocolMismatchError("MCP tool content invalid")
     input_requests = result.get("inputRequests")
     if input_requests is not None and not isinstance(input_requests, dict):

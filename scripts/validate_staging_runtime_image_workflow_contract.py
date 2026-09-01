@@ -1,0 +1,266 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+WORKFLOW = ROOT / ".github" / "workflows" / "staging-acceptance-gate.yml"
+EVIDENCE_TEMPLATE = ROOT / "staging" / "acceptance" / "evidence-template.json"
+EVIDENCE_VALIDATOR = ROOT / "scripts" / "validate_staging_evidence_artifacts.py"
+DATABASE_PARITY_CONTRACT = ROOT / "scripts" / "validate_staging_database_parity_contract.py"
+RUNTIME_BINDER = ROOT / "scripts" / "bind_node71_runtime_image_decision.py"
+DOWNLOAD_ACTION = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1"
+UPLOAD_ACTION = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2"
+
+
+class WorkflowContractError(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise WorkflowContractError(message)
+
+
+def _job_block(text: str, job_name: str, next_job: str | None) -> str:
+    marker = f"  {job_name}:\n"
+    start = text.find(marker)
+    if start < 0:
+        raise WorkflowContractError(f"missing workflow job: {job_name}")
+    if next_job is None:
+        return text[start:]
+    end_marker = f"  {next_job}:\n"
+    end = text.find(end_marker, start + len(marker))
+    if end < 0:
+        raise WorkflowContractError(f"missing workflow job terminator: {next_job}")
+    return text[start:end]
+
+
+def _run_json_contract(command: list[str], *, label: str) -> dict[str, object]:
+    result = subprocess.run(command, cwd=ROOT, check=False, capture_output=True, text=True)
+    require(result.returncode == 0, f"{label} failed: {result.stderr.strip()}")
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise WorkflowContractError(f"{label} did not emit JSON") from exc
+    require(isinstance(payload, dict), f"{label} output must be a JSON object")
+    return payload
+
+
+def _run_evidence_binding_self_test() -> None:
+    payload = _run_json_contract(
+        [sys.executable, str(EVIDENCE_VALIDATOR), "--self-test"],
+        label="staging evidence artifact validator self-test",
+    )
+    require(payload.get("status") == "PASS", "staging evidence artifact validator self-test did not PASS")
+    require(payload.get("static_negative_drills") == 8, "staging evidence artifact static negative drill count drift")
+    require(payload.get("live_negative_drills") == 8, "staging evidence artifact live negative drill count drift")
+    require(payload.get("verified_artifacts") == 2, "staging evidence artifact clean fixture verification count drift")
+
+
+def _run_database_parity_contract() -> None:
+    require(DATABASE_PARITY_CONTRACT.is_file(), "staging database parity producer contract is missing")
+    payload = _run_json_contract(
+        [sys.executable, str(DATABASE_PARITY_CONTRACT)],
+        label="staging database parity producer contract",
+    )
+    require(payload.get("status") == "PASS", "staging database parity producer contract did not PASS")
+    require(payload.get("database_parity_negative_drills") == 8, "database parity negative drill count drift")
+    require(payload.get("database_parity_merge_negative_drills") == 5, "database parity merge negative drill count drift")
+    require(payload.get("database_parity_parity_only") is True, "database parity artifact escaped parity-only scope")
+    require(payload.get("collector_private_fargate") is True, "database parity collector private Fargate boundary drift")
+    require(payload.get("freeze_two_phase") is True, "database parity freeze two-phase boundary drift")
+
+
+def _run_runtime_binder_self_test() -> None:
+    require(RUNTIME_BINDER.is_file(), "NODE-71 runtime-image decision binder is missing")
+    payload = _run_json_contract(
+        [sys.executable, str(RUNTIME_BINDER), "--self-test"],
+        label="NODE-71 runtime-image decision binder self-test",
+    )
+    require(payload.get("status") == "PASS", "NODE-71 runtime-image decision binder self-test did not PASS")
+    require(payload.get("decision_id_resealed") is True, "NODE-71 decision_id is not bound to runtime-image attestation")
+    drills = payload.get("negative_drills")
+    require(isinstance(drills, list) and len(drills) >= 7, "NODE-71 runtime-image decision binder negative drills drifted")
+
+
+def main() -> int:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    for marker in (
+        "runtime_image_set_run_id:",
+        'description: "GitHub Actions run id that produced the frozen six-runtime RC image set"',
+        "python3 scripts/validate_staging_evidence_artifacts.py --self-test",
+        "python3 scripts/validate_staging_runtime_image_binding.py --self-test",
+        "python3 scripts/bind_node71_runtime_image_decision.py --self-test",
+        "python3 scripts/validate_staging_runtime_image_workflow_contract.py",
+        "python3 scripts/validate_node71_decision_artifact.py --self-test",
+        "python3 scripts/validate_release_action_pins.py",
+        "scripts/validate_staging_evidence_artifacts.py",
+        "--require-live-producers",
+        "STAGING_EVIDENCE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
+        "scripts/validate_staging_runtime_image_binding.py",
+        "scripts/bind_node71_runtime_image_decision.py",
+        "scripts/validate_staging_runtime_image_workflow_contract.py",
+        "scripts/validate_node71_decision_artifact.py",
+        "--output reports/staging-acceptance/runtime/evidence-artifact-binding.json",
+        "RUNTIME_IMAGE_BINDING_PATH: reports/staging-acceptance/runtime/runtime-image-binding.json",
+        ' > "$RUNTIME_IMAGE_BINDING_PATH"',
+        '--binding "$RUNTIME_IMAGE_BINDING_PATH"',
+        DOWNLOAD_ACTION,
+        UPLOAD_ACTION,
+        "github-token: ${{ secrets.GITHUB_TOKEN }}",
+        "repository: ${{ github.repository }}",
+        "run-id: ${{ inputs.runtime_image_set_run_id }}",
+        "runtime-image-set-${{ steps.runtime_image_binding.outputs.rc_sha }}",
+        "--expected-run-id \"$LUMI_RUNTIME_IMAGE_SET_RUN_ID\"",
+        "--write-provenance reports/staging-acceptance/runtime/decision-provenance.json",
+        '--expected-run-id "${{ github.run_id }}"',
+        '--expected-repository "${{ github.repository }}"',
+    ):
+        require(marker in text, f"staging workflow missing evidence/runtime-image/decision binding marker: {marker}")
+
+    _run_evidence_binding_self_test()
+    _run_database_parity_contract()
+    _run_runtime_binder_self_test()
+
+    require(
+        text.count('ref: ${{ github.sha }}') == 4,
+        "all four NODE-71 code-consuming jobs must checkout exact github.sha",
+    )
+    require(
+        text.count("persist-credentials: false") == 4,
+        "all four NODE-71 checkouts must disable persisted GitHub credentials",
+    )
+    require(
+        text.count("STAGING_EVIDENCE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}") == 1,
+        "staging evidence Actions token must be injected exactly once",
+    )
+
+    template = json.loads(EVIDENCE_TEMPLATE.read_text(encoding="utf-8"))
+    require(isinstance(template, dict), "staging evidence template must be a JSON object")
+    require(
+        template.get("evidence_artifacts") == {},
+        "staging evidence template must expose an empty fail-closed evidence_artifacts catalog",
+    )
+
+    header = text[: text.find("jobs:\n")]
+    require(
+        "permissions:\n  contents: read\n" in header,
+        "NODE-71 workflow must default to contents:read only",
+    )
+    for forbidden in ("actions: read", "id-token: write", "contents: write", "actions: write", "packages: write", "attestations: write"):
+        require(forbidden not in header, f"NODE-71 top-level permission is too broad: {forbidden}")
+    require("STAGING_EVIDENCE_GITHUB_TOKEN" not in header, "staging evidence Actions token must not be workflow-scoped")
+
+    source = _job_block(text, "source-contract", "canonical-lock-gate")
+    lock_gate = _job_block(text, "canonical-lock-gate", "remote-read-only-preflight")
+    preflight = _job_block(text, "remote-read-only-preflight", "acceptance-decision")
+    acceptance = _job_block(text, "acceptance-decision", "contract-gate")
+    for label, block in (("source-contract", source), ("canonical-lock-gate", lock_gate), ("remote-read-only-preflight", preflight)):
+        require("actions: read" not in block, f"NODE-71 {label} must not receive cross-run Actions read permission")
+        require("STAGING_EVIDENCE_GITHUB_TOKEN" not in block, f"NODE-71 {label} must not receive staging evidence Actions token")
+    require(
+        "permissions:\n      contents: read\n      actions: read\n" in acceptance,
+        "NODE-71 acceptance-decision must be the only job with actions:read",
+    )
+    require(
+        "STAGING_EVIDENCE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}" in acceptance,
+        "only acceptance-decision may receive the ephemeral token for live producer verification",
+    )
+    require(
+        "--require-live-producers" in acceptance,
+        "acceptance-decision must live-verify every staging evidence producer run",
+    )
+
+    require(
+        "inputs.runtime_image_set_run_id != ''" in acceptance,
+        "acceptance-decision must require runtime_image_set_run_id",
+    )
+    require(
+        "LUMI_RUNTIME_IMAGE_SET_RUN_ID: ${{ inputs.runtime_image_set_run_id }}" in acceptance,
+        "acceptance-decision must bind the requested runtime-image build run id",
+    )
+    require(
+        "runtime_image_set_run_id must be a positive decimal GitHub Actions run id" in acceptance,
+        "acceptance-decision must validate the run id before artifact download",
+    )
+    require(
+        "artifact_name = f'runtime-image-set-{rc_sha}'" in acceptance,
+        "artifact name must be derived from the evidence RC SHA",
+    )
+    require(
+        "fh.write(f'artifact_name={artifact_name}\\n')" in acceptance,
+        "derived artifact name must be exported as a step output",
+    )
+    require(
+        "test \"$(find \"$RUNTIME_IMAGE_SET_DIR\" -maxdepth 1 -type f -name 'container-image-set.json' | wc -l)\" -eq 1" in acceptance,
+        "downloaded runtime image artifact must contain exactly one top-level container-image-set.json",
+    )
+
+    evidence_binding_pos = acceptance.find("validate_staging_evidence_artifacts.py")
+    download_pos = acceptance.find(DOWNLOAD_ACTION)
+    binding_pos = acceptance.find("validate_staging_runtime_image_binding.py")
+    gate_pos = acceptance.find("staging-acceptance-gate.py")
+    seal_pos = acceptance.find("Seal verified runtime-image attestation into NODE-71 decision")
+    provenance_pos = acceptance.find("--write-provenance reports/staging-acceptance/runtime/decision-provenance.json")
+    self_verify_pos = acceptance.find("Self-verify NODE-71 decision provenance before archive")
+    upload_pos = acceptance.find(UPLOAD_ACTION)
+    require(
+        evidence_binding_pos >= 0
+        and download_pos >= 0
+        and binding_pos >= 0
+        and gate_pos >= 0
+        and seal_pos >= 0
+        and evidence_binding_pos < download_pos < binding_pos < gate_pos < seal_pos,
+        "generic evidence, exact image attestation binding, NODE-71 decision, and decision sealing must execute in fail-closed order",
+    )
+    require(
+        seal_pos < provenance_pos < self_verify_pos < upload_pos,
+        "runtime-image sealed NODE-71 decision must be provenance-captured and self-verified before archive",
+    )
+    require(
+        "path: reports/staging-acceptance/runtime/" in acceptance,
+        "NODE-71 archive must retain evidence binding, runtime-image binding, and decision artifacts",
+    )
+
+    require(
+        "validate_staging_evidence_artifacts.py --self-test" in source,
+        "source-contract must execute generic staging evidence artifact/live producer negative drills",
+    )
+    require(
+        "validate_staging_runtime_image_binding.py --self-test" in source,
+        "source-contract must execute runtime image binding negative drills",
+    )
+    require(
+        "bind_node71_runtime_image_decision.py --self-test" in source,
+        "source-contract must execute runtime-image decision sealing negative drills",
+    )
+    require(
+        "bind_node71_runtime_image_decision.py" in source and "scripts/bind_node71_runtime_image_decision.py" in source,
+        "source-contract must retain runtime-image decision binder syntax/execution binding",
+    )
+    require(
+        "validate_staging_runtime_image_workflow_contract.py" in source,
+        "source-contract must execute this workflow anti-regression contract",
+    )
+    require(
+        "validate_node71_decision_artifact.py --self-test" in source,
+        "source-contract must execute NODE-71 decision artifact negative drills",
+    )
+    require(
+        "validate_release_action_pins.py" in source,
+        "source-contract must fail closed on release action supply-chain drift",
+    )
+
+    print("NODE-71 immutable evidence/live producers, parity-only database evidence producer/merger, verified runtime-image attestation decision sealing, decision artifact, exact-SHA checkout, scoped permission, and executable negative-drill workflow contract: PASS")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (WorkflowContractError, OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"staging runtime image workflow contract failed: {exc}") from exc

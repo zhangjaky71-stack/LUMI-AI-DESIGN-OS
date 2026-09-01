@@ -53,9 +53,9 @@ describe("LumiApiClient", () => {
       transport,
     });
 
-    await expect(
-      client.get<{ items: string[] }>("/projects"),
-    ).resolves.toEqual({ items: ["ok"] });
+    await expect(client.get<{ items: string[] }>("/projects")).resolves.toEqual(
+      { items: ["ok"] },
+    );
     expect(calls).toBe(3);
   });
 

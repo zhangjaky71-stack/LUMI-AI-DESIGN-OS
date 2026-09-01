@@ -39,10 +39,7 @@ def evaluate_write_policy(
             MemoryCandidateOutcome.REJECT_SCOPE,
             "MEMORY_CROSS_TENANT_DENIED",
         )
-    if (
-        candidate.created_by_type != access.actor_type
-        or candidate.created_by_id != access.actor_id
-    ):
+    if candidate.created_by_type != access.actor_type or candidate.created_by_id != access.actor_id:
         return MemoryPolicyDecision(
             False,
             MemoryCandidateOutcome.REJECT_SCOPE,
@@ -146,9 +143,8 @@ def can_read_scope(
             or scope_type == MemoryScope.ORGANIZATION
         )
     if scope_type == MemoryScope.ORGANIZATION:
-        return (
-            "memory.organization.read" in access.granted_permissions
-            and scope_id == str(access.organization_id)
+        return "memory.organization.read" in access.granted_permissions and scope_id == str(
+            access.organization_id
         )
     if scope_type == MemoryScope.BRAND:
         return access.brand_id is not None and scope_id == str(access.brand_id)
@@ -174,18 +170,16 @@ def can_delete_scope(
         if scope_type == MemoryScope.USER:
             return access.user_id is not None and scope_id == str(access.user_id)
         if scope_type == MemoryScope.PROJECT:
-            return (
-                "memory.project.delete" in access.granted_permissions
-                and can_read_scope(scope_type, scope_id, access)
+            return "memory.project.delete" in access.granted_permissions and can_read_scope(
+                scope_type, scope_id, access
             )
         return False
     if access.actor_type == MemoryActorType.AGENT:
         if scope_type in {MemoryScope.SESSION, MemoryScope.AGENT}:
             return can_read_scope(scope_type, scope_id, access)
         if scope_type == MemoryScope.PROJECT:
-            return (
-                "memory.project.delete" in access.granted_permissions
-                and can_read_scope(scope_type, scope_id, access)
+            return "memory.project.delete" in access.granted_permissions and can_read_scope(
+                scope_type, scope_id, access
             )
         return False
     return False

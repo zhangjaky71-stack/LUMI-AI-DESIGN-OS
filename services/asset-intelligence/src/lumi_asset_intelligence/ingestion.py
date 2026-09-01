@@ -81,7 +81,11 @@ class AssetIntelligenceIngestor:
             index.index_id,
         )
         expected_id = _analysis_id(asset, index)
-        if existing is not None and existing.analysis_id == expected_id and existing.state == "READY":
+        if (
+            existing is not None
+            and existing.analysis_id == expected_id
+            and existing.state == "READY"
+        ):
             return IngestionResult(existing, ("IDEMPOTENT_REUSE",))
 
         try:

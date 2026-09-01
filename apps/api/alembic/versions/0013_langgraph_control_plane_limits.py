@@ -39,12 +39,6 @@ def downgrade() -> None:
         "ALTER TABLE agent_graph_definitions "
         "DROP CONSTRAINT ck_agent_graph_definitions_metadata_size"
     )
-    op.execute(
-        "ALTER TABLE agent_run_control DROP CONSTRAINT ck_agent_run_control_interrupt_size"
-    )
-    op.execute(
-        "ALTER TABLE agent_run_control DROP CONSTRAINT ck_agent_run_control_next_size"
-    )
-    op.execute(
-        "ALTER TABLE agent_run_control DROP CONSTRAINT ck_agent_run_control_state_size"
-    )
+    op.execute("ALTER TABLE agent_run_control DROP CONSTRAINT ck_agent_run_control_interrupt_size")
+    op.execute("ALTER TABLE agent_run_control DROP CONSTRAINT ck_agent_run_control_next_size")
+    op.execute("ALTER TABLE agent_run_control DROP CONSTRAINT ck_agent_run_control_state_size")

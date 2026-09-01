@@ -6,11 +6,20 @@ Create Date: 2026-08-13
 """
 
 from alembic import op
+from sqlalchemy import text
 
 revision = "0012_langgraph_control_plane"
 down_revision = "0011_cost_ledger_budget_quota"
 branch_labels = None
 depends_on = None
+
+
+def _lumi_app_exists() -> bool:
+    return bool(
+        op.get_bind()
+        .execute(text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')"))
+        .scalar_one()
+    )
 
 
 def upgrade() -> None:
@@ -34,13 +43,16 @@ def upgrade() -> None:
             CONSTRAINT uq_agent_graph_definitions_identity UNIQUE (graph_key, graph_version),
             CONSTRAINT ck_agent_graph_definitions_hash CHECK (content_hash ~ '^[0-9a-f]{64}$'),
             CONSTRAINT ck_agent_graph_definitions_schema_versions CHECK (
-                state_schema_version >= 1 AND input_schema_version >= 1 AND output_schema_version >= 1
+                state_schema_version >= 1
+                AND input_schema_version >= 1
+                AND output_schema_version >= 1
             )
         )
         """
     )
     op.execute(
-        "CREATE INDEX ix_agent_graph_definitions_enabled ON agent_graph_definitions (enabled, graph_key)"
+        "CREATE INDEX ix_agent_graph_definitions_enabled "
+        "ON agent_graph_definitions (enabled, graph_key)"
     )
 
     op.execute(
@@ -70,7 +82,9 @@ def upgrade() -> None:
                 graph_definition_hash ~ '^[0-9a-f]{64}$'
             ),
             CONSTRAINT ck_agent_run_control_status CHECK (
-                control_status IN ('pending','running','interrupted','succeeded','failed','cancelled')
+                control_status IN (
+                    'pending','running','interrupted','succeeded','failed','cancelled'
+                )
             ),
             CONSTRAINT ck_agent_run_control_version CHECK (version >= 1)
         )
@@ -87,10 +101,11 @@ def upgrade() -> None:
 
     # 0002 gives broad default DML privileges to future lumi_migration tables. Graph
     # definitions are control-plane policy and runtime must never mutate them.
-    op.execute("REVOKE INSERT, UPDATE, DELETE ON agent_graph_definitions FROM lumi_app")
-    op.execute("REVOKE DELETE ON agent_run_control FROM lumi_app")
-    op.execute("GRANT SELECT ON agent_graph_definitions TO lumi_app")
-    op.execute("GRANT SELECT, INSERT, UPDATE ON agent_run_control TO lumi_app")
+    if _lumi_app_exists():
+        op.execute("REVOKE INSERT, UPDATE, DELETE ON agent_graph_definitions FROM lumi_app")
+        op.execute("REVOKE DELETE ON agent_run_control FROM lumi_app")
+        op.execute("GRANT SELECT ON agent_graph_definitions TO lumi_app")
+        op.execute("GRANT SELECT, INSERT, UPDATE ON agent_run_control TO lumi_app")
 
 
 def downgrade() -> None:

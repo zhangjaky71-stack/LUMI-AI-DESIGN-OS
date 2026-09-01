@@ -10,9 +10,9 @@ from .duplicates import classify_similarity, cosine_similarity, perceptual_hammi
 from .events import AnalysisJob, AssetReadyEvent, plan_analysis_job
 from .identity_adapter import IdentityEvidenceBundle, identity_evidence_from_analysis
 from .index_catalog import (
-    InMemoryIndexCatalog,
     IndexCoverageComparison,
     IndexPromotionDecision,
+    InMemoryIndexCatalog,
     compare_index_coverage,
 )
 from .ingestion import AssetIntelligenceIngestor, IngestionResult

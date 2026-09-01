@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from .contracts import ContextItem
 
@@ -47,8 +46,7 @@ def rank_candidates(
     scoped = [
         candidate
         for candidate in candidates
-        if candidate.organization_id == organization_id
-        and candidate.project_id == project_id
+        if candidate.organization_id == organization_id and candidate.project_id == project_id
     ]
     scoped.sort(
         key=lambda candidate: (
@@ -72,9 +70,7 @@ def rank_candidates(
         seen.add(identity)
         from dataclasses import replace
 
-        output.append(
-            replace(candidate.item, relevance_score=candidate.hybrid_score)
-        )
+        output.append(replace(candidate.item, relevance_score=candidate.hybrid_score))
         if len(output) >= limit:
             break
     return tuple(output)

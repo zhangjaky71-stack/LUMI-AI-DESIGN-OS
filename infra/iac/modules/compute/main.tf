@@ -8,11 +8,21 @@ locals {
   public_services = {
     for name, service in var.services : name => service if service.publicly_routed
   }
+  autoscaled_services = {
+    for name, service in var.services : name => service if service.autoscaling_enabled
+  }
   services_with_secrets = {
     for name, service in var.services : name => service if length(service.secret_arns) > 0
   }
   services_with_s3 = {
     for name, service in var.services : name => service if length(service.s3_bucket_arns) > 0
+  }
+  service_security_groups = {
+    for name, _ in var.services : name => (
+      contains(["sandbox-runtime", "outbox-dispatcher"], name)
+      ? [var.app_security_group_id, var.sandbox_egress_security_group_id]
+      : [var.app_security_group_id, var.app_internet_egress_security_group_id]
+    )
   }
 }
 
@@ -160,6 +170,9 @@ resource "aws_iam_role_policy" "task_s3" {
   policy = data.aws_iam_policy_document.task_s3[each.key].json
 }
 
+# Public HTTPS ingress is intentional; ECS tasks remain private behind this ALB.
+# The listener is certificate-backed and restricted to the pinned TLS policy below.
+#trivy:ignore:AVD-AWS-0053
 resource "aws_lb" "this" {
   name               = substr("${local.name}-alb", 0, 32)
   internal           = false
@@ -416,21 +429,24 @@ resource "aws_ecs_service" "service" {
         canary_percent              = var.public_canary_percent
         canary_bake_time_in_minutes = var.public_canary_bake_time_minutes
       }
+    }
+  }
 
-      alarms {
-        alarm_names = [
-          aws_cloudwatch_metric_alarm.public_canary_5xx[each.key].alarm_name,
-          aws_cloudwatch_metric_alarm.public_canary_unhealthy[each.key].alarm_name,
-        ]
-        enable   = true
-        rollback = true
-      }
+  dynamic "alarms" {
+    for_each = each.value.publicly_routed ? [1] : []
+    content {
+      alarm_names = [
+        aws_cloudwatch_metric_alarm.public_canary_5xx[each.key].alarm_name,
+        aws_cloudwatch_metric_alarm.public_canary_unhealthy[each.key].alarm_name,
+      ]
+      enable   = true
+      rollback = true
     }
   }
 
   network_configuration {
     subnets          = var.private_subnet_ids
-    security_groups  = [var.app_security_group_id]
+    security_groups  = local.service_security_groups[each.key]
     assign_public_ip = false
   }
 
@@ -458,15 +474,11 @@ resource "aws_ecs_service" "service" {
     aws_iam_role_policy_attachment.ecs_load_balancer,
   ]
 
-  lifecycle {
-    ignore_changes = [desired_count]
-  }
-
   tags = local.tags
 }
 
 resource "aws_appautoscaling_target" "service" {
-  for_each = var.services
+  for_each = local.autoscaled_services
 
   max_capacity       = each.value.max_capacity
   min_capacity       = each.value.min_capacity
@@ -475,10 +487,11 @@ resource "aws_appautoscaling_target" "service" {
   service_namespace  = "ecs"
 }
 
-# LUMI emits queue/backlog/concurrency-aware custom metrics from NODE-67/69.
-# This intentionally avoids CPU-only autoscaling for Agent/Media/SSE workloads.
+# Dynamic target tracking is opt-in only after NODE-69 has both a measured
+# capacity signal and a production emitter for the declared LUMI/Capacity metric.
+# The current release contract forbids enabling this path until that evidence exists.
 resource "aws_appautoscaling_policy" "service_custom_metric" {
-  for_each = var.services
+  for_each = local.autoscaled_services
 
   name               = "${local.name}-${each.key}-custom-metric"
   policy_type        = "TargetTrackingScaling"

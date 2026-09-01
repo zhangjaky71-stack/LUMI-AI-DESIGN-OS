@@ -10,6 +10,8 @@ from lumi_agent_runtime.agent_registry import (
     Node25ToolCatalog,
     load_definitions,
     load_named_catalog,
+)
+from lumi_agent_runtime.agent_registry import (
     load_release_manifest as load_agent_release_manifest,
 )
 from lumi_agent_runtime.skill_registry import (
@@ -17,8 +19,10 @@ from lumi_agent_runtime.skill_registry import (
     Node31SkillCatalog,
     SkillExecutionContext,
     SkillRegistry,
-    load_release_manifest as load_skill_release_manifest,
     load_skills,
+)
+from lumi_agent_runtime.skill_registry import (
+    load_release_manifest as load_skill_release_manifest,
 )
 from lumi_model_gateway.capability_registry import (
     InMemoryCapabilityRegistry,

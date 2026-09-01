@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 
 import pytest
-
 from lumi_artifacts import (
     Artifact,
     ArtifactBranch,
@@ -106,5 +105,7 @@ def test_compiler_provenance_payload_is_deterministic() -> None:
         compile_hash=H,
     )
     payload = compiler_provenance_payload(value)
-    assert list(payload["resource_versions"]) == ["a", "z"]
+    resource_versions = payload["resource_versions"]
+    assert isinstance(resource_versions, dict)
+    assert list(resource_versions) == ["a", "z"]
     assert payload["compile_hash"] == H

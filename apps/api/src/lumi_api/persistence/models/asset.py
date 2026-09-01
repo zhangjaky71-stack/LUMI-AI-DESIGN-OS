@@ -6,8 +6,8 @@ from uuid import UUID
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
-    BigInteger,
     CHAR,
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -17,7 +17,8 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..base import Base, IdMixin, MutableTimestampMixin
@@ -57,8 +58,10 @@ class Asset(IdMixin, MutableTimestampMixin, Base):
 class AssetFile(IdMixin, MutableTimestampMixin, Base):
     __tablename__ = "asset_files"
     __table_args__ = (
-        UniqueConstraint("asset_id", "variant", name="asset_file_variant"),
-        UniqueConstraint("organization_id", "bucket", "object_key", name="asset_object_key"),
+        UniqueConstraint("asset_id", "variant", name="uq_asset_files_asset_variant"),
+        UniqueConstraint(
+            "organization_id", "bucket", "object_key", name="uq_asset_files_object_key"
+        ),
         Index("ix_asset_files_org_asset", "organization_id", "asset_id"),
     )
 
@@ -158,7 +161,10 @@ class AssetValidationRun(IdMixin, MutableTimestampMixin, Base):
             name="status",
         ),
         CheckConstraint(
-            "scanner_status IS NULL OR scanner_status IN ('CLEAN','INFECTED','SCAN_UNAVAILABLE','ERROR')",
+            (
+                "scanner_status IS NULL OR scanner_status IN "
+                "('CLEAN','INFECTED','SCAN_UNAVAILABLE','ERROR')"
+            ),
             name="scanner",
         ),
         CheckConstraint(
@@ -203,7 +209,7 @@ class AssetValidationRun(IdMixin, MutableTimestampMixin, Base):
 class AssetPreview(IdMixin, MutableTimestampMixin, Base):
     __tablename__ = "asset_previews"
     __table_args__ = (
-        UniqueConstraint("asset_id", "preview_kind", name="asset_preview_kind"),
+        UniqueConstraint("asset_id", "preview_kind", name="uq_asset_previews_asset_kind"),
         Index("ix_asset_previews_org_asset", "organization_id", "asset_id"),
     )
 
@@ -228,7 +234,7 @@ class AssetPreview(IdMixin, MutableTimestampMixin, Base):
 class AssetMetadata(IdMixin, MutableTimestampMixin, Base):
     __tablename__ = "asset_metadata"
     __table_args__ = (
-        UniqueConstraint("asset_id", "namespace", name="asset_metadata_namespace"),
+        UniqueConstraint("asset_id", "namespace", name="uq_asset_metadata_asset_namespace"),
         Index("ix_asset_metadata_org_asset", "organization_id", "asset_id"),
     )
 
@@ -254,7 +260,7 @@ class AssetEmbedding(IdMixin, MutableTimestampMixin, Base):
             "embedding_model",
             "embedding_version",
             "content_hash",
-            name="asset_embedding_identity",
+            name="uq_asset_embeddings_identity",
         ),
         Index("ix_asset_embeddings_org_asset", "organization_id", "asset_id"),
     )
@@ -279,13 +285,20 @@ class AssetEmbedding(IdMixin, MutableTimestampMixin, Base):
 class AssetRights(IdMixin, MutableTimestampMixin, Base):
     __tablename__ = "asset_rights"
     __table_args__ = (
-        UniqueConstraint("asset_id", name="asset_rights_asset"),
+        UniqueConstraint("asset_id", name="asset_rights_asset_id_key"),
         CheckConstraint(
-            "source_type IN ('USER_UPLOAD','GENERATED','LICENSED','PUBLIC_DOMAIN','THIRD_PARTY','UNKNOWN')",
+            (
+                "source_type IN "
+                "('USER_UPLOAD','GENERATED','LICENSED','PUBLIC_DOMAIN','THIRD_PARTY','UNKNOWN')"
+            ),
             name="source_type",
         ),
         CheckConstraint(
-            "license_type IN ('OWNED','COMMERCIAL_LICENSE','NONCOMMERCIAL','PUBLIC_DOMAIN','CC_BY','CC_BY_SA','UNKNOWN')",
+            (
+                "license_type IN "
+                "('OWNED','COMMERCIAL_LICENSE','NONCOMMERCIAL','PUBLIC_DOMAIN',"
+                "'CC_BY','CC_BY_SA','UNKNOWN')"
+            ),
             name="license_type",
         ),
         CheckConstraint("commercial_use IN ('ALLOWED','DENIED','UNKNOWN')", name="commercial_use"),

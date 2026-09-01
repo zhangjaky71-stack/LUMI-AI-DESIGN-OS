@@ -2,8 +2,8 @@
 """Static architecture gate for NODE-56 Layers / Inspector UI."""
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -42,11 +42,19 @@ model = read("apps/web/src/lib/layers-inspector/model.ts")
 operations = read("apps/web/src/lib/layers-inspector/operations.ts")
 e2e = read("apps/web/e2e/layers-inspector.spec.ts")
 
+selection_drives_canvas = (
+    "editorRef.current?.select(" in inspector
+    or (
+        "const api = editorRef.current;" in inspector
+        and "api.select(" in inspector
+    )
+)
+
 checks = [
     ("workspace mounts LayersInspector", "<LayersInspector" in workspace),
     ("Canvas publishes editor state", "onEditorStateChange" in canvas and "buildCanvasEditorState" in canvas),
     ("Canvas exposes editor API", "editorRef.current = editorApi" in canvas),
-    ("Layers selection drives Canvas", "editorRef.current?.select" in inspector),
+    ("Layers selection drives Canvas", selection_drives_canvas),
     ("visibility uses DesignOperation channel", "setVisibility" in canvas and '"visible"' in canvas),
     ("lock uses DesignOperation channel", "setLocked" in canvas and '"locked"' in canvas),
     ("transform inspector exists", "setTransform" in inspector and "transformOperations" in operations),

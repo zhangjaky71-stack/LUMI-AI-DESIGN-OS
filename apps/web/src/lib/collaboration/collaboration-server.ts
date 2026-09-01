@@ -1,6 +1,11 @@
-import type { CollaborationBootstrap, CollaborationWorkspaceSnapshot } from "./types";
+import type {
+  CollaborationBootstrap,
+  CollaborationWorkspaceSnapshot,
+} from "./types";
 
-export function deterministicCollaborationWorkspace(projectId: string): CollaborationWorkspaceSnapshot {
+export function deterministicCollaborationWorkspace(
+  projectId: string,
+): CollaborationWorkspaceSnapshot {
   const owner = {
     actor_id: "user-owner",
     display_name: "Mika Chen",
@@ -107,15 +112,17 @@ export function deterministicCollaborationWorkspace(projectId: string): Collabor
           historical: true,
         },
         status: "RESOLVED",
-        messages: [{
-          comment_id: "comment-history-1",
-          actor: viewer,
-          body: "Resolved on v2. The node was later removed, but this review context remains attached to that snapshot.",
-          mention_actor_ids: [],
-          created_at: "2026-08-14T03:12:00.000Z",
-          edited_at: null,
-          deleted_at: null,
-        }],
+        messages: [
+          {
+            comment_id: "comment-history-1",
+            actor: viewer,
+            body: "Resolved on v2. The node was later removed, but this review context remains attached to that snapshot.",
+            mention_actor_ids: [],
+            created_at: "2026-08-14T03:12:00.000Z",
+            edited_at: null,
+            deleted_at: null,
+          },
+        ],
         created_at: "2026-08-14T03:12:00.000Z",
       },
     ],
@@ -137,9 +144,17 @@ export function deterministicCollaborationWorkspace(projectId: string): Collabor
   };
 }
 
-export function getCollaborationBootstrap(projectId: string): CollaborationBootstrap {
-  if (process.env.NODE_ENV !== "production" && process.env.LUMI_COLLABORATION_E2E === "1") {
-    return { mode: "DETERMINISTIC", workspace: deterministicCollaborationWorkspace(projectId) };
+export function getCollaborationBootstrap(
+  projectId: string,
+): CollaborationBootstrap {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    process.env.LUMI_COLLABORATION_E2E === "1"
+  ) {
+    return {
+      mode: "DETERMINISTIC",
+      workspace: deterministicCollaborationWorkspace(projectId),
+    };
   }
   return { mode: "HTTP" };
 }

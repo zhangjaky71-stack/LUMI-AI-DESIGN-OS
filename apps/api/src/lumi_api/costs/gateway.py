@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+
 from lumi_domain import new_uuid7
 
 from .contracts import (
@@ -891,7 +892,7 @@ class PostgresCostGateway:
             start, end = _month_bounds(str(limit["period_key"]))
             args.extend([start, end])
             period_clause = (
-                f" AND c.occurred_at >= ${len(args)-1} AND c.occurred_at < ${len(args)}"
+                f" AND c.occurred_at >= ${len(args) - 1} AND c.occurred_at < ${len(args)}"
             )
         value = await connection.fetchval(
             f"""
@@ -904,6 +905,8 @@ class PostgresCostGateway:
             """,
             *args,
         )
+        if value is None:
+            raise CostLedgerConflict("cost aggregate unavailable")
         return Decimal(value)
 
     async def _scope_active_reservations(
@@ -930,6 +933,8 @@ class PostgresCostGateway:
             """,
             *args,
         )
+        if value is None:
+            raise CostLedgerConflict("active reservation aggregate unavailable")
         return Decimal(value)
 
     def _scope_clause(

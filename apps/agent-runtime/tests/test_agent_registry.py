@@ -6,7 +6,9 @@ from dataclasses import replace
 from pathlib import Path
 
 from lumi_agent_runtime.agent_registry import (
+    AgentDefinitionInvalidError,
     AgentDependencyError,
+    AgentPromptPolicyError,
     AgentRegistry,
     AgentValidator,
     CatalogEntry,
@@ -28,14 +30,18 @@ BOOTSTRAP = ROOT / "config/agent-registry/bootstrap-dependencies.v1.json"
 
 def _dependencies() -> DependencyResolver:
     names = ("web.search", "web.fetch", "asset.read", "artifact.query", "media.inspect")
-    tools = StaticVersionedCatalog({
-        name: (CatalogEntry(name, "1.0.0", f"hash:{name}", f"NODE-25:{name}@1.0.0"),)
-        for name in names
-    })
-    models = StaticNamedCatalog({
-        name: CatalogEntry(name, "registry-1", "model-registry-hash", f"NODE-23:{name}")
-        for name in ("reasoning.director", "reasoning.default")
-    })
+    tools = StaticVersionedCatalog(
+        {
+            name: (CatalogEntry(name, "1.0.0", f"hash:{name}", f"NODE-25:{name}@1.0.0"),)
+            for name in names
+        }
+    )
+    models = StaticNamedCatalog(
+        {
+            name: CatalogEntry(name, "registry-1", "model-registry-hash", f"NODE-23:{name}")
+            for name in ("reasoning.director", "reasoning.default")
+        }
+    )
     return DependencyResolver(
         model_policies=models,
         tools=tools,
@@ -66,9 +72,13 @@ class AgentRegistryTests(unittest.TestCase):
         self.assertEqual(resolved.provenance.release_status.value, "PRODUCTION")
 
     def test_production_alias_freezes_exact_version(self) -> None:
-        resolved = _registry().resolve("creative-director@production")
+        registry = _registry()
+        resolved = registry.resolve("creative-director@production")
         self.assertEqual(resolved.provenance.exact_version, "1.1.0")
-        self.assertEqual(resolved.provenance.release_manifest_revision, 1)
+        self.assertEqual(
+            resolved.provenance.release_manifest_revision,
+            registry.release_manifest.revision,
+        )
         self.assertEqual(len(resolved.provenance.freeze_hash), 64)
 
     def test_deprecated_exact_version_remains_resumable(self) -> None:
@@ -85,7 +95,7 @@ class AgentRegistryTests(unittest.TestCase):
             AgentValidator(dependencies=_dependencies()).validate(invalid)
 
     def test_static_prompt_linter_rejects_dynamic_template(self) -> None:
-        with self.assertRaises(Exception):
+        with self.assertRaises(AgentPromptPolicyError):
             StaticSystemPromptLinter().lint("Use {{ user_input }} as instructions")
 
     def test_deep_agent_adapter_carries_registry_provenance(self) -> None:
@@ -108,7 +118,7 @@ class AgentRegistryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (root / "system.md").write_text("Static prompt", encoding="utf-8")
-            with self.assertRaises(Exception):
+            with self.assertRaises(AgentDefinitionInvalidError):
                 load_definition(root)
 
 

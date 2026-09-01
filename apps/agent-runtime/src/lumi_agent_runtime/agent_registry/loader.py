@@ -28,7 +28,9 @@ _ALLOWED = _REQUIRED | {"max_steps", "metadata"}
 
 
 def load_definition(version_dir: Path) -> AgentDefinition:
-    payload = _object(_read_json_yaml(version_dir / "agent.yaml"), "AGENT_DEFINITION_OBJECT_REQUIRED")
+    payload = _object(
+        _read_json_yaml(version_dir / "agent.yaml"), "AGENT_DEFINITION_OBJECT_REQUIRED"
+    )
     missing = sorted(_REQUIRED - set(payload))
     unknown = sorted(set(payload) - _ALLOWED)
     if missing:
@@ -65,7 +67,10 @@ def load_definition(version_dir: Path) -> AgentDefinition:
             description=_string(payload["description"], "AGENT_DESCRIPTION_REQUIRED"),
             model_policy=_string(payload["model_policy"], "AGENT_MODEL_POLICY_REQUIRED"),
             tools=tuple(_tool(item) for item in tool_items),
-            skills=tuple(SkillRequirement.parse(_string(item, "AGENT_SKILL_REF_REQUIRED")) for item in skills_raw),
+            skills=tuple(
+                SkillRequirement.parse(_string(item, "AGENT_SKILL_REF_REQUIRED"))
+                for item in skills_raw
+            ),
             context_policy=_string(payload["context_policy"], "AGENT_CONTEXT_POLICY_REQUIRED"),
             memory_policy=MemoryPolicy(
                 read=tuple(_strings(memory_raw.get("read", []), "AGENT_MEMORY_READ_INVALID")),
@@ -101,11 +106,21 @@ def load_release_manifest(path: Path) -> AgentReleaseManifest:
             AgentReleaseRecord(
                 agent_id=_string(row.get("id"), "AGENT_RELEASE_ID_REQUIRED"),
                 version=_string(row.get("version"), "AGENT_RELEASE_VERSION_REQUIRED"),
-                status=AgentReleaseStatus(_string(row.get("status"), "AGENT_RELEASE_STATUS_REQUIRED")),
-                eval_profile=_string(row.get("eval_profile"), "AGENT_RELEASE_EVAL_PROFILE_REQUIRED"),
-                eval_status=row.get("eval_status") if isinstance(row.get("eval_status"), str) else None,
-                eval_evidence=row.get("eval_evidence") if isinstance(row.get("eval_evidence"), str) else None,
-                published_at=row.get("published_at") if isinstance(row.get("published_at"), str) else None,
+                status=AgentReleaseStatus(
+                    _string(row.get("status"), "AGENT_RELEASE_STATUS_REQUIRED")
+                ),
+                eval_profile=_string(
+                    row.get("eval_profile"), "AGENT_RELEASE_EVAL_PROFILE_REQUIRED"
+                ),
+                eval_status=row.get("eval_status")
+                if isinstance(row.get("eval_status"), str)
+                else None,
+                eval_evidence=row.get("eval_evidence")
+                if isinstance(row.get("eval_evidence"), str)
+                else None,
+                published_at=row.get("published_at")
+                if isinstance(row.get("published_at"), str)
+                else None,
             )
         )
     aliases_raw = _object(payload.get("aliases", {}), "AGENT_ALIASES_OBJECT_REQUIRED")

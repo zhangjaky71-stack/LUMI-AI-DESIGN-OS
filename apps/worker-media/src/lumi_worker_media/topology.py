@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, cast
 
 from kombu import Connection, Exchange, Queue
 
@@ -80,7 +81,7 @@ def domain_dlq(consumer: str) -> Queue:
 
 
 def declare_topology(connection: Connection, *, domain_consumers: tuple[str, ...] = ()) -> None:
-    with connection.channel() as channel:
+    with cast(Any, connection.channel()) as channel:
         for exchange in (JOBS_EXCHANGE, DOMAIN_EXCHANGE, DEAD_LETTER_EXCHANGE):
             exchange(channel).declare()
         for queue in (*build_job_queues(), *build_dlq_queues()):

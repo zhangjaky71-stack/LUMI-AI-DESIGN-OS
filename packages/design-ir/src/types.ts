@@ -1,5 +1,8 @@
 export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | JsonValue[] | { readonly [key: string]: JsonValue };
+export type JsonValue =
+  | JsonPrimitive
+  | JsonValue[]
+  | { readonly [key: string]: JsonValue };
 
 export const DESIGN_NODE_KINDS = [
   "DOCUMENT_ROOT",
@@ -122,5 +125,7 @@ export type ExecutionResult = ExecutionSuccess | ExecutionFailure;
 
 export function getDocumentVersion(document: DesignDocument): number {
   const value = document.metadata.document_version;
-  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : 0;
 }

@@ -22,7 +22,9 @@ function metadataValue(node: DesignNode, key: string): JsonValue | undefined {
 }
 
 function nodeName(node: DesignNode): string {
-  return typeof node.name === "string" && node.name.trim() ? node.name.trim() : `${node.kind} · ${node.id}`;
+  return typeof node.name === "string" && node.name.trim()
+    ? node.name.trim()
+    : `${node.kind} · ${node.id}`;
 }
 
 function transformSnapshot(node: DesignNode): InspectorTransformSnapshot {
@@ -41,7 +43,10 @@ function textSnapshot(node: DesignNode): InspectorTextSnapshot | null {
   return {
     content: stringValue(node.content),
     font_size: Math.max(1, numberValue(metadataValue(node, "font_size"), 16)),
-    line_height: Math.max(0.1, numberValue(metadataValue(node, "line_height"), 1.2)),
+    line_height: Math.max(
+      0.1,
+      numberValue(metadataValue(node, "line_height"), 1.2),
+    ),
     letter_spacing: numberValue(metadataValue(node, "letter_spacing"), 0),
     text_align: align === "center" || align === "right" ? align : "left",
   };
@@ -61,11 +66,12 @@ export function inspectorNode(
     kind: node.kind,
     parent_id: node.parent_id,
     visible: node.visible ?? true,
-    effective_visible: scene?.visible ?? (node.visible ?? true),
+    effective_visible: scene?.visible ?? node.visible ?? true,
     locked: node.locked ?? false,
-    effective_locked: scene?.locked ?? (node.locked ?? false),
+    effective_locked: scene?.locked ?? node.locked ?? false,
     opacity: Math.max(0, Math.min(1, numberValue(node.opacity, 1))),
-    blend_mode: typeof node.blend_mode === "string" ? node.blend_mode : "normal",
+    blend_mode:
+      typeof node.blend_mode === "string" ? node.blend_mode : "normal",
     fill: typeof fill === "string" ? fill : null,
     asset_id: typeof node.asset_id === "string" ? node.asset_id : null,
     transform: transformSnapshot(node),
@@ -73,7 +79,9 @@ export function inspectorNode(
   };
 }
 
-export function buildLayerTree(runtime: CanvasRuntimeSnapshot): LayerTreeNode[] {
+export function buildLayerTree(
+  runtime: CanvasRuntimeSnapshot,
+): LayerTreeNode[] {
   const selected = new Set(runtime.selection.ids);
   const primary = runtime.selection.primary_id;
 
@@ -93,9 +101,9 @@ export function buildLayerTree(runtime: CanvasRuntimeSnapshot): LayerTreeNode[] 
       depth,
       children,
       visible: node.visible ?? true,
-      effective_visible: scene?.visible ?? (node.visible ?? true),
+      effective_visible: scene?.visible ?? node.visible ?? true,
       locked: node.locked ?? false,
-      effective_locked: scene?.locked ?? (node.locked ?? false),
+      effective_locked: scene?.locked ?? node.locked ?? false,
       selected: selected.has(node.id),
       primary: primary === node.id,
     };
@@ -109,12 +117,21 @@ export function buildLayerTree(runtime: CanvasRuntimeSnapshot): LayerTreeNode[] 
     .filter((child): child is LayerTreeNode => child !== null);
 }
 
-function canGroupSelection(document: DesignDocument, selectedIds: readonly string[]): boolean {
+function canGroupSelection(
+  document: DesignDocument,
+  selectedIds: readonly string[],
+): boolean {
   if (selectedIds.length < 2) return false;
-  const nodes = selectedIds.map((id) => document.nodes[id]).filter((node): node is DesignNode => Boolean(node));
+  const nodes = selectedIds
+    .map((id) => document.nodes[id])
+    .filter((node): node is DesignNode => Boolean(node));
   if (nodes.length !== selectedIds.length) return false;
   const parentId = nodes[0]?.parent_id ?? null;
-  if (!parentId || nodes.some((node) => node.parent_id !== parentId || node.locked)) return false;
+  if (
+    !parentId ||
+    nodes.some((node) => node.parent_id !== parentId || node.locked)
+  )
+    return false;
   const selected = new Set(selectedIds);
   return nodes.every((node) => {
     let parent = node.parent_id;
@@ -126,10 +143,14 @@ function canGroupSelection(document: DesignDocument, selectedIds: readonly strin
   });
 }
 
-function canUngroupSelection(document: DesignDocument, selectedIds: readonly string[]): boolean {
+function canUngroupSelection(
+  document: DesignDocument,
+  selectedIds: readonly string[],
+): boolean {
   if (selectedIds.length !== 1) return false;
   const node = document.nodes[selectedIds[0]!];
-  if (!node || node.kind !== "GROUP" || !node.parent_id || node.locked) return false;
+  if (!node || node.kind !== "GROUP" || !node.parent_id || node.locked)
+    return false;
   return numberValue(node.transform?.rotation_deg) === 0;
 }
 
@@ -146,7 +167,9 @@ export function buildCanvasEditorState(
     document_id: runtime.document.document_id,
     server_document_version: serverDocumentVersion,
     local_document_version:
-      typeof localVersion === "number" && Number.isInteger(localVersion) ? localVersion : 0,
+      typeof localVersion === "number" && Number.isInteger(localVersion)
+        ? localVersion
+        : 0,
     sync_state: syncState,
     selected_ids: [...runtime.selection.ids],
     primary_id: runtime.selection.primary_id,

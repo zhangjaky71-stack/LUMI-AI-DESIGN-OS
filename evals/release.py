@@ -47,7 +47,7 @@ class BenchmarkProfileIdentity:
     version: str
 
     @classmethod
-    def from_dict(cls, suite: str, raw: Any) -> "BenchmarkProfileIdentity":
+    def from_dict(cls, suite: str, raw: Any) -> BenchmarkProfileIdentity:
         if not isinstance(raw, dict):
             raise ReleaseGateError(f"benchmark_profiles.{suite} must be an object")
         return cls(
@@ -75,7 +75,7 @@ class ReleaseManifest:
     source: str
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any], *, expected_role: str | None = None) -> "ReleaseManifest":
+    def from_dict(cls, raw: dict[str, Any], *, expected_role: str | None = None) -> ReleaseManifest:
         if not isinstance(raw, dict) or raw.get("schema_version") != 1:
             raise ReleaseGateError("release manifest schema_version must be 1")
         role = _string(raw, "role")
@@ -102,7 +102,9 @@ class ReleaseManifest:
             if isinstance(suite, str) and suite.strip()
         }
         if set(benchmark_profiles) != set(suite_versions):
-            raise ReleaseGateError("benchmark_profiles must pin exactly the same suites as suite_versions")
+            raise ReleaseGateError(
+                "benchmark_profiles must pin exactly the same suites as suite_versions"
+            )
         return cls(
             release_id=_string(raw, "release_id"),
             role=role,
@@ -139,7 +141,9 @@ class ReleaseManifest:
                 for suite, profile in sorted(self.benchmark_profiles.items())
             },
         }
-        return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
 
 
 def _validate_run_identity(manifest: ReleaseManifest, run: dict[str, Any], suite: str) -> None:
@@ -156,7 +160,10 @@ def _validate_run_identity(manifest: ReleaseManifest, run: dict[str, Any], suite
     expected_profile = manifest.benchmark_profiles.get(suite)
     if expected_profile is None:
         raise ReleaseGateError(f"manifest does not pin benchmark profile for suite {suite}")
-    if candidate.get("name") != expected_profile.name or candidate.get("version") != expected_profile.version:
+    if (
+        candidate.get("name") != expected_profile.name
+        or candidate.get("version") != expected_profile.version
+    ):
         raise ReleaseGateError(f"benchmark profile mismatch for suite {suite}")
 
 
@@ -188,22 +195,36 @@ def _critical_case_checks(run: dict[str, Any], metrics: dict[str, float]) -> lis
     return checks
 
 
-def _supplemental_checks(policy: dict[str, Any], evidence: dict[str, Any] | None) -> list[dict[str, Any]]:
+def _supplemental_checks(
+    policy: dict[str, Any], evidence: dict[str, Any] | None
+) -> list[dict[str, Any]]:
     required = policy.get("required_supplemental_evidence", [])
-    if not isinstance(required, list) or not all(isinstance(item, str) and item for item in required):
+    if not isinstance(required, list) or not all(
+        isinstance(item, str) and item for item in required
+    ):
         raise ReleaseGateError("policy.required_supplemental_evidence must be a string array")
     statistical = policy.get("statistical_evidence", [])
-    if not isinstance(statistical, list) or not all(isinstance(item, str) and item for item in statistical):
+    if not isinstance(statistical, list) or not all(
+        isinstance(item, str) and item for item in statistical
+    ):
         raise ReleaseGateError("policy.statistical_evidence must be a string array")
     minimum_sample = policy.get("minimum_statistical_sample_size", 1)
-    if not isinstance(minimum_sample, int) or isinstance(minimum_sample, bool) or minimum_sample < 1:
+    if (
+        not isinstance(minimum_sample, int)
+        or isinstance(minimum_sample, bool)
+        or minimum_sample < 1
+    ):
         raise ReleaseGateError("minimum_statistical_sample_size must be an integer >= 1")
 
     supplied = evidence or {}
     checks: list[dict[str, Any]] = []
     for name in required:
         item = supplied.get(name)
-        has_ref = isinstance(item, dict) and isinstance(item.get("evidence_ref"), str) and bool(item["evidence_ref"].strip())
+        has_ref = (
+            isinstance(item, dict)
+            and isinstance(item.get("evidence_ref"), str)
+            and bool(item["evidence_ref"].strip())
+        )
         passed = isinstance(item, dict) and item.get("status") == "PASS" and has_ref
         statistical_ok = True
         sample_size = None
@@ -246,15 +267,24 @@ def evaluate_release(
     if mode not in {"contract", "release"}:
         raise ReleaseGateError("mode must be contract or release")
     required = policy.get("required_suites")
-    if not isinstance(required, list) or not required or not all(isinstance(item, str) for item in required):
+    if (
+        not isinstance(required, list)
+        or not required
+        or not all(isinstance(item, str) for item in required)
+    ):
         raise ReleaseGateError("policy.required_suites must be a non-empty string array")
     missing = sorted(set(required) - set(suite_pairs))
     if missing:
         raise ReleaseGateError(f"required suites missing: {missing}")
     if mode == "release":
         if baseline_manifest.source != "production" or baseline_manifest.evidence_mode == "fixture":
-            raise ReleaseGateError("release mode requires a real production baseline, not fixture evidence")
-        if candidate_manifest.source != "candidate" or candidate_manifest.evidence_mode == "fixture":
+            raise ReleaseGateError(
+                "release mode requires a real production baseline, not fixture evidence"
+            )
+        if (
+            candidate_manifest.source != "candidate"
+            or candidate_manifest.evidence_mode == "fixture"
+        ):
             raise ReleaseGateError("release mode requires recorded/live candidate evidence")
 
     critical_raw = policy.get("critical_case_metrics", {})
@@ -262,7 +292,11 @@ def evaluate_release(
         raise ReleaseGateError("policy.critical_case_metrics must be an object")
     critical_metrics: dict[str, float] = {}
     for metric, maximum in critical_raw.items():
-        if not isinstance(metric, str) or not isinstance(maximum, (int, float)) or isinstance(maximum, bool):
+        if (
+            not isinstance(metric, str)
+            or not isinstance(maximum, (int, float))
+            or isinstance(maximum, bool)
+        ):
             raise ReleaseGateError("critical_case_metrics must map metric names to numeric maxima")
         critical_metrics[metric] = float(maximum)
 
@@ -276,7 +310,9 @@ def evaluate_release(
         suite_results.append(gate)
         critical_checks.extend(_critical_case_checks(candidate_run, critical_metrics))
 
-    supplemental_checks = _supplemental_checks(policy, supplemental_evidence) if mode == "release" else []
+    supplemental_checks = (
+        _supplemental_checks(policy, supplemental_evidence) if mode == "release" else []
+    )
     critical_passed = all(check["passed"] for check in critical_checks)
     suites_passed = all(item["passed"] for item in suite_results)
     supplemental_passed = all(check["passed"] for check in supplemental_checks)
@@ -290,5 +326,7 @@ def evaluate_release(
         "supplemental_checks": supplemental_checks,
         "passed": passed,
     }
-    decision_id = hashlib.sha256(json.dumps(decision_payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:24]
+    decision_id = hashlib.sha256(
+        json.dumps(decision_payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()[:24]
     return {"schema_version": 1, "decision_id": decision_id, **decision_payload}

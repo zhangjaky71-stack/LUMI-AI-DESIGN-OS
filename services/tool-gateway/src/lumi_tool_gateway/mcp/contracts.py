@@ -147,17 +147,19 @@ class MCPToolPolicy:
             raise ValueError("MCP_TOOL_POLICY_NAME_INVALID")
         if not self.permissions:
             raise ValueError("MCP_TOOL_POLICY_PERMISSIONS_REQUIRED")
-        if self.description is not None and (
-            not self.description or len(self.description) > 2000
-        ):
+        if self.description is not None and (not self.description or len(self.description) > 2000):
             raise ValueError("MCP_TOOL_POLICY_DESCRIPTION_INVALID")
-        if self.risk in {
-            ToolRisk.WRITE_INTERNAL,
-            ToolRisk.WRITE_EXTERNAL,
-            ToolRisk.DESTRUCTIVE,
-            ToolRisk.FINANCIAL,
-            ToolRisk.PRIVILEGED,
-        } and self.idempotency != ToolIdempotency.REQUIRED:
+        if (
+            self.risk
+            in {
+                ToolRisk.WRITE_INTERNAL,
+                ToolRisk.WRITE_EXTERNAL,
+                ToolRisk.DESTRUCTIVE,
+                ToolRisk.FINANCIAL,
+                ToolRisk.PRIVILEGED,
+            }
+            and self.idempotency != ToolIdempotency.REQUIRED
+        ):
             raise ValueError("MCP_WRITE_TOOL_IDEMPOTENCY_REQUIRED")
         if not 0.1 <= self.timeout_seconds <= 3600:
             raise ValueError("MCP_TOOL_TIMEOUT_INVALID")

@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "services/domain/src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from build_constraint_benchmark_corpus import build_corpus, validate_corpus  # noqa: E402
+
 from lumi_domain.constraint_validator import guarded_execute  # noqa: E402
 
 CONSTRAINT_SCHEMA = ROOT / "schemas/design-constraints/constraint.schema.json"

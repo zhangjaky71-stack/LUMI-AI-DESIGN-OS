@@ -20,6 +20,7 @@ from .contracts import (
 from .errors import (
     ToolAdapterExecutionError,
     ToolApprovalDeniedError,
+    ToolAuditUnavailableError,
     ToolGatewayError,
     ToolIdempotencyRequiredError,
     ToolInternalError,
@@ -77,7 +78,7 @@ class ToolGateway:
                     approval_id=approval.approval_id,
                     error_code="TOOL_APPROVAL_REQUIRED",
                 )
-                self._audit(request, definition, result)
+                await self._audit(request, definition, result)
                 return result
             if approval.decision == ApprovalDecision.DENIED:
                 result = ToolResult(
@@ -89,7 +90,7 @@ class ToolGateway:
                     approval_id=approval.approval_id,
                     error_code=ToolApprovalDeniedError.code,
                 )
-                self._audit(request, definition, result)
+                await self._audit(request, definition, result)
                 return result
 
             adapter = self.adapters.get(definition.key)
@@ -104,15 +105,19 @@ class ToolGateway:
                 response=response,
                 approval_id=approval_id,
             )
-            self._audit(
+            await self._audit(
                 request,
                 definition,
                 result,
                 side_effect_operation_id=response.operation_id,
             )
             return result
+        except ToolAuditUnavailableError:
+            # Never recursively emit another audit event for an audit-delivery failure.
+            # For side effects, NODE-20 already owns replay safety if the caller retries.
+            raise
         except ToolGatewayError as exc:
-            self._audit_error(
+            await self._audit_error(
                 request,
                 resolved_tool=resolved_tool,
                 risk=definition.risk.value,
@@ -122,14 +127,17 @@ class ToolGateway:
             )
             raise
         except Exception as exc:
-            self._audit_error(
-                request,
-                resolved_tool=resolved_tool,
-                risk=definition.risk.value,
-                sensitive_fields=definition.sensitive_fields,
-                error_code=ToolInternalError.code,
-                approval_id=approval_id,
-            )
+            try:
+                await self._audit_error(
+                    request,
+                    resolved_tool=resolved_tool,
+                    risk=definition.risk.value,
+                    sensitive_fields=definition.sensitive_fields,
+                    error_code=ToolInternalError.code,
+                    approval_id=approval_id,
+                )
+            except ToolAuditUnavailableError as audit_exc:
+                raise audit_exc from exc
             raise ToolInternalError("unexpected Tool Gateway execution failure") from exc
 
     async def _approval(
@@ -172,16 +180,12 @@ class ToolGateway:
                     f"tool exceeded {definition.timeout_seconds:g}s timeout"
                 ) from exc
             except Exception as exc:
-                raise ToolAdapterExecutionError(
-                    f"adapter failed for {definition.key}"
-                ) from exc
+                raise ToolAdapterExecutionError(f"adapter failed for {definition.key}") from exc
 
         if definition.idempotency == ToolIdempotency.NOT_REQUIRED:
             return ToolSideEffectResponse(await call_adapter(), replayed=False)
         if not request.idempotency_key:
-            raise ToolIdempotencyRequiredError(
-                f"idempotency key required for {definition.key}"
-            )
+            raise ToolIdempotencyRequiredError(f"idempotency key required for {definition.key}")
         if self.side_effect_guard is None:
             raise ToolSideEffectGuardRequiredError(
                 f"side-effect guard required for {definition.key}"
@@ -247,7 +251,7 @@ class ToolGateway:
             approval_id=approval_id,
         )
 
-    def _audit(
+    async def _audit(
         self,
         request: ToolRequest,
         definition: ToolDefinition,
@@ -255,7 +259,7 @@ class ToolGateway:
         *,
         side_effect_operation_id: str | None = None,
     ) -> None:
-        self.audit_sink.record(
+        await self._record_audit(
             ToolAuditRecord(
                 tool_call_id=str(request.tool_call_id),
                 organization_id=str(request.organization_id),
@@ -277,7 +281,7 @@ class ToolGateway:
             )
         )
 
-    def _audit_error(
+    async def _audit_error(
         self,
         request: ToolRequest,
         *,
@@ -287,7 +291,7 @@ class ToolGateway:
         error_code: str,
         approval_id: str | None,
     ) -> None:
-        self.audit_sink.record(
+        await self._record_audit(
             ToolAuditRecord(
                 tool_call_id=str(request.tool_call_id),
                 organization_id=str(request.organization_id),
@@ -307,6 +311,14 @@ class ToolGateway:
             )
         )
 
+    async def _record_audit(self, event: ToolAuditRecord) -> None:
+        try:
+            await self.audit_sink.record(event)
+        except ToolAuditUnavailableError:
+            raise
+        except Exception as exc:
+            raise ToolAuditUnavailableError("durable Tool Gateway audit delivery failed") from exc
+
 
 def _inline_preview(value: Any, *, depth: int = 0) -> Any:
     if depth >= 2:
@@ -319,8 +331,7 @@ def _inline_preview(value: Any, *, depth: int = 0) -> Any:
         return value
     if isinstance(value, dict):
         return {
-            key: _inline_preview(child, depth=depth + 1)
-            for key, child in list(value.items())[:20]
+            key: _inline_preview(child, depth=depth + 1) for key, child in list(value.items())[:20]
         }
     if isinstance(value, list):
         return [_inline_preview(child, depth=depth + 1) for child in value[:20]]

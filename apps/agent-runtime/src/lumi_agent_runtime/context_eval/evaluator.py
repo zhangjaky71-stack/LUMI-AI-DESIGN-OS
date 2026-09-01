@@ -30,9 +30,7 @@ def evaluate_context(case: ContextEvalCase, context: EvaluatedContext) -> Contex
     fact_hits = sum(value in text for value in required_facts)
     fact_recall = fact_hits / len(required_facts) if required_facts else 1.0
 
-    forbidden_source_leaks = len(
-        selected_source_ids & set(expectation.forbidden_source_ids)
-    )
+    forbidden_source_leaks = len(selected_source_ids & set(expectation.forbidden_source_ids))
     forbidden_phrase_leaks = sum(
         phrase.casefold() in text for phrase in expectation.forbidden_phrases
     )
@@ -44,9 +42,7 @@ def evaluate_context(case: ContextEvalCase, context: EvaluatedContext) -> Contex
         and len(item.source.content_hash) == 64
         for item in manifest.items
     )
-    provenance_coverage = (
-        valid_provenance / len(manifest.items) if manifest.items else 1.0
-    )
+    provenance_coverage = valid_provenance / len(manifest.items) if manifest.items else 1.0
     token_budget_violations = int(manifest.total_tokens > manifest.max_tokens)
     injection_authority_violations = sum(
         item.trust == TrustLevel.UNTRUSTED_RETRIEVED
@@ -57,9 +53,7 @@ def evaluate_context(case: ContextEvalCase, context: EvaluatedContext) -> Contex
         required not in selected_source_versions
         for required in expectation.required_source_versions
     )
-    retrieved_item_count = sum(
-        item.layer == ContextLayer.L4_RETRIEVED for item in manifest.items
-    )
+    retrieved_item_count = sum(item.layer == ContextLayer.L4_RETRIEVED for item in manifest.items)
 
     metrics = ContextEvalMetrics(
         source_recall=source_recall,

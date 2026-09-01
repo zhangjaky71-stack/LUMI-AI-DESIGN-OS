@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from decimal import Decimal, ROUND_CEILING
+from decimal import ROUND_CEILING, Decimal
 from hashlib import sha256
-import json
 from threading import RLock
-from typing import Any, Callable, Literal, Protocol
+from typing import Any, Literal, Protocol
 from uuid import uuid4
 
 SubscriptionState = Literal[
@@ -127,7 +128,11 @@ class UsagePricingRule:
     multiplier_basis_points: int = 10_000
 
     def __post_init__(self) -> None:
-        if not self.usage_key.strip() or self.credits_per_unit <= 0 or self.multiplier_basis_points <= 0:
+        if (
+            not self.usage_key.strip()
+            or self.credits_per_unit <= 0
+            or self.multiplier_basis_points <= 0
+        ):
             raise BillingError("BILLING_PRICING_RULE_INVALID")
 
 
@@ -280,6 +285,7 @@ class BillingRepository(Protocol):
 
 class PaymentProviderPort(Protocol):
     name: str
+
     def create_customer(self, organization_id: str, billing_email: str | None) -> str: ...
     def create_checkout(self, customer_ref: str, plan: PlanVersion) -> HostedSession: ...
     def create_portal_session(self, customer_ref: str) -> HostedSession: ...
@@ -333,7 +339,11 @@ class BillingEngine:
     def summary(self, actor: BillingActor) -> BillingSummary:
         self._require(actor, "billing.read")
         subscription = self._repository.get_subscription(actor.organization_id)
-        current_plan = self._repository.get_plan_version(subscription.plan_version_id) if subscription else None
+        current_plan = (
+            self._repository.get_plan_version(subscription.plan_version_id)
+            if subscription
+            else None
+        )
         return BillingSummary(
             organization_id=actor.organization_id,
             current_plan=current_plan,
@@ -355,7 +365,11 @@ class BillingEngine:
     def entitlement(self, actor: BillingActor, key: str) -> int | bool | str | None:
         self._require(actor, "billing.read")
         subscription = self._repository.get_subscription(actor.organization_id)
-        plan = self._repository.get_plan_version(subscription.plan_version_id) if subscription else None
+        plan = (
+            self._repository.get_plan_version(subscription.plan_version_id)
+            if subscription
+            else None
+        )
         return self._entitlements(subscription, plan).get(key)
 
     def quote_usage(
@@ -538,7 +552,11 @@ class BillingEngine:
             "SUBSCRIPTION_UPDATED",
             "SUBSCRIPTION_CANCELLED",
         }:
-            if not event.subscription_ref or not event.plan_version_id or not event.subscription_state:
+            if (
+                not event.subscription_ref
+                or not event.plan_version_id
+                or not event.subscription_state
+            ):
                 raise BillingError("BILLING_WEBHOOK_SUBSCRIPTION_INCOMPLETE")
             if self._repository.get_plan_version(event.plan_version_id) is None:
                 raise BillingError("BILLING_WEBHOOK_PLAN_VERSION_UNKNOWN", 409)
@@ -692,9 +710,7 @@ class InMemoryBillingRepository:
                     raise BillingError("BILLING_IDEMPOTENCY_KEY_REUSED", 409)
                 return prior
             values = self.credits.get(entry.organization_id, [])
-            original = next(
-                (item for item in values if item.entry_id == original_entry_id), None
-            )
+            original = next((item for item in values if item.entry_id == original_entry_id), None)
             if original is None or original.entry_type != "CONSUME":
                 raise BillingError("BILLING_REFUND_SOURCE_INVALID", 404)
             refunded = sum(
@@ -795,9 +811,7 @@ class MockPaymentProvider:
         self.subscriptions[provider_subscription_ref] = updated
         return updated
 
-    def verify_webhook(
-        self, raw_body: bytes, signature: str
-    ) -> tuple[NormalizedPaymentEvent, str]:
+    def verify_webhook(self, raw_body: bytes, signature: str) -> tuple[NormalizedPaymentEvent, str]:
         if signature != self.signature:
             raise BillingError("BILLING_WEBHOOK_SIGNATURE_INVALID", 401)
         try:

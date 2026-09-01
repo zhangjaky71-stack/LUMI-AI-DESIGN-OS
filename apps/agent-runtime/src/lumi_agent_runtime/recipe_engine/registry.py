@@ -65,8 +65,7 @@ class RecipeRegistry:
             versions = tuple(
                 row.version
                 for row in self.manifest.releases
-                if row.recipe_id == recipe_id
-                and row.status == RecipeReleaseStatus.PRODUCTION
+                if row.recipe_id == recipe_id and row.status == RecipeReleaseStatus.PRODUCTION
             )
             try:
                 version = select_highest(versions, selector)
@@ -75,7 +74,7 @@ class RecipeRegistry:
             if version is None:
                 raise RecipeVersionResolutionError(
                     f"no production Recipe matches: {recipe_id}@{selector}"
-                )
+                ) from None
             return version, self._release(recipe_id, version)
         release = self._release(recipe_id, selector)
         if release.status in {RecipeReleaseStatus.DRAFT, RecipeReleaseStatus.DISABLED}:
@@ -94,19 +93,14 @@ class RecipeRegistry:
             None,
         )
         if row is None:
-            raise RecipeReleaseError(
-                f"Recipe release metadata missing: {recipe_id}@{version}"
-            )
+            raise RecipeReleaseError(f"Recipe release metadata missing: {recipe_id}@{version}")
         return row
 
     def _validate_manifest(self) -> None:
         if self.manifest.schema != "lumi.recipe-registry.release.v1" or self.manifest.revision < 1:
             raise RecipeReleaseError("Recipe release manifest schema/revision invalid")
         definitions = set(self._by_key)
-        releases = {
-            f"{item.recipe_id}@{item.version}"
-            for item in self.manifest.releases
-        }
+        releases = {f"{item.recipe_id}@{item.version}" for item in self.manifest.releases}
         if definitions != releases:
             raise RecipeReleaseError("Recipe release/definition set mismatch")
         production: dict[str, int] = defaultdict(int)
@@ -121,9 +115,7 @@ class RecipeRegistry:
                 if release.status == RecipeReleaseStatus.DISABLED:
                     raise RecipeReleaseError("Recipe alias targets DISABLED")
                 if name == "production" and release.status != RecipeReleaseStatus.PRODUCTION:
-                    raise RecipeReleaseError(
-                        "Recipe production alias targets non-production"
-                    )
+                    raise RecipeReleaseError("Recipe production alias targets non-production")
 
 
 def _split(value: str) -> tuple[str, str]:

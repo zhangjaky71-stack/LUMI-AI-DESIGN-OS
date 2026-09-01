@@ -394,7 +394,10 @@ class ConstraintEngineTests(unittest.TestCase):
             protections=("transform", "content", "scannability"),
             id_prefix="user-instruction-1",
         )
-        self.assertEqual([item.type for item in protections], ["LOCK_TRANSFORM", "LOCK_CONTENT", "REQUIRE_SCANNABILITY"])
+        self.assertEqual(
+            [item.type for item in protections],
+            ["LOCK_TRANSFORM", "LOCK_CONTENT", "REQUIRE_SCANNABILITY"],
+        )
         self.assertTrue(all(item.source == "USER_EXPLICIT" for item in protections))
         self.assertEqual(
             constraint_snapshot_hash(protections),

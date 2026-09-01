@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Callable
+from collections.abc import Callable
 
 from lumi_agent_runtime.context_engine import (
     ContextItem,
@@ -58,9 +58,7 @@ class MemoryContextSource:
                 access=access,
                 text=request.query or request.purpose,
                 limit=request.retrieval_limit,
-                query_embedding=_query_embedding(
-                    request.metadata.get("query_embedding")
-                ),
+                query_embedding=_query_embedding(request.metadata.get("query_embedding")),
             )
         )
         output: list[RetrievalCandidate] = []

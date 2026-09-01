@@ -74,19 +74,55 @@ def test_live_eval_without_enable_flag_is_explicitly_skipped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("LUMI_LIVE_EVAL_ENABLED", raising=False)
+    monkeypatch.delenv("LUMI_LIVE_EVAL_PREFLIGHT_MODE", raising=False)
     monkeypatch.delenv("LUMI_LIVE_EVAL_API_KEY", raising=False)
     result = live_preflight("image")
     assert result["status"] == "SKIPPED"
     assert "not 1" in result["reason"]
 
 
-def test_live_eval_without_key_is_explicitly_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_live_eval_authorization_preflight_is_secretless(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("LUMI_LIVE_EVAL_ENABLED", "1")
+    monkeypatch.setenv("LUMI_LIVE_EVAL_PREFLIGHT_MODE", "authorization-only")
     monkeypatch.delenv("LUMI_LIVE_EVAL_API_KEY", raising=False)
     monkeypatch.setenv("LUMI_LIVE_EVAL_BUDGET_USD", "1")
+    monkeypatch.setenv("LUMI_LIVE_EVAL_SUITE_ACK", "image")
+    monkeypatch.setenv("LUMI_LIVE_EVAL_SIDE_EFFECT_MODE", "none")
+    result = live_preflight("image")
+    assert result["status"] == "READY"
+    assert result["preflight_mode"] == "authorization-only"
+    assert result["credential_check"] == "NOT_PERFORMED"
+    assert result["network_execution"] is False
+
+
+def test_live_eval_authorization_preflight_rejects_provider_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LUMI_LIVE_EVAL_ENABLED", "1")
+    monkeypatch.setenv("LUMI_LIVE_EVAL_PREFLIGHT_MODE", "authorization-only")
+    monkeypatch.setenv("LUMI_LIVE_EVAL_API_KEY", "must-not-enter-preflight")
+    monkeypatch.setenv("LUMI_LIVE_EVAL_BUDGET_USD", "1")
+    monkeypatch.setenv("LUMI_LIVE_EVAL_SUITE_ACK", "image")
+    monkeypatch.setenv("LUMI_LIVE_EVAL_SIDE_EFFECT_MODE", "none")
     result = live_preflight("image")
     assert result["status"] == "SKIPPED"
-    assert "API_KEY" in result["reason"]
+    assert "must not be exposed" in result["reason"]
+
+
+def test_live_eval_authorization_preflight_requires_explicit_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LUMI_LIVE_EVAL_ENABLED", "1")
+    monkeypatch.delenv("LUMI_LIVE_EVAL_PREFLIGHT_MODE", raising=False)
+    monkeypatch.delenv("LUMI_LIVE_EVAL_API_KEY", raising=False)
+    monkeypatch.setenv("LUMI_LIVE_EVAL_BUDGET_USD", "1")
+    monkeypatch.setenv("LUMI_LIVE_EVAL_SUITE_ACK", "image")
+    monkeypatch.setenv("LUMI_LIVE_EVAL_SIDE_EFFECT_MODE", "none")
+    result = live_preflight("image")
+    assert result["status"] == "SKIPPED"
+    assert "PREFLIGHT_MODE" in result["reason"]
 
 
 def test_clean_smoke_candidate_passes_release_gate() -> None:

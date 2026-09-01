@@ -14,8 +14,7 @@ def default_layer_budgets(context_budget_tokens: int) -> tuple[LayerBudget, ...]
         ContextLayer.L4_RETRIEVED: 0.25,
     }
     budgets = {
-        layer: max(1, int(context_budget_tokens * weight))
-        for layer, weight in weights.items()
+        layer: max(1, int(context_budget_tokens * weight)) for layer, weight in weights.items()
     }
     remainder = context_budget_tokens - sum(budgets.values())
     budgets[ContextLayer.L4_RETRIEVED] += remainder

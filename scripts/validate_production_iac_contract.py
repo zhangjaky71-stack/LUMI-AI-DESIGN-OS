@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +19,121 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(f"production IaC contract invalid: {message}")
 
 
+def hcl_block(source: str, marker: str) -> str:
+    start = source.find(marker)
+    if start < 0:
+        raise SystemExit(f"production IaC contract invalid: missing HCL block {marker}")
+    brace = source.find("{", start)
+    if brace < 0:
+        raise SystemExit(f"production IaC contract invalid: malformed HCL block {marker}")
+    depth = 0
+    for index in range(brace, len(source)):
+        char = source[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start : index + 1]
+    raise SystemExit(f"production IaC contract invalid: unterminated HCL block {marker}")
+
+
+def require_hcl_assignment(block: str, key: str, value: str, message: str) -> None:
+    pattern = rf"(?m)^\s*{re.escape(key)}\s*=\s*{re.escape(value)}\s*(?:#.*)?$"
+    require(re.search(pattern, block) is not None, message)
+
+
+def assert_provider_secret_boundary(app: str, *, environment: str) -> None:
+    agent = hcl_block(app, "agent-runtime = {")
+    gateway = hcl_block(app, "model-gateway = {")
+    media = hcl_block(app, "worker-media = {")
+    dispatcher = hcl_block(app, "outbox-dispatcher = {")
+    sandbox = hcl_block(app, "sandbox-runtime = {")
+    api = hcl_block(app, "api = {")
+    tool = hcl_block(app, "tool-gateway = {")
+
+    for name, block in (
+        ("api", api),
+        ("agent-runtime", agent),
+        ("tool-gateway", tool),
+        ("worker-media", media),
+        ("outbox-dispatcher", dispatcher),
+        ("sandbox-runtime", sandbox),
+    ):
+        require(
+            "LUMI_MODEL_PROVIDER_SECRET" not in block
+            and "LUMI_MEDIA_PROVIDER_SECRET" not in block,
+            f"{environment} {name} must not receive provider credentials",
+        )
+
+    require_hcl_assignment(
+        gateway,
+        "LUMI_MODEL_PROVIDER_SECRET",
+        'local.secret_arns["providers/model"]',
+        f"{environment} Model Gateway must own model provider credentials",
+    )
+    require_hcl_assignment(
+        gateway,
+        "LUMI_MEDIA_PROVIDER_SECRET",
+        'local.secret_arns["providers/media"]',
+        f"{environment} Model Gateway must own media provider credentials",
+    )
+    require_hcl_assignment(
+        gateway,
+        "LUMI_DATABASE_URL",
+        'local.secret_arns["database/app"]',
+        f"{environment} Model Gateway needs the canonical NODE-27 database connection",
+    )
+
+    require_hcl_assignment(
+        dispatcher,
+        "image",
+        "var.worker_media_image",
+        f"{environment} outbox dispatcher must reuse the accepted worker-media image",
+    )
+    require(
+        re.search(r'\bLUMI_ROLE\s*=\s*"outbox-dispatcher"', dispatcher) is not None,
+        f"{environment} outbox dispatcher must bind its explicit runtime identity",
+    )
+    require_hcl_assignment(
+        dispatcher,
+        "LUMI_DATABASE_URL",
+        'local.secret_arns["database/app"]',
+        f"{environment} outbox dispatcher must receive the application database credential",
+    )
+    require_hcl_assignment(
+        dispatcher,
+        "LUMI_RABBITMQ_URL",
+        'local.secret_arns["rabbitmq/url"]',
+        f"{environment} outbox dispatcher must receive the RabbitMQ credential",
+    )
+    require_hcl_assignment(
+        dispatcher,
+        "s3_bucket_arns",
+        "[]",
+        f"{environment} outbox dispatcher must not receive S3 capability",
+    )
+    for marker in (
+        '"lumi_worker_media.cli"',
+        '"dispatch-outbox"',
+        '"--watch"',
+        '"--interval"',
+    ):
+        require(marker in dispatcher, f"{environment} outbox dispatcher missing {marker}")
+    for forbidden in (
+        "LUMI_MODEL_GATEWAY_AUTH_SECRET",
+        "LUMI_SANDBOX_RUNTIME_AUTH_SECRET",
+        "LUMI_AUTH_SIGNING_SECRET",
+        "LUMI_BRAVE_SEARCH_API_KEY",
+        'local.secret_arns["providers/',
+        'local.bucket_arns[',
+    ):
+        require(
+            forbidden not in dispatcher,
+            f"{environment} outbox dispatcher has unnecessary capability: {forbidden}",
+        )
+
+
 def main() -> int:
     required_roots = [
         "infra/iac/environments/staging/core/main.tf",
@@ -33,6 +149,9 @@ def main() -> int:
     network = text("infra/iac/modules/network/main.tf")
     compute = text("infra/iac/modules/compute/main.tf")
     data = text("infra/iac/modules/data/main.tf")
+    data_outputs = text("infra/iac/modules/data/outputs.tf")
+    platform_core_outputs = text("infra/iac/modules/platform-core/outputs.tf")
+    production_core_outputs = text("infra/iac/environments/production/core/outputs.tf")
     storage = text("infra/iac/modules/storage/main.tf")
     secrets = text("infra/iac/modules/secrets/main.tf")
     migration = text("infra/iac/modules/migration-runner/main.tf")
@@ -43,26 +162,53 @@ def main() -> int:
     alembic_env = text("apps/api/alembic/env.py")
     production_workflow = text(".github/workflows/deploy-production.yml")
     ecs_evidence = text("scripts/capture-ecs-deployment-state.sh")
+    snapshot_script = text("scripts/create-predeploy-rds-snapshot.sh")
 
-    require("assign_public_ip = false" in compute, "ECS services must not receive public IPs")
-    require("internal           = false" in compute, "public ALB contract missing")
-    require("wait_for_steady_state  = true" in compute, "Terraform must wait for ECS steady state")
-    require("deployment_circuit_breaker" in compute and "rollback = true" in compute, "rolling-service rollback missing")
-    require('strategy             = "CANARY"' in compute, "public ECS canary strategy missing")
-    require("canary_percent" in compute and "canary_bake_time_in_minutes" in compute, "canary percentage/bake configuration missing")
-    require("public_alternate" in compute and "advanced_configuration" in compute, "alternate target group canary routing missing")
+    alb = hcl_block(compute, 'resource "aws_lb" "this" {')
+    ecs_service = hcl_block(compute, 'resource "aws_ecs_service" "service" {')
+    require_hcl_assignment(ecs_service, "assign_public_ip", "false", "ECS services must not receive public IPs")
+    require_hcl_assignment(alb, "internal", "false", "public ALB contract missing")
+    require_hcl_assignment(ecs_service, "wait_for_steady_state", "true", "Terraform must wait for ECS steady state")
+    require("deployment_circuit_breaker" in ecs_service and "rollback = true" in ecs_service, "rolling-service rollback missing")
+    require_hcl_assignment(ecs_service, "strategy", '"CANARY"', "public ECS canary strategy missing")
+    require("canary_percent" in ecs_service and "canary_bake_time_in_minutes" in ecs_service, "canary percentage/bake configuration missing")
+    require("public_alternate" in compute and "advanced_configuration" in ecs_service, "alternate target group canary routing missing")
     require("AmazonECSInfrastructureRolePolicyForLoadBalancers" in compute, "ECS load-balancer infrastructure role missing")
     require("public_canary_5xx" in compute and "public_canary_unhealthy" in compute, "canary rollback alarms missing")
-    require("from_port       = 8000" in network and "to_port         = 8000" in network, "ALB-to-API security group port must be 8000")
-    require("container_port    = 8000" in staging_app and "container_port    = 8000" in production_app, "API container port must match lumi_api CLI port 8000")
-    require("publicly_accessible = false" in data, "RDS must be private")
-    require("multi_az" in data, "RDS Multi-AZ contract missing")
-    require("transit_encryption_enabled = true" in data, "Redis transit encryption missing")
-    require("at_rest_encryption_enabled = true" in data, "Redis at-rest encryption missing")
-    require('deployment_mode = "CLUSTER_MULTI_AZ"' in data, "RabbitMQ Multi-AZ contract missing")
-    require("block_public_acls       = true" in storage and "restrict_public_buckets = true" in storage, "S3 public-access block incomplete")
-    require('status = "Enabled"' in storage, "S3 versioning contract missing")
+
+    app_sg = hcl_block(network, 'resource "aws_security_group" "app" {')
+    require_hcl_assignment(app_sg, "from_port", "8000", "ALB-to-API security group from_port must be 8000")
+    require_hcl_assignment(app_sg, "to_port", "8000", "ALB-to-API security group to_port must be 8000")
+    require_hcl_assignment(
+        hcl_block(staging_app, "api = {"),
+        "container_port",
+        "8000",
+        "staging API container port must match lumi_api CLI port 8000",
+    )
+    require_hcl_assignment(
+        hcl_block(production_app, "api = {"),
+        "container_port",
+        "8000",
+        "production API container port must match lumi_api CLI port 8000",
+    )
+
+    postgres = hcl_block(data, 'resource "aws_db_instance" "postgres" {')
+    redis = hcl_block(data, 'resource "aws_elasticache_replication_group" "redis" {')
+    rabbitmq = hcl_block(data, 'resource "aws_mq_broker" "rabbitmq" {')
+    require_hcl_assignment(postgres, "publicly_accessible", "false", "RDS must be private")
+    require_hcl_assignment(postgres, "multi_az", "var.db_multi_az", "RDS Multi-AZ contract missing")
+    require_hcl_assignment(redis, "transit_encryption_enabled", "true", "Redis transit encryption missing")
+    require_hcl_assignment(redis, "at_rest_encryption_enabled", "true", "Redis at-rest encryption missing")
+    require_hcl_assignment(rabbitmq, "deployment_mode", '"CLUSTER_MULTI_AZ"', "RabbitMQ Multi-AZ contract missing")
+    require_hcl_assignment(rabbitmq, "publicly_accessible", "false", "RabbitMQ must remain private")
+
+    public_access = hcl_block(storage, 'resource "aws_s3_bucket_public_access_block" "this" {')
+    versioning = hcl_block(storage, 'resource "aws_s3_bucket_versioning" "this" {')
+    require_hcl_assignment(public_access, "block_public_acls", "true", "S3 public ACL block missing")
+    require_hcl_assignment(public_access, "restrict_public_buckets", "true", "S3 public bucket restriction missing")
+    require_hcl_assignment(versioning, "status", '"Enabled"', "S3 versioning contract missing")
     require("aws:SecureTransport" in storage, "S3 TLS-only policy missing")
+
     require("aws_secretsmanager_secret_version" not in secrets, "secret values must not be written by Terraform")
     require("MIGRATION_DATABASE_URL" in migration, "migration task must inject migration-only database credential")
     require("aws_ecs_service" not in migration, "migration runner must be one-shot, not an ECS service")
@@ -73,6 +219,72 @@ def main() -> int:
     require("length(var.availability_zones) == 3" in production_core_vars, "production must require three availability zones")
     require("capture-ecs-deployment-state.sh" in production_workflow, "production workflow must archive ECS steady-state evidence")
     require("running_count == .desired_count" in ecs_evidence and "pending_count == 0" in ecs_evidence, "ECS evidence script must verify counts")
+
+    for output_name in (
+        "postgres_instance_id",
+        "postgres_backup_retention_days",
+        "postgres_db_subnet_group_name",
+        "postgres_security_group_id",
+    ):
+        require(
+            f'output "{output_name}"' in data_outputs,
+            f"data module must export {output_name}",
+        )
+        require(
+            f'output "{output_name}"' in platform_core_outputs,
+            f"platform-core must propagate {output_name}",
+        )
+        require(
+            f'output "{output_name}"' in production_core_outputs,
+            f"production core must expose {output_name}",
+        )
+    require(
+        "postgres_instance_id" in snapshot_script and "postgres_backup_retention_days" in snapshot_script,
+        "predeploy snapshot must consume explicit RDS safety outputs",
+    )
+
+    assert_provider_secret_boundary(staging_app, environment="staging")
+    assert_provider_secret_boundary(production_app, environment="production")
+
+    internet_sg = hcl_block(
+        network,
+        'resource "aws_security_group" "app_internet_egress" {',
+    )
+    sandbox_sg = hcl_block(network, 'resource "aws_security_group" "sandbox_egress" {')
+    require('cidr_blocks = ["0.0.0.0/0"]' not in app_sg, "app identity SG grants public egress")
+    require('cidr_blocks = ["0.0.0.0/0"]' in internet_sg, "explicit app Internet egress SG missing")
+    require_hcl_assignment(internet_sg, "protocol", '"tcp"', "app Internet egress must be TCP-only")
+    require_hcl_assignment(internet_sg, "from_port", "443", "app Internet egress must start at HTTPS/443")
+    require_hcl_assignment(internet_sg, "to_port", "443", "app Internet egress must end at HTTPS/443")
+    require("#trivy:ignore:AVD-AWS-0104" in network, "public HTTPS egress exception must be resource-scoped")
+    require("#trivy:ignore:AVD-AWS-0053" in compute, "public ALB exception must be resource-scoped")
+    platform_provisioner = hcl_block(
+        bootstrap,
+        'data "aws_iam_policy_document" "github_platform_provisioner" {',
+    )
+    require('"s3:*"' not in platform_provisioner, "bootstrap platform provisioner must not grant unrestricted S3 actions")
+    for s3_action in (
+        "s3:CreateBucket",
+        "s3:PutBucketOwnershipControls",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutBucketVersioning",
+        "s3:PutEncryptionConfiguration",
+        "s3:PutLifecycleConfiguration",
+        "s3:PutBucketPolicy",
+        "s3:PutReplicationConfiguration",
+    ):
+        require(f'"{s3_action}"' in platform_provisioner, f"bootstrap platform provisioner missing {s3_action}")
+    require('cidr_blocks = ["0.0.0.0/0"]' not in sandbox_sg, "restricted runtime SG grants public egress")
+    require("prefix_list_ids = [data.aws_prefix_list.s3.id]" in sandbox_sg, "restricted runtime S3 transport allowance missing")
+    require(
+        'contains(["sandbox-runtime", "outbox-dispatcher"], name)' in compute,
+        "sandbox/outbox restricted ECS security-group branch missing",
+    )
+    require("var.sandbox_egress_security_group_id" in compute, "restricted egress SG not attached")
+    require(
+        "? [var.app_security_group_id, var.sandbox_egress_security_group_id]" in compute,
+        "restricted runtime SG mapping missing",
+    )
 
     version_files = [ROOT / "infra/iac/bootstrap/versions.tf", *ROOT.glob("infra/iac/environments/**/versions.tf")]
     for version_file in version_files:

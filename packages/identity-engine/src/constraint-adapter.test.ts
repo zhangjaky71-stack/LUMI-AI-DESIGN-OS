@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { CalibratedIdentityConstraintAdapter } from "./constraint-adapter";
-import type { DesignConstraint, PostflightContext } from "../../design-constraints/src/types";
-import type { IdentityPostflightResolver, IdentityValidationReport } from "./types";
+import type {
+  DesignConstraint,
+  PostflightContext,
+} from "../../design-constraints/src/types";
+import type {
+  IdentityPostflightResolver,
+  IdentityValidationReport,
+} from "./types";
 
 const context = {
   document: { root_id: "root" },
@@ -26,7 +32,9 @@ const constraint: DesignConstraint = {
   active: true,
 };
 
-function report(status: "PASS" | "FAIL" | "REVIEW" | "UNAVAILABLE"): IdentityValidationReport {
+function report(
+  status: "PASS" | "FAIL" | "REVIEW" | "UNAVAILABLE",
+): IdentityValidationReport {
   return {
     report_id: "report-1",
     organization_id: "org-1",
@@ -35,7 +43,8 @@ function report(status: "PASS" | "FAIL" | "REVIEW" | "UNAVAILABLE"): IdentityVal
     severity: "HARD",
     scenario: "BACKGROUND_REPLACEMENT",
     status,
-    identity_score: status === "UNAVAILABLE" ? null : status === "PASS" ? 95 : 70,
+    identity_score:
+      status === "UNAVAILABLE" ? null : status === "PASS" ? 95 : 70,
     confidence: 0.9,
     threshold: 88,
     review_floor: 76,
@@ -48,7 +57,16 @@ function report(status: "PASS" | "FAIL" | "REVIEW" | "UNAVAILABLE"): IdentityVal
     provider_version: "model@1",
     preprocessor_version: "prep@1",
     evidence_refs: [{ kind: "CALIBRATION", ref: "product-cal@3" }],
-    ...(status === "PASS" ? {} : { reason_code: status === "UNAVAILABLE" ? "IDENTITY_VALIDATION_UNAVAILABLE" : status === "REVIEW" ? "IDENTITY_REVIEW_REQUIRED" : "IDENTITY_SCORE_BELOW_THRESHOLD" }),
+    ...(status === "PASS"
+      ? {}
+      : {
+          reason_code:
+            status === "UNAVAILABLE"
+              ? "IDENTITY_VALIDATION_UNAVAILABLE"
+              : status === "REVIEW"
+                ? "IDENTITY_REVIEW_REQUIRED"
+                : "IDENTITY_SCORE_BELOW_THRESHOLD",
+        }),
     identity_validation_snapshot_id: "identity-validation:abc",
   };
 }
@@ -59,12 +77,16 @@ function resolver(value: IdentityValidationReport): IdentityPostflightResolver {
 
 describe("NODE-44 Constraint adapter", () => {
   it("returns no violation for calibrated PASS", async () => {
-    const adapter = new CalibratedIdentityConstraintAdapter(resolver(report("PASS")));
+    const adapter = new CalibratedIdentityConstraintAdapter(
+      resolver(report("PASS")),
+    );
     await expect(adapter.validate(context, constraint)).resolves.toEqual([]);
   });
 
   it("maps FAIL/REVIEW into NODE-39 violations with profile threshold", async () => {
-    const adapter = new CalibratedIdentityConstraintAdapter(resolver(report("FAIL")));
+    const adapter = new CalibratedIdentityConstraintAdapter(
+      resolver(report("FAIL")),
+    );
     const violations = await adapter.validate(context, constraint);
     expect(violations).toHaveLength(1);
     expect(violations[0]?.reason_code).toBe("IDENTITY_SCORE_BELOW_THRESHOLD");
@@ -74,12 +96,25 @@ describe("NODE-44 Constraint adapter", () => {
   });
 
   it("throws on unavailable validator so NODE-39 fail-closed behavior applies", async () => {
-    const adapter = new CalibratedIdentityConstraintAdapter(resolver(report("UNAVAILABLE")));
-    await expect(adapter.validate(context, constraint)).rejects.toThrow("IDENTITY_VALIDATION_UNAVAILABLE");
+    const adapter = new CalibratedIdentityConstraintAdapter(
+      resolver(report("UNAVAILABLE")),
+    );
+    await expect(adapter.validate(context, constraint)).rejects.toThrow(
+      "IDENTITY_VALIDATION_UNAVAILABLE",
+    );
   });
 
   it("refuses ad-hoc numeric thresholds in constraint parameters", async () => {
-    const adapter = new CalibratedIdentityConstraintAdapter(resolver(report("PASS")));
-    await expect(adapter.validate(context, { ...constraint, parameters: { ...constraint.parameters, threshold: 80 } })).rejects.toThrow("IDENTITY_NUMERIC_THRESHOLD_MUST_COME_FROM_CALIBRATION_PROFILE");
+    const adapter = new CalibratedIdentityConstraintAdapter(
+      resolver(report("PASS")),
+    );
+    await expect(
+      adapter.validate(context, {
+        ...constraint,
+        parameters: { ...constraint.parameters, threshold: 80 },
+      }),
+    ).rejects.toThrow(
+      "IDENTITY_NUMERIC_THRESHOLD_MUST_COME_FROM_CALIBRATION_PROFILE",
+    );
   });
 });

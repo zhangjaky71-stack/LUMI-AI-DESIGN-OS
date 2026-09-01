@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import os
 from typing import TypedDict
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
 
 import asyncpg
@@ -32,8 +31,6 @@ from lumi_agent_runtime.control_plane.testing import (
 )
 from lumi_api.persistence.seed import ORG_ID, PROJECT_A_ID
 
-_SCHEMA = "node28_checkpoint_acceptance"
-
 
 class State(TypedDict, total=False):
     brief: str
@@ -52,15 +49,6 @@ class ConnectionFactory:
 
 def _dsn(name: str) -> str:
     return os.environ[name].replace("postgresql+asyncpg://", "postgresql://", 1)
-
-
-def _with_search_path(dsn: str, schema: str) -> str:
-    parsed = urlsplit(dsn)
-    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
-    query["options"] = f"-csearch_path={schema},public"
-    return urlunsplit(
-        (parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment)
-    )
 
 
 def _builder(counts: dict[str, int]) -> StateGraph:
@@ -123,7 +111,9 @@ def _control(
 async def main_async() -> None:
     runtime_dsn = _dsn("DATABASE_URL")
     admin_dsn = _dsn("MIGRATION_DATABASE_URL")
-    checkpoint_dsn = _with_search_path(admin_dsn, _SCHEMA)
+    # Alembic migration 0022 owns checkpoint schema mutation. Runtime must
+    # exercise migration-provisioned tables without setup privileges.
+    checkpoint_dsn = runtime_dsn
     admin = await asyncpg.connect(admin_dsn)
     agent_run_id = uuid4()
     thread_id = f"node28-restart-{uuid4()}"
@@ -137,13 +127,11 @@ async def main_async() -> None:
     )
     store = PostgresGraphRunStore(ConnectionFactory(runtime_dsn))
     try:
-        await admin.execute(f'DROP SCHEMA IF EXISTS "{_SCHEMA}" CASCADE')
-        await admin.execute(f'CREATE SCHEMA "{_SCHEMA}"')
         await admin.execute(
             """
             INSERT INTO agent_runs (
                 id, organization_id, project_id, thread_id, graph_version,
-                agent_config_version, status, budget, started_at, version
+                agent_config_version, status, budget_json, started_at, version
             ) VALUES ($1,$2,$3,$4,'1.0.0','agent-v1','pending','{}'::jsonb,now(),1)
             """,
             agent_run_id,
@@ -166,7 +154,7 @@ async def main_async() -> None:
         # Deployment/admin initializes official LangGraph checkpoint tables.
         async with open_postgres_checkpointer(
             checkpoint_dsn,
-            allow_setup=True,
+            allow_setup=False,
         ) as checkpointer:
             first_graph = _builder(counts).compile(checkpointer=checkpointer)
             paused = await _control(
@@ -210,7 +198,6 @@ async def main_async() -> None:
     finally:
         await admin.execute("DELETE FROM agent_run_control WHERE agent_run_id=$1", agent_run_id)
         await admin.execute("DELETE FROM agent_runs WHERE id=$1", agent_run_id)
-        await admin.execute(f'DROP SCHEMA IF EXISTS "{_SCHEMA}" CASCADE')
         await admin.close()
 
 

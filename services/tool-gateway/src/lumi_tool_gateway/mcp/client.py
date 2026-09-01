@@ -246,9 +246,7 @@ class MCPClient:
         request_params = dict(params)
         request_params["_meta"] = {
             "io.modelcontextprotocol/protocolVersion": protocol_version,
-            "io.modelcontextprotocol/clientCapabilities": dict(
-                self.identity.capabilities
-            ),
+            "io.modelcontextprotocol/clientCapabilities": dict(self.identity.capabilities),
             "io.modelcontextprotocol/clientInfo": {
                 "name": self.identity.name,
                 "version": self.identity.version,
@@ -327,6 +325,8 @@ def _parse_discovered_tool(raw: Any) -> MCPDiscoveredTool:
     if not isinstance(raw, dict):
         raise MCPSchemaInvalidError("MCP tool descriptor must be an object")
     input_schema = raw.get("inputSchema")
+    if not isinstance(input_schema, dict):
+        raise MCPSchemaInvalidError("MCP tool inputSchema must be an object")
     output_schema = raw.get("outputSchema")
     annotations = raw.get("annotations")
     try:
@@ -346,9 +346,7 @@ def _parse_call_result_2026(result: dict[str, Any]) -> MCPCallResult:
     if not isinstance(result_type, str):
         raise MCPProtocolMismatchError("2026 MCP resultType missing")
     raw_content = result.get("content", [])
-    if not isinstance(raw_content, list) or not all(
-        isinstance(item, dict) for item in raw_content
-    ):
+    if not isinstance(raw_content, list) or not all(isinstance(item, dict) for item in raw_content):
         raise MCPProtocolMismatchError("MCP tool content invalid")
     input_requests = result.get("inputRequests")
     if input_requests is not None and not isinstance(input_requests, dict):

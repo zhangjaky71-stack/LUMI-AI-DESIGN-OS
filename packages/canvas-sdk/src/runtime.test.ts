@@ -67,7 +67,10 @@ function documentFixture(): DesignDocument {
 
 describe("NODE-40 Design IR scene projection", () => {
   it("uses degree-based affine transforms and nested world coordinates", () => {
-    const point = applyMatrix(transformToMatrix({ rotation_deg: 90 }), { x: 10, y: 0 });
+    const point = applyMatrix(transformToMatrix({ rotation_deg: 90 }), {
+      x: 10,
+      y: 0,
+    });
     expect(point.x).toBeCloseTo(0, 8);
     expect(point.y).toBeCloseTo(10, 8);
 
@@ -119,7 +122,10 @@ describe("NODE-40 Design IR scene projection", () => {
     expect(scene.nodes.get("text")?.locked).toBe(true);
     const index = new CanvasSpatialIndex();
     index.rebuild(scene);
-    expect(index.hitTest({ x: 120, y: 80 })).toEqual([]);
+    expect(index.get("text")).toBeNull();
+    expect(index.hitTest({ x: 120, y: 80 }).map((node) => node.id)).toEqual([
+      "frame-a",
+    ]);
   });
 });
 

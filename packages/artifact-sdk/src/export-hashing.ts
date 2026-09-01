@@ -6,7 +6,10 @@ import type {
   ExportSourceSnapshot,
   ExportSpec,
 } from "./export-engine-types";
-import { assertNoEphemeralExportRefs, assertNoSensitiveExportMetadata } from "./export-security";
+import {
+  assertNoEphemeralExportRefs,
+  assertNoSensitiveExportMetadata,
+} from "./export-security";
 
 function semanticSpec(spec: ExportSpec): unknown {
   return {
@@ -40,12 +43,21 @@ function semanticSpec(spec: ExportSpec): unknown {
   };
 }
 
-export async function exportFingerprint(source: ExportSourceSnapshot, spec: ExportSpec): Promise<string> {
-  if (source.artifact_version_id !== spec.artifact_version_id) throw new Error("EXPORT_SOURCE_ARTIFACT_VERSION_MISMATCH");
-  if (source.design_document_version_id !== spec.design_document_version_id) throw new Error("EXPORT_SOURCE_DESIGN_VERSION_MISMATCH");
+export async function exportFingerprint(
+  source: ExportSourceSnapshot,
+  spec: ExportSpec,
+): Promise<string> {
+  if (source.artifact_version_id !== spec.artifact_version_id)
+    throw new Error("EXPORT_SOURCE_ARTIFACT_VERSION_MISMATCH");
+  if (source.design_document_version_id !== spec.design_document_version_id)
+    throw new Error("EXPORT_SOURCE_DESIGN_VERSION_MISMATCH");
   assertNoSensitiveExportMetadata(source.design_document, "$.design_document");
   assertNoSensitiveExportMetadata(source.rights_summary, "$.rights_summary");
-  if (source.project_snapshot) assertNoSensitiveExportMetadata(source.project_snapshot, "$.project_snapshot");
+  if (source.project_snapshot)
+    assertNoSensitiveExportMetadata(
+      source.project_snapshot,
+      "$.project_snapshot",
+    );
   assertNoEphemeralExportRefs(source.design_document, "$.design_document");
   assertNoEphemeralExportRefs(source.render_plan, "$.render_plan");
   return canonicalSha256({
@@ -62,7 +74,9 @@ export async function exportFingerprint(source: ExportSourceSnapshot, spec: Expo
   });
 }
 
-export async function exportManifestHash(manifest: Omit<ExportManifest, "manifest_sha256">): Promise<string> {
+export async function exportManifestHash(
+  manifest: Omit<ExportManifest, "manifest_sha256">,
+): Promise<string> {
   assertNoSensitiveExportMetadata(manifest, "$.manifest");
   return canonicalSha256(manifest);
 }
@@ -71,7 +85,9 @@ export function canonicalExportJson(value: unknown): string {
   return canonicalStringify(value);
 }
 
-export function stableExportFiles(files: readonly ExportFileRecord[]): readonly ExportManifestFile[] {
+export function stableExportFiles(
+  files: readonly ExportFileRecord[],
+): readonly ExportManifestFile[] {
   return [...files]
     .sort((a, b) => a.filename.localeCompare(b.filename))
     .map((file) => ({

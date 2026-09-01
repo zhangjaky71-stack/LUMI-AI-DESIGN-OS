@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Awaitable, Callable, Protocol
+from typing import Any, Protocol, cast
 from uuid import UUID
 
 import asyncpg
 from kombu import Connection, Producer
+
 from lumi_domain import new_uuid7
+from lumi_domain.job_dispatch import JOB_DISPATCH_EVENT_NAME
 
 from .observability import bind_event_correlation, reset_event_correlation
 from .queue_contracts import ErrorCategory, classify_error
@@ -50,6 +53,20 @@ class OutboxRecord:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class DomainOutboxHealth:
+    """Bounded domain-event queue-head health for dispatcher telemetry."""
+
+    oldest_unpublished_age_seconds: int
+    oldest_publish_attempts: int
+
+    def __post_init__(self) -> None:
+        if self.oldest_unpublished_age_seconds < 0:
+            raise ValueError("DOMAIN_OUTBOX_HEALTH_AGE_INVALID")
+        if self.oldest_publish_attempts < 0:
+            raise ValueError("DOMAIN_OUTBOX_HEALTH_ATTEMPTS_INVALID")
+
+
 class DomainPublisher(Protocol):
     def publish(self, record: OutboxRecord) -> None: ...
 
@@ -61,7 +78,7 @@ class KombuDomainPublisher:
     def publish(self, record: OutboxRecord) -> None:
         with Connection(self.broker_url) as connection:
             connection.ensure_connection(max_retries=3)
-            with connection.channel() as channel:
+            with cast(Any, connection.channel()) as channel:
                 confirm_select = getattr(channel, "confirm_select", None)
                 if callable(confirm_select):
                     confirm_select()
@@ -71,7 +88,6 @@ class KombuDomainPublisher:
                     exchange=DOMAIN_EXCHANGE,
                     routing_key=record.event_name,
                     serializer="json",
-                    content_type="application/json",
                     retry=True,
                     retry_policy={"max_retries": 3, "interval_start": 0, "interval_step": 1},
                     declare=[DOMAIN_EXCHANGE],
@@ -80,6 +96,8 @@ class KombuDomainPublisher:
 
 
 class OutboxDispatcher:
+    """Dispatch domain events only; broker job dispatch rows use MediaJobOutboxDispatcher."""
+
     def __init__(self, dsn: str, publisher: DomainPublisher) -> None:
         self.dsn = dsn
         self.publisher = publisher
@@ -89,6 +107,7 @@ class OutboxDispatcher:
             raise ValueError("OUTBOX_BATCH_LIMIT_INVALID")
         connection = await asyncpg.connect(self.dsn)
         published = 0
+        failure: Exception | None = None
         try:
             async with connection.transaction():
                 rows = await connection.fetch(
@@ -97,11 +116,13 @@ class OutboxDispatcher:
                            schema_version, payload_json, created_at
                     FROM outbox_events
                     WHERE published_at IS NULL
+                      AND event_name <> $2
                     ORDER BY created_at, id
                     FOR UPDATE SKIP LOCKED
                     LIMIT $1
                     """,
                     limit,
+                    JOB_DISPATCH_EVENT_NAME,
                 )
                 for row in rows:
                     record = OutboxRecord(
@@ -111,7 +132,7 @@ class OutboxDispatcher:
                         aggregate_type=row["aggregate_type"],
                         aggregate_id=row["aggregate_id"],
                         schema_version=int(row["schema_version"]),
-                        payload=dict(row["payload_json"]),
+                        payload=_json_object(row["payload_json"]),
                         created_at=row["created_at"],
                     )
                     await connection.execute(
@@ -121,13 +142,52 @@ class OutboxDispatcher:
                         ),
                         record.event_id,
                     )
-                    await asyncio.to_thread(self.publisher.publish, record)
+                    try:
+                        await asyncio.to_thread(self.publisher.publish, record)
+                    except Exception as exc:
+                        failure = exc
+                        break
                     await connection.execute(
                         "UPDATE outbox_events SET published_at = now() WHERE id = $1",
                         record.event_id,
                     )
                     published += 1
+            if failure is not None:
+                raise failure
             return published
+        finally:
+            await connection.close()
+
+    async def health_snapshot(self) -> DomainOutboxHealth:
+        """Read only the oldest pending domain row; never count or lock the full outbox."""
+
+        connection = await asyncpg.connect(self.dsn)
+        try:
+            row = await connection.fetchrow(
+                """
+                SELECT
+                    GREATEST(
+                        FLOOR(EXTRACT(EPOCH FROM (now() - created_at))),
+                        0
+                    )::bigint AS oldest_unpublished_age_seconds,
+                    publish_attempts AS oldest_publish_attempts
+                FROM outbox_events
+                WHERE published_at IS NULL
+                  AND event_name <> $1
+                ORDER BY created_at, id
+                LIMIT 1
+                """,
+                JOB_DISPATCH_EVENT_NAME,
+            )
+            if row is None:
+                return DomainOutboxHealth(
+                    oldest_unpublished_age_seconds=0,
+                    oldest_publish_attempts=0,
+                )
+            return DomainOutboxHealth(
+                oldest_unpublished_age_seconds=int(row["oldest_unpublished_age_seconds"]),
+                oldest_publish_attempts=int(row["oldest_publish_attempts"]),
+            )
         finally:
             await connection.close()
 
@@ -248,45 +308,47 @@ class KombuEventConsumer:
 
     def consume_one(self, handler: EventHandler, *, timeout: float = 1.0) -> str:
         queue = domain_queue(self.runtime.consumer, self.binding_key)
-        with Connection(self.broker_url) as connection:
-            with connection.SimpleQueue(queue) as simple_queue:
-                message = simple_queue.get(block=True, timeout=timeout)
-                envelope = message.payload
-                try:
-                    result = asyncio.run(self.runtime.process(envelope, handler))
-                except Exception as exc:
-                    category = classify_error(
-                        code=getattr(exc, "code", type(exc).__name__),
-                        retryable=(
-                            False
-                            if isinstance(exc, EventValidationError)
-                            else getattr(exc, "retryable", None)
-                        ),
-                    )
-                    if category == ErrorCategory.TRANSIENT:
-                        message.reject(requeue=True)
-                    else:
-                        attempts = _death_attempts(message.headers)
-                        asyncio.run(
-                            self.dead_letters.record(
-                                envelope=(
-                                    envelope if isinstance(envelope, dict) else {"data": envelope}
-                                ),
-                                source_queue=queue.name,
-                                consumer=self.runtime.consumer,
-                                exchange_name=DOMAIN_EXCHANGE.name,
-                                routing_key=str(message.delivery_info.get("routing_key", "#")),
-                                category=category,
-                                error_code=str(getattr(exc, "code", type(exc).__name__)),
-                                error_message=str(exc),
-                                attempts=attempts,
-                            )
-                        )
-                        message.reject(requeue=False)
-                    raise
+        with (
+            Connection(self.broker_url) as connection,
+            connection.SimpleQueue(queue) as simple_queue,
+        ):
+            message = simple_queue.get(block=True, timeout=timeout)
+            envelope = message.payload
+            try:
+                result = asyncio.run(self.runtime.process(envelope, handler))
+            except Exception as exc:
+                category = classify_error(
+                    code=getattr(exc, "code", type(exc).__name__),
+                    retryable=(
+                        False
+                        if isinstance(exc, EventValidationError)
+                        else getattr(exc, "retryable", None)
+                    ),
+                )
+                if category == ErrorCategory.TRANSIENT:
+                    message.reject(requeue=True)
                 else:
-                    message.ack()
-                    return result
+                    attempts = _death_attempts(message.headers)
+                    asyncio.run(
+                        self.dead_letters.record(
+                            envelope=(
+                                envelope if isinstance(envelope, dict) else {"data": envelope}
+                            ),
+                            source_queue=queue.name,
+                            consumer=self.runtime.consumer,
+                            exchange_name=DOMAIN_EXCHANGE.name,
+                            routing_key=str(message.delivery_info.get("routing_key", "#")),
+                            category=category,
+                            error_code=str(getattr(exc, "code", type(exc).__name__)),
+                            error_message=str(exc),
+                            attempts=attempts,
+                        )
+                    )
+                    message.reject(requeue=False)
+                raise
+            else:
+                message.ack()
+                return result
 
 
 def validate_event_envelope(envelope: dict[str, Any]) -> None:
@@ -339,6 +401,17 @@ def _normalized_event_data(record: OutboxRecord) -> dict[str, Any]:
         if "full_checksum_sha256" in data and "checksum_sha256" not in data:
             data["checksum_sha256"] = data["full_checksum_sha256"]
     return data
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("OUTBOX_PAYLOAD_INVALID") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError("OUTBOX_PAYLOAD_INVALID")
+    return dict(value)
 
 
 def _asset_kind_from_mime(value: Any) -> str:

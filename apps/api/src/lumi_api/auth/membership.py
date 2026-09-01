@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from lumi_auth import Membership, require_last_owner_invariant
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lumi_api.persistence.models import OrganizationMember
+from lumi_auth import Membership, require_last_owner_invariant
 
 from .errors import PermissionDenied
 

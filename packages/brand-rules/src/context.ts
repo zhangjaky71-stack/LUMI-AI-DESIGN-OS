@@ -1,14 +1,29 @@
 import type { JsonValue } from "../../design-ir/src/index";
-import type { BrandAssetSet, BrandContext, BrandRuleSet, BrandTokenSet } from "./types";
+import type {
+  BrandAssetSet,
+  BrandContext,
+  BrandRuleSet,
+  BrandTokenSet,
+} from "./types";
 import { BrandRuleError, validateBrandRuleSet } from "./runtime";
 
-function selectedTokens(tokenSet: BrandTokenSet): Readonly<Record<string, JsonValue>> {
+function selectedTokens(
+  tokenSet: BrandTokenSet,
+): Readonly<Record<string, JsonValue>> {
   const colors: Record<string, JsonValue> = {};
-  for (const token of [...tokenSet.colors].sort((a, b) => a.id.localeCompare(b.id))) {
-    colors[token.id] = { name: token.name, value: token.value, roles: [...token.roles] };
+  for (const token of [...tokenSet.colors].sort((a, b) =>
+    a.id.localeCompare(b.id),
+  )) {
+    colors[token.id] = {
+      name: token.name,
+      value: token.value,
+      roles: [...token.roles],
+    };
   }
   const fonts: Record<string, JsonValue> = {};
-  for (const token of [...tokenSet.fonts].sort((a, b) => a.id.localeCompare(b.id))) {
+  for (const token of [...tokenSet.fonts].sort((a, b) =>
+    a.id.localeCompare(b.id),
+  )) {
     fonts[token.id] = {
       name: token.name,
       asset_id: token.asset_id,
@@ -29,22 +44,31 @@ export function buildBrandContext(
   assetSet: BrandAssetSet,
 ): BrandContext {
   validateBrandRuleSet(ruleSet);
-  if (ruleSet.status !== "PUBLISHED") throw new BrandRuleError("BrandContext requires a PUBLISHED BrandRuleSet");
-  if (tokenSet.brand_profile_id !== ruleSet.brand_profile_id || assetSet.brand_profile_id !== ruleSet.brand_profile_id) {
+  if (ruleSet.status !== "PUBLISHED")
+    throw new BrandRuleError("BrandContext requires a PUBLISHED BrandRuleSet");
+  if (
+    tokenSet.brand_profile_id !== ruleSet.brand_profile_id ||
+    assetSet.brand_profile_id !== ruleSet.brand_profile_id
+  ) {
     throw new BrandRuleError("BrandContext brand profile mismatch");
   }
-  if (tokenSet.version !== ruleSet.token_set_version || assetSet.version !== ruleSet.asset_set_version) {
+  if (
+    tokenSet.version !== ruleSet.token_set_version ||
+    assetSet.version !== ruleSet.asset_set_version
+  ) {
     throw new BrandRuleError("BrandContext version mismatch");
   }
 
   const hardRules = ruleSet.rules
     .filter((rule) => rule.active && rule.severity === "HARD")
     .sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
-  const allowedAssets = [...new Set([
-    ...assetSet.logo_asset_ids,
-    ...assetSet.font_asset_ids,
-    ...assetSet.reference_asset_ids,
-  ])].sort();
+  const allowedAssets = [
+    ...new Set([
+      ...assetSet.logo_asset_ids,
+      ...assetSet.font_asset_ids,
+      ...assetSet.reference_asset_ids,
+    ]),
+  ].sort();
 
   return {
     brand_profile_id: ruleSet.brand_profile_id,
@@ -58,7 +82,9 @@ export function buildBrandContext(
       preferred_vocabulary: [...ruleSet.voice.preferred_vocabulary],
       forbidden_terms: [...ruleSet.voice.forbidden_terms],
     },
-    reference_asset_ids: [...ruleSet.visual_references.reference_asset_ids].sort(),
+    reference_asset_ids: [
+      ...ruleSet.visual_references.reference_asset_ids,
+    ].sort(),
     pinned: true,
   };
 }

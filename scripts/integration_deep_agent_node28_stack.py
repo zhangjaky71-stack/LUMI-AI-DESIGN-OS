@@ -65,7 +65,7 @@ class Tools:
 class Backends:
     async def backend_for_run(self, *, context, virtual_files_enabled):
         del context, virtual_files_enabled
-        backend_type = getattr(import_module("deepagents.backends"), "StateBackend")
+        backend_type = import_module("deepagents.backends").StateBackend
 
         def factory(runtime):
             parameters = inspect.signature(backend_type).parameters

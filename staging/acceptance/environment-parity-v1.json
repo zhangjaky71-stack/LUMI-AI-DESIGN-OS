@@ -2,7 +2,7 @@
   "schema_version": 1,
   "contract_id": "lumi-staging-production-parity-v1",
   "required_checks": [
-    {"id":"PARITY-IMAGE","requirement":"same immutable container image digests as release candidate","status":"PENDING","evidence_ref":""},
+    {"id":"PARITY-IMAGE","requirement":"same six immutable container image digests as the release candidate, with auditable build recipe, executable entrypoint, SBOM, provenance record and source-path evidence; model-gateway provenance must include the hosted durable-cost composition sources","status":"PENDING","evidence_ref":""},
     {"id":"PARITY-TOPOLOGY","requirement":"same deployment topology class and service boundaries","status":"PENDING","evidence_ref":""},
     {"id":"PARITY-DB","requirement":"same PostgreSQL engine and major version","status":"PENDING","evidence_ref":""},
     {"id":"PARITY-BROKER","requirement":"same broker interface and queue semantics","status":"PENDING","evidence_ref":""},
@@ -18,6 +18,8 @@
     "local_only_example_credentials",
     "public_management_ports",
     "unversioned_container_images",
+    "unproven_container_entrypoints",
+    "unproven_container_build_provenance",
     "shared_production_secrets"
   ]
 }

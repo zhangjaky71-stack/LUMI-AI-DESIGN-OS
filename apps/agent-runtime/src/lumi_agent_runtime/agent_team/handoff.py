@@ -113,12 +113,10 @@ def validate_result_for_agent(
     result: TeamTaskResult,
 ) -> None:
     profile = team_profile(definition)
-    if result.status == TeamTaskStatus.WAITING_EXTERNAL:
-        if not profile.supports_waiting_external:
-            raise ValueError("AGENT_TEAM_WAITING_EXTERNAL_NOT_SUPPORTED")
-    if result.status == TeamTaskStatus.WAITING_APPROVAL:
-        if not profile.approval_gated_actions:
-            raise ValueError("AGENT_TEAM_WAITING_APPROVAL_NOT_SUPPORTED")
+    if result.status == TeamTaskStatus.WAITING_EXTERNAL and not profile.supports_waiting_external:
+        raise ValueError("AGENT_TEAM_WAITING_EXTERNAL_NOT_SUPPORTED")
+    if result.status == TeamTaskStatus.WAITING_APPROVAL and not profile.approval_gated_actions:
+        raise ValueError("AGENT_TEAM_WAITING_APPROVAL_NOT_SUPPORTED")
     if profile.archetype.value == "critic" and result.artifacts:
         raise ValueError("AGENT_TEAM_CRITIC_CANNOT_RETURN_WRITTEN_ARTIFACT")
 

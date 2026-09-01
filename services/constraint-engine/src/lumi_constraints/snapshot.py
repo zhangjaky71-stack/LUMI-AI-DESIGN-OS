@@ -6,7 +6,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from .model import Constraint
-from .precedence import effective_constraints, precedence_key, scope_key
+from .precedence import effective_constraints, precedence_key
 
 
 def _plain(value: Any) -> Any:
@@ -40,7 +40,10 @@ def constraint_snapshot_payload(constraints: Iterable[Constraint]) -> list[dict[
                 "override_policy": constraint.override_policy,
             }
         )
-    return sorted(payload, key=lambda item: (item["type"], json.dumps(item["scope"], sort_keys=True), item["id"]))
+    return sorted(
+        payload,
+        key=lambda item: (item["type"], json.dumps(item["scope"], sort_keys=True), item["id"]),
+    )
 
 
 def constraint_snapshot_hash(constraints: Iterable[Constraint]) -> str:

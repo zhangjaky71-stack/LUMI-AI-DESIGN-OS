@@ -61,8 +61,7 @@ export const PUBLIC_FEATURE_FLAG_NAMES = [
   "commandPalette",
 ] as const;
 
-export type PublicFeatureFlagName =
-  (typeof PUBLIC_FEATURE_FLAG_NAMES)[number];
+export type PublicFeatureFlagName = (typeof PUBLIC_FEATURE_FLAG_NAMES)[number];
 export type PublicFeatureFlags = Readonly<
   Record<PublicFeatureFlagName, boolean>
 >;

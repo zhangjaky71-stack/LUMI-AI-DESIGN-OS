@@ -39,7 +39,11 @@ function unionRects(rects: readonly Rect[]): Rect | null {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
-function same(left: number | undefined, right: number | undefined, epsilon = 1e-8): boolean {
+function same(
+  left: number | undefined,
+  right: number | undefined,
+  epsilon = 1e-8,
+): boolean {
   return Math.abs(finite(left) - finite(right)) <= epsilon;
 }
 
@@ -75,7 +79,12 @@ export class CanvasTransformSession {
     this.#scene = scene;
     this.#ids = ids.filter((id) => {
       const node = scene.nodes.get(id);
-      return Boolean(node && !node.locked && node.kind !== "DOCUMENT_ROOT" && node.kind !== "GUIDE");
+      return Boolean(
+        node &&
+          !node.locked &&
+          node.kind !== "DOCUMENT_ROOT" &&
+          node.kind !== "GUIDE",
+      );
     });
     this.#operationPrefix = operationPrefix;
     for (const id of this.#ids) {
@@ -111,7 +120,10 @@ export class CanvasTransformSession {
     return this.preview();
   }
 
-  previewResize(targetWorldBounds: Rect, proportional = false): readonly TransformPreview[] {
+  previewResize(
+    targetWorldBounds: Rect,
+    proportional = false,
+  ): readonly TransformPreview[] {
     const selected = this.#ids
       .map((id) => this.#scene.nodes.get(id))
       .filter((node): node is NonNullable<typeof node> => Boolean(node));
@@ -187,9 +199,12 @@ export class CanvasTransformSession {
   ): TransformCommitResult {
     const operations = this.#buildOperations();
     if (!operations.length) return allowNoop(this.#document);
-    const guarded = guardedExecute(this.#document, operations, constraints, { overrides });
+    const guarded = guardedExecute(this.#document, operations, constraints, {
+      overrides,
+    });
     const execution = guarded.execution;
-    const accepted = guarded.preflight.decision !== "DENY" && Boolean(execution?.ok);
+    const accepted =
+      guarded.preflight.decision !== "DENY" && Boolean(execution?.ok);
     return {
       accepted,
       guarded,
@@ -215,7 +230,10 @@ export class CanvasTransformSession {
           reason: "canvas-transform",
         });
       }
-      if (!same(original.width, next.width) || !same(original.height, next.height)) {
+      if (
+        !same(original.width, next.width) ||
+        !same(original.height, next.height)
+      ) {
         operations.push({
           operation_id: `${this.#operationPrefix}-${index++}-resize`,
           type: "RESIZE_NODE",

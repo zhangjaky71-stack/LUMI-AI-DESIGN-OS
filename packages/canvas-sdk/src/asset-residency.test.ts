@@ -12,7 +12,12 @@ function imageDocument(): DesignDocument {
     unit: "px",
     root_id: "root",
     nodes: {
-      root: { id: "root", kind: "DOCUMENT_ROOT", parent_id: null, children: ["image"] },
+      root: {
+        id: "root",
+        kind: "DOCUMENT_ROOT",
+        parent_id: null,
+        children: ["image"],
+      },
       image: {
         id: "image",
         kind: "IMAGE",
@@ -35,7 +40,9 @@ async function flushPromises(): Promise<void> {
 
 describe("CanvasResourceManager concurrency", () => {
   it("counts every waiter for a deduplicated in-flight texture load", async () => {
-    const load = vi.fn(async (asset: { url: string }) => ({ texture: asset.url }));
+    const load = vi.fn(async (asset: { url: string }) => ({
+      texture: asset.url,
+    }));
     const manager = new CanvasResourceManager(
       {
         resolve: async (assetId, tier) => ({

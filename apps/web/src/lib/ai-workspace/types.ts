@@ -9,7 +9,12 @@ export type AgentRunStatus =
   | "FAILED"
   | "CANCELED";
 
-export type AgentTaskStatus = "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELED";
+export type AgentTaskStatus =
+  | "PENDING"
+  | "RUNNING"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "CANCELED";
 export type AgentTaskCategory = "AGENT" | "GENERATION" | "APPROVAL" | "ERROR";
 
 export type WorkspaceMessageKind =

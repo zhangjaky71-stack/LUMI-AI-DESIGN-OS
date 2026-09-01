@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal, Mapping
+from typing import Any, Literal
 
 Severity = Literal["HARD", "SOFT", "ADVISORY"]
 Source = Literal["USER_EXPLICIT", "APPROVED_GUIDE_EXTRACTION", "MANUAL_ADMIN", "INFERRED_PROPOSAL"]
@@ -82,7 +83,12 @@ class BrandRuleError(ValueError):
 
 
 def validate_rule_set(rule_set: BrandRuleSet) -> None:
-    if not rule_set.id or not rule_set.organization_id or not rule_set.brand_profile_id or not rule_set.version:
+    if (
+        not rule_set.id
+        or not rule_set.organization_id
+        or not rule_set.brand_profile_id
+        or not rule_set.version
+    ):
         raise BrandRuleError("brand rule set identity is required")
     if len({rule.id for rule in rule_set.rules}) != len(rule_set.rules):
         raise BrandRuleError("brand rule ids must be unique")
@@ -91,7 +97,9 @@ def validate_rule_set(rule_set: BrandRuleSet) -> None:
             raise BrandRuleError(f"inferred proposal {rule.id} cannot be HARD")
         if rule.source == "APPROVED_GUIDE_EXTRACTION" and not rule.citations:
             raise BrandRuleError(f"approved guide rule {rule.id} requires citations")
-    if rule_set.status == "PUBLISHED" and any(rule.source == "INFERRED_PROPOSAL" for rule in rule_set.rules):
+    if rule_set.status == "PUBLISHED" and any(
+        rule.source == "INFERRED_PROPOSAL" for rule in rule_set.rules
+    ):
         raise BrandRuleError("published rule sets cannot contain inferred proposals")
 
 

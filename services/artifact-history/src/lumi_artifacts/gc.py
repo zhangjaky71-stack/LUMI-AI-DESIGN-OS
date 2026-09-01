@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
-from typing import Iterable
 
 
 @dataclass(frozen=True, slots=True)

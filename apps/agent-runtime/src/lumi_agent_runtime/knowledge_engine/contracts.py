@@ -330,9 +330,7 @@ class KnowledgeIndexRequest:
                 "hash": self.source.content_hash,
             },
             "trust": self.trust.value,
-            "normalized_text_hash": hashlib.sha256(
-                self.normalized_text.encode()
-            ).hexdigest(),
+            "normalized_text_hash": hashlib.sha256(self.normalized_text.encode()).hexdigest(),
             "language": self.language,
             "parser_version": self.parser_version,
             "chunker_version": self.chunker_version,

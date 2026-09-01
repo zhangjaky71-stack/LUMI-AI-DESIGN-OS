@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
-from lumi_asset_storage import SignedUpload
 
 from lumi_api.api.v1.context import RequestContext, require_idempotency_key
 from lumi_api.api.v1.errors import ApiProblem
 from lumi_api.projects.security import get_secure_project_context
+from lumi_asset_storage import SignedUpload
 
 from .errors import (
     AssetNotFound,
@@ -23,10 +23,10 @@ from .schemas import (
     CompleteAssetUploadResponse,
     CreateAssetUploadRequest,
     CreateAssetUploadResponse,
-    SignUploadPartRequest,
-    SignUploadPartResponse,
     SignedAssetDownloadResponse,
     SignedPutResource,
+    SignUploadPartRequest,
+    SignUploadPartResponse,
 )
 from .service import AssetStorageService
 
@@ -96,8 +96,8 @@ def create_asset_storage_router(runtime: AssetStorageRuntime) -> APIRouter:
             asset_id=asset.id,
             upload_session_id=upload.id,
             file_id=upload.file_id,
-            upload_mode=upload.upload_mode,
-            status=upload.status,
+            upload_mode=cast(Literal["single", "multipart"], upload.upload_mode),
+            status=cast(Literal["pending"], upload.status),
             upload=signed,
             expires_at=upload.expires_at,
         )

@@ -36,7 +36,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - uses: astral-sh/setup-uv@v7
         with: { version: "0.10.9" }
-      - run: uv sync --frozen
+      - run: uv sync --all-packages --frozen
       - name: Validate architecture chain through NODE-65
         run: |
           python scripts/validate_app_shell.py
@@ -69,7 +69,7 @@ jobs:
         with: { python-version: "3.12" }
       - uses: astral-sh/setup-uv@v7
         with: { version: "0.10.9" }
-      - run: uv sync --frozen
+      - run: uv sync --all-packages --frozen
       - run: uv run pytest services/project-core/tests/test_governance.py apps/api/tests/test_governance_router.py
       - run: uv run ruff check --select F,B services/project-core/src/lumi_project_core/governance.py services/project-core/tests/test_governance.py apps/api/src/lumi_api/governance_router.py apps/api/tests/test_governance_router.py
 
@@ -93,9 +93,12 @@ jobs:
       - name: Verify governance schema and append-only enforcement
         env: { PGPASSWORD: lumi }
         run: |
-          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.tables where table_name in ('audit_events','governance_retention_policies','governance_legal_hold_events','governance_deletion_events','governance_audit_export_jobs');\")" = "5"
-          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from governance_retention_policies where version=1;\")" = "7"
-          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc \"select count(*) from information_schema.columns where table_name in ('audit_events','governance_audit_export_jobs') and column_name in ('password','api_key','session_secret','authorization','card_number','cvc','cvv','signed_url');\")" = "0"
+          table_count="$(psql -h 127.0.0.1 -U lumi -d lumi -Atc "select count(*) from information_schema.tables where table_name in ('audit_events','governance_retention_policies','governance_legal_hold_events','governance_deletion_events','governance_audit_export_jobs');")"
+          retention_count="$(psql -h 127.0.0.1 -U lumi -d lumi -Atc "select count(*) from governance_retention_policies where version=1;")"
+          forbidden_column_count="$(psql -h 127.0.0.1 -U lumi -d lumi -Atc "select count(*) from information_schema.columns where table_name in ('audit_events','governance_audit_export_jobs') and column_name in ('password','api_key','session_secret','authorization','card_number','cvc','cvv','signed_url');")"
+          test "$table_count" = "5"
+          test "$retention_count" = "7"
+          test "$forbidden_column_count" = "0"
           psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -c "insert into audit_events(event_id,actor_type,actor_id,action,resource_type,resource_id,result,reason_code,retention_class,retention_policy_version,occurred_at,event_hash) values ('audit-db-65','SERVICE','db-test','TEST','TEST','test','SUCCESS','TEST','SECURITY_AUDIT',1,now(),repeat('a',64));"
           if psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -c "update audit_events set action='MUTATED' where event_id='audit-db-65';"; then
             echo 'audit_events UPDATE unexpectedly succeeded' >&2

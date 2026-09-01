@@ -59,6 +59,7 @@ from .platform import (
     UsageCounter,
     UsageLedger,
 )
+from .platform_cost_guard import PlatformProviderCostGuard
 from .project import (
     Brand,
     BrandFont,
@@ -72,6 +73,7 @@ from .project import (
 )
 from .queue_runtime import DeadLetterRecord
 from .task_graph import TaskAttemptRecord, TaskGraphInstance
+from .video_generation import VideoGenerationJob, VideoProviderJob
 from .workflow import (
     AgentRun,
     AgentRunStep,
@@ -136,6 +138,7 @@ __all__ = [
     "OutboxEvent",
     "PasswordCredential",
     "PasswordResetToken",
+    "PlatformProviderCostGuard",
     "Project",
     "ProjectBriefVersion",
     "ProjectMember",
@@ -151,6 +154,8 @@ __all__ = [
     "UsageCounter",
     "UsageLedger",
     "User",
+    "VideoGenerationJob",
+    "VideoProviderJob",
     "Workspace",
     "WorkspaceMember",
 ]

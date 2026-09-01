@@ -12,7 +12,10 @@ describe("Brand Kit → Agent Run binding", () => {
     if (!bootstrap.seed) throw new Error("workspace seed missing");
 
     const gateway = new DeterministicAIWorkspaceGateway(bootstrap.seed);
-    const before = await gateway.getWorkspace("org-lumi", "project-summer-launch");
+    const before = await gateway.getWorkspace(
+      "org-lumi",
+      "project-summer-launch",
+    );
     expect(before.brand_binding?.resolved_rule_set_version).toBe("1.0.0");
     const started = await gateway.startRun("org-lumi", {
       project_id: "project-summer-launch",
@@ -21,7 +24,8 @@ describe("Brand Kit → Agent Run binding", () => {
       document_version: 7,
       reference_asset_ids: [],
       reference_artifact_version_ids: [],
-      brand_rule_set_version: before.brand_binding?.resolved_rule_set_version ?? null,
+      brand_rule_set_version:
+        before.brand_binding?.resolved_rule_set_version ?? null,
     });
     expect(started.run?.brand_rule_set_version).toBe("1.0.0");
   });

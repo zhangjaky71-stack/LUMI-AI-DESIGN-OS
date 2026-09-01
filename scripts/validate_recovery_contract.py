@@ -53,6 +53,24 @@ def validate_files() -> None:
     require(not missing, f"missing recovery contract files: {missing}")
 
 
+def validate_postgres_recovery_privilege_boundary() -> None:
+    dockerfile = (ROOT / "infra/docker/postgres-recovery/Dockerfile").read_text(encoding="utf-8")
+    entrypoint = (ROOT / "infra/docker/postgres-recovery/primary-entrypoint.sh").read_text(encoding="utf-8")
+    require("USER root" in dockerfile, "recovery image bootstrap user contract missing")
+    require(
+        'ENTRYPOINT ["lumi-postgres-primary-entrypoint"]' in dockerfile,
+        "recovery image must execute the audited wrapper",
+    )
+    require(
+        'chown postgres:postgres "$archive_dir"' in entrypoint,
+        "recovery bootstrap must hand archive ownership to postgres",
+    )
+    require(
+        'exec /usr/local/bin/docker-entrypoint.sh "$@"' in entrypoint,
+        "recovery wrapper must delegate to the upstream PostgreSQL entrypoint for runtime privilege drop",
+    )
+
+
 def validate_fail_closed_planner() -> None:
     ambiguous = plan_operation_recovery(
         OperationRecoverySnapshot(
@@ -115,6 +133,7 @@ def validate_fail_closed_planner() -> None:
 
 def main() -> int:
     validate_files()
+    validate_postgres_recovery_privilege_boundary()
     validate_fail_closed_planner()
     print("[recovery-contract] PASS: required files and fail-closed recovery decisions verified")
     return 0

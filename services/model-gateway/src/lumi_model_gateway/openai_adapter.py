@@ -83,9 +83,7 @@ class UrllibHttpTransport:
             with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
                 return HttpResponse(
                     status=int(response.status),
-                    headers={
-                        key.lower(): value for key, value in response.headers.items()
-                    },
+                    headers={key.lower(): value for key, value in response.headers.items()},
                     body=response.read(),
                 )
         except urllib.error.HTTPError as exc:
@@ -201,18 +199,16 @@ class OpenAIResponsesAdapter:
                 delivery_state=DeliveryState.NOT_ACCEPTED,
             )
         max_output_tokens = request.constraints.get("max_output_tokens")
-        if max_output_tokens is not None:
-            if (
-                not isinstance(max_output_tokens, int)
-                or not 1 <= max_output_tokens <= 100_000
-            ):
-                raise ProviderValidationError(
-                    ErrorCategory.HARD_CONSTRAINT_INVALID,
-                    "max_output_tokens must be an integer between 1 and 100000",
-                    provider=self._descriptor.provider,
-                    model=self._descriptor.model,
-                    delivery_state=DeliveryState.NOT_ACCEPTED,
-                )
+        if max_output_tokens is not None and (
+            not isinstance(max_output_tokens, int) or not 1 <= max_output_tokens <= 100_000
+        ):
+            raise ProviderValidationError(
+                ErrorCategory.HARD_CONSTRAINT_INVALID,
+                "max_output_tokens must be an integer between 1 and 100000",
+                provider=self._descriptor.provider,
+                model=self._descriptor.model,
+                delivery_state=DeliveryState.NOT_ACCEPTED,
+            )
 
     async def estimate_cost(self, request: ModelRequest) -> CostEstimate:
         self.validate(request)
@@ -501,15 +497,9 @@ class OpenAIResponsesAdapter:
                 for part in content:
                     if not isinstance(part, dict):
                         continue
-                    if (
-                        part.get("type") == "output_text"
-                        and isinstance(part.get("text"), str)
-                    ):
+                    if part.get("type") == "output_text" and isinstance(part.get("text"), str):
                         texts.append(part["text"])
-                    if (
-                        part.get("type") == "refusal"
-                        and isinstance(part.get("refusal"), str)
-                    ):
+                    if part.get("type") == "refusal" and isinstance(part.get("refusal"), str):
                         refusals.append(part["refusal"])
         combined = "".join(texts)
         if request.capability == Capability.LLM_STRUCTURED_OUTPUT and combined:

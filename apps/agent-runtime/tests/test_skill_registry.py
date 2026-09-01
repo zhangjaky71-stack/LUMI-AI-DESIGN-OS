@@ -8,6 +8,7 @@ from lumi_agent_runtime.agent_registry.requirements import SkillRequirement
 from lumi_agent_runtime.skill_registry import (
     SkillCapabilityError,
     SkillDefinition,
+    SkillDefinitionInvalidError,
     SkillDependencyCycleError,
     SkillExecutionContext,
     SkillPermissionError,
@@ -35,9 +36,7 @@ def registry() -> SkillRegistry:
 def creative_context(*, capabilities=()) -> SkillExecutionContext:
     return SkillExecutionContext(
         agent_id="creative-director",
-        allowed_tools=frozenset(
-            {"web.search", "web.fetch", "asset.read", "artifact.query"}
-        ),
+        allowed_tools=frozenset({"web.search", "web.fetch", "asset.read", "artifact.query"}),
         granted_permissions=frozenset(),
         available_capabilities=frozenset(capabilities),
     )
@@ -146,12 +145,20 @@ class SkillRegistryTests(unittest.TestCase):
             revision=1,
             releases=(
                 SkillReleaseRecord(
-                    "a", "1.0.0", SkillReleaseStatus.PRODUCTION,
-                    "a-v1", "passed", "eval://a",
+                    "a",
+                    "1.0.0",
+                    SkillReleaseStatus.PRODUCTION,
+                    "a-v1",
+                    "passed",
+                    "eval://a",
                 ),
                 SkillReleaseRecord(
-                    "b", "1.0.0", SkillReleaseStatus.PRODUCTION,
-                    "b-v1", "passed", "eval://b",
+                    "b",
+                    "1.0.0",
+                    SkillReleaseStatus.PRODUCTION,
+                    "b-v1",
+                    "passed",
+                    "eval://b",
                 ),
             ),
             aliases={
@@ -175,7 +182,7 @@ class SkillRegistryTests(unittest.TestCase):
                 "---\nname: wrong\ndescription: Expected summary\n---\nbody",
                 encoding="utf-8",
             )
-            with self.assertRaises(Exception):
+            with self.assertRaises(SkillDefinitionInvalidError):
                 load_skill(version_dir)
 
 

@@ -1,6 +1,17 @@
 export type BillingSubscriptionState =
-  | "TRIALING" | "ACTIVE" | "PAST_DUE" | "CANCEL_AT_PERIOD_END" | "CANCELLED" | "INCOMPLETE";
-export type CreditEntryType = "GRANT" | "CONSUME" | "REFUND" | "EXPIRE" | "ADJUSTMENT" | "REVERSAL";
+  | "TRIALING"
+  | "ACTIVE"
+  | "PAST_DUE"
+  | "CANCEL_AT_PERIOD_END"
+  | "CANCELLED"
+  | "INCOMPLETE";
+export type CreditEntryType =
+  | "GRANT"
+  | "CONSUME"
+  | "REFUND"
+  | "EXPIRE"
+  | "ADJUSTMENT"
+  | "REVERSAL";
 
 export interface BillingPlanVersion {
   readonly plan_id: string;

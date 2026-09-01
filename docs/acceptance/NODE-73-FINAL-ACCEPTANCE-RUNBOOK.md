@@ -4,7 +4,7 @@
 
 ## 1. Purpose
 
-This runbook is the final Go/No-Go procedure for LUMI AI Design OS. It does not replace NODE-66～72; it freezes and re-validates their real evidence together with the product journeys, documentation and operational handoff.
+This runbook is the final Go/No-Go procedure for LUMI AI Design OS. It does not replace NODE-66～72; it freezes and re-validates their real evidence together with the product journeys, documentation, repository governance and operational handoff.
 
 The default outcome is:
 
@@ -14,19 +14,21 @@ NOT ACCEPTED — SEE BLOCKING GAPS
 
 The gate may emit `LUMI AI DESIGN OS — PRODUCT ACCEPTED` only when every P0 and every required upstream gate is evidenced PASS and no release blocker remains.
 
-## 2. Freeze one exact release candidate
+## 2. Freeze one exact Source RC
 
-Before final acceptance, identify exactly one RC:
+Before final acceptance, identify exactly one **Source RC**:
 
 ```text
-git_sha
+release_candidate.git_sha
 version
 migration_head
 production deployment_id
 production domain
 ```
 
-Do not mix evidence from different commits, migration heads or image sets.
+`release_candidate.git_sha` is the product/source commit actually used for six-runtime images, migrations, Staging and Production. It is **not** the later Final Evidence Head SHA.
+
+Do not mix evidence from different Source RC commits, migration heads or image sets.
 
 The exact Production deployment manifest must already exist under:
 
@@ -34,7 +36,7 @@ The exact Production deployment manifest must already exist under:
 reports/production-deployments/<deployment-id>/manifest.json
 ```
 
-and must match the final RC.
+and must match the Source RC.
 
 ## 3. Collect six upstream machine decisions
 
@@ -58,9 +60,9 @@ evidence_refs[] with path + sha256
 blockers=[]
 ```
 
-Performance, AI Regression, Staging Acceptance and Production Deployment must also use the exact final RC identity.
+Every identity-bearing upstream decision must use the exact Source RC identity.
 
-STOP if any upstream gate is not `passed=true`.
+STOP if any required upstream gate is not `passed=true`.
 
 ## 4. Create the final evidence skeleton
 
@@ -69,7 +71,7 @@ Run:
 ```bash
 python3 scripts/create-final-acceptance-evidence.py \
   --release-id <release-id> \
-  --git-sha <git-sha> \
+  --git-sha <source-rc-sha> \
   --version <version> \
   --migration-head <migration-head> \
   --output reports/final-acceptance/<release-id>/acceptance-evidence.json
@@ -79,7 +81,7 @@ The generator creates all 46 scenarios as `NOT_RUN`. Do not replace unexecuted w
 
 ## 5. Execute Golden Journey A — Zero-to-Brand
 
-Use a production-scope test account and the frozen RC.
+Use a production-scope test account and the frozen Source RC.
 
 Natural-language brief:
 
@@ -244,7 +246,7 @@ Do not continue final sign-off while a STOP-SHIP issue is open.
 
 ## 13. Production acceptance
 
-The final package must contain real evidence for:
+The final package must contain real Source-RC-bound evidence for:
 
 ```text
 HTTPS/domain
@@ -266,74 +268,215 @@ support/admin/on-call
 
 Source Terraform is not Production evidence.
 
-## 14. Freeze acceptance evidence
+For the image-generation path specifically, the accepted Worker Media image provenance must include the executable Celery/task runtime, Worker Media Docker build recipe and production CLI entrypoint, NODE-46 domain package, private Model Gateway adapter, versioned generation codec, canonical Postgres repository, reference/cost/outbox/storage ports, canonical artifact adapter, Hosted composition root and bounded S3 implementation. A worker-media digest without those source bindings is not acceptable evidence.
 
-After all scenario statuses are final, compute the SHA-256 of `acceptance-evidence.json` and put the exact path/hash into `release-manifest.json`.
+## 14. Prepare V2 pre-final policies and request
 
-Do not edit evidence after this point. Any edit requires re-freezing the release manifest and re-running the gate.
-
-## 15. Freeze upstream and Production evidence
-
-The final release manifest must also freeze:
+NODE-73 Finalization Identity V2 deliberately separates:
 
 ```text
-six upstream decision wrappers
-production deployment manifest
+Source RC SHA      = product/runtime identity
+Evidence Head SHA  = final evidence/workflow/review identity
 ```
 
-Each file is validated again by SHA-256 at decision time.
+A Git commit cannot contain a live approval/protection report whose validity depends on that same commit SHA. Therefore **do not commit live governance or approval results into the package**.
 
-## 16. Complete operational handoff
+### 14.1 Governance policy
 
-Assign and record:
-
-- on-call owner;
-- support owner;
-- incident commander rotation;
-- first-day watch owner;
-- quality/cost review owner;
-- security/dependency review owner;
-- DR drill owner;
-- capacity review owner.
-
-Required approvals:
+Use the canonical policy:
 
 ```text
-Product
-Engineering
-Security
-Operations
-Release Owner
+final/acceptance/repository-governance-policy-template.json
 ```
 
-All must be `APPROVED`.
+It declares the required two release refs and `LUMI_RELEASE_PROTECTION_PROFILE_V1`. It does not contain a live branch head.
 
-## 17. Run the final gate
+### 14.2 Approval principal policy V2
+
+Copy:
+
+```text
+final/acceptance/release-approval-policy-v2-template.json
+```
+
+into the release evidence area and replace every `PENDING` principal with real GitHub login allowlists.
+
+The policy requires:
+
+```text
+PR = #135
+base = node-73-final-acceptance-release
+head = release-closure-p0
+minimum distinct human approvers >= 3
+Engineering approver != Security approver
+Security approver != Release Owner approver
+PR author excluded
+bots forbidden
+review commit == exact Evidence Head SHA
+latest decisive review semantics
+```
+
+Do not invent principals. Missing real people/logins means Final Approval remains blocked.
+
+### 14.3 Authorization request V2
+
+Create a request from:
+
+```text
+final/acceptance/release-authorization-request-v2-template.json
+```
+
+The request freezes:
+
+```text
+release_id
+Source RC SHA/version/migration_head
+configured approval policy path + sha256
+operational handoff
+PR #135 identity
+```
+
+The request intentionally contains **no Evidence Head SHA and no APPROVED result**.
+
+## 15. Assemble the committed V2 package
+
+Use `scripts/final-acceptance-assembler-v2.py` with the exact Production manifest, six upstream decisions, scenario results, governance policy and V2 authorization request.
+
+Canonical output:
+
+```text
+reports/final-acceptance/<release-id>/release-manifest-v2.json
+reports/final-acceptance/<release-id>/acceptance-evidence.json
+```
+
+Then run:
 
 ```bash
-python3 scripts/final-acceptance-gate.py \
-  --release reports/final-acceptance/<release-id>/release-manifest.json \
-  --evidence reports/final-acceptance/<release-id>/acceptance-evidence.json \
-  --output reports/final-acceptance/<release-id>/final-decision.json
+python3 scripts/validate_final_acceptance_package_v2.py \
+  --release reports/final-acceptance/<release-id>/release-manifest-v2.json
 ```
 
-Or run the manual `Final Product Acceptance Gate` workflow against the two frozen files.
+The committed package MUST have:
+
+```text
+approvals.product = PENDING
+approvals.engineering = PENDING
+approvals.security = PENDING
+approvals.operations = PENDING
+approvals.release_owner = PENDING
+```
+
+It MUST NOT contain `release_authorization` or live `repository_governance` reports. A pre-approved committed package is invalid.
+
+## 16. Freeze the Evidence Head
+
+Commit all non-live final evidence, configured policies, authorization request, V2 package and canonical V2 decision source/workflow/contracts to `release-closure-p0`.
+
+The resulting commit becomes:
+
+```text
+evidence_head_sha
+```
+
+Final Decision requires:
+
+```text
+Source RC SHA is an ancestor of Evidence Head SHA
+GITHUB_SHA == Evidence Head SHA
+PR #135 head == Evidence Head SHA
+protected release-closure-p0 head == Evidence Head SHA
+GITHUB_REF == refs/heads/release-closure-p0
+canonical workflow ref == final-acceptance-gate.yml@refs/heads/release-closure-p0
+```
+
+After the Evidence Head is selected, **do not commit any live authorization, live governance or final-decision artifact back to `release-closure-p0`**. Any new source commit creates a new Evidence Head and invalidates prior reviews.
+
+## 17. Enable governance, collect reviews and run Final Decision
+
+### 17.1 Strong branch protection
+
+Both:
+
+```text
+node-73-final-acceptance-release
+release-closure-p0
+```
+
+must satisfy `LUMI_RELEASE_PROTECTION_PROFILE_V1`, including strict required checks, PR review requirement, stale review dismissal, last-push approval, admin enforcement, linear history, conversation resolution, no approval bypass, no force pushes and no branch deletion.
+
+Final Decision requires a read-only `RELEASE_GOVERNANCE_TOKEN` capable of reading detailed repository Administration protection state.
+
+### 17.2 Human reviews on the Evidence Head
+
+The configured role principals submit real GitHub **APPROVED** reviews on PR #135 after the Evidence Head is final.
+
+A review is rejected when it is:
+
+- by the PR author;
+- by a bot;
+- not `APPROVED`;
+- attached to any commit other than Evidence Head;
+- superseded by a later decisive `CHANGES_REQUESTED` or dismissed review;
+- outside the role's configured login allowlist;
+- unable to satisfy minimum distinct actors or separation of duties.
+
+The authorization result is generated live as `LUMI_RELEASE_AUTHORIZATION_V2`. It records Source RC and Evidence Head separately.
+
+### 17.3 Dispatch the canonical workflow
+
+Dispatch `Final Product Acceptance Gate` from exact `release-closure-p0` Evidence Head with:
+
+```text
+release_manifest_path = reports/final-acceptance/<release-id>/release-manifest-v2.json
+acceptance_evidence_path = reports/final-acceptance/<release-id>/acceptance-evidence.json
+```
+
+The `final-decision` job checks out exact `github.sha` with `fetch-depth: 0` and runs only:
+
+```text
+validate_final_acceptance_package_v2.py
+final-acceptance-decision-v2.py
+```
+
+The outer decision performs, in this order:
+
+```text
+validate committed V2 package
+capture live strong repository governance
+capture live Evidence-Head GitHub approvals
+prove Source RC ancestor of Evidence Head
+project five APPROVED statuses into an in-memory release object
+run stable 46-scenario final-acceptance-gate.py
+bind all canonical input hashes and live-report hashes into final-decision-v2.json
+```
+
+Runtime-only outputs include:
+
+```text
+runtime-v2/repository-governance-live.json
+runtime-v2/release-authorization-live.json
+final-decision-v2.json
+```
+
+They are GitHub Actions artifacts only. Do not commit them back to the Evidence Head branch.
 
 ## 18. Decision handling
 
-If the gate exits non-zero or reports blockers:
+If any V2 source/package/live-control/product gate exits non-zero or reports blockers:
 
 ```text
 NOT ACCEPTED — SEE BLOCKING GAPS
 ```
 
-Keep the release out of final acceptance. Fix or explicitly re-scope the actual blocker; do not edit the matrix or delete a scenario to make the report green.
+Keep the release out of final acceptance. Do not edit the matrix, fabricate approvals, weaken protection, or delete evidence to make the report green.
 
-Only when the machine decision returns `accepted=true` may the release headline be:
+Only when the V2 outer machine decision returns `accepted=true` may the release headline be:
 
 ```text
 LUMI AI DESIGN OS — PRODUCT ACCEPTED
 ```
+
+A direct standalone invocation of the inner `final-acceptance-gate.py` is **not** canonical release authorization.
 
 ## 19. Post-acceptance operating cadence
 
@@ -352,8 +495,36 @@ Final acceptance is the start of governed operations, not permission to stop val
 
 ## 20. Current project state
 
-As of this source baseline, NODE-68～72 still contain unresolved runtime/cloud evidence requirements and GitHub hosted CI has been blocked before runner start by an account Billing/spending-limit condition on the latest readiness nodes.
+The code-addressable release-trust path now includes:
 
-Therefore this runbook's current final outcome is intentionally:
+- durable Provider side-effect/cost controls and private Model Gateway boundaries;
+- real Worker Media image-generation execution path;
+- exact six-runtime Source-RC image identity, SBOM and provenance contracts;
+- NODE-71 build-artifact binding and NODE-72 decision provenance binding;
+- immutable release Action pins and scoped permissions;
+- Finalization Identity V2 with separate Source RC and Evidence Head identities;
+- V2 governance policy rather than a self-referential committed live report;
+- V2 GitHub approval policy/request where reviews bind Evidence Head, not Source RC;
+- committed V2 package with approvals forced to `PENDING`;
+- canonical V2 Final Decision that derives approvals only from live GitHub state and binds both SHA identities plus live report hashes into the final artifact;
+- executable V2 assembler/package negative-drill contract.
+
+These are source/contract closures, not runtime or human-approval proof. Final acceptance remains blocked by at least:
+
+- canonical `uv.lock` regeneration and successful `uv sync --all-packages --frozen`;
+- successful trusted PostgreSQL migration/ORM-drift/NODE-20/NODE-27/NODE-46 integration execution;
+- successful Worker Media and Model Gateway production-image build/start proof;
+- real six-runtime image build/start/promotion and live attestation evidence;
+- Production-like Staging, Production smoke/canary/rollback and DR evidence;
+- remaining NODE-68～72 runtime/cloud evidence requirements;
+- strong protection/ruleset configuration for both NODE-73 release refs (currently GitHub reports `protected=false`);
+- a usable Administration-read `RELEASE_GOVERNANCE_TOKEN`;
+- configured real GitHub role principals for Product/Engineering/Security/Operations/Release Owner;
+- at least three distinct human Evidence-Head APPROVED reviews satisfying role/SoD policy (currently PR #135 has zero submitted reviews);
+- successful Hosted CI execution; sampled release-critical jobs have continued to fail before executable steps with `steps=null` and `logs_url=null`.
+
+No zero-step red job is treated as a product failure or PASS.
+
+Therefore this runbook's current final outcome remains intentionally:
 
 # NOT ACCEPTED — SEE BLOCKING GAPS

@@ -57,11 +57,16 @@ jobs:
       - name: Run Project integration suite
         env:
           LUMI_DB_INTEGRATION: "1"
-        run: >-
-          uv run pytest
-          apps/api/tests/integration/test_database_persistence.py
-          apps/api/tests/integration/test_project_core.py
-          apps/api/tests/integration/test_project_security.py
+        run: |
+          set -a
+          source infra/compose/.env
+          set +a
+          export DATABASE_URL="postgresql+asyncpg://${POSTGRES_APP_USER}:${POSTGRES_APP_PASSWORD}@localhost:${POSTGRES_PORT}/${POSTGRES_DB}"
+          export MIGRATION_DATABASE_URL="postgresql+asyncpg://${POSTGRES_MIGRATION_USER}:${POSTGRES_MIGRATION_PASSWORD}@localhost:${POSTGRES_PORT}/${POSTGRES_DB}"
+          uv run pytest \
+            apps/api/tests/integration/test_database_persistence.py \
+            apps/api/tests/integration/test_project_core.py \
+            apps/api/tests/integration/test_project_security.py
       - name: Capture database diagnostics on failure
         if: failure()
         shell: bash

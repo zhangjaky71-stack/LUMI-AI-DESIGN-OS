@@ -19,11 +19,9 @@ describe("OrgScopedQueryCache", () => {
       ["projects"],
       (signal) =>
         new Promise<string>((_resolve, reject) => {
-          signal.addEventListener(
-            "abort",
-            () => reject(new Error("aborted")),
-            { once: true },
-          );
+          signal.addEventListener("abort", () => reject(new Error("aborted")), {
+            once: true,
+          });
         }),
     );
 

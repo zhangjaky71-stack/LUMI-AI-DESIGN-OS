@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Mapping
 
 from .model import (
     AuthorizedReference,
@@ -27,6 +27,7 @@ class StaticReferenceAuthorizer:
         spec: ImageGenerationSpec,
         references: tuple[ImageReference, ...],
     ) -> tuple[AuthorizedReference, ...]:
+        del spec
         result: list[AuthorizedReference] = []
         for reference in references:
             item = self.references.get((reference.asset_id, reference.asset_version))

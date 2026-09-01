@@ -6,8 +6,8 @@ from uuid import UUID
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
-    Boolean,
     CHAR,
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
@@ -17,7 +17,8 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..base import Base, IdMixin, MutableTimestampMixin
@@ -105,9 +106,7 @@ class MemoryRecordModel(IdMixin, MutableTimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     created_by_type: Mapped[str] = mapped_column(String(32), nullable=False)
     created_by_id: Mapped[str] = mapped_column(String(512), nullable=False)
-    last_confirmed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
-    )
+    last_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

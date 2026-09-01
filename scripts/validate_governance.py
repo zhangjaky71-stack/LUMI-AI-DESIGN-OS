@@ -78,7 +78,13 @@ def main() -> None:
         "/legal-holds",
         "/deletions",
     )
-    require(component, "Audit, Retention & Data Governance", "BLOCKED_HOLD", "Get fresh download")
+    require(
+        component,
+        "Audit, Retention & Data Governance",
+        "blocked_hold_ids",
+        "Blocked by",
+        "Get fresh download",
+    )
     require(
         gateway,
         "DeterministicGovernanceGateway",

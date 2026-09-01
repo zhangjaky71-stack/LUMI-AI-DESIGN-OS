@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { identityCacheKey } from "./cache";
 import { identityValidationBatchSnapshotId } from "./runtime";
-import type { IdentityReferenceSet, IdentityValidationReport, ThresholdCalibrationProfile } from "./types";
+import type {
+  IdentityReferenceSet,
+  IdentityValidationReport,
+  ThresholdCalibrationProfile,
+} from "./types";
 
 const profile: ThresholdCalibrationProfile = {
   profile_id: "p",
@@ -18,7 +22,19 @@ const profile: ThresholdCalibrationProfile = {
   model_bundle_version: "m@1",
   preprocessor_version: "prep@1",
   calibration_dataset_version: "cal@1",
-  metrics: { threshold: 90, precision: 1, recall: 1, f1: 1, false_positive_rate: 0, false_negative_rate: 0, roc_auc: 1, average_precision: 1, positive_count: 1, negative_count: 1, near_miss_count: 1 },
+  metrics: {
+    threshold: 90,
+    precision: 1,
+    recall: 1,
+    f1: 1,
+    false_positive_rate: 0,
+    false_negative_rate: 0,
+    roc_auc: 1,
+    average_precision: 1,
+    positive_count: 1,
+    negative_count: 1,
+    near_miss_count: 1,
+  },
 };
 function identity(org: string): IdentityReferenceSet {
   return {
@@ -26,7 +42,14 @@ function identity(org: string): IdentityReferenceSet {
     organization_id: org,
     type: "LOGO",
     canonical_asset_ids: ["asset"],
-    reference_views: [{ view_id: "front", asset_id: "asset", asset_version: "1", organization_id: org }],
+    reference_views: [
+      {
+        view_id: "front",
+        asset_id: "asset",
+        asset_version: "1",
+        organization_id: org,
+      },
+    ],
     threshold_profile_id: "p",
     threshold_profile_version: "1",
     version: "1",
@@ -61,9 +84,22 @@ function report(org: string): IdentityValidationReport {
 
 describe("NODE-44 tenant-bound identity hashes", () => {
   it("produces different cache keys for different tenants with otherwise identical inputs", async () => {
-    const base = { candidate_checksum_sha256: "1".repeat(64), profile, provider_id: "provider", provider_version: "m@1", preprocessor_version: "prep@1" };
-    const first = await identityCacheKey({ ...base, identity: identity("org-a") });
-    const second = await identityCacheKey({ ...base, identity: identity("org-b"), profile: { ...profile, organization_id: "org-b" } });
+    const base = {
+      candidate_checksum_sha256: "1".repeat(64),
+      profile,
+      provider_id: "provider",
+      provider_version: "m@1",
+      preprocessor_version: "prep@1",
+    };
+    const first = await identityCacheKey({
+      ...base,
+      identity: identity("org-a"),
+    });
+    const second = await identityCacheKey({
+      ...base,
+      identity: identity("org-b"),
+      profile: { ...profile, organization_id: "org-b" },
+    });
     expect(first).not.toBe(second);
   });
 

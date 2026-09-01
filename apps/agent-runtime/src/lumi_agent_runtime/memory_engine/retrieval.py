@@ -27,9 +27,7 @@ class MemoryRetriever:
         self,
         query: MemorySearchQuery,
     ) -> tuple[MemorySearchResult, ...]:
-        records = await self.repository.list_active(
-            organization_id=query.access.organization_id
-        )
+        records = await self.repository.list_active(organization_id=query.access.organization_id)
         requested_scopes = set(query.scope_types)
         now = datetime.now(UTC)
         results: list[MemorySearchResult] = []

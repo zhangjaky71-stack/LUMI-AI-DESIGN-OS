@@ -35,10 +35,10 @@ async def main_async() -> None:
 
     first = selected[0]
     second = selected[1]
-    first_provider = getattr(first, "provider")
-    first_model = getattr(first, "model")
-    second_provider = getattr(second, "provider")
-    second_model = getattr(second, "model")
+    first_provider = first.provider
+    first_model = first.model
+    second_provider = second.provider
+    second_model = second.model
 
     adapters = (
         MockProvider(provider=first_provider, model=first_model, quality_score=100),

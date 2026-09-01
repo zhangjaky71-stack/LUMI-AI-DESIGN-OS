@@ -38,7 +38,9 @@ def detect_conflicts(constraints: Iterable[Constraint]) -> tuple[Violation, ...]
     for constraint in constraints:
         if not constraint.active:
             continue
-        groups[(constraint.type, scope_key(constraint), precedence_key(constraint))].append(constraint)
+        groups[(constraint.type, scope_key(constraint), precedence_key(constraint))].append(
+            constraint
+        )
 
     violations: list[Violation] = []
     for (constraint_type, _, _), group in groups.items():
@@ -46,7 +48,9 @@ def detect_conflicts(constraints: Iterable[Constraint]) -> tuple[Violation, ...]
             continue
         by_parameters: dict[str, list[Constraint]] = defaultdict(list)
         for constraint in group:
-            encoded = json.dumps(_plain(constraint.parameters), sort_keys=True, separators=(",", ":"))
+            encoded = json.dumps(
+                _plain(constraint.parameters), sort_keys=True, separators=(",", ":")
+            )
             by_parameters[encoded].append(constraint)
         if len(by_parameters) == 1:
             continue

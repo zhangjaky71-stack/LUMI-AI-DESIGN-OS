@@ -1,4 +1,8 @@
-import { getDocumentVersion, type DesignDocument, type DesignOperation } from "../../design-ir/src/index";
+import {
+  getDocumentVersion,
+  type DesignDocument,
+  type DesignOperation,
+} from "../../design-ir/src/index";
 
 export interface TextEditSnapshot {
   readonly node_id: string;
@@ -10,7 +14,9 @@ export interface TextEditSnapshot {
 
 export function graphemeCount(value: string, locale = "zh"): number {
   if (typeof Intl.Segmenter === "function") {
-    return [...new Intl.Segmenter(locale, { granularity: "grapheme" }).segment(value)].length;
+    return [
+      ...new Intl.Segmenter(locale, { granularity: "grapheme" }).segment(value),
+    ].length;
   }
   return Array.from(value).length;
 }
@@ -70,7 +76,10 @@ export class CanvasTextEditSession {
     };
   }
 
-  commitOperation(document: DesignDocument, operationId: string): DesignOperation | null {
+  commitOperation(
+    document: DesignDocument,
+    operationId: string,
+  ): DesignOperation | null {
     if (this.#composing || this.#value === this.#initial) return null;
     return {
       operation_id: operationId,

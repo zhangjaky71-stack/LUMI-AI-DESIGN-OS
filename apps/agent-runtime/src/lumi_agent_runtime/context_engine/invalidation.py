@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 from .cache import InMemoryContextCache
 
-
 _INVALIDATING_EVENTS = frozenset(
     {
         "project.summary.updated",
@@ -30,6 +29,10 @@ class ContextInvalidationEvent:
 class ContextCacheInvalidator:
     def __init__(self, cache: InMemoryContextCache) -> None:
         self.cache = cache
+
+    def apply(self, event: ContextInvalidationEvent) -> int:
+        """Apply one invalidation event through the stable synchronous boundary."""
+        return self.handle(event)
 
     def handle(self, event: ContextInvalidationEvent) -> int:
         if event.event_name not in _INVALIDATING_EVENTS:

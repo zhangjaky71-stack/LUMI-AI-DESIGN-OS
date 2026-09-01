@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from collections.abc import Iterable
-from typing import Any, Awaitable
+from collections.abc import Awaitable, Iterable
+from typing import Any
 from uuid import UUID, uuid5
 
 from langgraph.store.base import (
@@ -82,9 +82,7 @@ class DeepAgentMemoryStore(BaseStore):
             elif isinstance(op, ListNamespacesOp):
                 results.append([_VIRTUAL_NAMESPACE])
             else:
-                raise TypeError(
-                    f"MEMORY_STORE_OPERATION_UNSUPPORTED:{type(op).__name__}"
-                )
+                raise TypeError(f"MEMORY_STORE_OPERATION_UNSUPPORTED:{type(op).__name__}")
         return results
 
     def batch(self, ops: Iterable[Op]) -> list[Result]:
@@ -103,17 +101,14 @@ class DeepAgentMemoryStore(BaseStore):
             (
                 row.record
                 for row in rows
-                if row.record.semantic_key == key
-                and row.record.scope_id == self.scope_id
+                if row.record.semantic_key == key and row.record.scope_id == self.scope_id
             ),
             None,
         )
         return _item(match) if match is not None else None
 
     async def _put(self, key: str, value: dict[str, Any]) -> None:
-        kind = MemoryKind(
-            str(value.get("kind", MemoryKind.WORKFLOW_LEARNING.value))
-        )
+        kind = MemoryKind(str(value.get("kind", MemoryKind.WORKFLOW_LEARNING.value)))
         summary = str(value.get("summary") or value.get("content") or "").strip()
         if not summary:
             raise ValueError("MEMORY_STORE_SUMMARY_REQUIRED")
@@ -159,8 +154,7 @@ class DeepAgentMemoryStore(BaseStore):
             "BRAND_RULE_PROPOSAL",
         }:
             raise PermissionError(
-                f"MEMORY_STORE_WRITE_NOT_ACTIVE:{decision.outcome.value}:"
-                f"{decision.reason}"
+                f"MEMORY_STORE_WRITE_NOT_ACTIVE:{decision.outcome.value}:{decision.reason}"
             )
 
     async def _delete(self, key: str) -> None:
@@ -187,9 +181,9 @@ class DeepAgentMemoryStore(BaseStore):
                 scope_types=(self.scope_type,),
             )
         )
-        scoped = [
-            row for row in rows if row.record.scope_id == self.scope_id
-        ][offset : offset + limit]
+        scoped = [row for row in rows if row.record.scope_id == self.scope_id][
+            offset : offset + limit
+        ]
         return [
             SearchItem(
                 namespace=_VIRTUAL_NAMESPACE,
@@ -275,9 +269,13 @@ def _value(record) -> dict[str, Any]:
     }
 
 
+async def _await_results(awaitable: Awaitable[list[Result]]) -> list[Result]:
+    return await awaitable
+
+
 def _run_sync(awaitable: Awaitable[list[Result]]) -> list[Result]:
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(awaitable)
+        return asyncio.run(_await_results(awaitable))
     raise RuntimeError("MEMORY_STORE_SYNC_CALL_INSIDE_EVENT_LOOP_USE_ASYNC_GRAPH")

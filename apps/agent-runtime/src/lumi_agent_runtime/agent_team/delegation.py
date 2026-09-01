@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Mapping
 
 from lumi_agent_runtime.agent_registry.definition import AgentDefinition
 
-from .contracts import AgentTeamProfile, DelegationGrant, team_profile
+from .contracts import (
+    DelegationGrant,
+    definition_permission_names,
+    definition_tool_names,
+    team_profile,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,8 +51,8 @@ def authorize_delegation(
     parent_permission_ceiling = (
         parent_profile.delegation_permission_ceiling & runtime.granted_permissions
     )
-    child_tools = frozenset(child.allowed_tools)
-    child_permissions = frozenset(child.permissions)
+    child_tools = definition_tool_names(child)
+    child_permissions = definition_permission_names(child)
     if not child_tools <= parent_tool_ceiling:
         raise PermissionError("AGENT_TEAM_CHILD_TOOL_ESCALATION")
     if not child_permissions <= parent_permission_ceiling:
@@ -59,9 +64,7 @@ def authorize_delegation(
         if not child_profile.delegation_tool_ceiling <= parent_tool_ceiling:
             raise PermissionError("AGENT_TEAM_CHILD_DELEGATION_TOOL_CEILING_ESCALATION")
         if not child_profile.delegation_permission_ceiling <= parent_permission_ceiling:
-            raise PermissionError(
-                "AGENT_TEAM_CHILD_DELEGATION_PERMISSION_CEILING_ESCALATION"
-            )
+            raise PermissionError("AGENT_TEAM_CHILD_DELEGATION_PERMISSION_CEILING_ESCALATION")
 
     return DelegationGrant(
         parent_agent=parent.agent_id,
@@ -84,19 +87,16 @@ def validate_team_delegation_graph(
             if child is None:
                 raise ValueError(f"AGENT_TEAM_UNKNOWN_DELEGATE:{agent_id}:{child_id}")
             child_profile = team_profile(child)
-            if not set(child.allowed_tools) <= profile.delegation_tool_ceiling:
-                raise ValueError(
-                    f"AGENT_TEAM_STATIC_CHILD_TOOL_ESCALATION:{agent_id}:{child_id}"
-                )
-            if not set(child.permissions) <= profile.delegation_permission_ceiling:
+            if not definition_tool_names(child) <= profile.delegation_tool_ceiling:
+                raise ValueError(f"AGENT_TEAM_STATIC_CHILD_TOOL_ESCALATION:{agent_id}:{child_id}")
+            if not definition_permission_names(child) <= profile.delegation_permission_ceiling:
                 raise ValueError(
                     f"AGENT_TEAM_STATIC_CHILD_PERMISSION_ESCALATION:{agent_id}:{child_id}"
                 )
             if child_profile.can_delegate:
                 if not child_profile.delegation_tool_ceiling <= profile.delegation_tool_ceiling:
                     raise ValueError(
-                        "AGENT_TEAM_STATIC_NESTED_TOOL_CEILING_ESCALATION:"
-                        f"{agent_id}:{child_id}"
+                        f"AGENT_TEAM_STATIC_NESTED_TOOL_CEILING_ESCALATION:{agent_id}:{child_id}"
                     )
                 if not child_profile.delegation_permission_ceiling <= (
                     profile.delegation_permission_ceiling

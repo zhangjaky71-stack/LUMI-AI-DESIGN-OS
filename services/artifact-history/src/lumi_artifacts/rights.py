@@ -29,10 +29,7 @@ def inherit_rights(
             raise ValueError("rights inheritance cannot cross tenants")
 
     license_types = {record.license_type for record in records}
-    if len(license_types) == 1:
-        license_type = next(iter(license_types))
-    else:
-        license_type = "UNKNOWN"
+    license_type = next(iter(license_types)) if len(license_types) == 1 else "UNKNOWN"
 
     if any(record.review_status == "RESTRICTED" for record in records):
         review_status = "RESTRICTED"

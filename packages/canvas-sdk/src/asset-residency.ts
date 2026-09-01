@@ -3,7 +3,11 @@ import type { CanvasSceneSnapshot } from "./ir-scene";
 import { CanvasResourceManager } from "./resource-manager";
 
 export interface CanvasAssetResidencyPort {
-  update(scene: CanvasSceneSnapshot, visibleIds: ReadonlySet<string>, zoom: number): void;
+  update(
+    scene: CanvasSceneSnapshot,
+    visibleIds: ReadonlySet<string>,
+    zoom: number,
+  ): void;
   setInvalidator?(invalidate: () => void): void;
   destroy(): void;
 }
@@ -35,7 +39,11 @@ export class CanvasAssetResidency<T> implements CanvasAssetResidencyPort {
     this.#invalidate = invalidate;
   }
 
-  update(scene: CanvasSceneSnapshot, visibleIds: ReadonlySet<string>, zoom: number): void {
+  update(
+    scene: CanvasSceneSnapshot,
+    visibleIds: ReadonlySet<string>,
+    zoom: number,
+  ): void {
     const next = new Map<string, DesiredAsset>();
     const tier = tierForZoom(zoom);
 
@@ -47,7 +55,12 @@ export class CanvasAssetResidency<T> implements CanvasAssetResidencyPort {
 
     for (const [nodeId, current] of this.#desiredByNode) {
       const wanted = next.get(nodeId);
-      if (wanted && wanted.assetId === current.assetId && wanted.tier === current.tier) continue;
+      if (
+        wanted &&
+        wanted.assetId === current.assetId &&
+        wanted.tier === current.tier
+      )
+        continue;
       this.#requestTokenByNode.delete(nodeId);
       this.#manager.release(current.assetId, current.tier);
       this.#desiredByNode.delete(nodeId);
@@ -55,14 +68,20 @@ export class CanvasAssetResidency<T> implements CanvasAssetResidencyPort {
 
     for (const [nodeId, wanted] of next) {
       const current = this.#desiredByNode.get(nodeId);
-      if (current && current.assetId === wanted.assetId && current.tier === wanted.tier) continue;
+      if (
+        current &&
+        current.assetId === wanted.assetId &&
+        current.tier === wanted.tier
+      )
+        continue;
       this.#desiredByNode.set(nodeId, wanted);
       this.#nextRequestToken += 1;
       const requestToken = this.#nextRequestToken;
       this.#requestTokenByNode.set(nodeId, requestToken);
       void this.#manager.acquire(wanted.assetId, wanted.tier).then(() => {
         const stillWanted = this.#desiredByNode.get(nodeId);
-        const stillCurrent = this.#requestTokenByNode.get(nodeId) === requestToken;
+        const stillCurrent =
+          this.#requestTokenByNode.get(nodeId) === requestToken;
         if (
           !stillCurrent ||
           !stillWanted ||

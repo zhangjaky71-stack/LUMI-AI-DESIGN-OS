@@ -131,7 +131,9 @@ def test_stale_agent_run_with_external_side_effect_reconciles_first() -> None:
     assert decision.stop_auto_retry is True
 
 
-def test_unpublished_outbox_is_replayed_and_published_event_can_be_replayed_in_broker_rebuild() -> None:
+def test_unpublished_outbox_is_replayed_and_published_event_can_be_replayed_in_broker_rebuild() -> (
+    None
+):
     unpublished = plan_outbox_recovery(
         OutboxRecoverySnapshot(event_id="event-1", published_at=None),
     )

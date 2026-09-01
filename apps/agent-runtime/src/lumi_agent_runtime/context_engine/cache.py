@@ -47,9 +47,7 @@ class InMemoryContextCache:
 
     def invalidate_source_version(self, source_version: str) -> int:
         keys = [
-            key
-            for key, entry in self._entries.items()
-            if source_version in entry.source_versions
+            key for key, entry in self._entries.items() if source_version in entry.source_versions
         ]
         for key in keys:
             self._entries.pop(key, None)

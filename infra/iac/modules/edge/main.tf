@@ -19,7 +19,9 @@ resource "aws_wafv2_web_acl" "this" {
   rule {
     name     = "aws-common-rules"
     priority = 10
-    override_action { none {} }
+    override_action {
+      none {}
+    }
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
@@ -36,7 +38,9 @@ resource "aws_wafv2_web_acl" "this" {
   rule {
     name     = "aws-known-bad-inputs"
     priority = 20
-    override_action { none {} }
+    override_action {
+      none {}
+    }
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesKnownBadInputsRuleSet"
@@ -53,7 +57,9 @@ resource "aws_wafv2_web_acl" "this" {
   rule {
     name     = "aws-ip-reputation"
     priority = 30
-    override_action { none {} }
+    override_action {
+      none {}
+    }
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesAmazonIpReputationList"
@@ -70,7 +76,9 @@ resource "aws_wafv2_web_acl" "this" {
   rule {
     name     = "per-ip-rate-limit"
     priority = 40
-    action { block {} }
+    action {
+      block {}
+    }
     statement {
       rate_based_statement {
         aggregate_key_type = "IP"

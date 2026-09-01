@@ -49,7 +49,9 @@ def validate_csrf(
     if csrf_token is None or origin is None:
         raise PermissionError("CSRF_REQUIRED")
     parsed = urlsplit(origin)
-    normalized_origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
+    normalized_origin = (
+        f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
+    )
     if normalized_origin not in allowed_origins:
         raise PermissionError("CSRF_ORIGIN_DENIED")
     if not hmac.compare_digest(hash_token(csrf_token), record.csrf_token_hash):

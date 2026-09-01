@@ -2,14 +2,23 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 from uuid import UUID
 
 import asyncpg
 from kombu import Connection, Producer
 
-from .event_runtime import KombuDomainPublisher, OutboxDispatcher
+from .event_runtime import DomainOutboxHealth, KombuDomainPublisher, OutboxDispatcher
+from .external_wait_runtime import MediaExternalWaitWakeScheduler
+from .job_dispatch_runtime import (
+    CeleryJobPublisher,
+    MediaJobOutboxDispatcher,
+    MediaJobOutboxHealth,
+)
 from .topology import DOMAIN_EXCHANGE, declare_topology
+
+_HEALTH_LOG_KIND = "lumi.outbox_dispatcher.health"
 
 
 def main() -> int:
@@ -25,9 +34,9 @@ def main() -> int:
     replay.add_argument("--id", required=True)
     args = parser.parse_args()
 
-    broker_url = os.getenv("RABBITMQ_URL")
+    broker_url = os.getenv("LUMI_RABBITMQ_URL") or os.getenv("RABBITMQ_URL")
     if not broker_url:
-        raise SystemExit("RABBITMQ_URL is required")
+        raise SystemExit("LUMI_RABBITMQ_URL/RABBITMQ_URL is required")
     if args.command == "declare-topology":
         with Connection(broker_url) as connection:
             declare_topology(connection, domain_consumers=tuple(args.consumer))
@@ -66,13 +75,85 @@ async def _dispatch_outbox(
     watch: bool,
     interval: float,
 ) -> None:
-    dispatcher = OutboxDispatcher(dsn, KombuDomainPublisher(broker_url))
+    wake_scheduler = MediaExternalWaitWakeScheduler(dsn)
+    domain_dispatcher = OutboxDispatcher(dsn, KombuDomainPublisher(broker_url))
+    job_dispatcher = MediaJobOutboxDispatcher(dsn, CeleryJobPublisher())
     while True:
-        published = await dispatcher.dispatch_batch(limit=limit)
-        print(f"published={published}")
+        wakes = 0
+        job_published = 0
+        domain_published = 0
+        job_health = MediaJobOutboxHealth(
+            oldest_unpublished_age_seconds=0,
+            oldest_publish_attempts=0,
+        )
+        domain_health = DomainOutboxHealth(
+            oldest_unpublished_age_seconds=0,
+            oldest_publish_attempts=0,
+        )
+        failures: list[tuple[str, Exception]] = []
+        try:
+            wakes = len(await wake_scheduler.stage_due_batch(limit=limit))
+        except Exception as exc:
+            failures.append(("external-wake", exc))
+        try:
+            job_published = await job_dispatcher.dispatch_batch(limit=limit)
+        except Exception as exc:
+            failures.append(("jobs", exc))
+        try:
+            domain_published = await domain_dispatcher.dispatch_batch(limit=limit)
+        except Exception as exc:
+            failures.append(("domain", exc))
+        try:
+            job_health = await job_dispatcher.health_snapshot()
+        except Exception as exc:
+            failures.append(("jobs-health", exc))
+        try:
+            domain_health = await domain_dispatcher.health_snapshot()
+        except Exception as exc:
+            failures.append(("domain-health", exc))
+
+        published = job_published + domain_published
+        oldest_unpublished_age_seconds = max(
+            job_health.oldest_unpublished_age_seconds,
+            domain_health.oldest_unpublished_age_seconds,
+        )
+        oldest_publish_attempts = max(
+            job_health.oldest_publish_attempts,
+            domain_health.oldest_publish_attempts,
+        )
+        channels = sorted({name for name, _ in failures})
+        print(
+            json.dumps(
+                {
+                    "kind": _HEALTH_LOG_KIND,
+                    "status": "degraded" if failures else "ok",
+                    "published": published,
+                    "job_published": job_published,
+                    "domain_published": domain_published,
+                    "external_wakes": wakes,
+                    "oldest_unpublished_age_seconds": oldest_unpublished_age_seconds,
+                    "oldest_publish_attempts": oldest_publish_attempts,
+                    "oldest_job_unpublished_age_seconds": (
+                        job_health.oldest_unpublished_age_seconds
+                    ),
+                    "oldest_job_publish_attempts": job_health.oldest_publish_attempts,
+                    "oldest_domain_unpublished_age_seconds": (
+                        domain_health.oldest_unpublished_age_seconds
+                    ),
+                    "oldest_domain_publish_attempts": (domain_health.oldest_publish_attempts),
+                    "failure_count": len(failures),
+                    "failure_channels": channels,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            flush=True,
+        )
+        if failures:
+            raise RuntimeError(f"OUTBOX_DISPATCH_FAILED:{','.join(channels)}") from failures[0][1]
         if not watch:
             return
-        if published == 0:
+        if published == 0 and wakes == 0:
             await asyncio.sleep(interval)
 
 
@@ -93,7 +174,7 @@ async def _replay_dead_letter(dsn: str, *, broker_url: str, record_id: UUID) -> 
                 raise RuntimeError("DEAD_LETTER_NOT_FOUND")
             if row["replayed_at"] is not None:
                 raise RuntimeError("DEAD_LETTER_ALREADY_REPLAYED")
-            payload = dict(row["payload_json"])
+            payload = _json_object(row["payload_json"])
             if row["message_kind"] == "domain_event":
                 await asyncio.to_thread(
                     _publish_domain_replay,
@@ -121,17 +202,20 @@ async def _replay_dead_letter(dsn: str, *, broker_url: str, record_id: UUID) -> 
         await connection.close()
 
 
-def _publish_domain_replay(broker_url: str, payload: dict[str, object], routing_key: str) -> None:
+def _publish_domain_replay(
+    broker_url: str,
+    payload: dict[str, object],
+    routing_key: str,
+) -> None:
     with Connection(broker_url) as connection:
-        with connection.channel() as channel:
-            Producer(channel, serializer="json").publish(
-                payload,
-                exchange=DOMAIN_EXCHANGE,
-                routing_key=routing_key,
-                serializer="json",
-                declare=[DOMAIN_EXCHANGE],
-                retry=True,
-            )
+        Producer(connection, serializer="json").publish(
+            payload,
+            exchange=DOMAIN_EXCHANGE,
+            routing_key=routing_key,
+            serializer="json",
+            declare=[DOMAIN_EXCHANGE],
+            retry=True,
+        )
 
 
 def _publish_job_replay(
@@ -159,10 +243,21 @@ def _publish_job_replay(
     )
 
 
+def _json_object(value: object) -> dict[str, object]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("DEAD_LETTER_PAYLOAD_INVALID") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError("DEAD_LETTER_PAYLOAD_INVALID")
+    return dict(value)
+
+
 def _database_dsn() -> str:
-    value = os.getenv("DATABASE_URL")
+    value = os.getenv("LUMI_DATABASE_URL") or os.getenv("DATABASE_URL")
     if not value:
-        raise SystemExit("DATABASE_URL is required")
+        raise SystemExit("LUMI_DATABASE_URL/DATABASE_URL is required")
     if value.startswith("postgresql+asyncpg://"):
         return "postgresql://" + value[len("postgresql+asyncpg://") :]
     if value.startswith("postgresql://"):

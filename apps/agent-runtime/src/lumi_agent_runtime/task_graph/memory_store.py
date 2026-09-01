@@ -88,9 +88,7 @@ class InMemoryTaskGraphStore:
         with self._lock:
             rows = self._attempts[task_id]
             index = next(
-                index
-                for index, item in enumerate(rows)
-                if item.attempt_number == attempt_number
+                index for index, item in enumerate(rows) if item.attempt_number == attempt_number
             )
             finished = replace(rows[index], **changes)
             rows[index] = finished

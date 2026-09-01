@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib import import_module
-from typing import Any, AsyncIterator
+from typing import Any
 
 from .errors import GraphCheckpointRequiredError
 
@@ -24,7 +25,7 @@ async def open_postgres_checkpointer(
         raise ValueError("LANGGRAPH_CHECKPOINT_DSN_INVALID")
     try:
         module = import_module("langgraph.checkpoint.postgres.aio")
-        saver_type = getattr(module, "AsyncPostgresSaver")
+        saver_type = module.AsyncPostgresSaver
     except (ImportError, AttributeError) as exc:
         raise GraphCheckpointRequiredError(
             "langgraph-checkpoint-postgres is required for durable production execution"

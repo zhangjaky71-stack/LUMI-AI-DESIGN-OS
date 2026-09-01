@@ -75,7 +75,7 @@ jobs:
       - name: Live RabbitMQ Outbox Inbox and DLQ acceptance
         run: uv run python scripts/integration_queue_event_runtime.py
 
-      - name: Start real Celery image worker
+      - name: Start real Celery image-queue worker
         shell: bash
         run: |
           mkdir -p reports/nodes/NODE-19
@@ -88,7 +88,7 @@ jobs:
           echo $! > reports/nodes/NODE-19/celery-worker.pid
           sleep 5
 
-      - name: Celery sample job smoke
+      - name: Celery image-queue transport smoke
         run: |
           uv run python - <<'PY'
           from uuid import uuid4
@@ -102,13 +102,14 @@ jobs:
               "trace_id": "node19-ci",
           }
           result = celery_app.send_task(
-              "lumi.jobs.image.transform",
+              "lumi.jobs.asset.preview",
               args=[message],
               queue="lumi.media.image",
               routing_key="image.transform",
           )
           payload = result.get(timeout=20)
           assert payload["status"] == "accepted", payload
+          assert payload["kind"] == "asset.preview", payload
           print(payload)
           PY
 

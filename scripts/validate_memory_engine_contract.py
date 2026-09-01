@@ -3,8 +3,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from lumi_agent_runtime.memory_engine import MemoryKind, MemoryScope
-
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "apps/agent-runtime/src/lumi_agent_runtime/memory_engine"
 REQUIRED = {
@@ -43,11 +41,37 @@ def require(path: str, *markers: str) -> str:
     return text
 
 
+def _enum_string_values(path: Path, class_name: str) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    enum_class = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == class_name
+        ),
+        None,
+    )
+    if enum_class is None:
+        raise SystemExit(f"NODE-35 missing enum: {class_name}")
+    values: set[str] = set()
+    for node in enum_class.body:
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            values.add(node.value.value)
+    return values
+
+
 def main() -> int:
     missing = sorted(name for name in REQUIRED if not (PACKAGE / name).is_file())
     if missing:
         raise SystemExit(f"NODE-35 Memory modules missing: {missing}")
-    if {item.value for item in MemoryScope} != {
+    contracts_path = PACKAGE / "contracts.py"
+    if _enum_string_values(contracts_path, "MemoryScope") != {
         "SESSION",
         "USER",
         "PROJECT",
@@ -56,7 +80,7 @@ def main() -> int:
         "ORGANIZATION",
     }:
         raise SystemExit("NODE-35 memory scope vocabulary drifted")
-    if {item.value for item in MemoryKind} != {
+    if _enum_string_values(contracts_path, "MemoryKind") != {
         "PREFERENCE",
         "FACT",
         "DECISION",
@@ -82,7 +106,6 @@ def main() -> int:
     pipeline = require(
         "apps/agent-runtime/src/lumi_agent_runtime/memory_engine/pipeline.py",
         "REJECT_SENSITIVE",
-        "REJECT_SCOPE",
         "BRAND_RULE_PROPOSAL",
         "REQUIRE_CONFIRMATION",
         "DEDUPLICATE_CONFIRM",
@@ -104,6 +127,7 @@ def main() -> int:
 
     require(
         "apps/agent-runtime/src/lumi_agent_runtime/memory_engine/policy.py",
+        "MemoryCandidateOutcome.REJECT_SCOPE",
         "MEMORY_AGENT_SCOPE_DENIED",
         "MEMORY_AGENT_BRAND_WRITE_DENIED",
         "MEMORY_USER_SCOPE_DENIED",

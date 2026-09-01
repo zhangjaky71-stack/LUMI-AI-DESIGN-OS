@@ -18,10 +18,14 @@ from lumi_tool_gateway.testing import CountingAdapter
 
 class ToolClientBoundaryTests(unittest.IsolatedAsyncioTestCase):
     async def test_client_invokes_without_exposing_server_registry_or_adapters(self) -> None:
-        definition = next(
-            item for item in p0_tool_definitions() if item.name == "project.query"
-        )
-        adapter = CountingAdapter(ToolAdapterOutput(data={"rows": []}))
+        definition = next(item for item in p0_tool_definitions() if item.name == "project.query")
+        expected = {
+            "project_id": "01900000-0000-7000-8000-000000000002",
+            "name": "Client boundary project",
+            "status": "active",
+            "summary": {"rows": []},
+        }
+        adapter = CountingAdapter(ToolAdapterOutput(data=expected))
         gateway = ToolGateway(
             registry=ToolRegistry((definition,)),
             adapters={definition.key: adapter},
@@ -36,7 +40,7 @@ class ToolClientBoundaryTests(unittest.IsolatedAsyncioTestCase):
             actor_agent="planner",
             name=definition.name,
             version=definition.version,
-            arguments={"query": "project.summary", "parameters": {}},
+            arguments={"query": "project.summary"},
             purpose="read project summary",
             permission_context=ToolPermissionContext(
                 organization_id=organization_id,
@@ -46,7 +50,7 @@ class ToolClientBoundaryTests(unittest.IsolatedAsyncioTestCase):
             ),
         )
         result = await client.invoke(request)
-        self.assertEqual(result.data, {"rows": []})
+        self.assertEqual(result.data, expected)
         self.assertEqual(adapter.calls, 1)
         self.assertFalse(hasattr(client, "registry"))
         self.assertFalse(hasattr(client, "adapters"))

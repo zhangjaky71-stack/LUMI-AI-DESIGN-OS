@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 from .gateway import ModelGateway
-from .models import ModelRequest, ModelResult, StreamChunk
+from .models import ModelRequest, ModelResult, RouteCandidate, StreamChunk
 
 
 class ModelGatewayAPI:
@@ -11,6 +11,11 @@ class ModelGatewayAPI:
 
     def __init__(self, gateway: ModelGateway) -> None:
         self.gateway = gateway
+
+    async def estimate(self, request: ModelRequest) -> RouteCandidate:
+        """Return the top currently eligible route without invoking a provider."""
+        decision = await self.gateway.router.route(request)
+        return decision.candidates[0]
 
     async def invoke(self, request: ModelRequest) -> ModelResult:
         return await self.gateway.invoke(request)

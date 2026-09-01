@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 
+from .errors import ProviderInvocationError
 from .models import TelemetryEvent
 
 
@@ -98,6 +99,8 @@ _IGNORED_ERROR_CATEGORIES = frozenset(
     {
         "invalid_request",
         "content_policy",
+        "user_content_policy_block",
+        "hard_constraint_invalid",
         "budget_exceeded",
         "cancelled",
         "client_cancelled",
@@ -120,6 +123,10 @@ class AdaptiveProviderHealthRegistry:
         self._records: dict[str, _HealthRecord] = {}
         self._lock = threading.RLock()
 
+    def healthy(self, provider: str, model: str) -> bool:
+        """Compatibility boundary for the ModelRouter ProviderHealthRegistry port."""
+        return self.is_available(provider, model)
+
     def health_score(self, provider: str, model: str) -> int:
         return self.snapshot(provider, model).score
 
@@ -132,7 +139,13 @@ class AdaptiveProviderHealthRegistry:
     def is_available(self, provider: str, model: str) -> bool:
         return self.snapshot(provider, model).state != ProviderHealthState.OPEN
 
-    def record_success(self, provider: str, model: str, *, latency_ms: int) -> None:
+    def record_success(
+        self,
+        provider: str,
+        model: str,
+        *,
+        latency_ms: int = 0,
+    ) -> None:
         if latency_ms < 0:
             raise ValueError("PROVIDER_HEALTH_LATENCY_NEGATIVE")
         now = self.clock.monotonic()
@@ -149,10 +162,7 @@ class AdaptiveProviderHealthRegistry:
                 if record.half_open_inflight > 0:
                     record.half_open_inflight -= 1
                 record.half_open_successes += 1
-                if (
-                    record.half_open_successes
-                    >= self.policy.half_open_successes_to_close
-                ):
+                if record.half_open_successes >= self.policy.half_open_successes_to_close:
                     self._close(record, now)
                     return
             self._evaluate(record, now)
@@ -161,12 +171,20 @@ class AdaptiveProviderHealthRegistry:
         self,
         provider: str,
         model: str,
+        error: ProviderInvocationError | None = None,
         *,
-        error_category: str,
+        error_category: str | None = None,
         latency_ms: int = 0,
         retry_after_seconds: float | None = None,
     ) -> None:
-        normalized = error_category.strip().lower()
+        category = error_category
+        if category is None and error is not None:
+            category = error.category.value
+        if category is None:
+            raise ValueError("PROVIDER_HEALTH_ERROR_CATEGORY_REQUIRED")
+        if retry_after_seconds is None and error is not None:
+            retry_after_seconds = error.retry_after_seconds
+        normalized = category.strip().lower()
         if normalized in _IGNORED_ERROR_CATEGORIES:
             return
         if latency_ms < 0:
@@ -251,9 +269,7 @@ class AdaptiveProviderHealthRegistry:
             failures = sum(1 for item in record.samples if not item.success)
             sample_count = len(record.samples)
             failure_rate = failures / sample_count if sample_count else 0.0
-            latency_p95 = _p95(
-                [item.latency_ms for item in record.samples if item.success]
-            )
+            latency_p95 = _p95([item.latency_ms for item in record.samples if item.success])
             score = self._score(
                 state=record.state,
                 failure_rate=failure_rate,
@@ -310,28 +326,18 @@ class AdaptiveProviderHealthRegistry:
         samples = len(record.samples)
         failures = sum(1 for item in record.samples if not item.success)
         failure_rate = failures / samples if samples else 0.0
-        latency_p95 = _p95(
-            [item.latency_ms for item in record.samples if item.success]
-        )
+        latency_p95 = _p95([item.latency_ms for item in record.samples if item.success])
         if record.consecutive_failures >= self.policy.consecutive_failures_open:
             self._open(record, now)
             return
-        if (
-            samples >= self.policy.minimum_samples
-            and failure_rate >= self.policy.open_failure_rate
-        ):
+        if samples >= self.policy.minimum_samples and failure_rate >= self.policy.open_failure_rate:
             self._open(record, now)
             return
         degraded = (
             samples >= self.policy.minimum_samples
             and failure_rate >= self.policy.degraded_failure_rate
-        ) or (
-            latency_p95 is not None
-            and latency_p95 >= self.policy.degraded_latency_ms
-        )
-        record.state = (
-            ProviderHealthState.DEGRADED if degraded else ProviderHealthState.HEALTHY
-        )
+        ) or (latency_p95 is not None and latency_p95 >= self.policy.degraded_latency_ms)
+        record.state = ProviderHealthState.DEGRADED if degraded else ProviderHealthState.HEALTHY
         record.updated_at = now
 
     def _refresh_state(self, record: _HealthRecord, now: float) -> None:

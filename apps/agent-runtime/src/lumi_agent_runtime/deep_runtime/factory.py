@@ -90,9 +90,7 @@ class DeepAgentRuntimeFactory:
         if checkpointer is None:
             raise DeepAgentFactoryError("durable Deep Agent requires a NODE-28 checkpointer")
         store = (
-            await self.stores.store_for_run(context=context)
-            if self.stores is not None
-            else None
+            await self.stores.store_for_run(context=context) if self.stores is not None else None
         )
 
         subagent_configs: list[dict[str, Any]] = []
@@ -116,6 +114,7 @@ class DeepAgentRuntimeFactory:
                 parent_allowed_tools=effective_root_tools,
                 allowed_tools=child_allowed,
                 trace_id=context.trace_id,
+                budget_limit_usd=context.budget_limit_usd,
             )
             child_model = await self.models.model_for_subagent(
                 definition=child,
@@ -218,7 +217,7 @@ def _ordered_intersection(
 def _load_create_deep_agent():
     try:
         module = import_module("deepagents")
-        factory = getattr(module, "create_deep_agent")
+        factory = module.create_deep_agent
     except (ImportError, AttributeError) as exc:
         raise DeepAgentFactoryError(
             "current deepagents package with create_deep_agent is required"

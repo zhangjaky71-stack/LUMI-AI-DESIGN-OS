@@ -9,8 +9,10 @@ from lumi_model_gateway.models import (
     LatencyProfile,
     ModelRequest,
     ModelResult,
-    QualityProfile as GatewayQualityProfile,
     ResultStatus,
+)
+from lumi_model_gateway.models import (
+    QualityProfile as GatewayQualityProfile,
 )
 
 from .model import (

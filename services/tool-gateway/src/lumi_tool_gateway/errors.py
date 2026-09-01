@@ -29,6 +29,18 @@ class ToolApprovalDeniedError(ToolGatewayError):
     code = "TOOL_APPROVAL_DENIED"
 
 
+class ToolApprovalControlUnavailableError(ToolGatewayError):
+    code = "TOOL_APPROVAL_CONTROL_UNAVAILABLE"
+
+
+class ToolDataControlUnavailableError(ToolGatewayError):
+    code = "TOOL_DATA_CONTROL_UNAVAILABLE"
+
+
+class ToolWebSearchUnavailableError(ToolGatewayError):
+    code = "TOOL_WEB_SEARCH_UNAVAILABLE"
+
+
 class ToolInputValidationError(ToolGatewayError):
     code = "TOOL_INPUT_SCHEMA_INVALID"
 
@@ -53,12 +65,40 @@ class ToolIdempotencyRequiredError(ToolGatewayError):
     code = "TOOL_IDEMPOTENCY_KEY_REQUIRED"
 
 
+class ToolIdempotencyConflictError(ToolGatewayError):
+    code = "TOOL_IDEMPOTENCY_CONFLICT"
+
+
+class ToolIdempotencyInProgressError(ToolGatewayError):
+    code = "TOOL_IDEMPOTENCY_IN_PROGRESS"
+
+
+class ToolPriorSideEffectFailedError(ToolGatewayError):
+    code = "TOOL_PRIOR_SIDE_EFFECT_FAILED"
+
+
+class ToolAmbiguousSideEffectError(ToolGatewayError):
+    code = "TOOL_AMBIGUOUS_SIDE_EFFECT"
+
+
+class ToolSideEffectControlUnavailableError(ToolGatewayError):
+    code = "TOOL_SIDE_EFFECT_CONTROL_UNAVAILABLE"
+
+
 class ToolSideEffectGuardRequiredError(ToolGatewayError):
     code = "TOOL_SIDE_EFFECT_GUARD_REQUIRED"
 
 
+class ToolAuditUnavailableError(ToolGatewayError):
+    code = "TOOL_AUDIT_UNAVAILABLE"
+
+
 class ToolOutputOffloadRequiredError(ToolGatewayError):
     code = "TOOL_OUTPUT_OFFLOAD_REQUIRED"
+
+
+class ToolResultOffloadUnavailableError(ToolGatewayError):
+    code = "TOOL_RESULT_OFFLOAD_UNAVAILABLE"
 
 
 class ToolSSRFBlockedError(ToolGatewayError):

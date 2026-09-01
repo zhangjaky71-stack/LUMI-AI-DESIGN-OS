@@ -6,11 +6,20 @@ Create Date: 2026-08-13
 """
 
 from alembic import op
+from sqlalchemy import text
 
 revision = "0011_cost_ledger_budget_quota"
 down_revision = "0010_capability_registry"
 branch_labels = None
 depends_on = None
+
+
+def _lumi_app_exists() -> bool:
+    return bool(
+        op.get_bind()
+        .execute(text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')"))
+        .scalar_one()
+    )
 
 
 def upgrade() -> None:
@@ -80,7 +89,8 @@ def upgrade() -> None:
     )
     op.execute(
         "CREATE UNIQUE INDEX uq_cost_budget_limits_identity ON cost_budget_limits "
-        "(organization_id, scope_type, COALESCE(scope_id, '00000000-0000-0000-0000-000000000000'::uuid), period_key, currency)"
+        "(organization_id, scope_type, COALESCE(scope_id, "
+        "'00000000-0000-0000-0000-000000000000'::uuid), period_key, currency)"
     )
     op.execute(
         "CREATE INDEX ix_cost_budget_limits_org_scope ON cost_budget_limits "
@@ -116,7 +126,9 @@ def upgrade() -> None:
             version integer NOT NULL DEFAULT 1,
             CONSTRAINT uq_cost_reservations_identity UNIQUE (operation_id, reservation_key),
             CONSTRAINT ck_cost_reservations_estimate CHECK (estimated_amount >= 0),
-            CONSTRAINT ck_cost_reservations_actual CHECK (actual_amount IS NULL OR actual_amount >= 0),
+            CONSTRAINT ck_cost_reservations_actual CHECK (
+                actual_amount IS NULL OR actual_amount >= 0
+            ),
             CONSTRAINT ck_cost_reservations_currency CHECK (currency ~ '^[A-Z]{3}$'),
             CONSTRAINT ck_cost_reservations_confidence CHECK (
                 confidence IN ('exact','estimated','unknown')
@@ -216,7 +228,8 @@ def upgrade() -> None:
     )
     op.execute(
         "CREATE UNIQUE INDEX uq_quota_limits_identity ON quota_limits "
-        "(organization_id, scope_type, COALESCE(scope_id, '00000000-0000-0000-0000-000000000000'::uuid), metric, period_key)"
+        "(organization_id, scope_type, COALESCE(scope_id, "
+        "'00000000-0000-0000-0000-000000000000'::uuid), metric, period_key)"
     )
     op.execute(
         "CREATE INDEX ix_quota_limits_org_metric ON quota_limits "
@@ -248,16 +261,17 @@ def upgrade() -> None:
     # 0002 established default DML privileges for future lumi_migration tables. NODE-27
     # explicitly narrows every new financial/control-plane table rather than relying on
     # GRANT statements to remove privileges that default privileges already supplied.
-    op.execute("REVOKE UPDATE, DELETE ON cost_ledger FROM lumi_app")
-    op.execute("REVOKE UPDATE, DELETE ON usage_ledger FROM lumi_app")
-    op.execute("REVOKE DELETE ON cost_reservations FROM lumi_app")
-    op.execute("REVOKE INSERT, UPDATE, DELETE ON cost_budget_limits FROM lumi_app")
-    op.execute("REVOKE INSERT, UPDATE, DELETE ON quota_limits FROM lumi_app")
-    op.execute("REVOKE DELETE ON quota_leases FROM lumi_app")
-    op.execute("GRANT SELECT, INSERT ON usage_ledger TO lumi_app")
-    op.execute("GRANT SELECT, INSERT, UPDATE ON cost_reservations TO lumi_app")
-    op.execute("GRANT SELECT ON cost_budget_limits, quota_limits TO lumi_app")
-    op.execute("GRANT SELECT, INSERT, UPDATE ON quota_leases TO lumi_app")
+    if _lumi_app_exists():
+        op.execute("REVOKE UPDATE, DELETE ON cost_ledger FROM lumi_app")
+        op.execute("REVOKE UPDATE, DELETE ON usage_ledger FROM lumi_app")
+        op.execute("REVOKE DELETE ON cost_reservations FROM lumi_app")
+        op.execute("REVOKE INSERT, UPDATE, DELETE ON cost_budget_limits FROM lumi_app")
+        op.execute("REVOKE INSERT, UPDATE, DELETE ON quota_limits FROM lumi_app")
+        op.execute("REVOKE DELETE ON quota_leases FROM lumi_app")
+        op.execute("GRANT SELECT, INSERT ON usage_ledger TO lumi_app")
+        op.execute("GRANT SELECT, INSERT, UPDATE ON cost_reservations TO lumi_app")
+        op.execute("GRANT SELECT ON cost_budget_limits, quota_limits TO lumi_app")
+        op.execute("GRANT SELECT, INSERT, UPDATE ON quota_leases TO lumi_app")
 
 
 def downgrade() -> None:

@@ -75,9 +75,7 @@ class RecipePromotionManager:
         self.validator.validate(definition)
         evidence = self.eval_gate.evaluate(definition)
         if not evidence.passed or not evidence.evidence_ref:
-            raise RecipeReleaseError(
-                "Recipe production promotion blocked by benchmark/eval gate"
-            )
+            raise RecipeReleaseError("Recipe production promotion blocked by benchmark/eval gate")
 
         releases: list[RecipeReleaseRecord] = []
         for row in manifest.releases:
@@ -85,13 +83,8 @@ class RecipePromotionManager:
                 row.recipe_id == definition.recipe_id
                 and row.status == RecipeReleaseStatus.PRODUCTION
             ):
-                releases.append(
-                    replace(row, status=RecipeReleaseStatus.DEPRECATED)
-                )
-            elif (
-                row.recipe_id == definition.recipe_id
-                and row.version == definition.version
-            ):
+                releases.append(replace(row, status=RecipeReleaseStatus.DEPRECATED))
+            elif row.recipe_id == definition.recipe_id and row.version == definition.version:
                 releases.append(
                     replace(
                         row,
@@ -102,13 +95,8 @@ class RecipePromotionManager:
                 )
             else:
                 releases.append(row)
-        aliases = {
-            recipe_id: dict(values)
-            for recipe_id, values in manifest.aliases.items()
-        }
-        aliases.setdefault(definition.recipe_id, {})[
-            "production"
-        ] = definition.version
+        aliases = {recipe_id: dict(values) for recipe_id, values in manifest.aliases.items()}
+        aliases.setdefault(definition.recipe_id, {})["production"] = definition.version
         return RecipeReleaseManifest(
             schema=manifest.schema,
             revision=manifest.revision + 1,
@@ -131,7 +119,5 @@ def _release(
         None,
     )
     if row is None:
-        raise RecipeReleaseError(
-            f"Recipe release not found: {recipe_id}@{version}"
-        )
+        raise RecipeReleaseError(f"Recipe release not found: {recipe_id}@{version}")
     return row

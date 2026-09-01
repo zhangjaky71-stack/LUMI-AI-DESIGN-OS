@@ -4,7 +4,17 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -59,7 +69,7 @@ class TaskGraphInstance(IdMixin, CreatedAtMixin, Base):
 class TaskAttemptRecord(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "task_attempts"
     __table_args__ = (
-        UniqueConstraint("task_id", "attempt_number", name="task_number"),
+        UniqueConstraint("task_id", "attempt_number", name="uq_task_attempts_task_number"),
         CheckConstraint("attempt_number > 0", name="number"),
         CheckConstraint("cost_amount_usd IS NULL OR cost_amount_usd >= 0", name="cost"),
         Index("ix_task_attempts_graph_created", "task_graph_id", "created_at"),

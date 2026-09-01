@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict
-from typing import Awaitable, Callable, Literal
+from typing import Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -191,7 +192,9 @@ def create_approval_router(
         actor = await resolve_actor(request, project_id)
         try:
             return _approval_json(
-                engine.cancel(actor, project_id=project_id, approval_id=approval_id, reason=body.reason)
+                engine.cancel(
+                    actor, project_id=project_id, approval_id=approval_id, reason=body.reason
+                )
             )
         except ApprovalError as error:
             raise _problem(error, _request_id(request)) from error

@@ -12,8 +12,8 @@ from lumi_asset_intelligence.duplicates import classify_similarity
 from lumi_asset_intelligence.events import AssetReadyEvent, plan_analysis_job
 from lumi_asset_intelligence.identity_adapter import identity_evidence_from_analysis
 from lumi_asset_intelligence.index_catalog import (
-    InMemoryIndexCatalog,
     IndexPromotionDecision,
+    InMemoryIndexCatalog,
     compare_index_coverage,
 )
 from lumi_asset_intelligence.ingestion import AssetIntelligenceIngestor
@@ -96,9 +96,7 @@ def _asset(raw: dict[str, Any]) -> VerifiedReadyAsset:
         permission_tags=tuple(str(item) for item in raw.get("permission_tags", [])),
         preview_ref=f"preview:{raw['asset_id']}",
         technical_metadata={"width": 1200, "height": 1200, "color_space": "sRGB"},
-        user_metadata={
-            "campaign": "manual-approved"
-        }
+        user_metadata={"campaign": "manual-approved"}
         if str(raw["asset_id"]).endswith("101")
         else {},
     )
@@ -112,9 +110,7 @@ def _outputs() -> tuple[FixtureAnalyzer, ...]:
     for raw in FIXTURE["assets"]:
         asset_id = str(raw["asset_id"])
         visual[asset_id] = AnalyzerOutput(
-            metadata=(
-                MetadataField("campaign", "auto-derived", "AUTO", 0.7, "fixture", "v1"),
-            ),
+            metadata=(MetadataField("campaign", "auto-derived", "AUTO", 0.7, "fixture", "v1"),),
             semantic_description=str(raw["description"]),
             visual_tags=tuple(str(item) for item in raw["tags"]),
         )
@@ -238,7 +234,9 @@ def test_duplicate_tiers_remain_distinct() -> None:
     assert exact is not None
     assert near is not None
     assert semantic is not None
-    policy = DuplicatePolicy("dup-policy-v1", perceptual_max_hamming=4, semantic_similarity_floor=0.90)
+    policy = DuplicatePolicy(
+        "dup-policy-v1", perceptual_max_hamming=4, semantic_similarity_floor=0.90
+    )
 
     assert {item.tier for item in classify_similarity(source, exact, policy)} == {
         "EXACT",

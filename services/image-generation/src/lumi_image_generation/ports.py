@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Mapping, Protocol
+from typing import Protocol
 
 from .model import (
     AuthorizedReference,
@@ -145,23 +146,36 @@ class GenerationEventSinkPort(Protocol):
 
 
 class GenerationRepositoryPort(Protocol):
-    def get_by_operation(self, organization_id: str, operation_id: str) -> GenerationJob | None: ...
+    async def get_by_operation(
+        self,
+        organization_id: str,
+        operation_id: str,
+    ) -> GenerationJob | None: ...
 
-    def save(self, job: GenerationJob) -> None: ...
+    async def save(self, job: GenerationJob) -> None: ...
 
-    def get(self, organization_id: str, generation_id: str) -> GenerationJob | None: ...
+    async def get(self, organization_id: str, generation_id: str) -> GenerationJob | None: ...
 
-    def save_spec(self, spec: ImageGenerationSpec) -> None: ...
+    async def save_spec(self, spec: ImageGenerationSpec) -> None: ...
 
-    def get_spec(self, organization_id: str, operation_id: str) -> ImageGenerationSpec | None: ...
+    async def get_spec(
+        self,
+        organization_id: str,
+        operation_id: str,
+    ) -> ImageGenerationSpec | None: ...
 
-    def save_pending(self, record: PendingInvocationRecord) -> None: ...
+    async def save_pending(self, record: PendingInvocationRecord) -> None: ...
 
-    def get_pending(
+    async def get_pending(
         self,
         organization_id: str,
         generation_id: str,
         candidate_id: str,
     ) -> PendingInvocationRecord | None: ...
 
-    def delete_pending(self, organization_id: str, generation_id: str, candidate_id: str) -> None: ...
+    async def delete_pending(
+        self,
+        organization_id: str,
+        generation_id: str,
+        candidate_id: str,
+    ) -> None: ...

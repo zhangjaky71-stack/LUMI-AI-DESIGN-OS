@@ -57,8 +57,12 @@ class MemoryCandidatePipeline:
             kind=candidate.kind.value,
             semantic_key=candidate.semantic_key,
         )
-        exact = next((item for item in existing if item.content_hash == candidate.content_hash), None)
-        confidence = max(candidate.confidence, 0.9 if candidate.explicit_remember else candidate.confidence)
+        exact = next(
+            (item for item in existing if item.content_hash == candidate.content_hash), None
+        )
+        confidence = max(
+            candidate.confidence, 0.9 if candidate.explicit_remember else candidate.confidence
+        )
         if exact is not None:
             confirmed = replace(
                 exact,
@@ -70,7 +74,9 @@ class MemoryCandidatePipeline:
                 embedding_version=candidate.embedding_version or exact.embedding_version,
                 version=exact.version + 1,
             )
-            confirmed = await self.repository.update_record(confirmed, expected_version=exact.version)
+            confirmed = await self.repository.update_record(
+                confirmed, expected_version=exact.version
+            )
             await self.repository.insert_candidate(
                 candidate,
                 outcome=MemoryCandidateOutcome.DEDUPLICATE_CONFIRM.value,
@@ -84,8 +90,10 @@ class MemoryCandidatePipeline:
                 reason="MEMORY_EXACT_DUPLICATE_CONFIRMED",
             )
 
-        if existing and not candidate.temporal_coexistence and not (
-            candidate.explicit_remember and confidence >= 0.9
+        if (
+            existing
+            and not candidate.temporal_coexistence
+            and not (candidate.explicit_remember and confidence >= 0.9)
         ):
             await self.repository.insert_candidate(
                 candidate,

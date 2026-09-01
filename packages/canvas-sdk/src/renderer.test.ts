@@ -15,7 +15,12 @@ function documentFixture(content = "Hello", frameWidth = 300): DesignDocument {
     unit: "px",
     root_id: "root",
     nodes: {
-      root: { id: "root", kind: "DOCUMENT_ROOT", parent_id: null, children: ["frame"] },
+      root: {
+        id: "root",
+        kind: "DOCUMENT_ROOT",
+        parent_id: null,
+        children: ["frame"],
+      },
       frame: {
         id: "frame",
         kind: "FRAME",
@@ -92,7 +97,10 @@ describe("PixiV8RendererAdapter", () => {
   it("updates dirty text and resized frame geometry only", () => {
     const { bindings } = fakeBindings();
     const adapter = new PixiV8RendererAdapter(bindings);
-    adapter.sync(projectDesignDocument(documentFixture("Before", 300)), new Set(["frame", "text"]));
+    adapter.sync(
+      projectDesignDocument(documentFixture("Before", 300)),
+      new Set(["frame", "text"]),
+    );
     const dirty = adapter.sync(
       projectDesignDocument(documentFixture("After", 360)),
       new Set(["frame", "text"]),
@@ -105,14 +113,20 @@ describe("PixiV8RendererAdapter", () => {
     );
     expect(bindings.redrawShape).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ id: "frame", local_bounds: expect.objectContaining({ width: 360 }) }),
+      expect.objectContaining({
+        id: "frame",
+        local_bounds: expect.objectContaining({ width: 360 }),
+      }),
     );
   });
 
   it("destroys removed objects without recursive double-disposal", () => {
     const { bindings } = fakeBindings();
     const adapter = new PixiV8RendererAdapter(bindings);
-    adapter.sync(projectDesignDocument(documentFixture("After")), new Set(["frame", "text"]));
+    adapter.sync(
+      projectDesignDocument(documentFixture("After")),
+      new Set(["frame", "text"]),
+    );
     const withoutText = documentFixture("After");
     const frame = withoutText.nodes.frame!;
     const next: DesignDocument = {
@@ -122,7 +136,10 @@ describe("PixiV8RendererAdapter", () => {
         frame: { ...frame, children: [] },
       },
     };
-    const removed = adapter.sync(projectDesignDocument(next), new Set(["frame"]));
+    const removed = adapter.sync(
+      projectDesignDocument(next),
+      new Set(["frame"]),
+    );
     expect(removed.removed).toBe(1);
     expect(bindings.destroyDisplay).toHaveBeenCalledTimes(1);
   });

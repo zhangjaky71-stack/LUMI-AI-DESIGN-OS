@@ -29,12 +29,9 @@ class PostgresGraphDefinitionCatalog:
                 if existing is not None:
                     if (
                         existing["content_hash"] != definition.content_hash
-                        or existing["agent_config_version"]
-                        != definition.agent_config_version
-                        or int(existing["state_schema_version"])
-                        != definition.state_schema_version
-                        or int(existing["input_schema_version"])
-                        != definition.input_schema_version
+                        or existing["agent_config_version"] != definition.agent_config_version
+                        or int(existing["state_schema_version"]) != definition.state_schema_version
+                        or int(existing["input_schema_version"]) != definition.input_schema_version
                         or int(existing["output_schema_version"])
                         != definition.output_schema_version
                         or existing["interrupt_policy_version"]
@@ -94,9 +91,7 @@ class PostgresGraphDefinitionCatalog:
                 definition.graph_version,
             )
             if row is None:
-                raise GraphNotFoundError(
-                    f"graph definition not installed: {definition.identity}"
-                )
+                raise GraphNotFoundError(f"graph definition not installed: {definition.identity}")
             if (
                 row["content_hash"] != definition.content_hash
                 or row["agent_config_version"] != definition.agent_config_version

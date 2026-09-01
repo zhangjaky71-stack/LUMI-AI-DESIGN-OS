@@ -29,9 +29,7 @@ class AgentRegistry:
             key = definition.identity
             existing = self._by_key.get(key)
             if existing is not None and existing.content_hash != definition.content_hash:
-                raise AgentVersionConflictError(
-                    f"same Agent version has different content: {key}"
-                )
+                raise AgentVersionConflictError(f"same Agent version has different content: {key}")
             self._by_key[key] = definition
         self._validate_release_manifest()
 
@@ -92,8 +90,7 @@ class AgentRegistry:
         release = self._release(agent_id, selector)
         if release.status in {AgentReleaseStatus.DISABLED, AgentReleaseStatus.DRAFT}:
             raise AgentReleaseError(
-                f"Agent exact release is not runnable: "
-                f"{agent_id}@{selector}:{release.status.value}"
+                f"Agent exact release is not runnable: {agent_id}@{selector}:{release.status.value}"
             )
         return selector, release
 
@@ -105,17 +102,14 @@ class AgentRegistry:
         production_versions = tuple(
             row.version
             for row in self.release_manifest.releases
-            if row.agent_id == agent_id
-            and row.status == AgentReleaseStatus.PRODUCTION
+            if row.agent_id == agent_id and row.status == AgentReleaseStatus.PRODUCTION
         )
         try:
             version = select_highest(production_versions, selector)
         except ValueError as exc:
             raise AgentVersionResolutionError(str(exc)) from exc
         if version is None:
-            raise AgentVersionResolutionError(
-                f"no production Agent matches: {agent_id}@{selector}"
-            )
+            raise AgentVersionResolutionError(f"no production Agent matches: {agent_id}@{selector}")
         return version, self._release(agent_id, version)
 
     def _release(self, agent_id: str, version: str) -> AgentReleaseRecord:
@@ -128,17 +122,12 @@ class AgentRegistry:
             None,
         )
         if row is None:
-            raise AgentReleaseError(
-                f"Agent release metadata missing: {agent_id}@{version}"
-            )
+            raise AgentReleaseError(f"Agent release metadata missing: {agent_id}@{version}")
         return row
 
     def _validate_release_manifest(self) -> None:
         definition_keys = set(self._by_key)
-        release_keys = {
-            f"{row.agent_id}@{row.version}"
-            for row in self.release_manifest.releases
-        }
+        release_keys = {f"{row.agent_id}@{row.version}" for row in self.release_manifest.releases}
         if definition_keys != release_keys:
             raise AgentReleaseError(
                 "release/definition mismatch: "
@@ -151,28 +140,21 @@ class AgentRegistry:
                 production_counts[release.agent_id] += 1
         for agent_id, count in production_counts.items():
             if count > 1:
-                raise AgentReleaseError(
-                    f"multiple PRODUCTION versions for {agent_id}"
-                )
+                raise AgentReleaseError(f"multiple PRODUCTION versions for {agent_id}")
         for agent_id, aliases in self.release_manifest.aliases.items():
             for alias, version in aliases.items():
                 release = self._release(agent_id, version)
                 if release.status == AgentReleaseStatus.DISABLED:
-                    raise AgentReleaseError(
-                        f"alias {agent_id}@{alias} targets DISABLED version"
-                    )
+                    raise AgentReleaseError(f"alias {agent_id}@{alias} targets DISABLED version")
                 if alias == "production" and release.status != AgentReleaseStatus.PRODUCTION:
                     raise AgentReleaseError(
-                        f"production alias targets non-production release: "
-                        f"{agent_id}@{version}"
+                        f"production alias targets non-production release: {agent_id}@{version}"
                     )
 
 
 def _split_ref(value: str) -> tuple[str, str]:
     if "@" not in value:
-        raise AgentVersionResolutionError(
-            "Agent reference must include @selector"
-        )
+        raise AgentVersionResolutionError("Agent reference must include @selector")
     agent_id, selector = value.rsplit("@", 1)
     if not agent_id or not selector:
         raise AgentVersionResolutionError("Agent reference is incomplete")

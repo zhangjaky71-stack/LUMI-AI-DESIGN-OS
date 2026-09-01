@@ -5,14 +5,14 @@ import os
 from collections.abc import Coroutine
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, TypeVar
+from typing import Any
 
 import pytest
-from lumi_domain import DomainEvent, Project as DomainProject, ProjectStatus, new_uuid7
 from sqlalchemy import select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from lumi_api.persistence.base import Base
 from lumi_api.persistence.models import CostLedger, Organization, Project, Workspace
 from lumi_api.persistence.repositories import (
     OptimisticLockError,
@@ -21,14 +21,28 @@ from lumi_api.persistence.repositories import (
 )
 from lumi_api.persistence.seed import ORG_ID, USER_OWNER_ID, WORKSPACE_ID
 from lumi_api.persistence.session import create_engine
+from lumi_domain import DomainEvent, ProjectStatus, new_uuid7
+from lumi_domain import Project as DomainProject
 
 if os.environ.get("LUMI_DB_INTEGRATION") != "1":
     pytest.skip("set LUMI_DB_INTEGRATION=1 to run PostgreSQL tests", allow_module_level=True)
 
-T = TypeVar("T")
+EXPECTED_ALEMBIC_HEAD = "0023_video_generation_runtime"
+MIGRATION_ONLY_TABLES = frozenset(
+    {
+        "agent_graph_definitions",
+        "agent_run_control",
+        "checkpoint_migrations",
+        "checkpoints",
+        "checkpoint_blobs",
+        "checkpoint_writes",
+        "store_migrations",
+        "store",
+    }
+)
 
 
-def run(coroutine: Coroutine[Any, Any, T]) -> T:
+def run[T](coroutine: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coroutine)
 
 
@@ -36,22 +50,24 @@ async def _head_and_table_count() -> None:
     engine = create_engine()
     try:
         async with engine.connect() as connection:
-            head = (await connection.execute(text("SELECT version_num FROM alembic_version"))).scalar_one()
-            assert head == "0006_project_core"
-            count = (
-                await connection.execute(
-                    text(
-                        """
-                        SELECT count(*)
-                        FROM information_schema.tables
-                        WHERE table_schema = 'public'
-                          AND table_type = 'BASE TABLE'
-                          AND table_name <> 'alembic_version'
-                        """
-                    )
-                )
+            head = (
+                await connection.execute(text("SELECT version_num FROM alembic_version"))
             ).scalar_one()
-            assert count == 48
+            assert head == EXPECTED_ALEMBIC_HEAD
+            rows = await connection.execute(
+                text(
+                    """
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                      AND table_type = 'BASE TABLE'
+                      AND table_name <> 'alembic_version'
+                    """
+                )
+            )
+            actual_tables = {str(row[0]) for row in rows}
+            expected_tables = set(Base.metadata.tables) | set(MIGRATION_ONLY_TABLES)
+            assert actual_tables == expected_tables
     finally:
         await engine.dispose()
 
@@ -116,7 +132,9 @@ async def _tenant_scope_and_optimistic_lock() -> None:
                 )
                 await tenant_a_repository.save(domain_project)
                 stored = await session.scalar(
-                    select(Project).where(Project.id == project_a_id, Project.organization_id == ORG_ID)
+                    select(Project).where(
+                        Project.id == project_a_id, Project.organization_id == ORG_ID
+                    )
                 )
                 assert stored is not None
                 expected = stored.version

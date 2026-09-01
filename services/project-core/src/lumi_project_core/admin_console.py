@@ -63,7 +63,7 @@ class PlatformAdminActor:
     permissions: frozenset[str]
 
     @classmethod
-    def from_roles(cls, actor_id: str, roles: frozenset[AdminRole]) -> "PlatformAdminActor":
+    def from_roles(cls, actor_id: str, roles: frozenset[AdminRole]) -> PlatformAdminActor:
         if not actor_id.strip() or not roles:
             raise AdminError("ADMIN_ACTOR_INVALID", 401)
         permissions: set[str] = set()
@@ -255,7 +255,9 @@ class QueueOpsPort(Protocol):
 
 class RegistryOpsPort(Protocol):
     def list_registry(self) -> tuple[AdminRegistryEntry, ...]: ...
-    def set_enabled(self, kind: RegistryKind, registry_id: str, enabled: bool) -> AdminRegistryEntry: ...
+    def set_enabled(
+        self, kind: RegistryKind, registry_id: str, enabled: bool
+    ) -> AdminRegistryEntry: ...
 
 
 class CostOpsPort(Protocol):
@@ -393,12 +395,16 @@ class AdminConsoleService:
             daily_generations=sum(1 for item in today_runs if item.kind == "GENERATION"),
             failure_rate_basis_points=failure_rate,
             provider_health=provider_health,
-            queue_depth=sum(1 for item in queue if item.state in {"READY", "RUNNING", "STUCK", "DLQ"}),
+            queue_depth=sum(
+                1 for item in queue if item.state in {"READY", "RUNNING", "STUCK", "DLQ"}
+            ),
             cost_today_microusd=self._costs.cost_today_microusd(),
             critical_alerts=tuple(alerts),
         )
 
-    def search_users(self, actor: PlatformAdminActor, query: str = "") -> tuple[SupportUserView, ...]:
+    def search_users(
+        self, actor: PlatformAdminActor, query: str = ""
+    ) -> tuple[SupportUserView, ...]:
         self._require(actor, "admin.user.read")
         needle = query.strip().lower()
         values = self._directory.list_users()
@@ -459,7 +465,9 @@ class AdminConsoleService:
         confirmation: SensitiveActionConfirmation,
     ) -> AdminRunRecord:
         self._require(actor, "admin.user.manage_limited")
-        confirmation.validate(expected_summary=f"Retry run {run_id}", expected_scope=f"run:{run_id}")
+        confirmation.validate(
+            expected_summary=f"Retry run {run_id}", expected_scope=f"run:{run_id}"
+        )
         updated = self._runs.retry(run_id)
         self._emit_confirmed(actor, "ADMIN_RUN_RETRIED", "RUN", run_id, confirmation)
         return updated
@@ -471,7 +479,9 @@ class AdminConsoleService:
         confirmation: SensitiveActionConfirmation,
     ) -> AdminRunRecord:
         self._require(actor, "admin.user.manage_limited")
-        confirmation.validate(expected_summary=f"Cancel run {run_id}", expected_scope=f"run:{run_id}")
+        confirmation.validate(
+            expected_summary=f"Cancel run {run_id}", expected_scope=f"run:{run_id}"
+        )
         updated = self._runs.cancel(run_id)
         self._emit_confirmed(actor, "ADMIN_RUN_CANCELLED", "RUN", run_id, confirmation)
         return updated
@@ -536,7 +546,10 @@ class AdminConsoleService:
             expected_payload_ref=before.payload_ref,
             expected_payload_sha256=before.payload_sha256,
         )
-        if updated.payload_ref != before.payload_ref or updated.payload_sha256 != before.payload_sha256:
+        if (
+            updated.payload_ref != before.payload_ref
+            or updated.payload_sha256 != before.payload_sha256
+        ):
             raise AdminError("ADMIN_QUEUE_PAYLOAD_MUTATED", 409)
         self._emit_confirmed(
             actor,
@@ -561,7 +574,9 @@ class AdminConsoleService:
         enabled: bool,
         confirmation: SensitiveActionConfirmation,
     ) -> AdminRegistryEntry:
-        permission = "admin.agent_registry.manage" if kind == "AGENT" else "admin.skill_registry.manage"
+        permission = (
+            "admin.agent_registry.manage" if kind == "AGENT" else "admin.skill_registry.manage"
+        )
         self._require(actor, permission)
         verb = "Enable" if enabled else "Disable"
         confirmation.validate(
@@ -646,7 +661,10 @@ class AdminConsoleService:
             target_id=target_user_id,
             reason=reason,
             ticket_ref=ticket_ref,
-            metadata=(("organization_id", target_organization_id), ("session_id", session.session_id)),
+            metadata=(
+                ("organization_id", target_organization_id),
+                ("session_id", session.session_id),
+            ),
         )
         return session
 
@@ -763,7 +781,8 @@ class Node63CreditLedgerAdapter:
             subscription_state=subscription.state if subscription else None,
             credit_balance=self._repository.credit_balance(organization_id),
             invoice_refs=tuple(
-                item.provider_invoice_ref for item in self._repository.list_invoices(organization_id)
+                item.provider_invoice_ref
+                for item in self._repository.list_invoices(organization_id)
             ),
         )
 

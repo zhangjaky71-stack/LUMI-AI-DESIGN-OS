@@ -1,5 +1,9 @@
 import type { CompiledSceneNode } from "./compiler-types";
-import type { CanvasNodeDiagnostic, CanvasSceneNode, CanvasSceneSnapshot } from "./ir-scene";
+import type {
+  CanvasNodeDiagnostic,
+  CanvasSceneNode,
+  CanvasSceneSnapshot,
+} from "./ir-scene";
 import type { Matrix2D } from "./matrix";
 import type { CameraState } from "./types";
 
@@ -12,9 +16,16 @@ export interface RendererSyncResult {
 }
 
 export interface CanvasRendererAdapter {
-  resize(widthCssPx: number, heightCssPx: number, devicePixelRatio: number): void;
+  resize(
+    widthCssPx: number,
+    heightCssPx: number,
+    devicePixelRatio: number,
+  ): void;
   setCamera(camera: CameraState): void;
-  sync(scene: CanvasSceneSnapshot, visibleIds: ReadonlySet<string>): RendererSyncResult;
+  sync(
+    scene: CanvasSceneSnapshot,
+    visibleIds: ReadonlySet<string>,
+  ): RendererSyncResult;
   destroy(): void;
 }
 
@@ -25,7 +36,11 @@ export interface PixiDisplayHandle {
 export interface PixiV8Bindings {
   readonly stage: PixiDisplayHandle;
   createContainer(id: string): PixiDisplayHandle;
-  createText(id: string, content: string, node: CanvasSceneNode): PixiDisplayHandle;
+  createText(
+    id: string,
+    content: string,
+    node: CanvasSceneNode,
+  ): PixiDisplayHandle;
   createImage(id: string, assetId: string): PixiDisplayHandle;
   createShape(id: string, node: CanvasSceneNode): PixiDisplayHandle;
   createVideoPoster(id: string, assetId: string | null): PixiDisplayHandle;
@@ -33,15 +48,27 @@ export interface PixiV8Bindings {
   setLocalMatrix(handle: PixiDisplayHandle, matrix: Matrix2D): void;
   setCamera(camera: CameraState): void;
   redrawShape(handle: PixiDisplayHandle, node: CanvasSceneNode): void;
-  setDisplaySize(handle: PixiDisplayHandle, width: number, height: number): void;
+  setDisplaySize(
+    handle: PixiDisplayHandle,
+    width: number,
+    height: number,
+  ): void;
   setVisible(handle: PixiDisplayHandle, visible: boolean): void;
-  setText(handle: PixiDisplayHandle, content: string, node: CanvasSceneNode): void;
+  setText(
+    handle: PixiDisplayHandle,
+    content: string,
+    node: CanvasSceneNode,
+  ): void;
   setAsset(handle: PixiDisplayHandle, assetId: string | null): void;
   setMask(handle: PixiDisplayHandle, mask: PixiDisplayHandle | null): void;
   addChild(parent: PixiDisplayHandle, child: PixiDisplayHandle): void;
   removeChild(parent: PixiDisplayHandle, child: PixiDisplayHandle): void;
   destroyDisplay(handle: PixiDisplayHandle): void;
-  resize(widthCssPx: number, heightCssPx: number, devicePixelRatio: number): void;
+  resize(
+    widthCssPx: number,
+    heightCssPx: number,
+    devicePixelRatio: number,
+  ): void;
   destroy(): void;
 }
 
@@ -63,7 +90,10 @@ function nodeMaskId(node: CanvasSceneNode): string | null {
   return compiled?.mask_id ?? compiled?.clip_id ?? null;
 }
 
-function createDisplay(bindings: PixiV8Bindings, node: CanvasSceneNode): PixiDisplayHandle {
+function createDisplay(
+  bindings: PixiV8Bindings,
+  node: CanvasSceneNode,
+): PixiDisplayHandle {
   switch (node.kind) {
     case "DOCUMENT_ROOT":
     case "GROUP":
@@ -97,7 +127,11 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
     this.#bindings = bindings;
   }
 
-  resize(widthCssPx: number, heightCssPx: number, devicePixelRatio: number): void {
+  resize(
+    widthCssPx: number,
+    heightCssPx: number,
+    devicePixelRatio: number,
+  ): void {
     this.#bindings.resize(widthCssPx, heightCssPx, devicePixelRatio);
   }
 
@@ -105,7 +139,10 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
     this.#bindings.setCamera(camera);
   }
 
-  sync(scene: CanvasSceneSnapshot, visibleIds: ReadonlySet<string>): RendererSyncResult {
+  sync(
+    scene: CanvasSceneSnapshot,
+    visibleIds: ReadonlySet<string>,
+  ): RendererSyncResult {
     let created = 0;
     let updated = 0;
     let removed = 0;
@@ -133,12 +170,15 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
         created += 1;
       }
       const nextParentId =
-        node.parent_id && scene.nodes.has(node.parent_id) ? node.parent_id : null;
+        node.parent_id && scene.nodes.has(node.parent_id)
+          ? node.parent_id
+          : null;
       if (entry.parentId !== nextParentId) {
         const previousParent = entry.parentId
           ? this.#entries.get(entry.parentId)?.handle
           : this.#bindings.stage;
-        if (previousParent) this.#bindings.removeChild(previousParent, entry.handle);
+        if (previousParent)
+          this.#bindings.removeChild(previousParent, entry.handle);
         const nextParent = nextParentId
           ? this.#entries.get(nextParentId)?.handle
           : this.#bindings.stage;
@@ -147,8 +187,10 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
       }
       if (entry.renderKey !== node.render_key) {
         this.#bindings.setLocalMatrix(entry.handle, node.local_matrix);
-        if (SHAPE_KINDS.has(node.kind)) this.#bindings.redrawShape(entry.handle, node);
-        if (node.kind === "TEXT") this.#bindings.setText(entry.handle, node.content ?? "", node);
+        if (SHAPE_KINDS.has(node.kind))
+          this.#bindings.redrawShape(entry.handle, node);
+        if (node.kind === "TEXT")
+          this.#bindings.setText(entry.handle, node.content ?? "", node);
         if (["IMAGE", "VIDEO"].includes(node.kind)) {
           this.#bindings.setAsset(entry.handle, node.asset_id ?? null);
           this.#bindings.setDisplaySize(
@@ -171,7 +213,7 @@ export class PixiV8RendererAdapter implements CanvasRendererAdapter {
       if (!node || !entry) continue;
       const requestedMaskId = nodeMaskId(node);
       const maskHandle = requestedMaskId
-        ? this.#entries.get(requestedMaskId)?.handle ?? null
+        ? (this.#entries.get(requestedMaskId)?.handle ?? null)
         : null;
       const appliedMaskId = maskHandle ? requestedMaskId : null;
       if (entry.boundMaskId === appliedMaskId) continue;

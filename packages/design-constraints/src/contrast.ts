@@ -30,10 +30,17 @@ function channel(value: number): number {
 export function relativeLuminance(color: string): number | null {
   const parsed = parseHex(color);
   if (!parsed) return null;
-  return 0.2126 * channel(parsed[0]) + 0.7152 * channel(parsed[1]) + 0.0722 * channel(parsed[2]);
+  return (
+    0.2126 * channel(parsed[0]) +
+    0.7152 * channel(parsed[1]) +
+    0.0722 * channel(parsed[2])
+  );
 }
 
-export function contrastRatio(foreground: string, background: string): number | null {
+export function contrastRatio(
+  foreground: string,
+  background: string,
+): number | null {
   const foregroundLuminance = relativeLuminance(foreground);
   const backgroundLuminance = relativeLuminance(background);
   if (foregroundLuminance === null || backgroundLuminance === null) return null;
@@ -48,7 +55,10 @@ export function contrastRatio(foreground: string, background: string): number | 
  */
 export class StructuredContrastEvaluator implements PostflightEvaluator {
   readonly name = "structured-contrast";
-  readonly supported_types = ["REQUIRE_CONTRAST", "REQUIRE_TEXT_READABILITY"] as const;
+  readonly supported_types = [
+    "REQUIRE_CONTRAST",
+    "REQUIRE_TEXT_READABILITY",
+  ] as const;
   readonly supports_preflight = false;
   readonly supports_postflight = true;
 
@@ -59,9 +69,13 @@ export class StructuredContrastEvaluator implements PostflightEvaluator {
     const foreground = constraint.parameters.foreground;
     const background = constraint.parameters.background;
     const minimum =
-      typeof constraint.parameters.min_ratio === "number" ? constraint.parameters.min_ratio : 4.5;
+      typeof constraint.parameters.min_ratio === "number"
+        ? constraint.parameters.min_ratio
+        : 4.5;
     if (typeof foreground !== "string" || typeof background !== "string") {
-      throw new Error("Structured contrast requires foreground/background colors or a sampling plugin");
+      throw new Error(
+        "Structured contrast requires foreground/background colors or a sampling plugin",
+      );
     }
     const ratio = contrastRatio(foreground, background);
     if (ratio === null) throw new Error("Unsupported color format");

@@ -6,6 +6,8 @@ from typing import Literal, overload
 from .dependencies import (
     StaticNamedCatalog,
     StaticVersionedCatalog,
+)
+from .dependencies import (
     load_bootstrap_catalog as _load_bootstrap_catalog,
 )
 from .errors import AgentDependencyError
@@ -40,9 +42,7 @@ def load_bootstrap_catalog(
             raise AgentDependencyError("bootstrap skills must be versioned")
         return catalog
     if not isinstance(catalog, StaticNamedCatalog):
-        raise AgentDependencyError(
-            f"bootstrap named catalog has wrong type: {section}"
-        )
+        raise AgentDependencyError(f"bootstrap named catalog has wrong type: {section}")
     return catalog
 
 
@@ -55,7 +55,5 @@ def load_named_catalog(path: Path, section: str) -> StaticNamedCatalog:
         raise AgentDependencyError("skills require load_skill_catalog")
     catalog = _load_bootstrap_catalog(path, section)
     if not isinstance(catalog, StaticNamedCatalog):
-        raise AgentDependencyError(
-            f"bootstrap named catalog has wrong type: {section}"
-        )
+        raise AgentDependencyError(f"bootstrap named catalog has wrong type: {section}")
     return catalog

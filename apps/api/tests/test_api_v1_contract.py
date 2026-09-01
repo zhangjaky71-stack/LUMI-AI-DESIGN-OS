@@ -29,6 +29,9 @@ EXPECTED_OPERATION_IDS = {
     "createGeneration",
     "getGeneration",
     "decideApproval",
+    "getCostSummary",
+    "getProjectCostSummary",
+    "getUsageSummary",
 }
 
 
@@ -81,10 +84,14 @@ def test_side_effect_and_concurrency_headers_are_contractual() -> None:
     assert patch_parameters["If-Match"]["required"] is False
     assert "X-Lumi-Organization-Id" in patch_parameters
 
-    restore_parameters = _parameters(schema["paths"]["/api/v1/projects/{project_id}:restore"]["post"])
+    restore_parameters = _parameters(
+        schema["paths"]["/api/v1/projects/{project_id}:restore"]["post"]
+    )
     assert "If-Match" in restore_parameters
 
-    approval_parameters = _parameters(schema["paths"]["/api/v1/approvals/{approval_id}:decide"]["post"])
+    approval_parameters = _parameters(
+        schema["paths"]["/api/v1/approvals/{approval_id}:decide"]["post"]
+    )
     assert "Idempotency-Key" in approval_parameters
     assert "If-Match" in approval_parameters
 
@@ -93,6 +100,7 @@ def test_cursor_pagination_limit_is_bounded() -> None:
     schema = create_contract_app().openapi()
     parameters = _parameters(schema["paths"]["/api/v1/projects"]["get"])
     limit_schema = parameters["limit"]["schema"]
+    assert isinstance(limit_schema, dict)
     assert limit_schema["minimum"] == 1
     assert limit_schema["maximum"] == 100
     assert limit_schema["default"] == 50
@@ -101,7 +109,14 @@ def test_cursor_pagination_limit_is_bounded() -> None:
 def test_project_filters_are_exposed_without_semantic_search() -> None:
     schema = create_contract_app().openapi()
     parameters = _parameters(schema["paths"]["/api/v1/projects"]["get"])
-    for required in ("status", "workspace_id", "created_by", "updated_after", "updated_before", "q"):
+    for required in (
+        "status",
+        "workspace_id",
+        "created_by",
+        "updated_after",
+        "updated_before",
+        "q",
+    ):
         assert required in parameters
     assert "semantic_query" not in parameters
 

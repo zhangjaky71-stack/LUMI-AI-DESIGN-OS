@@ -21,7 +21,9 @@ PROJECT = "project-api"
 SUBJECT = ApprovalSubject("ARTIFACT_VERSION", "artifact-api", "artifact-v8")
 
 
-def setup_client(role="OWNER", permissions=frozenset({"project.read", "project.write", "artifact.approve"})):
+def setup_client(
+    role="OWNER", permissions=frozenset({"project.read", "project.write", "artifact.approve"})
+):
     repo = InMemoryApprovalRepository()
     subjects = InMemoryApprovalSubjects()
     subjects.add(ORG, PROJECT, SUBJECT)

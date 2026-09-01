@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from lumi_api.persistence.models import ApiToken, OrganizationMember, Session
 from lumi_auth import (
     ApiTokenRecord,
     Membership,
@@ -14,10 +18,6 @@ from lumi_auth import (
     validate_api_token,
     validate_session,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from lumi_api.persistence.models import ApiToken, OrganizationMember, Session
 
 from .errors import PermissionDenied, SessionInvalid
 
@@ -102,7 +102,9 @@ class PrincipalResolver:
         row.last_seen_at = now
         row.organization_id = organization_id
         await self.session.flush()
-        return SessionPrincipal(context=context, session_id=row.id, csrf_token_hash=row.csrf_token_hash)
+        return SessionPrincipal(
+            context=context, session_id=row.id, csrf_token_hash=row.csrf_token_hash
+        )
 
     async def from_api_token(
         self,

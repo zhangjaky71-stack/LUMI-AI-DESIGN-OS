@@ -63,39 +63,49 @@ class CompositeEditValidator:
         identity_snapshot: str | None = None
 
         if (candidate.width, candidate.height) != (spec.source.width, spec.source.height):
-            findings.append(EditFinding(
-                validator="resolution",
-                status="FAIL",
-                severity="HARD",
-                reason_code="IMAGE_EDIT_DIMENSIONS_CHANGED",
-            ))
+            findings.append(
+                EditFinding(
+                    validator="resolution",
+                    status="FAIL",
+                    severity="HARD",
+                    reason_code="IMAGE_EDIT_DIMENSIONS_CHANGED",
+                )
+            )
         else:
-            findings.append(EditFinding(
-                validator="resolution",
-                status="PASS",
-                severity="HARD",
-                reason_code="IMAGE_EDIT_DIMENSIONS_PRESERVED",
-            ))
+            findings.append(
+                EditFinding(
+                    validator="resolution",
+                    status="PASS",
+                    severity="HARD",
+                    reason_code="IMAGE_EDIT_DIMENSIONS_PRESERVED",
+                )
+            )
 
         if spec.protected_regions:
             if self.protected is None:
-                findings.append(EditFinding(
-                    validator="protected-region",
-                    status="UNAVAILABLE",
-                    severity="HARD",
-                    reason_code="IMAGE_EDIT_PROTECTED_REGION_VALIDATOR_UNAVAILABLE",
-                ))
+                findings.append(
+                    EditFinding(
+                        validator="protected-region",
+                        status="UNAVAILABLE",
+                        severity="HARD",
+                        reason_code="IMAGE_EDIT_PROTECTED_REGION_VALIDATOR_UNAVAILABLE",
+                    )
+                )
             else:
-                findings.extend(await self.protected.compare_protected_regions(spec=spec, candidate=candidate))
+                findings.extend(
+                    await self.protected.compare_protected_regions(spec=spec, candidate=candidate)
+                )
 
         if spec.identity_requirement_ids:
             if self.identity is None:
-                findings.append(EditFinding(
-                    validator="identity-engine",
-                    status="UNAVAILABLE",
-                    severity="HARD",
-                    reason_code="IMAGE_EDIT_IDENTITY_VALIDATOR_UNAVAILABLE",
-                ))
+                findings.append(
+                    EditFinding(
+                        validator="identity-engine",
+                        status="UNAVAILABLE",
+                        severity="HARD",
+                        reason_code="IMAGE_EDIT_IDENTITY_VALIDATOR_UNAVAILABLE",
+                    )
+                )
             else:
                 identity_findings, identity_snapshot = await self.identity.validate_identity(
                     spec=spec, candidate=candidate
@@ -104,37 +114,45 @@ class CompositeEditValidator:
 
         if any(region.role == "QR" for region in spec.protected_regions):
             if self.qr is None:
-                findings.append(EditFinding(
-                    validator="qr-scannability",
-                    status="UNAVAILABLE",
-                    severity="HARD",
-                    reason_code="IMAGE_EDIT_QR_VALIDATOR_UNAVAILABLE",
-                ))
+                findings.append(
+                    EditFinding(
+                        validator="qr-scannability",
+                        status="UNAVAILABLE",
+                        severity="HARD",
+                        reason_code="IMAGE_EDIT_QR_VALIDATOR_UNAVAILABLE",
+                    )
+                )
             else:
                 findings.extend(await self.qr.validate_qr(spec=spec, candidate=candidate))
 
         if any(region.role == "LOCKED_TEXT" for region in spec.protected_regions):
             if self.ocr is None:
-                findings.append(EditFinding(
-                    validator="ocr-lock",
-                    status="UNAVAILABLE",
-                    severity="HARD",
-                    reason_code="IMAGE_EDIT_OCR_VALIDATOR_UNAVAILABLE",
-                ))
+                findings.append(
+                    EditFinding(
+                        validator="ocr-lock",
+                        status="UNAVAILABLE",
+                        severity="HARD",
+                        reason_code="IMAGE_EDIT_OCR_VALIDATOR_UNAVAILABLE",
+                    )
+                )
             else:
                 findings.extend(await self.ocr.validate_locked_text(spec=spec, candidate=candidate))
 
         if self.intended_change is None:
-            findings.append(EditFinding(
-                validator="intended-change",
-                status="UNAVAILABLE",
-                severity="HARD",
-                reason_code="IMAGE_EDIT_INTENDED_CHANGE_VALIDATOR_UNAVAILABLE",
-            ))
+            findings.append(
+                EditFinding(
+                    validator="intended-change",
+                    status="UNAVAILABLE",
+                    severity="HARD",
+                    reason_code="IMAGE_EDIT_INTENDED_CHANGE_VALIDATOR_UNAVAILABLE",
+                )
+            )
         else:
-            findings.extend(await self.intended_change.validate_intended_change(
-                spec=spec, plan=plan, candidate=candidate
-            ))
+            findings.extend(
+                await self.intended_change.validate_intended_change(
+                    spec=spec, plan=plan, candidate=candidate
+                )
+            )
 
         return EditValidationReport(
             findings=tuple(findings),

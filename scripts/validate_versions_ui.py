@@ -53,15 +53,40 @@ def main() -> None:
     require(tsconfig, '"@lumi/artifact-sdk"', "canonical Artifact SDK alias")
     require(gateway, 'from "@lumi/artifact-sdk"', "canonical Artifact SDK import")
     require(gateway, "new ArtifactEngine()", "NODE-42 ArtifactEngine use")
-    require(gateway, "branch.head_version_id !== safe.expected_head_version_id", "pre-restore CAS check")
+    require(
+        gateway,
+        "branch.head_version_id !== safe.expected_head_version_id",
+        "pre-restore CAS check",
+    )
     require(gateway, "this.#engine.restore(", "canonical restore runtime")
     require(gateway, 'kind: "INFO"', "restore/fork notice")
     require(gateway, "this.#engine.addBranch(branch)", "canonical fork branch")
     require(gateway, "exact: true as const", "exact compare identity")
     require(gateway, "PROVENANCE_FORBIDDEN", "provenance authorization boundary")
-    require(gateway, "Your current compare targets were not changed", "concurrent head does not retarget compare")
+    require(
+        gateway,
+        "Your current compare targets were not changed",
+        "concurrent head does not retarget compare",
+    )
     require(ui, "恢复会创建一个新的 DRAFT", "restore append-only explanation")
-    require(ui, "No raw system prompt or chain-of-thought", "safe provenance copy")
+    safe_provenance_copy = (
+        "No raw system prompt or chain-of-thought" in ui
+        or all(
+            marker in ui
+            for marker in (
+                "Raw prompts",
+                "system prompts",
+                "tool payloads",
+                "private reasoning",
+                "never",
+                "exposed here",
+            )
+        )
+    )
+    if not safe_provenance_copy:
+        raise AssertionError(
+            "missing safe provenance copy: UI must state that raw/private execution data is not exposed"
+        )
     require(ui, "SIDE_BY_SIDE", "side-by-side compare")
     require(ui, "OVERLAY", "overlay compare")
     require(ui, "WIPE", "wipe compare")
@@ -73,7 +98,12 @@ def main() -> None:
     combined = "\n".join([gateway, types, ui, server])
     for durable in ("localStorage", "sessionStorage", "indexedDB"):
         forbid(combined, durable, "browser canonical storage")
-    for private_field in ("chain_of_thought:", "system_prompt:", "raw_tool_payload:", "raw_prompt:"):
+    for private_field in (
+        "chain_of_thought:",
+        "system_prompt:",
+        "raw_tool_payload:",
+        "raw_prompt:",
+    ):
         forbid(combined, private_field, "private execution field")
 
     for marker in (
@@ -88,7 +118,17 @@ def main() -> None:
     unit = text("apps/web/src/lib/versions-ui/versions-gateway.test.ts")
     require(unit, "BRANCH_HEAD_CONFLICT", "stale-head unit coverage")
     require(unit, 'type === "DERIVED_FROM"', "restore lineage unit coverage")
-    require(unit, 'status).toBe("APPROVED")', "approved immutability unit coverage")
+    require(
+        unit,
+        "preserving approved history",
+        "approved immutability test scenario",
+    )
+    require(
+        unit,
+        'item.version.id === "design-v2"',
+        "approved original version identity",
+    )
+    require(unit, '.toBe("APPROVED")', "approved immutability assertion")
 
     print("NODE-59 Versions UI static architecture validation: PASS")
 

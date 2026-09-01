@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import datetime
-from typing import Any, AsyncIterator, Callable, Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from .contracts import (
@@ -36,9 +37,8 @@ class PostgresMemoryRepository:
 
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator[PostgresMemoryRepositorySession]:
-        async with self.connection_factory() as connection:
-            async with connection.transaction():
-                yield PostgresMemoryRepositorySession(connection)
+        async with self.connection_factory() as connection, connection.transaction():
+            yield PostgresMemoryRepositorySession(connection)
 
 
 class PostgresMemoryRepositorySession:
@@ -204,7 +204,10 @@ class PostgresMemoryRepositorySession:
                 id,organization_id,scope_type,scope_id,kind,semantic_key,content_hash,
                 content_structured,summary,source_refs,confidence,created_by_type,created_by_id,
                 explicit_remember,temporal_coexistence,outcome,reason,expires_at,metadata_json
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10::jsonb,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb)
+            ) VALUES (
+                $1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10::jsonb,
+                $11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb
+            )
             ON CONFLICT (id) DO NOTHING
             """,
             candidate.candidate_id,
@@ -266,9 +269,7 @@ def _record(row: Any) -> MemoryRecord:
         semantic_key=row["semantic_key"],
         content_structured=_json_object(row["content_structured"]),
         summary=row["summary"],
-        source_refs=tuple(
-            MemorySourceRef(**item) for item in _json_list(row["source_refs"])
-        ),
+        source_refs=tuple(MemorySourceRef(**item) for item in _json_list(row["source_refs"])),
         confidence=float(row["confidence"]),
         status=MemoryStatus(row["status"]),
         created_by_type=MemoryActorType(row["created_by_type"]),

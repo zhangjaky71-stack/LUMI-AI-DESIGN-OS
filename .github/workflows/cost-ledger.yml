@@ -5,15 +5,19 @@ on:
     paths:
       - "apps/api/alembic/**"
       - "apps/api/src/lumi_api/costs/**"
+      - "apps/api/src/lumi_api/model_gateway_runtime.py"
       - "apps/api/src/lumi_api/idempotency/ledger.py"
       - "apps/api/src/lumi_api/persistence/models/**"
       - "apps/api/src/lumi_api/api/**"
       - "apps/api/tests/test_cost_*.py"
+      - "apps/api/pyproject.toml"
       - "services/model-gateway/**"
+      - "pyproject.toml"
       - "scripts/validate_idempotency_contract.py"
       - "scripts/validate_cost_ledger_contract.py"
       - "scripts/integration_cost_ledger.py"
       - "scripts/integration_cost_privileges.py"
+      - "scripts/integration_platform_provider_cost_guard.py"
       - "docs/runtime/COST-LEDGER-BUDGET-QUOTA-V1.md"
       - "reports/nodes/NODE-27/**"
       - "Makefile"
@@ -36,8 +40,10 @@ jobs:
           PYTHONPATH=apps/api/src:services/model-gateway/src
           python -m compileall -q
           apps/api/src/lumi_api/costs
+          apps/api/src/lumi_api/model_gateway_runtime.py
           apps/api/src/lumi_api/api/v1/cost_router.py
           apps/api/src/lumi_api/idempotency/ledger.py
+          apps/api/src/lumi_api/persistence/models/platform_cost_guard.py
           services/model-gateway/src/lumi_model_gateway
           apps/api/tests/test_cost_contracts.py
           apps/api/tests/test_cost_api_contract.py
@@ -45,6 +51,7 @@ jobs:
           scripts/validate_cost_ledger_contract.py
           scripts/integration_cost_ledger.py
           scripts/integration_cost_privileges.py
+          scripts/integration_platform_provider_cost_guard.py
       - name: Revalidate NODE-20 idempotency boundary
         run: >-
           PYTHONPATH=apps/api/src:services/model-gateway/src
@@ -85,14 +92,17 @@ jobs:
         run: >-
           uv run ruff check
           apps/api/src/lumi_api/costs
+          apps/api/src/lumi_api/model_gateway_runtime.py
           apps/api/src/lumi_api/idempotency/ledger.py
           apps/api/src/lumi_api/persistence/models/platform.py
+          apps/api/src/lumi_api/persistence/models/platform_cost_guard.py
           apps/api/src/lumi_api/persistence/models/__init__.py
           apps/api/src/lumi_api/api/contract_app.py
           apps/api/src/lumi_api/api/v1/contracts.py
           apps/api/src/lumi_api/api/v1/cost_router.py
           apps/api/src/lumi_api/api/v1/services.py
           apps/api/alembic/versions/0011_cost_ledger_budget_quota.py
+          apps/api/alembic/versions/0018_platform_provider_cost_guard.py
           apps/api/tests/test_cost_contracts.py
           apps/api/tests/test_cost_api_contract.py
           services/model-gateway/src/lumi_model_gateway/models.py
@@ -104,10 +114,13 @@ jobs:
           scripts/validate_cost_ledger_contract.py
           scripts/integration_cost_ledger.py
           scripts/integration_cost_privileges.py
+          scripts/integration_platform_provider_cost_guard.py
       - name: NODE-27 Pyright gate
         run: >-
           uv run pyright
           apps/api/src/lumi_api/costs
+          apps/api/src/lumi_api/model_gateway_runtime.py
+          apps/api/src/lumi_api/persistence/models/platform_cost_guard.py
           apps/api/src/lumi_api/api/v1/cost_router.py
           apps/api/tests/test_cost_contracts.py
           apps/api/tests/test_cost_api_contract.py
@@ -117,6 +130,7 @@ jobs:
           services/model-gateway/src/lumi_model_gateway/cost_accounting.py
           services/model-gateway/src/lumi_model_gateway/gateway.py
           services/model-gateway/tests/test_cost_accounting.py
+          scripts/integration_platform_provider_cost_guard.py
 
   cost-postgres:
     needs: cost-quality
@@ -150,6 +164,10 @@ jobs:
         run: >-
           PYTHONPATH=apps/api/src:services/model-gateway/src
           uv run python scripts/integration_cost_ledger.py
+      - name: Platform Provider USD/day hard-stop acceptance
+        run: >-
+          PYTHONPATH=apps/api/src:services/model-gateway/src
+          uv run python scripts/integration_platform_provider_cost_guard.py
       - name: Runtime financial privilege acceptance
         run: >-
           PYTHONPATH=apps/api/src:services/model-gateway/src

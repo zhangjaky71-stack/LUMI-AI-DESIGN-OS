@@ -134,18 +134,14 @@ class MCPToolMapper:
         unsupported = set(schema) - _ALLOWED_SCHEMA_KEYS
         if unsupported:
             names = ",".join(sorted(str(item) for item in unsupported))
-            raise MCPSchemaInvalidError(
-                f"{path}: unsupported schema keywords: {names}"
-            )
+            raise MCPSchemaInvalidError(f"{path}: unsupported schema keywords: {names}")
         properties = schema.get("properties")
         if properties is not None:
             if not isinstance(properties, dict):
                 raise MCPSchemaInvalidError(f"{path}.properties: object required")
             for name, child in properties.items():
                 if not isinstance(name, str) or not isinstance(child, dict):
-                    raise MCPSchemaInvalidError(
-                        f"{path}.properties: invalid property schema"
-                    )
+                    raise MCPSchemaInvalidError(f"{path}.properties: invalid property schema")
                 self._validate_schema_node(
                     child,
                     path=f"{path}.properties.{name}",
@@ -168,9 +164,7 @@ class MCPToolMapper:
                 depth=depth + 1,
             )
         elif additional is not None and not isinstance(additional, bool):
-            raise MCPSchemaInvalidError(
-                f"{path}.additionalProperties: bool or schema required"
-            )
+            raise MCPSchemaInvalidError(f"{path}.additionalProperties: bool or schema required")
 
 
 def mcp_lumi_tool_name(server_id: str, remote_tool_name: str) -> str:

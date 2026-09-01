@@ -1,8 +1,22 @@
 import type { CompilerArtifactProvenance } from "./types";
 
 export const EXPORT_ENGINE_VERSION = "1.0.0";
-export type ExportFormat = "PNG" | "JPEG" | "WEBP" | "SVG" | "PDF" | "LUMI_PACKAGE" | "ZIP";
-export type ExportJobStatus = "PENDING" | "RENDERING" | "PACKAGING" | "VALIDATING" | "READY" | "FAILED" | "EXPIRED";
+export type ExportFormat =
+  | "PNG"
+  | "JPEG"
+  | "WEBP"
+  | "SVG"
+  | "PDF"
+  | "LUMI_PACKAGE"
+  | "ZIP";
+export type ExportJobStatus =
+  | "PENDING"
+  | "RENDERING"
+  | "PACKAGING"
+  | "VALIDATING"
+  | "READY"
+  | "FAILED"
+  | "EXPIRED";
 export type ExportResizeMode = "SCALE" | "CROP";
 export type ExportColorProfile = "SRGB" | "DISPLAY_P3" | "CMYK";
 export type ExportUnit = "PX" | "MM" | "IN";
@@ -131,32 +145,69 @@ export interface RenderedExportPayload {
   readonly metadata?: Readonly<Record<string, unknown>>;
 }
 
-export interface ExportSourcePort { resolveExactSnapshot(spec: ExportSpec): Promise<ExportSourceSnapshot> }
+export interface ExportSourcePort {
+  resolveExactSnapshot(spec: ExportSpec): Promise<ExportSourceSnapshot>;
+}
 
 export interface ExportJobRepository {
-  findByOperation(organizationId: string, operationId: string): Promise<ExportJob | null>;
-  findReadyByFingerprint(organizationId: string, fingerprint: string, minimumExpiresAtIso: string): Promise<ExportJob | null>;
+  findByOperation(
+    organizationId: string,
+    operationId: string,
+  ): Promise<ExportJob | null>;
+  findReadyByFingerprint(
+    organizationId: string,
+    fingerprint: string,
+    minimumExpiresAtIso: string,
+  ): Promise<ExportJob | null>;
   get(organizationId: string, exportJobId: string): Promise<ExportJob | null>;
   save(job: ExportJob): Promise<void>;
 }
 
-export interface ExportRendererPort { render(source: ExportSourceSnapshot, variant: ExportVariant): Promise<RenderedExportPayload> }
+export interface ExportRendererPort {
+  render(
+    source: ExportSourceSnapshot,
+    variant: ExportVariant,
+  ): Promise<RenderedExportPayload>;
+}
 
 export interface ExportObjectStore {
-  put(storageKey: string, payload: Uint8Array, mimeType: string): Promise<{ readonly storage_key: string; readonly checksum_sha256: string; readonly size_bytes: number }>;
+  put(
+    storageKey: string,
+    payload: Uint8Array,
+    mimeType: string,
+  ): Promise<{
+    readonly storage_key: string;
+    readonly checksum_sha256: string;
+    readonly size_bytes: number;
+  }>;
   get(storageKey: string): Promise<Uint8Array>;
 }
 
 export interface ExportArtifactPort {
-  persistExport(args: { readonly job: ExportJob; readonly files: readonly ExportFileRecord[]; readonly manifest: ExportManifest; readonly package_file?: ExportFileRecord }): Promise<void>;
+  persistExport(args: {
+    readonly job: ExportJob;
+    readonly files: readonly ExportFileRecord[];
+    readonly manifest: ExportManifest;
+    readonly package_file?: ExportFileRecord;
+  }): Promise<void>;
 }
 
 export interface ExportAuthorizationPort {
-  canDownload(args: { readonly organization_id: string; readonly project_id: string; readonly actor_id: string; readonly export_job_id: string; readonly file: ExportFileRecord }): Promise<boolean>;
+  canDownload(args: {
+    readonly organization_id: string;
+    readonly project_id: string;
+    readonly actor_id: string;
+    readonly export_job_id: string;
+    readonly file: ExportFileRecord;
+  }): Promise<boolean>;
 }
 
 export interface ExportDownloadSignerPort {
-  sign(args: { readonly storage_key: string; readonly filename: string; readonly expires_seconds: number }): Promise<{ readonly url: string; readonly expires_at: string }>;
+  sign(args: {
+    readonly storage_key: string;
+    readonly filename: string;
+    readonly expires_seconds: number;
+  }): Promise<{ readonly url: string; readonly expires_at: string }>;
 }
 
 export interface ExportDownloadAuditPort {
@@ -181,4 +232,9 @@ export interface ExportValidationEvidencePort {
   }): Promise<void>;
 }
 
-export interface ExportEventPort { emit(eventType: string, payload: Readonly<Record<string, unknown>>): Promise<void> }
+export interface ExportEventPort {
+  emit(
+    eventType: string,
+    payload: Readonly<Record<string, unknown>>,
+  ): Promise<void>;
+}

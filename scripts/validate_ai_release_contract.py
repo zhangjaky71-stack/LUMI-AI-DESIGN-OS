@@ -7,13 +7,15 @@ import os
 from pathlib import Path
 from typing import Any
 
-from evals.live import live_preflight
+from evals.live import AUTHORIZATION_ONLY_MODE, live_preflight
 from evals.release import ReleaseGateError, ReleaseManifest, evaluate_release
 from evals.release_control import RolloutState, advance_canary, rollback, validate_shadow_plan
 from evals.runner import load_json, load_suite, run_suite
 
 ROOT = Path(__file__).resolve().parents[1]
 EVALS = ROOT / "evals"
+CLI = EVALS / "cli.py"
+WORKFLOW = ROOT / ".github" / "workflows" / "ai-regression-release-gate.yml"
 
 FIXTURE_PATHS = {
     "smoke": (
@@ -29,6 +31,16 @@ FIXTURE_PATHS = {
         EVALS / "fixtures" / "visual-critic" / "candidate.json",
     ),
 }
+
+LIVE_ENV_KEYS = [
+    "LUMI_LIVE_EVAL_ENABLED",
+    "LUMI_LIVE_EVAL_PREFLIGHT_MODE",
+    "LUMI_LIVE_EVAL_API_KEY",
+    "LUMI_LIVE_EVAL_BUDGET_USD",
+    "LUMI_LIVE_EVAL_MAX_BUDGET_USD",
+    "LUMI_LIVE_EVAL_SUITE_ACK",
+    "LUMI_LIVE_EVAL_SIDE_EFFECT_MODE",
+]
 
 
 def require(condition: bool, message: str) -> None:
@@ -51,6 +63,79 @@ def build_fixture_pairs(required_suites: list[str]) -> dict[str, tuple[Any, dict
             run_suite(EVALS, suite_name, candidate_path, git_sha="b" * 40),
         )
     return pairs
+
+
+def validate_secretless_live_preflight() -> dict[str, Any]:
+    saved = {key: os.environ.get(key) for key in LIVE_ENV_KEYS}
+    try:
+        for key in LIVE_ENV_KEYS:
+            os.environ.pop(key, None)
+        require(live_preflight("smoke")["status"] == "SKIPPED", "live eval must be disabled by default")
+
+        os.environ["LUMI_LIVE_EVAL_ENABLED"] = "1"
+        os.environ["LUMI_LIVE_EVAL_PREFLIGHT_MODE"] = AUTHORIZATION_ONLY_MODE
+        os.environ["LUMI_LIVE_EVAL_BUDGET_USD"] = "5"
+        os.environ["LUMI_LIVE_EVAL_MAX_BUDGET_USD"] = "25"
+        os.environ["LUMI_LIVE_EVAL_SUITE_ACK"] = "smoke"
+        os.environ["LUMI_LIVE_EVAL_SIDE_EFFECT_MODE"] = "none"
+        os.environ.pop("LUMI_LIVE_EVAL_API_KEY", None)
+
+        ready = live_preflight("smoke")
+        require(ready.get("status") == "READY", "clean authorization-only preflight must be READY")
+        require(ready.get("preflight_mode") == AUTHORIZATION_ONLY_MODE, "preflight mode drift")
+        require(ready.get("credential_check") == "NOT_PERFORMED", "preflight must not validate provider credentials")
+        require(ready.get("network_execution") is False, "preflight must not execute provider network calls")
+        require(ready.get("side_effect_mode") == "none", "preflight side-effect mode must remain none")
+
+        os.environ["LUMI_LIVE_EVAL_API_KEY"] = "forbidden-in-preflight"
+        require(
+            live_preflight("smoke").get("status") == "SKIPPED",
+            "authorization preflight must reject injected provider credentials",
+        )
+        os.environ.pop("LUMI_LIVE_EVAL_API_KEY", None)
+
+        os.environ["LUMI_LIVE_EVAL_PREFLIGHT_MODE"] = "provider-execution"
+        require(
+            live_preflight("smoke").get("status") == "SKIPPED",
+            "unknown/provider-execution preflight mode must block",
+        )
+        os.environ["LUMI_LIVE_EVAL_PREFLIGHT_MODE"] = AUTHORIZATION_ONLY_MODE
+
+        os.environ["LUMI_LIVE_EVAL_BUDGET_USD"] = "25.01"
+        require(
+            live_preflight("smoke").get("status") == "SKIPPED",
+            "preflight budget above configured maximum must block",
+        )
+    finally:
+        for key in LIVE_ENV_KEYS:
+            os.environ.pop(key, None)
+        for key, value in saved.items():
+            if value is not None:
+                os.environ[key] = value
+
+    cli_source = CLI.read_text(encoding="utf-8")
+    workflow_source = WORKFLOW.read_text(encoding="utf-8")
+    require(
+        'return 0 if result.get("status") == "READY" else 2' in cli_source,
+        "live CLI must fail closed when authorization preflight is not READY",
+    )
+    require(
+        "LUMI_LIVE_EVAL_API_KEY" not in workflow_source,
+        "AI Regression workflow must not inject Provider credentials into preflight",
+    )
+    require(
+        'LUMI_LIVE_EVAL_PREFLIGHT_MODE: "authorization-only"' in workflow_source,
+        "AI Regression workflow must explicitly bind authorization-only mode",
+    )
+    require(
+        "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release-closure-p0'" in workflow_source,
+        "authorization preflight must be manual release-ref only",
+    )
+    require(
+        'ref: ${{ github.sha }}' in workflow_source and "persist-credentials: false" in workflow_source,
+        "authorization preflight must execute exact dispatch SHA without persisted credentials",
+    )
+    return ready
 
 
 def main() -> int:
@@ -138,24 +223,7 @@ def main() -> int:
     require(state.stage == "5", "canary must progress internal -> 5")
     require(rollback(state, reason="drill").production_alias == "agent@1.0.0", "rollback must restore baseline alias")
 
-    saved = {
-        key: os.environ.get(key)
-        for key in [
-            "LUMI_LIVE_EVAL_ENABLED",
-            "LUMI_LIVE_EVAL_API_KEY",
-            "LUMI_LIVE_EVAL_BUDGET_USD",
-            "LUMI_LIVE_EVAL_SUITE_ACK",
-            "LUMI_LIVE_EVAL_SIDE_EFFECT_MODE",
-        ]
-    }
-    try:
-        for key in saved:
-            os.environ.pop(key, None)
-        require(live_preflight("smoke")["status"] == "SKIPPED", "live eval must be disabled by default")
-    finally:
-        for key, value in saved.items():
-            if value is not None:
-                os.environ[key] = value
+    live_ready = validate_secretless_live_preflight()
 
     output = {
         "status": "PASS",
@@ -169,6 +237,11 @@ def main() -> int:
         "shadow_side_effect_free": True,
         "rollback_contract": True,
         "live_provider_default": "SKIPPED",
+        "live_provider_preflight": "SECRETLESS_AUTHORIZATION_ONLY",
+        "live_provider_credential_check": live_ready["credential_check"],
+        "live_provider_network_execution": live_ready["network_execution"],
+        "provider_secret_in_preflight_blocked": True,
+        "preflight_non_ready_exit_nonzero": True,
     }
     print(json.dumps(output, indent=2, sort_keys=True))
     return 0

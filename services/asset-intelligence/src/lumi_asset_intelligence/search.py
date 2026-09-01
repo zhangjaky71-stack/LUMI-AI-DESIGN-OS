@@ -121,13 +121,17 @@ class AssetSearchEngine:
             raise ValueError("SEARCH_INDEX_TENANT_MISMATCH")
         if request.limit <= 0:
             raise ValueError("SEARCH_LIMIT_MUST_BE_POSITIVE")
-        if request.query_embedding is not None:
-            if len(request.query_embedding) != index.embedding_dimensions:
-                raise ValueError("QUERY_EMBEDDING_SPACE_MISMATCH")
+        if (
+            request.query_embedding is not None
+            and len(request.query_embedding) != index.embedding_dimensions
+        ):
+            raise ValueError("QUERY_EMBEDDING_SPACE_MISMATCH")
 
         # Critical security invariant: this is the only candidate retrieval call. The repository
         # applies organization/project/brand/permission/rights filters before any scoring below.
-        candidates = self._repository.scoped_candidates(request.scope, request.filters, index.index_id)
+        candidates = self._repository.scoped_candidates(
+            request.scope, request.filters, index.index_id
+        )
 
         source: AssetAnalysisRecord | None = None
         if request.mode == "SIMILAR_TO":

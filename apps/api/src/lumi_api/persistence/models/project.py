@@ -16,7 +16,8 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..base import Base, CreatedAtMixin, IdMixin, MutableTimestampMixin
@@ -39,7 +40,7 @@ class Brand(IdMixin, MutableTimestampMixin, Base):
 class BrandPalette(IdMixin, MutableTimestampMixin, Base):
     __tablename__ = "brand_palettes"
     __table_args__ = (
-        UniqueConstraint("brand_id", "name", name="brand_palette_name"),
+        UniqueConstraint("brand_id", "name", name="uq_brand_palettes_brand_name"),
         Index("ix_brand_palettes_org_brand", "organization_id", "brand_id"),
     )
 
@@ -230,14 +231,18 @@ class ProjectSummary(IdMixin, MutableTimestampMixin, Base):
         nullable=False,
         server_default=func.now(),
     )
-    active_run_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    artifact_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    active_run_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    artifact_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
 
 class ProjectMember(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "project_members"
     __table_args__ = (
-        UniqueConstraint("project_id", "user_id", name="project_user"),
+        UniqueConstraint("project_id", "user_id", name="uq_project_members_project_user"),
         Index("ix_project_members_org_project", "organization_id", "project_id"),
     )
 

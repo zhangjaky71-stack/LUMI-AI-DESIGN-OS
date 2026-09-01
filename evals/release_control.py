@@ -28,7 +28,11 @@ def validate_shadow_plan(plan: dict[str, Any]) -> None:
     if plan.get("display_to_user") is not False:
         raise RolloutError("shadow candidate output must not be displayed to users")
     budget = plan.get("budget_usd")
-    if not isinstance(budget, (int, float)) or isinstance(budget, bool) or not 0 < float(budget) <= 100:
+    if (
+        not isinstance(budget, (int, float))
+        or isinstance(budget, bool)
+        or not 0 < float(budget) <= 100
+    ):
         raise RolloutError("shadow budget_usd must be > 0 and <= 100")
     if plan.get("authorized_data") is not True:
         raise RolloutError("shadow plan requires authorized/de-identified input policy")

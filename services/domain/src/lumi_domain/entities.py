@@ -118,7 +118,9 @@ class ArtifactVersion:
 
     def revised(self, *, content_hash: str) -> ArtifactVersion:
         if self.status is ArtifactVersionStatus.APPROVED:
-            raise InvariantViolation("approved artifact versions are immutable; create from a branch")
+            raise InvariantViolation(
+                "approved artifact versions are immutable; create from a branch"
+            )
         return ArtifactVersion(
             organization_id=self.organization_id,
             artifact_id=self.artifact_id,

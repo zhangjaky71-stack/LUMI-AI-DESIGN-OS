@@ -4,7 +4,8 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..base import Base, CreatedAtMixin, IdMixin, MutableTimestampMixin
@@ -35,8 +36,8 @@ class DesignDocument(IdMixin, MutableTimestampMixin, Base):
 class DesignDocumentVersion(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "design_document_versions"
     __table_args__ = (
-        UniqueConstraint("document_id", "version_number", name="design_document_version"),
-        UniqueConstraint("document_id", "content_hash", name="design_document_content_hash"),
+        UniqueConstraint("document_id", "version_number", name="uq_design_versions_number"),
+        UniqueConstraint("document_id", "content_hash", name="uq_design_versions_hash"),
         Index("ix_design_versions_org_document", "organization_id", "document_id"),
     )
 
@@ -87,7 +88,7 @@ class Artifact(IdMixin, MutableTimestampMixin, Base):
 class ArtifactBranch(IdMixin, MutableTimestampMixin, Base):
     __tablename__ = "artifact_branches"
     __table_args__ = (
-        UniqueConstraint("artifact_id", "name", name="artifact_branch_name"),
+        UniqueConstraint("artifact_id", "name", name="uq_artifact_branches_artifact_name"),
         Index("ix_artifact_branches_org_project", "organization_id", "project_id"),
         Index("ix_artifact_branches_artifact", "artifact_id"),
     )
@@ -114,8 +115,8 @@ class ArtifactBranch(IdMixin, MutableTimestampMixin, Base):
 class ArtifactVersion(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "artifact_versions"
     __table_args__ = (
-        UniqueConstraint("artifact_id", "version_number", name="artifact_version_number"),
-        UniqueConstraint("artifact_id", "content_hash", name="artifact_content_hash"),
+        UniqueConstraint("artifact_id", "version_number", name="uq_artifact_versions_number"),
+        UniqueConstraint("artifact_id", "content_hash", name="uq_artifact_versions_hash"),
         Index("ix_artifact_versions_org_artifact", "organization_id", "artifact_id"),
         Index("ix_artifact_versions_branch_created", "branch_id", "created_at"),
         Index("ix_artifact_versions_status", "organization_id", "status"),
@@ -166,7 +167,7 @@ class ArtifactEdge(IdMixin, CreatedAtMixin, Base):
             "from_artifact_version_id",
             "to_artifact_version_id",
             "edge_type",
-            name="artifact_edge_identity",
+            name="uq_artifact_edges_identity",
         ),
         Index("ix_artifact_edges_org_from", "organization_id", "from_artifact_version_id"),
         Index("ix_artifact_edges_org_to", "organization_id", "to_artifact_version_id"),
@@ -194,7 +195,7 @@ class ArtifactEdge(IdMixin, CreatedAtMixin, Base):
 class ArtifactFile(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "artifact_files"
     __table_args__ = (
-        UniqueConstraint("artifact_version_id", "format", name="artifact_file_format"),
+        UniqueConstraint("artifact_version_id", "format", name="uq_artifact_files_version_format"),
         Index("ix_artifact_files_org_version", "organization_id", "artifact_version_id"),
     )
 

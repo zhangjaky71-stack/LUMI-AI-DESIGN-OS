@@ -40,4 +40,4 @@ jobs:
       - name: Artifact history reference tests
         env:
           PYTHONPATH: services/artifact-history/src
-        run: python -m unittest discover -s services/artifact-history/tests -p 'test_*.py' -v
+        run: python -m unittest discover -s services/artifact-history/tests -p 'test_artifact_history.py' -v

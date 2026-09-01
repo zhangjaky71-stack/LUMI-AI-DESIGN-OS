@@ -40,7 +40,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - uses: astral-sh/setup-uv@v7
         with: { version: "0.10.9" }
-      - run: uv sync --frozen
+      - run: uv sync --all-packages --frozen
       - name: Validate architecture chain through NODE-64
         run: |
           python scripts/validate_app_shell.py
@@ -72,7 +72,7 @@ jobs:
         with: { python-version: "3.12" }
       - uses: astral-sh/setup-uv@v7
         with: { version: "0.10.9" }
-      - run: uv sync --frozen
+      - run: uv sync --all-packages --frozen
       - run: uv run pytest services/project-core/tests/test_admin_console.py apps/api/tests/test_admin_router.py
       - run: uv run ruff check --select F,B services/project-core/src/lumi_project_core/admin_console.py services/project-core/tests/test_admin_console.py apps/api/src/lumi_api/admin_router.py apps/api/tests/test_admin_router.py
 

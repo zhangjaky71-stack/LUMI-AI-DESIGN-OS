@@ -23,7 +23,19 @@ PROJECT = "project-a"
 SUBJECT = ApprovalSubject("ARTIFACT_VERSION", "artifact-a", "artifact-v3")
 
 
-def setup_engine(*, permissions=frozenset({"artifact.approve"}), roles=("OWNER",)):
+def setup_engine(
+    *, permissions=frozenset({"artifact.approve"}), roles=("OWNER",)
+) -> tuple[
+    ApprovalEngine,
+    ApprovalActor,
+    InMemoryApprovalRepository,
+    InMemoryApprovalSubjects,
+    InMemoryApprovalRuns,
+    RecordingApprovalResume,
+    RecordingApprovalAudit,
+    RecordingApprovalNotifications,
+    RecordingApprovalChanges,
+]:
     repo = InMemoryApprovalRepository()
     subjects = InMemoryApprovalSubjects()
     subjects.add(ORG, PROJECT, SUBJECT)
@@ -138,8 +150,7 @@ def test_duplicate_decision_is_idempotent_by_key():
 
 
 def test_request_changes_creates_change_task_and_resumes_graph():
-    engine, actor, *rest = setup_engine()
-    resume, changes = rest[3], rest[-1]
+    engine, actor, _, _, _, resume, _, _, changes = setup_engine()
     approval = request(engine, actor)
     feedback = ApprovalFeedback(
         comment="Move the CTA and keep the logo lockup.",
@@ -161,13 +172,16 @@ def test_request_changes_creates_change_task_and_resumes_graph():
 
 def test_expiry_fails_closed():
     engine, actor, *_ = setup_engine()
-    approval = request(engine, actor, expires_at=(datetime.now(UTC) + timedelta(milliseconds=1)).isoformat())
+    approval = request(
+        engine, actor, expires_at=(datetime.now(UTC) + timedelta(milliseconds=1)).isoformat()
+    )
     expired = repo_get_after_expiry(engine, actor, approval.approval_id)
     assert expired.status == "EXPIRED"
 
 
 def repo_get_after_expiry(engine, actor, approval_id):
     import time
+
     time.sleep(0.01)
     return engine.get(actor, PROJECT, approval_id)
 
@@ -211,32 +225,56 @@ def test_graph_restart_can_resume_from_durable_approval_id():
 
 
 def test_multi_approver_min_n_and_role_sequence_fixture():
-    engine, owner, *_ = setup_engine()
+    engine, owner, _, subjects, *_ = setup_engine()
     min_policy = ApprovalPolicy(mode="MIN_N", min_approvals=2)
     approval = request(engine, owner, policy=min_policy, agent_run_id=None)
     first = engine.decide(
-        owner, project_id=PROJECT, approval_id=approval.approval_id,
-        decision="APPROVE", idempotency_key="min-1"
+        owner,
+        project_id=PROJECT,
+        approval_id=approval.approval_id,
+        decision="APPROVE",
+        idempotency_key="min-1",
     )
     assert first.status == "PENDING"
     admin = ApprovalActor("admin", ORG, ("ADMIN",), frozenset({"artifact.approve"}))
     second = engine.decide(
-        admin, project_id=PROJECT, approval_id=approval.approval_id,
-        decision="APPROVE", idempotency_key="min-2"
+        admin,
+        project_id=PROJECT,
+        approval_id=approval.approval_id,
+        decision="APPROVE",
+        idempotency_key="min-2",
     )
     assert second.status == "APPROVED"
 
     seq_subject = ApprovalSubject("CUSTOM_REVIEW", "campaign-a", "review-v1")
-    engine._subjects.add(ORG, PROJECT, seq_subject)  # deterministic fixture port
+    subjects.add(ORG, PROJECT, seq_subject)
     seq = engine.request(
-        owner, project_id=PROJECT, approval_type="CUSTOM_REVIEW", subject=seq_subject,
-        policy=ApprovalPolicy(mode="ROLE_BASED_SEQUENCE", required_permission="artifact.approve", sequence_roles=("EDITOR", "OWNER")),
-        payload_summary="Sequential review", agent_run_id=None,
+        owner,
+        project_id=PROJECT,
+        approval_type="CUSTOM_REVIEW",
+        subject=seq_subject,
+        policy=ApprovalPolicy(
+            mode="ROLE_BASED_SEQUENCE",
+            required_permission="artifact.approve",
+            sequence_roles=("EDITOR", "OWNER"),
+        ),
+        payload_summary="Sequential review",
+        agent_run_id=None,
     )
     editor = ApprovalActor("editor", ORG, ("EDITOR",), frozenset({"artifact.approve"}))
-    pending = engine.decide(editor, project_id=PROJECT, approval_id=seq.approval_id,
-                            decision="APPROVE", idempotency_key="seq-1")
+    pending = engine.decide(
+        editor,
+        project_id=PROJECT,
+        approval_id=seq.approval_id,
+        decision="APPROVE",
+        idempotency_key="seq-1",
+    )
     assert pending.status == "PENDING"
-    final = engine.decide(owner, project_id=PROJECT, approval_id=seq.approval_id,
-                          decision="APPROVE", idempotency_key="seq-2")
+    final = engine.decide(
+        owner,
+        project_id=PROJECT,
+        approval_id=seq.approval_id,
+        decision="APPROVE",
+        idempotency_key="seq-2",
+    )
     assert final.status == "APPROVED"

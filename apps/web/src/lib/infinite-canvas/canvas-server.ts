@@ -128,7 +128,13 @@ function seed(projectId: string): InfiniteCanvasSeed {
   };
 }
 
-export function getInfiniteCanvasBootstrap(projectId: string): InfiniteCanvasBootstrap {
-  const e2e = process.env.NODE_ENV !== "production" && process.env.LUMI_INFINITE_CANVAS_E2E === "1";
-  return e2e ? { mode: "e2e", seed: seed(projectId) } : { mode: "http", seed: null };
+export function getInfiniteCanvasBootstrap(
+  projectId: string,
+): InfiniteCanvasBootstrap {
+  const e2e =
+    process.env.NODE_ENV !== "production" &&
+    process.env.LUMI_INFINITE_CANVAS_E2E === "1";
+  return e2e
+    ? { mode: "e2e", seed: seed(projectId) }
+    : { mode: "http", seed: null };
 }

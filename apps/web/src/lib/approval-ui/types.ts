@@ -17,7 +17,11 @@ export type ApprovalStatus =
   | "SUPERSEDED";
 
 export type ApprovalDecision = "APPROVE" | "REJECT" | "REQUEST_CHANGES";
-export type ApprovalPolicyMode = "ANY_ONE" | "ALL" | "MIN_N" | "ROLE_BASED_SEQUENCE";
+export type ApprovalPolicyMode =
+  | "ANY_ONE"
+  | "ALL"
+  | "MIN_N"
+  | "ROLE_BASED_SEQUENCE";
 
 export interface ApprovalSubject {
   readonly subject_type: string;

@@ -58,7 +58,9 @@ class OpenCvProtectedRegionComparator:
 
         before_edges = cv2.Canny(before_crop, 80, 160)
         after_edges = cv2.Canny(after_crop, 80, 160)
-        edge_difference = float(np.mean(np.abs(before_edges.astype("float64") - after_edges.astype("float64"))) / 255.0)
+        edge_difference = float(
+            np.mean(np.abs(before_edges.astype("float64") - after_edges.astype("float64"))) / 255.0
+        )
 
         before_lab = cv2.cvtColor(before_crop, cv2.COLOR_BGR2LAB).astype("float64")
         after_lab = cv2.cvtColor(after_crop, cv2.COLOR_BGR2LAB).astype("float64")
@@ -107,9 +109,8 @@ class OpenCvProtectedRegionComparator:
         c1 = (0.01 * 255.0) ** 2
         c2 = (0.03 * 255.0) ** 2
         numerator = (2 * mean_before * mean_after + c1) * (2 * covariance + c2)
-        denominator = (
-            (mean_before**2 + mean_after**2 + c1)
-            * (variance_before + variance_after + c2)
+        denominator = (mean_before**2 + mean_after**2 + c1) * (
+            variance_before + variance_after + c2
         )
         if denominator <= 0:
             return 1.0 if numerator <= 0 else 0.0

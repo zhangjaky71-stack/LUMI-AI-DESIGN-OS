@@ -43,9 +43,7 @@ def test_svg_xml_declaration_is_sniffed_but_active_content_is_rejected() -> None
             "SVG_DANGEROUS_REFERENCE|SVG_EXTERNAL_REFERENCE_REJECTED",
         ),
         (
-            b'<svg xmlns="http://www.w3.org/2000/svg">'
-            b'<rect onload="alert(1)"/>'
-            b"</svg>",
+            b'<svg xmlns="http://www.w3.org/2000/svg"><rect onload="alert(1)"/></svg>',
             "SVG_EVENT_HANDLER_REJECTED",
         ),
         (

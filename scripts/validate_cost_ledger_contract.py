@@ -30,9 +30,41 @@ def assert_model_gateway_cost_port_has_no_db_sdk() -> None:
             roots = {alias.name.split(".", 1)[0] for alias in node.names}
             if roots & forbidden_roots:
                 raise SystemExit("Model Gateway CostAccountingPort imports a DB SDK")
-        if isinstance(node, ast.ImportFrom) and node.module:
-            if node.module.split(".", 1)[0] in forbidden_roots:
-                raise SystemExit("Model Gateway CostAccountingPort imports a DB SDK")
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and node.module.split(".", 1)[0] in forbidden_roots
+        ):
+            raise SystemExit("Model Gateway CostAccountingPort imports a DB SDK")
+
+
+def assert_hosted_budget_guard_not_injectable(source: str) -> None:
+    tree = ast.parse(source, filename="apps/api/src/lumi_api/model_gateway_runtime.py")
+    factory = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "build_hosted_model_gateway"
+        ),
+        None,
+    )
+    if factory is None:
+        raise SystemExit("hosted Model Gateway composition function missing")
+    parameter_names = {
+        argument.arg
+        for argument in [
+            *factory.args.posonlyargs,
+            *factory.args.args,
+            *factory.args.kwonlyargs,
+        ]
+    }
+    if factory.args.vararg is not None:
+        parameter_names.add(factory.args.vararg.arg)
+    if factory.args.kwarg is not None:
+        parameter_names.add(factory.args.kwarg.arg)
+    if "budget_guard" in parameter_names:
+        raise SystemExit("hosted Model Gateway must not accept an injectable budget guard")
 
 
 def main() -> int:
@@ -69,6 +101,33 @@ def main() -> int:
         migration,
         "GRANT SELECT, INSERT, UPDATE ON cost_budget_limits",
         "GRANT SELECT, INSERT, UPDATE ON quota_limits",
+    )
+
+    platform_migration = "apps/api/alembic/versions/0018_platform_provider_cost_guard.py"
+    require(
+        platform_migration,
+        'down_revision = "0017_knowledge_engine"',
+        "CREATE TABLE platform_provider_cost_guard",
+        "100.00000000",
+        "daily_cap_usd > 0 AND daily_cap_usd <= 100.00000000",
+        "fail_closed boolean NOT NULL DEFAULT true",
+        "CONSTRAINT pk_platform_provider_cost_guard PRIMARY KEY (policy_key)",
+        "REVOKE INSERT, UPDATE, DELETE ON platform_provider_cost_guard FROM lumi_app",
+        "GRANT SELECT ON platform_provider_cost_guard TO lumi_app",
+    )
+
+    require(
+        "apps/api/src/lumi_api/persistence/models/platform_cost_guard.py",
+        "class PlatformProviderCostGuard",
+        '__tablename__ = "platform_provider_cost_guard"',
+        "Numeric(20, 8)",
+        "daily_cap_usd > 0 AND daily_cap_usd <= 100.00000000",
+        "fail_closed",
+    )
+    require(
+        "apps/api/src/lumi_api/persistence/models/__init__.py",
+        "from .platform_cost_guard import PlatformProviderCostGuard",
+        '"PlatformProviderCostGuard"',
     )
 
     require(
@@ -109,12 +168,32 @@ def main() -> int:
         raise SystemExit("append-only ledger replay must require SELECT only")
 
     require(
+        "apps/api/src/lumi_api/costs/platform_guard.py",
+        "class PlatformGuardedCostGateway",
+        "class PlatformProviderCostGuardUnavailable",
+        "pg_advisory_xact_lock",
+        "cost-budget:platform:provider-usd:utc-day",
+        "FROM platform_provider_cost_guard",
+        "FROM cost_ledger",
+        "FROM cost_reservations",
+        "cost_basis='provider_cost'",
+        "entry_type IN ('actual_cost','adjustment','reversal')",
+        "spent + active + projected_amount > cap",
+        "super().reserve(request)",
+        "super().commit(handle, actual)",
+        "super().release(handle, reason=reason)",
+    )
+
+    require(
         "apps/api/src/lumi_api/costs/model_gateway_adapter.py",
         "class PostgresModelCostAccounting",
+        "PlatformGuardedCostGateway",
+        "self.gateway = PlatformGuardedCostGateway(dsn)",
         "reserve_provider_cost",
         "commit_provider_cost",
         "release_provider_cost",
         "external_provider_request_id=provider_request_id",
+        '"platform_guard": "utc_day"',
     )
     model_port = require(
         "services/model-gateway/src/lumi_model_gateway/cost_accounting.py",
@@ -130,6 +209,24 @@ def main() -> int:
     assert_model_gateway_cost_port_has_no_db_sdk()
     if "budget_limit_usd" not in model_port:
         raise SystemExit("request hard budget preflight missing from LedgerBudgetGuard")
+
+    hosted = require(
+        "apps/api/src/lumi_api/model_gateway_runtime.py",
+        "def build_hosted_model_gateway",
+        "PostgresModelCostAccounting(database_dsn)",
+        "LedgerBudgetGuard(accounting)",
+        "budget_guard=budget_guard",
+        "hosted Model Gateway requires LUMI_DATABASE_URL for durable accounting",
+    )
+    assert_hosted_budget_guard_not_injectable(hosted)
+    require(
+        "apps/api/pyproject.toml",
+        '"lumi-model-gateway"',
+    )
+    require(
+        "pyproject.toml",
+        "lumi-model-gateway = { workspace = true }",
+    )
 
     require(
         "services/model-gateway/src/lumi_model_gateway/gateway.py",
@@ -172,6 +269,20 @@ def main() -> int:
         "concurrent generation quota must reject third lease",
         "runtime mutation must be denied",
         "mock-price-v1",
+    )
+    require(
+        "scripts/integration_platform_provider_cost_guard.py",
+        "asyncio.gather",
+        "len(handles) == 3",
+        "PlatformGuardedCostGateway",
+        "MAX_PLATFORM_DAILY_CAP",
+        "database constraint must reject provider cap above $100",
+        "baseline_spent",
+        "baseline_active",
+        "disabled platform provider guard must fail closed",
+        "post-overshoot provider reservation must be denied",
+        "runtime must not mutate platform provider cost policy",
+        "platform provider USD/day hard-stop PostgreSQL acceptance: PASS",
     )
     require(
         "scripts/integration_cost_privileges.py",

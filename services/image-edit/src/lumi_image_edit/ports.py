@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Mapping, Protocol
+from typing import Protocol
 
 from .model import (
     EditJob,
@@ -65,7 +66,9 @@ class StructuralEditPort(Protocol):
 
 
 class EditModelGatewayPort(Protocol):
-    async def invoke(self, *, spec: ImageEditSpec, plan: EditPlan, mask: MaskSpec | None) -> GatewayEditResult: ...
+    async def invoke(
+        self, *, spec: ImageEditSpec, plan: EditPlan, mask: MaskSpec | None
+    ) -> GatewayEditResult: ...
 
     async def poll(
         self,
@@ -149,6 +152,8 @@ class EditRepositoryPort(Protocol):
     def save(self, job: EditJob) -> None: ...
     def save_spec(self, spec: ImageEditSpec) -> None: ...
     def get_spec(self, organization_id: str, operation_id: str) -> ImageEditSpec | None: ...
-    def save_pending(self, organization_id: str, edit_id: str, result: GatewayEditResult) -> None: ...
+    def save_pending(
+        self, organization_id: str, edit_id: str, result: GatewayEditResult
+    ) -> None: ...
     def get_pending(self, organization_id: str, edit_id: str) -> GatewayEditResult | None: ...
     def delete_pending(self, organization_id: str, edit_id: str) -> None: ...

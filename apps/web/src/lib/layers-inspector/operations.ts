@@ -1,4 +1,8 @@
-import type { DesignDocument, DesignNode, DesignOperation } from "@lumi/design-ir";
+import type {
+  DesignDocument,
+  DesignNode,
+  DesignOperation,
+} from "@lumi/design-ir";
 import { getDocumentVersion } from "@lumi/design-ir";
 import type { InspectorTextPatch, InspectorTransformPatch } from "./types";
 
@@ -38,7 +42,13 @@ export function renameOperation(
   nodeId: string,
   name: string,
 ): DesignOperation {
-  return propertyOperation(document, [nodeId], "name", name.trim(), "inspector-rename");
+  return propertyOperation(
+    document,
+    [nodeId],
+    "name",
+    name.trim(),
+    "inspector-rename",
+  );
 }
 
 export function transformOperations(
@@ -101,9 +111,20 @@ export function textOperations(
   if (!node || node.kind !== "TEXT") return [];
   const result: DesignOperation[] = [];
   if (patch.content !== undefined) {
-    result.push(operation(document, "SET_TEXT", [nodeId], { content: patch.content }, "inspector-text"));
+    result.push(
+      operation(
+        document,
+        "SET_TEXT",
+        [nodeId],
+        { content: patch.content },
+        "inspector-text",
+      ),
+    );
   }
-  const metadataEntries: readonly [keyof Omit<InspectorTextPatch, "content">, unknown][] = [
+  const metadataEntries: readonly [
+    keyof Omit<InspectorTextPatch, "content">,
+    unknown,
+  ][] = [
     ["font_size", patch.font_size],
     ["line_height", patch.line_height],
     ["letter_spacing", patch.letter_spacing],
@@ -112,7 +133,15 @@ export function textOperations(
   ];
   for (const [key, value] of metadataEntries) {
     if (value !== undefined) {
-      result.push(propertyOperation(document, [nodeId], `metadata.${key}`, value, `inspector-text-${key}`));
+      result.push(
+        propertyOperation(
+          document,
+          [nodeId],
+          `metadata.${key}`,
+          value,
+          `inspector-text-${key}`,
+        ),
+      );
     }
   }
   return result;
@@ -128,17 +157,46 @@ export function moveLayerOperation(
   const siblings = document.nodes[node.parent_id]?.children ?? [];
   const index = siblings.indexOf(nodeId);
   if (index < 0) return null;
-  const nextIndex = direction === "up" ? Math.min(siblings.length - 1, index + 1) : Math.max(0, index - 1);
+  const nextIndex =
+    direction === "up"
+      ? Math.min(siblings.length - 1, index + 1)
+      : Math.max(0, index - 1);
   if (nextIndex === index) return null;
-  return operation(document, "REORDER_NODE", [nodeId], { index: nextIndex }, `layers-${direction}`);
+  return operation(
+    document,
+    "REORDER_NODE",
+    [nodeId],
+    { index: nextIndex },
+    `layers-${direction}`,
+  );
 }
 
-function selectionBounds(nodes: readonly DesignNode[]): { x: number; y: number; width: number; height: number } {
+function selectionBounds(nodes: readonly DesignNode[]): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
   const x = Math.min(...nodes.map((node) => finite(node.transform?.x)));
   const y = Math.min(...nodes.map((node) => finite(node.transform?.y)));
-  const right = Math.max(...nodes.map((node) => finite(node.transform?.x) + Math.max(0, finite(node.transform?.width))));
-  const bottom = Math.max(...nodes.map((node) => finite(node.transform?.y) + Math.max(0, finite(node.transform?.height))));
-  return { x, y, width: Math.max(0, right - x), height: Math.max(0, bottom - y) };
+  const right = Math.max(
+    ...nodes.map(
+      (node) =>
+        finite(node.transform?.x) + Math.max(0, finite(node.transform?.width)),
+    ),
+  );
+  const bottom = Math.max(
+    ...nodes.map(
+      (node) =>
+        finite(node.transform?.y) + Math.max(0, finite(node.transform?.height)),
+    ),
+  );
+  return {
+    x,
+    y,
+    width: Math.max(0, right - x),
+    height: Math.max(0, bottom - y),
+  };
 }
 
 export interface GroupOperationsResult {
@@ -151,14 +209,22 @@ export function groupOperations(
   selectedIds: readonly string[],
 ): GroupOperationsResult | null {
   if (selectedIds.length < 2) return null;
-  const nodes = selectedIds.map((id) => document.nodes[id]).filter((node): node is DesignNode => Boolean(node));
+  const nodes = selectedIds
+    .map((id) => document.nodes[id])
+    .filter((node): node is DesignNode => Boolean(node));
   if (nodes.length !== selectedIds.length) return null;
   const parentId = nodes[0]?.parent_id ?? null;
-  if (!parentId || nodes.some((node) => node.parent_id !== parentId || node.locked)) return null;
+  if (
+    !parentId ||
+    nodes.some((node) => node.parent_id !== parentId || node.locked)
+  )
+    return null;
   const parent = document.nodes[parentId];
   if (!parent) return null;
   const siblings = parent.children;
-  const indexes = nodes.map((node) => siblings.indexOf(node.id)).filter((index) => index >= 0);
+  const indexes = nodes
+    .map((node) => siblings.indexOf(node.id))
+    .filter((index) => index >= 0);
   if (indexes.length !== nodes.length) return null;
   const bounds = selectionBounds(nodes);
   const groupId = `group-${crypto.randomUUID().slice(0, 12)}`;
@@ -215,7 +281,8 @@ export function ungroupOperations(
   groupId: string,
 ): UngroupOperationsResult | null {
   const group = document.nodes[groupId];
-  if (!group || group.kind !== "GROUP" || !group.parent_id || group.locked) return null;
+  if (!group || group.kind !== "GROUP" || !group.parent_id || group.locked)
+    return null;
   if (finite(group.transform?.rotation_deg) !== 0) return null;
   const parent = document.nodes[group.parent_id];
   if (!parent) return null;
@@ -248,6 +315,8 @@ export function ungroupOperations(
       ),
     );
   });
-  operations.push(operation(document, "DELETE_NODE", [groupId], {}, "layers-ungroup-delete"));
+  operations.push(
+    operation(document, "DELETE_NODE", [groupId], {}, "layers-ungroup-delete"),
+  );
   return { selected_ids: childIds, operations };
 }

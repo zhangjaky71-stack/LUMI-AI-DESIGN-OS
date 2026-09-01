@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, is_dataclass
 from decimal import Decimal
 from types import MappingProxyType
-from typing import Any, Literal, Mapping
+from typing import Any, Literal, cast
 
 VideoMode = Literal["TEXT_TO_VIDEO", "IMAGE_TO_VIDEO", "STORYBOARD_MULTI_SHOT"]
 JobStatus = Literal[
@@ -36,16 +37,21 @@ def _jsonable(value: object) -> object:
     if is_dataclass(value) and not isinstance(value, type):
         return _jsonable(asdict(value))
     if isinstance(value, Mapping):
-        return {str(key): _jsonable(item) for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))}
+        mapping = cast(Mapping[object, object], value)
+        normalized = ((str(key), _jsonable(item)) for key, item in mapping.items())
+        return dict(sorted(normalized, key=lambda pair: pair[0]))
     if isinstance(value, (tuple, list)):
-        return [_jsonable(item) for item in value]
+        sequence = cast(tuple[object, ...] | list[object], value)
+        return [_jsonable(item) for item in sequence]
     if isinstance(value, Decimal):
         return _decimal_text(value)
     return value
 
 
 def _canonical_hash(value: object) -> str:
-    encoded = json.dumps(_jsonable(value), ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    encoded = json.dumps(
+        _jsonable(value), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode()
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -167,9 +173,17 @@ class VideoTaskSpec:
     metadata: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
 
     def __post_init__(self) -> None:
-        if isinstance(self.duration_seconds, float) or not self.duration_seconds.is_finite() or self.duration_seconds <= 0:
+        if (
+            isinstance(self.duration_seconds, float)
+            or not self.duration_seconds.is_finite()
+            or self.duration_seconds <= 0
+        ):
             raise ValueError("VIDEO_DURATION_INVALID")
-        if isinstance(self.budget_limit_usd, float) or not self.budget_limit_usd.is_finite() or self.budget_limit_usd < 0:
+        if (
+            isinstance(self.budget_limit_usd, float)
+            or not self.budget_limit_usd.is_finite()
+            or self.budget_limit_usd < 0
+        ):
             raise ValueError("VIDEO_BUDGET_INVALID")
         if self.width <= 0 or self.height <= 0 or self.fps <= 0:
             raise ValueError("VIDEO_OUTPUT_GEOMETRY_INVALID")
@@ -184,46 +198,64 @@ class VideoTaskSpec:
             raise ValueError("VIDEO_SINGLE_MODE_MULTIPLE_SHOTS_FORBIDDEN")
         if any(not source.commercial_use_allowed for source in self.source_images):
             raise ValueError("VIDEO_SOURCE_COMMERCIAL_RIGHTS_NOT_ALLOWED")
-        if len(self.code_git_sha) != 40 or any(char not in "0123456789abcdef" for char in self.code_git_sha):
+        if len(self.code_git_sha) != 40 or any(
+            char not in "0123456789abcdef" for char in self.code_git_sha
+        ):
             raise ValueError("VIDEO_CODE_GIT_SHA_INVALID")
 
     @property
     def semantic_hash(self) -> str:
-        return _canonical_hash({
-            "organization_id": self.organization_id,
-            "project_id": self.project_id,
-            "task_id": self.task_id,
-            "mode": self.mode,
-            "prompt": self.prompt,
-            "duration_seconds": self.duration_seconds,
-            "aspect_ratio": self.aspect_ratio,
-            "width": self.width,
-            "height": self.height,
-            "fps": self.fps,
-            "budget_limit_usd": self.budget_limit_usd,
-            "source_images": [(item.asset_id, item.asset_version, item.checksum_sha256) for item in self.source_images],
-            "shots": [
-                {
-                    "id": shot.shot_id,
-                    "duration": shot.duration_seconds,
-                    "prompt": shot.prompt,
-                    "camera": shot.camera_motion,
-                    "action": shot.subject_action,
-                    "source": (shot.source_ref.asset_id, shot.source_ref.asset_version) if shot.source_ref else None,
-                    "continuity": [(item.kind, item.durable_ref, item.source_shot_id) for item in shot.continuity_refs],
-                    "transition": shot.transition_to_next,
-                    "optional": shot.optional,
-                }
-                for shot in self.shots
-            ],
-            "audio": [(item.durable_ref, item.offset_seconds, item.gain_db) for item in self.audio_tracks],
-            "brand": self.brand_rule_set_version,
-            "identity": [(item.identity_id, item.reference_set_version, item.severity) for item in self.identity_requirements],
-            "allow_optional_drop": self.allow_optional_shot_drop,
-            "quality_retry_limit": self.quality_retry_limit,
-            "negative_prompt": self.negative_prompt,
-            "seed": self.seed,
-        })
+        return _canonical_hash(
+            {
+                "organization_id": self.organization_id,
+                "project_id": self.project_id,
+                "task_id": self.task_id,
+                "mode": self.mode,
+                "prompt": self.prompt,
+                "duration_seconds": self.duration_seconds,
+                "aspect_ratio": self.aspect_ratio,
+                "width": self.width,
+                "height": self.height,
+                "fps": self.fps,
+                "budget_limit_usd": self.budget_limit_usd,
+                "source_images": [
+                    (item.asset_id, item.asset_version, item.checksum_sha256)
+                    for item in self.source_images
+                ],
+                "shots": [
+                    {
+                        "id": shot.shot_id,
+                        "duration": shot.duration_seconds,
+                        "prompt": shot.prompt,
+                        "camera": shot.camera_motion,
+                        "action": shot.subject_action,
+                        "source": (shot.source_ref.asset_id, shot.source_ref.asset_version)
+                        if shot.source_ref
+                        else None,
+                        "continuity": [
+                            (item.kind, item.durable_ref, item.source_shot_id)
+                            for item in shot.continuity_refs
+                        ],
+                        "transition": shot.transition_to_next,
+                        "optional": shot.optional,
+                    }
+                    for shot in self.shots
+                ],
+                "audio": [
+                    (item.durable_ref, item.offset_seconds, item.gain_db)
+                    for item in self.audio_tracks
+                ],
+                "brand": self.brand_rule_set_version,
+                "identity": [
+                    (item.identity_id, item.reference_set_version, item.severity)
+                    for item in self.identity_requirements
+                ],
+                "allow_optional_drop": self.allow_optional_shot_drop,
+                "quality_retry_limit": self.quality_retry_limit,
+                "negative_prompt": self.negative_prompt,
+                "seed": self.seed,
+            }
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -386,7 +418,11 @@ class TimelineClip:
     def __post_init__(self) -> None:
         if not self.durable_ref or "://" in self.durable_ref:
             raise ValueError("VIDEO_TIMELINE_CLIP_REF_INVALID")
-        if isinstance(self.duration_seconds, float) or not self.duration_seconds.is_finite() or self.duration_seconds <= 0:
+        if (
+            isinstance(self.duration_seconds, float)
+            or not self.duration_seconds.is_finite()
+            or self.duration_seconds <= 0
+        ):
             raise ValueError("VIDEO_TIMELINE_DURATION_INVALID")
 
 

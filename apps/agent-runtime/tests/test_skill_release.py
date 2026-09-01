@@ -55,12 +55,15 @@ class SkillReleaseTests(unittest.TestCase):
             version="1.2.0",
             metadata={**production.metadata, "release_note": "candidate test"},
         )
-        releases = (*manifest.releases, SkillReleaseRecord(
-            skill_id="creative-direction",
-            version="1.2.0",
-            status=SkillReleaseStatus.CANDIDATE,
-            eval_profile=self.candidate.eval_profile,
-        ))
+        releases = (
+            *manifest.releases,
+            SkillReleaseRecord(
+                skill_id="creative-direction",
+                version="1.2.0",
+                status=SkillReleaseStatus.CANDIDATE,
+                eval_profile=self.candidate.eval_profile,
+            ),
+        )
         self.manifest = SkillReleaseManifest(
             schema=manifest.schema,
             revision=manifest.revision,

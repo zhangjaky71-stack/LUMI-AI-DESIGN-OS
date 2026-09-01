@@ -10,26 +10,13 @@ from uuid import UUID
 
 import pytest
 from lumi_artifacts.history import ArtifactHistory
+
 from lumi_asset_intelligence.model import (
     AnalyzerBundleSnapshot,
     AnalyzerModelSnapshot,
     AssetAnalysisRecord,
 )
 from lumi_asset_intelligence.repository import InMemoryAssetIndexRepository
-from lumi_model_gateway import (
-    DeliveryState,
-    ErrorCategory,
-    InMemoryProviderHealthRegistry,
-    InMemoryProviderRegistry,
-    MockFailure,
-    MockProvider,
-    ModelGateway,
-    ModelRouter,
-    ModelRequest,
-    ModelResult,
-    RetryPolicy,
-)
-
 from lumi_image_generation.artifact_adapter import ArtifactHistoryCandidateAdapter
 from lumi_image_generation.asset_intelligence_adapter import (
     AssetIntelligenceReferenceAuthorizer,
@@ -70,6 +57,19 @@ from lumi_image_generation.validation import (
     DelegateValidationResult,
 )
 from lumi_image_generation.variants import GenerationBudgetError
+from lumi_model_gateway import (
+    DeliveryState,
+    ErrorCategory,
+    InMemoryProviderHealthRegistry,
+    InMemoryProviderRegistry,
+    MockFailure,
+    MockProvider,
+    ModelGateway,
+    ModelRequest,
+    ModelResult,
+    ModelRouter,
+    RetryPolicy,
+)
 
 ORG = "00000000-0000-0000-0000-000000000001"
 PROJECT = "00000000-0000-0000-0000-000000000002"
@@ -336,7 +336,10 @@ def test_async_pending_state_survives_and_resumes() -> None:
     started = asyncio.run(pipeline.start(_spec(), created_at=NOW))
     assert started.status == "PROVIDER_PENDING"
     candidate = started.candidates[0]
-    assert repository.get_pending(ORG, started.generation_id, candidate.candidate_id) is not None
+    assert (
+        asyncio.run(repository.get_pending(ORG, started.generation_id, candidate.candidate_id))
+        is not None
+    )
 
     resumed = asyncio.run(
         pipeline.resume_pending(
@@ -347,7 +350,10 @@ def test_async_pending_state_survives_and_resumes() -> None:
     )
     assert resumed.status == "COMPLETED"
     assert resumed.candidates[0].status == "READY"
-    assert repository.get_pending(ORG, started.generation_id, candidate.candidate_id) is None
+    assert (
+        asyncio.run(repository.get_pending(ORG, started.generation_id, candidate.candidate_id))
+        is None
+    )
     assert len(costs.records) == 1
     assert history.versions[resumed.candidates[0].artifact_version_id].status == "READY"  # type: ignore[index]
 
@@ -438,7 +444,9 @@ def test_product_scene_requires_identity_role_before_gateway() -> None:
         payloads={},
         references=StaticReferenceAuthorizer({(ASSET, "v1"): authorized}),
     )
-    with pytest.raises(ImageGenerationPipelineError, match="PRODUCT_SCENE_IDENTITY_REFERENCE_REQUIRED"):
+    with pytest.raises(
+        ImageGenerationPipelineError, match="PRODUCT_SCENE_IDENTITY_REFERENCE_REQUIRED"
+    ):
         asyncio.run(
             pipeline.start(
                 _spec(mode="PRODUCT_SCENE", references=(reference,)),
@@ -518,9 +526,7 @@ def test_constraint_snapshot_hash_changes_for_soft_constraint_too() -> None:
         snapshot_hash="f" * 64,
         parameters={"style": "minimal"},
     )
-    assert constraint_snapshot_hash(base) != constraint_snapshot_hash(
-        _spec(constraints=(soft,))
-    )
+    assert constraint_snapshot_hash(base) != constraint_snapshot_hash(_spec(constraints=(soft,)))
 
 
 class PassingIdentityDelegate:

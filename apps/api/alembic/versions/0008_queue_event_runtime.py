@@ -6,11 +6,20 @@ Create Date: 2026-08-13
 """
 
 from alembic import op
+from sqlalchemy import text
 
 revision = "0008_queue_event_runtime"
 down_revision = "0007_asset_storage"
 branch_labels = None
 depends_on = None
+
+
+def _lumi_app_exists() -> bool:
+    return bool(
+        op.get_bind()
+        .execute(text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'lumi_app')"))
+        .scalar_one()
+    )
 
 
 def upgrade() -> None:
@@ -53,7 +62,8 @@ def upgrade() -> None:
         "ON dead_letter_records (organization_id, last_failed_at)"
     )
     op.execute("CREATE INDEX ix_dead_letter_records_message ON dead_letter_records (message_id)")
-    op.execute("GRANT SELECT, INSERT, UPDATE ON dead_letter_records TO lumi_app")
+    if _lumi_app_exists():
+        op.execute("GRANT SELECT, INSERT, UPDATE ON dead_letter_records TO lumi_app")
 
 
 def downgrade() -> None:

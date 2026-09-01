@@ -120,7 +120,7 @@ class DurableLangGraphExecutor:
             binding.graph_version,
             agent_config_version=binding.agent_config_version,
         )
-        command_type = getattr(import_module("langgraph.types"), "Command")
+        command_type = import_module("langgraph.types").Command
         try:
             await graph.ainvoke(
                 command_type(resume=normalized_value),

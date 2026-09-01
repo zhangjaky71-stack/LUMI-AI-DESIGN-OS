@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Callable
+from collections.abc import Callable
 
 from lumi_agent_runtime.context_engine import (
     ContextItem,
@@ -77,9 +77,7 @@ class KnowledgeContextSource:
                 expanded_queries=_expanded_queries(
                     request.metadata.get("knowledge_expanded_queries")
                 ),
-                require_fresh=bool(
-                    request.metadata.get("knowledge_require_fresh", False)
-                ),
+                require_fresh=bool(request.metadata.get("knowledge_require_fresh", False)),
                 max_source_age_seconds=_optional_positive_int(
                     request.metadata.get("knowledge_max_source_age_seconds")
                 ),
@@ -193,6 +191,8 @@ def _optional_text(value: object) -> str | None:
 def _optional_positive_int(value: object) -> int | None:
     if value is None:
         return None
+    if not isinstance(value, (str, int, float)):
+        raise ValueError("KNOWLEDGE_CONTEXT_FRESHNESS_WINDOW_INVALID")
     parsed = int(value)
     if parsed < 1:
         raise ValueError("KNOWLEDGE_CONTEXT_FRESHNESS_WINDOW_INVALID")

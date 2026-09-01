@@ -113,7 +113,11 @@ def validate_browser_contract() -> None:
     e2e = read(WEB_E2E)
     require("PixiV8RendererAdapter" in client and "CanvasController" in client, "browser harness must use production Canvas runtime")
     require("lockAndMove" in client and "LOCK_POSITION" in client, "browser hard-constraint path missing")
-    require("data-canvas-engine" in client, "real Pixi browser canvas marker missing")
+    require(
+        'app.canvas.dataset.canvasEngine = "pixi"' in client
+        and "hostElement.replaceChildren(app.canvas)" in client,
+        "real Pixi browser canvas marker/mount missing",
+    )
     require("document_version" in e2e and "DENY" in e2e, "browser E2E must verify version-preserving hard rollback")
 
 

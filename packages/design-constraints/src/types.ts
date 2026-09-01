@@ -162,7 +162,10 @@ export interface PostflightEvaluator {
   readonly supported_types: readonly ConstraintType[];
   readonly supports_preflight: boolean;
   readonly supports_postflight: boolean;
-  evaluate(context: PostflightContext, constraint: DesignConstraint): Promise<readonly ConstraintViolation[]>;
+  evaluate(
+    context: PostflightContext,
+    constraint: DesignConstraint,
+  ): Promise<readonly ConstraintViolation[]>;
 }
 
 export interface PostflightReport {
@@ -172,9 +175,15 @@ export interface PostflightReport {
 }
 
 export interface BrandComplianceValidator {
-  validate(context: PostflightContext, constraint: DesignConstraint): Promise<readonly ConstraintViolation[]>;
+  validate(
+    context: PostflightContext,
+    constraint: DesignConstraint,
+  ): Promise<readonly ConstraintViolation[]>;
 }
 
 export interface IdentitySimilarityValidator {
-  validate(context: PostflightContext, constraint: DesignConstraint): Promise<readonly ConstraintViolation[]>;
+  validate(
+    context: PostflightContext,
+    constraint: DesignConstraint,
+  ): Promise<readonly ConstraintViolation[]>;
 }

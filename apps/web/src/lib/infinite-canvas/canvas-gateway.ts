@@ -1,4 +1,8 @@
-import { executeOperations, getDocumentVersion, type DesignOperation } from "@lumi/design-ir";
+import {
+  executeOperations,
+  getDocumentVersion,
+  type DesignOperation,
+} from "@lumi/design-ir";
 import { LumiApiClient, LumiApiError } from "@/lib/app-shell/api-client";
 import type {
   InfiniteCanvasBootstrap,
@@ -34,15 +38,23 @@ function requestOptions(signal?: AbortSignal): { signal?: AbortSignal } {
   return signal ? { signal } : {};
 }
 
-function validateSave(input: SaveCanvasOperationsInput): SaveCanvasOperationsInput {
-  if (!input.project_id || !input.document_id) throw problem("CANVAS_SCOPE_REQUIRED", 400);
-  if (!Number.isSafeInteger(input.expected_document_version) || input.expected_document_version < 0) {
+function validateSave(
+  input: SaveCanvasOperationsInput,
+): SaveCanvasOperationsInput {
+  if (!input.project_id || !input.document_id)
+    throw problem("CANVAS_SCOPE_REQUIRED", 400);
+  if (
+    !Number.isSafeInteger(input.expected_document_version) ||
+    input.expected_document_version < 0
+  ) {
     throw problem("DOCUMENT_VERSION_INVALID", 400);
   }
-  if (!input.operations.length) throw problem("DESIGN_OPERATIONS_REQUIRED", 400);
+  if (!input.operations.length)
+    throw problem("DESIGN_OPERATIONS_REQUIRED", 400);
   if (
     input.operations.some(
-      (operation) => operation.expected_document_version !== input.expected_document_version,
+      (operation) =>
+        operation.expected_document_version !== input.expected_document_version,
     )
   ) {
     throw problem("DESIGN_OPERATION_VERSION_MISMATCH", 400);
@@ -57,7 +69,11 @@ export class HttpInfiniteCanvasGateway implements InfiniteCanvasGateway {
     this.#api = api;
   }
 
-  getDocument(_organizationId: string, projectId: string, signal?: AbortSignal) {
+  getDocument(
+    _organizationId: string,
+    projectId: string,
+    signal?: AbortSignal,
+  ) {
     return this.#api.get<InfiniteCanvasSnapshot>(
       `/projects/${encodeURIComponent(projectId)}/canvas-document`,
       requestOptions(signal),
@@ -82,11 +98,15 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
-function externalEditOperation(documentId: string, version: number): DesignOperation {
+function externalEditOperation(
+  documentId: string,
+  targetId: string,
+  version: number,
+): DesignOperation {
   return {
     operation_id: `e2e-external-edit-${documentId}-${version}`,
     type: "SET_PROPERTY",
-    target_ids: ["frame-square"],
+    target_ids: [targetId],
     expected_document_version: version,
     payload: {
       path: "metadata.external_revision",
@@ -96,7 +116,9 @@ function externalEditOperation(documentId: string, version: number): DesignOpera
   };
 }
 
-export class DeterministicInfiniteCanvasGateway implements InfiniteCanvasGateway {
+export class DeterministicInfiniteCanvasGateway
+  implements InfiniteCanvasGateway
+{
   #snapshot: InfiniteCanvasSnapshot;
   #conflictOnNextSave: boolean;
 
@@ -105,7 +127,11 @@ export class DeterministicInfiniteCanvasGateway implements InfiniteCanvasGateway
     this.#conflictOnNextSave = seed.conflict_on_next_save;
   }
 
-  async getDocument(organizationId: string, projectId: string, signal?: AbortSignal) {
+  async getDocument(
+    organizationId: string,
+    projectId: string,
+    signal?: AbortSignal,
+  ) {
     this.#assertScope(organizationId, projectId, signal);
     return clone(this.#snapshot);
   }
@@ -123,8 +149,16 @@ export class DeterministicInfiniteCanvasGateway implements InfiniteCanvasGateway
     }
 
     if (this.#conflictOnNextSave) {
+      const externalTargetId =
+        Object.values(this.#snapshot.document.nodes).find(
+          (node) => node.kind === "FRAME",
+        )?.id ?? this.#snapshot.document.root_id;
       const external = executeOperations(this.#snapshot.document, [
-        externalEditOperation(this.#snapshot.document.document_id, currentVersion),
+        externalEditOperation(
+          this.#snapshot.document.document_id,
+          externalTargetId,
+          currentVersion,
+        ),
       ]);
       if (external.ok) {
         this.#snapshot = {
@@ -157,12 +191,17 @@ export class DeterministicInfiniteCanvasGateway implements InfiniteCanvasGateway
     return clone(this.#snapshot);
   }
 
-  #assertScope(organizationId: string, projectId: string, signal?: AbortSignal): void {
+  #assertScope(
+    organizationId: string,
+    projectId: string,
+    signal?: AbortSignal,
+  ): void {
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     if (organizationId !== "org-lumi" && organizationId !== "org-northstar") {
       throw problem("ORGANIZATION_FORBIDDEN", 403);
     }
-    if (projectId !== this.#snapshot.project_id) throw problem("PROJECT_NOT_FOUND", 404);
+    if (projectId !== this.#snapshot.project_id)
+      throw problem("PROJECT_NOT_FOUND", 404);
   }
 }
 
