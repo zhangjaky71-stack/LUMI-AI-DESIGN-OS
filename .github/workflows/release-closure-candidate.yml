@@ -1,4 +1,4 @@
-name: Release Closure Python Candidate
+name: Release Closure Exact Candidate Verification
 
 on:
   pull_request:
@@ -6,67 +6,75 @@ on:
       - .github/release-closure-candidate-trigger
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  verify-and-push-python-candidate:
+  verify-exact-python-candidate:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       EXPECTED_PARENT: 174929388975069cd7a5388357b9a5cabbf9506e
+      CANDIDATE_SHA: acf2d2ad744798b0e2e12d0283c5679a9505d5f7
       CANDIDATE_BRANCH: release-closure-python-candidate
-      V9_VERIFIER_COMMIT: 2987fc3d42ba275ddda81083ff6031c6ed5c0291
-      DISCOVERY_VERIFIER_COMMIT: 33c6b2e67b558fc3993d9a8563000f3d018839d2
-      CANDIDATE_VERIFIER_COMMIT: 42083de10e1a62c0472722567ce00ac6b1818334
-      TYPED_VERIFIER_COMMIT: 4d0ecaeeaee2058922b7a316f9515d14c23242fa
-      BASE_VERIFIER_COMMIT: 8c2ab60e3b093b80c2d1b046c7eea1b65f72e06e
-      VALIDATOR_SOURCE_COMMIT: c4cd1f9a2a0c7978cf4736105896de20f236579c
+      RELEASE_BRANCH: release-closure-p0
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: release-closure-p0
-          fetch-depth: 1
-      - name: Assert exact release parent and untouched candidate ref
+          ref: acf2d2ad744798b0e2e12d0283c5679a9505d5f7
+          fetch-depth: 2
+      - name: Assert exact immutable candidate identity
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_PARENT"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
           remote_candidate="$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')"
-          test "$remote_candidate" = "$EXPECTED_PARENT"
-      - name: Fetch frozen patch sources
+          remote_release="$(git ls-remote origin "refs/heads/$RELEASE_BRANCH" | awk '{print $1}')"
+          test "$remote_candidate" = "$CANDIDATE_SHA"
+          test "$remote_release" = "$EXPECTED_PARENT"
+      - name: Assert exact 32-file candidate boundary
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin \
-            "$V9_VERIFIER_COMMIT" \
-            "$DISCOVERY_VERIFIER_COMMIT" \
-            "$CANDIDATE_VERIFIER_COMMIT" \
-            "$TYPED_VERIFIER_COMMIT" \
-            "$BASE_VERIFIER_COMMIT" \
-            "$VALIDATOR_SOURCE_COMMIT"
-          git show "$V9_VERIFIER_COMMIT:.github/workflows/release-closure-candidate.yml" > /tmp/v9-verifier.yml
-          git show "$DISCOVERY_VERIFIER_COMMIT:.github/workflows/release-closure-candidate.yml" > /tmp/discovery-verifier.yml
-          git show "$CANDIDATE_VERIFIER_COMMIT:.github/workflows/release-closure-candidate.yml" > /tmp/candidate-verifier.yml
-          git show "$TYPED_VERIFIER_COMMIT:.github/workflows/release-closure-candidate.yml" > /tmp/typed-verifier.yml
-          git show "$BASE_VERIFIER_COMMIT:.github/workflows/release-closure-candidate.yml" > /tmp/base-verifier.yml
-      - name: Apply frozen v9 closure and stricter LangGraph contract validator
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import textwrap
-
-          frozen = Path("/tmp/v9-verifier.yml").read_text()
-          marker = "      - name: Apply proven closure plus semantic security contract repair\n        run: |\n"
-          if marker not in frozen:
-              raise SystemExit("v9 patch step marker not found")
-          body = frozen.split(marker, 1)[1]
-          start = "          python - <<'PY'\n"
-          end = "\n          PY\n      - uses: actions/setup-python@v6"
-          if start not in body or end not in body:
-              raise SystemExit("v9 patch block not found")
-          patch = body.split(start, 1)[1].split(end, 1)[0]
-          exec(compile(textwrap.dedent(patch), "<frozen-v9-patch>", "exec"))
-          PY
-          git show "$VALIDATOR_SOURCE_COMMIT:scripts/validate_langgraph_control_plane_contract_v2.py" \
-            > scripts/validate_langgraph_control_plane_contract_v2.py
+          cat > /tmp/expected-paths.txt <<'EOF'
+          apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/__init__.py
+          apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/approval_bridge.py
+          apps/agent-runtime/tests/test_approval_bridge.py
+          apps/api/src/lumi_api/assets/router.py
+          apps/api/src/lumi_api/persistence/repositories.py
+          apps/api/src/lumi_api/persistence/seed.py
+          apps/api/tests/integration/test_project_security.py
+          apps/api/tests/integration/test_tool_gateway_staging_fixture_postgres.py
+          apps/api/tests/test_admin_router.py
+          apps/api/tests/test_api_v1_contract.py
+          apps/worker-media/src/lumi_worker_media/app.py
+          apps/worker-media/src/lumi_worker_media/event_runtime.py
+          apps/worker-media/src/lumi_worker_media/task_base.py
+          apps/worker-media/src/lumi_worker_media/topology.py
+          apps/worker-media/tests/integration/test_image_artifact_event_postgres.py
+          apps/worker-media/tests/integration/test_video_hosted_postgres.py
+          apps/worker-media/tests/test_event_runtime.py
+          apps/worker-media/tests/test_external_wait_runtime.py
+          apps/worker-media/tests/test_image_task_entrypoint.py
+          apps/worker-media/tests/test_queue_topology.py
+          evals/tests/test_release_gate.py
+          evals/tests/test_release_security_contracts.py
+          evals/tests/test_statistics.py
+          pyproject.toml
+          scripts/integration_langgraph_postgres_checkpoint.py
+          scripts/validate_langgraph_control_plane_contract_v2.py
+          services/artifact-history/tests/test_artifact_engine_runtime.py
+          services/asset-storage/tests/test_s3_bounded_bytes.py
+          services/auth/src/lumi_auth/policy.py
+          services/design-ir/src/lumi_design_ir/validation.py
+          services/image-edit/src/lumi_image_edit/inmemory.py
+          services/video-generation/src/lumi_video_generation/media_sandbox.py
+          EOF
+          sed -i 's/^          //' /tmp/expected-paths.txt
+          git diff --check "$EXPECTED_PARENT" "$CANDIDATE_SHA"
+          git diff --name-only "$EXPECTED_PARENT" "$CANDIDATE_SHA" | sort > /tmp/actual-paths.txt
+          sort /tmp/expected-paths.txt -o /tmp/expected-paths.txt
+          diff -u /tmp/expected-paths.txt /tmp/actual-paths.txt
+          test "$(wc -l < /tmp/actual-paths.txt)" -eq 32
+          test "$(git rev-list --count "$EXPECTED_PARENT..$CANDIDATE_SHA")" -eq 1
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -77,13 +85,6 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Sync frozen Python workspace
         run: uv sync --all-packages --frozen
-      - name: Canonical Ruff fix and format
-        run: |
-          uv run ruff check --fix apps services evals
-          uv run ruff format apps services evals
-          uv run ruff format \
-            scripts/integration_langgraph_postgres_checkpoint.py \
-            scripts/validate_langgraph_control_plane_contract_v2.py
       - name: Full Python Ruff and Pyright gates
         run: |
           set -euo pipefail
@@ -164,62 +165,19 @@ jobs:
           PYTHONPATH=apps/agent-runtime/src:apps/api/src uv run python scripts/integration_langgraph_postgres_control.py
           PYTHONPATH=apps/agent-runtime/src:apps/api/src uv run python scripts/integration_langgraph_postgres_checkpoint.py
           bash scripts/db-local downgrade-smoke
-      - name: Assert exact candidate change boundary
+      - name: Final candidate immutability assertion
         run: |
           set -euo pipefail
-          git diff --check
-          cat > /tmp/expected-paths.txt <<'EOF'
-          apps/agent-runtime/src/lumi_agent_runtime/deep_runtime/__init__.py
-          apps/agent-runtime/src/lumi_agent_runtime/recipe_engine/approval_bridge.py
-          apps/agent-runtime/tests/test_approval_bridge.py
-          apps/api/src/lumi_api/assets/router.py
-          apps/api/src/lumi_api/persistence/repositories.py
-          apps/api/src/lumi_api/persistence/seed.py
-          apps/api/tests/integration/test_project_security.py
-          apps/api/tests/integration/test_tool_gateway_staging_fixture_postgres.py
-          apps/api/tests/test_admin_router.py
-          apps/api/tests/test_api_v1_contract.py
-          apps/worker-media/src/lumi_worker_media/app.py
-          apps/worker-media/src/lumi_worker_media/event_runtime.py
-          apps/worker-media/src/lumi_worker_media/task_base.py
-          apps/worker-media/src/lumi_worker_media/topology.py
-          apps/worker-media/tests/integration/test_image_artifact_event_postgres.py
-          apps/worker-media/tests/integration/test_video_hosted_postgres.py
-          apps/worker-media/tests/test_event_runtime.py
-          apps/worker-media/tests/test_external_wait_runtime.py
-          apps/worker-media/tests/test_image_task_entrypoint.py
-          apps/worker-media/tests/test_queue_topology.py
-          evals/tests/test_release_gate.py
-          evals/tests/test_release_security_contracts.py
-          evals/tests/test_statistics.py
-          pyproject.toml
-          scripts/integration_langgraph_postgres_checkpoint.py
-          scripts/validate_langgraph_control_plane_contract_v2.py
-          services/artifact-history/tests/test_artifact_engine_runtime.py
-          services/asset-storage/tests/test_s3_bounded_bytes.py
-          services/auth/src/lumi_auth/policy.py
-          services/design-ir/src/lumi_design_ir/validation.py
-          services/image-edit/src/lumi_image_edit/inmemory.py
-          services/video-generation/src/lumi_video_generation/media_sandbox.py
-          EOF
-          sed -i 's/^          //' /tmp/expected-paths.txt
-          git diff --name-only | sort > /tmp/actual-paths.txt
-          sort /tmp/expected-paths.txt -o /tmp/expected-paths.txt
-          diff -u /tmp/expected-paths.txt /tmp/actual-paths.txt
-          test "$(wc -l < /tmp/actual-paths.txt)" -eq 32
-      - name: Create and push single validated candidate commit
-        run: |
-          set -euo pipefail
-          remote_candidate="$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')"
-          test "$remote_candidate" = "$EXPECTED_PARENT"
-          git config user.name "LUMI Release Closure"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add --all
-          test "$(git diff --cached --name-only | wc -l)" -eq 32
-          git commit -m "fix: close Python and LangGraph source gates"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
-          git push origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
-          echo "candidate_sha=$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          remote_candidate="$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')"
+          remote_release="$(git ls-remote origin "refs/heads/$RELEASE_BRANCH" | awk '{print $1}')"
+          test "$remote_candidate" = "$CANDIDATE_SHA"
+          test "$remote_release" = "$EXPECTED_PARENT"
+          git diff --check "$EXPECTED_PARENT" "$CANDIDATE_SHA"
+          echo "verified_candidate_sha=$CANDIDATE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "verified_parent_sha=$EXPECTED_PARENT" >> "$GITHUB_STEP_SUMMARY"
+          echo "verified_file_count=32" >> "$GITHUB_STEP_SUMMARY"
       - name: Cleanup
         if: always()
         run: CONFIRM=1 make infra-reset || true
