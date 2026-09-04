@@ -85,6 +85,8 @@ terraform -chdir=infra/iac-alicloud/core init `
 terraform -chdir=infra/iac-alicloud/core plan
 ```
 
+ACR Personal Edition rejects concurrent repository-creation requests. When staging only the Personal Edition bridge, target the namespace and repositories and set Terraform parallelism to `1`; review the saved plan before applying it. Do not use that targeted operation as evidence that the remaining Core infrastructure has been deployed.
+
 Create an ignored copy before the core commands:
 
 - `core/backend.hcl` from `core/backend.hcl.example`
@@ -108,8 +110,8 @@ After a reviewed Core apply, the release sequence is:
 - The OSS state bucket is live with private ACL, versioning, AES256 encryption and public-access blocking.
 - TableStore instance `lumi-tf-3251` and table `terraform_lock` are live. The table is imported into Bootstrap state, and Bootstrap plans with zero changes.
 - GitHub OIDC provider `lumi-github-actions`, RAM role `lumi-github-acr-push`, custom policy `LumiGitHubAcrPush` and their attachment are live. The role trust is restricted to this repository's `codex/alicloud-deployment` branch, and the policy is restricted to the staging ACR namespace.
-- The ACR Personal Edition instance is live in `cn-hangzhou`, and the account owner has set its fixed Registry password. Namespace/repository creation remains part of the unapplied Core plan.
-- Core is initialized against OSS with TableStore locking. The current reviewed-shape plan is `67 add / 0 change / 0 destroy`, including ACK and the migration account; it has not been applied.
+- The ACR Personal Edition instance, private namespace `lumistaging3251`, and six private runtime repositories are live in `cn-hangzhou`. Their targeted Terraform state has a zero-change plan. The account owner's fixed Registry password is not used by GitHub Actions.
+- Core is initialized against OSS with TableStore locking. After the targeted ACR apply, the remaining reviewed-shape plan is `60 add / 0 change / 0 destroy`, including paid network, data and ACK resources; it has not been applied.
 - The remaining paid services have not been verified by a real apply.
 - The Alibaba Cloud account currently reports `¥0.00` available balance, so paid Core resources cannot be applied until the account owner funds the account and explicitly approves the recurring-cost plan.
 - RabbitMQ is deliberately disabled by default until its service and price are approved.
