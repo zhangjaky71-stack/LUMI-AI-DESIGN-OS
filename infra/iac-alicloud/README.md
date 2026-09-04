@@ -101,11 +101,13 @@ After a reviewed Core apply, the release sequence is:
 
 - The OSS state bucket is live with private ACL, versioning, AES256 encryption and public-access blocking.
 - TableStore instance `lumi-tf-3251` and table `terraform_lock` are live. The table is imported into Bootstrap state, and Bootstrap plans with zero changes.
+- The ACR Personal Edition instance is live in `cn-hangzhou`, and the account owner has set its fixed Registry password. Namespace/repository creation remains part of the unapplied Core plan.
 - Core is initialized against OSS with TableStore locking. The current reviewed-shape plan is `67 add / 0 change / 0 destroy`, including ACK and the migration account; it has not been applied.
 - The remaining paid services have not been verified by a real apply.
+- The Alibaba Cloud account currently reports `¥0.00` available balance, so paid Core resources cannot be applied until the account owner funds the account and explicitly approves the recurring-cost plan.
 - RabbitMQ is deliberately disabled by default until its service and price are approved.
 - ACR Personal Edition resources are deprecated in Alibaba Cloud Provider `1.291.0`; they are only a staging bridge.
-- GitHub CLI authentication is invalid. The hosted ACR build workflow exists, but its ACR credentials are not configured and the branch has not been pushed.
+- GitHub CLI authentication is invalid. The hosted ACR build workflow exists and branch `codex/alicloud-deployment` has been pushed, but `ALICLOUD_ACR_USERNAME` and `ALICLOUD_ACR_PASSWORD` are not configured yet.
 - Local Docker daemon is unavailable, so the six runtime images must be built by the hosted workflow.
 - ACK manifests and migration Job exist but still contain explicit `REPLACE_WITH_*` gates. No migration execution, workload rollout, health check or staging smoke evidence exists yet.
 
