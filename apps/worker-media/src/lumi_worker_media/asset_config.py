@@ -28,9 +28,21 @@ class AssetWorkerSettings(BaseSettings):
             "S3_SECRET_ACCESS_KEY",
         ),
     )
+    s3_session_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LUMI_S3_SESSION_TOKEN", "S3_SESSION_TOKEN"),
+    )
     s3_force_path_style: bool = Field(
         default=False,
         validation_alias=AliasChoices("LUMI_S3_FORCE_PATH_STYLE", "S3_FORCE_PATH_STYLE"),
+    )
+    s3_signature_version: str = Field(
+        default="s3v4",
+        pattern="^(s3v4|s3)$",
+        validation_alias=AliasChoices(
+            "LUMI_S3_SIGNATURE_VERSION",
+            "S3_SIGNATURE_VERSION",
+        ),
     )
     asset_allow_scan_unavailable: bool = False
     asset_scan_command: str = "clamdscan"

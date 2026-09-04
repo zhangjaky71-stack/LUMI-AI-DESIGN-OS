@@ -34,6 +34,8 @@ def build_asset_storage_runtime(
         access_key_id=settings.s3_access_key_id,
         secret_access_key=settings.s3_secret_access_key,
         force_path_style=settings.s3_force_path_style,
+        signature_version=settings.s3_signature_version,
+        session_token=settings.s3_session_token,
     )
     return AssetStorageRuntime(
         session_factory=session_factory,

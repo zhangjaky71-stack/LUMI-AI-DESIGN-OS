@@ -32,11 +32,15 @@ class S3ObjectStore:
         access_key_id: str | None,
         secret_access_key: str | None,
         force_path_style: bool = False,
+        signature_version: str = "s3v4",
+        session_token: str | None = None,
     ) -> None:
+        if signature_version not in {"s3", "s3v4"}:
+            raise ValueError("S3_SIGNATURE_VERSION_INVALID")
         config = Config(
-            signature_version="s3v4",
+            signature_version=signature_version,
             retries={"mode": "standard", "max_attempts": 4},
-            s3={"addressing_style": "path" if force_path_style else "auto"},
+            s3={"addressing_style": "path" if force_path_style else "virtual"},
         )
         self.client: BaseClient = boto3.client(
             "s3",
@@ -44,6 +48,7 @@ class S3ObjectStore:
             region_name=region_name,
             aws_access_key_id=access_key_id,
             aws_secret_access_key=secret_access_key,
+            aws_session_token=session_token,
             config=config,
         )
 

@@ -4,7 +4,9 @@ import os
 
 from fastapi import FastAPI
 
+from .ack_backend import ACKRemoteSandboxBackend
 from .ecs_discovery import discover_remote_backend
+from .ports import SandboxBackend
 from .service import HostedSandboxRuntime, create_sandbox_runtime_app
 
 
@@ -16,6 +18,15 @@ def create_runtime_app() -> FastAPI:
         HostedSandboxRuntime(
             environment=os.getenv("LUMI_ENV", os.getenv("LUMI_ENVIRONMENT", "unknown")),
             auth_secret=secret,
-            backend=discover_remote_backend(),
+            backend=_remote_backend(),
         )
     )
+
+
+def _remote_backend() -> SandboxBackend:
+    backend = os.getenv("LUMI_SANDBOX_REMOTE_BACKEND", "ecs").strip().casefold()
+    if backend == "ack":
+        return ACKRemoteSandboxBackend.from_env()
+    if backend == "ecs":
+        return discover_remote_backend()
+    raise RuntimeError("LUMI_SANDBOX_REMOTE_BACKEND_INVALID")

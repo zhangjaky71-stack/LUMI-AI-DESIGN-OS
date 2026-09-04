@@ -1,3 +1,4 @@
+from .ack_backend import ACKRemoteSandboxBackend, ACKRemoteSandboxError
 from .audit import JsonlAuditSink, MemoryAuditSink
 from .deep_agents import DeepAgentSandboxTools
 from .docker_backend import (
@@ -32,6 +33,8 @@ from .security import (
 )
 
 __all__ = [
+    "ACKRemoteSandboxBackend",
+    "ACKRemoteSandboxError",
     "ArtifactSink",
     "AssetResolver",
     "AuditSink",

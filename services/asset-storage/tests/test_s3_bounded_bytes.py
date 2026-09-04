@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import io
+from unittest.mock import patch
 
 import pytest
 
@@ -52,6 +53,34 @@ def _store(client: FakeS3Client) -> S3ObjectStore:
     store = object.__new__(S3ObjectStore)
     store.client = client  # type: ignore[assignment]
     return store
+
+
+def test_oss_client_uses_signature_v2_and_virtual_host_addressing() -> None:
+    with patch("lumi_asset_storage.s3.boto3.client") as client:
+        S3ObjectStore(
+            endpoint_url="https://s3.oss-cn-hangzhou-internal.aliyuncs.com",
+            region_name="cn-hangzhou",
+            access_key_id="test-access-key",
+            secret_access_key="test-secret-key",
+            session_token="test-session-token",
+            signature_version="s3",
+            force_path_style=False,
+        )
+    kwargs = client.call_args.kwargs
+    assert kwargs["aws_session_token"] == "test-session-token"
+    assert kwargs["config"].signature_version == "s3"
+    assert kwargs["config"].s3["addressing_style"] == "virtual"
+
+
+def test_s3_client_rejects_unknown_signature_version() -> None:
+    with pytest.raises(ValueError, match="S3_SIGNATURE_VERSION_INVALID"):
+        S3ObjectStore(
+            endpoint_url=None,
+            region_name="us-east-1",
+            access_key_id=None,
+            secret_access_key=None,
+            signature_version="unsigned-v1",
+        )
 
 
 def test_put_bytes_persists_sha256_and_metadata_without_unbounded_upload() -> None:

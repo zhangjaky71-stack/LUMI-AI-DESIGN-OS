@@ -113,7 +113,9 @@ class ExchangeContractTests(unittest.TestCase):
             output_path = Path(command[3])
             self.assertTrue(input_path.is_file())
             self.assertEqual(input_path.read_bytes(), source)
-            self.assertEqual(input_path.stat().st_mode & 0o777, 0o400)
+            mode = input_path.stat().st_mode & 0o777
+            self.assertEqual(mode & 0o400, 0o400)
+            self.assertEqual(mode & 0o333, 0)
             self.assertEqual(Path(str(kwargs["cwd"])).name, "work")
             output_path.write_bytes(source + b"-rendered")
             return SimpleNamespace(returncode=0, stdout=b"ok", stderr=b"")

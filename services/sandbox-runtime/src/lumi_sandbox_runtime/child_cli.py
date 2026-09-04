@@ -299,6 +299,7 @@ def _execute(payload: dict[str, Any], *, s3: Any, bucket: str) -> dict[str, Any]
 
 def main() -> int:
     import boto3
+    from botocore.config import Config
     from botocore.exceptions import BotoCoreError, ClientError
 
     bucket = _required_env("LUMI_SANDBOX_EXCHANGE_BUCKET", max_length=255)
@@ -308,7 +309,26 @@ def main() -> int:
     if not request_key.startswith(prefix) or not result_key.startswith(prefix):
         raise SystemExit("sandbox exchange keys must remain inside canonical prefix")
     region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
-    s3 = boto3.client("s3", region_name=region)
+    region = os.getenv("LUMI_S3_REGION") or region
+    signature = os.getenv("LUMI_S3_SIGNATURE_VERSION", "s3v4")
+    if signature not in {"s3", "s3v4"}:
+        raise SystemExit("sandbox child S3 signature version is invalid")
+    force_path = os.getenv("LUMI_S3_FORCE_PATH_STYLE", "false").strip().casefold()
+    if force_path not in {"true", "false", "1", "0"}:
+        raise SystemExit("sandbox child S3 addressing style is invalid")
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=os.getenv("LUMI_S3_ENDPOINT_URL") or None,
+        region_name=region,
+        aws_access_key_id=os.getenv("LUMI_S3_ACCESS_KEY_ID") or None,
+        aws_secret_access_key=os.getenv("LUMI_S3_SECRET_ACCESS_KEY") or None,
+        aws_session_token=os.getenv("LUMI_S3_SESSION_TOKEN") or None,
+        config=Config(
+            signature_version=signature,
+            retries={"mode": "standard", "max_attempts": 4},
+            s3={"addressing_style": "path" if force_path in {"true", "1"} else "virtual"},
+        ),
+    )
     try:
         payload = _load_request(s3, bucket, request_key)
         result = _execute(payload, s3=s3, bucket=bucket)

@@ -1,0 +1,10 @@
+region             = "cn-hangzhou"
+profile            = "lumi-deploy"
+account_id         = "1153410507483251"
+availability_zones = ["cn-hangzhou-h", "cn-hangzhou-i", "cn-hangzhou-j"]
+
+# ACK Managed Pro Auto Mode is the target application runtime.
+enable_ack = true
+
+# Turn on only after Message Queue for RabbitMQ is activated and pricing is approved.
+enable_amqp = false

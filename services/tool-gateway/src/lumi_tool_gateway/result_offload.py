@@ -57,9 +57,11 @@ class S3ResultOffloader:
         store = S3ObjectStore(
             endpoint_url=os.getenv("LUMI_S3_ENDPOINT_URL") or None,
             region_name=region,
-            access_key_id=None,
-            secret_access_key=None,
+            access_key_id=os.getenv("LUMI_S3_ACCESS_KEY_ID") or None,
+            secret_access_key=os.getenv("LUMI_S3_SECRET_ACCESS_KEY") or None,
             force_path_style=_env_bool("LUMI_S3_FORCE_PATH_STYLE", default=False),
+            signature_version=os.getenv("LUMI_S3_SIGNATURE_VERSION", "s3v4"),
+            session_token=os.getenv("LUMI_S3_SESSION_TOKEN") or None,
         )
         return cls(
             store=store,

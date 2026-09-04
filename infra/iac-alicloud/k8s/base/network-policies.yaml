@@ -1,0 +1,139 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: runtime-ingress
+spec:
+  podSelector:
+    matchExpressions:
+      - key: lumi.dev/http-port
+        operator: Exists
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-alb-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.42.0.0/16
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: runtime-tls-egress
+spec:
+  podSelector:
+    matchLabels:
+      lumi.dev/internet-egress: allowed
+  policyTypes: ["Egress"]
+  egress:
+    - ports:
+        - protocol: TCP
+          port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: runtime-dns-egress
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: runtime-private-data-egress
+spec:
+  podSelector:
+    matchExpressions:
+      - key: lumi.dev/sandbox-role
+        operator: DoesNotExist
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 8080
+    - to:
+        - ipBlock:
+            cidr: 10.42.0.0/16
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 5671
+        - protocol: TCP
+          port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-controller-kube-api-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: sandbox-runtime
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 172.21.0.0/20
+      ports:
+        - protocol: TCP
+          port: 443
+---
+# The ACK Job also receives the dedicated ECI security group from Terraform.
+# This network policy permits only TLS; the security group keeps the route private.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-child-oss-egress
+spec:
+  podSelector:
+    matchLabels:
+      lumi.dev/sandbox-role: child
+  policyTypes: ["Egress"]
+  egress:
+    - ports:
+        - protocol: TCP
+          port: 443

@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lumi-staging
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - rbac.yaml
+  - network-policies.yaml
+  - workloads.yaml
+  - services.yaml
+  - ingress.yaml
+images:
+  - name: lumi-api
+    newName: registry.cn-hangzhou.aliyuncs.com/lumistaging3251/api
+    digest: sha256:REPLACE_WITH_API_DIGEST
+  - name: lumi-agent-runtime
+    newName: registry.cn-hangzhou.aliyuncs.com/lumistaging3251/agent-runtime
+    digest: sha256:REPLACE_WITH_AGENT_RUNTIME_DIGEST
+  - name: lumi-model-gateway
+    newName: registry.cn-hangzhou.aliyuncs.com/lumistaging3251/model-gateway
+    digest: sha256:REPLACE_WITH_MODEL_GATEWAY_DIGEST
+  - name: lumi-tool-gateway
+    newName: registry.cn-hangzhou.aliyuncs.com/lumistaging3251/tool-gateway
+    digest: sha256:REPLACE_WITH_TOOL_GATEWAY_DIGEST
+  - name: lumi-worker-media
+    newName: registry.cn-hangzhou.aliyuncs.com/lumistaging3251/worker-media
+    digest: sha256:REPLACE_WITH_WORKER_MEDIA_DIGEST
+  - name: lumi-sandbox-runtime
+    newName: registry.cn-hangzhou.aliyuncs.com/lumistaging3251/sandbox-runtime
+    digest: sha256:REPLACE_WITH_SANDBOX_RUNTIME_DIGEST

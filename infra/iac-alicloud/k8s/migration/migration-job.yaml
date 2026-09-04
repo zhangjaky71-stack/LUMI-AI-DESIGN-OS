@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: lumi-database-migration
+  labels:
+    app.kubernetes.io/name: lumi-database-migration
+    app.kubernetes.io/part-of: lumi
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lumi-database-migration
+        app.kubernetes.io/part-of: lumi
+    spec:
+      serviceAccountName: lumi-migration
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: lumi-api
+          imagePullPolicy: IfNotPresent
+          command: ["alembic", "-c", "apps/api/alembic.ini", "upgrade", "head"]
+          env:
+            - name: MIGRATION_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: lumi-runtime-secrets
+                  key: MIGRATION_DATABASE_URL
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi

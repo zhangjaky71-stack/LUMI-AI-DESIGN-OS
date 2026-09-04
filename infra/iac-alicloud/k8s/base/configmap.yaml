@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lumi-runtime-config
+data:
+  LUMI_ENV: staging
+  LUMI_SERVICE_DISCOVERY: lumi-staging.svc.cluster.local
+  LUMI_MODEL_GATEWAY_URL: http://model-gateway:8080
+  LUMI_TOOL_GATEWAY_URL: http://tool-gateway:8080
+  LUMI_SANDBOX_RUNTIME_URL: http://sandbox-runtime:8080
+  LUMI_SIDE_EFFECT_CONTROL_URL: http://api:8000
+  LUMI_TOOL_AUDIT_URL: http://api:8000
+  LUMI_TOOL_APPROVAL_URL: http://api:8000
+  LUMI_TOOL_DATA_URL: http://api:8000
+  LUMI_AGENT_CONTROL_URL: http://api:8000
+  LUMI_S3_ENDPOINT_URL: https://s3.oss-cn-hangzhou-internal.aliyuncs.com
+  LUMI_S3_REGION: cn-hangzhou
+  LUMI_S3_SIGNATURE_VERSION: s3
+  LUMI_S3_FORCE_PATH_STYLE: "false"
+  S3_ENDPOINT_URL: https://s3.oss-cn-hangzhou-internal.aliyuncs.com
+  S3_REGION: cn-hangzhou
+  S3_SIGNATURE_VERSION: s3
+  S3_FORCE_PATH_STYLE: "false"
+  LUMI_S3_BUCKET: lumi-staging-1153410507483251-cn-hangzhou-assets
+  S3_BUCKET: lumi-staging-1153410507483251-cn-hangzhou-assets
+  LUMI_PROVIDER_OUTPUT_BUCKET: lumi-staging-1153410507483251-cn-hangzhou-assets
+  LUMI_TOOL_RESULT_BUCKET: lumi-staging-1153410507483251-cn-hangzhou-exports
+  LUMI_SANDBOX_EXCHANGE_BUCKET: lumi-staging-1153410507483251-cn-hangzhou-sandbox
+  LUMI_SANDBOX_REMOTE_BACKEND: ack
+  LUMI_SANDBOX_ACK_NAMESPACE: lumi-staging
+  LUMI_SANDBOX_CHILD_SERVICE_ACCOUNT: lumi-sandbox-child
+  LUMI_SANDBOX_OSS_SECRET_NAME: lumi-oss-sandbox
+  LUMI_SANDBOX_JOB_TTL_SECONDS: "300"
+  LUMI_SANDBOX_CHILD_IMAGE: registry.cn-hangzhou.aliyuncs.com/lumistaging3251/sandbox-runtime@sha256:REPLACE_WITH_SANDBOX_RUNTIME_DIGEST
+  LUMI_SANDBOX_CHILD_VSWITCH_IDS: REPLACE_WITH_APP_VSWITCH_IDS
+  LUMI_SANDBOX_CHILD_SECURITY_GROUP_ID: REPLACE_WITH_SANDBOX_SECURITY_GROUP_ID

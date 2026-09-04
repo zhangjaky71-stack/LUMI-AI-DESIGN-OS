@@ -21,7 +21,9 @@ class Settings(BaseSettings):
     s3_region: str = "us-east-1"
     s3_access_key_id: str | None = None
     s3_secret_access_key: str | None = None
+    s3_session_token: str | None = None
     s3_force_path_style: bool = False
+    s3_signature_version: Literal["s3v4", "s3"] = "s3v4"
 
     asset_presign_ttl_seconds: int = Field(default=900, ge=60, le=3600)
     asset_download_ttl_seconds: int = Field(default=300, ge=30, le=3600)

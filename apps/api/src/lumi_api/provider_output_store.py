@@ -85,6 +85,8 @@ class S3ProviderOutputStore:
                 access_key_id=os.getenv("LUMI_S3_ACCESS_KEY_ID") or None,
                 secret_access_key=os.getenv("LUMI_S3_SECRET_ACCESS_KEY") or None,
                 force_path_style=force_path_style in {"1", "true"},
+                signature_version=os.getenv("LUMI_S3_SIGNATURE_VERSION", "s3v4"),
+                session_token=os.getenv("LUMI_S3_SESSION_TOKEN") or None,
             ),
             bucket=bucket,
         )

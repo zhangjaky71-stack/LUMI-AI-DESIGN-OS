@@ -730,6 +730,8 @@ async def run() -> dict[str, str]:
         secret_access_key=os.getenv("LUMI_S3_SECRET_ACCESS_KEY"),
         force_path_style=os.getenv("LUMI_S3_FORCE_PATH_STYLE", "").strip().casefold()
         in {"1", "true", "yes", "on"},
+        signature_version=os.getenv("LUMI_S3_SIGNATURE_VERSION", "s3v4"),
+        session_token=os.getenv("LUMI_S3_SESSION_TOKEN"),
     )
     token_id: UUID | None = None
     try:

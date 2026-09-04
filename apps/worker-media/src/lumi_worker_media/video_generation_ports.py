@@ -84,6 +84,8 @@ class HostedVideoOutputAdapter:
                 access_key_id=os.getenv("LUMI_S3_ACCESS_KEY_ID"),
                 secret_access_key=os.getenv("LUMI_S3_SECRET_ACCESS_KEY"),
                 force_path_style=_env_bool("LUMI_S3_FORCE_PATH_STYLE"),
+                signature_version=os.getenv("LUMI_S3_SIGNATURE_VERSION", "s3v4"),
+                session_token=os.getenv("LUMI_S3_SESSION_TOKEN"),
             ),
             sandbox_base_url=_required_env("LUMI_SANDBOX_RUNTIME_URL"),
             sandbox_auth_secret=_required_env(

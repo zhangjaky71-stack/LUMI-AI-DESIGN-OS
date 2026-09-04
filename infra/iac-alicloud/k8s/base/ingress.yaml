@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/address-type: internet
+    alb.ingress.kubernetes.io/vswitch-ids: REPLACE_WITH_PUBLIC_VSWITCH_IDS
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-id: REPLACE_WITH_ALICLOUD_CERTIFICATE_ID
+    alb.ingress.kubernetes.io/healthcheck-enabled: "true"
+    alb.ingress.kubernetes.io/healthcheck-path: /health/ready
+spec:
+  ingressClassName: alb
+  rules:
+    - host: REPLACE_WITH_STAGING_DOMAIN
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 8000
