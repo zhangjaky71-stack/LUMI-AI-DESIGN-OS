@@ -28,7 +28,9 @@ def require(condition: bool, message: str) -> None:
 
 def main() -> int:
     bootstrap = read("bootstrap/main.tf")
+    bootstrap_identity = read("bootstrap/github_oidc.tf")
     bootstrap_variables = read("bootstrap/variables.tf")
+    bootstrap_outputs = read("bootstrap/outputs.tf")
     bootstrap_versions = read("bootstrap/versions.tf")
     core_versions = read("core/versions.tf")
     core_variables = read("core/variables.tf")
@@ -57,6 +59,7 @@ def main() -> int:
         "services/sandbox-runtime/src/lumi_sandbox_runtime/hosted_service.py"
     )
     child_cli = read_root("services/sandbox-runtime/src/lumi_sandbox_runtime/child_cli.py")
+    image_workflow = read_root(".github/workflows/build-alicloud-runtime-images.yml")
 
     terraform_sources = "\n".join(path.read_text(encoding="utf-8") for path in IAC.rglob("*.tf"))
     require('resource "aws_' not in terraform_sources, "AWS resources leaked into the Alibaba Cloud root")
@@ -109,6 +112,52 @@ def main() -> int:
         'ignore_changes = [versioning, server_side_encryption_rule]',
     ):
         require(marker in bootstrap, f"bootstrap protection missing: {marker}")
+
+    for marker in (
+        'resource "alicloud_ims_oidc_provider" "github_actions"',
+        'issuer_url         = "https://token.actions.githubusercontent.com"',
+        'client_ids         = ["sts.aliyuncs.com"]',
+        'fingerprints = ["CABD2A79A1076A31F21D253635CB039D4329A5E8"]',
+        'resource "alicloud_ram_role" "github_acr_push"',
+        '"oidc:iss" = "https://token.actions.githubusercontent.com"',
+        '"oidc:aud" = "sts.aliyuncs.com"',
+        '"oidc:sub" = local.github_oidc_subject',
+        'resource "alicloud_ram_policy" "github_acr_push"',
+        '"cr:GetAuthorizationToken"',
+        '"cr:PullRepository"',
+        '"cr:PushRepository"',
+        'repository/${var.acr_namespace}/*',
+        'resource "alicloud_ram_role_policy_attachment" "github_acr_push"',
+    ):
+        require(marker in bootstrap_identity, f"GitHub OIDC bootstrap contract missing: {marker}")
+    require(
+        'default     = "refs/heads/codex/alicloud-deployment"' in bootstrap_variables,
+        "GitHub OIDC trust must target the exact deployment branch",
+    )
+    for marker in (
+        'output "github_oidc_provider_arn"',
+        'output "github_acr_role_arn"',
+        'output "github_acr_repository_boundary"',
+    ):
+        require(marker in bootstrap_outputs, f"GitHub OIDC bootstrap output missing: {marker}")
+    for marker in (
+        "id-token: write",
+        "crpi-5765pzu53bg0a9z6.cn-hangzhou.personal.cr.aliyuncs.com",
+        "aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6",
+        "aliyun/setup-aliyun-cli-action@09a5f86915bb556e27bf050e9a5e339aeb073df5",
+        "version: 3.4.11",
+        "cr GET /tokens",
+        "--version 2016-06-07",
+        "::add-mask::$acr_username",
+        "docker login \"$ACR_REGISTRY\"",
+    ):
+        require(marker in image_workflow, f"Alibaba Cloud image OIDC workflow missing: {marker}")
+    for forbidden in (
+        "ALICLOUD_ACR_USERNAME",
+        "ALICLOUD_ACR_PASSWORD",
+        "secrets.ALICLOUD",
+    ):
+        require(forbidden not in image_workflow, f"long-lived ACR credential reference remains: {forbidden}")
 
     for cidr in (
         '"10.42.0.0/16"',
