@@ -40,7 +40,7 @@ variable "github_repository" {
 variable "github_ref" {
   description = "Exact Git ref allowed to assume the GitHub Actions ACR push role."
   type        = string
-  default     = "refs/heads/codex/alicloud-deployment"
+  default     = "refs/heads/main"
 
   validation {
     condition     = startswith(var.github_ref, "refs/heads/")

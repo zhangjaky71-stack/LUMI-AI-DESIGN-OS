@@ -117,7 +117,7 @@ def main() -> int:
         'resource "alicloud_ims_oidc_provider" "github_actions"',
         'issuer_url         = "https://token.actions.githubusercontent.com"',
         'client_ids         = ["sts.aliyuncs.com"]',
-        'fingerprints = ["CABD2A79A1076A31F21D253635CB039D4329A5E8"]',
+        'fingerprints = ["6938FD4D98BAB03FAADB97B34396831E3780AEA1"]',
         'resource "alicloud_ram_role" "github_acr_push"',
         '"oidc:iss" = "https://token.actions.githubusercontent.com"',
         '"oidc:aud" = "sts.aliyuncs.com"',
@@ -131,8 +131,8 @@ def main() -> int:
     ):
         require(marker in bootstrap_identity, f"GitHub OIDC bootstrap contract missing: {marker}")
     require(
-        'default     = "refs/heads/codex/alicloud-deployment"' in bootstrap_variables,
-        "GitHub OIDC trust must target the exact deployment branch",
+        'default     = "refs/heads/main"' in bootstrap_variables,
+        "GitHub OIDC trust must target the exact main branch",
     )
     for marker in (
         'output "github_oidc_provider_arn"',
