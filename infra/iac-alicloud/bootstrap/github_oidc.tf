@@ -7,9 +7,9 @@ resource "alicloud_ims_oidc_provider" "github_actions" {
   oidc_provider_name = var.github_oidc_provider_name
   issuer_url         = "https://token.actions.githubusercontent.com"
   client_ids         = ["sts.aliyuncs.com"]
-  # SHA-1 thumbprint of the self-signed ISRG Root X1 CA serving GitHub's
-  # OIDC endpoint. Verified from the live certificate chain on 2026-09-04.
-  fingerprints = ["CABD2A79A1076A31F21D253635CB039D4329A5E8"]
+  # GitHub's published OIDC CA thumbprint used by cloud-provider integrations.
+  # Keep this value aligned with the provider's accepted trust chain.
+  fingerprints = ["6938FD4D98BAB03FAADB97B34396831E3780AEA1"]
   description  = "GitHub Actions OIDC provider for LUMI deployments"
 }
 
