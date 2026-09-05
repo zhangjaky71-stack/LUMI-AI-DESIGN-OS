@@ -1,0 +1,30 @@
+name: Auth Policy
+
+on:
+  pull_request:
+    paths:
+      - "services/auth/**"
+      - "scripts/validate_auth_policy.py"
+      - ".github/workflows/auth-policy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  auth-policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile standalone auth policy
+        run: python -m compileall -q services/auth/src
+      - name: Validate dependency boundary
+        run: python scripts/validate_auth_policy.py
+      - name: Auth policy tests
+        env:
+          PYTHONPATH: services/auth/src
+        run: python -m unittest discover -s services/auth/tests -p 'test_*.py' -v

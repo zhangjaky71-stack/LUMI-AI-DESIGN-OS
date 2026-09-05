@@ -1,0 +1,3 @@
+# Generated deterministically by scripts/generate_api_v1_client.py.
+# Keep generator output canonical; API Contract checks byte-for-byte drift.
+packages/api-client-v1/src/generated.ts

@@ -1,18 +1,18 @@
 # LUMI AI Design OS — LOCAL AWS DEPLOYMENT
 
-> **Document:** `LOCAL_AWS_DEPLOYMENT.md`  
-> **Mode:** Codex Local Full-Automation / AWS  
-> **Repository:** `zhangjaky71-stack/LUMI-AI-DESIGN-OS`  
-> **Primary user command:** `按照文档继续部署`  
-> **Default AWS Region:** `ap-northeast-1`（除非仓库/现有 AWS 配置已经明确指定其他 Region）  
-> **Primary target:** Staging-first, Production-ready  
-> **IaC:** Terraform  
-> **Compute:** Amazon ECS on AWS Fargate  
-> **Data:** Amazon RDS for PostgreSQL + ElastiCache + S3  
-> **Images:** Amazon ECR  
-> **Secrets:** AWS Secrets Manager  
-> **Ingress:** Application Load Balancer  
-> **Observability:** CloudWatch Logs / Metrics / Container Insights  
+> **Document:** `LOCAL_AWS_DEPLOYMENT.md`
+> **Mode:** Codex Local Full-Automation / AWS
+> **Repository:** `zhangjaky71-stack/LUMI-AI-DESIGN-OS`
+> **Primary user command:** `按照文档继续部署`
+> **Default AWS Region:** `ap-northeast-1`（除非仓库/现有 AWS 配置已经明确指定其他 Region）
+> **Primary target:** Staging-first, Production-ready
+> **IaC:** Terraform
+> **Compute:** Amazon ECS on AWS Fargate
+> **Data:** Amazon RDS for PostgreSQL + ElastiCache + S3
+> **Images:** Amazon ECR
+> **Secrets:** AWS Secrets Manager
+> **Ingress:** Application Load Balancer
+> **Observability:** CloudWatch Logs / Metrics / Container Insights
 > **Principle:** 不要求非工程用户手工填写 Terraform / IAM / VPC / Security Group / Account ID / AZ / ARN / ECR / S3 参数。
 
 ---
@@ -1660,43 +1660,43 @@ Codex在真正执行时必须重新读取 AWS/HashiCorp 官方文档，避免依
 
 重点官方资料：
 
-- AWS CLI browser sign-in / `aws login`  
+- AWS CLI browser sign-in / `aws login`
   https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sign-in.html
 
-- AWS CLI IAM Identity Center / SSO  
+- AWS CLI IAM Identity Center / SSO
   https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html
 
-- Terraform S3 backend / S3 lockfile  
+- Terraform S3 backend / S3 lockfile
   https://developer.hashicorp.com/terraform/language/backend/s3
 
-- Amazon ECS deployment circuit breaker  
+- Amazon ECS deployment circuit breaker
   https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_DeploymentCircuitBreaker.html
 
-- ECS + Secrets Manager  
+- ECS + Secrets Manager
   https://docs.aws.amazon.com/AmazonECS/latest/developerguide/secrets-envvar-secrets-manager.html
 
-- RDS + Secrets Manager managed master password  
+- RDS + Secrets Manager managed master password
   https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-secrets-manager.html
 
-- RDS PostgreSQL extensions  
+- RDS PostgreSQL extensions
   https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.FeatureSupport.Extensions.html
 
-- Amazon S3 Block Public Access  
+- Amazon S3 Block Public Access
   https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html
 
-- S3 Gateway Endpoint  
+- S3 Gateway Endpoint
   https://docs.aws.amazon.com/vpc/latest/privatelink/vpc-endpoints-s3.html
 
-- ECR VPC endpoints  
+- ECR VPC endpoints
   https://docs.aws.amazon.com/AmazonECR/latest/userguide/vpc-endpoints.html
 
-- CloudWatch Container Insights for ECS  
+- CloudWatch Container Insights for ECS
   https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/deploy-container-insights-ECS-cluster.html
 
-- ElastiCache Serverless Redis-compatible cache  
+- ElastiCache Serverless Redis-compatible cache
   https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/GettingStarted.serverless-redis.step1.html
 
-- Amazon MQ RabbitMQ 4  
+- Amazon MQ RabbitMQ 4
   https://docs.aws.amazon.com/amazon-mq/latest/developer-guide/rabbitmq-4.html
 
 凡是 AWS engine version、instance class、Fargate platform behavior、Terraform/AWS provider version等可能变化的内容，都应在实际部署当天用官方 API/文档重新验证，而不是硬编码本文件写作时的版本号。

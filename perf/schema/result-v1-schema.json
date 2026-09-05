@@ -1,0 +1,21 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "title":"LUMI Performance Result v1",
+  "type":"object",
+  "required":["schema_version","profile_id","profile_set","git_sha","environment","provider_mode","started_at","finished_at","http","resources","database","queue","ai_latency"],
+  "properties":{
+    "schema_version":{"const":1},
+    "profile_id":{"enum":["A","B","C","D","E","F","G"]},
+    "profile_set":{"type":"string"},
+    "git_sha":{"type":"string","minLength":7},
+    "environment":{"type":"string"},
+    "provider_mode":{"enum":["deterministic_mock","real_provider","mixed"]},
+    "started_at":{"type":"string"},"finished_at":{"type":"string"},
+    "http":{"type":"object","required":["requests","rps","error_rate","p50_ms","p95_ms","p99_ms"]},
+    "resources":{"type":"object","required":["api_cpu_pct","api_memory_mb"]},
+    "database":{"type":"object","required":["pool_in_use","query_p95_ms"]},
+    "queue":{"type":"object","required":["depth","oldest_age_ms"]},
+    "ai_latency":{"type":"object","required":["enqueue_ms","routing_ms","provider_ms","download_ms","postprocess_ms","validation_ms","artifact_persist_ms","ui_propagation_ms","platform_overhead_ms"]}
+  },
+  "additionalProperties":true
+}

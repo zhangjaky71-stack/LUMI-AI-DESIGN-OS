@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumi.dev/assets/v1/validation-result.schema.json",
+  "title": "LUMI Asset Validation Result V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "asset_id","asset_file_id","status","scanner_status","sniffed_mime_type",
+    "full_checksum_sha256","failure_code","metadata"
+  ],
+  "properties": {
+    "asset_id": {"type":"string","minLength":1},
+    "asset_file_id": {"type":"string","minLength":1},
+    "status": {"enum":["pending","running","succeeded","rejected","error"]},
+    "scanner_status": {"enum":["CLEAN","INFECTED","SCAN_UNAVAILABLE","ERROR",null]},
+    "sniffed_mime_type": {"type":["string","null"],"maxLength":255},
+    "full_checksum_sha256": {"type":["string","null"],"pattern":"^[0-9a-f]{64}$"},
+    "failure_code": {"type":["string","null"],"maxLength":100},
+    "metadata": {"type":"object"}
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lumi.local/schemas/design-constraints/violation.schema.json",
+  "title": "LUMI Constraint Violation V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["constraint_id", "type", "severity", "validator", "reason_code"],
+  "properties": {
+    "constraint_id": {"type": "string", "minLength": 1},
+    "type": {"type": "string", "minLength": 1},
+    "severity": {"enum": ["HARD", "SOFT", "ADVISORY"]},
+    "validator": {"type": "string", "minLength": 1},
+    "reason_code": {"type": "string", "minLength": 1},
+    "target_id": {"type": "string"},
+    "score": {"type": "number"},
+    "threshold": {"type": "number"},
+    "expected": {},
+    "actual": {},
+    "repair_hint": {"type": "object"},
+    "raw_evidence_ref": {"type": "string"}
+  }
+}

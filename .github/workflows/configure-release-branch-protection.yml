@@ -7,17 +7,99 @@ on:
         description: "Type APPLY_NODE73_RELEASE_PROTECTION to apply strong protection to both NODE-73 release refs"
         required: true
         type: string
+  pull_request:
+    types: [labeled]
 
 permissions:
   contents: read
 
+concurrency:
+  group: node73-release-branch-protection-${{ github.event_name }}
+  cancel-in-progress: false
+
 jobs:
-  default-branch-registry-only:
+  pr-preflight:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'node73-protection-preflight' &&
+      github.event.pull_request.number == 135 &&
+      github.event.pull_request.base.ref == 'node-73-final-acceptance-release' &&
+      github.event.pull_request.head.ref == 'release-closure-p0' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 2
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
-      - name: Refuse default-branch execution
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ env.EVIDENCE_HEAD_SHA }}
+          persist-credentials: false
+      - name: Require exact PR Evidence Head checkout
+        run: test "$(git rev-parse HEAD)" = "$EVIDENCE_HEAD_SHA"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+      - name: Validate governance plan without privileged mutation
         run: |
-          echo "This file is a workflow_dispatch registry stub only." >&2
-          echo "Run this workflow with ref=release-closure-p0 so GitHub uses the hardened release-ref workflow definition." >&2
-          exit 64
+          python3 scripts/validate_release_governance_policy.py --self-test
+          python3 scripts/validate_live_release_governance_v2.py --self-test
+          python3 scripts/apply_release_branch_protection.py --self-test
+          python3 scripts/validate_release_action_pins.py
+          python3 scripts/validate_release_workflow_permissions.py
+          echo "PR preflight only: no Administration credential is available to PR-controlled code."
+          echo "Actual branch-protection mutation remains externally blocked until the workflow exists on the default branch or an administrator applies the frozen policy directly."
+
+  apply-protection:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/release-closure-p0' &&
+      inputs.confirm == 'APPLY_NODE73_RELEASE_PROTECTION'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+    env:
+      EVIDENCE_HEAD_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ env.EVIDENCE_HEAD_SHA }}
+          persist-credentials: false
+      - name: Require exact dispatch Evidence Head checkout
+        run: test "$(git rev-parse HEAD)" = "$EVIDENCE_HEAD_SHA"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+      - name: Validate governance contracts before mutation
+        run: |
+          python3 scripts/validate_release_governance_policy.py --self-test
+          python3 scripts/validate_live_release_governance_v2.py --self-test
+          python3 scripts/apply_release_branch_protection.py --self-test
+          python3 scripts/validate_release_action_pins.py
+          python3 scripts/validate_release_workflow_permissions.py
+      - name: Apply canonical strong protection and verify live read-back
+        shell: bash
+        env:
+          RELEASE_GOVERNANCE_ADMIN_TOKEN: ${{ secrets.RELEASE_GOVERNANCE_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_GOVERNANCE_ADMIN_TOKEN"
+          output="reports/repository-governance/${EVIDENCE_HEAD_SHA}/branch-protection-apply.json"
+          python3 scripts/apply_release_branch_protection.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --policy final/acceptance/repository-governance-policy-template.json \
+            --evidence-head-sha "$EVIDENCE_HEAD_SHA" \
+            --confirm "${{ inputs.confirm }}" \
+            --output "$output"
+          python3 -m json.tool "$output" >/dev/null
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: node73-release-branch-protection-${{ github.run_id }}
+          path: reports/repository-governance/${{ env.EVIDENCE_HEAD_SHA }}/branch-protection-apply.json
+          if-no-files-found: error
+          retention-days: 180

@@ -1,0 +1,604 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import copy
+import hashlib
+import json
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit
+
+MODEL_GATEWAY_VIDEO_REQUIRED_SOURCE_PATHS = {
+    "services/model-gateway",
+    "services/model-gateway/Dockerfile",
+    "services/model-gateway/src/lumi_model_gateway/openai_video_adapter.py",
+    "services/asset-storage/src/lumi_asset_storage/s3.py",
+    "apps/api/src/lumi_api/model_gateway_runtime.py",
+    "apps/api/src/lumi_api/model_gateway_bootstrap.py",
+    "apps/api/src/lumi_api/model_gateway_service.py",
+    "apps/api/src/lumi_api/model_gateway_cli.py",
+    "apps/api/src/lumi_api/model_paid_guard.py",
+    "apps/api/src/lumi_api/provider_output_store.py",
+    "apps/api/src/lumi_api/idempotency/gateway.py",
+    "apps/api/src/lumi_api/costs/model_gateway_adapter.py",
+}
+WORKER_VIDEO_REQUIRED_SOURCE_PATHS = {
+    "services/video-generation",
+    "services/asset-storage/src/lumi_asset_storage/s3.py",
+    "apps/worker-media/Dockerfile",
+    "apps/worker-media/pyproject.toml",
+    "apps/worker-media/src/lumi_worker_media/app.py",
+    "apps/worker-media/src/lumi_worker_media/worker_cli.py",
+    "apps/worker-media/src/lumi_worker_media/job_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/event_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/external_wait_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_gateway_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_codec.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_repository.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_ports.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_artifacts.py",
+    "apps/worker-media/src/lumi_worker_media/video_generation_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_final_probe_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_validation_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_sandbox_runtime.py",
+    "apps/worker-media/src/lumi_worker_media/video_cost_runtime.py",
+}
+RUNTIME_IMAGE_BINDING_FIELDS = {
+    "status",
+    "git_sha",
+    "version",
+    "build_run_id",
+    "container_image_set_ref",
+    "attestation_report_sha256",
+    "attestation_source_digest",
+    "runtime_count",
+}
+
+
+class DecisionArtifactError(RuntimeError):
+    pass
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise DecisionArtifactError(f"unable to read JSON {path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise DecisionArtifactError(f"{path} must contain a JSON object")
+    return payload
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _positive_run_id(value: object) -> str:
+    if not isinstance(value, (str, int)) or isinstance(value, bool):
+        raise DecisionArtifactError("workflow run id must be a positive decimal integer")
+    text = str(value)
+    if not text.isdecimal() or int(text) <= 0:
+        raise DecisionArtifactError("workflow run id must be a positive decimal integer")
+    return text
+
+
+def _sha40(value: object, label: str) -> str:
+    if not isinstance(value, str) or len(value) != 40 or any(
+        char not in "0123456789abcdef" for char in value.lower()
+    ):
+        raise DecisionArtifactError(f"{label} must be an exact SHA40")
+    return value.lower()
+
+
+def _sha256_text(value: object, label: str) -> str:
+    if not isinstance(value, str) or len(value) != 64 or any(
+        char not in "0123456789abcdef" for char in value.lower()
+    ):
+        raise DecisionArtifactError(f"{label} must be an exact SHA-256")
+    return value.lower()
+
+
+def _canonical_run_url(url: object, repository: str) -> tuple[str, str]:
+    if not isinstance(url, str):
+        raise DecisionArtifactError("workflow run URL is missing")
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or parsed.hostname != "github.com" or parsed.query or parsed.fragment:
+        raise DecisionArtifactError(
+            "workflow run URL must be canonical github.com HTTPS without query/fragment"
+        )
+    parts = [part for part in parsed.path.split("/") if part]
+    repo_parts = repository.split("/", 1)
+    if len(repo_parts) != 2 or not all(repo_parts):
+        raise DecisionArtifactError("expected repository must use owner/name")
+    if len(parts) != 5 or parts[:2] != repo_parts or parts[2:4] != ["actions", "runs"]:
+        raise DecisionArtifactError("workflow run URL repository/path mismatch")
+    return url, _positive_run_id(parts[4])
+
+
+def _required_source_paths(
+    decision: dict[str, Any],
+    *,
+    runtime: str,
+    required: set[str],
+    label: str,
+) -> None:
+    image_set = decision.get("container_image_set")
+    provenance = image_set.get("provenance") if isinstance(image_set, dict) else None
+    runtime_provenance = provenance.get(runtime) if isinstance(provenance, dict) else None
+    source_paths = (
+        runtime_provenance.get("source_paths")
+        if isinstance(runtime_provenance, dict)
+        else None
+    )
+    if not isinstance(source_paths, list) or not all(
+        isinstance(value, str) and bool(value) for value in source_paths
+    ):
+        raise DecisionArtifactError(
+            f"NODE-71 {runtime} provenance source_paths are missing/invalid"
+        )
+    missing = sorted(required - set(source_paths))
+    if missing:
+        raise DecisionArtifactError(
+            f"NODE-71 {runtime} provenance is missing {label} sources: "
+            + ", ".join(missing)
+        )
+
+
+def _require_hosted_video_provenance(decision: dict[str, Any]) -> None:
+    _required_source_paths(
+        decision,
+        runtime="model-gateway",
+        required=MODEL_GATEWAY_VIDEO_REQUIRED_SOURCE_PATHS,
+        label="Hosted Video Model Gateway",
+    )
+    _required_source_paths(
+        decision,
+        runtime="worker-media",
+        required=WORKER_VIDEO_REQUIRED_SOURCE_PATHS,
+        label="Hosted Video Worker",
+    )
+
+
+def _require_runtime_image_binding(decision: dict[str, Any]) -> dict[str, Any]:
+    rc = decision.get("release_candidate")
+    if not isinstance(rc, dict):
+        raise DecisionArtifactError("NODE-71 decision release_candidate is missing")
+    rc_sha = _sha40(rc.get("git_sha"), "NODE-71 release_candidate.git_sha")
+    binding = decision.get("runtime_image_binding")
+    if not isinstance(binding, dict):
+        raise DecisionArtifactError("NODE-71 decision runtime_image_binding seal is missing")
+    if set(binding) != RUNTIME_IMAGE_BINDING_FIELDS:
+        raise DecisionArtifactError("NODE-71 runtime_image_binding field set is invalid")
+    if binding.get("status") != "PASS":
+        raise DecisionArtifactError("NODE-71 runtime_image_binding status must be PASS")
+    if _sha40(binding.get("git_sha"), "runtime_image_binding.git_sha") != rc_sha:
+        raise DecisionArtifactError("NODE-71 runtime_image_binding git_sha differs from release candidate")
+    if binding.get("version") != rc.get("version"):
+        raise DecisionArtifactError("NODE-71 runtime_image_binding version differs from release candidate")
+    _positive_run_id(binding.get("build_run_id"))
+    artifact_ref = binding.get("container_image_set_ref")
+    if not isinstance(artifact_ref, str) or not artifact_ref or artifact_ref != rc.get("container_image_set_ref"):
+        raise DecisionArtifactError("NODE-71 runtime_image_binding artifact ref differs from release candidate")
+    _sha256_text(
+        binding.get("attestation_report_sha256"),
+        "runtime_image_binding.attestation_report_sha256",
+    )
+    if _sha40(
+        binding.get("attestation_source_digest"),
+        "runtime_image_binding.attestation_source_digest",
+    ) != rc_sha:
+        raise DecisionArtifactError("NODE-71 runtime-image attestation source differs from release candidate")
+    if binding.get("runtime_count") != 6:
+        raise DecisionArtifactError("NODE-71 runtime_image_binding must cover exactly six runtimes")
+    return binding
+
+
+def build_provenance(
+    *,
+    decision_path: Path,
+    repository: str,
+    workflow_run_id: str,
+    workflow_run_url: str,
+) -> dict[str, Any]:
+    decision = _load_json(decision_path)
+    if decision.get("schema_version") != 1:
+        raise DecisionArtifactError("NODE-71 decision schema_version must be 1")
+    if decision.get("passed") is not True:
+        raise DecisionArtifactError(
+            "NODE-71 decision provenance can only be captured for passed=true decision"
+        )
+    runtime_binding = _require_runtime_image_binding(decision)
+    _require_hosted_video_provenance(decision)
+    decision_id = decision.get("decision_id")
+    release_candidate = decision.get("release_candidate")
+    if not isinstance(decision_id, str) or not decision_id:
+        raise DecisionArtifactError("NODE-71 decision_id is missing")
+    if not isinstance(release_candidate, dict):
+        raise DecisionArtifactError("NODE-71 decision release_candidate is missing")
+    _, url_run_id = _canonical_run_url(workflow_run_url, repository)
+    expected_run_id = _positive_run_id(workflow_run_id)
+    if url_run_id != expected_run_id:
+        raise DecisionArtifactError("workflow run URL id differs from workflow_run_id")
+    return {
+        "schema_version": 1,
+        "kind": "LUMI_NODE71_DECISION_PROVENANCE_V1",
+        "repository": repository,
+        "workflow": "Staging Acceptance Gate",
+        "workflow_run_id": expected_run_id,
+        "workflow_run_url": workflow_run_url,
+        "decision_file": "decision.json",
+        "decision_sha256": _sha256(decision_path),
+        "decision_id": decision_id,
+        "release_candidate": copy.deepcopy(release_candidate),
+        "runtime_image_binding": copy.deepcopy(runtime_binding),
+    }
+
+
+def validate_artifact(
+    *,
+    decision_path: Path,
+    provenance_path: Path,
+    expected_run_id: str,
+    expected_repository: str,
+) -> dict[str, Any]:
+    decision = _load_json(decision_path)
+    provenance = _load_json(provenance_path)
+    if provenance.get("schema_version") != 1:
+        raise DecisionArtifactError("NODE-71 decision provenance schema_version must be 1")
+    if provenance.get("kind") != "LUMI_NODE71_DECISION_PROVENANCE_V1":
+        raise DecisionArtifactError("NODE-71 decision provenance kind mismatch")
+    if provenance.get("repository") != expected_repository:
+        raise DecisionArtifactError("NODE-71 decision provenance repository mismatch")
+    if provenance.get("workflow") != "Staging Acceptance Gate":
+        raise DecisionArtifactError("NODE-71 decision provenance workflow mismatch")
+    run_id = _positive_run_id(provenance.get("workflow_run_id"))
+    if run_id != _positive_run_id(expected_run_id):
+        raise DecisionArtifactError("NODE-71 decision provenance run id mismatch")
+    _, url_run_id = _canonical_run_url(
+        provenance.get("workflow_run_url"), expected_repository
+    )
+    if url_run_id != run_id:
+        raise DecisionArtifactError("NODE-71 decision provenance run URL id mismatch")
+    if provenance.get("decision_file") != "decision.json":
+        raise DecisionArtifactError("NODE-71 decision provenance file identity mismatch")
+    if provenance.get("decision_sha256") != _sha256(decision_path):
+        raise DecisionArtifactError("NODE-71 decision SHA-256 does not match provenance")
+    if decision.get("schema_version") != 1 or decision.get("passed") is not True:
+        raise DecisionArtifactError(
+            "NODE-71 downloaded decision is not a passed schema-v1 decision"
+        )
+    if provenance.get("decision_id") != decision.get("decision_id"):
+        raise DecisionArtifactError("NODE-71 decision_id differs from provenance")
+    if provenance.get("release_candidate") != decision.get("release_candidate"):
+        raise DecisionArtifactError("NODE-71 release_candidate differs from provenance")
+    runtime_binding = _require_runtime_image_binding(decision)
+    if provenance.get("runtime_image_binding") != runtime_binding:
+        raise DecisionArtifactError("NODE-71 runtime_image_binding differs from provenance")
+    _require_hosted_video_provenance(decision)
+    return {
+        "status": "PASS",
+        "workflow_run_id": run_id,
+        "workflow_run_url": provenance.get("workflow_run_url"),
+        "decision_id": decision.get("decision_id"),
+        "decision_sha256": provenance.get("decision_sha256"),
+        "release_candidate": decision.get("release_candidate"),
+        "runtime_image_binding": runtime_binding,
+    }
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def self_test() -> dict[str, Any]:
+    import tempfile
+
+    repository = "example/lumi"
+    run_id = "123"
+    run_url = "https://github.com/example/lumi/actions/runs/123"
+    git_sha = "a" * 40
+    image_set_ref = (
+        "https://github.com/example/lumi/actions/runs/456"
+        f"#artifact=runtime-image-set-{git_sha}/container-image-set.json"
+    )
+    with tempfile.TemporaryDirectory(prefix="lumi-node71-decision-") as temp_dir:
+        root = Path(temp_dir)
+        decision_path = root / "decision.json"
+        provenance_path = root / "decision-provenance.json"
+        decision = {
+            "schema_version": 1,
+            "decision_id": "node71-contract-001",
+            "passed": True,
+            "release_candidate": {
+                "git_sha": git_sha,
+                "version": "1.0.0-rc.contract",
+                "migration_head": "contract-head",
+                "container_image_set_ref": image_set_ref,
+            },
+            "runtime_image_binding": {
+                "status": "PASS",
+                "git_sha": git_sha,
+                "version": "1.0.0-rc.contract",
+                "build_run_id": "456",
+                "container_image_set_ref": image_set_ref,
+                "attestation_report_sha256": "b" * 64,
+                "attestation_source_digest": git_sha,
+                "runtime_count": 6,
+            },
+            "container_image_set": {
+                "images": {},
+                "provenance": {
+                    "model-gateway": {
+                        "source_paths": sorted(
+                            MODEL_GATEWAY_VIDEO_REQUIRED_SOURCE_PATHS
+                        ),
+                    },
+                    "worker-media": {
+                        "source_paths": sorted(WORKER_VIDEO_REQUIRED_SOURCE_PATHS),
+                    },
+                },
+            },
+        }
+        _write_json(decision_path, decision)
+        provenance = build_provenance(
+            decision_path=decision_path,
+            repository=repository,
+            workflow_run_id=run_id,
+            workflow_run_url=run_url,
+        )
+        _write_json(provenance_path, provenance)
+        clean = validate_artifact(
+            decision_path=decision_path,
+            provenance_path=provenance_path,
+            expected_run_id=run_id,
+            expected_repository=repository,
+        )
+
+        drills: list[str] = []
+
+        def must_block(label: str, fn: Callable[[], object]) -> None:
+            try:
+                fn()
+            except DecisionArtifactError:
+                drills.append(label)
+                return
+            raise DecisionArtifactError(f"negative drill did not block: {label}")
+
+        must_block(
+            "requested_run_id_swap_blocked",
+            lambda: validate_artifact(
+                decision_path=decision_path,
+                provenance_path=provenance_path,
+                expected_run_id="999",
+                expected_repository=repository,
+            ),
+        )
+        must_block(
+            "repository_swap_blocked",
+            lambda: validate_artifact(
+                decision_path=decision_path,
+                provenance_path=provenance_path,
+                expected_run_id=run_id,
+                expected_repository="other/repo",
+            ),
+        )
+
+        modified = copy.deepcopy(decision)
+        modified["decision_id"] = "different"
+        _write_json(decision_path, modified)
+        must_block(
+            "decision_content_swap_blocked",
+            lambda: validate_artifact(
+                decision_path=decision_path,
+                provenance_path=provenance_path,
+                expected_run_id=run_id,
+                expected_repository=repository,
+            ),
+        )
+        _write_json(decision_path, decision)
+
+        bad_provenance = copy.deepcopy(provenance)
+        bad_provenance["workflow_run_url"] = (
+            "https://github.com/example/lumi/actions/runs/999"
+        )
+        _write_json(provenance_path, bad_provenance)
+        must_block(
+            "run_url_swap_blocked",
+            lambda: validate_artifact(
+                decision_path=decision_path,
+                provenance_path=provenance_path,
+                expected_run_id=run_id,
+                expected_repository=repository,
+            ),
+        )
+        _write_json(provenance_path, provenance)
+
+        missing_runtime_seal = copy.deepcopy(decision)
+        missing_runtime_seal.pop("runtime_image_binding")
+        _write_json(decision_path, missing_runtime_seal)
+        must_block(
+            "runtime_image_binding_write_required",
+            lambda: build_provenance(
+                decision_path=decision_path,
+                repository=repository,
+                workflow_run_id=run_id,
+                workflow_run_url=run_url,
+            ),
+        )
+        forged_seal = copy.deepcopy(provenance)
+        forged_seal["decision_sha256"] = _sha256(decision_path)
+        _write_json(provenance_path, forged_seal)
+        must_block(
+            "runtime_image_binding_download_required",
+            lambda: validate_artifact(
+                decision_path=decision_path,
+                provenance_path=provenance_path,
+                expected_run_id=run_id,
+                expected_repository=repository,
+            ),
+        )
+        _write_json(decision_path, decision)
+        _write_json(provenance_path, provenance)
+
+        source_swap = copy.deepcopy(decision)
+        source_swap["runtime_image_binding"]["attestation_source_digest"] = "c" * 40
+        _write_json(decision_path, source_swap)
+        must_block(
+            "runtime_image_source_write_blocked",
+            lambda: build_provenance(
+                decision_path=decision_path,
+                repository=repository,
+                workflow_run_id=run_id,
+                workflow_run_url=run_url,
+            ),
+        )
+        forged_source = copy.deepcopy(provenance)
+        forged_source["decision_sha256"] = _sha256(decision_path)
+        forged_source["runtime_image_binding"] = copy.deepcopy(
+            source_swap["runtime_image_binding"]
+        )
+        _write_json(provenance_path, forged_source)
+        must_block(
+            "runtime_image_source_download_blocked",
+            lambda: validate_artifact(
+                decision_path=decision_path,
+                provenance_path=provenance_path,
+                expected_run_id=run_id,
+                expected_repository=repository,
+            ),
+        )
+        _write_json(decision_path, decision)
+        _write_json(provenance_path, provenance)
+
+        missing_worker_video = copy.deepcopy(decision)
+        missing_worker_video["container_image_set"]["provenance"]["worker-media"][
+            "source_paths"
+        ].remove(
+            "apps/worker-media/src/lumi_worker_media/video_validation_runtime.py"
+        )
+        _write_json(decision_path, missing_worker_video)
+        must_block(
+            "hosted_video_provenance_write_blocked",
+            lambda: build_provenance(
+                decision_path=decision_path,
+                repository=repository,
+                workflow_run_id=run_id,
+                workflow_run_url=run_url,
+            ),
+        )
+        forged = copy.deepcopy(provenance)
+        forged["decision_sha256"] = _sha256(decision_path)
+        _write_json(provenance_path, forged)
+        must_block(
+            "hosted_video_provenance_download_blocked",
+            lambda: validate_artifact(
+                decision_path=decision_path,
+                provenance_path=provenance_path,
+                expected_run_id=run_id,
+                expected_repository=repository,
+            ),
+        )
+
+        missing_gateway_video = copy.deepcopy(decision)
+        missing_gateway_video["container_image_set"]["provenance"]["model-gateway"][
+            "source_paths"
+        ].remove(
+            "services/model-gateway/src/lumi_model_gateway/openai_video_adapter.py"
+        )
+        _write_json(decision_path, missing_gateway_video)
+        _write_json(provenance_path, provenance)
+        must_block(
+            "hosted_video_model_gateway_provenance_write_blocked",
+            lambda: build_provenance(
+                decision_path=decision_path,
+                repository=repository,
+                workflow_run_id=run_id,
+                workflow_run_url=run_url,
+            ),
+        )
+        forged_gateway = copy.deepcopy(provenance)
+        forged_gateway["decision_sha256"] = _sha256(decision_path)
+        _write_json(provenance_path, forged_gateway)
+        must_block(
+            "hosted_video_model_gateway_provenance_download_blocked",
+            lambda: validate_artifact(
+                decision_path=decision_path,
+                provenance_path=provenance_path,
+                expected_run_id=run_id,
+                expected_repository=repository,
+            ),
+        )
+
+    return {"status": "PASS", "clean": clean, "negative_drills": drills}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Validate NODE-71 decision artifact workflow provenance"
+    )
+    parser.add_argument("--decision", type=Path)
+    parser.add_argument("--provenance", type=Path)
+    parser.add_argument("--expected-run-id")
+    parser.add_argument("--expected-repository")
+    parser.add_argument("--write-provenance", type=Path)
+    parser.add_argument("--workflow-run-url")
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+
+    if args.self_test:
+        print(json.dumps(self_test(), indent=2, sort_keys=True))
+        return 0
+
+    if args.write_provenance is not None:
+        if (
+            args.decision is None
+            or args.expected_run_id is None
+            or args.expected_repository is None
+            or args.workflow_run_url is None
+        ):
+            raise DecisionArtifactError(
+                "--decision, --expected-run-id, --expected-repository and "
+                "--workflow-run-url are required to write provenance"
+            )
+        payload = build_provenance(
+            decision_path=args.decision,
+            repository=args.expected_repository,
+            workflow_run_id=args.expected_run_id,
+            workflow_run_url=args.workflow_run_url,
+        )
+        args.write_provenance.parent.mkdir(parents=True, exist_ok=True)
+        _write_json(args.write_provenance, payload)
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+
+    if (
+        args.decision is None
+        or args.provenance is None
+        or args.expected_run_id is None
+        or args.expected_repository is None
+    ):
+        raise DecisionArtifactError(
+            "--decision, --provenance, --expected-run-id and "
+            "--expected-repository are required"
+        )
+    result = validate_artifact(
+        decision_path=args.decision,
+        provenance_path=args.provenance,
+        expected_run_id=args.expected_run_id,
+        expected_repository=args.expected_repository,
+    )
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except DecisionArtifactError as exc:
+        raise SystemExit(f"NODE-71 decision artifact invalid: {exc}") from exc

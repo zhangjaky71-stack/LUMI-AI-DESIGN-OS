@@ -17,14 +17,30 @@ members = [
   "apps/api",
   "apps/agent-runtime",
   "apps/worker-media",
+  "services/auth",
+  "services/domain",
+  "services/project-core",
   "services/model-gateway",
   "services/tool-gateway",
   "services/sandbox-runtime",
+  "services/asset-storage",
+  "services/image-generation",
+  "services/video-generation",
   "services/memory",
   "services/knowledge",
   "services/visual-critic",
   "services/asset-intelligence",
 ]
+
+[tool.uv.sources]
+lumi-auth = { workspace = true }
+lumi-domain = { workspace = true }
+lumi-project-core = { workspace = true }
+lumi-model-gateway = { workspace = true }
+lumi-tool-gateway = { workspace = true }
+lumi-asset-storage = { workspace = true }
+lumi-image-generation = { workspace = true }
+lumi-video-generation = { workspace = true }
 
 [tool.ruff]
 target-version = "py312"
@@ -33,9 +49,15 @@ src = [
   "apps/api/src",
   "apps/agent-runtime/src",
   "apps/worker-media/src",
+  "services/auth/src",
+  "services/domain/src",
+  "services/project-core/src",
   "services/model-gateway/src",
   "services/tool-gateway/src",
   "services/sandbox-runtime/src",
+  "services/asset-storage/src",
+  "services/image-generation/src",
+  "services/video-generation/src",
   "services/memory/src",
   "services/knowledge/src",
   "services/visual-critic/src",
@@ -45,35 +67,90 @@ src = [
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"services/domain/src/lumi_domain/constraint_validator.py" = ["E501"]
+"services/domain/tests/test_constraint_validator.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = [
   "lumi_api",
   "lumi_agent_runtime",
   "lumi_worker_media",
+  "lumi_auth",
+  "lumi_domain",
+  "lumi_project_core",
   "lumi_model_gateway",
   "lumi_tool_gateway",
   "lumi_sandbox_runtime",
+  "lumi_asset_storage",
+  "lumi_image_generation",
+  "lumi_video_generation",
   "lumi_memory",
   "lumi_knowledge",
   "lumi_visual_critic",
   "lumi_asset_intelligence",
   "evals",
 ]
-known-third-party = ["fastapi"]
+known-third-party = ["argon2", "fastapi"]
 
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
 include = ["apps", "services", "evals"]
 exclude = ["**/__pycache__", ".venv"]
+extraPaths = [
+  "services/auth/src",
+  "services/domain/src",
+  "services/project-core/src",
+  "services/model-gateway/src",
+  "services/tool-gateway/src",
+  "services/sandbox-runtime/src",
+  "services/asset-storage/src",
+  "services/image-generation/src",
+  "services/video-generation/src",
+  "services/artifact-history/src",
+  "services/brand-rules/src",
+  "services/constraint-engine/src",
+  "services/design-ir/src",
+  "services/event-contract/src",
+  "services/identity-engine/src",
+  "services/image-edit/src",
+]
 
 [tool.pytest.ini_options]
-addopts = "-q"
-pythonpath = ["."]
+addopts = "-q --import-mode=importlib"
+pythonpath = [
+  ".",
+  "services/auth/src",
+  "services/domain/src",
+  "services/project-core/src",
+  "services/model-gateway/src",
+  "services/tool-gateway/src",
+  "services/sandbox-runtime/src",
+  "services/asset-storage/src",
+  "services/image-generation/src",
+  "services/video-generation/src",
+  "services/artifact-history/src",
+  "services/brand-rules/src",
+  "services/constraint-engine/src",
+  "services/design-ir/src",
+  "services/event-contract/src",
+  "services/identity-engine/src",
+  "services/image-edit/src",
+]
 testpaths = [
   "apps/api/tests",
   "apps/agent-runtime/tests",
   "apps/worker-media/tests",
+  "services/auth/tests",
+  "services/domain/tests",
+  "services/project-core/tests",
+  "services/model-gateway/tests",
+  "services/tool-gateway/tests",
+  "services/sandbox-runtime/tests",
+  "services/asset-storage/tests",
+  "services/video-generation/tests",
   "evals/tests",
 ]

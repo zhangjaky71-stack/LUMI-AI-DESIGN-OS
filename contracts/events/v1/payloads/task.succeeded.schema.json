@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lumi:event:task.succeeded:1",
+  "title": "task.succeeded payload v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["task_id", "project_id", "task_type"],
+  "properties": {
+    "task_id": {"type": "string", "format": "uuid"},
+    "project_id": {"type": "string", "format": "uuid"},
+    "agent_run_id": {"type": ["string", "null"], "format": "uuid"},
+    "task_type": {"type": "string", "minLength": 1},
+    "attempt_count": {"type": "integer", "minimum": 0}
+  }
+}

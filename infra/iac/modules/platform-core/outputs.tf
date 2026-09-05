@@ -1,0 +1,29 @@
+output "vpc_id" { value = module.network.vpc_id }
+output "public_subnet_ids" { value = module.network.public_subnet_ids }
+output "private_subnet_ids" { value = module.network.private_subnet_ids }
+output "data_subnet_ids" { value = module.network.data_subnet_ids }
+output "alb_security_group_id" { value = module.network.alb_security_group_id }
+output "app_security_group_id" { value = module.network.app_security_group_id }
+output "app_internet_egress_security_group_id" { value = module.network.app_internet_egress_security_group_id }
+output "sandbox_egress_security_group_id" { value = module.network.sandbox_egress_security_group_id }
+output "kms_key_arn" { value = module.storage.kms_key_arn }
+output "bucket_arns" { value = module.storage.bucket_arns }
+output "bucket_names" { value = module.storage.bucket_names }
+output "runtime_repository_urls" { value = module.container_registry.repository_urls }
+output "runtime_repository_arns" { value = module.container_registry.repository_arns }
+output "secret_arns" { value = module.secrets.secret_arns }
+output "postgres_endpoint" { value = module.data.postgres_endpoint }
+output "postgres_port" { value = module.data.postgres_port }
+output "postgres_instance_id" { value = module.data.postgres_instance_id }
+output "postgres_backup_retention_days" { value = module.data.postgres_backup_retention_days }
+output "postgres_db_subnet_group_name" { value = module.data.postgres_db_subnet_group_name }
+output "postgres_security_group_id" { value = module.data.postgres_security_group_id }
+output "postgres_master_secret_arn" {
+  value     = module.data.postgres_master_secret_arn
+  sensitive = true
+}
+output "redis_primary_endpoint" { value = module.data.redis_primary_endpoint }
+output "rabbitmq_instances" {
+  value     = module.data.rabbitmq_instances
+  sensitive = true
+}

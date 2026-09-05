@@ -1,0 +1,10 @@
+[project]
+name = "lumi-artifact-history"
+version = "1.0.0"
+description = "LUMI Artifact Version / Provenance V1 reference implementation"
+requires-python = "==3.12.*"
+dependencies = []
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"

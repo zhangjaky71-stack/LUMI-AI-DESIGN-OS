@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumi.dev/design-ir/v1/operation.schema.json",
+  "title": "LUMI Design IR Operation V1",
+  "oneOf": [
+    {"$ref": "#/$defs/createNode"},
+    {"$ref": "#/$defs/deleteNode"},
+    {"$ref": "#/$defs/setProperty"},
+    {"$ref": "#/$defs/moveNode"},
+    {"$ref": "#/$defs/resizeNode"},
+    {"$ref": "#/$defs/rotateNode"},
+    {"$ref": "#/$defs/reorderNode"},
+    {"$ref": "#/$defs/reparentNode"},
+    {"$ref": "#/$defs/replaceAsset"},
+    {"$ref": "#/$defs/setText"},
+    {"$ref": "#/$defs/applyStyle"},
+    {"$ref": "#/$defs/batch"}
+  ],
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation_id", "type", "target_ids", "expected_document_version", "payload", "reason"],
+      "properties": {
+        "operation_id": {"$ref": "#/$defs/id"},
+        "type": {"type": "string"},
+        "target_ids": {"type": "array", "items": {"$ref": "#/$defs/id"}, "uniqueItems": true},
+        "expected_document_version": {"type": "integer", "minimum": 0},
+        "payload": {"type": "object"},
+        "reason": {"type": "string", "maxLength": 2000}
+      }
+    },
+    "createNode": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "properties": {
+            "type": {"const": "CREATE_NODE"},
+            "target_ids": {"maxItems": 0},
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["node", "parent_id", "index"],
+              "properties": {
+                "node": {"type": "object"},
+                "parent_id": {"$ref": "#/$defs/id"},
+                "index": {"type": "integer", "minimum": 0}
+              }
+            }
+          }
+        }
+      ]
+    },
+    "deleteNode": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {"properties": {"type": {"const": "DELETE_NODE"}, "target_ids": {"minItems": 1}, "payload": {"type": "object", "maxProperties": 0}}}
+      ]
+    },
+    "setProperty": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "properties": {
+            "type": {"const": "SET_PROPERTY"},
+            "target_ids": {"minItems": 1},
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "value"],
+              "properties": {
+                "path": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$"},
+                "value": {}
+              }
+            }
+          }
+        }
+      ]
+    },
+    "moveNode": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "properties": {
+            "type": {"const": "MOVE_NODE"},
+            "target_ids": {"minItems": 1},
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["x", "y"],
+              "properties": {"x": {"type": "number"}, "y": {"type": "number"}}
+            }
+          }
+        }
+      ]
+    },
+    "resizeNode": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "properties": {
+            "type": {"const": "RESIZE_NODE"},
+            "target_ids": {"minItems": 1},
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["width", "height"],
+              "properties": {"width": {"type": "number", "minimum": 0}, "height": {"type": "number", "minimum": 0}}
+            }
+          }
+        }
+      ]
+    },
+    "rotateNode": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "properties": {
+            "type": {"const": "ROTATE_NODE"},
+            "target_ids": {"minItems": 1},
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["rotation_deg"],
+              "properties": {"rotation_deg": {"type": "number"}}
+            }
+          }
+        }
+      ]
+    },
+    "reorderNode": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "properties": {
+            "type": {"const": "REORDER_NODE"},
+            "target_ids": {"minItems": 1, "maxItems": 1},
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["index"],
+              "properties": {"index": {"type": "integer", "minimum": 0}}
+            }
+          }
+        }
+      ]
+    },
+    "reparentNode": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "properties": {
+            "type": {"const": "REPARENT_NODE"},
+            "target_ids": {"minItems": 1, "maxItems": 1},
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["parent_id", "index"],
+              "properties": {"parent_id": {"$ref": "#/$defs/id"}, "index": {"type": "integer", "minimum": 0}}
+            }
+          }
+        }
+      ]
+    },
+    "replaceAsset": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "properties": {
+            "type": {"const": "REPLACE_ASSET"},
+            "target_ids": {"minItems": 1},
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["asset_id"],
+              "properties": {"asset_id": {"$ref": "#/$defs/id"}}
+            }
+          }
+        }
+      ]
+    },
+    "setText": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "properties": {
+            "type": {"const": "SET_TEXT"},
+            "target_ids": {"minItems": 1},
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["content"],
+              "properties": {"content": {"type": "string"}, "spans": {"type": "array"}}
+            }
+          }
+        }
+      ]
+    },
+    "applyStyle": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "properties": {
+            "type": {"const": "APPLY_STYLE"},
+            "target_ids": {"minItems": 1},
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["style_id"],
+              "properties": {"style_id": {"$ref": "#/$defs/id"}, "mode": {"enum": ["APPEND", "REPLACE"]}}
+            }
+          }
+        }
+      ]
+    },
+    "batch": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "properties": {
+            "type": {"const": "BATCH"},
+            "target_ids": {"maxItems": 0},
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["atomic", "operations"],
+              "properties": {
+                "atomic": {"const": true},
+                "operations": {"type": "array", "minItems": 1, "items": {"$ref": "#"}}
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${LUMI_RECOVERY_DATABASE_URL:?Set LUMI_RECOVERY_DATABASE_URL to the isolated restored database}"
+
+if [[ "${LUMI_RECOVERY_VERIFY_ISOLATED:-}" != "1" ]]; then
+  echo "STOP: set LUMI_RECOVERY_VERIFY_ISOLATED=1 only after confirming this URL points to an isolated restored database" >&2
+  exit 2
+fi
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+sql_file="$repo_root/infra/recovery/sql/verify_restored_database.sql"
+output="$(mktemp)"
+failures="$(mktemp)"
+trap 'rm -f "$output" "$failures"' EXIT
+
+if [[ "${LUMI_RECOVERY_DATABASE_URL}" != postgresql://* && "${LUMI_RECOVERY_DATABASE_URL}" != postgres://* ]]; then
+  echo "recovery database URL must use postgresql:// or postgres://" >&2
+  exit 2
+fi
+
+read -r recovery_host recovery_port < <(
+  python3 - "$LUMI_RECOVERY_DATABASE_URL" <<'PY'
+import sys
+from urllib.parse import urlsplit
+
+parsed = urlsplit(sys.argv[1])
+try:
+    port = parsed.port or 5432
+except ValueError as exc:
+    raise SystemExit(f"invalid PostgreSQL port: {exc}") from exc
+print(parsed.hostname or "", port)
+PY
+)
+
+if [[ -z "$recovery_host" ]]; then
+  echo "recovery database URL must include a hostname" >&2
+  exit 2
+fi
+
+# The local NODE-68 isolated restore intentionally defaults to 55432. Production-like
+# isolated restores may use 5432, but require an extra acknowledgement so a pasted
+# primary URL cannot accidentally become restore evidence.
+if [[ "$recovery_port" == "5432" && "${LUMI_RECOVERY_ALLOW_PRIMARY_PORT:-}" != "1" ]]; then
+  echo "STOP: recovery target resolves to port 5432. If this is truly an isolated restore, set LUMI_RECOVERY_ALLOW_PRIMARY_PORT=1 after verification." >&2
+  exit 2
+fi
+
+if [[ ! -f "$sql_file" ]]; then
+  echo "missing recovery verification SQL: $sql_file" >&2
+  exit 2
+fi
+
+echo "[recovery] target=$recovery_host:$recovery_port isolation_acknowledged=1"
+echo "[recovery] running read-only post-restore invariants"
+PGAPPNAME=lumi-node68-recovery-verify \
+  psql -X --no-psqlrc --set=ON_ERROR_STOP=1 --tuples-only --no-align --field-separator='|' \
+  "$LUMI_RECOVERY_DATABASE_URL" --file "$sql_file" | tee "$output"
+
+if awk -F'|' '$1 == "INVARIANT" && ($3 + 0) > 0 { print; bad=1 } END { exit bad ? 0 : 1 }' "$output" >"$failures"; then
+  echo "[recovery] STOP SHIP: restored database invariant violations detected" >&2
+  cat "$failures" >&2
+  exit 1
+fi
+
+echo "[recovery] database hard invariants PASS"
+echo "[recovery] WORKLOAD rows above require planner/runbook classification; they are not auto-mutated."

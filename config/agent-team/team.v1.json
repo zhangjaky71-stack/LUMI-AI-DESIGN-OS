@@ -1,0 +1,33 @@
+{
+  "schema": "lumi.agent-team.v1",
+  "team_id": "lumi-design-team",
+  "version": "1.0.0",
+  "root_agent": "creative-director",
+  "members": [
+    {"agent_id":"creative-director","version":"2.0.0","tier":"P0"},
+    {"agent_id":"brand-strategist","version":"2.0.0","tier":"P0"},
+    {"agent_id":"research-agent","version":"2.0.0","tier":"P0"},
+    {"agent_id":"prompt-engineer","version":"2.0.0","tier":"P0"},
+    {"agent_id":"image-generator","version":"2.0.0","tier":"P0"},
+    {"agent_id":"image-editor","version":"2.0.0","tier":"P0"},
+    {"agent_id":"workflow-engineer","version":"2.0.0","tier":"P0"},
+    {"agent_id":"critic-agent","version":"2.0.0","tier":"P0"},
+    {"agent_id":"logo-designer","version":"2.0.0","tier":"P1"},
+    {"agent_id":"web-designer","version":"2.0.0","tier":"P1"},
+    {"agent_id":"ui-designer","version":"2.0.0","tier":"P1"},
+    {"agent_id":"video-generator","version":"2.0.0","tier":"P1"},
+    {"agent_id":"video-editor","version":"2.0.0","tier":"P1"},
+    {"agent_id":"social-media-designer","version":"2.0.0","tier":"P1"},
+    {"agent_id":"presentation-designer","version":"2.0.0","tier":"P1"},
+    {"agent_id":"data-visualization-agent","version":"2.0.0","tier":"P1"}
+  ],
+  "image_flow": [
+    "creative-director",
+    "brand-strategist",
+    "research-agent",
+    "prompt-engineer",
+    "image-generator",
+    "critic-agent",
+    "image-editor"
+  ]
+}

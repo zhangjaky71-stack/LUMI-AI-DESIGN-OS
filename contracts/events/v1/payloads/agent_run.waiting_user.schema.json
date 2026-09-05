@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lumi:event:agent_run.waiting_user:1",
+  "title": "agent_run.waiting_user payload v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["agent_run_id", "project_id", "interrupt_key"],
+  "properties": {
+    "agent_run_id": {"type": "string", "format": "uuid"},
+    "project_id": {"type": "string", "format": "uuid"},
+    "interrupt_key": {"type": "string", "minLength": 1},
+    "prompt": {"type": ["string", "null"]},
+    "expires_at": {"type": ["string", "null"], "format": "date-time"}
+  }
+}

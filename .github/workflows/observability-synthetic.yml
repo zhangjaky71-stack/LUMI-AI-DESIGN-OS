@@ -1,0 +1,40 @@
+name: Observability Synthetic
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      web_url:
+        description: Public staging web HTTPS URL (optional; defaults to repository variable)
+        required: false
+        type: string
+      api_url:
+        description: Public staging API HTTPS URL (optional; defaults to repository variable)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: observability-synthetic
+  cancel-in-progress: true
+
+jobs:
+  synthetic:
+    if: >-
+      (github.event_name == 'workflow_dispatch' &&
+       (inputs.web_url != '' || vars.LUMI_STAGING_WEB_URL != '') &&
+       (inputs.api_url != '' || vars.LUMI_STAGING_API_URL != '')) ||
+      (github.event_name == 'schedule' &&
+       vars.LUMI_STAGING_WEB_URL != '' && vars.LUMI_STAGING_API_URL != '')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      WEB_URL: ${{ inputs.web_url || vars.LUMI_STAGING_WEB_URL }}
+      API_URL: ${{ inputs.api_url || vars.LUMI_STAGING_API_URL }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Homepage, readiness and correlation probe
+        run: bash scripts/observability-synthetic "$WEB_URL" "$API_URL"

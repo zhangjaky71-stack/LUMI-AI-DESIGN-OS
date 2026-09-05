@@ -1,0 +1,293 @@
+name: Security Release Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: security-release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24"
+  PNPM_VERSION: "11.4.0"
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.11.28"
+
+jobs:
+  security-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Verify Python lock matches workspace manifests
+        run: uv lock --check
+      - name: Frozen Python install
+        run: uv sync --all-packages --frozen
+      - name: Canonical security regression corpus
+        run: |
+          uv run pytest \
+            apps/api/tests/test_security_hardening.py \
+            apps/api/tests/integration/test_auth_tenant.py \
+            apps/api/tests/integration/test_auth_privilege_escalation.py \
+            apps/api/tests/integration/test_project_security.py \
+            services/tool-gateway/tests/test_ssrf.py \
+            services/tool-gateway/tests/test_mcp_error_sanitization.py \
+            services/sandbox-runtime/tests/test_sandbox_contracts.py \
+            apps/agent-runtime/tests/test_context_engine.py \
+            apps/agent-runtime/tests/test_approval_bridge.py \
+            services/asset-storage/tests/test_asset_storage_security.py \
+            apps/worker-media/tests/test_asset_validation_security.py
+      - name: Python dependency audit
+        run: |
+          uv export --all-packages --frozen --no-dev --no-emit-workspace --format requirements-txt > /tmp/requirements.txt
+          uvx --from pip-audit pip-audit -r /tmp/requirements.txt --strict
+      - name: Python high-severity SAST
+        run: uvx --from bandit bandit -q -lll -r apps services packages -x '*/tests/*'
+
+  node-supply-chain:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Production dependency audit
+        run: pnpm audit --prod --audit-level high
+
+  codeql:
+    if: github.event.repository.private == false || vars.LUMI_ENABLE_CODEQL == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, python]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended
+      - uses: github/codeql-action/autobuild@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+      - uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          category: /language:${{ matrix.language }}
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Probe native dependency-review capability
+        id: dependency-capability
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          response=/tmp/dependency-review-capability.json
+          status="$({
+            curl -sS -L \
+              -H 'Accept: application/vnd.github+json' \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              -o "$response" \
+              -w '%{http_code}' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/dependency-graph/compare/${BASE_SHA}...${HEAD_SHA}"
+          })"
+
+          echo "http_status=${status}" >> "$GITHUB_OUTPUT"
+          if [ "$status" = '200' ]; then
+            echo 'native_available=true' >> "$GITHUB_OUTPUT"
+            echo 'GitHub native dependency review capability is available.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          message="$(jq -r '.message // empty' "$response" 2>/dev/null || true)"
+          if [ "$status" = '403' ] || [ "$status" = '404' ]; then
+            echo 'native_available=false' >> "$GITHUB_OUTPUT"
+            echo "::warning::GitHub native dependency review capability is unavailable (HTTP ${status}: ${message:-no message}); executing the strict full-lock fallback gate."
+            {
+              echo '### Dependency review capability gap'
+              echo
+              echo "- Native dependency-review probe: HTTP ${status}"
+              echo "- GitHub message: ${message:-unavailable}"
+              echo '- Enforcement: full production dependency vulnerability + denied-license fallback gate'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "Unexpected dependency-review capability probe failure: HTTP ${status}" >&2
+          cat "$response" >&2 || true
+          exit 1
+
+      - name: Native dependency review
+        if: steps.dependency-capability.outputs.native_available == 'true'
+        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          base-ref: ${{ github.event.pull_request.base.sha }}
+          head-ref: ${{ github.event.pull_request.head.sha }}
+          fail-on-severity: high
+          deny-licenses: AGPL-1.0-only, AGPL-3.0-only
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        if: steps.dependency-capability.outputs.native_available == 'false'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Enable pinned pnpm for fallback
+        if: steps.dependency-capability.outputs.native_available == 'false'
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        if: steps.dependency-capability.outputs.native_available == 'false'
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        if: steps.dependency-capability.outputs.native_available == 'false'
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Frozen fallback dependency install
+        if: steps.dependency-capability.outputs.native_available == 'false'
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          uv lock --check
+          uv sync --all-packages --frozen
+
+      - name: Strict fallback vulnerability audits
+        if: steps.dependency-capability.outputs.native_available == 'false'
+        run: |
+          set -euo pipefail
+          pnpm audit --prod --audit-level high
+          uv export --all-packages --frozen --no-dev --no-emit-workspace --format requirements-txt > /tmp/dependency-review-requirements.txt
+          uvx --from pip-audit pip-audit -r /tmp/dependency-review-requirements.txt --strict
+
+      - name: Strict fallback denied-license audit
+        if: steps.dependency-capability.outputs.native_available == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm licenses list --prod --json > /tmp/pnpm-production-licenses.json
+          node_denied="$(jq -r 'keys[]' /tmp/pnpm-production-licenses.json | grep -E 'AGPL-(1\.0|3\.0)(-only)?' || true)"
+          if [ -n "$node_denied" ]; then
+            echo 'Denied Node production license detected:' >&2
+            printf '%s\n' "$node_denied" >&2
+            exit 1
+          fi
+
+          uv run python - <<'PY'
+          from importlib.metadata import distributions
+
+          denied_tokens = ("AGPL-1.0", "AGPL-3.0")
+          violations: list[str] = []
+          for distribution in distributions():
+              metadata = distribution.metadata
+              evidence: list[str] = []
+              for field in ("License-Expression", "License"):
+                  value = metadata.get(field)
+                  if value:
+                      evidence.append(value)
+              evidence.extend(
+                  classifier
+                  for classifier in (metadata.get_all("Classifier") or [])
+                  if classifier.startswith("License ::")
+              )
+              normalized = "\n".join(evidence).upper()
+              if any(token in normalized for token in denied_tokens):
+                  name = metadata.get("Name") or distribution.metadata["Name"]
+                  violations.append(f"{name}=={distribution.version}")
+
+          if violations:
+              raise SystemExit(
+                  "Denied Python dependency license detected: " + ", ".join(sorted(violations))
+              )
+          PY
+
+          echo 'Strict dependency-review fallback passed vulnerability and denied-license gates.' >> "$GITHUB_STEP_SUMMARY"
+
+  secret-and-iac-scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+      - name: Repository secret scan
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+      - name: IaC and filesystem vulnerability scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig,secret
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: false
+          trivyignores: .trivyignore.yaml
+
+  release-gate:
+    if: always()
+    needs: [security-tests, node-supply-chain, codeql, dependency-review, secret-and-iac-scan]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Enforce Critical/High gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test '${{ needs.security-tests.result }}' = success
+          test '${{ needs.node-supply-chain.result }}' = success
+          if [ '${{ needs.codeql.result }}' = skipped ] \
+            && [ '${{ github.event.repository.private }}' = true ] \
+            && [ '${{ vars.LUMI_ENABLE_CODEQL }}' != 1 ]; then
+            echo 'CodeQL skipped by the repository private-repo policy.'
+            echo 'Production sign-off requires CodeQL enablement or an explicitly accepted equivalent SAST control.'
+          else
+            test '${{ needs.codeql.result }}' = success
+          fi
+          if [ '${{ github.event_name }}' = pull_request ]; then
+            test '${{ needs.dependency-review.result }}' = success
+          fi
+          test '${{ needs.secret-and-iac-scan.result }}' = success

@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lumi-staging
+resources:
+  - migration-job.yaml
+images:
+  - name: lumi-api
+    newName: registry.cn-hangzhou.aliyuncs.com/lumistaging3251/api
+    digest: sha256:REPLACE_WITH_API_DIGEST

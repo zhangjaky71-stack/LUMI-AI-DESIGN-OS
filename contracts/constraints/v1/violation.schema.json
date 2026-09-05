@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumi.dev/constraints/v1/violation.schema.json",
+  "title": "LUMI Constraint Violation V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["constraint_id", "type", "severity", "phase", "target_id", "expected", "actual", "message_code", "repair_hint", "overrideable"],
+  "properties": {
+    "constraint_id": {"type": "string", "minLength": 1},
+    "type": {"type": "string", "minLength": 1},
+    "severity": {"enum": ["HARD", "SOFT", "ADVISORY"]},
+    "phase": {"enum": ["PREFLIGHT", "POSTFLIGHT", "CONFLICT"]},
+    "target_id": {"type": ["string", "null"]},
+    "expected": {"type": "object", "additionalProperties": true},
+    "actual": {"type": "object", "additionalProperties": true},
+    "message_code": {"type": "string", "pattern": "^CONSTRAINT_[A-Z0-9_]+$"},
+    "repair_hint": {"type": "object", "additionalProperties": true},
+    "overrideable": {"type": "boolean"}
+  }
+}

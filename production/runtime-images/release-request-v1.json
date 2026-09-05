@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "request_id": "node-73-rc-20260824-01",
+  "operation": "build-and-freeze-six-runtime-rc",
+  "requested_branch": "release-closure-p0",
+  "source_parent": "212128acadb709c48497959b32f42f8f5ab67457",
+  "purpose": "NODE-73 live acceptance: build, attest, verify, and freeze the exact six-runtime RC image set for subsequent NODE-71 staging binding"
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lumi:event:cost.recorded:1",
+  "title": "cost.recorded payload v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["cost_entry_id", "amount", "currency", "category"],
+  "properties": {
+    "cost_entry_id": {"type": "string", "format": "uuid"},
+    "project_id": {"type": ["string", "null"], "format": "uuid"},
+    "generation_id": {"type": ["string", "null"], "format": "uuid"},
+    "provider_request_id": {"type": ["string", "null"], "format": "uuid"},
+    "amount": {"type": "string", "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"},
+    "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "category": {"type": "string", "minLength": 1},
+    "provider": {"type": ["string", "null"]},
+    "model": {"type": ["string", "null"]}
+  }
+}

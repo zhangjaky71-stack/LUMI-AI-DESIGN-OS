@@ -1,95 +1,89 @@
-# NODE-61 — Collaboration Engine
+# NODE-61 — Collaboration
 
 > Phase: 8 SaaS & Collaboration  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
-> Priority: P1 / PRODUCT MATURITY  
-> Depends on: NODE-16, NODE-40, NODE-42, NODE-52  
-> Produces: Presence、Comments、Mentions、共享编辑协议、WebSocket协作层与冲突策略
+> Status: **IMPLEMENTED / VALIDATING / NOT COMPLETE**  
+> Priority: P0  
+> Depends on: NODE-16 Auth/Tenant, NODE-40 Canvas Engine, NODE-42 Artifact Engine, NODE-52 App Shell  
+> Produces: tenant-scoped review threads, mentions, ephemeral presence, concurrent Design Operation rebase/conflict semantics, AI actor audit and Collaboration product UX
 
 ---
 
-## 1. 目标
+## 1. Goal
 
-让 Designer、Marketing、Manager、Client 和 AI Agent 能在同一 Project 协作。实时协作必须建立在 Design IR/Artifact 版本系统之上，不允许 CRDT 或 WebSocket 临时状态反客为主成为业务唯一真相。
+NODE-61 lets Designers, Marketing, Managers, Clients and AI Agents work against one Project without turning WebSocket/CRDT runtime state into a second source of truth.
 
-## 2. 协作能力分层
-
-### P0/P1 基础协作
+Canonical invariant:
 
 ```text
-project sharing
-member roles
-comments
-mentions
-review threads
-presence
-selection/cursor awareness
+NODE-16 authorized actor
+  -> Project collaboration context
+  -> ephemeral realtime awareness (presence/cursor/selection)
+  -> durable review threads bound to exact versions
+  -> server-authorized Design Operations
+  -> reconnect/rebase/conflict
+  -> Hard Constraint validation
+  -> canonical DesignDocumentVersion / Artifact history
 ```
 
-### P1 实时编辑
+`CRDT state != canonical Design IR history`.
+
+## 2. Product route
 
 ```text
-concurrent canvas edits
-optimistic local operations
-reconnect/rebase
-conflict indication
+/app/projects/{projectId}/collaboration
 ```
 
-## 3. Presence
+The Project surface now links to Collaboration alongside Workspace, Versions and Export.
 
-Presence 是 ephemeral：
+The product UI exposes:
+
+- Team & Presence;
+- USER vs AGENT identity;
+- exact-version review threads;
+- mentions and safe in-app notifications;
+- OPEN / RESOLVED / REOPENED lifecycle;
+- historical-node review context;
+- concurrent-edit safety explanation;
+- explicit reconnect conflict UI;
+- responsive mobile layout.
+
+## 3. Presence is ephemeral
+
+`PresenceState` contains only realtime awareness:
 
 ```text
-user_id
+organization_id
 project_id
 document_id
+actor
 cursor?
 selection_ids[]
 active_frame_id?
 last_seen
 ```
 
-存 Redis/Realtime layer，不进入 Design IR，不长期审计每个鼠标坐标。
+Presence is never written to the collaboration SQL migration or Design IR. The in-process hub/store is a deterministic development/test adapter only. Multi-instance production must bind the same protocol to Redis or another authorized realtime fanout service.
 
-## 4. Transport
+A realtime restart may clear cursor/selection state, but must not erase comments or canonical Design Operations.
 
-P1 使用 WebSocket 或可替换 realtime transport：
+## 4. Durable review threads
 
-```text
-Browser
-↔ Collaboration Gateway
-↔ Presence / Operation fanout
-↔ Design Operation API
-```
-
-业务 write仍需服务端授权、version/constraint验证。
-
-## 5. CRDT Boundary
-
-可使用 Yjs/CRDT 处理 collaborative view/edit synchronization，但：
+Every `CommentAnchor` is immutable and exact:
 
 ```text
-CRDT runtime state ≠ canonical Design IR history
+project_id
+artifact_version_id
+design_document_version_id
+node_id?
+frame_id?
+canvas region?
 ```
 
-服务端定期/按operation把协作变化归一化为 Design Operations/DesignDocumentVersion。CRDT data type不渗透 Agent、Artifact、Export contract。
+Floating identifiers `latest`, `head`, and `current` are rejected.
 
-## 6. Comments
+A thread attached to a node deleted in a later version remains viewable because its exact historical ArtifactVersion/DesignVersion anchor is retained.
 
-Comment 绑定：
-
-```text
-Project
-ArtifactVersion
-DesignDocumentVersion
-Node ID
-Frame ID
-Canvas coordinate/region
-```
-
-若Node后来删除，comment仍能通过version snapshot查看历史上下文。
-
-## 7. Threads
+Thread states:
 
 ```text
 OPEN
@@ -97,78 +91,245 @@ RESOLVED
 REOPENED
 ```
 
-支持mention、reply、resolve。编辑/删除comment保留audit event。
+Edit/delete is represented as durable audit semantics; deletion tombstones the message instead of erasing the review event.
 
-## 8. Permissions
+## 5. Mentions and permissions
 
-Viewer：查看/comment按策略；Editor：设计编辑；Approver由 NODE-62 permission；Guest link如果实现必须独立token/expiry权限。
-
-Presence信息只广播给有同Project访问权的用户。
-
-## 9. Concurrent Edit
-
-P0策略：optimistic version + explicit conflict。
-
-P1 realtime：
-
-- 不冲突不同node ops可合并；
-- 同property同时改采用明确策略（operation sequence/CRDT last-writer with metadata）并可显示“某人更新了此属性”；
-- Hard constraints始终server enforcement。
-
-## 10. Agent Collaboration
-
-AI Agent表现为可识别actor：
+Authorization is a port owned by NODE-16 integration. Collaboration does **not** invent a second RBAC model. Effective roles are the canonical NODE-16 roles:
 
 ```text
-actor_type=AGENT
-agent_run_id
+OWNER
+ADMIN
+EDITOR
+VIEWER
+BILLING
 ```
 
-用户可以在comment/command里 @LUMI 请求处理线程，但Agent不能自动拥有评论者没有的权限。
+Product policy:
 
-## 11. Notifications
+- OWNER / ADMIN / EDITOR → view, review and canonical design edit;
+- VIEWER → view and review/comment when Project review policy permits;
+- BILLING → no collaboration comment/edit capability;
+- a client reviewer is a product persona represented by an authorized VIEWER, not a new `CLIENT` Auth role;
+- mention target must also be authorized for the same organization/project.
 
-事件：mention、comment reply、approval request、artifact ready。P0站内；email adapter可选。通知内容避免把敏感资产直接放邮件。
+The collaboration router never accepts an auth token in request payloads or WebSocket query parameters. It requires trusted HTTP/WS actor resolvers supplied by the NODE-16 session/tenant runtime.
 
-## 12. Reconnect
+## 6. AI Agent actor
 
-WebSocket断线：
+AI participation is first-class and auditable:
+
+```text
+actor_type = AGENT
+actor_id
+agent_run_id (required)
+effective role = delegated canonical NODE-16 role
+```
+
+Actor type and effective role are orthogonal: `AGENT` identifies who performed the action; the delegated NODE-16 role controls what that actor may do. A USER may not carry an `agent_run_id`, and an AGENT may not omit it.
+
+Agent comments/operations pass through the same authorization port as human actions. An Agent cannot gain permissions simply by entering the collaboration room.
+
+## 7. Canonical concurrent editing
+
+Browser-local optimistic changes are not committed directly through WebSocket.
+
+Canonical path:
+
+```text
+POST /projects/{projectId}/documents/{documentId}/collaboration/operations
+```
+
+Conflict key for P0:
+
+```text
+(node_id, property_name)
+```
+
+Rules:
+
+1. base == canonical head → validate → commit;
+2. stale base + no matching conflict key → rebase safe operations → validate → commit;
+3. stale base + same conflict key → return explicit conflict;
+4. local conflicting operation is returned intact to the caller;
+5. no silent last-write-wins loss;
+6. Hard Constraint validator always runs before accepted canonical operations commit.
+
+The canonical port is intentionally a boundary to NODE-40 Design Operation / DesignDocumentVersion infrastructure rather than a second scene graph.
+
+## 8. Reconnect
+
+Reconnect uses the same operation semantics:
 
 ```text
 buffer safe local ops
-→ reconnect
-→ get canonical version
-→ rebase/resolve
+  -> reconnect
+  -> fetch canonical head
+  -> inspect operations since base
+  -> rebase non-conflicting operations
+  -> surface same-property conflicts
+  -> preserve local buffered value
 ```
 
-冲突不能静默丢本地编辑。
+The collaboration engine never silently drops a buffered edit.
 
-## 13. Tests
+## 9. Realtime transport boundary
 
-- 2 users不同node并发；
--同property冲突；
-- presence tenant isolation；
-- comment绑定旧version；
-- mention permission；
-- reconnect/rebase；
-- Agent actor audit；
-- CRDT state重启后canonical恢复。
-
-## 14. 验收标准
-
-- [ ] Team成员可同时查看Project。
-- [ ] Presence/comments/mentions可用。
-- [ ] Realtime状态不成为唯一真相。
-- [ ] Hard constraints并发时仍执行。
-- [ ] reconnect不丢数据。
-- [ ] Agent身份与人类身份可区分。
-
-## 15. Definition of Done
+WebSocket route:
 
 ```text
-collaboration backend + UI implemented
-+ multi-user E2E green
-+ reconnect/conflict tests green
+/projects/{projectId}/collaboration/ws?document_id=...
 ```
 
-下一节点：NODE-62 Approval Engine。
+Allowed realtime payload:
+
+```text
+AWARENESS_UPDATE
+PRESENCE_SNAPSHOT
+```
+
+Explicitly rejected over WebSocket:
+
+```text
+DESIGN_OPERATION
+CRDT_UPDATE
+CANONICAL_WRITE
+```
+
+All business writes remain server-authorized HTTP commands that normalize to canonical Design Operations.
+
+## 10. API bootstrap
+
+Project entry does not let the browser guess a `document_id`.
+
+```text
+GET /projects/{projectId}/collaboration
+```
+
+A trusted server `WorkspaceMetadataResolver` resolves:
+
+- exact collaboration document ID;
+- exact ArtifactVersion;
+- current authorized user projection;
+- same-project member directory;
+- safe notification summaries.
+
+The collaboration engine then resolves the canonical DesignDocumentVersion for that exact document.
+
+## 11. Persistence
+
+Migration:
+
+```text
+db/migrations/0011_collaboration.sql
+```
+
+`0011` is intentionally after the existing `0009_visual_critic.sql` and `0010_auto_repair.sql`; NODE-61 does not introduce a duplicate migration number.
+
+Durable tables:
+
+```text
+collaboration_threads
+collaboration_comments
+collaboration_operation_commits
+collaboration_audit_events
+collaboration_notifications
+```
+
+There is intentionally **no collaboration presence table**.
+
+Thread references from comments and notifications use organization + project + thread composite foreign keys, preventing a durable cross-tenant/cross-project thread reference even if a thread UUID were known.
+
+Persistent records retain USER/AGENT actor identity and `agent_run_id` invariants.
+
+## 12. Security boundaries
+
+- tenant/project authorization before presence room join;
+- same-project mention validation;
+- tenant/project composite thread references in SQL;
+- no tokens in realtime query payload;
+- no WebSocket canonical mutation;
+- no browser localStorage/sessionStorage/IndexedDB canonical collaboration truth;
+- no CRDT type leakage into Artifact/Agent/Export contracts;
+- comment body length bounded;
+- realtime selection count bounded;
+- safe notifications exclude asset payloads/secrets;
+- exact historical anchors are immutable.
+
+## 13. Tests staged
+
+Backend engine:
+
+- two users, stale base, different-node merge;
+- same-property explicit conflict;
+- local edit preservation on reconnect;
+- tenant-isolated presence;
+- historical deleted-node comment;
+- mention permission;
+- Hard Constraint fail-closed;
+- AGENT run identity;
+- realtime restart recovery from canonical truth.
+
+API transport:
+
+- trusted Project bootstrap;
+- exact thread anchor;
+- HTTP canonical operations;
+- reconnect conflict;
+- WebSocket awareness;
+- WebSocket canonical-write rejection.
+
+Browser:
+
+- presence/team;
+- AI actor;
+- exact-version mention/comment;
+- historical thread;
+- resolve/reopen;
+- canonical version advance;
+- reconnect conflict/local preservation;
+- canonical truth boundary;
+- mobile.
+
+## 14. Known production integration gates
+
+The protocol, engine, migration, API router factory and product UI are implemented. NODE-61 remains NOT COMPLETE until these deployment adapters are connected and validated in the target environment:
+
+1. NODE-16 trusted session/tenant resolver + Project member directory bound to `create_collaboration_router`;
+2. durable PostgreSQL repository/audit/notification adapter bound to the migration tables;
+3. NODE-40 canonical Design Operation / DesignDocumentVersion adapter bound to `CanonicalDesignPort`;
+4. Redis/managed realtime hub replacing the in-process fanout for multi-instance deployment;
+5. hosted pinned CI actually executes green.
+
+These are explicit integration gates, not simulated as production readiness.
+
+## 15. Acceptance
+
+- [x] team presence/review product UI implemented;
+- [x] exact ArtifactVersion/DesignVersion comment anchors;
+- [x] mentions and thread lifecycle;
+- [x] canonical NODE-16 role vocabulary preserved;
+- [x] realtime state cannot become canonical design history;
+- [x] WebSocket canonical writes rejected;
+- [x] non-conflicting stale operations rebase;
+- [x] same-property conflicts preserve local edit;
+- [x] Hard Constraint validation is in canonical commit path;
+- [x] Agent actor/run audit identity;
+- [x] durable schema excludes presence and scopes thread references by tenant/project;
+- [x] backend/frontend/static/browser tests staged;
+- [ ] NODE-16/DB/NODE-40 production adapters connected;
+- [ ] multi-instance realtime adapter connected;
+- [ ] hosted pinned gates observed green.
+
+## 16. Definition of Done
+
+```text
+collaboration contract green
++ backend concurrency/reconnect tests green
++ PostgreSQL migration green
++ multi-user browser E2E green
++ NODE-16 / NODE-40 / durable repository adapters connected
++ multi-instance realtime validated
+```
+
+Next: **NODE-62 — Approval Engine**.

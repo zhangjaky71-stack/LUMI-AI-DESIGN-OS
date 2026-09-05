@@ -1,0 +1,8 @@
+{
+  "schema": "lumi.context-eval-baseline.v1",
+  "suite_id": "memory-retrieval-v1",
+  "source_recall": 1.0,
+  "fact_recall": 1.0,
+  "provenance_coverage": 1.0,
+  "pass_rate": 1.0
+}

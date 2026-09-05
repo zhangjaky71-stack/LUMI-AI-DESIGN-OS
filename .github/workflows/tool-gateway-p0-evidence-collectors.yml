@@ -1,0 +1,94 @@
+name: Tool Gateway P0 Evidence Collectors
+
+on:
+  pull_request:
+    paths:
+      - "scripts/collect_tool_gateway_p0_db_evidence.py"
+      - "scripts/verify_tool_gateway_p0_offload_s3.py"
+      - "scripts/run_tool_gateway_p0_probe_and_db_ecs.py"
+      - "scripts/run_tool_gateway_p0_probe_ecs.py"
+      - "scripts/probe_tool_gateway_p0_from_agent_runtime.py"
+      - ".github/workflows/tool-gateway-p0-evidence-collectors.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collector-source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile independent evidence collectors
+        run: |
+          python3 -m py_compile \
+            scripts/probe_tool_gateway_p0_from_agent_runtime.py \
+            scripts/run_tool_gateway_p0_probe_ecs.py \
+            scripts/run_tool_gateway_p0_probe_and_db_ecs.py \
+            scripts/collect_tool_gateway_p0_db_evidence.py \
+            scripts/verify_tool_gateway_p0_offload_s3.py
+      - name: Require evidence source separation and no secret retrieval
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path.cwd()
+          ecs = (root / "scripts/run_tool_gateway_p0_probe_and_db_ecs.py").read_text(
+              encoding="utf-8"
+          )
+          db = (root / "scripts/collect_tool_gateway_p0_db_evidence.py").read_text(
+              encoding="utf-8"
+          )
+          s3 = (root / "scripts/verify_tool_gateway_p0_offload_s3.py").read_text(
+              encoding="utf-8"
+          )
+
+          for marker in (
+              '"assignPublicIp": "DISABLED"',
+              'scripts/probe_tool_gateway_p0_from_agent_runtime.py',
+              'scripts/collect_tool_gateway_p0_db_evidence.py',
+              'LUMI_TOOL_GATEWAY_P0_PROBE_JSON=',
+              'LUMI_TOOL_GATEWAY_P0_DB_EVIDENCE_JSON=',
+          ):
+              if marker not in ecs:
+                  raise SystemExit(f"combined ECS evidence runner missing: {marker}")
+
+          for marker in (
+              "information_schema.columns",
+              'source = \'derived\'',
+              "asset_rights",
+              "idempotency_key_hash",
+              "cross_tenant_rows",
+          ):
+              if marker not in db:
+                  raise SystemExit(f"PostgreSQL evidence collector missing: {marker}")
+
+          for marker in (
+              "head_object(",
+              "get_public_access_block",
+              "get_bucket_encryption",
+              "get_bucket_ownership_controls",
+              "get_bucket_policy_status",
+              "get_bucket_lifecycle_configuration",
+              "BucketOwnerEnforced",
+              '"aws:kms"',
+          ):
+              if marker not in s3:
+                  raise SystemExit(f"S3 evidence collector missing: {marker}")
+
+          combined = "\n".join((ecs, db, s3))
+          for forbidden in (
+              "get_secret_value",
+              'boto3.client("secretsmanager"',
+              "generate_presigned_url",
+              "get_object(",
+              "download_file(",
+          ):
+              if forbidden in combined:
+                  raise SystemExit(f"evidence collector contains forbidden access: {forbidden}")
+          print("Independent Tool Gateway P0 evidence collector boundary: PASS")
+          PY

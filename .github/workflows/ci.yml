@@ -119,6 +119,38 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  canvas-spike:
+    name: canvas-spike
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${PNPM_VERSION} --activate
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium runtime
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Chromium interaction + performance spike
+        run: pnpm exec playwright test apps/web/e2e/canvas-spike.spec.ts --reporter=line
+      - name: Upload Canvas Spike evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: canvas-spike-${{ github.run_id }}
+          path: |
+            reports/canvas-spike
+            test-results
+          if-no-files-found: warn
+          retention-days: 14
+
   python:
     name: python
     needs: changes

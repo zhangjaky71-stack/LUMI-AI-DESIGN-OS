@@ -1,0 +1,14 @@
+{
+  "id": "quick-image",
+  "version": "1.0.0",
+  "inputs": ["brief"],
+  "budget_limit_usd": "5",
+  "steps": [
+    {"id":"direction","type":"agent","agent":"creative-director@^1","skills":["creative-direction@^1"],"input":{"brief":"$inputs.brief"},"output_schema":"CreativeDirectionOutput","budget_limit_usd":"1"},
+    {"id":"generate","type":"media_job","operation":"image.generate","depends_on":["direction"],"input":{"direction":"$steps.direction.output"},"output_schema":"DesignOutput","budget_limit_usd":"3"},
+    {"id":"critic","type":"agent","agent":"critic@^1","skills":["visual-critique@^1"],"depends_on":["generate"],"input":{"artifact":"$steps.generate.output"},"output_schema":"CritiqueOutput","budget_limit_usd":"0.5"},
+    {"id":"finalize","type":"finalize","service":"artifact.finalize","depends_on":["critic"],"input":{"artifact":"$steps.generate.output","critique":"$steps.critic.output"},"output_schema":"DesignOutput","budget_limit_usd":"0.5"}
+  ],
+  "outputs": {"artifact":"$steps.finalize.output"},
+  "metadata": {"eval_profile":"quick-image-v1"}
+}

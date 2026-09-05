@@ -1,0 +1,320 @@
+name: Image Generation
+
+on:
+  pull_request:
+    paths:
+      - "services/image-generation/**"
+      - "services/model-gateway/**"
+      - "services/asset-storage/**"
+      - "services/asset-intelligence/**"
+      - "services/artifact-history/**"
+      - "services/brand-rules/**"
+      - "services/identity-engine/**"
+      - "apps/worker-media/Dockerfile"
+      - "apps/worker-media/src/lumi_worker_media/app.py"
+      - "apps/worker-media/src/lumi_worker_media/job_runtime.py"
+      - "apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py"
+      - "apps/worker-media/src/lumi_worker_media/worker_cli.py"
+      - "apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py"
+      - "apps/worker-media/src/lumi_worker_media/image_generation_codec.py"
+      - "apps/worker-media/src/lumi_worker_media/image_generation_repository.py"
+      - "apps/worker-media/src/lumi_worker_media/image_generation_ports.py"
+      - "apps/worker-media/src/lumi_worker_media/image_generation_artifacts.py"
+      - "apps/worker-media/src/lumi_worker_media/image_generation_runtime.py"
+      - "apps/worker-media/tests/test_image_gateway_runtime.py"
+      - "apps/worker-media/tests/test_image_generation_codec.py"
+      - "apps/worker-media/tests/test_image_generation_ports.py"
+      - "apps/worker-media/tests/test_image_task_entrypoint.py"
+      - "apps/worker-media/tests/test_job_runtime_performance.py"
+      - "apps/worker-media/tests/test_worker_cli.py"
+      - "apps/worker-media/tests/integration/test_image_generation_repository_postgres.py"
+      - "apps/worker-media/pyproject.toml"
+      - "apps/api/alembic/**"
+      - "apps/api/src/lumi_api/product_app.py"
+      - "apps/api/src/lumi_api/api/v1/router.py"
+      - "apps/api/src/lumi_api/api/v1/contracts.py"
+      - "apps/api/src/lumi_api/generations/gateway.py"
+      - "apps/api/src/lumi_api/generations/**"
+      - "apps/api/src/lumi_api/media_dispatch.py"
+      - "apps/api/src/lumi_api/persistence/models/workflow.py"
+      - "apps/api/tests/integration/test_generation_control_plane_postgres.py"
+      - "packages/design-constraints/**"
+      - "db/migrations/0001_artifact_engine.sql"
+      - "db/migrations/0005_image_generation.sql"
+      - "fixtures/image-generation/**"
+      - "scripts/validate_image_generation.py"
+      - "scripts/validate_image_generation_producer_contract.py"
+      - "scripts/benchmark_image_generation.py"
+      - "production/runtime-images/manifest-v1.json"
+      - "docs/runtime/IMAGE-GENERATION-V1.md"
+      - "docs/nodes/NODE-46-IMAGE-GENERATION.md"
+      - "reports/nodes/NODE-46/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/image-generation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image-generation-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile NODE-46 contract files
+        run: >-
+          python -m compileall -q
+          services/image-generation/src/lumi_image_generation
+          services/image-generation/tests
+          apps/worker-media/src/lumi_worker_media/app.py
+          apps/worker-media/src/lumi_worker_media/job_runtime.py
+          apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py
+          apps/worker-media/src/lumi_worker_media/worker_cli.py
+          apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py
+          apps/worker-media/src/lumi_worker_media/image_generation_codec.py
+          apps/worker-media/src/lumi_worker_media/image_generation_repository.py
+          apps/worker-media/src/lumi_worker_media/image_generation_ports.py
+          apps/worker-media/src/lumi_worker_media/image_generation_artifacts.py
+          apps/worker-media/src/lumi_worker_media/image_generation_runtime.py
+          apps/worker-media/tests/test_image_gateway_runtime.py
+          apps/worker-media/tests/test_image_generation_codec.py
+          apps/worker-media/tests/test_image_generation_ports.py
+          apps/worker-media/tests/test_image_task_entrypoint.py
+          apps/worker-media/tests/test_job_runtime_performance.py
+          apps/worker-media/tests/test_worker_cli.py
+          apps/worker-media/tests/integration/test_image_generation_repository_postgres.py
+          apps/api/src/lumi_api/product_app.py
+          apps/api/src/lumi_api/api/v1/router.py
+          apps/api/src/lumi_api/generations/gateway.py
+          apps/api/src/lumi_api/generations/service.py
+          apps/api/src/lumi_api/media_dispatch.py
+          apps/api/tests/integration/test_generation_control_plane_postgres.py
+          scripts/validate_image_generation.py
+          scripts/validate_image_generation_producer_contract.py
+          scripts/benchmark_image_generation.py
+      - name: Validate NODE-46 architecture contract
+        env:
+          PYTHONPATH: services/image-generation/src:services/model-gateway/src:services/asset-intelligence/src:services/artifact-history/src
+        run: python scripts/validate_image_generation.py
+      - name: Validate canonical product-to-Worker image producer binding
+        run: python scripts/validate_image_generation_producer_contract.py
+
+  image-generation-quality:
+    needs: image-generation-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen Python workspace install
+        run: uv sync --all-packages --frozen
+      - name: Run NODE-46 tests
+        env:
+          PYTHONPATH: services/image-generation/src:services/model-gateway/src:services/asset-intelligence/src:services/artifact-history/src:services/brand-rules/src:services/identity-engine/src:services/domain/src
+        run: uv run pytest services/image-generation/tests -q
+      - name: Run hosted NODE-46 boundary tests
+        run: >-
+          uv run pytest
+          apps/worker-media/tests/test_image_gateway_runtime.py
+          apps/worker-media/tests/test_image_generation_codec.py
+          apps/worker-media/tests/test_image_generation_ports.py
+          apps/worker-media/tests/test_image_task_entrypoint.py
+          apps/worker-media/tests/test_job_runtime_performance.py
+          apps/worker-media/tests/test_worker_cli.py
+          -q
+      - name: Ruff correctness gate
+        run: >-
+          uv run ruff check --ignore E501
+          services/image-generation/src
+          services/image-generation/tests
+          apps/worker-media/src/lumi_worker_media/app.py
+          apps/worker-media/src/lumi_worker_media/job_runtime.py
+          apps/worker-media/src/lumi_worker_media/job_dispatch_runtime.py
+          apps/worker-media/src/lumi_worker_media/worker_cli.py
+          apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py
+          apps/worker-media/src/lumi_worker_media/image_generation_codec.py
+          apps/worker-media/src/lumi_worker_media/image_generation_repository.py
+          apps/worker-media/src/lumi_worker_media/image_generation_ports.py
+          apps/worker-media/src/lumi_worker_media/image_generation_artifacts.py
+          apps/worker-media/src/lumi_worker_media/image_generation_runtime.py
+          apps/worker-media/tests/test_image_gateway_runtime.py
+          apps/worker-media/tests/test_image_generation_codec.py
+          apps/worker-media/tests/test_image_generation_ports.py
+          apps/worker-media/tests/test_image_task_entrypoint.py
+          apps/worker-media/tests/test_job_runtime_performance.py
+          apps/worker-media/tests/test_worker_cli.py
+          apps/worker-media/tests/integration/test_image_generation_repository_postgres.py
+          apps/api/src/lumi_api/product_app.py
+          apps/api/src/lumi_api/api/v1/router.py
+          apps/api/src/lumi_api/generations/gateway.py
+          apps/api/src/lumi_api/generations/service.py
+          apps/api/src/lumi_api/media_dispatch.py
+          apps/api/tests/integration/test_generation_control_plane_postgres.py
+          scripts/validate_image_generation.py
+          scripts/validate_image_generation_producer_contract.py
+          scripts/benchmark_image_generation.py
+      - name: Pyright gate
+        run: |
+          uv run pyright -p services/image-generation/pyrightconfig.json
+          uv run pyright \
+            apps/worker-media/src/lumi_worker_media/worker_cli.py \
+            apps/worker-media/src/lumi_worker_media/image_gateway_runtime.py \
+            apps/worker-media/src/lumi_worker_media/image_generation_codec.py \
+            apps/worker-media/src/lumi_worker_media/image_generation_repository.py \
+            apps/worker-media/src/lumi_worker_media/image_generation_ports.py \
+            apps/worker-media/src/lumi_worker_media/image_generation_artifacts.py \
+            apps/worker-media/src/lumi_worker_media/image_generation_runtime.py \
+            apps/worker-media/tests/test_image_gateway_runtime.py \
+            apps/worker-media/tests/test_image_generation_codec.py \
+            apps/worker-media/tests/test_image_generation_ports.py \
+            apps/worker-media/tests/test_job_runtime_performance.py \
+            apps/worker-media/tests/test_worker_cli.py \
+            apps/worker-media/tests/integration/test_image_generation_repository_postgres.py
+
+  worker-media-image-smoke:
+    needs: image-generation-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build frozen Worker Media image
+        run: docker build -f apps/worker-media/Dockerfile -t lumi-worker-media:${{ github.sha }} .
+      - name: Verify packaged production entrypoint contract
+        run: >-
+          docker run --rm --entrypoint python
+          lumi-worker-media:${{ github.sha }}
+          -c "from lumi_worker_media.worker_cli import worker_argv; argv=worker_argv(); assert argv[0]=='worker'; assert any(v.startswith('--queues=') for v in argv); print(argv)"
+      - name: Start Worker Media container and assert process liveness
+        shell: bash
+        run: |
+          docker run -d --name lumi-worker-media-smoke lumi-worker-media:${{ github.sha }}
+          for attempt in $(seq 1 15); do
+            if [ "$(docker inspect -f '{{.State.Running}}' lumi-worker-media-smoke 2>/dev/null || true)" = "true" ]; then
+              sleep 2
+              test "$(docker inspect -f '{{.State.Running}}' lumi-worker-media-smoke)" = "true"
+              docker logs lumi-worker-media-smoke
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs lumi-worker-media-smoke || true
+          exit 1
+      - name: Cleanup Worker Media smoke container
+        if: always()
+        run: docker rm -f lumi-worker-media-smoke >/dev/null 2>&1 || true
+
+  image-generation-integration:
+    needs: image-generation-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+      LUMI_DB_INTEGRATION: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen Python workspace install
+        run: uv sync --all-packages --frozen
+      - name: Prepare canonical local infrastructure
+        run: make infra-env
+      - name: Start canonical local dependencies
+        run: make infra-up
+      - name: Upgrade canonical Alembic schema and seed deterministic scope
+        run: |
+          make db-upgrade
+          bash scripts/db-local schema-check
+          make db-seed
+      - name: Run Model Gateway / Asset / Artifact / Generation integration regressions
+        env:
+          PYTHONPATH: services/image-generation/src:services/model-gateway/src:services/asset-intelligence/src:services/artifact-history/src:services/brand-rules/src:services/identity-engine/src:services/domain/src
+        run: >-
+          uv run pytest
+          services/image-generation/tests
+          services/model-gateway/tests
+          services/artifact-history/tests
+          services/asset-intelligence/tests
+          -q
+      - name: Canonical product producer to image.transform dispatch acceptance
+        run: >-
+          uv run pytest
+          apps/api/tests/integration/test_generation_control_plane_postgres.py
+          -q
+      - name: Canonical NODE-46 Postgres repository acceptance
+        run: >-
+          uv run pytest
+          apps/worker-media/tests/integration/test_image_generation_repository_postgres.py
+          -q
+      - name: Assert canonical generations status remains open for NODE-46 lifecycle states
+        shell: bash
+        run: |
+          constraint_count="$(docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml exec -T postgres \
+            psql -U lumi_migration -d lumi -Atc \
+            "select count(*) from pg_constraint c join pg_class t on t.oid=c.conrelid where t.relname='generations' and c.contype='c' and pg_get_constraintdef(c.oid) ilike '%status%';")"
+          test "$constraint_count" = "0"
+      - name: Assert legacy parallel generation tables were not deployed
+        shell: bash
+        run: |
+          count="$(docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml exec -T postgres \
+            psql -U lumi_migration -d lumi -Atc \
+            "select count(*) from information_schema.tables where table_schema='public' and table_name like 'image_generation_%';")"
+          test "$count" = "0"
+      - name: Capture PostgreSQL diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p reports/nodes/NODE-46/runtime
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml ps \
+            > reports/nodes/NODE-46/runtime/compose-ps.txt 2>&1 || true
+          docker compose --env-file infra/compose/.env -f infra/compose/docker-compose.yml logs \
+            --no-color --tail=300 postgres \
+            > reports/nodes/NODE-46/runtime/postgres.log 2>&1 || true
+      - name: Upload NODE-46 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-46-image-generation-${{ github.run_id }}
+          path: reports/nodes/NODE-46/runtime
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Cleanup
+        if: always()
+        run: CONFIRM=1 make infra-reset || true
+
+  image-generation-benchmark:
+    needs: image-generation-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run deterministic orchestration benchmark
+        env:
+          PYTHONPATH: services/image-generation/src
+          LUMI_IMAGE_GENERATION_BENCHMARK_ITERATIONS: "5000"
+        run: python scripts/benchmark_image_generation.py
+      - name: Record live-provider benchmark gate
+        run: >-
+          echo "Live provider/model quality evidence is intentionally not fabricated by CI."
+          && echo "Production routing remains gated on NODE-23 benchmark snapshots for selected live adapters."

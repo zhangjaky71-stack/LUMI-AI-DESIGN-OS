@@ -1,0 +1,138 @@
+name: Versions UI
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/src/app/app/projects/**/versions/**"
+      - "apps/web/src/app/app/projects/**/page.tsx"
+      - "apps/web/src/components/versions-ui/**"
+      - "apps/web/src/lib/versions-ui/**"
+      - "apps/web/e2e/versions-ui.spec.ts"
+      - "apps/web/tsconfig.json"
+      - "scripts/validate_versions_ui.py"
+      - "docs/nodes/NODE-59-VERSIONS-UI.md"
+      - "docs/runtime/VERSIONS-UI-V1.md"
+      - "reports/nodes/NODE-59/**"
+      - ".github/workflows/versions-ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  versions-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Validate frontend architecture chain
+        run: |
+          python scripts/validate_app_shell.py
+          python scripts/validate_projects_ui.py
+          python scripts/validate_ai_workspace.py
+          python scripts/validate_infinite_canvas.py
+          python scripts/validate_layers_inspector.py
+          python scripts/validate_agent_timeline.py
+          python scripts/validate_brand_kit_ui.py
+          python scripts/validate_versions_ui.py
+      - name: Typecheck canonical product stack
+        run: |
+          pnpm --filter @lumi/artifact-sdk typecheck
+          pnpm --filter @lumi/design-ir typecheck
+          pnpm --filter @lumi/canvas-sdk typecheck
+          pnpm --filter @lumi/web typecheck
+
+  versions-quality:
+    needs: versions-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Lint web product
+        run: pnpm --filter @lumi/web lint
+      - name: Run canonical Artifact Engine tests
+        run: pnpm --filter @lumi/artifact-sdk test
+      - name: Run NODE-59 unit tests
+        run: pnpm --filter @lumi/web exec vitest run src/lib/versions-ui
+      - name: Run dependent frontend unit regressions
+        run: |
+          pnpm --filter @lumi/web exec vitest run src/lib/brand-kit
+          pnpm --filter @lumi/web exec vitest run src/lib/agent-timeline
+          pnpm --filter @lumi/web exec vitest run src/lib/ai-workspace
+      - name: Run Canvas SDK regressions
+        run: pnpm --filter @lumi/canvas-sdk test
+      - name: Check NODE-59 formatting
+        run: pnpm exec prettier --check "apps/web/src/components/versions-ui/**/*.{ts,tsx,css}" "apps/web/src/lib/versions-ui/**/*.{ts,tsx}" "apps/web/src/app/app/projects/[projectId]/versions/page.tsx" "apps/web/src/app/app/projects/[projectId]/page.tsx" "apps/web/e2e/versions-ui.spec.ts"
+
+  versions-build:
+    needs: versions-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      LUMI_SHELL_E2E_AUTH: "0"
+      LUMI_PROJECTS_E2E: "0"
+      LUMI_AI_WORKSPACE_E2E: "0"
+      LUMI_INFINITE_CANVAS_E2E: "0"
+      LUMI_BRAND_KIT_E2E: "0"
+      LUMI_VERSIONS_E2E: "0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Build production Next.js app
+        run: pnpm --filter @lumi/web build
+      - name: Assert deterministic Versions fixture is not shipped in client chunks
+        run: |
+          if grep -R --line-number --fixed-strings 'project-provenance-denied' apps/web/.next/static 2>/dev/null; then
+            echo 'NODE-59 deterministic fixture leaked into production client chunks.' >&2
+            exit 1
+          fi
+
+  versions-browser-e2e:
+    needs: [versions-quality, versions-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 38
+    env:
+      LUMI_SHELL_E2E_AUTH: "1"
+      LUMI_PROJECTS_E2E: "1"
+      LUMI_AI_WORKSPACE_E2E: "1"
+      LUMI_INFINITE_CANVAS_E2E: "1"
+      LUMI_BRAND_KIT_E2E: "1"
+      LUMI_VERSIONS_E2E: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run NODE-59 browser scenarios
+        run: pnpm exec playwright test apps/web/e2e/versions-ui.spec.ts
+      - name: Re-run NODE-58 through NODE-54 browser regressions
+        run: pnpm exec playwright test apps/web/e2e/brand-kit.spec.ts apps/web/e2e/agent-timeline.spec.ts apps/web/e2e/layers-inspector.spec.ts apps/web/e2e/infinite-canvas.spec.ts apps/web/e2e/ai-workspace.spec.ts

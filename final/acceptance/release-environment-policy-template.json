@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "kind": "LUMI_RELEASE_ENVIRONMENT_POLICY_V1",
+  "repository": "zhangjaky71-stack/LUMI-AI-DESIGN-OS",
+  "environment": "production",
+  "minimum_required_reviewers": 1,
+  "require_prevent_self_review": true,
+  "deployment_branch_policy": {
+    "protected_branches": true,
+    "custom_branch_policies": false
+  }
+}

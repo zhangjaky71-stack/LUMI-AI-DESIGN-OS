@@ -1,2 +1,154 @@
-SERVICE_NAME = "model-gateway"
-VERSION = "0.0.0-dev"
+from .api import ModelGatewayAPI
+from .async_transport import (
+    ASYNC_CANCEL_PATH,
+    ASYNC_STATUS_PATH,
+    AsyncProviderControlRequest,
+    HttpModelGatewayAsyncClient,
+)
+from .budget import RequestBudgetGuard
+from .capability_registry import (
+    BenchmarkScore,
+    CapabilityClaim,
+    CapabilityRegistry,
+    EvidenceConfidence,
+    InMemoryCapabilityRegistry,
+    PricingSnapshot,
+    RegistryModelSnapshot,
+    RegistryOrganizationPolicy,
+    RegistrySnapshot,
+    RoutingProfile,
+    SupportLevel,
+    compile_registry_seed,
+)
+from .client import ModelGatewayClient
+from .cost_accounting import CostAccountingPort, LedgerBudgetGuard
+from .errors import (
+    AmbiguousProviderOutcomeError,
+    BudgetExceededError,
+    DeliveryState,
+    ErrorCategory,
+    ModelGatewayError,
+    NoRouteError,
+    PaidInvocationGuardRequiredError,
+    ProviderInvocationError,
+    ProviderValidationError,
+)
+from .gateway import ModelGateway, RetryPolicy
+from .mock_provider import MockFailure, MockProvider
+from .models import (
+    Capability,
+    CostConfidence,
+    CostEstimate,
+    LatencyProfile,
+    ModelOutput,
+    ModelRequest,
+    ModelResult,
+    ProviderLatencyClass,
+    ProviderModel,
+    QualityProfile,
+    ResultStatus,
+    RouteCandidate,
+    RoutingDecision,
+    StreamChunk,
+    TelemetryEvent,
+    Timing,
+    Usage,
+)
+from .openai_adapter import OpenAIResponsesAdapter
+from .openai_video_adapter import OpenAIVideoGenerationAdapter, OpenAIVideoPriceCard
+from .ports import (
+    BudgetGuard,
+    CostTelemetrySink,
+    PaidInvocationGuard,
+    PaidStreamGuard,
+    ProviderAdapter,
+    ProviderHealthRegistry,
+    ProviderRegistry,
+)
+from .postgres_registry import PostgresRegistryLoader, RegistryReadConnection
+from .pricing import PriceCard
+from .registry import InMemoryProviderHealthRegistry, InMemoryProviderRegistry
+from .registry_routing import RegistryAwareModelRouter
+from .routing import (
+    DefaultModelPolicyResolver,
+    ModelRouter,
+    OrganizationModelPolicy,
+    StaticModelPolicyResolver,
+)
+from .telemetry import MemoryCostTelemetrySink, NullCostTelemetrySink
+
+__all__ = [
+    "ASYNC_CANCEL_PATH",
+    "ASYNC_STATUS_PATH",
+    "AmbiguousProviderOutcomeError",
+    "AsyncProviderControlRequest",
+    "BenchmarkScore",
+    "BudgetExceededError",
+    "BudgetGuard",
+    "Capability",
+    "CapabilityClaim",
+    "CapabilityRegistry",
+    "CostAccountingPort",
+    "CostConfidence",
+    "CostEstimate",
+    "CostTelemetrySink",
+    "DefaultModelPolicyResolver",
+    "DeliveryState",
+    "ErrorCategory",
+    "EvidenceConfidence",
+    "HttpModelGatewayAsyncClient",
+    "InMemoryCapabilityRegistry",
+    "InMemoryProviderHealthRegistry",
+    "InMemoryProviderRegistry",
+    "LatencyProfile",
+    "LedgerBudgetGuard",
+    "MemoryCostTelemetrySink",
+    "MockFailure",
+    "MockProvider",
+    "ModelGateway",
+    "ModelGatewayAPI",
+    "ModelGatewayClient",
+    "ModelGatewayError",
+    "ModelOutput",
+    "ModelRequest",
+    "ModelResult",
+    "ModelRouter",
+    "NoRouteError",
+    "NullCostTelemetrySink",
+    "OpenAIResponsesAdapter",
+    "OpenAIVideoGenerationAdapter",
+    "OpenAIVideoPriceCard",
+    "OrganizationModelPolicy",
+    "PaidInvocationGuard",
+    "PaidInvocationGuardRequiredError",
+    "PaidStreamGuard",
+    "PostgresRegistryLoader",
+    "PriceCard",
+    "PricingSnapshot",
+    "ProviderAdapter",
+    "ProviderHealthRegistry",
+    "ProviderInvocationError",
+    "ProviderLatencyClass",
+    "ProviderModel",
+    "ProviderRegistry",
+    "ProviderValidationError",
+    "QualityProfile",
+    "RegistryAwareModelRouter",
+    "RegistryModelSnapshot",
+    "RegistryOrganizationPolicy",
+    "RegistryReadConnection",
+    "RegistrySnapshot",
+    "RequestBudgetGuard",
+    "ResultStatus",
+    "RetryPolicy",
+    "RouteCandidate",
+    "RoutingDecision",
+    "RoutingProfile",
+    "StaticModelPolicyResolver",
+    "StreamChunk",
+    "SupportLevel",
+    "TelemetryEvent",
+    "Timing",
+    "Usage",
+    "compile_registry_seed",
+]

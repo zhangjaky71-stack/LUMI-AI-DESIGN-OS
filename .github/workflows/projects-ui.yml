@@ -1,0 +1,129 @@
+name: Projects UI
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/src/app/app/projects/**"
+      - "apps/web/src/components/projects/**"
+      - "apps/web/src/lib/projects/**"
+      - "apps/web/src/lib/app-shell/api-client.ts"
+      - "apps/web/e2e/projects.spec.ts"
+      - "scripts/validate_projects_ui.py"
+      - "scripts/validate_app_shell.py"
+      - "docs/nodes/NODE-53-PROJECTS-UI.md"
+      - "docs/runtime/PROJECTS-UI-V1.md"
+      - "reports/nodes/NODE-53/**"
+      - ".github/workflows/projects-ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  projects-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Validate App Shell regression boundary
+        run: python scripts/validate_app_shell.py
+      - name: Validate NODE-53 Projects architecture
+        run: python scripts/validate_projects_ui.py
+      - name: Typecheck web product
+        run: pnpm --filter @lumi/web typecheck
+
+  projects-quality:
+    needs: projects-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Lint web product
+        run: pnpm --filter @lumi/web lint
+      - name: Run Projects unit tests
+        run: pnpm --filter @lumi/web exec vitest run src/lib/projects
+      - name: Run App Shell API regression tests
+        run: pnpm --filter @lumi/web exec vitest run src/lib/app-shell/api-client.test.ts src/lib/app-shell/query-cache.test.ts
+      - name: Check Projects formatting
+        run: pnpm exec prettier --check "apps/web/src/app/app/projects/**/*.{ts,tsx}" "apps/web/src/components/projects/**/*.{ts,tsx,css}" "apps/web/src/lib/projects/**/*.{ts,tsx}" "apps/web/e2e/projects.spec.ts"
+
+  projects-build:
+    needs: projects-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    env:
+      LUMI_SHELL_E2E_AUTH: "0"
+      LUMI_PROJECTS_E2E: "0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Build production Next.js app
+        run: pnpm --filter @lumi/web build
+      - name: Assert Projects E2E control is absent from client chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -F "LUMI_PROJECTS_E2E" apps/web/.next/static; then
+            echo "Projects E2E environment flag leaked into client chunks"
+            exit 1
+          fi
+
+  projects-security:
+    needs: projects-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Re-run frontend tenant/upload safety gates
+        run: |
+          python scripts/validate_app_shell.py
+          python scripts/validate_projects_ui.py
+
+  projects-browser-e2e:
+    needs: [projects-quality, projects-build, projects-security]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    env:
+      LUMI_SHELL_E2E_AUTH: "1"
+      LUMI_PROJECTS_E2E: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run Projects browser scenarios
+        run: pnpm exec playwright test apps/web/e2e/projects.spec.ts
+      - name: Re-run App Shell browser regression
+        run: pnpm exec playwright test apps/web/e2e/app-shell.spec.ts

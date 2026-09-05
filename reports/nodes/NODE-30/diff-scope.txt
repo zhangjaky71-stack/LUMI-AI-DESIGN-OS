@@ -1,0 +1,1 @@
+NODE-30 final compare against node-29-deep-agents-runtime: ahead, behind=0. Diff limited to Agent Registry definitions/runtime/tests/provenance/docs/CI. This is scope evidence only, not hosted CI PASS.

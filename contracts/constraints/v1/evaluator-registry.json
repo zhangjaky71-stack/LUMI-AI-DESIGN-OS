@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "evaluators": {
+    "LOCK_POSITION": {"phase": "PREFLIGHT", "evaluator": "lock_property", "properties": ["position"]},
+    "LOCK_SIZE": {"phase": "PREFLIGHT", "evaluator": "lock_property", "properties": ["size"]},
+    "LOCK_ROTATION": {"phase": "PREFLIGHT", "evaluator": "lock_property", "properties": ["rotation"]},
+    "LOCK_TRANSFORM": {"phase": "PREFLIGHT", "evaluator": "lock_property", "properties": ["position", "size", "rotation", "transform"]},
+    "LOCK_ASPECT_RATIO": {"phase": "PREFLIGHT", "evaluator": "aspect_ratio", "properties": ["size"]},
+    "LOCK_LAYER_ORDER": {"phase": "PREFLIGHT", "evaluator": "lock_property", "properties": ["layer_order", "parent"]},
+    "LOCK_PARENT": {"phase": "PREFLIGHT", "evaluator": "lock_property", "properties": ["parent"]},
+    "LOCK_CONTENT": {"phase": "BOTH", "evaluator": "lock_content", "properties": ["content", "text", "asset", "existence"], "evidence": "content_identity"},
+    "LOCK_TEXT": {"phase": "BOTH", "evaluator": "lock_property", "properties": ["text", "content"], "evidence": "text_match"},
+    "LOCK_ASSET": {"phase": "PREFLIGHT", "evaluator": "lock_property", "properties": ["asset", "content"]},
+    "LOCK_IDENTITY": {"phase": "BOTH", "evaluator": "lock_property", "properties": ["asset", "content", "existence"], "evidence": "identity"},
+    "LOCK_STYLE": {"phase": "PREFLIGHT", "evaluator": "lock_property", "properties": ["style"]},
+    "LOCK_BRAND": {"phase": "BOTH", "evaluator": "lock_property", "properties": ["style", "brand"], "evidence": "brand_compliance"},
+    "PROTECT_REGION": {"phase": "BOTH", "evaluator": "protected_region", "properties": ["position", "size", "rotation", "content", "asset", "style"], "evidence": "protected_region_diff"},
+    "MUST_STAY_INSIDE": {"phase": "PREFLIGHT", "evaluator": "inside_region", "properties": ["position", "size", "parent"]},
+    "MUST_NOT_OVERLAP": {"phase": "PREFLIGHT", "evaluator": "non_overlap", "properties": ["position", "size", "parent"]},
+    "MIN_MARGIN": {"phase": "PREFLIGHT", "evaluator": "min_margin", "properties": ["position", "size", "parent"]},
+    "SAFE_AREA": {"phase": "PREFLIGHT", "evaluator": "inside_region", "properties": ["position", "size", "parent"]},
+    "REQUIRE_CONTRAST": {"phase": "POSTFLIGHT", "evaluator": "evidence_threshold", "evidence": "contrast"},
+    "REQUIRE_SCANNABILITY": {"phase": "POSTFLIGHT", "evaluator": "qr_scannability", "evidence": "qr"},
+    "REQUIRE_TEXT_READABILITY": {"phase": "POSTFLIGHT", "evaluator": "evidence_threshold", "evidence": "text_readability"},
+    "REQUIRE_BRAND_COMPLIANCE": {"phase": "POSTFLIGHT", "evaluator": "evidence_threshold", "evidence": "brand_compliance"},
+    "REQUIRE_RESOLUTION": {"phase": "POSTFLIGHT", "evaluator": "resolution", "evidence": "resolution"},
+    "REQUIRE_IDENTITY_SCORE": {"phase": "POSTFLIGHT", "evaluator": "evidence_threshold", "evidence": "identity"}
+  }
+}

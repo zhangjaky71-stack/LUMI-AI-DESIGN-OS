@@ -1,0 +1,12 @@
+{
+  "schema": "lumi.recipe-eval-profile-registry.v1",
+  "profiles": {
+    "quick-image-v1": {"version":"1.0.0","task_success_threshold":0.95,"regression_required":true,"cost_guard":true,"latency_guard":true,"approval_semantics":false},
+    "poster-campaign-v1": {"version":"1.0.0","task_success_threshold":0.90,"regression_required":true,"cost_guard":true,"latency_guard":true,"approval_semantics":true},
+    "brand-identity-v1": {"version":"1.0.0","task_success_threshold":0.90,"regression_required":true,"cost_guard":true,"latency_guard":true,"approval_semantics":true},
+    "product-visuals-v1": {"version":"1.0.0","task_success_threshold":0.92,"regression_required":true,"cost_guard":true,"latency_guard":true,"approval_semantics":true},
+    "social-kit-v1": {"version":"1.0.0","task_success_threshold":0.92,"regression_required":true,"cost_guard":true,"latency_guard":true,"approval_semantics":false},
+    "image-edit-v1": {"version":"1.0.0","task_success_threshold":0.95,"regression_required":true,"cost_guard":true,"latency_guard":true,"approval_semantics":true},
+    "video-campaign-v1": {"version":"1.0.0","task_success_threshold":0.90,"regression_required":true,"cost_guard":true,"latency_guard":true,"approval_semantics":true}
+  }
+}

@@ -1,0 +1,18 @@
+terraform {
+  required_version = ">= 1.14.6, < 1.15.0"
+  backend "s3" {}
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "= 6.55.0"
+    }
+  }
+}
+
+provider "aws" {
+  region              = var.region
+  allowed_account_ids = [var.account_id]
+  default_tags {
+    tags = { Project = "lumi", Environment = "production", ManagedBy = "terraform" }
+  }
+}

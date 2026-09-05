@@ -1,0 +1,138 @@
+name: Asset Intelligence
+
+on:
+  pull_request:
+    paths:
+      - "services/asset-intelligence/**"
+      - "services/identity-engine/src/lumi_identity_engine/model.py"
+      - "db/migrations/0004_asset_intelligence.sql"
+      - "fixtures/asset-intelligence/**"
+      - "scripts/validate_asset_intelligence.py"
+      - "scripts/benchmark_asset_intelligence.py"
+      - "docs/runtime/ASSET-INTELLIGENCE-V1.md"
+      - "docs/nodes/NODE-45-ASSET-INTELLIGENCE.md"
+      - "reports/nodes/NODE-45/**"
+      - ".github/workflows/asset-intelligence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  asset-intelligence-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile NODE-45 Python contracts
+        run: >-
+          python -m compileall -q
+          services/asset-intelligence/src/lumi_asset_intelligence
+          services/asset-intelligence/tests
+          scripts/validate_asset_intelligence.py
+          scripts/benchmark_asset_intelligence.py
+      - name: Validate NODE-45 architecture contract
+        run: >-
+          PYTHONPATH=services/asset-intelligence/src
+          python scripts/validate_asset_intelligence.py
+
+  asset-intelligence-quality:
+    needs: asset-intelligence-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen Python workspace install
+        run: uv sync --all-packages --frozen
+      - name: Run Asset Intelligence tests
+        run: >-
+          PYTHONPATH=services/asset-intelligence/src
+          uv run pytest services/asset-intelligence/tests -q
+      - name: Ruff correctness gate
+        run: >-
+          uv run ruff check --ignore E501
+          services/asset-intelligence/src
+          services/asset-intelligence/tests
+          scripts/validate_asset_intelligence.py
+          scripts/benchmark_asset_intelligence.py
+      - name: Pyright gate
+        run: uv run pyright -p services/asset-intelligence/pyrightconfig.json
+
+  asset-intelligence-integration:
+    needs: asset-intelligence-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: lumi
+          POSTGRES_PASSWORD: lumi
+          POSTGRES_DB: lumi_asset_intelligence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U lumi -d lumi_asset_intelligence"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: postgresql://lumi:lumi@localhost:5432/lumi_asset_intelligence
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen Python workspace install
+        run: uv sync --all-packages --frozen
+      - name: Apply NODE-45 pgvector migration from empty database
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/migrations/0004_asset_intelligence.sql
+      - name: Verify pgvector and scope-first retrieval function
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT vector_dims('[1,2,3,4]'::vector) = 4 AS vector_ready;
+          SELECT to_regprocedure(
+            'asset_intelligence_semantic_candidates(uuid,text,vector,text[],text[],uuid[],uuid[],boolean,integer)'
+          ) IS NOT NULL AS scoped_function_ready;
+          SELECT count(*) = 3 AS duplicate_tier_count
+          FROM (
+            VALUES ('EXACT'), ('PERCEPTUAL_NEAR_DUPLICATE'), ('SEMANTIC_SIMILAR')
+          ) AS expected(tier);
+          SQL
+      - name: Re-run security/reindex conformance tests against integration gate
+        run: >-
+          PYTHONPATH=services/asset-intelligence/src
+          uv run pytest services/asset-intelligence/tests -q
+
+  asset-intelligence-benchmark:
+    needs: asset-intelligence-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run deterministic scoped ranking benchmark
+        env:
+          LUMI_ASSET_BENCHMARK_ASSETS: "5000"
+          LUMI_ASSET_BENCHMARK_QUERIES: "50"
+        run: >-
+          PYTHONPATH=services/asset-intelligence/src
+          python scripts/benchmark_asset_intelligence.py

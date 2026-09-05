@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "kind": "LUMI_RELEASE_AUTHORIZATION_REQUEST_V1",
+  "release_id": "PENDING",
+  "release_candidate": {
+    "git_sha": "PENDING",
+    "version": "PENDING",
+    "migration_head": "PENDING"
+  },
+  "repository": "zhangjaky71-stack/LUMI-AI-DESIGN-OS",
+  "pull_request": 135,
+  "approval_policy": {
+    "path": "PENDING",
+    "sha256": "PENDING"
+  },
+  "operational_handoff": {
+    "on_call_owner": "PENDING",
+    "support_owner": "PENDING",
+    "incident_commander_rotation": "PENDING",
+    "first_day_watch_owner": "PENDING",
+    "quality_cost_review_owner": "PENDING",
+    "security_dependency_review_owner": "PENDING",
+    "dr_drill_owner": "PENDING",
+    "capacity_review_owner": "PENDING"
+  }
+}

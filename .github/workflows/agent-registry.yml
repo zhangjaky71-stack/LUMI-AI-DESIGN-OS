@@ -1,0 +1,161 @@
+name: Agent Registry
+
+on:
+  pull_request:
+    paths:
+      - "agents/**"
+      - "schemas/agent-definition-v1.schema.json"
+      - "schemas/agent-outputs/**"
+      - "config/agent-registry/**"
+      - "evals/profiles/agents/**"
+      - "apps/agent-runtime/src/lumi_agent_runtime/agent_registry/**"
+      - "apps/agent-runtime/tests/test_agent_registry*.py"
+      - "apps/api/alembic/versions/0014_agent_registry_provenance.py"
+      - "apps/api/src/lumi_api/persistence/models/agent_registry.py"
+      - "apps/api/src/lumi_api/persistence/models/__init__.py"
+      - "scripts/validate_agent_registry_contract.py"
+      - "scripts/integration_agent_registry.py"
+      - "scripts/integration_agent_registry_release.py"
+      - "docs/runtime/AGENT-REGISTRY-V1.md"
+      - "reports/nodes/NODE-30/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  agent-registry-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile NODE-30 runtime and acceptance
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          python -m compileall -q
+          apps/agent-runtime/src/lumi_agent_runtime/agent_registry
+          apps/agent-runtime/tests/test_agent_registry.py
+          apps/agent-runtime/tests/test_agent_registry_release.py
+          apps/agent-runtime/tests/test_agent_registry_provenance_store.py
+          scripts/validate_agent_registry_contract.py
+          scripts/integration_agent_registry.py
+          scripts/integration_agent_registry_release.py
+      - name: Revalidate NODE-23 Capability Registry
+        run: >-
+          PYTHONPATH=services/model-gateway/src
+          python scripts/validate_capability_registry_contract.py
+      - name: Revalidate NODE-25 Tool Gateway
+        run: >-
+          PYTHONPATH=services/tool-gateway/src
+          python scripts/validate_tool_gateway_contract.py
+      - name: Revalidate NODE-29 Deep Agents Runtime
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          python scripts/validate_deep_agents_runtime_contract_v2.py
+      - name: NODE-30 static Agent Registry contract
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          python scripts/validate_agent_registry_contract.py
+      - name: NODE-30 deterministic unit tests
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          python -m unittest discover
+          -s apps/agent-runtime/tests
+          -p 'test_agent_registry*.py'
+
+  agent-registry-quality:
+    needs: agent-registry-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: NODE-30 pytest
+        run: >-
+          uv run pytest
+          apps/agent-runtime/tests/test_agent_registry.py
+          apps/agent-runtime/tests/test_agent_registry_release.py
+          apps/agent-runtime/tests/test_agent_registry_provenance_store.py
+          -q
+      - name: NODE-23 + NODE-25 + NODE-29 integration
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src:services/model-gateway/src:services/tool-gateway/src
+          uv run python scripts/integration_agent_registry.py
+      - name: Promotion and rollback integration
+        run: >-
+          PYTHONPATH=apps/agent-runtime/src
+          uv run python scripts/integration_agent_registry_release.py
+      - name: NODE-30 Ruff gate
+        run: >-
+          uv run ruff check
+          apps/agent-runtime/src/lumi_agent_runtime/agent_registry
+          apps/agent-runtime/tests/test_agent_registry.py
+          apps/agent-runtime/tests/test_agent_registry_release.py
+          apps/agent-runtime/tests/test_agent_registry_provenance_store.py
+          apps/api/src/lumi_api/persistence/models/agent_registry.py
+          apps/api/src/lumi_api/persistence/models/__init__.py
+          apps/api/alembic/versions/0014_agent_registry_provenance.py
+          scripts/validate_agent_registry_contract.py
+          scripts/integration_agent_registry.py
+          scripts/integration_agent_registry_release.py
+      - name: NODE-30 Pyright gate
+        run: >-
+          uv run pyright
+          apps/agent-runtime/src/lumi_agent_runtime/agent_registry
+          apps/agent-runtime/tests/test_agent_registry.py
+          apps/agent-runtime/tests/test_agent_registry_release.py
+          apps/agent-runtime/tests/test_agent_registry_provenance_store.py
+
+  agent-registry-postgres:
+    needs: agent-registry-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://lumi_app:lumi_app_local_only@127.0.0.1:5432/lumi
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://lumi_migration:lumi_migration_local_only@127.0.0.1:5432/lumi
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen workspace install
+        run: uv sync --all-packages --frozen
+      - name: Start PostgreSQL and dependencies
+        run: |
+          make infra-env
+          make infra-up
+      - name: Upgrade database and confirm head
+        run: |
+          make db-upgrade
+          bash scripts/db-local current
+      - name: Load NODE-30 ORM metadata
+        run: >-
+          PYTHONPATH=apps/api/src
+          uv run python -c
+          "from lumi_api.persistence.models import AgentRunProvenance; assert AgentRunProvenance.__tablename__ == 'agent_run_provenance'"
+      - name: Migration privilege contract
+        run: >-
+          python -c
+          "from pathlib import Path; s=Path('apps/api/alembic/versions/0014_agent_registry_provenance.py').read_text(); assert 'REVOKE UPDATE, DELETE ON agent_run_provenance FROM lumi_app' in s; assert 'GRANT SELECT, INSERT ON agent_run_provenance TO lumi_app' in s"
+      - name: Migration downgrade/upgrade smoke
+        run: bash scripts/db-local downgrade-smoke
+      - name: Cleanup
+        if: always()
+        run: CONFIRM=1 make infra-reset || true

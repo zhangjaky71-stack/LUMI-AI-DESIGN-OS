@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"StrategyOutput","type":"object","required":["strategy"],"properties":{"strategy":{"type":"object"},"constraints":{"type":"array","items":{"type":"string"}},"acceptance_criteria":{"type":"array","items":{"type":"string"}}},"additionalProperties":true}

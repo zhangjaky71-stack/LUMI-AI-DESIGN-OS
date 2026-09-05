@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"ResearchOutput","type":"object","required":["findings","sources"],"properties":{"findings":{"type":"array","items":{"type":"object"}},"sources":{"type":"array","items":{"type":"object"}},"inferences":{"type":"array","items":{"type":"string"}}},"additionalProperties":true}

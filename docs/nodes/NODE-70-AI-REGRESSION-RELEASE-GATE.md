@@ -1,7 +1,7 @@
 # NODE-70 — AI Regression, Experiment & Release Gate
 
 > Phase: 9 Production Readiness  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **SOURCE IMPLEMENTED / RELEASE BLOCKED**  
 > Priority: P0 / AI RELEASE BLOCKER  
 > Depends on: NODE-05, NODE-23, NODE-30～32, NODE-46～51, NODE-67  
 > Produces: Production Baseline、Candidate比较、Shadow/Canary、Agent/Prompt/Model/Skill/Recipe发布门禁
@@ -12,22 +12,29 @@
 
 模型、Prompt、Agent、Skill和Recipe每次更新都可能“看起来更聪明但实际某类任务变差”。建立统一AI release process，任何生产别名切换必须有Benchmark证据。
 
+NODE-70 source baseline 已实现；当前仍缺真实 production baseline、真实 candidate 评测、人评、shadow/canary 与 Staging rollback 证据，因此不能标记 COMPLETE。
+
 ## 2. Versioned Candidates
 
-Release unit可包含：
+Release unit必须冻结：
 
 ```text
+git SHA
 agent version
 system prompt/template hash
 skill versions
 recipe version
 model routing policy
 critic version
-constraint thresholds
+constraint policy
 context policy
+eval suite versions
+benchmark response profile
 ```
 
-必须保存完整candidate manifest。
+实现：`evals/release.py::ReleaseManifest`。
+
+Floating identity（`latest/main/dev/unknown/*`）被拒绝；manifest生成确定性fingerprint。
 
 ## 3. Baseline
 
@@ -39,31 +46,47 @@ candidate vs exact production baseline
 
 不是跟“上次我电脑上跑的结果”比。
 
-## 4. Eval Suites
+`mode=release` 会拒绝fixture baseline/candidate evidence。
 
-Blocking核心：
+## 4. Blocking Eval Suites
+
+当前可由既有NODE-05 harness直接执行的blocking suites：
 
 ```text
-brief extraction
-planning/task graph
-tool permission
-Design IR validity
-constraint following
-local edit golden cases
-brand consistency
-identity
-visual critic
-recovery/idempotency
-cost
-latency
-security agent red-team
+smoke
+auto-repair
+visual-critic
 ```
 
-图片/视频主观质量另有人评/pairwise。
+`product-parity`和`model-provider`当前属于规格/benchmark定义，不冒充已执行Suite，而作为production supplemental evidence要求。
+
+Critical per-case metrics为零容忍（存在于对应suite时）：
+
+```text
+critical_safety_failures
+constraint_violation_count
+unsafe_branch_overwrite
+paid_without_reservation
+loop_bound_exceeded
+```
+
+单个critical case失败，即使aggregate看起来仍正常，也直接BLOCK。
 
 ## 5. Statistical Rules
 
-报告至少包含样本量、均值/成功率、差异和置信信息。小样本不能因为+2分就宣称显著提升。
+真实随机模型/人评报告至少包含：
+
+```text
+sample size
+mean/success rate
+delta
+confidence method
+confidence interval where applicable
+```
+
+`evals/statistics.py`提供sample summary与Wilson 95% interval。系统不会因为小样本正向delta自动宣称显著提升。
+
+Policy要求provider benchmark、人评、shadow、canary至少达到minimum statistical sample size并声明confidence method。
 
 ## 6. Guardrails
 
@@ -75,24 +98,27 @@ cross-tenant/tool permission
 duplicate paid side effect
 hard constraint golden suite
 schema validity
+unsafe repair overwrite
+unbounded repair loop
 ```
 
-质量项设置容差；成本/延迟也有上限。
+质量、成本、延迟、错误率均是release维度。
 
 ## 7. Shadow
 
-对于可安全shadow的真实生产输入：
+实现：`evals/release_control.py::validate_shadow_plan`。
 
--复制脱敏/授权输入给candidate；
-- candidate结果不展示/不产生外部side effect；
-- 付费成本有预算；
-- 数据政策允许。
+Shadow只允许：
 
-不能shadow destructive tools。
+- 授权/脱敏输入；
+- candidate结果不展示；
+- external side effects关闭；
+- destructive tools关闭；
+- 明确付费预算。
 
 ## 8. Canary
 
-新routing/agent版本逐步：
+固定阶段：
 
 ```text
 internal
@@ -102,74 +128,137 @@ internal
 → 100%
 ```
 
-按feature flag/organization cohort；每阶段观察质量/错误/成本。
+实现：`RolloutState`、`advance_canary`、`canary_action`。
 
-## 9. Auto Rollback
+自动ROLLBACK条件：
 
-触发：
+- provider failure；
+- critical failure；
+- offline gate不再green；
+- error ratio > 1.2x；
+- cost ratio > 1.2x；
+- quality delta < -0.02。
 
-- error spike；
-- constraint regression；
-- cost异常；
-- provider fail；
-- quality primary metric显著下降。
+## 9. Rollback
 
-切换production alias回旧版本；正在运行的Run保持其exact frozen version，按兼容策略完成。
+`rollback()`把production alias恢复为exact baseline version。
+
+Source contract已实现；真实路由/配置层的alias切换必须在Staging证明无需全服务重部署（架构适用时），并证明已运行Agent Run继续使用其frozen exact version。
 
 ## 10. Human Evaluation
 
-设计质量关键suite：blind A/B pairwise，不显示model/version品牌。记录reviewer、随机顺序、tie、comments。
+生产发布的视觉质量必须有blind A/B pairwise：
 
-## 11. Online Feedback
+- 隐藏model/version品牌；
+- 随机顺序；
+- reviewer/audit reference；
+- A/B/tie；
+- sample size + confidence method。
 
-用户select/reject/edit depth作为辅助signal，不能简单等同质量（受任务/用户偏好影响）。与离线benchmark共同看。
+用户select/reject/edit depth仅为辅助signal。
 
-## 12. LangSmith
+## 11. Live Provider Boundary
 
-使用Experiment/Dataset/Trace支持LLM/Agent评测；LUMI release manifest、最终gate decision、成本/视觉自有指标仍保存在repo/DB。
+PR不自动花费真实provider预算。
+
+手动live preflight要求：
+
+```text
+LUMI_LIVE_EVAL_ENABLED=1
+API key
+positive budget
+exact suite ACK
+SIDE_EFFECT_MODE=none
+budget <= configured maximum
+```
+
+当前live workflow只做授权preflight，不把READY当作provider benchmark结果。
+
+## 12. Release Policy
+
+权威policy：`evals/release/policy-v1.json`。
+
+除三套blocking executable suites外，production release还要求：
+
+```text
+product_parity_acceptance
+model_provider_benchmark
+security_agent_red_team
+human_pairwise_visual
+shadow
+canary
+rollback_drill
+```
+
+全部必须PASS并带evidence reference。
 
 ## 13. Release Report
 
+正式decision由：
+
 ```text
-candidate manifest
-baseline manifest
-offline suites
-human eval
-shadow metrics
-canary metrics
-cost delta
-latency delta
-known regressions
-approval
+scripts/ai-release-gate.py
 ```
 
-保存到 `reports/ai-releases/`。
+生成并归档至：
 
-## 14. Tests
+```text
+reports/ai-releases/
+```
 
-- badcandidate被block；
-- cost regression；
-- security single failure；
-- production alias rollback；
-- running old version不热变；
-- shadow no side effects；
-- canary cohort stable。
+失败decision也保留，不覆盖历史证据。
 
-## 15. 验收标准
+## 14. CI
 
-- [ ] Production baseline可重现。
-- [ ] Candidate manifest完整。
-- [ ] Critical guardrails 0 failure。
-- [ ] Shadow/Canary机制存在。
-- [ ] rollback无需重新部署所有代码即可完成可配置版本切换（适用时）。
-- [ ] Release report存档。
+`.github/workflows/ai-regression-release-gate.yml`：
 
-## 16. Definition of Done
+- `source-contract`：dependency-free release contract；
+- `canonical-eval-tests`：`uv sync --frozen` + benchmark/release tests；
+- `live-provider-preflight`：仅workflow_dispatch；
+- aggregate release gate要求source与canonical都成功。
+
+NODE-66遗留root `uv.lock` freshness blocker未被绕过。
+
+## 15. Tests / Drills
+
+已加入source/test contract：
+
+- clean fixture candidate passes contract mode；
+- floating candidate identity被拒绝；
+- single critical case被block；
+- fixture evidence不能通过production release mode；
+- shadow side effect被拒绝；
+- canary progression；
+- quality/provider failure触发rollback action；
+- rollback恢复baseline alias；
+- statistical helper uncertainty记录；
+- live eval默认SKIPPED。
+
+## 16. 验收标准
+
+- [ ] Production baseline可重现（真实环境证据待补）。
+- [x] Candidate manifest contract完整。
+- [x] Critical guardrails在source contract中为0 failure原则。
+- [x] Shadow/Canary机制source contract存在。
+- [ ] rollback真实alias integration在Staging验证。
+- [x] Release report archive/CLI contract存在。
+- [ ] Production release report真实存档并通过。
+
+## 17. Definition of Done
 
 ```text
 AI release gate automated
 + bad-candidate drills block correctly
-+ canary/rollback tested
++ real production baseline captured
++ human/provider/security supplemental evidence green
++ shadow/canary runtime evidence green
++ real alias rollback tested
++ canonical repository gates green
 ```
+
+当前状态：**SOURCE IMPLEMENTED / RELEASE BLOCKED**。
+
+详细流程：`docs/ai-release/NODE-70-AI-RELEASE-PROCESS.md`  
+Release Evidence：`docs/release-evidence/NODE-70-AI-REGRESSION-RELEASE-EVIDENCE.md`
 
 下一节点：NODE-71 Staging Acceptance。

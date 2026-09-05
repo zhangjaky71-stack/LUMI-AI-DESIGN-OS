@@ -1,0 +1,134 @@
+name: Brand Kit UI
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/src/app/app/brands/**"
+      - "apps/web/src/app/app/projects/*/workspace/**"
+      - "apps/web/src/components/brand-kit/**"
+      - "apps/web/src/components/ai-workspace/**"
+      - "apps/web/src/lib/brand-kit/**"
+      - "apps/web/src/lib/ai-workspace/**"
+      - "apps/web/e2e/brand-kit.spec.ts"
+      - "apps/web/tsconfig.json"
+      - "scripts/validate_brand_kit_ui.py"
+      - "docs/nodes/NODE-58-BRAND-KIT-UI.md"
+      - "docs/runtime/BRAND-KIT-UI-V1.md"
+      - "reports/nodes/NODE-58/**"
+      - ".github/workflows/brand-kit-ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  brand-kit-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Validate frontend architecture chain
+        run: |
+          python scripts/validate_app_shell.py
+          python scripts/validate_projects_ui.py
+          python scripts/validate_ai_workspace.py
+          python scripts/validate_infinite_canvas.py
+          python scripts/validate_layers_inspector.py
+          python scripts/validate_agent_timeline.py
+          python scripts/validate_brand_kit_ui.py
+      - name: Typecheck Brand and editor stack
+        run: |
+          pnpm --filter @lumi/brand-rules typecheck
+          pnpm --filter @lumi/design-ir typecheck
+          pnpm --filter @lumi/canvas-sdk typecheck
+          pnpm --filter @lumi/web typecheck
+
+  brand-kit-quality:
+    needs: brand-kit-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Lint web product
+        run: pnpm --filter @lumi/web lint
+      - name: Run canonical Brand Rules tests
+        run: pnpm --filter @lumi/brand-rules test
+      - name: Run NODE-58 Brand Kit units
+        run: pnpm --filter @lumi/web exec vitest run src/lib/brand-kit
+      - name: Run AI Workspace version-freeze regressions
+        run: pnpm --filter @lumi/web exec vitest run src/lib/ai-workspace
+      - name: Run Canvas SDK regressions
+        run: pnpm --filter @lumi/canvas-sdk test
+      - name: Check NODE-58 formatting
+        run: pnpm exec prettier --check "apps/web/src/components/brand-kit/**/*.{ts,tsx,css}" "apps/web/src/lib/brand-kit/**/*.{ts,tsx}" "apps/web/e2e/brand-kit.spec.ts" "apps/web/src/components/ai-workspace/ai-workspace.tsx" "apps/web/src/lib/ai-workspace/{types.ts,workspace-server.ts,workspace-gateway.ts}" "apps/web/src/app/app/brands/page.tsx" "apps/web/src/app/app/projects/[projectId]/workspace/page.tsx"
+
+  brand-kit-build:
+    needs: brand-kit-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      LUMI_SHELL_E2E_AUTH: "0"
+      LUMI_PROJECTS_E2E: "0"
+      LUMI_AI_WORKSPACE_E2E: "0"
+      LUMI_INFINITE_CANVAS_E2E: "0"
+      LUMI_BRAND_KIT_E2E: "0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Build production Next.js app
+        run: pnpm --filter @lumi/web build
+      - name: Assert Brand Kit fixture is not shipped in production client chunks
+        run: |
+          if grep -R --line-number --fixed-strings 'artifact-version-brand-check-1' apps/web/.next/static 2>/dev/null; then
+            echo 'NODE-58 deterministic Brand Kit fixture leaked into production client chunks.' >&2
+            exit 1
+          fi
+
+  brand-kit-browser-e2e:
+    needs: [brand-kit-quality, brand-kit-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 38
+    env:
+      LUMI_SHELL_E2E_AUTH: "1"
+      LUMI_PROJECTS_E2E: "1"
+      LUMI_AI_WORKSPACE_E2E: "1"
+      LUMI_INFINITE_CANVAS_E2E: "1"
+      LUMI_BRAND_KIT_E2E: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run NODE-58 Brand Kit scenarios
+        run: pnpm exec playwright test apps/web/e2e/brand-kit.spec.ts
+      - name: Re-run NODE-57 through NODE-54 browser regressions
+        run: pnpm exec playwright test apps/web/e2e/agent-timeline.spec.ts apps/web/e2e/layers-inspector.spec.ts apps/web/e2e/infinite-canvas.spec.ts apps/web/e2e/ai-workspace.spec.ts

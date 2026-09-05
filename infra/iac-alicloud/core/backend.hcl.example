@@ -1,0 +1,6 @@
+bucket              = "lumi-terraform-state-1153410507483251-cn-hangzhou"
+prefix              = "staging/core"
+key                 = "terraform.tfstate"
+region              = "cn-hangzhou"
+tablestore_endpoint = "https://lumi-tf-3251.cn-hangzhou.ots.aliyuncs.com"
+tablestore_table    = "terraform_lock"

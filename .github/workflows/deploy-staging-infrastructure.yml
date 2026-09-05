@@ -46,15 +46,495 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
+  id-token: write
+  packages: read
+
+env:
+  OPERATION: ${{ inputs.operation }}
+  APPLY_ACK: ${{ inputs.apply_ack }}
+  RELEASE_GIT_SHA: ${{ inputs.release_git_sha }}
+  RUNTIME_IMAGE_SET_RUN_ID: ${{ inputs.runtime_image_set_run_id }}
+  RUNTIME_IMAGE_SET_ARTIFACT_ID: ${{ inputs.runtime_image_set_artifact_id }}
+  RUNTIME_IMAGE_SET_ARTIFACT_DIGEST: ${{ inputs.runtime_image_set_artifact_digest }}
+  PROMOTED_IMAGE_SET_JSON: ${{ inputs.promoted_image_set_json }}
+  VIDEO_MODEL_PROFILE_INPUT: ${{ inputs.video_model_profile }}
+  VIDEO_MODEL_PROFILE_DEFAULT: ${{ vars.VIDEO_MODEL_PROFILE }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+  TF_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+  TF_VAR_account_id: ${{ vars.AWS_ACCOUNT_ID }}
+  TF_VAR_region: ${{ vars.AWS_REGION }}
+  TF_VAR_availability_zones: ${{ vars.AWS_AVAILABILITY_ZONES_JSON }}
+  TF_VAR_postgres_engine_version: ${{ vars.POSTGRES_ENGINE_VERSION }}
+  TF_VAR_redis_engine_version: ${{ vars.REDIS_ENGINE_VERSION }}
+  TF_VAR_rabbitmq_engine_version: ${{ vars.RABBITMQ_ENGINE_VERSION }}
+  TF_VAR_rabbitmq_instance_type: ${{ vars.RABBITMQ_INSTANCE_TYPE }}
+  TF_VAR_core_state_bucket: ${{ vars.TERRAFORM_STATE_BUCKET }}
+  TF_VAR_certificate_arn: ${{ vars.ACM_CERTIFICATE_ARN }}
+  TF_VAR_domain_name: ${{ vars.API_DOMAIN_NAME }}
+  TF_VAR_hosted_zone_id: ${{ vars.ROUTE53_HOSTED_ZONE_ID }}
 
 jobs:
-  default-branch-registry-only:
+  staging:
     runs-on: ubuntu-24.04
-    timeout-minutes: 2
+    timeout-minutes: 90
+    environment: staging
     steps:
-      - name: Refuse default-branch execution
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+
+      - name: Validate protected Staging environment preflight
+        run: python3 scripts/validate_staging_environment_preflight.py
+
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: lumi-staging-${{ github.run_id }}
+
+      - name: Require explicit acknowledgement for mutations
+        if: contains(inputs.operation, 'apply-') || inputs.operation == 'run-migration' || inputs.operation == 'promote-runtime-images'
+        shell: bash
         run: |
-          echo "This file is a workflow_dispatch registry stub only." >&2
-          echo "Run this workflow with ref=release-closure-p0 so GitHub uses the hardened release-ref workflow definition." >&2
-          exit 64
+          set -euo pipefail
+          test "$APPLY_ACK" = "APPLY_STAGING"
+
+      - name: Validate release-bound inputs and resolve immutable deployment images
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/staging-operations/runtime
+
+          if [[ "$OPERATION" != "plan-core" && "$OPERATION" != "apply-core" ]]; then
+            [[ "$RELEASE_GIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+          fi
+
+          if [[ "$OPERATION" == "promote-runtime-images" ]]; then
+            [[ "$RUNTIME_IMAGE_SET_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+            [[ "$RUNTIME_IMAGE_SET_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]
+            [[ "$RUNTIME_IMAGE_SET_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          fi
+
+          if [[ "$OPERATION" == *"-migration" || "$OPERATION" == "run-migration" || "$OPERATION" == *"-app" ]]; then
+            test -n "$PROMOTED_IMAGE_SET_JSON"
+            PROMOTED_IMAGE_SET_JSON="$PROMOTED_IMAGE_SET_JSON" \
+            AWS_ACCOUNT_ID="$TF_VAR_account_id" \
+            AWS_REGION="$AWS_REGION" \
+            python3 - <<'PY'
+          import json
+          import os
+          import re
+
+          payload = json.loads(os.environ["PROMOTED_IMAGE_SET_JSON"])
+          services = {
+              "api": "TF_VAR_api_image",
+              "agent-runtime": "TF_VAR_agent_runtime_image",
+              "model-gateway": "TF_VAR_model_gateway_image",
+              "tool-gateway": "TF_VAR_tool_gateway_image",
+              "worker-media": "TF_VAR_worker_media_image",
+              "sandbox-runtime": "TF_VAR_sandbox_runtime_image",
+          }
+          if not isinstance(payload, dict) or set(payload) != set(services):
+              raise SystemExit("promoted_image_set_json must contain exactly the six runtime services")
+
+          account_id = os.environ["AWS_ACCOUNT_ID"]
+          region = os.environ["AWS_REGION"]
+          if not re.fullmatch(r"\d{12}", account_id):
+              raise SystemExit("AWS_ACCOUNT_ID must be a 12-digit account id")
+          if not region:
+              raise SystemExit("AWS_REGION is required")
+
+          lines = []
+          for service, env_name in services.items():
+              image = payload.get(service)
+              expected_repo = f"{account_id}.dkr.ecr.{region}.amazonaws.com/lumi-staging-{service}"
+              pattern = rf"^{re.escape(expected_repo)}@sha256:[0-9a-f]{{64}}$"
+              if not isinstance(image, str) or not re.fullmatch(pattern, image):
+                  raise SystemExit(f"invalid promoted ECR digest for {service}: {image!r}")
+              lines.append(f"{env_name}={image}")
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+              handle.write("\n".join(lines) + "\n")
+          PY
+          fi
+
+          if [[ "$OPERATION" == *"-app" ]]; then
+            profile="${VIDEO_MODEL_PROFILE_INPUT:-$VIDEO_MODEL_PROFILE_DEFAULT}"
+            test -n "$profile"
+            [[ "$profile" =~ ^[A-Za-z0-9][A-Za-z0-9_.+-]{0,99}$ ]]
+            [[ "$profile" != *"REPLACE"* ]]
+            printf 'TF_VAR_video_model_profile=%s\n' "$profile" >> "$GITHUB_ENV"
+          fi
+
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schema_version": 1,
+              "kind": "LUMI_STAGING_OPERATION_REQUEST_V1",
+              "operation": os.environ["OPERATION"],
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "workflow_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "workflow_head_sha": os.environ["GITHUB_SHA"],
+              "release_git_sha": os.environ.get("RELEASE_GIT_SHA") or None,
+          }
+          Path("reports/staging-operations/runtime/request.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Select Terraform root and state key
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$OPERATION" in
+            plan-core|apply-core|promote-runtime-images)
+              ROOT="infra/iac/environments/staging/core"
+              STATE_KEY="lumi/staging/core/terraform.tfstate"
+              ;;
+            plan-migration|apply-migration|run-migration)
+              ROOT="infra/iac/environments/staging/migration"
+              STATE_KEY="lumi/staging/migration/terraform.tfstate"
+              ;;
+            plan-app|apply-app)
+              ROOT="infra/iac/environments/staging/app"
+              STATE_KEY="lumi/staging/app/terraform.tfstate"
+              ;;
+            *)
+              echo "unsupported operation: $OPERATION" >&2
+              exit 64
+              ;;
+          esac
+          printf 'ROOT=%s\nSTATE_KEY=%s\n' "$ROOT" "$STATE_KEY" >> "$GITHUB_ENV"
+
+      - name: Initialize encrypted remote state
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$TF_STATE_BUCKET"
+          cat > /tmp/backend.hcl <<EOF
+          bucket       = "$TF_STATE_BUCKET"
+          key          = "$STATE_KEY"
+          region       = "$AWS_REGION"
+          encrypt      = true
+          use_lockfile = true
+          EOF
+          terraform -chdir="$ROOT" init -input=false -backend-config=/tmp/backend.hcl
+
+      - name: Promote frozen GHCR runtime image set into Staging ECR without rebuild
+        if: inputs.operation == 'promote-runtime-images'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUNTIME_IMAGE_SET_RUN_ID}" > /tmp/source-run.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${RUNTIME_IMAGE_SET_ARTIFACT_ID}" > /tmp/source-artifact.json
+
+          python3 - <<'PY'
+          import json
+          import os
+
+          run = json.load(open("/tmp/source-run.json", encoding="utf-8"))
+          artifact = json.load(open("/tmp/source-artifact.json", encoding="utf-8"))
+          sha = os.environ["RELEASE_GIT_SHA"]
+          run_id = int(os.environ["RUNTIME_IMAGE_SET_RUN_ID"])
+          artifact_id = int(os.environ["RUNTIME_IMAGE_SET_ARTIFACT_ID"])
+          artifact_digest = os.environ["RUNTIME_IMAGE_SET_ARTIFACT_DIGEST"]
+
+          checks = {
+              "run.id": run.get("id") == run_id,
+              "run.name": run.get("name") == "Build and Freeze RC Runtime Image Set",
+              "run.event": run.get("event") == "workflow_dispatch",
+              "run.status": run.get("status") == "completed",
+              "run.conclusion": run.get("conclusion") == "success",
+              "run.head_sha": run.get("head_sha") == sha,
+              "run.head_branch": run.get("head_branch") == "release-closure-p0",
+              "artifact.id": artifact.get("id") == artifact_id,
+              "artifact.name": artifact.get("name") == f"runtime-image-set-{sha}",
+              "artifact.expired": artifact.get("expired") is False,
+              "artifact.digest": artifact.get("digest") == artifact_digest,
+              "artifact.workflow_run.id": (
+                  isinstance(artifact.get("workflow_run"), dict)
+                  and artifact["workflow_run"].get("id") == run_id
+              ),
+          }
+          failed = [name for name, ok in checks.items() if not ok]
+          if failed:
+              raise SystemExit("runtime image artifact provenance mismatch: " + ", ".join(failed))
+          PY
+
+          rm -rf /tmp/runtime-image-set
+          mkdir -p /tmp/runtime-image-set
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${RUNTIME_IMAGE_SET_ARTIFACT_ID}/zip" \
+            > /tmp/runtime-image-set.zip
+          unzip -q /tmp/runtime-image-set.zip -d /tmp/runtime-image-set
+
+          image_set="$(find /tmp/runtime-image-set -type f -name container-image-set.json -print)"
+          attestation_report="$(find /tmp/runtime-image-set -type f -name attestation-verification.json -print)"
+          test "$(printf '%s\n' "$image_set" | sed '/^$/d' | wc -l)" -eq 1
+          test "$(printf '%s\n' "$attestation_report" | sed '/^$/d' | wc -l)" -eq 1
+          test -f "$image_set"
+          test -f "$attestation_report"
+
+          IMAGE_SET="$image_set" ATTESTATION_REPORT="$attestation_report" python3 - <<'PY'
+          import json
+          import os
+          import re
+
+          image_set = json.load(open(os.environ["IMAGE_SET"], encoding="utf-8"))
+          report = json.load(open(os.environ["ATTESTATION_REPORT"], encoding="utf-8"))
+          sha = os.environ["RELEASE_GIT_SHA"]
+          services = {
+              "api": "ghcr.io/zhangjaky71-stack/lumi-ai-design-os-api",
+              "agent-runtime": "ghcr.io/zhangjaky71-stack/lumi-ai-design-os-agent-runtime",
+              "model-gateway": "ghcr.io/zhangjaky71-stack/lumi-ai-design-os-model-gateway",
+              "tool-gateway": "ghcr.io/zhangjaky71-stack/lumi-ai-design-os-tool-gateway",
+              "worker-media": "ghcr.io/zhangjaky71-stack/lumi-ai-design-os-worker-media",
+              "sandbox-runtime": "ghcr.io/zhangjaky71-stack/lumi-ai-design-os-sandbox-runtime",
+          }
+
+          if image_set.get("schema_version") != 1 or image_set.get("kind") != "LUMI_RUNTIME_IMAGE_SET_V1":
+              raise SystemExit("frozen runtime image-set schema/kind mismatch")
+          if image_set.get("release_candidate", {}).get("git_sha") != sha:
+              raise SystemExit("frozen runtime image-set release SHA mismatch")
+          att = image_set.get("attestation_verification", {})
+          if att.get("status") != "PASS" or att.get("runtime_count") != 6:
+              raise SystemExit("frozen runtime image-set attestation summary is not PASS/6")
+          if report.get("status") != "PASS" or report.get("runtime_count") != 6:
+              raise SystemExit("runtime attestation report is not PASS/6")
+
+          images = image_set.get("container_image_set", {}).get("images")
+          if not isinstance(images, dict) or set(images) != set(services):
+              raise SystemExit("frozen runtime image-set must contain exactly six services")
+          for service, prefix in services.items():
+              image = images.get(service)
+              if not isinstance(image, str) or not re.fullmatch(
+                  re.escape(prefix) + r"@sha256:[0-9a-f]{{64}}", image
+              ):
+                  raise SystemExit(f"invalid frozen GHCR image for {service}: {image!r}")
+          PY
+
+          terraform -chdir="$ROOT" output -json runtime_repository_urls > /tmp/runtime-repositories.json
+          python3 - <<'PY'
+          import json
+          import os
+
+          repos = json.load(open("/tmp/runtime-repositories.json", encoding="utf-8"))
+          services = {
+              "api",
+              "agent-runtime",
+              "model-gateway",
+              "tool-gateway",
+              "worker-media",
+              "sandbox-runtime",
+          }
+          if not isinstance(repos, dict) or set(repos) != services:
+              raise SystemExit("Staging core runtime_repository_urls must contain exactly six services")
+          account = os.environ["TF_VAR_account_id"]
+          region = os.environ["AWS_REGION"]
+          for service, url in repos.items():
+              expected = f"{account}.dkr.ecr.{region}.amazonaws.com/lumi-staging-{service}"
+              if url != expected:
+                  raise SystemExit(f"unexpected ECR repository URL for {service}: {url!r}")
+          PY
+
+          registry_host="$(python3 -c 'import json; print(next(iter(json.load(open("/tmp/runtime-repositories.json", encoding="utf-8")).values())).split("/", 1)[0])')"
+          test -n "$registry_host"
+
+          printf '%s' "$GH_TOKEN" | skopeo login --username "$GITHUB_ACTOR" --password-stdin ghcr.io
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | skopeo login --username AWS --password-stdin "$registry_host"
+
+          rm -f /tmp/promotions.tsv
+          while IFS=$'\t' read -r service source_image; do
+            source_digest="${source_image##*@}"
+            repo_url="$(jq -r --arg service "$service" '.[$service]' /tmp/runtime-repositories.json)"
+            test -n "$repo_url"
+            test "$repo_url" != "null"
+            repo_name="${repo_url#*/}"
+            tag="rc-${RELEASE_GIT_SHA}"
+            copy_state="COPIED"
+
+            if aws ecr describe-images \
+              --region "$AWS_REGION" \
+              --repository-name "$repo_name" \
+              --image-ids imageTag="$tag" \
+              --output json > /tmp/existing-image.json 2> /tmp/existing-image.err; then
+              existing_digest="$(jq -r '.imageDetails[0].imageDigest' /tmp/existing-image.json)"
+              test "$existing_digest" = "$source_digest"
+              copy_state="REUSED_IDENTICAL"
+            else
+              if ! grep -q "ImageNotFoundException" /tmp/existing-image.err; then
+                cat /tmp/existing-image.err >&2
+                exit 1
+              fi
+              skopeo copy \
+                --all \
+                --preserve-digests \
+                --retry-times 3 \
+                "docker://${source_image}" \
+                "docker://${repo_url}:${tag}"
+            fi
+
+            destination_digest="$(aws ecr describe-images \
+              --region "$AWS_REGION" \
+              --repository-name "$repo_name" \
+              --image-ids imageTag="$tag" \
+              --query 'imageDetails[0].imageDigest' \
+              --output text)"
+            test "$destination_digest" = "$source_digest"
+
+            skopeo inspect --raw "docker://${repo_url}@${destination_digest}" > /tmp/destination-manifest.raw
+            raw_digest="sha256:$(sha256sum /tmp/destination-manifest.raw | awk '{print $1}')"
+            test "$raw_digest" = "$source_digest"
+
+            printf '%s\t%s\t%s@%s\t%s\t%s\n' \
+              "$service" \
+              "$source_image" \
+              "$repo_url" \
+              "$destination_digest" \
+              "$copy_state" \
+              "$raw_digest" \
+              >> /tmp/promotions.tsv
+          done < <(
+            jq -r '.container_image_set.images | to_entries | sort_by(.key)[] | [.key, .value] | @tsv' "$image_set"
+          )
+
+          test "$(wc -l < /tmp/promotions.tsv)" -eq 6
+          mkdir -p "reports/staging-runtime-image-promotion/${RELEASE_GIT_SHA}"
+          cp /tmp/source-run.json "reports/staging-runtime-image-promotion/${RELEASE_GIT_SHA}/source-run.json"
+          cp /tmp/source-artifact.json "reports/staging-runtime-image-promotion/${RELEASE_GIT_SHA}/source-artifact.json"
+
+          IMAGE_SET="$image_set" python3 - <<'PY'
+          import datetime
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("reports/staging-runtime-image-promotion") / os.environ["RELEASE_GIT_SHA"]
+          promoted = {}
+          records = {}
+          for line in Path("/tmp/promotions.tsv").read_text(encoding="utf-8").splitlines():
+              service, source, destination, state, raw_digest = line.split("\t")
+              promoted[service] = destination
+              records[service] = {
+                  "source": source,
+                  "source_digest": source.rsplit("@", 1)[1],
+                  "destination": destination,
+                  "destination_digest": destination.rsplit("@", 1)[1],
+                  "copy_state": state,
+                  "destination_manifest_raw_digest": raw_digest,
+                  "digest_preserved": source.rsplit("@", 1)[1] == destination.rsplit("@", 1)[1] == raw_digest,
+              }
+
+          services = {
+              "api",
+              "agent-runtime",
+              "model-gateway",
+              "tool-gateway",
+              "worker-media",
+              "sandbox-runtime",
+          }
+          if set(promoted) != services or not all(item["digest_preserved"] for item in records.values()):
+              raise SystemExit("promotion did not preserve all six runtime digests")
+
+          evidence = {
+              "schema_version": 1,
+              "kind": "LUMI_STAGING_RUNTIME_IMAGE_PROMOTION_V1",
+              "status": "PASS",
+              "release_git_sha": os.environ["RELEASE_GIT_SHA"],
+              "source_runtime_image_set": {
+                  "workflow_run_id": int(os.environ["RUNTIME_IMAGE_SET_RUN_ID"]),
+                  "artifact_id": int(os.environ["RUNTIME_IMAGE_SET_ARTIFACT_ID"]),
+                  "artifact_digest": os.environ["RUNTIME_IMAGE_SET_ARTIFACT_DIGEST"],
+              },
+              "producer": {
+                  "repository": os.environ["GITHUB_REPOSITORY"],
+                  "workflow": os.environ["GITHUB_WORKFLOW"],
+                  "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+                  "workflow_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+                  "workflow_head_sha": os.environ["GITHUB_SHA"],
+                  "workflow_ref": os.environ["GITHUB_REF"],
+              },
+              "captured_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "tooling": {
+                  "skopeo_version": os.popen("skopeo --version").read().strip(),
+              },
+              "images": records,
+          }
+
+          (root / "promoted-image-set.json").write_text(
+              json.dumps(promoted, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          (root / "promotion-evidence.json").write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          python3 -m json.tool \
+            "reports/staging-runtime-image-promotion/${RELEASE_GIT_SHA}/promotion-evidence.json" >/dev/null
+          python3 -m json.tool \
+            "reports/staging-runtime-image-promotion/${RELEASE_GIT_SHA}/promoted-image-set.json" >/dev/null
+
+      - name: Upload immutable Staging runtime image promotion evidence
+        if: inputs.operation == 'promote-runtime-images'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: staging-runtime-image-promotion-${{ inputs.release_git_sha }}
+          path: reports/staging-runtime-image-promotion/${{ inputs.release_git_sha }}/
+          if-no-files-found: error
+          retention-days: 180
+
+      - name: Terraform plan
+        if: startsWith(inputs.operation, 'plan-') || startsWith(inputs.operation, 'apply-')
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform -chdir="$ROOT" plan -input=false -out=tfplan
+          terraform -chdir="$ROOT" show -no-color tfplan \
+            > reports/staging-operations/runtime/terraform-plan.txt
+
+      - name: Terraform apply reviewed plan
+        if: startsWith(inputs.operation, 'apply-')
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform -chdir="$ROOT" apply -input=false -auto-approve tfplan
+
+      - name: Run one-shot migration and require exit zero
+        if: inputs.operation == 'run-migration'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/production-deployments/runtime
+          bash scripts/ecs-run-one-shot-task.sh \
+            "$ROOT" \
+            "staging-${GITHUB_RUN_ID}" \
+            reports/production-deployments/runtime/staging-migration.json
+
+      - name: Upload operation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: staging-infrastructure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            reports/staging-operations/runtime/
+            reports/production-deployments/runtime/
+          if-no-files-found: warn
+          retention-days: 30

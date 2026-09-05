@@ -1,0 +1,110 @@
+name: Design IR Runtime
+
+on:
+  pull_request:
+    paths:
+      - "packages/design-ir/**"
+      - "services/domain/src/lumi_domain/design_ir_*.py"
+      - "services/domain/tests/test_design_ir_*.py"
+      - "fixtures/design-ir/**"
+      - "scripts/validate_design_ir_runtime.py"
+      - "scripts/benchmark_design_ir_runtime.py"
+      - "docs/runtime/DESIGN-IR-RUNTIME-V1.md"
+      - "reports/nodes/NODE-38/**"
+      - ".github/workflows/design-ir-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  design-ir-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck Design IR package
+        run: pnpm --filter @lumi/design-ir typecheck
+      - name: Run TypeScript conformance tests
+        run: pnpm --filter @lumi/design-ir test
+      - name: Compile Python runtime
+        run: >-
+          python -m compileall -q
+          services/domain/src/lumi_domain/design_ir_runtime.py
+          services/domain/src/lumi_domain/design_ir_canonical.py
+          services/domain/src/lumi_domain/design_ir_document.py
+          services/domain/tests/test_design_ir_runtime.py
+          services/domain/tests/test_design_ir_document.py
+          scripts/validate_design_ir_runtime.py
+          scripts/benchmark_design_ir_runtime.py
+      - name: Validate frozen NODE-13 operation contract
+        run: >-
+          PYTHONPATH=services/domain/src
+          python scripts/validate_design_ir_runtime.py
+
+  design-ir-quality:
+    needs: design-ir-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen Python workspace install
+        run: uv sync --all-packages --frozen
+      - name: Python conformance and property tests
+        run: >-
+          uv run pytest
+          services/domain/tests/test_design_ir_runtime.py
+          services/domain/tests/test_design_ir_document.py
+          -q
+      - name: Ruff gate
+        run: >-
+          uv run ruff check
+          services/domain/src/lumi_domain/design_ir_runtime.py
+          services/domain/src/lumi_domain/design_ir_canonical.py
+          services/domain/src/lumi_domain/design_ir_document.py
+          services/domain/tests/test_design_ir_runtime.py
+          services/domain/tests/test_design_ir_document.py
+          scripts/validate_design_ir_runtime.py
+          scripts/benchmark_design_ir_runtime.py
+      - name: Pyright gate
+        run: >-
+          uv run pyright
+          services/domain/src/lumi_domain/design_ir_runtime.py
+          services/domain/src/lumi_domain/design_ir_canonical.py
+          services/domain/src/lumi_domain/design_ir_document.py
+          services/domain/tests/test_design_ir_runtime.py
+          services/domain/tests/test_design_ir_document.py
+
+  design-ir-benchmark:
+    needs: design-ir-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run 2k-node / 100-operation benchmark
+        env:
+          LUMI_DESIGN_IR_BENCHMARK_BUDGET_MS: "1500"
+        run: >-
+          PYTHONPATH=services/domain/src
+          python scripts/benchmark_design_ir_runtime.py

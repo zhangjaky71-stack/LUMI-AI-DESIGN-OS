@@ -1,0 +1,48 @@
+name: Design IR Contract
+
+on:
+  pull_request:
+    paths:
+      - "contracts/design-ir/**"
+      - "services/design-ir/**"
+      - "scripts/generate_design_ir_types.py"
+      - "scripts/validate_design_ir_contracts.py"
+      - "docs/design-ir/**"
+      - ".github/workflows/design-ir-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  design-ir-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile reference runtime and generated Python types
+        run: |
+          python -m compileall -q services/design-ir/src contracts/design-ir/v1/generated/types.py
+      - name: Validate manifest, schemas and fixture corpus
+        run: python scripts/validate_design_ir_contracts.py
+      - name: Check generated Python and TypeScript types
+        run: python scripts/generate_design_ir_types.py --check
+      - name: Reference runtime tests
+        env:
+          PYTHONPATH: services/design-ir/src
+        run: python -m unittest discover -s services/design-ir/tests -p 'test_*.py' -v
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.4.0 --activate
+      - name: Frozen frontend toolchain install
+        run: pnpm install --frozen-lockfile
+      - name: Compile generated TypeScript contract
+        run: pnpm exec tsc --noEmit --strict --target ES2022 --module ESNext contracts/design-ir/v1/generated/types.ts

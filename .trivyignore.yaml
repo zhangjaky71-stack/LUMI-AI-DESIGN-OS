@@ -1,0 +1,15 @@
+misconfigurations:
+  - id: AVD-DS-0002
+    paths:
+      - infra/docker/postgres-recovery/Dockerfile
+    statement: >-
+      The recovery image starts as root only to create, chown, and chmod the WAL archive directory.
+      Its wrapper then execs the upstream PostgreSQL docker-entrypoint, which owns the runtime
+      privilege drop to the postgres user; this exception is limited to this recovery Dockerfile.
+  - id: KSV-0109
+    paths:
+      - infra/iac-alicloud/k8s/base/configmap.yaml
+    statement: >-
+      LUMI_SANDBOX_OSS_SECRET_NAME is an opaque Kubernetes Secret resource name, not a secret value.
+      The actual OSS credentials are provisioned separately in lumi-oss-sandbox and are never stored
+      in this ConfigMap.

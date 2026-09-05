@@ -1,66 +1,93 @@
 # NODE-63 — Billing, Plans, Credits & Payment Integration
 
 > Phase: 8 SaaS & Collaboration  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **IMPLEMENTED / VALIDATING / NOT COMPLETE**  
 > Priority: P1 / COMMERCIALIZATION  
 > Depends on: NODE-16, NODE-27, NODE-20  
-> Produces: Plan/Entitlement、Credits、Subscription、PaymentProvider Adapter、Webhook幂等与账单UX
+> Produces: PlanVersion/Entitlement、immutable Credits、Subscription、Mock Payment Provider、webhook idempotency、Billing UX
 
----
+## 1. Goal
 
-## 1. 目标
+Commercialize LUMI without mixing provider costs, customer usage, customer charges and product entitlements. NODE-63 implements the customer-side billing domain while treating NODE-27 Provider Cost Ledger as a separate read-only integration port.
 
-把内部真实 Provider Cost 转换成可商业化的套餐、额度、订阅和客户收费系统，同时把支付卡数据留给合规支付Provider，不让 LUMI 自己处理敏感卡号。
-
-## 2. 严格区分
+## 2. Canonical truth separation
 
 ```text
-Provider Cost Ledger  = LUMI付给AI/基础设施的成本
-Customer Usage        = 用户消耗的产品单位
-Customer Billing      = 用户应付金额/订阅
-Credits/Entitlements  = 产品使用权
+Provider Cost Ledger  != Customer Usage
+Customer Usage        != Customer Billing
+Customer Billing      != Credits / Entitlements
 ```
 
-NODE-27是真实成本基础；NODE-63不能覆盖它。
+NODE-63 never rewrites or fabricates NODE-27 provider-cost truth.
 
-## 3. Domain
+## 3. Product surface
+
+`/app/billing` replaces the App Shell placeholder with:
+
+- exact current PlanVersion and normalized Subscription state;
+- immutable Credit Ledger balance/entries;
+- included-credit usage projection;
+- entitlement projection;
+- available PlanVersions;
+- Hosted Checkout / Hosted Payment Portal actions;
+- cancel-at-period-end;
+- invoice references with exact PlanVersion;
+- explicit provider-cost reconciliation availability;
+- responsive mobile layout.
+
+The browser never collects raw payment-instrument credentials. Hosted billing and invoice URLs are rendered only when HTTPS.
+
+## 4. Domain
+
+Implemented in `lumi_project_core.billing`:
+
+- `PlanVersion`;
+- `BillingAccount`;
+- `Subscription`;
+- `CreditLedgerEntry`;
+- `PricingPolicyVersion` / `UsagePricingRule`;
+- `BillingUsageRecord`;
+- `InvoiceRef`;
+- `PaymentEvent` / `NormalizedPaymentEvent`;
+- `PaymentProviderPort` and `MockPaymentProvider`;
+- `ProviderCostPort`;
+- `BillingEngine`.
+
+## 5. Exact PlanVersion semantics
+
+Plan versions are immutable. Existing subscriptions retain exact `plan_version_id`; publishing v3 changes neither price nor entitlement policy for a subscription pinned to v2 until an explicit migration occurs.
+
+Every invoice also stores exact `plan_version_id`. A delayed v2 invoice received after the subscription has moved to v3 must grant the v2 credit amount, not whatever the current subscription happens to contain.
+
+This prevents asynchronous payment delivery from silently changing commercial semantics.
+
+## 6. Entitlements
+
+Feature code queries Billing/Entitlement service keys such as:
 
 ```text
-Plan
-PlanVersion
-Entitlement
-Subscription
-BillingAccount
-CreditWallet
-CreditLedger
-InvoiceRef
-PaymentCustomerRef
-PaymentEvent
+video_enabled
+max_concurrent_generations
+team_seats
+brand_kits
+priority_routing
 ```
 
-## 4. Plan Versioning
+No `if plan == "pro"` policy is introduced.
 
-套餐变价/变权益创建新PlanVersion。已有subscription保留其price/entitlement策略直到迁移。
-
-## 5. Entitlements
-
-例如：
+P0 entitlement-bearing states are:
 
 ```text
-monthly credits
-max concurrent generations
-max projects/storage
-video enabled
-team seats
-brand kits
-priority routing
+TRIALING
+ACTIVE
+CANCEL_AT_PERIOD_END
 ```
 
-功能代码查询EntitlementService，不散落 `if plan == pro`。
+`PAST_DUE`, `CANCELLED`, and `INCOMPLETE` fail closed unless a future explicit grace/postpaid policy says otherwise.
 
-## 6. Credits
+## 7. Immutable Credit Ledger
 
-Credit Ledger immutable：
+Ledger types:
 
 ```text
 GRANT
@@ -71,51 +98,66 @@ ADJUSTMENT
 REVERSAL
 ```
 
-余额是ledger projection，可缓存但可从ledger重建。
+Balance is a rebuildable projection from immutable rows.
 
-## 7. Usage Conversion
+Two correctness boundaries are explicit:
 
-Provider cost与credits不是1:1。建立 versioned pricing policy：
+1. `append_credit(... require_non_negative=True)` atomically blocks consumption that would make the balance negative;
+2. `append_refund(...)` atomically validates the original CONSUME, prior refund total, and new REFUND append so concurrent refunds cannot exceed the original debit.
+
+Refunds never mutate or delete the original CONSUME.
+
+## 8. Versioned usage conversion
+
+Credits are not provider dollars. `PricingPolicyVersion` maps Decimal/numeric usage quantities to integer credits using versioned rules and basis-point multipliers.
+
+Every `BillingUsageRecord` retains:
 
 ```text
-image generation = N credits/profile
-video second = ...
-premium model multiplier
+usage_record_id
+usage_key / quantity / unit
+credits_consumed
+pricing_policy_version
+credit_entry_id
+provider_cost_entry_ref?
 ```
 
-产品可平滑成本波动；实际毛利仍用Provider Cost对比Customer Revenue。
+The optional provider-cost reference is only an opaque reconciliation link to NODE-27. Reusing one usage idempotency key for a different usage record fails closed.
 
-## 8. Payment Provider Adapter
+## 9. Payment Provider boundary
+
+P0 implements `MockPaymentProvider` for deterministic engineering and tests:
 
 ```text
 create_customer
-create_checkout/subscription
+create_checkout
 create_portal_session
 get_subscription
-cancel/update
+cancel_subscription
 verify_webhook
 ```
 
-首个实现可选成熟支付服务；具体账户/API Key在实施时由用户完成无法代办的商户开通。工程先以 MockPaymentProvider完成全部流程。
+Checkout and payment-method management stay on Hosted Payment Provider pages. LUMI stores provider customer/subscription/invoice references, not raw payment credentials.
 
-## 9. Webhooks
+A real provider sandbox remains a production integration gate because merchant onboarding and secret provisioning cannot be fabricated by repository code.
 
-支付Provider是异步真相之一：
+## 10. Webhook correctness
+
+Canonical webhook path:
 
 ```text
 verify signature
-→ persist raw event ref/hash
-→ idempotency by provider_event_id
-→ normalize event
-→ transaction update subscription/invoice
-→ audit
+→ normalize + validate provider state
+→ hash raw payload
+→ idempotency by (provider, provider_event_id)
+→ reject same event id with different payload hash
+→ transactional subscription / invoice / credit effect
+→ mark processed
 ```
 
-重复webhook不能重复发credits。
+Duplicate delivery cannot double-grant credits. `INVOICE_PAID` additionally uses an immutable ledger idempotency key containing provider, invoice reference and exact PlanVersion.
 
-## 10. Subscription States
-
-内部normalize：
+Normalized subscription states:
 
 ```text
 TRIALING
@@ -126,57 +168,108 @@ CANCELLED
 INCOMPLETE
 ```
 
-Provider-specific更多状态保存在metadata，不泄漏业务所有地方。
+Provider-specific unknown states do not leak into the domain; the adapter must normalize or fail closed.
 
-## 11. Billing UX
+## 11. No negative surprise
 
-- current plan；
-- usage/credits；
-- invoices link；
-- upgrade/downgrade；
-- payment portal；
-- seats P1。
+Paid generation/tool/model paths must quote and atomically consume credits before invoking an expensive provider. Insufficient balance returns `BILLING_INSUFFICIENT_CREDITS` before the paid operation starts.
 
-支付页优先跳Hosted Checkout/Portal，减少PCI范围。
+Negative balances are not an implicit feature. Enterprise postpaid requires a future explicit contract/policy.
 
-## 12. No Negative Surprise
+## 12. Persistence
 
-昂贵任务在额度不足前阻断/提示；不允许任务完成后才发现账户余额负数，除明确enterprise postpaid contract。
+`db/migrations/0013_billing.sql` adds:
 
-## 13. Refund / Adjustment
+- `billing_plan_versions`;
+- `billing_pricing_policies`;
+- `billing_accounts`;
+- `billing_subscriptions`;
+- `billing_credit_ledger`;
+- `billing_usage_records`;
+- `billing_invoices`;
+- `billing_payment_events`;
+- `billing_credit_balances` projection view.
 
-失败生成是否退credit由versioned policy决定；使用ledger REFUND/ADJUSTMENT，不改旧CONSUME。
+`billing_invoices.plan_version_id` is a foreign key to the immutable PlanVersion. Payment events persist provider event identity, organization, event type and payload hash—not raw card data.
 
-## 14. Tax / Invoice
+The production repository must implement webhook, consume and refund limits with real database transaction/locking semantics.
 
-税务计算和正式invoice尽量交支付Provider/税务服务；LUMI保存references/status。不同国家法规实施前需法务/会计核验，不在代码里硬编码税率。
+## 13. API
 
-## 15. Tests
+```text
+GET  /billing
+POST /billing/checkout
+POST /billing/portal
+POST /billing/subscription:cancel
+POST /billing/usage:quote
+POST /billing/webhooks/{provider}
+```
 
-- subscription create/mock；
-- duplicate webhook；
-- signature invalid；
-- credit concurrent consumption；
-- refund；
-- plan version change；
-- insufficient credits；
-- cancelled subscription entitlement transition。
+User-facing reads require `billing.read`; customer-management actions require `billing.manage`; provider webhooks use provider signature verification rather than browser-session authorization.
 
-## 16. 验收标准
+## 14. Provider cost reconciliation
 
-- [ ] Mock支付完整E2E，无真实商户也能开发。
-- [ ] Payment webhook幂等。
-- [ ] Credits immutable ledger。
-- [ ] Entitlement不靠plan名称散落判断。
-- [ ] 用户卡数据不经过LUMI业务后端。
-- [ ] Provider cost与Customer billing可对账。
+`ProviderCostPort` is read-only. Customer paid-invoice revenue is aggregated independently from provider costs, and gross-margin projection is exposed only when a real NODE-27 runtime adapter exists.
 
-## 17. Definition of Done
+The current repository has the NODE-27 specification but not a completed provider-cost runtime; NODE-63 therefore reports reconciliation unavailable rather than inventing cost values.
+
+## 15. Tests staged
+
+- immutable PlanVersion and pinned Subscription;
+- delayed old-plan invoice grants old-plan credits;
+- signed webhook / invalid signature / invalid normalized state;
+- duplicate webhook no double grant;
+- same provider event id + different payload hash collision;
+- concurrent credit consumption never negative;
+- usage idempotency-key reuse rejection;
+- refund preserves old CONSUME;
+- concurrent refunds cannot over-refund;
+- cancellation entitlement transition;
+- Hosted Checkout/Portal without local payment form;
+- provider cost vs customer revenue separation;
+- API permission/hosted session/webhook tests;
+- PostgreSQL schema/projection tests;
+- frontend contract/gateway tests and HTTPS-link guard;
+- browser Billing UX/mobile;
+- prior-node regressions.
+
+## 16. Production integration gates
+
+1. durable PostgreSQL `BillingRepository` with transaction/locking semantics;
+2. deployed NODE-16 actor resolver for `billing.read` / `billing.manage`;
+3. NODE-27 real Provider Cost Ledger runtime + reconciliation adapter;
+4. paid generation/model/tool paths consume credits before provider invocation;
+5. versioned generation-failure refund policy integration;
+6. real Payment Provider sandbox + merchant account + secret configuration;
+7. webhook retry/reconciliation operations and provider-specific replay policy;
+8. if YEAR plans are enabled, explicit monthly-credit scheduler/policy rather than assuming annual invoice cadence equals credit cadence;
+9. jurisdiction-specific tax/invoice configuration reviewed by finance/legal;
+10. hosted pinned CI observed green.
+
+## 17. Acceptance
+
+- [x] Mock payment engineering flow implemented;
+- [x] webhook signature/idempotency/hash collision contract;
+- [x] immutable Credit Ledger;
+- [x] atomic non-negative consumption;
+- [x] atomic refund-limit contract;
+- [x] exact invoice PlanVersion semantics;
+- [x] entitlement service by key, not plan-name branches;
+- [x] hosted payment boundary; raw payment credentials excluded;
+- [x] provider cost/customer revenue reconciliation port;
+- [x] Billing UX implemented;
+- [x] validation staged;
+- [ ] production adapters connected;
+- [ ] real payment sandbox accepted;
+- [ ] hosted pinned gates green.
+
+## 18. Definition of Done
 
 ```text
 billing domain + mock provider implemented
-+ webhook/idempotency/credit tests green
++ webhook/idempotency/credit/refund tests observed green
++ production transaction adapters connected
 + real provider only after sandbox acceptance
 ```
 
-下一节点：NODE-64 Admin Console。
+Next: **NODE-64 — Admin Console**.

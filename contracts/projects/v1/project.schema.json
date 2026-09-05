@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumi.dev/projects/v1/project.schema.json",
+  "title": "LUMI Project Core V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "organization_id",
+    "workspace_id",
+    "name",
+    "status",
+    "brief",
+    "brief_version",
+    "brand_id",
+    "active_branch_id",
+    "settings",
+    "version",
+    "created_at",
+    "updated_at",
+    "deleted_at"
+  ],
+  "properties": {
+    "id": {"type":"string","minLength":1,"maxLength":160},
+    "organization_id": {"type":"string","minLength":1,"maxLength":160},
+    "workspace_id": {"type":"string","minLength":1,"maxLength":160},
+    "name": {"type":"string","minLength":1,"maxLength":300},
+    "status": {"enum":["draft","active","paused","archived"]},
+    "brief": {"$ref":"project-brief.schema.json"},
+    "brief_version": {"type":"integer","minimum":1},
+    "brand_id": {"type":["string","null"]},
+    "active_branch_id": {"type":["string","null"]},
+    "settings": {"$ref":"project-settings.schema.json"},
+    "version": {"type":"integer","minimum":1},
+    "created_at": {"type":"string","format":"date-time"},
+    "updated_at": {"type":"string","format":"date-time"},
+    "deleted_at": {"type":["string","null"],"format":"date-time"}
+  }
+}

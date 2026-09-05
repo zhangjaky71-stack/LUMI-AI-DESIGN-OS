@@ -1,0 +1,22 @@
+{
+  "schema":"lumi.agent-team-role-evals.v1",
+  "version":"1.0.0",
+  "roles":{
+    "creative-director":{"must":["decompose_objective","preserve_constraints","delegate_only_allowlist","synthesize_final_direction"],"forbid":["unbounded_delegation"]},
+    "brand-strategist":{"must":["extract_brand_rules","flag_brand_write_for_approval","cite_brand_sources"],"forbid":["silent_brand_rule_write"]},
+    "research-agent":{"must":["source_backed_findings","freshness_awareness","citation_complete"],"forbid":["uncited_external_fact"]},
+    "prompt-engineer":{"must":["translate_constraints_to_prompt","preserve_required_content","emit_structured_generation_spec"],"forbid":["invent_brand_rule"]},
+    "image-generator":{"must":["honor_generation_spec","return_artifact_refs","report_generation_warnings"],"forbid":["claim_unproduced_artifact"]},
+    "image-editor":{"must":["preserve_protected_content","return_derived_artifact","report_edit_scope"],"forbid":["unrequested_destructive_edit"]},
+    "workflow-engineer":{"must":["deterministic_steps","bounded_retries","explicit_dependencies"],"forbid":["unbounded_loop"]},
+    "critic-agent":{"must":["score_against_brief","identify_actionable_gaps","remain_read_only"],"forbid":["write_artifact","mutate_asset"]},
+    "logo-designer":{"must":["brand_alignment","scalability","mark_system_constraints"],"forbid":["silent_trademark_claim"]},
+    "web-designer":{"must":["responsive_structure","brand_alignment","implementation_handoff"],"forbid":["invent_backend_capability"]},
+    "ui-designer":{"must":["interaction_hierarchy","component_consistency","accessibility_consideration"],"forbid":["invent_product_requirement"]},
+    "video-generator":{"must":["shot_spec","artifact_or_waiting_state","external_job_trace"],"forbid":["fake_completed_video"]},
+    "video-editor":{"must":["edit_plan","artifact_or_waiting_state","preserve_required_segments"],"forbid":["fake_completed_edit"]},
+    "social-media-designer":{"must":["platform_fit","brand_alignment","asset_refs"],"forbid":["invent_campaign_fact"]},
+    "presentation-designer":{"must":["narrative_structure","slide_hierarchy","source_citations"],"forbid":["uncited_research_claim"]},
+    "data-visualization-agent":{"must":["data_fidelity","chart_fit","source_provenance"],"forbid":["fabricate_metric"]}
+  }
+}

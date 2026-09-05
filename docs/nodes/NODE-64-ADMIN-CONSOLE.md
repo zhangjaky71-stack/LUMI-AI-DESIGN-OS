@@ -1,168 +1,131 @@
-# NODE-64 — Admin & Operations Console
+# NODE-64 — Admin Console
 
 > Phase: 8 SaaS & Collaboration  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **IMPLEMENTED / VALIDATING / NOT COMPLETE**  
 > Priority: P1 / OPERATIONS  
-> Depends on: NODE-16, NODE-19, NODE-22～27, NODE-30～33, NODE-42, NODE-63  
-> Produces: 内部Admin UI、Run/Provider/Cost/DLQ/Registry/Feature Flags运维入口
+> Depends on: NODE-16, NODE-19, NODE-24, NODE-27, NODE-30, NODE-31, NODE-63  
+> Produces: Platform Admin principal、safe operations service ports、Admin API、internal operations console
 
----
+## 1. Goal
 
-## 1. 目标
+Provide an internal LUMI operations console without turning support access into a privileged backdoor. Platform Admin is explicitly separate from customer Organization roles and dangerous operations must pass permission, service, confirmation and audit boundaries.
 
-生产系统必须可运营。Admin不是给普通客户的“设置页”，而是内部高权限控制面，用来处理失败任务、成本、Provider状态、Agent版本、DLQ、用户/组织支持与安全事件。
+## 2. Platform roles and permissions
 
-## 2. 独立权限
+Implemented roles:
+- SUPPORT_READ
+- SUPPORT_WRITE_LIMITED
+- BILLING_ADMIN
+- OPS
+- MODEL_ADMIN
+- SECURITY_AUDITOR
+- PRIVACY_ADMIN
 
-Admin角色：
+Canonical permissions include `admin.user.read`, `admin.user.manage_limited`, `admin.billing.read`, `admin.billing.adjust`, `admin.provider.read`, `admin.provider.manage`, `admin.queue.read`, `admin.queue.requeue`, `admin.agent_registry.manage`, `admin.skill_registry.manage`, `admin.audit.read`, `admin.privacy.execute`.
 
-```text
-SUPPORT_READ
-OPS
-BILLING_ADMIN
-AI_CONFIG_ADMIN
-SECURITY_ADMIN
-SUPER_ADMIN (极少)
-```
+A tenant `OWNER` / `ADMIN` does not imply any of these permissions. The App Shell exposes `/app/admin` only when a separately resolved `platform_admin` principal exists; API authorization remains authoritative.
 
-不能因为Organization OWNER就获得平台Admin。
+## 3. Product surface
 
-## 3. Core Pages
+`/app/admin` implements:
+- Overview: active users/orgs, daily generations, failure rate, provider health, queue depth, cost today, critical alerts;
+- Users & Organizations: masked support-safe identity, memberships, recent error codes, explicit PII reveal, readonly View-as;
+- Runs: run/task state, provider/tool/error/cost and guarded retry;
+- Providers: health, circuit, synthetic health, routing weight, pricing snapshot and temporary disable;
+- Queue: state/DLQ, attempts, immutable payload ref/hash and original-payload requeue;
+- Registry: Agent/Skill version, traffic, readonly deploy diff and guarded enable/disable through registry service;
+- Billing: customer billing support with immutable NODE-63 credit adjustments;
+- Audit: safe event projection; durable NODE-65 integration remains pending.
 
-```text
-Dashboard
-Organizations
-Users
-Projects
-Agent Runs
-Tasks
-Artifacts
-Providers / Model Registry
-Agent Registry
-Skill Registry
-Recipes
-Costs / Usage
-Queues / DLQ
-Feature Flags
-Billing
-Audit
-Incidents
-```
+## 4. Privileged action contract
 
-## 4. Dashboard
+Sensitive action confirmation includes exact action summary, exact impact scope, reason, ticket/reference and literal `CONFIRM`. The server recomputes expected summary and scope to reject stale confirmation.
 
-显示聚合：
+Provider disable is limited to a future expiry no more than 24 hours. Queue requeue passes the pre-existing payload ref and SHA-256 as compare-and-set expectations; there is no payload editor.
 
-- active/failing runs；
-- provider health；
-- queue depth；
-- cost spike；
-- quality regression；
-- billing/webhook backlog；
-- critical alerts。
+## 5. PII and View-as
 
-## 5. Run Inspector
+Email and phone are masked by default. Full reveal requires `admin.privacy.execute`, reason and ticket, and emits an audit event without copying revealed values into audit metadata.
 
-可查看：
+View-as is readonly, target organization scoped, max 15 minutes and audited at start/end. V1 exposes no mutation route while View-as is active.
 
-```text
-run/task state
-safe trace links
-agent/recipe/model versions
-artifacts
-errors/retries/fallbacks
-budget/cost
-approval state
-```
+## 6. Billing safety
 
-普通支持人员不默认看完整用户prompt/私人资产内容。
+`Node63CreditLedgerAdapter` appends an immutable `ADJUSTMENT` entry using NODE-63 `BillingRepository.append_credit`. Negative adjustments use the same non-negative balance guard. No admin API can assign a credit balance or mutate arbitrary payment-provider subscription/invoice state.
 
-## 6. DLQ
+## 7. Audit handoff
 
-显示failure summary，可执行：
+All admin writes, PII reveal and View-as emit structured `AdminAuditEvent` records to `AdminAuditSink`. The in-memory sink is deterministic test evidence only. NODE-65 owns the durable append-only Audit & Governance implementation; production write enablement is gated on that sink.
 
-```text
-retry/replay
-mark resolved
-discard with reason
-```
+## 8. API
 
-每个动作必须权限+Audit；replay仍经inbox/idempotency。
+- `GET /admin/console`
+- `GET /admin/users`
+- `POST /admin/users/{id}:reveal-pii`
+- `POST /admin/users/{id}:view-as`
+- `POST /admin/view-as/{id}:end`
+- `GET /admin/runs`
+- `POST /admin/runs/{id}:retry`
+- `POST /admin/runs/{id}:cancel`
+- `GET /admin/providers`
+- `POST /admin/providers/{id}:disable`
+- `GET /admin/queue`
+- `POST /admin/queue/{id}:requeue`
+- `GET /admin/registry`
+- `POST /admin/registry/{kind}/{id}:set-enabled`
+- `GET /admin/billing/{organization_id}`
+- `POST /admin/billing/{organization_id}:adjust`
+- `GET /admin/audit`
 
-## 7. Provider Controls
+No endpoint accepts arbitrary SQL, process identifiers for kill, editable queue payloads or provider payment-state patches.
 
-- enable/disable；
-- circuit状态；
-- routing weight/policy version；
-- synthetic health；
--price snapshot查看。
+## 9. Validation staged
 
-所有变更versioned/audited，危险变更可要求二人审批P2。
+- platform RBAC and tenant-role separation;
+- PII masking/reveal authorization;
+- provider disable second confirmation + bounded expiry;
+- queue immutable payload CAS;
+- NODE-63 ADJUSTMENT ledger integration and non-negative guard;
+- View-as readonly/ownership/TTL;
+- admin write audit events;
+- FastAPI route and permission tests;
+- frontend contract/gateway tests;
+- product browser E2E and mobile;
+- production deterministic-fixture leakage scan;
+- prior NODE-63 through NODE-54 regressions.
 
-## 8. Registry Controls
+## 10. Production integration gates
 
-Agent/Skill/Recipe production alias切换只能选择已通过release gate版本。Admin不能在UI直接编辑任意Python/执行代码。
+1. NODE-16 production platform-admin identity, role and step-up resolver;
+2. production Support Directory, Run/Task, Provider, Queue and Registry adapters;
+3. NODE-27 real provider cost projection;
+4. NODE-63 durable BillingRepository adapter;
+5. NODE-65 durable Audit & Governance pipeline;
+6. production-wide/provider-impacting dual-control / stronger verification;
+7. hosted pinned validation observed green.
 
-## 9. User Support
+## 11. Acceptance
 
-可：
+- [x] major operational domains represented through safe service ports;
+- [x] dangerous actions avoid SQL/process escape hatches;
+- [x] platform admin separated from tenant role;
+- [x] sensitive actions emit structured audit events;
+- [x] PII masked by default and explicit reveal audited;
+- [x] Billing adjustment uses immutable NODE-63 ledger;
+- [x] Queue requeue preserves immutable payload identity;
+- [x] readonly View-as implemented;
+- [x] tests/API/web gates staged;
+- [ ] production adapters connected;
+- [ ] NODE-65 durable audit bound;
+- [ ] hosted pinned validation green.
 
-- 查组织/项目metadata；
-- revoke session；
-- resend invite；
-- resolve billing状态。
-
-“Impersonation”若未来实现必须显著banner、短TTL、理由、用户/合规策略和完整audit；P1默认不实现。
-
-## 10. PII / Content Access
-
-采用 break-glass：敏感内容查看需要更高permission、理由、Audit。列表页默认只展示metadata和preview是否存在，不全量展示私人设计。
-
-## 11. Feature Flags
-
-server-side flags：
-
-```text
-name
-scope global/org/user
-value
-owner
-expiry
-reason
-created_by
-```
-
-安全强制策略不能作为普通feature flag关闭。
-
-## 12. Operational Actions
-
-所有mutation提供dry-run（能做到时）、确认和result。禁止“一个红按钮无说明直接删除全部”。
-
-## 13. Tests
-
-- platform admin vs org owner；
-- permission matrix；
-- DLQ replay；
-- provider disable；
-- registry alias only gated version；
-- break-glass audit；
-- feature flag expiry；
-- no secret response。
-
-## 14. 验收标准
-
-- [ ] 运维可定位失败Run/Task。
-- [ ] Provider/Queue/Cost可观察。
-- [ ] DLQ安全replay。
-- [ ] Registry promotion受gate限制。
-- [ ] 敏感内容访问最小化并Audit。
-- [ ] Org OWNER无平台Admin权。
-
-## 15. Definition of Done
+## 12. Definition of Done
 
 ```text
-admin console operational flows green
-+ RBAC/break-glass tests green
+admin console implemented
++ privileged workflow tests observed green
++ production service adapters connected
++ durable audit integration ready
 ```
 
-下一节点：NODE-65 Audit & Governance。
+Next: **NODE-65 — Audit & Governance**.

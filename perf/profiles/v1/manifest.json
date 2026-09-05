@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "profile_set": "node69-launch-v1",
+  "default_provider_mode": "deterministic_mock",
+  "real_provider_ratio_default": 0,
+  "profiles": [
+    "A-dashboard-read-heavy.json",
+    "B-project-editing.json",
+    "C-ai-burst.json",
+    "D-long-generation.json",
+    "E-asset-upload.json",
+    "F-canvas-large-document.json",
+    "G-mixed-launch.json"
+  ]
+}

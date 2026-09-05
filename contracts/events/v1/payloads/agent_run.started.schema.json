@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lumi:event:agent_run.started:1",
+  "title": "agent_run.started payload v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["agent_run_id", "project_id", "graph_version", "agent_config_version"],
+  "properties": {
+    "agent_run_id": {"type": "string", "format": "uuid"},
+    "project_id": {"type": "string", "format": "uuid"},
+    "graph_version": {"type": "string", "minLength": 1},
+    "agent_config_version": {"type": "string", "minLength": 1},
+    "thread_id": {"type": ["string", "null"]}
+  }
+}

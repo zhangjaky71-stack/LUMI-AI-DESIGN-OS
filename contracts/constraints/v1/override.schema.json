@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumi.dev/constraints/v1/override.schema.json",
+  "title": "LUMI Constraint Override Audit V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["override_id", "constraint_id", "actor_id", "reason", "occurred_at", "authorized"],
+  "properties": {
+    "override_id": {"type": "string", "minLength": 1},
+    "constraint_id": {"type": "string", "minLength": 1},
+    "actor_id": {"type": "string", "minLength": 1},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "authorized": {"const": true}
+  }
+}

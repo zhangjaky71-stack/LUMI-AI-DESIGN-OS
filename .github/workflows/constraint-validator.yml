@@ -1,0 +1,120 @@
+name: Constraint Validator
+
+on:
+  pull_request:
+    paths:
+      - "packages/design-constraints/**"
+      - "packages/design-ir/**"
+      - "services/domain/src/lumi_domain/constraint_*.py"
+      - "services/domain/tests/test_constraint_*.py"
+      - "schemas/design-constraints/**"
+      - "config/design-constraints/**"
+      - "fixtures/constraints/**"
+      - "scripts/validate_constraint_runtime.py"
+      - "scripts/build_constraint_benchmark_corpus.py"
+      - "scripts/benchmark_constraint_validator.py"
+      - "docs/runtime/CONSTRAINT-VALIDATOR-V1.md"
+      - "reports/nodes/NODE-39/**"
+      - ".github/workflows/constraint-validator.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  constraint-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck constraint package
+        run: pnpm --filter @lumi/design-constraints typecheck
+      - name: Run TypeScript constraint tests
+        run: pnpm --filter @lumi/design-constraints test
+      - name: Compile Python constraint runtime
+        run: >-
+          python -m compileall -q
+          services/domain/src/lumi_domain/constraint_validator.py
+          services/domain/src/lumi_domain/constraint_media.py
+          services/domain/src/lumi_domain/constraint_quality.py
+          services/domain/tests/test_constraint_validator.py
+          services/domain/tests/test_constraint_quality.py
+          scripts/validate_constraint_runtime.py
+          scripts/build_constraint_benchmark_corpus.py
+          scripts/benchmark_constraint_validator.py
+      - name: Validate NODE-14/NODE-39 frozen contracts
+        run: >-
+          PYTHONPATH=services/domain/src
+          python scripts/validate_constraint_runtime.py
+      - name: Validate benchmark corpus shape
+        run: python scripts/build_constraint_benchmark_corpus.py --check
+
+  constraint-quality:
+    needs: constraint-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Frozen Python workspace install
+        run: uv sync --all-packages --frozen
+      - name: Install real image-validation test adapter
+        run: uv pip install --python .venv/bin/python opencv-python-headless==4.12.0.88
+      - name: Python constraint tests with real QR/protected-region decode
+        run: >-
+          uv run pytest
+          services/domain/tests/test_constraint_validator.py
+          services/domain/tests/test_constraint_quality.py
+          -q
+      - name: Ruff gate
+        run: >-
+          uv run ruff check
+          services/domain/src/lumi_domain/constraint_validator.py
+          services/domain/src/lumi_domain/constraint_media.py
+          services/domain/src/lumi_domain/constraint_quality.py
+          services/domain/tests/test_constraint_validator.py
+          services/domain/tests/test_constraint_quality.py
+          scripts/validate_constraint_runtime.py
+          scripts/build_constraint_benchmark_corpus.py
+          scripts/benchmark_constraint_validator.py
+      - name: Pyright gate
+        run: >-
+          uv run pyright
+          services/domain/src/lumi_domain/constraint_validator.py
+          services/domain/src/lumi_domain/constraint_media.py
+          services/domain/src/lumi_domain/constraint_quality.py
+          services/domain/tests/test_constraint_validator.py
+          services/domain/tests/test_constraint_quality.py
+
+  constraint-benchmark:
+    needs: constraint-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Validate 270-case benchmark corpus
+        run: python scripts/build_constraint_benchmark_corpus.py --check
+      - name: Measure 2k-node / 100-operation / 100-constraint preflight
+        run: >-
+          PYTHONPATH=services/domain/src
+          python scripts/benchmark_constraint_validator.py

@@ -22,3 +22,14 @@ __pycache__/
 .data/
 coverage/
 .DS_Store
+
+# Terraform local state and generated plans
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.auto.tfvars
+*.auto.tfvars.json
+crash.log
+crash.*.log
+**/backend.hcl

@@ -1,0 +1,126 @@
+name: Agent Timeline
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/src/components/agent-timeline/**"
+      - "apps/web/src/components/ai-workspace/**"
+      - "apps/web/src/lib/agent-timeline/**"
+      - "apps/web/src/lib/ai-workspace/**"
+      - "apps/web/e2e/agent-timeline.spec.ts"
+      - "apps/web/e2e/ai-workspace.spec.ts"
+      - "scripts/validate_agent_timeline.py"
+      - "docs/nodes/NODE-57-AGENT-TIMELINE.md"
+      - "docs/runtime/AGENT-TIMELINE-V1.md"
+      - "reports/nodes/NODE-57/**"
+      - ".github/workflows/agent-timeline.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  agent-timeline-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Validate product architecture chain
+        run: |
+          python scripts/validate_app_shell.py
+          python scripts/validate_projects_ui.py
+          python scripts/validate_ai_workspace.py
+          python scripts/validate_infinite_canvas.py
+          python scripts/validate_layers_inspector.py
+          python scripts/validate_agent_timeline.py
+      - name: Typecheck product stack
+        run: |
+          pnpm --filter @lumi/design-ir typecheck
+          pnpm --filter @lumi/canvas-sdk typecheck
+          pnpm --filter @lumi/web typecheck
+
+  agent-timeline-quality:
+    needs: agent-timeline-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Lint web product
+        run: pnpm --filter @lumi/web lint
+      - name: Run Agent Timeline units
+        run: pnpm --filter @lumi/web exec vitest run src/lib/agent-timeline
+      - name: Run AI Workspace realtime regressions
+        run: pnpm --filter @lumi/web exec vitest run src/lib/ai-workspace
+      - name: Run Canvas SDK regressions
+        run: pnpm --filter @lumi/canvas-sdk test
+      - name: Check NODE-57 formatting
+        run: pnpm exec prettier --check "apps/web/src/components/agent-timeline/**/*.{ts,tsx,css}" "apps/web/src/lib/agent-timeline/**/*.{ts,tsx}" "apps/web/e2e/agent-timeline.spec.ts" "apps/web/src/components/ai-workspace/ai-workspace.tsx" "apps/web/src/lib/ai-workspace/{types.ts,workspace-server.ts}"
+
+  agent-timeline-build:
+    needs: agent-timeline-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    env:
+      LUMI_SHELL_E2E_AUTH: "0"
+      LUMI_PROJECTS_E2E: "0"
+      LUMI_AI_WORKSPACE_E2E: "0"
+      LUMI_INFINITE_CANVAS_E2E: "0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Build production Next.js app
+        run: pnpm --filter @lumi/web build
+      - name: Assert E2E seed is not shipped in production client chunks
+        run: |
+          if grep -R --line-number --fixed-strings 'project-agent-retry' apps/web/.next/static 2>/dev/null; then
+            echo 'NODE-57 deterministic fixture leaked into production client chunks.' >&2
+            exit 1
+          fi
+
+  agent-timeline-browser-e2e:
+    needs: [agent-timeline-quality, agent-timeline-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 34
+    env:
+      LUMI_SHELL_E2E_AUTH: "1"
+      LUMI_PROJECTS_E2E: "1"
+      LUMI_AI_WORKSPACE_E2E: "1"
+      LUMI_INFINITE_CANVAS_E2E: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run NODE-57 browser scenarios
+        run: pnpm exec playwright test apps/web/e2e/agent-timeline.spec.ts
+      - name: Re-run NODE-56, NODE-55 and NODE-54 browser regressions
+        run: pnpm exec playwright test apps/web/e2e/layers-inspector.spec.ts apps/web/e2e/infinite-canvas.spec.ts apps/web/e2e/ai-workspace.spec.ts

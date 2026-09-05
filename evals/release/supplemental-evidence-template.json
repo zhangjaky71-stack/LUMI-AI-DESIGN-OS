@@ -1,0 +1,9 @@
+{
+  "product_parity_acceptance": {"status": "PENDING", "evidence_ref": ""},
+  "model_provider_benchmark": {"status": "PENDING", "evidence_ref": "", "sample_size": 0, "confidence_method": ""},
+  "security_agent_red_team": {"status": "PENDING", "evidence_ref": ""},
+  "human_pairwise_visual": {"status": "PENDING", "evidence_ref": "", "sample_size": 0, "confidence_method": ""},
+  "shadow": {"status": "PENDING", "evidence_ref": "", "sample_size": 0, "confidence_method": ""},
+  "canary": {"status": "PENDING", "evidence_ref": "", "sample_size": 0, "confidence_method": ""},
+  "rollback_drill": {"status": "PENDING", "evidence_ref": ""}
+}

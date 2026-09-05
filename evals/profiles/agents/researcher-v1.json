@@ -1,0 +1,1 @@
+{"schema":"lumi.agent-eval-profile.v1","profile":"researcher-v1","required_suites":["reasoning-default-v1"],"release_gate":"all_required_pass"}

@@ -1,0 +1,18 @@
+.offlineBanner {
+  position: sticky;
+  top: var(--topbar-height);
+  z-index: 25;
+  padding: 10px 26px;
+  border-bottom: 1px solid rgba(242, 213, 106, 0.18);
+  background: rgba(62, 51, 18, 0.94);
+  color: #fff1b2;
+  font-size: 12px;
+  line-height: 1.5;
+  backdrop-filter: blur(16px);
+}
+
+@media (max-width: 560px) {
+  .offlineBanner {
+    padding-inline: 14px;
+  }
+}

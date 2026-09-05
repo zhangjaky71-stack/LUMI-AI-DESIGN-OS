@@ -1,0 +1,24 @@
+{
+  "schema_version": 2,
+  "kind": "LUMI_RELEASE_APPROVAL_POLICY_V2",
+  "repository": "zhangjaky71-stack/LUMI-AI-DESIGN-OS",
+  "pull_request": 135,
+  "base_ref": "node-73-final-acceptance-release",
+  "head_ref": "release-closure-p0",
+  "minimum_distinct_actors": 3,
+  "roles": {
+    "product": {"allowed_logins": ["PENDING"]},
+    "engineering": {"allowed_logins": ["PENDING"]},
+    "security": {"allowed_logins": ["PENDING"]},
+    "operations": {"allowed_logins": ["PENDING"]},
+    "release_owner": {"allowed_logins": ["PENDING"]}
+  },
+  "separation_of_duties": [
+    ["engineering", "security"],
+    ["security", "release_owner"]
+  ],
+  "require_human_reviewers": true,
+  "require_exact_evidence_head_review_commit": true,
+  "require_pr_author_exclusion": true,
+  "require_latest_decisive_review": true
+}

@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+WEB_URL="${1:-${LUMI_SYNTHETIC_WEB_URL:-}}"
+API_URL="${2:-${LUMI_SYNTHETIC_API_URL:-}}"
+
+if [[ -z "$WEB_URL" || -z "$API_URL" ]]; then
+  echo "LUMI_SYNTHETIC_WEB_URL and LUMI_SYNTHETIC_API_URL are required" >&2
+  exit 2
+fi
+
+python3 - "$WEB_URL" "$API_URL" <<'PY'
+import ipaddress
+import socket
+import sys
+from urllib.parse import urlsplit
+
+for raw in sys.argv[1:]:
+    parsed = urlsplit(raw)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        raise SystemExit(f"synthetic target must be an absolute HTTPS URL without userinfo: {raw}")
+    host = parsed.hostname.rstrip(".").lower()
+    if host in {"localhost", "metadata.google.internal"} or host.endswith(".localhost"):
+        raise SystemExit(f"synthetic target host is forbidden: {host}")
+    addresses = {item[4][0] for item in socket.getaddrinfo(host, parsed.port or 443, type=socket.SOCK_STREAM)}
+    if not addresses:
+        raise SystemExit(f"synthetic target did not resolve: {host}")
+    for address in addresses:
+        ip = ipaddress.ip_address(address)
+        if any((ip.is_private, ip.is_loopback, ip.is_link_local, ip.is_multicast, ip.is_reserved, ip.is_unspecified)):
+            raise SystemExit(f"synthetic target resolved to a forbidden address: {host} -> {address}")
+PY
+
+WEB_URL="${WEB_URL%/}"
+API_URL="${API_URL%/}"
+headers="$(mktemp)"
+body="$(mktemp)"
+trap 'rm -f "$headers" "$body"' EXIT
+
+echo "[synthetic] homepage"
+# Deliberately do not follow redirects: a compromised public target must not turn the
+# GitHub runner into a redirect-based internal-network probe.
+curl --fail --silent --show-error --max-time 12 --output /dev/null "$WEB_URL/"
+
+echo "[synthetic] API readiness + correlation headers"
+curl --fail --silent --show-error --max-time 12 --dump-header "$headers" --output "$body" "$API_URL/health/ready"
+
+grep -Eiq '^x-request-id:[[:space:]]*[A-Za-z0-9._:-]+' "$headers"
+grep -Eiq '^x-correlation-id:[[:space:]]*[A-Za-z0-9._:-]+' "$headers"
+grep -Eiq '^traceparent:[[:space:]]*00-[0-9a-fA-F]{32}-[0-9a-fA-F]{16}-[0-9a-fA-F]{2}' "$headers"
+
+python3 - "$body" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    payload = json.load(handle)
+if payload.get("status") != "ok":
+    raise SystemExit("API readiness payload did not report status=ok")
+PY
+
+echo "[synthetic] PASS"

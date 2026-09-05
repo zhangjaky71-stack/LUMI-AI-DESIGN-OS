@@ -1,0 +1,96 @@
+name: Canvas Compiler
+
+on:
+  pull_request:
+    paths:
+      - "packages/canvas-sdk/**"
+      - "packages/design-ir/**"
+      - "apps/web/src/app/canvas-engine/**"
+      - "apps/web/e2e/canvas-engine.spec.ts"
+      - "scripts/validate_canvas_compiler.py"
+      - "docs/nodes/NODE-41-CANVAS-COMPILER.md"
+      - "docs/runtime/CANVAS-COMPILER-V1.md"
+      - "reports/nodes/NODE-41/**"
+      - ".github/workflows/canvas-compiler.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compiler-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Validate NODE-41 compiler boundaries
+        run: python scripts/validate_canvas_compiler.py
+      - name: Typecheck Canvas SDK
+        run: pnpm --filter @lumi/canvas-sdk typecheck
+      - name: Typecheck web Canvas integration
+        run: pnpm --filter @lumi/web typecheck
+
+  compiler-quality:
+    needs: compiler-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run Canvas SDK compiler and regression tests
+        run: pnpm --filter @lumi/canvas-sdk test
+      - name: Lint web Canvas integration
+        run: pnpm --filter @lumi/web lint
+
+  compiler-equivalence:
+    needs: compiler-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run full/incremental and renderer conformance
+        run: >-
+          pnpm --filter @lumi/canvas-sdk exec vitest run
+          src/compiler.test.ts
+          src/compiler-renderer.test.ts
+
+  compiler-benchmark:
+    needs: compiler-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install JS workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run 2k-node / 100-operation compiler benchmark
+        run: >-
+          pnpm --filter @lumi/canvas-sdk exec vitest run
+          src/compiler-benchmark.test.ts

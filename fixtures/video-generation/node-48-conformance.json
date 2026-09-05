@@ -1,0 +1,33 @@
+{
+  "schema_version": "node-48.video-conformance.v1",
+  "synthetic_case_count": 48,
+  "modes": [
+    "TEXT_TO_VIDEO",
+    "IMAGE_TO_VIDEO",
+    "STORYBOARD_MULTI_SHOT"
+  ],
+  "case_matrix": [
+    {"category": "async_state_machine", "count": 6, "covers": ["submit_pending", "single_poll_resume", "terminal_replay", "cancel", "missing_provider_state", "idempotent_completed_resume"]},
+    {"category": "storyboard_and_continuity", "count": 7, "covers": ["single_shot", "three_shot", "previous_tail", "explicit_reference", "duplicate_shot_id", "duration_sum", "source_version_pin"]},
+    {"category": "provider_features_and_routing", "count": 7, "covers": ["text_to_video", "image_to_video", "start_frame", "reference_image", "camera_controls", "provider_allowlist", "retry_exclusion"]},
+    {"category": "quality_and_validation", "count": 8, "covers": ["decode", "mime", "duration", "fps", "resolution", "provider_safety", "identity_fail_closed", "brand_fail_closed"]},
+    {"category": "budget_retry_and_cost", "count": 7, "covers": ["task_budget", "optional_drop", "quality_retry", "new_paid_operation", "cost_on_invalid_output", "cost_idempotency", "actual_vs_estimated"]},
+    {"category": "artifact_and_lineage", "count": 5, "covers": ["clip_version", "attempt_versions", "reference_used", "composed_from", "final_video_version"]},
+    {"category": "typed_media_sandbox", "count": 8, "covers": ["argv_only", "sandbox_path", "network_disabled", "multi_audio_mix", "overlay", "cut", "crossfade_fail_closed_v1", "fixed_output_duration"]}
+  ],
+  "live_provider_benchmark_profiles": [
+    "text_to_video_prompt_adherence",
+    "image_to_video_first_frame_fidelity",
+    "product_identity_continuity",
+    "character_identity_continuity",
+    "logo_brand_continuity",
+    "multi_shot_temporal_continuity",
+    "camera_control_accuracy",
+    "duration_fps_resolution_accuracy",
+    "provider_latency_and_queue_time",
+    "cost_accuracy",
+    "cancellation_behavior",
+    "fallback_and_quality_retry"
+  ],
+  "evidence_policy": "Synthetic cases validate orchestration and contracts only. They do not establish live provider visual quality."
+}

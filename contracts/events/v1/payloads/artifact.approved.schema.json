@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lumi:event:artifact.approved:1",
+  "title": "artifact.approved payload v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["artifact_id", "artifact_version_id", "project_id"],
+  "properties": {
+    "artifact_id": {"type": "string", "format": "uuid"},
+    "artifact_version_id": {"type": "string", "format": "uuid"},
+    "project_id": {"type": "string", "format": "uuid"},
+    "approval_id": {"type": ["string", "null"], "format": "uuid"},
+    "approved_by": {"type": ["string", "null"], "format": "uuid"},
+    "quality_score": {"type": ["number", "null"]}
+  }
+}

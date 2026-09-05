@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "exchange": "lumi.events.v1",
+  "dead_letter_exchange": "lumi.events.v1.dlx",
+  "delivery_semantics": "at_least_once",
+  "ordering_scope": "partitionkey",
+  "events": [
+    {
+      "name": "project.created",
+      "type": "lumi.project.created",
+      "owner_context": "workspace_project",
+      "routing_key": "project.created",
+      "schema_version": 1,
+      "payload_schema": "payloads/project.created.schema.json",
+      "partition_field": "project_id",
+      "subject_template": "project/{project_id}"
+    },
+    {
+      "name": "asset.ready",
+      "type": "lumi.asset.ready",
+      "owner_context": "asset",
+      "routing_key": "asset.ready",
+      "schema_version": 1,
+      "payload_schema": "payloads/asset.ready.schema.json",
+      "partition_field": "asset_id",
+      "subject_template": "asset/{asset_id}"
+    },
+    {
+      "name": "agent_run.started",
+      "type": "lumi.agent_run.started",
+      "owner_context": "agent_execution",
+      "routing_key": "agent_run.started",
+      "schema_version": 1,
+      "payload_schema": "payloads/agent_run.started.schema.json",
+      "partition_field": "agent_run_id",
+      "subject_template": "agent-run/{agent_run_id}"
+    },
+    {
+      "name": "agent_run.waiting_user",
+      "type": "lumi.agent_run.waiting_user",
+      "owner_context": "agent_execution",
+      "routing_key": "agent_run.waiting_user",
+      "schema_version": 1,
+      "payload_schema": "payloads/agent_run.waiting_user.schema.json",
+      "partition_field": "agent_run_id",
+      "subject_template": "agent-run/{agent_run_id}"
+    },
+    {
+      "name": "artifact.version_created",
+      "type": "lumi.artifact.version_created",
+      "owner_context": "artifact_version",
+      "routing_key": "artifact.version_created",
+      "schema_version": 1,
+      "payload_schema": "payloads/artifact.version_created.schema.json",
+      "partition_field": "artifact_id",
+      "subject_template": "artifact/{artifact_id}/version/{artifact_version_id}"
+    },
+    {
+      "name": "artifact.approved",
+      "type": "lumi.artifact.approved",
+      "owner_context": "artifact_version",
+      "routing_key": "artifact.approved",
+      "schema_version": 1,
+      "payload_schema": "payloads/artifact.approved.schema.json",
+      "partition_field": "artifact_id",
+      "subject_template": "artifact/{artifact_id}/version/{artifact_version_id}"
+    },
+    {
+      "name": "task.succeeded",
+      "type": "lumi.task.succeeded",
+      "owner_context": "workflow_task",
+      "routing_key": "task.succeeded",
+      "schema_version": 1,
+      "payload_schema": "payloads/task.succeeded.schema.json",
+      "partition_field": "task_id",
+      "subject_template": "task/{task_id}"
+    },
+    {
+      "name": "generation.completed",
+      "type": "lumi.generation.completed",
+      "owner_context": "generation_provider",
+      "routing_key": "generation.completed",
+      "schema_version": 1,
+      "payload_schema": "payloads/generation.completed.schema.json",
+      "partition_field": "generation_id",
+      "subject_template": "generation/{generation_id}"
+    },
+    {
+      "name": "cost.recorded",
+      "type": "lumi.cost.recorded",
+      "owner_context": "billing_cost",
+      "routing_key": "cost.recorded",
+      "schema_version": 1,
+      "payload_schema": "payloads/cost.recorded.schema.json",
+      "partition_field": "cost_entry_id",
+      "subject_template": "cost/{cost_entry_id}"
+    }
+  ]
+}

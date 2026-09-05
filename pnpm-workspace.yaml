@@ -10,6 +10,11 @@ minimumReleaseAge: 1440
 trustPolicy: no-downgrade
 trustPolicyIgnoreAfter: 43200
 
+# Security overrides: scope patched native/CSS dependencies to Next 16.2.12.
+overrides:
+  "next@16.2.12>sharp": "0.35.3"
+  "next@16.2.12>postcss": "8.5.26"
+
 # pnpm 11 blocks dependency lifecycle scripts by default. These two transitive
 # native dependencies are reviewed and explicitly allowed because Next.js image
 # tooling and the TypeScript import resolver require their platform bindings.

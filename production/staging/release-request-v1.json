@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "request_id": "node-73-staging-plan-core-20260824-01",
+  "operation": "plan-core",
+  "requested_branch": "release-closure-p0",
+  "source_parent": "84508a4daf47e79eb69a71492a3af46b0a01cfc2",
+  "release_git_sha": "3c6a95356a013c2bdf505bde14a7fcfcc33c32a9",
+  "purpose": "NODE-71 production-like Staging core Terraform plan before any mutation"
+}

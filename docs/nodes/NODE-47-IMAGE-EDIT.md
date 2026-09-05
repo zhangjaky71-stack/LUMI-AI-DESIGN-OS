@@ -1,189 +1,67 @@
 # NODE-47 — Image Edit & Local Edit Pipeline
 
 > Phase: 6 Generation & Quality  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **IMPLEMENTED / VALIDATING / not COMPLETE**  
 > Priority: P0 / LOVART-PARITY CORE  
 > Depends on: NODE-39, NODE-42, NODE-44, NODE-46  
-> Produces: 局部编辑、Mask/Region处理、Protected Content保持、新ArtifactVersion
+> Produces: structural-first edit planning, pixel mask editing, protected-content validation, append-only Artifact/Canvas lineage
 
----
+## Implemented boundary
 
-## 1. 目标
+NODE-47 implements the golden requirement “only change the requested region; keep protected product/logo/QR/text unchanged.” Structural Design IR mutations always take priority. Generative editing is invoked only when pixel content must change.
 
-实现类似“产品和Logo不要动，只把背景换黑色”的精确编辑。系统优先结构化 Canvas/IR 编辑；只有必须改变像素内容时才走生成式 image edit，并经过 hard constraints postflight。
+Primary evidence:
 
-## 2. Edit Planner
+- `services/image-edit/src/lumi_image_edit/model.py`
+- `services/image-edit/src/lumi_image_edit/planner.py`
+- `services/image-edit/src/lumi_image_edit/mask.py`
+- `services/image-edit/src/lumi_image_edit/pipeline.py`
+- `services/image-edit/src/lumi_image_edit/model_gateway_adapter.py`
+- `services/image-edit/src/lumi_image_edit/validation.py`
+- `services/image-edit/src/lumi_image_edit/artifact_adapter.py`
+- `services/image-edit/src/lumi_image_edit/structural_adapter.py`
+- `services/image-edit/tests/test_image_edit.py`
+- `db/migrations/0006_image_edit.sql`
+- `fixtures/image-edit/node-47-golden.json`
+- `scripts/validate_image_edit.py`
+- `scripts/benchmark_image_edit.py`
+- `docs/runtime/IMAGE-EDIT-V1.md`
+- `.github/workflows/image-edit.yml`
 
-输入：
+## Structural first
 
-```text
-current artifact/design version
-user edit intent
-selected node/region?
-active constraints
-brand/identity refs
-```
+When the edit can be expressed with the frozen NODE-38 operation set (`SET_PROPERTY`, `MOVE_NODE`, `RESIZE_NODE`, `REORDER_NODE`, `REPARENT_NODE`, `REPLACE_ASSET`, `SET_TEXT`, `APPLY_STYLE`), the planner returns `STRUCTURAL_IR_EDIT` and no provider call/cost is permitted.
 
-输出 `EditPlan`：
+## Pixel editing
 
-```text
-STRUCTURAL_IR_EDIT
-PIXEL_LOCAL_EDIT
-REGENERATE_REGION
-FULL_IMAGE_EDIT
-HYBRID
-```
+Pixel-local edit specs pin source artifact/asset version, source checksum/dimensions, mask version/hash/pixel coordinates, protected regions, identity requirements and active constraint/brand versions. Old masks cannot be reused against a changed source.
 
-原则：最小修改面。
+## Provider capability gate
 
-## 3. Structural First
+Masked edits require `image.mask_edit`; full pixel edits require `image.edit`. Protected/identity edits additionally require `image.reference_consistency`. NODE-22 routing rejects candidates missing any additional required capability before paid invocation.
 
-可以通过 Design IR完成的：
+## Postflight
 
-```text
-move/resize text
-change font/color
-background vector color
-replace existing image node
-reorder layers
-```
+The pipeline requires actual postflight evidence, not prompt promises: protected-region visual comparison, Identity, QR decode, locked-text OCR, resolution and intended-region change. Missing required validators fail closed.
 
-不得调用生成模型。
+## Fallback and version safety
 
-## 4. Pixel Edit Spec
+Protected-region failure on a local/hybrid edit may use source-region compositing and rerun the complete postflight once. A candidate never overwrites the source. PASS becomes a new READY ArtifactVersion and advances the branch with CAS; REPAIR remains DRAFT; REJECT remains rejected/off-head.
 
-```text
-source_asset/version
-editable_mask
-protected_masks[]
-reference_assets[]
-instruction
-identity_requirements
-expected unchanged regions
-output dimensions
-```
+After pixel PASS, an associated Canvas image node is updated via guarded `REPLACE_ASSET`, producing a new DesignDocumentVersion.
 
-Mask坐标与原图像素空间显式转换，保存version/hash。
+## Golden suite
 
-## 5. Mask Generation
+125 deterministic synthetic contract cases cover product/logo/QR preservation, requested background change and zero-model structural title resize. These cases do not claim live provider visual quality.
 
-来源：
-
-- user brush/selection；
-- Design IR node bounds/mask；
-- segmentation/detector；
-- Agent proposed + preview。
-
-高影响自动mask应可在 UI预览。
-
-## 6. Protected Content
-
-Product/Logo/QR等：
-
-```text
-PROTECT_REGION
-LOCK_IDENTITY
-LOCK_CONTENT/TRANSFORM
-```
-
-Provider prompt不是保障；结果回来后实际 validator检查。
-
-## 7. Provider Capability
-
-Router按：
-
-```text
-image.edit
-mask edit
-reference preservation
-input/output size
-```
-
-选择。若 provider不支持精确mask，不应用于 hard local edit，除非用户明确允许更大变化。
-
-## 8. Postflight
-
-必须：
-
-- protected-region visual diff；
-- Identity Engine；
-- QR decode；
-- OCR for locked text/logo wordmark；
-- resolution；
-- intended region是否真正变化。
-
-输出 PASS / REPAIR / REJECT。
-
-## 9. Versioning
-
-永远：
-
-```text
-v3 source
-→ edit
-→ v4 candidate
-```
-
-不覆盖 v3。失败 candidate可保留内部debug ref，但普通历史只展示有意义版本，按policy cleanup。
-
-## 10. Edit Provenance
-
-记录 source version、mask hash、protected regions、provider/model、instruction hash、constraint snapshot、validation scores。
-
-## 11. Fallback
-
-若精确生成式编辑连续失败：
-
-- 尝试另一符合capability provider；
-- 分层合成策略，例如只生成背景再 compositing protected product；
-- 要求用户确认更大范围编辑。
-
-不得为“完成任务”偷偷违反 hard locks。
-
-## 12. Canvas Integration
-
-编辑完成：ArtifactVersion → asset resolver → update Design IR image node via `REPLACE_ASSET` → new DesignDocumentVersion；这两个版本关系写 lineage。
-
-## 13. Benchmarks
-
-核心 acceptance：
-
-```text
-A: unchanged product
-B: unchanged logo
-C: unchanged QR + decodable
-D: requested background changed
-E: title resize structural no generation
-```
-
-建立 100+ local edit cases。
-
-## 14. Tests
-
-- structural route；
-- mask coordinate；
-- protected region；
-- wrong provider capability；
-- QR locked；
-- fallback compositing；
-- version lineage；
-- retry idempotency。
-
-## 15. 验收标准
-
-- [ ] structural edit优先。
-- [ ] mask/protected区域可追溯。
-- [ ] hard lock postflight。
-- [ ] failure不会覆盖原版本。
-- [ ] Canvas/Artifact lineage完整。
-- [ ] “只改背景”黄金场景通过。
-
-## 16. Definition of Done
+## Definition of Done
 
 ```text
 local edit pipeline implemented
-+ golden constraint suite green
-+ provider edit benchmark green
++ hosted golden/contract/integration gates green
++ approved live provider protected-edit benchmark evidence
 ```
+
+Until both hosted CI and live provider benchmark evidence exist, NODE-47 remains **IMPLEMENTED / VALIDATING / not COMPLETE**.
 
 下一节点：NODE-48 Video Generation。

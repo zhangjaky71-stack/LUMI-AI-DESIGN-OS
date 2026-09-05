@@ -14,14 +14,408 @@ on:
 
 permissions:
   contents: read
+  id-token: write
+
+env:
+  MANIFEST_INPUT: ${{ inputs.manifest_path }}
+  RECOVERY_ACK: ${{ inputs.recovery_ack }}
 
 jobs:
-  default-branch-registry-only:
+  recovery-gate:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      deployment_id: ${{ steps.release.outputs.deployment_id }}
+      git_sha: ${{ steps.release.outputs.git_sha }}
+      version: ${{ steps.release.outputs.version }}
+      migration_head: ${{ steps.release.outputs.migration_head }}
+      account_id: ${{ steps.release.outputs.account_id }}
+      region: ${{ steps.release.outputs.region }}
+      role_arn: ${{ steps.release.outputs.role_arn }}
     steps:
-      - name: Refuse default-branch execution
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+      - name: Resolve exact manifest and V2 Source-RC/Evidence-Head identity
         shell: bash
         run: |
-          echo "This workflow on main is a fail-closed dispatch discovery stub."
-          echo "Run the canonical release workflow with ref=release-closure-p0."
-          exit 64
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "release-closure-p0"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          root = Path.cwd().resolve()
+          allowed = (root / 'reports' / 'production-deployments').resolve()
+          manifest = (root / os.environ['MANIFEST_INPUT']).resolve()
+          try:
+              manifest.relative_to(allowed)
+          except ValueError as exc:
+              raise SystemExit('manifest escapes reports/production-deployments') from exc
+          if manifest.name != 'manifest.json' or not manifest.is_file():
+              raise SystemExit('manifest must be an existing manifest.json')
+          payload = json.loads(manifest.read_text())
+          deployment_id = payload.get('deployment_id')
+          if manifest.parent.name != deployment_id:
+              raise SystemExit('manifest parent directory must equal deployment_id')
+          expected = {
+              'database_pitr_max_rpo_minutes': 5,
+              'database_pitr_max_rto_minutes': 60,
+              'object_version_recovery_required': True,
+          }
+          if payload.get('environment') != 'production' or payload.get('recovery') != expected:
+              raise SystemExit('manifest does not carry canonical Production recovery policy')
+          rc = payload.get('release_candidate') or {}
+          git_sha = rc.get('git_sha')
+          if not isinstance(git_sha, str) or re.fullmatch(r'[0-9a-f]{40}', git_sha) is None:
+              raise SystemExit('manifest Source RC SHA must be lowercase SHA40')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write(f'MANIFEST_PATH={manifest.relative_to(root).as_posix()}\n')
+              fh.write(f'SOURCE_RC_SHA={git_sha}\n')
+          PY
+          git merge-base --is-ancestor "$SOURCE_RC_SHA" "$GITHUB_SHA"
+      - name: Require explicit recovery acknowledgement
+        run: test "$RECOVERY_ACK" = "REHEARSE_PRODUCTION_DR:$(jq -r '.deployment_id' "$MANIFEST_PATH")"
+      - name: Export immutable recovery metadata
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          emit() { printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"; }
+          emit deployment_id "$(jq -r '.deployment_id' "$MANIFEST_PATH")"
+          emit git_sha "$(jq -r '.release_candidate.git_sha' "$MANIFEST_PATH")"
+          emit version "$(jq -r '.release_candidate.version' "$MANIFEST_PATH")"
+          emit migration_head "$(jq -r '.release_candidate.migration_head' "$MANIFEST_PATH")"
+          emit account_id "$(jq -r '.aws.account_id' "$MANIFEST_PATH")"
+          emit region "$(jq -r '.aws.region' "$MANIFEST_PATH")"
+          emit role_arn "$(jq -r '.aws.production_role_arn' "$MANIFEST_PATH")"
+
+  rehearse:
+    needs: [recovery-gate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    environment: production
+    env:
+      AWS_REGION: ${{ needs.recovery-gate.outputs.region }}
+      DEPLOYMENT_ID: ${{ needs.recovery-gate.outputs.deployment_id }}
+      RC_SHA: ${{ needs.recovery-gate.outputs.git_sha }}
+      RC_VERSION: ${{ needs.recovery-gate.outputs.version }}
+      MIGRATION_HEAD: ${{ needs.recovery-gate.outputs.migration_head }}
+      MANIFEST_ROLE_ARN: ${{ needs.recovery-gate.outputs.role_arn }}
+      MANIFEST_PATH: ${{ inputs.manifest_path }}
+      TF_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+      - name: Require protected Production role and V2 identity ancestry
+        shell: bash
+        env:
+          ENVIRONMENT_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "release-closure-p0"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$RC_SHA" "$GITHUB_SHA"
+          test -n "$TF_STATE_BUCKET"
+          test "$ENVIRONMENT_DEPLOY_ROLE_ARN" = "$MANIFEST_ROLE_ARN"
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          aws-region: ${{ needs.recovery-gate.outputs.region }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: lumi-production-dr-${{ github.run_id }}
+      - name: Verify AWS account identity
+        run: test "$(aws sts get-caller-identity --query Account --output text)" = "${{ needs.recovery-gate.outputs.account_id }}"
+      - name: Initialize Production state roots
+        shell: bash
+        run: |
+          set -euo pipefail
+          init_root() {
+            local root="$1" key="$2"
+            cat > /tmp/backend.hcl <<BACKEND
+          bucket       = "$TF_STATE_BUCKET"
+          key          = "$key"
+          region       = "$AWS_REGION"
+          encrypt      = true
+          use_lockfile = true
+          BACKEND
+            terraform -chdir="$root" init -input=false -backend-config=/tmp/backend.hcl
+          }
+          init_root infra/iac/environments/production/core lumi/production/core/terraform.tfstate
+          init_root infra/iac/environments/production/app lumi/production/app/terraform.tfstate
+          mkdir -p reports/production-recovery/runtime
+      - name: Require current Production runtime still matches exact Source RC
+        run: |
+          bash scripts/capture-production-runtime-identity.sh \
+            infra/iac/environments/production/app \
+            "$MANIFEST_PATH" \
+            reports/production-recovery/runtime/baseline-runtime.json
+      - name: Resolve source RDS and isolated recovery network
+        id: rds
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_ID="$(terraform -chdir=infra/iac/environments/production/core output -raw postgres_instance_id)"
+          PRIMARY_HOST="$(terraform -chdir=infra/iac/environments/production/core output -raw postgres_endpoint)"
+          SUBNET_GROUP="$(terraform -chdir=infra/iac/environments/production/core output -raw postgres_db_subnet_group_name)"
+          POSTGRES_SG="$(terraform -chdir=infra/iac/environments/production/core output -raw postgres_security_group_id)"
+          APP_SG="$(terraform -chdir=infra/iac/environments/production/core output -raw app_security_group_id)"
+          PRIVATE_SUBNETS="$(terraform -chdir=infra/iac/environments/production/core output -json private_subnet_ids)"
+          EXPORTS_BUCKET="$(terraform -chdir=infra/iac/environments/production/core output -json bucket_names | jq -r '.exports')"
+          SOURCE="$(aws rds describe-db-instances --db-instance-identifier "$SOURCE_ID")"
+          test "$(jq -r '.DBInstances[0].DBInstanceStatus' <<<"$SOURCE")" = available
+          BACKUP_RETENTION="$(jq -r '.DBInstances[0].BackupRetentionPeriod' <<<"$SOURCE")"
+          test "$BACKUP_RETENTION" -gt 0
+          LATEST_RESTORABLE="$(jq -r '.DBInstances[0].LatestRestorableTime // empty' <<<"$SOURCE")"
+          test -n "$LATEST_RESTORABLE"
+          test "$(jq -r '.DBInstances[0].PubliclyAccessible' <<<"$SOURCE")" = false
+          test "$(jq -r '.DBInstances[0].DBSubnetGroup.DBSubnetGroupName' <<<"$SOURCE")" = "$SUBNET_GROUP"
+          TARGET_ID="$(printf 'lumi-dr-%s-%s' "$DEPLOYMENT_ID" "$GITHUB_RUN_ID" | tr '[:upper:]_.' '[:lower:]--' | cut -c1-63 | sed 's/-$//')"
+          [[ "$TARGET_ID" =~ ^[a-z][a-z0-9-]{0,62}$ ]]
+          REQUESTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          EVIDENCE_KEY="recovery-evidence/v1/${DEPLOYMENT_ID}/${GITHUB_RUN_ID}/database-verify.json"
+          {
+            echo "SOURCE_ID=$SOURCE_ID"
+            echo "PRIMARY_HOST=$PRIMARY_HOST"
+            echo "SUBNET_GROUP=$SUBNET_GROUP"
+            echo "POSTGRES_SG=$POSTGRES_SG"
+            echo "APP_SG=$APP_SG"
+            echo "PRIVATE_SUBNETS=$(jq -c . <<<"$PRIVATE_SUBNETS")"
+            echo "EXPORTS_BUCKET=$EXPORTS_BUCKET"
+            echo "BACKUP_RETENTION=$BACKUP_RETENTION"
+            echo "LATEST_RESTORABLE=$LATEST_RESTORABLE"
+            echo "TARGET_ID=$TARGET_ID"
+            echo "RESTORE_REQUESTED_AT=$REQUESTED_AT"
+            echo "DB_EVIDENCE_KEY=$EVIDENCE_KEY"
+          } >> "$GITHUB_ENV"
+      - name: Restore Production RDS to a new isolated private instance
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws rds restore-db-instance-to-point-in-time \
+            --source-db-instance-identifier "$SOURCE_ID" \
+            --target-db-instance-identifier "$TARGET_ID" \
+            --use-latest-restorable-time \
+            --db-subnet-group-name "$SUBNET_GROUP" \
+            --vpc-security-group-ids "$POSTGRES_SG" \
+            --no-publicly-accessible \
+            --no-multi-az \
+            --no-deletion-protection \
+            --tags Key=Purpose,Value=lumi-production-dr-rehearsal Key=DeploymentId,Value="$DEPLOYMENT_ID" Key=GitHubRunId,Value="$GITHUB_RUN_ID" \
+            >/tmp/rds-restore-request.json
+          aws rds wait db-instance-available --db-instance-identifier "$TARGET_ID"
+          TARGET="$(aws rds describe-db-instances --db-instance-identifier "$TARGET_ID")"
+          TARGET_HOST="$(jq -r '.DBInstances[0].Endpoint.Address' <<<"$TARGET")"
+          test -n "$TARGET_HOST"
+          test "$TARGET_HOST" != "$PRIMARY_HOST"
+          test "$(jq -r '.DBInstances[0].PubliclyAccessible' <<<"$TARGET")" = false
+          test "$(jq -r '.DBInstances[0].DBSubnetGroup.DBSubnetGroupName' <<<"$TARGET")" = "$SUBNET_GROUP"
+          jq -e --arg sg "$POSTGRES_SG" '.DBInstances[0].VpcSecurityGroups | any(.VpcSecurityGroupId == $sg)' <<<"$TARGET" >/dev/null
+          {
+            echo "TARGET_HOST=$TARGET_HOST"
+            echo "TARGET_AVAILABLE_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_ENV"
+      - name: Run read-only recovery verifier in accepted API task definition
+        shell: bash
+        run: |
+          set -euo pipefail
+          CLUSTER_ARN="$(terraform -chdir=infra/iac/environments/production/app output -raw cluster_arn)"
+          API_TASK_DEFINITION="$(aws ecs describe-services --cluster "$CLUSTER_ARN" --services api --query 'services[0].taskDefinition' --output text)"
+          test -n "$API_TASK_DEFINITION"
+          NETWORK="$(jq -n --argjson subnets "$PRIVATE_SUBNETS" --arg sg "$APP_SG" '{awsvpcConfiguration:{subnets:$subnets,securityGroups:[$sg],assignPublicIp:"DISABLED"}}')"
+          OVERRIDES="$(jq -n \
+            --arg recovery_host "$TARGET_HOST" \
+            --arg primary_host "$PRIMARY_HOST" \
+            --arg recovery_id "$TARGET_ID" \
+            --arg source_id "$SOURCE_ID" \
+            --arg git_sha "$RC_SHA" \
+            --arg version "$RC_VERSION" \
+            --arg migration_head "$MIGRATION_HEAD" \
+            --arg bucket "$EXPORTS_BUCKET" \
+            --arg key "$DB_EVIDENCE_KEY" \
+            --arg region "$AWS_REGION" \
+            '{containerOverrides:[{name:"api",command:["python3","scripts/production-recovery-db-verify.py"],environment:[
+              {name:"LUMI_RECOVERY_HOST",value:$recovery_host},
+              {name:"LUMI_RECOVERY_PRIMARY_HOST",value:$primary_host},
+              {name:"LUMI_RECOVERY_PORT",value:"5432"},
+              {name:"LUMI_RECOVERY_VERIFY_ISOLATED",value:"1"},
+              {name:"LUMI_RECOVERY_INSTANCE_ID",value:$recovery_id},
+              {name:"LUMI_RECOVERY_SOURCE_INSTANCE_ID",value:$source_id},
+              {name:"LUMI_RECOVERY_GIT_SHA",value:$git_sha},
+              {name:"LUMI_RECOVERY_VERSION",value:$version},
+              {name:"LUMI_EXPECTED_MIGRATION_HEAD",value:$migration_head},
+              {name:"LUMI_RECOVERY_EVIDENCE_BUCKET",value:$bucket},
+              {name:"LUMI_RECOVERY_EVIDENCE_KEY",value:$key},
+              {name:"AWS_REGION",value:$region}
+            ]}]}')"
+          RUN="$(aws ecs run-task \
+            --cluster "$CLUSTER_ARN" \
+            --launch-type FARGATE \
+            --task-definition "$API_TASK_DEFINITION" \
+            --network-configuration "$NETWORK" \
+            --overrides "$OVERRIDES" \
+            --started-by "lumi-dr-${GITHUB_RUN_ID}")"
+          test "$(jq '.failures | length' <<<"$RUN")" -eq 0
+          TASK_ARN="$(jq -r '.tasks[0].taskArn // empty' <<<"$RUN")"
+          test -n "$TASK_ARN"
+          aws ecs wait tasks-stopped --cluster "$CLUSTER_ARN" --tasks "$TASK_ARN"
+          STOPPED="$(aws ecs describe-tasks --cluster "$CLUSTER_ARN" --tasks "$TASK_ARN")"
+          EXIT_CODE="$(jq -r '.tasks[0].containers[] | select(.name == "api") | .exitCode // -1' <<<"$STOPPED")"
+          test "$EXIT_CODE" -eq 0
+          aws s3api get-object --bucket "$EXPORTS_BUCKET" --key "$DB_EVIDENCE_KEY" reports/production-recovery/runtime/database-verify.json >/tmp/db-evidence-get.json
+          META_SHA="$(aws s3api head-object --bucket "$EXPORTS_BUCKET" --key "$DB_EVIDENCE_KEY" --query 'Metadata.sha256' --output text)"
+          FILE_SHA="$(sha256sum reports/production-recovery/runtime/database-verify.json | awk '{print $1}')"
+          test "$META_SHA" = "$FILE_SHA"
+          test "$(jq -r '.passed' reports/production-recovery/runtime/database-verify.json)" = true
+      - name: Measure PITR RPO and RTO against launch policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          def dt(value: str) -> datetime:
+              return datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone(timezone.utc)
+
+          requested = dt(os.environ['RESTORE_REQUESTED_AT'])
+          latest = dt(os.environ['LATEST_RESTORABLE'])
+          verifier = json.loads(Path('reports/production-recovery/runtime/database-verify.json').read_text())
+          completed = dt(verifier['finished_at'])
+          rpo = (requested - latest).total_seconds() / 60.0
+          rto = (completed - requested).total_seconds() / 60.0
+          passed = 0 <= rpo <= 5 and 0 < rto <= 60
+          result = {
+              'schema_version': 1,
+              'deployment_id': os.environ['DEPLOYMENT_ID'],
+              'release_candidate': {
+                  'git_sha': os.environ['RC_SHA'],
+                  'version': os.environ['RC_VERSION'],
+                  'migration_head': os.environ['MIGRATION_HEAD'],
+              },
+              'source_instance_id': os.environ['SOURCE_ID'],
+              'recovery_instance_id': os.environ['TARGET_ID'],
+              'source_backup_retention_days': int(os.environ['BACKUP_RETENTION']),
+              'latest_restorable_time': os.environ['LATEST_RESTORABLE'],
+              'restore_requested_at': os.environ['RESTORE_REQUESTED_AT'],
+              'target_available_at': os.environ['TARGET_AVAILABLE_AT'],
+              'verifier_completed_at': verifier['finished_at'],
+              'target_publicly_accessible': False,
+              'subnet_group_verified': True,
+              'security_group_verified': True,
+              'observed_rpo_minutes': round(rpo, 3),
+              'observed_rto_minutes': round(rto, 3),
+              'passed': passed,
+          }
+          Path('reports/production-recovery/runtime/rds-restore.json').write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
+          if not passed:
+              raise SystemExit(f'PITR RPO/RTO policy exceeded: rpo={rpo:.3f} rto={rto:.3f}')
+          PY
+      - name: Rehearse versioned object corruption and recovery on dedicated drill key
+        run: |
+          bash scripts/production-object-recovery-drill.sh \
+            "$EXPORTS_BUCKET" \
+            "$DEPLOYMENT_ID" \
+            "$GITHUB_RUN_ID" \
+            reports/production-recovery/runtime/object-recovery.json
+      - name: Delete isolated RDS and verify transient verifier evidence is fully purged
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          mkdir -p reports/production-recovery/runtime
+          RDS_DELETED=false
+          OBJECT_DELETED=false
+          SOURCE_REMAINING=-1
+          DR_REMAINING=-1
+          DR_REGION=""
+          DR_EXPORTS=""
+          if [[ -n "${TARGET_ID:-}" ]] && aws rds describe-db-instances --db-instance-identifier "$TARGET_ID" >/dev/null 2>&1; then
+            aws rds delete-db-instance --db-instance-identifier "$TARGET_ID" --skip-final-snapshot --delete-automated-backups >/tmp/dr-delete.json 2>/tmp/dr-delete.err
+            delete_rc=$?
+            if [[ $delete_rc -eq 0 ]]; then
+              aws rds wait db-instance-deleted --db-instance-identifier "$TARGET_ID"
+              [[ $? -eq 0 ]] && RDS_DELETED=true
+            fi
+          else
+            RDS_DELETED=true
+          fi
+          if [[ -n "${EXPORTS_BUCKET:-}" && -n "${DB_EVIDENCE_KEY:-}" ]]; then
+            DR_REGION="$(terraform -chdir=infra/iac/environments/production/core output -raw object_dr_region 2>/tmp/dr-region.err)"
+            DR_EXPORTS="$(terraform -chdir=infra/iac/environments/production/core output -json object_dr_bucket_names 2>/tmp/dr-buckets.err | jq -r '.exports // empty')"
+            if [[ -n "$DR_REGION" && -n "$DR_EXPORTS" && "$DR_REGION" != "$AWS_REGION" ]]; then
+              SOURCE_LISTING="$(aws s3api list-object-versions --region "$AWS_REGION" --bucket "$EXPORTS_BUCKET" --prefix "$DB_EVIDENCE_KEY" 2>/tmp/dr-source-list.err)"
+              source_rc=$?
+              DR_LISTING="$(aws s3api list-object-versions --region "$DR_REGION" --bucket "$DR_EXPORTS" --prefix "$DB_EVIDENCE_KEY" 2>/tmp/dr-destination-list.err)"
+              dr_rc=$?
+              if [[ $source_rc -eq 0 && $dr_rc -eq 0 ]]; then
+                SOURCE_REMAINING="$(jq --arg key "$DB_EVIDENCE_KEY" '[
+                  (.Versions // [])[] | select(.Key == $key),
+                  (.DeleteMarkers // [])[] | select(.Key == $key)
+                ] | length' <<<"$SOURCE_LISTING")"
+                DR_REMAINING="$(jq --arg key "$DB_EVIDENCE_KEY" '[
+                  (.Versions // [])[] | select(.Key == $key),
+                  (.DeleteMarkers // [])[] | select(.Key == $key)
+                ] | length' <<<"$DR_LISTING")"
+                [[ "$SOURCE_REMAINING" -eq 0 && "$DR_REMAINING" -eq 0 ]] && OBJECT_DELETED=true
+              fi
+            fi
+          fi
+          jq -n \
+            --arg deployment_id "$DEPLOYMENT_ID" \
+            --arg recovery_instance_id "${TARGET_ID:-UNKNOWN}" \
+            --arg database_evidence_key "${DB_EVIDENCE_KEY:-UNKNOWN}" \
+            --arg source_bucket "${EXPORTS_BUCKET:-UNKNOWN}" \
+            --arg source_region "$AWS_REGION" \
+            --arg recovery_bucket "${DR_EXPORTS:-UNKNOWN}" \
+            --arg recovery_region "${DR_REGION:-UNKNOWN}" \
+            --argjson source_versions_remaining "$SOURCE_REMAINING" \
+            --argjson recovery_versions_remaining "$DR_REMAINING" \
+            --argjson recovery_instance_deleted "$RDS_DELETED" \
+            --argjson database_evidence_object_deleted "$OBJECT_DELETED" \
+            '{schema_version:1,deployment_id:$deployment_id,recovery_instance_id:$recovery_instance_id,database_evidence_key:$database_evidence_key,source_bucket:$source_bucket,source_region:$source_region,recovery_bucket:$recovery_bucket,recovery_region:$recovery_region,database_evidence_source_versions_remaining:$source_versions_remaining,database_evidence_recovery_versions_remaining:$recovery_versions_remaining,recovery_instance_deleted:$recovery_instance_deleted,database_evidence_object_deleted:$database_evidence_object_deleted,passed:($recovery_instance_deleted and $database_evidence_object_deleted and $source_versions_remaining == 0 and $recovery_versions_remaining == 0)}' \
+            > reports/production-recovery/runtime/cleanup.json
+          if [[ "$RDS_DELETED" != true || "$OBJECT_DELETED" != true || "$SOURCE_REMAINING" -ne 0 || "$DR_REMAINING" -ne 0 ]]; then
+            echo "DR cleanup incomplete; exact source/DR evidence versions must be zero" >&2
+            exit 1
+          fi
+          exit 0
+      - name: Finalize canonical recovery decision
+        if: success()
+        run: |
+          python3 scripts/production-recovery-decision.py \
+            --manifest "$MANIFEST_PATH" \
+            --baseline-runtime reports/production-recovery/runtime/baseline-runtime.json \
+            --rds-restore reports/production-recovery/runtime/rds-restore.json \
+            --database-verify reports/production-recovery/runtime/database-verify.json \
+            --object-recovery reports/production-recovery/runtime/object-recovery.json \
+            --cleanup reports/production-recovery/runtime/cleanup.json \
+            --output reports/production-recovery/runtime/decision.json
+          test "$(jq -r '.passed' reports/production-recovery/runtime/decision.json)" = true
+      - name: Archive Production DR evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: production-dr-${{ needs.recovery-gate.outputs.deployment_id }}-${{ github.run_id }}
+          path: reports/production-recovery/runtime/
+          if-no-files-found: error
+          retention-days: 90

@@ -1,0 +1,40 @@
+{
+  "fixture_version": "1.0",
+  "purpose": "Synthetic conformance fixture for calibration algorithm parity; not a production threshold dataset.",
+  "profiles": [
+    {
+      "profile_id": "logo-strict",
+      "identity_type": "LOGO",
+      "scenario": "STRICT_PRESERVE",
+      "dataset_version": "logo-cal@1",
+      "required_signals": ["exact_hash", "feature", "ocr_wordmark", "perceptual"],
+      "expected_threshold": 92,
+      "samples": [
+        {"sample_id": "logo-p1", "label": "POSITIVE", "score": 98},
+        {"sample_id": "logo-p2", "label": "POSITIVE", "score": 96},
+        {"sample_id": "logo-p3", "label": "POSITIVE", "score": 92},
+        {"sample_id": "logo-n1", "label": "NEGATIVE", "score": 20},
+        {"sample_id": "logo-n2", "label": "NEGATIVE", "score": 35},
+        {"sample_id": "logo-m1", "label": "NEAR_MISS", "score": 70},
+        {"sample_id": "logo-m2", "label": "NEAR_MISS", "score": 75}
+      ]
+    },
+    {
+      "profile_id": "product-background",
+      "identity_type": "PRODUCT",
+      "scenario": "BACKGROUND_REPLACEMENT",
+      "dataset_version": "product-cal@3",
+      "required_signals": ["brand_region", "color", "multimodal", "shape"],
+      "expected_threshold": 88,
+      "samples": [
+        {"sample_id": "product-p1", "label": "POSITIVE", "score": 95},
+        {"sample_id": "product-p2", "label": "POSITIVE", "score": 91},
+        {"sample_id": "product-p3", "label": "POSITIVE", "score": 88},
+        {"sample_id": "product-n1", "label": "NEGATIVE", "score": 20},
+        {"sample_id": "product-n2", "label": "NEGATIVE", "score": 40},
+        {"sample_id": "product-m1", "label": "NEAR_MISS", "score": 65},
+        {"sample_id": "product-m2", "label": "NEAR_MISS", "score": 72}
+      ]
+    }
+  ]
+}

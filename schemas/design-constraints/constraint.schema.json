@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lumi.local/schemas/design-constraints/constraint.schema.json",
+  "title": "LUMI Design Constraint V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "type", "scope", "severity", "source", "priority", "parameters", "active"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "type": {
+      "enum": [
+        "LOCK_POSITION", "LOCK_SIZE", "LOCK_ROTATION", "LOCK_TRANSFORM", "LOCK_ASPECT_RATIO",
+        "LOCK_LAYER_ORDER", "LOCK_PARENT", "LOCK_CONTENT", "LOCK_TEXT", "LOCK_ASSET", "LOCK_IDENTITY",
+        "LOCK_STYLE", "LOCK_BRAND", "PROTECT_REGION", "MUST_STAY_INSIDE", "MUST_NOT_OVERLAP", "MIN_MARGIN",
+        "SAFE_AREA", "REQUIRE_CONTRAST", "REQUIRE_SCANNABILITY", "REQUIRE_TEXT_READABILITY",
+        "REQUIRE_BRAND_COMPLIANCE", "REQUIRE_RESOLUTION", "REQUIRE_IDENTITY_SCORE"
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "node_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "frame_id": {"type": "string", "minLength": 1},
+        "region": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "width", "height"],
+          "properties": {
+            "x": {"type": "number", "minimum": 0, "maximum": 1},
+            "y": {"type": "number", "minimum": 0, "maximum": 1},
+            "width": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+            "height": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
+          }
+        }
+      }
+    },
+    "severity": {"enum": ["HARD", "SOFT", "ADVISORY"]},
+    "source": {
+      "enum": ["SAFETY_SYSTEM", "USER_EXPLICIT", "APPROVED_BRAND_RULE", "PROJECT_RULE", "RECIPE_RULE", "AGENT_INFERRED", "STYLE_PREFERENCE"]
+    },
+    "priority": {"type": "integer"},
+    "parameters": {"type": "object"},
+    "active": {"type": "boolean"},
+    "document_version": {"type": "integer", "minimum": 0}
+  }
+}

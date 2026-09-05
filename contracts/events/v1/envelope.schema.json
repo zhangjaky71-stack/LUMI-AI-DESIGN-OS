@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lumi:event-envelope:1",
+  "title": "LUMI Event Envelope V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "specversion",
+    "id",
+    "source",
+    "type",
+    "subject",
+    "time",
+    "datacontenttype",
+    "dataschema",
+    "organizationid",
+    "correlationid",
+    "partitionkey",
+    "schemaversion",
+    "data"
+  ],
+  "properties": {
+    "specversion": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "source": {
+      "type": "string",
+      "pattern": "^lumi://[a-z0-9][a-z0-9._/-]*$"
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^lumi\\.[a-z0-9_]+\\.[a-z0-9_]+$"
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "datacontenttype": {
+      "const": "application/json"
+    },
+    "dataschema": {
+      "type": "string",
+      "pattern": "^urn:lumi:event:[a-z0-9_.]+:[1-9][0-9]*$"
+    },
+    "organizationid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "correlationid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "causationid": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "traceid": {
+      "type": ["string", "null"],
+      "maxLength": 128
+    },
+    "partitionkey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "schemaversion": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "data": {
+      "type": "object"
+    }
+  }
+}

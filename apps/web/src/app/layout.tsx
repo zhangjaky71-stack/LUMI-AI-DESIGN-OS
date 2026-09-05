@@ -1,13 +1,21 @@
+import type { Metadata } from "next";
+import { BrowserObservability } from "../components/BrowserObservability";
 import "./globals.css";
 
-export const metadata = { title: "LUMI AI Design OS" };
+export const metadata: Metadata = {
+  title: { default: "LUMI AI Design OS", template: "%s · LUMI" },
+  description: "AI-native design operating system",
+};
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="zh-CN">
-      <body>{children}</body>
+      <body>
+        <BrowserObservability />
+        {children}
+      </body>
     </html>
   );
 }

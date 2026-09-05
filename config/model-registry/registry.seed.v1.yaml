@@ -1,0 +1,16 @@
+{
+  "schema": "lumi.model-registry.seed.v1",
+  "registry_version": 1,
+  "source_registry_version": "1.0.0",
+  "source_manifest": "docs/models/provider-matrix-manifest.json",
+  "provider_files": [
+    "docs/models/providers/openai.json",
+    "docs/models/providers/google.json",
+    "docs/models/providers/anthropic.json",
+    "docs/models/providers/black-forest-labs.json",
+    "docs/models/providers/runway.json"
+  ],
+  "route_policy": "docs/models/route-candidates.json",
+  "benchmark_suite": "evals/datasets/model-provider/suite.json",
+  "source_ref": "NODE-07:model-provider-matrix@1.0.0"
+}

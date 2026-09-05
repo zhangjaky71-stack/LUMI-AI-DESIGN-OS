@@ -1,0 +1,10 @@
+{
+  "include": ["src"],
+  "extraPaths": [
+    "../model-gateway/src",
+    "../artifact-history/src",
+    "../domain/src"
+  ],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "strict"
+}

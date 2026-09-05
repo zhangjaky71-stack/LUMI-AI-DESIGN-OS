@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "policy": "LUMI_RELEASE_ACTION_PINS_V1",
+  "actions": {
+    "actions/checkout": [
+      {
+        "version": "v6.1.0",
+        "sha": "d23441a48e516b6c34aea4fa41551a30e30af803"
+      }
+    ],
+    "actions/setup-python": [
+      {
+        "version": "v6.3.0",
+        "sha": "ece7cb06caefa5fff74198d8649806c4678c61a1"
+      }
+    ],
+    "actions/setup-node": [
+      {
+        "version": "v6.5.0",
+        "sha": "249970729cb0ef3589644e2896645e5dc5ba9c38"
+      }
+    ],
+    "astral-sh/setup-uv": [
+      {
+        "version": "v9.0.0",
+        "sha": "c771a70e6277c0a99b617c7a806ffedaca235ff9"
+      }
+    ],
+    "github/codeql-action": [
+      {
+        "version": "v4.37.7",
+        "sha": "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd"
+      }
+    ],
+    "actions/dependency-review-action": [
+      {
+        "version": "v4.9.0",
+        "sha": "2031cfc080254a8a887f58cffee85186f0e49e48"
+      }
+    ],
+    "gitleaks/gitleaks-action": [
+      {
+        "version": "v3",
+        "sha": "e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e"
+      }
+    ],
+    "aquasecurity/trivy-action": [
+      {
+        "version": "v0.36.0",
+        "sha": "ed142fd0673e97e23eac54620cfb913e5ce36c25"
+      }
+    ],
+    "docker/login-action": [
+      {
+        "version": "v4.6.0",
+        "sha": "dbcb813823bdd20940b903addbd779551569679f"
+      }
+    ],
+    "docker/setup-buildx-action": [
+      {
+        "version": "v4.2.0",
+        "sha": "bb05f3f5519dd87d3ba754cc423b652a5edd6d2c"
+      }
+    ],
+    "docker/build-push-action": [
+      {
+        "version": "v7.3.0",
+        "sha": "53b7df96c91f9c12dcc8a07bcb9ccacbed38856a"
+      }
+    ],
+    "actions/attest": [
+      {
+        "version": "v4.2.2",
+        "sha": "1e69f48acb82d1966a394da916b4c1698aa569d6"
+      }
+    ],
+    "actions/upload-artifact": [
+      {
+        "version": "v4.6.2",
+        "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+      },
+      {
+        "version": "v7.0.1",
+        "sha": "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+      }
+    ],
+    "actions/download-artifact": [
+      {
+        "version": "v8.0.1",
+        "sha": "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+      }
+    ],
+    "hashicorp/setup-terraform": [
+      {
+        "version": "v4.0.1",
+        "sha": "dfe3c3f87815947d99a8997f908cb6525fc44e9e"
+      }
+    ],
+    "aws-actions/configure-aws-credentials": [
+      {
+        "version": "v6.2.3",
+        "sha": "e6de054238d6b7531b4efff3b6587d9aade6a06c"
+      }
+    ]
+  },
+  "release_critical_workflows": [
+    ".github/workflows/assemble-final-acceptance.yml",
+    ".github/workflows/build-runtime-image-set.yml",
+    ".github/workflows/configure-release-branch-protection.yml",
+    ".github/workflows/regenerate-uv-lock.yml",
+    ".github/workflows/runtime-image-closure-contract.yml",
+    ".github/workflows/ai-regression-release-gate.yml",
+    ".github/workflows/staging-acceptance-gate.yml",
+    ".github/workflows/security-release-gate.yml",
+    ".github/workflows/production-iac-contract.yml",
+    ".github/workflows/deploy-production.yml",
+    ".github/workflows/production-rollback-rehearsal.yml",
+    ".github/workflows/final-acceptance-gate.yml"
+  ],
+  "release_evidence_workflows": [
+    ".github/workflows/collect-staging-database-parity.yml",
+    ".github/workflows/freeze-staging-database-parity.yml",
+    ".github/workflows/collect-staging-media-generation-e2e.yml",
+    ".github/workflows/freeze-staging-media-generation-e2e.yml",
+    ".github/workflows/collect-staging-tool-gateway-p0-e2e.yml",
+    ".github/workflows/freeze-staging-tool-gateway-p0-e2e.yml",
+    ".github/workflows/deploy-staging-infrastructure.yml",
+    ".github/workflows/staging-database-identity-bootstrap.yml",
+    ".github/workflows/production-dr-rehearsal.yml",
+    ".github/workflows/freeze-production-evidence.yml",
+    ".github/workflows/freeze-production-recovery-evidence.yml",
+    ".github/workflows/freeze-security-release-evidence.yml"
+  ]
+}

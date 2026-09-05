@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "fixture_kind": "SYNTHETIC_HUMAN_LABEL_STRUCTURE",
+  "note": "Contract fixture for deterministic calibration math only; not a claim of production human-study quality.",
+  "grader_id": "critic-vlm",
+  "grader_version": "2.1.0",
+  "dataset_version": "human-pairs-2026-08",
+  "threshold": 75,
+  "inter_rater_agreement": 0.85,
+  "samples": [
+    {"id":"p01","human_label":"PASS","grader_score":96},{"id":"p02","human_label":"PASS","grader_score":94},{"id":"p03","human_label":"PASS","grader_score":92},{"id":"p04","human_label":"PASS","grader_score":90},{"id":"p05","human_label":"PASS","grader_score":88},{"id":"p06","human_label":"PASS","grader_score":86},{"id":"p07","human_label":"PASS","grader_score":84},{"id":"p08","human_label":"PASS","grader_score":82},{"id":"p09","human_label":"PASS","grader_score":80},{"id":"p10","human_label":"PASS","grader_score":78},{"id":"p11","human_label":"PASS","grader_score":76},{"id":"p12","human_label":"PASS","grader_score":74},{"id":"p13","human_label":"PASS","grader_score":91},{"id":"p14","human_label":"PASS","grader_score":87},{"id":"p15","human_label":"PASS","grader_score":83},{"id":"p16","human_label":"PASS","grader_score":79},{"id":"p17","human_label":"PASS","grader_score":75},{"id":"p18","human_label":"PASS","grader_score":72},{"id":"p19","human_label":"PASS","grader_score":89},{"id":"p20","human_label":"PASS","grader_score":85},
+    {"id":"f01","human_label":"FAIL","grader_score":68},{"id":"f02","human_label":"FAIL","grader_score":66},{"id":"f03","human_label":"FAIL","grader_score":64},{"id":"f04","human_label":"FAIL","grader_score":62},{"id":"f05","human_label":"FAIL","grader_score":60},{"id":"f06","human_label":"FAIL","grader_score":58},{"id":"f07","human_label":"FAIL","grader_score":56},{"id":"f08","human_label":"FAIL","grader_score":54},{"id":"f09","human_label":"FAIL","grader_score":52},{"id":"f10","human_label":"FAIL","grader_score":50},{"id":"f11","human_label":"FAIL","grader_score":48},{"id":"f12","human_label":"FAIL","grader_score":46},{"id":"f13","human_label":"FAIL","grader_score":70},{"id":"f14","human_label":"FAIL","grader_score":72},{"id":"f15","human_label":"FAIL","grader_score":74},{"id":"f16","human_label":"FAIL","grader_score":76},{"id":"f17","human_label":"FAIL","grader_score":65},{"id":"f18","human_label":"FAIL","grader_score":59},{"id":"f19","human_label":"FAIL","grader_score":55},{"id":"f20","human_label":"FAIL","grader_score":45}
+  ],
+  "expected_metrics": {
+    "sample_count": 40,
+    "precision": 0.9473684210526315,
+    "recall": 0.9,
+    "f1": 0.9230769230769231,
+    "false_positive_rate": 0.05,
+    "false_negative_rate": 0.1
+  }
+}

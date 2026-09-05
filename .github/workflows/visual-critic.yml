@@ -1,0 +1,169 @@
+name: Visual Critic
+
+on:
+  pull_request:
+    paths:
+      - "packages/quality-engine/**"
+      - "packages/artifact-sdk/**"
+      - "packages/design-constraints/**"
+      - "packages/brand-rules/**"
+      - "packages/identity-engine/**"
+      - "evals/datasets/visual-critic/**"
+      - "evals/fixtures/visual-critic/**"
+      - "fixtures/quality/**"
+      - "db/migrations/0001_artifact_engine.sql"
+      - "db/migrations/0009_visual_critic.sql"
+      - "scripts/validate_visual_critic.py"
+      - "docs/nodes/NODE-50-VISUAL-CRITIC.md"
+      - "docs/runtime/VISUAL-CRITIC-V1.md"
+      - "reports/nodes/NODE-50/**"
+      - ".github/workflows/visual-critic.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  critic-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Validate NODE-50 architecture contract
+        run: python scripts/validate_visual_critic.py
+      - name: Typecheck Quality Engine
+        run: pnpm --filter @lumi/quality-engine typecheck
+      - name: Typecheck Artifact boundary
+        run: pnpm --filter @lumi/artifact-sdk typecheck
+
+  critic-quality:
+    needs: critic-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run Visual Critic unit and regression suite
+        run: pnpm --filter @lumi/quality-engine test
+
+  critic-integration:
+    needs: critic-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run exact NODE-50 integration cases
+        run: >-
+          pnpm --filter @lumi/quality-engine exec vitest run
+          src/quality-engine.test.ts
+          src/artifact-adapter.test.ts
+      - name: Regress authoritative Constraint Brand Identity engines
+        run: |
+          pnpm --filter @lumi/design-constraints test
+          pnpm --filter @lumi/brand-rules test
+          pnpm --filter @lumi/identity-engine test
+
+  critic-calibration:
+    needs: critic-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Recompute pinned calibration metrics
+        run: pnpm --filter @lumi/quality-engine exec vitest run src/calibration-fixture.test.ts
+      - name: Run NODE-05 baseline versus candidate gate
+        run: >-
+          python -m evals.cli compare
+          --suite visual-critic
+          --baseline evals/fixtures/visual-critic/baseline.json
+          --candidate evals/fixtures/visual-critic/candidate.json
+          --out /tmp/visual-critic-evals
+
+  critic-db:
+    needs: critic-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: lumi
+          POSTGRES_PASSWORD: lumi
+          POSTGRES_DB: lumi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lumi -d lumi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Apply Artifact and Visual Critic migrations
+        env:
+          PGPASSWORD: lumi
+        run: |
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0001_artifact_engine.sql
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 -f db/migrations/0009_visual_critic.sql
+      - name: Verify quality tables and 0-100 to 0-1 Artifact score sync
+        env:
+          PGPASSWORD: lumi
+        run: |
+          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc "select count(*) from information_schema.tables where table_name in ('quality_profiles','quality_grader_calibrations','quality_results','quality_dimension_results','quality_violations','quality_evidence');")" = "6"
+          psql -h 127.0.0.1 -U lumi -d lumi -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO artifacts(id,organization_id,project_id,type,title) VALUES ('00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002','DESIGN_DOCUMENT','fixture');
+          INSERT INTO artifact_branches(id,organization_id,artifact_id,name,created_by) VALUES ('00000000-0000-4000-8000-000000000006','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000003','main','00000000-0000-4000-8000-000000000010');
+          INSERT INTO artifact_versions(id,organization_id,artifact_id,branch_id,schema_version,version_number,status,content_hash,constraint_snapshot_hash,design_document_version_id,created_by_type,created_by_id) VALUES ('00000000-0000-4000-8000-000000000004','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000006','1.0',1,'READY',repeat('a',64),repeat('b',64),'00000000-0000-4000-8000-000000000005','SYSTEM','fixture');
+          INSERT INTO quality_profiles(profile_id,version,name,definition) VALUES ('quality:test','1.0','production-web','{}');
+          INSERT INTO quality_results(quality_result_id,organization_id,project_id,artifact_id,artifact_version_id,design_document_version_id,profile_id,profile_version,status,overall_score,confidence,created_at) VALUES ('quality-result:test','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000004','00000000-0000-4000-8000-000000000005','quality:test','1.0','PASS',93,0.98,now());
+          SQL
+          test "$(psql -h 127.0.0.1 -U lumi -d lumi -Atc "select quality_score from artifact_versions where id='00000000-0000-4000-8000-000000000004';")" = "0.93"
+
+  critic-benchmark:
+    needs: critic-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.4.0 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run deterministic 2k-node critic scale harness
+        run: pnpm --filter @lumi/quality-engine exec vitest run src/quality-benchmark.test.ts

@@ -1,0 +1,194 @@
+name: Release Staging Dispatch Bridge
+
+on:
+  push:
+    branches:
+      - release-closure-p0
+    paths:
+      - production/staging/release-request-v1.json
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+concurrency:
+  group: release-staging-dispatch-bridge-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: github.ref_type == 'branch' && github.ref_name == 'release-closure-p0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate exact Staging release request
+        env:
+          EXPECTED_PARENT: ${{ github.event.before }}
+          REQUEST_PATH: production/staging/release-request-v1.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path(os.environ["REQUEST_PATH"])
+          payload = json.loads(path.read_text(encoding="utf-8"))
+          allowed = {
+              "plan-core",
+              "apply-core",
+              "promote-runtime-images",
+              "plan-migration",
+              "apply-migration",
+              "run-migration",
+              "plan-app",
+              "apply-app",
+          }
+          if payload.get("schema_version") != 1:
+              raise SystemExit("Staging release request schema_version must be 1")
+          if payload.get("requested_branch") != "release-closure-p0":
+              raise SystemExit("Staging release request branch mismatch")
+          if payload.get("source_parent") != os.environ["EXPECTED_PARENT"]:
+              raise SystemExit("Staging release request source_parent mismatch")
+          request_id = payload.get("request_id")
+          if not isinstance(request_id, str) or not request_id.startswith("node-73-staging-"):
+              raise SystemExit("request_id must use node-73-staging-* namespace")
+          operation = payload.get("operation")
+          if operation not in allowed:
+              raise SystemExit(f"unsupported Staging operation: {operation!r}")
+
+          release_sha = payload.get("release_git_sha")
+          if operation not in {"plan-core", "apply-core"}:
+              if not isinstance(release_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", release_sha):
+                  raise SystemExit("release_git_sha must be an exact 40-character SHA")
+
+          mutating = {
+              "apply-core",
+              "promote-runtime-images",
+              "apply-migration",
+              "run-migration",
+              "apply-app",
+          }
+          if operation in mutating and payload.get("mutation_ack") != "APPLY_STAGING":
+              raise SystemExit("mutating Staging operation requires mutation_ack=APPLY_STAGING")
+
+          if operation == "promote-runtime-images":
+              for key in ("runtime_image_set_run_id", "runtime_image_set_artifact_id"):
+                  value = payload.get(key)
+                  if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                      raise SystemExit(f"{key} must be a positive integer")
+              digest = payload.get("runtime_image_set_artifact_digest")
+              if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+                  raise SystemExit("runtime_image_set_artifact_digest is invalid")
+
+          if "migration" in str(operation) or operation in {"plan-app", "apply-app"}:
+              promoted = payload.get("promoted_image_set")
+              required = {
+                  "api",
+                  "agent-runtime",
+                  "model-gateway",
+                  "tool-gateway",
+                  "worker-media",
+                  "sandbox-runtime",
+              }
+              if not isinstance(promoted, dict) or set(promoted) != required:
+                  raise SystemExit("promoted_image_set must contain exactly six runtime services")
+
+          if operation in {"plan-app", "apply-app"}:
+              profile = payload.get("video_model_profile")
+              if profile is not None and (
+                  not isinstance(profile, str)
+                  or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,99}", profile)
+              ):
+                  raise SystemExit("video_model_profile is invalid")
+
+          print(f"validated Staging request {request_id}: {operation}")
+          PY
+
+      - name: Dispatch canonical Staging infrastructure workflow and record run identity
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUEST_PATH: production/staging/release-request-v1.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          request = json.loads(Path(os.environ["REQUEST_PATH"]).read_text(encoding="utf-8"))
+          inputs = {
+              "operation": request["operation"],
+              "apply_ack": request.get("mutation_ack", ""),
+              "release_git_sha": request.get("release_git_sha", ""),
+              "runtime_image_set_run_id": str(request.get("runtime_image_set_run_id", "")),
+              "runtime_image_set_artifact_id": str(request.get("runtime_image_set_artifact_id", "")),
+              "runtime_image_set_artifact_digest": request.get("runtime_image_set_artifact_digest", ""),
+              "promoted_image_set_json": (
+                  json.dumps(request["promoted_image_set"], sort_keys=True, separators=(",", ":"))
+                  if isinstance(request.get("promoted_image_set"), dict)
+                  else ""
+              ),
+              "video_model_profile": request.get("video_model_profile", ""),
+          }
+          dispatch = {
+              "ref": os.environ["GITHUB_REF_NAME"],
+              "inputs": inputs,
+              "return_run_details": True,
+          }
+          Path("/tmp/staging-dispatch.json").write_text(
+              json.dumps(dispatch, sort_keys=True),
+              encoding="utf-8",
+          )
+          PY
+
+          response="$(gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/deploy-staging-infrastructure.yml/dispatches" \
+            --input /tmp/staging-dispatch.json)"
+
+          run_id="$(printf '%s' "$response" | python3 -c 'import json,sys; p=json.load(sys.stdin); v=p.get("workflow_run_id"); assert isinstance(v,int) and v>0, p; print(v)')"
+          html_url="$(printf '%s' "$response" | python3 -c 'import json,sys; p=json.load(sys.stdin); v=p.get("html_url"); assert isinstance(v,str) and v.startswith("https://github.com/"), p; print(v)')"
+          request_id="$(python3 -c 'import json; print(json.load(open("production/staging/release-request-v1.json", encoding="utf-8"))["request_id"])')"
+          operation="$(python3 -c 'import json; print(json.load(open("production/staging/release-request-v1.json", encoding="utf-8"))["operation"])')"
+          release_sha="$(python3 -c 'import json; print(json.load(open("production/staging/release-request-v1.json", encoding="utf-8")).get("release_git_sha", ""))')"
+
+          title="[Release Bridge] Staging ${operation} ${release_sha:0:12}"
+          body="$(cat <<EOF
+          Canonical Staging release operation dispatched.
+
+          - request_id: \`${request_id}\`
+          - operation: \`${operation}\`
+          - release_git_sha: \`${release_sha}\`
+          - orchestration_head_sha: \`${GITHUB_SHA}\`
+          - source_ref: \`${GITHUB_REF}\`
+          - canonical_workflow: \`.github/workflows/deploy-staging-infrastructure.yml\`
+          - workflow_run_id: \`${run_id}\`
+          - run: ${html_url}
+          - state: \`DISPATCHED\`
+
+          This issue records dispatch identity only. It is **not** Staging PASS evidence. The canonical workflow run and any emitted immutable evidence artifacts must complete successfully and be independently inspected before NODE-71 acceptance can advance.
+          EOF
+          )"
+
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/${GITHUB_REPOSITORY}/issues" \
+            -f title="$title" \
+            -f body="$body" >/dev/null
+
+          echo "canonical_staging_run_id=${run_id}"
+          echo "canonical_staging_run_url=${html_url}"

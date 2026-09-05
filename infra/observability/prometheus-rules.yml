@@ -1,0 +1,62 @@
+groups:
+  - name: lumi-api-slo
+    rules:
+      - alert: LumiApiHighErrorRate
+        expr: |
+          (
+            sum(rate(lumi_http_requests_total{status_class=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(lumi_http_requests_total[5m])), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: page
+          slo: core-api-availability
+        annotations:
+          summary: LUMI API 5xx error rate is above 5%
+          runbook: docs/runbooks/observability.md#api-slo-breach
+
+      - alert: LumiApiP95LatencyHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, route) (
+              rate(lumi_http_request_duration_seconds_bucket[5m])
+            )
+          ) > 0.5
+        for: 10m
+        labels:
+          severity: ticket
+          slo: core-api-latency
+        annotations:
+          summary: LUMI non-AI API P95 is above the 500ms target
+          runbook: docs/runbooks/observability.md#api-latency
+
+      - alert: LumiApiMetricsMissing
+        expr: up{job="lumi-api-local"} == 0
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Local LUMI API metrics target is unavailable
+          runbook: docs/runbooks/observability.md#telemetry-pipeline
+
+  - name: lumi-telemetry-pipeline
+    rules:
+      - alert: LumiOtelCollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: OpenTelemetry Collector is unavailable
+          runbook: docs/runbooks/observability.md#telemetry-pipeline
+
+      - alert: LumiOtelMetricsExporterDown
+        expr: up{job="lumi-otel-exporter"} == 0
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: OTel Prometheus exporter is unavailable
+          runbook: docs/runbooks/observability.md#telemetry-pipeline

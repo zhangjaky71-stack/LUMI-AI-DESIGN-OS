@@ -1,4 +1,4 @@
-# LUMI Local Infrastructure — NODE-03
+# LUMI Local Infrastructure — NODE-03 + NODE-67 Overlay
 
 This directory provides the local, cloud-free infrastructure baseline used by later LUMI nodes.
 
@@ -49,14 +49,21 @@ CONFIRM=1 make infra-reset
 
 ## Persistent volumes
 
-The Compose project uses fixed local volume names:
+The base Compose project uses fixed local volume names:
 
 - `lumi_postgres_data`
 - `lumi_redis_data`
 - `lumi_rabbitmq_data`
 - `lumi_minio_data`
 
-Do not use `infra-reset` when you need to keep local data.
+NODE-67 adds local observability volumes:
+
+- `lumi_tempo_data`
+- `lumi_loki_data`
+- `lumi_prometheus_data`
+- `lumi_grafana_data`
+
+Do not use destructive volume cleanup when you need to retain local evidence.
 
 ## PostgreSQL bootstrap
 
@@ -90,7 +97,43 @@ NODE-03 prepares the broker for later declaration of:
 - `lumi.media.export`
 - `lumi.system.low`
 
-Each queue will gain a `<queue>.dlq` policy when routing is implemented in NODE-19. NODE-03 does not claim worker routing early.
+Each queue gains its runtime/DLQ semantics in NODE-19 and later nodes.
+
+## Observability overlay — NODE-67
+
+`docker-compose.observability.yml` is now active and is always combined with the base Compose file. It provides local-only:
+
+| Service | Local URL/port | Purpose |
+|---|---|---|
+| OpenTelemetry Collector | `127.0.0.1:4317/4318` | OTLP receive/fan-out |
+| Collector health | `127.0.0.1:13133` | telemetry pipeline readiness |
+| Prometheus | `http://127.0.0.1:9090` | metrics/SLO/alerts |
+| Tempo | `http://127.0.0.1:3200` | distributed traces |
+| Loki | `http://127.0.0.1:3100` | structured logs |
+| Grafana | `http://127.0.0.1:3001` | provisioned dashboards/explore |
+
+Start and validate:
+
+```bash
+make observability-up
+make observability-smoke
+make observability-status
+```
+
+Inspect or stop:
+
+```bash
+make observability-logs
+make observability-down
+```
+
+`make observability-up` starts the base local dependencies first and then the telemetry overlay. `make observability-smoke` checks the merged Compose model and backend readiness endpoints. If `LUMI_API_URL` is set, it also probes the API's `/internal/metrics` endpoint.
+
+Grafana provisions Prometheus, Tempo and Loki automatically plus the `LUMI Operational Overview` dashboard. The default local Grafana credentials are intentionally local-only and must be replaced by deployment secret/IAM controls outside local development.
+
+The API metrics path is an internal scrape endpoint, not a public product endpoint. Staging/production ingress must keep it private.
+
+The current repository lockfile does not contain OpenTelemetry Python SDK/exporter packages. NODE-67 therefore treats full SDK/OTLP application export as an explicit remaining integration gate instead of hand-editing `uv.lock`.
 
 ## Windows 11
 
@@ -98,8 +141,4 @@ Use Docker Desktop with WSL2 integration and keep the repository in the WSL Linu
 
 ## Security boundary
 
-These credentials and management ports are for localhost development only. Never reuse them in staging/production and never expose RabbitMQ/MinIO management ports publicly.
-
-## Observability overlay
-
-`docker-compose.observability.yml` is reserved as the local overlay contract. The production-like Prometheus/Grafana/Tempo setup is intentionally deferred to NODE-67 so NODE-03 does not freeze an observability design prematurely.
+These credentials and management ports are for localhost development only. Never reuse them in staging/production and never expose RabbitMQ/MinIO/Grafana/Prometheus/Tempo/Loki/Collector management or ingestion ports directly to the public Internet.

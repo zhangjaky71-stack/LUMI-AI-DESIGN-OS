@@ -1,12 +1,29 @@
 # NODE-68 — Backup, Recovery & Disaster Readiness
 
 > Phase: 9 Production Readiness  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: SOURCE IMPLEMENTED / RELEASE BLOCKED  
 > Priority: P0 / RELEASE BLOCKER  
 > Depends on: NODE-19, NODE-20, NODE-28, NODE-42, NODE-67  
 > Produces: Backup/PITR、Object恢复、Run/Queue恢复、DR Runbooks、RPO/RTO与演练报告
 
 ---
+
+## 0. Implementation Status — 2026-08-15
+
+Source baseline 已实现：
+
+- fail-closed recovery planner：safe requeue / external reconcile / checkpoint resume / preserve wait / manual review；
+- `ambiguous`、已有 `provider_request_id`、外部状态不确定时禁止 blind retry；
+- PostgreSQL WAL archive + verified base backup + isolated named restore-point PITR harness；
+- MinIO versioning + delete/rewind/recover drill；
+- restored DB read-only invariants 与 recovery workload inventory；
+- DB/Object/Queue/AgentRun/Bad Deploy/Provider Outage/Security Incident 七份 runbook；
+- `Recovery Contract` PR source gate + manual destructive drill；
+- Makefile recovery 一键入口。
+
+**尚未完成 Release 验收**：当前环境没有成功执行真实 runner drill，也没有 production-like restore、真实生产备份安全控制与 RPO/RTO 测量。因此本 NODE 仍是 RELEASE BLOCKED，下面第 16 节验收项保持未勾选。
+
+Release Evidence：`docs/release-evidence/NODE-68-RECOVERY-DR-RELEASE-EVIDENCE.md`。
 
 ## 1. 目标
 
@@ -155,6 +172,18 @@ Backup同样敏感：加密、最小权限、删除保护、访问audit。不要
 ## 15. Tests / Drills
 
 至少季度/重大变更后演练；首次上线前必须完成一次真实DB restore和run resume演练。
+
+Source 已提供：
+
+```text
+make recovery-postgres-drill
+make recovery-object-drill
+make recovery-drill
+make recovery-db-verify
+make recovery-workload
+```
+
+注意：本地 drill timing 只能证明恢复机制和测量链路，不能替代 production RPO/RTO 证据。
 
 ## 16. 验收标准
 

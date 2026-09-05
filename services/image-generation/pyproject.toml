@@ -1,0 +1,10 @@
+[project]
+name = "lumi-image-generation"
+version = "0.0.0"
+description = "LUMI Image Generation Pipeline V1"
+requires-python = "==3.12.*"
+dependencies = []
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"

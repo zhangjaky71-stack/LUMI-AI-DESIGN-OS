@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "artifact_types": [
+    "DESIGN_DOCUMENT",
+    "RASTER_IMAGE",
+    "VECTOR_IMAGE",
+    "VIDEO",
+    "AUDIO",
+    "PDF",
+    "HTML",
+    "ARCHIVE",
+    "EXPORT_PACKAGE"
+  ],
+  "version_statuses": ["DRAFT", "READY", "APPROVED", "REJECTED", "ARCHIVED"],
+  "lineage_edge_types": [
+    "DERIVED_FROM",
+    "EDITED_FROM",
+    "GENERATED_FROM",
+    "COMPOSED_FROM",
+    "RESIZED_FROM",
+    "EXPORTED_FROM",
+    "REFERENCE_USED"
+  ],
+  "file_roles": ["PREVIEW", "ORIGINAL", "THUMBNAIL", "WEB_OPTIMIZED", "PRINT_PDF", "LAYER_DATA"],
+  "created_by_types": ["USER", "AGENT", "SYSTEM"],
+  "rights_review_statuses": ["UNREVIEWED", "ASSERTED", "VERIFIED", "RESTRICTED"],
+  "rights_source_types": ["USER_UPLOAD", "GENERATED", "LICENSED", "PUBLIC_DOMAIN", "THIRD_PARTY", "UNKNOWN"],
+  "license_types": ["OWNED", "COMMERCIAL_LICENSE", "NONCOMMERCIAL", "PUBLIC_DOMAIN", "CC_BY", "CC_BY_SA", "UNKNOWN"],
+  "content_hash_algorithm": "SHA-256",
+  "design_document_hash_source": "LUMI_CANONICAL_JSON_V1"
+}

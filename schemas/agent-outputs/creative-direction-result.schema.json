@@ -1,0 +1,1 @@
+{"title":"CreativeDirectionResult","type":"object","required":["direction","rationale","next_actions"],"properties":{"direction":{"type":"string"},"rationale":{"type":"string"},"next_actions":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}

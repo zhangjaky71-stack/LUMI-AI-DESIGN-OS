@@ -1,74 +1,143 @@
 # NODE-65 — Audit, Governance & Data Retention
 
 > Phase: 8 SaaS & Collaboration  
-> Status: SPECIFIED / READY FOR IMPLEMENTATION  
+> Status: **IMPLEMENTED / VALIDATING / NOT COMPLETE**  
 > Priority: P0/P1 SECURITY & ENTERPRISE  
 > Depends on: NODE-10, NODE-16, NODE-25, NODE-42, NODE-62, NODE-64  
-> Produces: Append-only Audit、Retention、数据删除/Legal Hold接口、审计导出与治理规则
+> Produces: Append-only Audit、Retention、数据删除/Legal Hold、审计导出与治理规则
 
 ---
 
-## 1. 目标
+## 1. Implementation baseline
 
-记录“谁在什么时候对什么做了什么”，用于安全、企业治理、争议和运营排查。Audit与普通应用日志不同：可查询、权限受限、append-only、retention明确。
+NODE-65 establishes a governance plane rather than another application-log viewer.
+
+Canonical layers:
+
+```text
+AuditEvent                append-only
+RetentionPolicy           immutable + versioned
+LegalHoldEvent            append-only CREATE / RELEASE
+DeletionEvent             append-only workflow history
+AuditExportJob            controlled async lifecycle
+```
+
+Product route: `/app/settings/governance`.
+
+The organization surface is tenant scoped. Broader Platform Security access is a separate principal/permission path and must not be inferred from tenant `OWNER` / `ADMIN` alone.
 
 ## 2. Audit Event
 
+Canonical V1 contains:
+
 ```text
-id
+event_id
 organization_id?
-actor_type
-actor_id
-session/api_token/agent_run ref
+actor_type USER / PLATFORM_ADMIN / AGENT / SERVICE
+actor_id + actor_version?
+session_ref / api_token_ref / agent_run_ref / task_ref
+human_initiator_id?
 action
-resource_type
-resource_id
-resource_version?
-result SUCCESS/DENIED/FAILED
+resource_type / resource_id / resource_version?
+result SUCCESS / DENIED / FAILED
 reason_code
-request_id/trace_id
-ip/security metadata
-safe_change_summary
+request_id / trace_id
+safe security metadata
+safe change summary
+retention_class + retention_policy_version
+correction_of_event_id?
 occurred_at
+prev_hash / event_hash
 ```
 
-## 3. 必审动作
+Audit is append-only. Ordinary application code has no Update/Delete Audit method. Corrections create a new `AUDIT_CORRECTION` record.
+
+Migration `0014_audit_governance.sql` reinforces this with UPDATE/DELETE rejection triggers and privilege revocation for Audit, Retention policy, Legal Hold event and Deletion event tables.
+
+## 3. Required producers
+
+The canonical sink is designed for:
+
+- auth/login/session/token events from NODE-16;
+- membership/role changes;
+- project delete/archive;
+- sensitive Asset downloads/deletes;
+- Brand Rule publish;
+- Artifact approval/restore;
+- constraint override;
+- external write/destructive/privileged tools from NODE-25;
+- Billing/Credit actions;
+- Admin actions from NODE-64;
+- provider/registry config;
+- DLQ replay;
+- secret/config access where the platform supports it.
+
+NODE-65 implements the sink, schema and NODE-64 adapter. Other producers remain explicit integration gates until their production runtime adapters are connected.
+
+## 4. Change summary
+
+Audit does not persist full large before/after payloads by default.
 
 ```text
-auth/login/session/token
-membership/role
-project delete/archive
-asset delete/download-sensitive
-brand rules publish
-artifact approval/restore
-constraint override
-external write tool
-billing/credits
-admin actions
-provider/registry config
-DLQ replay
-secret/config access events where supported
+changed_fields[]
+version_refs[]
+semantic_diff_ref?
+evidence_ref?
 ```
 
-## 4. Change Summary
+Fields and refs are bounded. Raw prompts/user content default to hash/ref.
 
-不默认存完整before/after大型文档。保存：
+## 5. Redaction
+
+Forbidden Audit material includes:
+
+- passwords;
+- raw API keys/client secrets;
+- session secrets;
+- full Authorization credentials;
+- payment-card PAN/CVC/CVV;
+- full presigned URL query strings;
+- raw prompt/content bodies unless a separately governed immutable evidence store is explicitly used.
+
+Current V1 metadata sanitizer redacts credential-key fields, hashes prompt/content and IP-like fields, strips sensitive URL query material and bounds values.
+
+## 6. Agent identity
+
+Agent audit must include:
 
 ```text
-changed fields
-version refs
-semantic diff ref
+agent id
+exact agent version
+AgentRun
+Task
+human initiator
 ```
 
-敏感内容可放受限evidence store。
+An `AGENT` actor missing any required identity fails closed with `GOVERNANCE_AGENT_IDENTITY_INCOMPLETE`. Tool writes and constraint overrides therefore cannot be attributed to a vague `system` actor.
 
-## 5. Append-only
+## 7. Tenant boundary
 
-应用API不提供普通 UPDATE/DELETE Audit row。数据库角色限制；纠错写新annotation/correction event。
+Organization callers require `audit.read` and are forced to their own `organization_id` regardless of requested filter.
 
-P1可添加tamper-evident hash chain/外部WORM归档作为enterprise profile。
+Cross-organization Audit is allowed only to a separate Platform Admin actor carrying `admin.audit.read`. This does not derive from tenant role names.
 
-## 6. Retention Classes
+Search filters:
+
+```text
+time
+actor
+action
+resource type/id
+result
+organization (platform scope only)
+trace id
+```
+
+Pagination uses an opaque cursor built from `(occurred_at,event_id)`, not a mutable numeric offset.
+
+## 8. Retention classes
+
+Exactly seven classes are implemented:
 
 ```text
 SECURITY_AUDIT
@@ -80,102 +149,159 @@ EXPORT
 ANALYTICS
 ```
 
-每类有retention policy version。不要“一刀切永久保存所有内容”。
+Each class has an immutable policy version and explicit retention days. A policy change appends the next version; historical Audit Events retain the exact policy version that applied when recorded.
 
-## 7. User Deletion / Privacy
+The seeded v1 durations are **engineering defaults, not legal advice or a compliance claim**. Applicable laws, regulations and contracts must be reviewed before production launch.
 
-建立Data Subject/Account Deletion workflow接口：
+Retention candidate computation excludes any resource matched by an active Legal/Billing Hold.
 
-```text
-identify scope
-→ legal/billing hold check
-→ deactivate
-→ delete/anonymize eligible data
-→ object GC
-→ search/vector removal
-→ completion record
-```
+## 9. Legal / Billing Hold
 
-具体法定要求在上线国家/地区前由法律专业人员核验；技术上必须支持执行。
+Hold create/release are append-only events and require high governance permission plus reason/ticket.
 
-## 8. Legal Hold
-
-Enterprise/legal需要时，hold阻止受影响Artifact/Asset/Audit被GC；创建/解除hold都需高权限和Audit。
-
-## 9. Audit Search
-
-按：
+Scopes:
 
 ```text
-time
-actor
-action
-resource
-result
-organization
-trace
+USER
+ORGANIZATION
+RESOURCE
+RETENTION_CLASS
 ```
 
-cursor pagination。普通Org Admin只能看其组织允许的audit subset；平台security权限更高。
+An active hold blocks affected GC and deletion execution. Release never rewrites the creation record; it appends a `RELEASE` event and Audit event.
 
-## 10. Export
+## 10. Data deletion workflow
 
-企业可导出JSON/CSV；大量导出异步job + signed URL + audit。导出本身也是敏感动作。
-
-## 11. Redaction
-
-禁止Audit记录：
+Implemented orchestration:
 
 ```text
-password
-raw API key
-session secret
-payment card
-full Authorization header
-full presigned URL query
+identify subject scope
+→ Legal/Billing Hold check
+→ deactivate subject
+→ DELETE / ANONYMIZE eligible resources
+→ object storage GC
+→ search/vector ref removal
+→ retain RETENTION_ONLY evidence
+→ append completion/failure event
 ```
 
-Prompt/用户内容默认仅hash/ref，不全量进入Audit。
+Deletion is idempotently addressed by `request_id`. `BLOCKED_HOLD` is an explicit state. Completion exposes deleted/anonymized/retained counts.
 
-## 12. Agent Audit
+NODE-65 does not delete its own Audit trail as part of ordinary user deletion. Security/Billing evidence can remain under policy/hold.
 
-Agent actor记录：
+## 11. Audit export
+
+Formats: JSON / CSV.
+
+Flow:
 
 ```text
-agent id/version
-run/task
-human initiator
-Tool write operations
-constraint overrides (若允许)
+PENDING
+→ RUNNING
+→ immutable export object ref/checksum/size
+→ READY
+→ short-lived signed download lease
 ```
 
-Agent不能以“system”模糊身份写外部世界。
+Signed URL is never persisted in `governance_audit_export_jobs`. Download TTL is 30–900 seconds. Refreshing a signed lease does not rerender the export job. V1 export is bounded to 50,000 audit events.
 
-## 13. Tests
+Every export request, ready transition and download is itself audited.
 
-- append-only；
-- permission；
-- redaction；
-- agent actor；
-- admin action；
-- retention candidate；
-- legal hold blocks GC；
-- deletion propagates search/object refs。
+## 12. NODE-64 integration
 
-## 14. 验收标准
+`Node64AdminAuditSink` adapts NODE-64 `AdminAuditEvent` into canonical NODE-65 Audit.
 
-- [ ] 高风险动作都有Audit。
-- [ ] Audit不能普通修改/删除。
-- [ ] 不保存secrets。
-- [ ] retention classes明确。
-- [ ] deletion/hold技术路径存在。
-- [ ] audit export受权限保护。
+The adapter:
 
-## 15. Definition of Done
+- preserves actor/action/target identity;
+- maps organization scope when safely known;
+- hashes free-form admin reason instead of copying it;
+- carries safe ticket/metadata projection;
+- supports NODE-64 recent Admin Audit projection from canonical `ADMIN_*` events.
+
+This closes NODE-64's durable Audit contract boundary at the domain level; production database binding remains an integration gate.
+
+## 13. Product UX
+
+`/app/settings/governance` provides:
+
+- Audit search/filter/readout;
+- explicit tenant scope;
+- Retention policy versions and eligible candidates;
+- active Legal Holds and guarded hold workflow;
+- Deletion requests with hold-block and completion counts;
+- Audit Export jobs and fresh signed lease retrieval;
+- mobile layout;
+- explicit truth boundaries around legal review and retained evidence.
+
+The browser has no Audit database and uses no localStorage/sessionStorage/IndexedDB as canonical governance state.
+
+## 14. Tests staged
+
+Backend/domain:
+
+- append-only + hash chain;
+- correction adds event instead of mutation;
+- credential/prompt/URL redaction;
+- tenant separation and Platform Security access;
+- Agent exact identity;
+- NODE-64 Admin sink;
+- versioned Retention;
+- Legal Hold blocking retention/deletion;
+- object GC + search/vector removal;
+- retained evidence;
+- async export + READY-only fresh signed lease.
+
+API:
+
+- tenant Audit route;
+- cross-tenant denial;
+- privileged Retention/Hold/Deletion;
+- correction;
+- Export worker and download lifecycle.
+
+Web:
+
+- contract/gateway units;
+- browser Audit filter;
+- all seven Retention classes;
+- Hold → blocked deletion → release → completed deletion;
+- signed lease refresh without rerender;
+- mobile.
+
+Database:
+
+- migration applies on PostgreSQL 17;
+- seven default Retention policies exist;
+- append-only trigger rejects Audit UPDATE/DELETE;
+- no signed URL or credential-bearing columns.
+
+## 15. Production integration gates
+
+NODE-65 is **NOT COMPLETE** until:
+
+1. production PostgreSQL `GovernanceRepository` adapter is bound;
+2. NODE-16 auth/request event producers emit to canonical Audit;
+3. NODE-25 Tool Gateway write/destructive/privileged producers emit;
+4. Artifact/Asset/Brand/Approval/Billing producers emit;
+5. production object GC and search/vector removal adapters are connected;
+6. background Retention/Deletion/Export workers are deployed;
+7. production Platform Security and organization governance permission resolvers are bound;
+8. external WORM/KMS/storage-retention controls are enabled where required;
+9. applicable legal/contractual retention and data-subject rules receive jurisdiction-specific review;
+10. hosted pinned validation executes green.
+
+## 16. Definition of Done
 
 ```text
-audit pipeline + governance services implemented
-+ redaction/retention/hold tests green
+audit pipeline implemented
++ append-only DB contract implemented
++ governance services implemented
++ redaction/retention/hold/deletion/export tests staged
++ production adapters/workers connected
++ hosted gates green
 ```
 
-完成 Phase 8，下一节点：NODE-66 Security Hardening。
+Current status: **IMPLEMENTED / VALIDATING / NOT COMPLETE**.
+
+下一节点：**NODE-66 — Security Hardening**。

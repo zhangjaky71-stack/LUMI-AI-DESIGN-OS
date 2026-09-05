@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "constraints": {
+    "LOCK_POSITION": {"preflight": "deterministic-ir", "postflight": null, "owner": "NODE-39"},
+    "LOCK_SIZE": {"preflight": "deterministic-ir", "postflight": null, "owner": "NODE-39"},
+    "LOCK_ROTATION": {"preflight": "deterministic-ir", "postflight": null, "owner": "NODE-39"},
+    "LOCK_TRANSFORM": {"preflight": "deterministic-ir", "postflight": null, "owner": "NODE-39"},
+    "LOCK_ASPECT_RATIO": {"preflight": "deterministic-ir", "postflight": null, "owner": "NODE-39"},
+    "LOCK_LAYER_ORDER": {"preflight": "deterministic-ir", "postflight": null, "owner": "NODE-39"},
+    "LOCK_PARENT": {"preflight": "deterministic-ir", "postflight": null, "owner": "NODE-39"},
+    "LOCK_CONTENT": {"preflight": "deterministic-ir", "postflight": null, "owner": "NODE-39"},
+    "LOCK_TEXT": {"preflight": "deterministic-ir", "postflight": null, "owner": "NODE-39"},
+    "LOCK_ASSET": {"preflight": "deterministic-ir", "postflight": null, "owner": "NODE-39"},
+    "LOCK_IDENTITY": {"preflight": null, "postflight": "identity-similarity", "owner": "NODE-44"},
+    "LOCK_STYLE": {"preflight": "deterministic-ir", "postflight": null, "owner": "NODE-39"},
+    "LOCK_BRAND": {"preflight": "deterministic-ir", "postflight": "brand-compliance", "owner": "NODE-43"},
+    "PROTECT_REGION": {"preflight": null, "postflight": "protected-region", "owner": "NODE-39"},
+    "MUST_STAY_INSIDE": {"preflight": "deterministic-ir", "postflight": null, "owner": "NODE-39"},
+    "MUST_NOT_OVERLAP": {"preflight": "deterministic-ir", "postflight": null, "owner": "NODE-39"},
+    "MIN_MARGIN": {"preflight": "deterministic-ir", "postflight": null, "owner": "NODE-39"},
+    "SAFE_AREA": {"preflight": "deterministic-ir", "postflight": null, "owner": "NODE-39"},
+    "REQUIRE_CONTRAST": {"preflight": null, "postflight": "structured-contrast-or-sampling-plugin", "owner": "NODE-39"},
+    "REQUIRE_SCANNABILITY": {"preflight": null, "postflight": "qr-scannability", "owner": "NODE-39"},
+    "REQUIRE_TEXT_READABILITY": {"preflight": null, "postflight": "structured-contrast-or-readability-plugin", "owner": "NODE-39"},
+    "REQUIRE_BRAND_COMPLIANCE": {"preflight": null, "postflight": "brand-compliance", "owner": "NODE-43"},
+    "REQUIRE_RESOLUTION": {"preflight": null, "postflight": "resolution", "owner": "NODE-39"},
+    "REQUIRE_IDENTITY_SCORE": {"preflight": null, "postflight": "identity-similarity", "owner": "NODE-44"}
+  },
+  "policy": "Every V1 constraint type must have a deterministic evaluator or an explicit postflight adapter owner. Missing hard postflight validators fail closed."
+}

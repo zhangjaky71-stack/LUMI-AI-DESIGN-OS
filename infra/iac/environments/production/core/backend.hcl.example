@@ -1,0 +1,5 @@
+bucket       = "REPLACE_WITH_PRODUCTION_TERRAFORM_STATE_BUCKET"
+key          = "lumi/production/core/terraform.tfstate"
+region       = "REPLACE_WITH_AWS_REGION"
+encrypt      = true
+use_lockfile = true
