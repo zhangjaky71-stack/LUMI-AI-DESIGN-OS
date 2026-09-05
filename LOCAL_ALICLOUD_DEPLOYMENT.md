@@ -1,12 +1,12 @@
 # Local Alibaba Cloud deployment record
 
-Updated: 2026-09-04
+Updated: 2026-09-05
 
 ## Decision
 
 LUMI staging is being migrated from the AWS reference topology to Alibaba Cloud. The working branch is `codex/alicloud-deployment`; the original `release-closure-p0` branch is unchanged.
 
-The deployment region is `cn-hangzhou`. The service-compatible zone set is `cn-hangzhou-h`, `cn-hangzhou-i`, `cn-hangzhou-j`.
+The deployment region is `cn-hangzhou`. The service-compatible zone set is `cn-hangzhou-h`, `cn-hangzhou-i`, `cn-hangzhou-j`. Deployment changes are merged to `main` before GitHub Actions can assume the branch-bound Alibaba Cloud role.
 
 ## Authentication
 
@@ -19,7 +19,9 @@ Alibaba Cloud CLI OAuth profile `lumi-deploy` is valid for account `115341050748
 - The Hangzhou bootstrap created the state bucket, ACL, versioning, AES256 encryption, public-access block, and TableStore instance.
 - TableStore instance `lumi-tf-3251` and table `terraform_lock` are live, imported and covered by a zero-change Bootstrap plan.
 - Core uses the private OSS backend with TableStore locking. Terraform requests on this host use process-only `GODEBUG=http2client=0` because the local tunnel resets HTTP/2 TableStore traffic.
-- The current real Core plan contains 67 creates and zero updates/deletes. It includes ACK Managed Pro Auto Mode, three NAT gateways/EIPs, RDS, Redis, OSS protections, ACR, SLS and separate application/migration database accounts; it has not been applied.
+- The current real Core plan contains 60 creates and zero updates/deletes. It includes ACK Managed Pro Auto Mode, three NAT gateways/EIPs, RDS, Redis, three protected OSS application buckets, SLS and separate application/migration database accounts; the existing ACR namespace and six repositories are unchanged. The plan has not been applied.
+- The latest billing API query reports `CNY 0.00` available cash, credit and quota, so the paid Core plan is blocked by the documented funding and recurring-cost approval gate.
+- GitHub Actions uses the `lumi-github-actions` OIDC provider to assume `lumi-github-acr-push`. The trust subject is restricted to this repository's exact `main` branch, and the attached `LumiGitHubAcrPush` policy is restricted to temporary ACR authorization plus pull/push access under `lumistaging3251/*`.
 - Hangzhou exposes the required VSwitch zones and PostgreSQL 15/Redis SKU candidates.
 - The repository has six runnable Dockerfile boundaries: API, Agent Runtime, Model Gateway, Tool Gateway, Worker Media, and Sandbox Runtime.
 - RabbitMQ is required by the actual application contracts. Celery and Kombu use the `lumi.jobs`, `lumi.domain`, and `lumi.dlx` exchanges, four job queues, and four dead-letter queues.
@@ -56,7 +58,7 @@ Core creates:
 1. Complete local lint, unit, YAML, Terraform and contract validation.
 2. Regenerate the real Core plan with ACK and the migration account, then review regions, zones, SKUs, exposure and recurring cost.
 3. Apply Core only after explicit recurring-cost approval.
-4. Configure the GitHub ACR credentials, push the branch and run the hosted six-image build on the exact release commit.
+4. Merge the OIDC configuration to `main` and run the hosted six-image build on the exact release commit; do not store a fixed ACR password or long-lived AccessKey in GitHub.
 5. Bind verified Terraform outputs, six immutable image digests, TLS domain/certificate and protected Secret values into the ACK templates.
 6. Run the one-shot Alembic Job and require exit code 0 plus head `0023_video_generation_runtime`.
 7. Apply all seven workloads and wait for successful rollouts.
