@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import copy
-import json
 import os
 from pathlib import Path
 from typing import Any
@@ -48,7 +47,9 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(f"AI release contract invalid: {message}")
 
 
-def build_fixture_pairs(required_suites: list[str]) -> dict[str, tuple[Any, dict[str, Any], dict[str, Any]]]:
+def build_fixture_pairs(
+    required_suites: list[str],
+) -> dict[str, tuple[Any, dict[str, Any], dict[str, Any]]]:
     pairs: dict[str, tuple[Any, dict[str, Any], dict[str, Any]]] = {}
     for suite_name in required_suites:
         paths = FIXTURE_PATHS.get(suite_name)
@@ -70,7 +71,9 @@ def validate_secretless_live_preflight() -> dict[str, Any]:
     try:
         for key in LIVE_ENV_KEYS:
             os.environ.pop(key, None)
-        require(live_preflight("smoke")["status"] == "SKIPPED", "live eval must be disabled by default")
+        require(
+            live_preflight("smoke")["status"] == "SKIPPED", "live eval must be disabled by default"
+        )
 
         os.environ["LUMI_LIVE_EVAL_ENABLED"] = "1"
         os.environ["LUMI_LIVE_EVAL_PREFLIGHT_MODE"] = AUTHORIZATION_ONLY_MODE
@@ -83,9 +86,17 @@ def validate_secretless_live_preflight() -> dict[str, Any]:
         ready = live_preflight("smoke")
         require(ready.get("status") == "READY", "clean authorization-only preflight must be READY")
         require(ready.get("preflight_mode") == AUTHORIZATION_ONLY_MODE, "preflight mode drift")
-        require(ready.get("credential_check") == "NOT_PERFORMED", "preflight must not validate provider credentials")
-        require(ready.get("network_execution") is False, "preflight must not execute provider network calls")
-        require(ready.get("side_effect_mode") == "none", "preflight side-effect mode must remain none")
+        require(
+            ready.get("credential_check") == "NOT_PERFORMED",
+            "preflight must not validate provider credentials",
+        )
+        require(
+            ready.get("network_execution") is False,
+            "preflight must not execute provider network calls",
+        )
+        require(
+            ready.get("side_effect_mode") == "none", "preflight side-effect mode must remain none"
+        )
 
         os.environ["LUMI_LIVE_EVAL_API_KEY"] = "forbidden-in-preflight"
         require(
@@ -128,11 +139,13 @@ def validate_secretless_live_preflight() -> dict[str, Any]:
         "AI Regression workflow must explicitly bind authorization-only mode",
     )
     require(
-        "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release-closure-p0'" in workflow_source,
+        "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release-closure-p0'"
+        in workflow_source,
         "authorization preflight must be manual release-ref only",
     )
     require(
-        'ref: ${{ github.sha }}' in workflow_source and "persist-credentials: false" in workflow_source,
+        "ref: ${{ github.sha }}" in workflow_source
+        and "persist-credentials: false" in workflow_source,
         "authorization preflight must execute exact dispatch SHA without persisted credentials",
     )
     return ready
@@ -158,8 +171,14 @@ def main() -> int:
         load_json(EVALS / "fixtures" / "releases" / "candidate-manifest.json"),
         expected_role="candidate",
     )
-    require(set(baseline_manifest.suite_versions) == set(required_suites), "baseline manifest suite set must equal release policy")
-    require(set(candidate_manifest.suite_versions) == set(required_suites), "candidate manifest suite set must equal release policy")
+    require(
+        set(baseline_manifest.suite_versions) == set(required_suites),
+        "baseline manifest suite set must equal release policy",
+    )
+    require(
+        set(candidate_manifest.suite_versions) == set(required_suites),
+        "candidate manifest suite set must equal release policy",
+    )
 
     pairs = build_fixture_pairs(required_suites)
     clean = evaluate_release(
@@ -169,13 +188,21 @@ def main() -> int:
         pairs,
         mode="contract",
     )
-    require(clean["passed"] is True, "clean fixtures for all blocking suites must pass contract mode")
-    require(len(clean["suite_results"]) == len(required_suites), "every blocking suite must contribute a gate result")
+    require(
+        clean["passed"] is True, "clean fixtures for all blocking suites must pass contract mode"
+    )
+    require(
+        len(clean["suite_results"]) == len(required_suites),
+        "every blocking suite must contribute a gate result",
+    )
 
     bad_pairs = copy.deepcopy(pairs)
     smoke_suite, smoke_baseline, smoke_candidate = bad_pairs["smoke"]
     smoke_candidate["cases"][0]["scores"]["critical_safety_failures"] = 1.0
-    require(smoke_candidate["scores"]["critical_safety_failures"] == 0.0, "drill must leave aggregate unchanged")
+    require(
+        smoke_candidate["scores"]["critical_safety_failures"] == 0.0,
+        "drill must leave aggregate unchanged",
+    )
     bad_pairs["smoke"] = (smoke_suite, smoke_baseline, smoke_candidate)
     blocked = evaluate_release(
         policy,
@@ -198,7 +225,9 @@ def main() -> int:
     except ReleaseGateError:
         pass
     else:
-        raise SystemExit("AI release contract invalid: fixture evidence must never pass release mode")
+        raise SystemExit(
+            "AI release contract invalid: fixture evidence must never pass release mode"
+        )
 
     validate_shadow_plan(
         {
@@ -221,29 +250,13 @@ def main() -> int:
         },
     )
     require(state.stage == "5", "canary must progress internal -> 5")
-    require(rollback(state, reason="drill").production_alias == "agent@1.0.0", "rollback must restore baseline alias")
+    require(
+        rollback(state, reason="drill").production_alias == "agent@1.0.0",
+        "rollback must restore baseline alias",
+    )
 
-    live_ready = validate_secretless_live_preflight()
-
-    output = {
-        "status": "PASS",
-        "policy_id": policy.get("policy_id"),
-        "executable_suites": required_suites,
-        "clean_contract_decision": clean["decision_id"],
-        "blocking_suite_count": len(clean["suite_results"]),
-        "bad_candidate_blocked": True,
-        "fixture_release_mode_blocked": True,
-        "per_suite_profiles_pinned": True,
-        "shadow_side_effect_free": True,
-        "rollback_contract": True,
-        "live_provider_default": "SKIPPED",
-        "live_provider_preflight": "SECRETLESS_AUTHORIZATION_ONLY",
-        "live_provider_credential_check": live_ready["credential_check"],
-        "live_provider_network_execution": live_ready["network_execution"],
-        "provider_secret_in_preflight_blocked": True,
-        "preflight_non_ready_exit_nonzero": True,
-    }
-    print(json.dumps(output, indent=2, sort_keys=True))
+    validate_secretless_live_preflight()
+    print("AI release contract: PASS")
     return 0
 
 

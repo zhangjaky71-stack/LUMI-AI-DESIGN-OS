@@ -50,7 +50,13 @@ def validate() -> None:
     )
     _require(
         hosted,
-        ("discover_remote_backend()", "HostedSandboxRuntime", "backend=discover_remote_backend()"),
+        (
+            "discover_remote_backend()",
+            "HostedSandboxRuntime",
+            "backend=_remote_backend()",
+            'if backend == "ack"',
+            'if backend == "ecs"',
+        ),
         "sandbox hosted composition",
     )
     _forbid(

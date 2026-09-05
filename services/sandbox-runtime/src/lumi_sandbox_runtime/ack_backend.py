@@ -91,15 +91,13 @@ class InClusterKubernetesClient:
     def read_job(self, namespace: str, name: str) -> dict[str, Any]:
         return self._request(
             "GET",
-            f"/apis/batch/v1/namespaces/{quote(namespace, safe='')}/jobs/"
-            f"{quote(name, safe='')}",
+            f"/apis/batch/v1/namespaces/{quote(namespace, safe='')}/jobs/{quote(name, safe='')}",
         )
 
     def delete_job(self, namespace: str, name: str) -> None:
         self._request(
             "DELETE",
-            f"/apis/batch/v1/namespaces/{quote(namespace, safe='')}/jobs/"
-            f"{quote(name, safe='')}",
+            f"/apis/batch/v1/namespaces/{quote(namespace, safe='')}/jobs/{quote(name, safe='')}",
             {"apiVersion": "v1", "kind": "DeleteOptions", "propagationPolicy": "Background"},
         )
 
@@ -408,7 +406,12 @@ class ACKRemoteSandboxBackend:
                                 "volumeMounts": [{"name": "scratch", "mountPath": "/tmp"}],
                             }
                         ],
-                        "volumes": [{"name": "scratch", "emptyDir": {"sizeLimit": f"{spec.disk_limit_mb}Mi"}}],
+                        "volumes": [
+                            {
+                                "name": "scratch",
+                                "emptyDir": {"sizeLimit": f"{spec.disk_limit_mb}Mi"},
+                            }
+                        ],
                     },
                 },
             },

@@ -26,6 +26,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Install sandbox runtime test dependencies
+        run: python -m pip install --disable-pip-version-check -e services/sandbox-runtime
       - name: Compile sandbox runtime
         run: >-
           PYTHONPATH=services/sandbox-runtime/src

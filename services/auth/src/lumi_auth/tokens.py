@@ -6,9 +6,19 @@ import secrets
 from dataclasses import dataclass, replace
 from datetime import datetime
 
+_TOKEN_HASH_ITERATIONS = 600_000
+_TOKEN_HASH_SALT = b"lumi-auth-opaque-token-v1"
+
 
 def hash_token(secret: str) -> str:
-    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+    # Opaque tokens are high-entropy secrets, but the stored verifier still uses
+    # a deliberately expensive KDF to resist offline cracking of leaked state.
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        secret.encode("utf-8"),
+        _TOKEN_HASH_SALT,
+        _TOKEN_HASH_ITERATIONS,
+    ).hex()
 
 
 def verify_token_hash(secret: str, expected_hash: str) -> bool:

@@ -46,11 +46,7 @@ class _FakeKubernetes:
         template = body["spec"]  # type: ignore[index]
         pod = template["template"]["spec"]  # type: ignore[index]
         environment = pod["containers"][0]["env"]  # type: ignore[index]
-        values = {
-            row["name"]: row["value"]
-            for row in environment
-            if "value" in row
-        }
+        values = {row["name"]: row["value"] for row in environment if "value" in row}
         request_key = values["LUMI_SANDBOX_REQUEST_KEY"]
         result_key = values["LUMI_SANDBOX_RESULT_KEY"]
         request = json.loads(self.s3.objects[(self.bucket, request_key)].decode("utf-8"))
@@ -86,8 +82,7 @@ class ACKRemoteSandboxBackendTests(unittest.TestCase):
         backend = ACKRemoteSandboxBackend(
             namespace="lumi-staging",
             child_image=(
-                "registry.cn-hangzhou.aliyuncs.com/lumi/sandbox-runtime@sha256:"
-                + "a" * 64
+                "registry.cn-hangzhou.aliyuncs.com/lumi/sandbox-runtime@sha256:" + "a" * 64
             ),
             child_service_account="lumi-sandbox-child",
             oss_secret_name="lumi-oss-sandbox",

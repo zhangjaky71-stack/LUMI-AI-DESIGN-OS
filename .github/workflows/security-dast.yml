@@ -38,7 +38,7 @@ jobs:
           parsed = urlsplit(target)
           if parsed.scheme != "https" or not parsed.hostname:
               raise SystemExit("DAST target must be an absolute HTTPS URL")
-          if parsed.username or parsed.password:
+          if "@" in parsed.netloc:
               raise SystemExit("DAST target must not contain URL userinfo")
 
           host = parsed.hostname.rstrip(".").lower()
