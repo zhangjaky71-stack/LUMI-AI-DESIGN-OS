@@ -112,8 +112,11 @@ jobs:
           build-args: |
             UV_BASE_IMAGE=${{ env.UV_BASE_IMAGE }}
             PYTHON_BASE_IMAGE=${{ env.PYTHON_BASE_IMAGE }}
-          provenance: mode=max,version=v0.2
-          sbom: true
+          # ACR Personal Edition staging does not accept BuildKit OCI
+          # attestation manifests (application/vnd.oci.empty.v1+json).
+          # Enterprise promotion can re-enable provenance and SBOM publishing.
+          provenance: false
+          sbom: false
           cache-from: type=gha,scope=lumi-alicloud-${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=lumi-alicloud-${{ matrix.service }}
 
