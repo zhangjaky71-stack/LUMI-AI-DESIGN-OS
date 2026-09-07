@@ -5,5 +5,5 @@ resources:
   - migration-job.yaml
 images:
   - name: lumi-api
-    newName: registry.cn-hangzhou.aliyuncs.com/lumistaging3251/api
+    newName: crpi-5765pzu53bg0a9z6.cn-hangzhou.personal.cr.aliyuncs.com/lumistaging3251/api
     digest: sha256:REPLACE_WITH_API_DIGEST

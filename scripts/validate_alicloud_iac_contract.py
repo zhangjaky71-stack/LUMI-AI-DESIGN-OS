@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -117,7 +118,6 @@ def main() -> int:
         'resource "alicloud_ims_oidc_provider" "github_actions"',
         'issuer_url         = "https://token.actions.githubusercontent.com"',
         'client_ids         = ["sts.aliyuncs.com"]',
-        'fingerprints = ["6938FD4D98BAB03FAADB97B34396831E3780AEA1"]',
         'resource "alicloud_ram_role" "github_acr_push"',
         '"oidc:iss" = "https://token.actions.githubusercontent.com"',
         '"oidc:aud" = "sts.aliyuncs.com"',
@@ -130,6 +130,22 @@ def main() -> int:
         'resource "alicloud_ram_role_policy_attachment" "github_acr_push"',
     ):
         require(marker in bootstrap_identity, f"GitHub OIDC bootstrap contract missing: {marker}")
+    fingerprint_block = re.search(
+        r"fingerprints\s*=\s*\[(.*?)\]", bootstrap_identity, re.DOTALL
+    )
+    require(fingerprint_block is not None, "GitHub OIDC fingerprint list is missing")
+    fingerprints = re.findall(r'"([0-9A-F]{40})"', fingerprint_block.group(1))
+    require(
+        fingerprints
+        == [
+            "6938FD4D98BAB03FAADB97B34396831E3780AEA1",
+            "2D74D6DFD96EEA55AD7BAAFA0D3C6552B2DADC37",
+            "AB9D0263244DD0326EB67015705A667E79CFE998",
+            "C5F111DA84F7DEF8E6F3F99F8F5F36FF85BAB1B1",
+            "CABD2A79A1076A31F21D253635CB039D4329A5E8",
+        ],
+        "GitHub OIDC rollover fingerprints must match the reviewed five-certificate set",
+    )
     require(
         'default     = "refs/heads/main"' in bootstrap_variables,
         "GitHub OIDC trust must target the exact main branch",
@@ -304,6 +320,28 @@ def main() -> int:
     require(
         kustomization.count("digest: sha256:REPLACE_WITH_") == 6,
         "six runtime images must be replaced with immutable digests",
+    )
+    acr_registry = (
+        "crpi-5765pzu53bg0a9z6.cn-hangzhou.personal.cr.aliyuncs.com/"
+        "lumistaging3251"
+    )
+    require(
+        kustomization.count(f"newName: {acr_registry}/") == 6,
+        "all six ACK workloads must pull from the live ACR Personal endpoint",
+    )
+    require(
+        f"newName: {acr_registry}/api" in migration_kustomization,
+        "the migration Job must pull from the live ACR Personal endpoint",
+    )
+    require(
+        f"LUMI_SANDBOX_CHILD_IMAGE: {acr_registry}/sandbox-runtime@sha256:"
+        "REPLACE_WITH_SANDBOX_RUNTIME_DIGEST" in runtime_config,
+        "sandbox child Jobs must pull from the live ACR Personal endpoint",
+    )
+    require(
+        "registry.cn-hangzhou.aliyuncs.com/lumistaging3251/"
+        not in kustomization + migration_kustomization + runtime_config,
+        "legacy ACR endpoint remains in an ACK runtime manifest",
     )
     require(
         "secrets.example.yaml" not in kustomization,
