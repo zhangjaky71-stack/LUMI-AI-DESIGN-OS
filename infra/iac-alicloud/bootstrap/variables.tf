@@ -37,6 +37,28 @@ variable "github_repository" {
   }
 }
 
+variable "github_repository_owner_id" {
+  description = "Immutable GitHub owner ID used in the OIDC subject claim."
+  type        = number
+  default     = 267948724
+
+  validation {
+    condition     = var.github_repository_owner_id > 0
+    error_message = "github_repository_owner_id must be a positive GitHub ID."
+  }
+}
+
+variable "github_repository_id" {
+  description = "Immutable GitHub repository ID used in the OIDC subject claim."
+  type        = number
+  default     = 1331765609
+
+  validation {
+    condition     = var.github_repository_id > 0
+    error_message = "github_repository_id must be a positive GitHub ID."
+  }
+}
+
 variable "github_ref" {
   description = "Exact Git ref allowed to assume the GitHub Actions ACR push role."
   type        = string

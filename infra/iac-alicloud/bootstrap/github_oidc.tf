@@ -1,6 +1,7 @@
 locals {
-  github_oidc_subject = "repo:${var.github_repository}:ref:${var.github_ref}"
-  acr_repository_arn  = "acs:cr:${var.region}:${local.account_id}:repository/${var.acr_namespace}/*"
+  github_repository_parts = split("/", var.github_repository)
+  github_oidc_subject     = "repo:${local.github_repository_parts[0]}@${var.github_repository_owner_id}/${local.github_repository_parts[1]}@${var.github_repository_id}:ref:${var.github_ref}"
+  acr_repository_arn      = "acs:cr:${var.region}:${local.account_id}:repository/${var.acr_namespace}/*"
 }
 
 resource "alicloud_ims_oidc_provider" "github_actions" {
@@ -9,8 +10,14 @@ resource "alicloud_ims_oidc_provider" "github_actions" {
   client_ids         = ["sts.aliyuncs.com"]
   # GitHub's published OIDC CA thumbprint used by cloud-provider integrations.
   # Keep this value aligned with the provider's accepted trust chain.
-  fingerprints = ["6938FD4D98BAB03FAADB97B34396831E3780AEA1"]
-  description  = "GitHub Actions OIDC provider for LUMI deployments"
+  fingerprints = [
+    "6938FD4D98BAB03FAADB97B34396831E3780AEA1",
+    "2D74D6DFD96EEA55AD7BAAFA0D3C6552B2DADC37",
+    "AB9D0263244DD0326EB67015705A667E79CFE998",
+    "C5F111DA84F7DEF8E6F3F99F8F5F36FF85BAB1B",
+    "CABD2A79A1076A31F21D253635CB039D4329A5E8",
+  ]
+  description = "GitHub Actions OIDC provider for LUMI deployments"
 }
 
 resource "alicloud_ram_role" "github_acr_push" {
