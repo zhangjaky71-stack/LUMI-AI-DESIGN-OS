@@ -111,13 +111,14 @@ After a reviewed Core apply, the release sequence is:
 - TableStore instance `lumi-tf-3251` and table `terraform_lock` are live. The table is imported into Bootstrap state, and Bootstrap plans with zero changes.
 - GitHub OIDC provider `lumi-github-actions`, RAM role `lumi-github-acr-push`, custom policy `LumiGitHubAcrPush` and their attachment are live. The role trust is restricted to this repository's immutable-ID `main` subject, and the policy is restricted to the staging ACR namespace.
 - The ACR Personal Edition instance, private namespace `lumistaging3251`, and six private runtime repositories are live in `cn-hangzhou`. Their targeted Terraform state has a zero-change plan. The account owner's fixed Registry password is not used by GitHub Actions.
+- GitHub Actions run `34077542162` successfully published all six runtime images for `main` commit `725c9043eaed0aaea82e970b683ccc0888e143f1` through OIDC and temporary ACR credentials. The frozen `alicloud-runtime-images-725c9043eaed0aaea82e970b683ccc0888e143f1` artifact contains exactly six digest-pinned images and is retained by GitHub for 90 days.
 - Core is initialized against OSS with TableStore locking. After the targeted ACR apply, the remaining reviewed-shape plan is `60 add / 0 change / 0 destroy`, including paid network, data and ACK resources; it has not been applied.
 - The remaining paid services have not been verified by a real apply.
 - The Alibaba Cloud account currently reports `¥0.00` available balance, so paid Core resources cannot be applied until the account owner funds the account and explicitly approves the recurring-cost plan.
 - RabbitMQ is deliberately disabled by default until its service and price are approved.
 - ACR Personal Edition resources are deprecated in Alibaba Cloud Provider `1.291.0`; they are only a staging bridge.
-- GitHub CLI authentication is invalid. The hosted ACR build workflow exists and runs from `main`. The workflow source uses the live GitHub OIDC role and temporary ACR tokens, so no Alibaba Cloud username, fixed Registry password or long-lived AccessKey is required in GitHub.
-- Local Docker daemon is unavailable, so the six runtime images must be built by the hosted workflow.
+- GitHub CLI authentication and the hosted ACR workflow are operational. The workflow source uses the live GitHub OIDC role and temporary ACR tokens, so no Alibaba Cloud username, fixed Registry password or long-lived AccessKey is required in GitHub.
+- Local Docker daemon is unavailable; the six runtime images were built and verified by the hosted workflow.
 - ACK manifests and migration Job exist but still contain explicit `REPLACE_WITH_*` gates. No migration execution, workload rollout, health check or staging smoke evidence exists yet.
 
 These sources and the bootstrap resources are not evidence that the LUMI application is live.
